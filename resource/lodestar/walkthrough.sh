@@ -271,7 +271,7 @@ r=$(req cadet GET "$API/standing-orders"); check "the cadet holds no orders desk
 r=$(req purser GET "$ANVIL/expense-manifests?limit=200"); check "the purser lists the sector's expense manifests" 200 "$r"
 assert_py "the convoy's manifest counts its sorties and sums its booked expenses" "$r" "next(m for m in rows if m['missionId']=='$CONVOY')['sorties']==1 and next(m for m in rows if m['missionId']=='$CONVOY')['expenses']=='1600'"
 r=$(req purser GET "$ANVIL/expense-manifests/$CONVOY/content" "" -D "$S/manifest.hdr"); check "the purser downloads the convoy's manifest, a CSV sheet rendered on request" 200 "$r"
-if grep -qi '^content-type: text/csv' "$S/manifest.hdr" && [ "$(body "$r" | head -1)" = "sortie,pilot,launchedAt,category,amount,note" ] && [ "$(body "$r" | wc -l)" -eq 4 ]; then echo "PASS  the sheet is text/csv, a header and one line per booked expense"; else echo "FAIL  the sheet: $(body "$r" | head -c 200)"; fails=$((fails + 1)); fi
+if grep -qi '^content-type: text/csv' "$S/manifest.hdr" && [ "$(body "$r" | head -1)" = "sortie,pilot,launchedAt,category,amount,note" ] && [ "$(body "$r" | grep -c .)" -eq 4 ]; then echo "PASS  the sheet is text/csv, a header and one line per booked expense (the convoy's three, the quartermaster's among them)"; else echo "FAIL  the sheet: $(body "$r" | head -c 200)"; fails=$((fails + 1)); fi
 MANIFEST_ETAG=$(awk 'tolower($1)=="etag:" {print $2}' "$S/manifest.hdr" | tr -d '\r')
 r=$(req purser GET "$ANVIL/expense-manifests/$CONVOY/content" "" -H "If-None-Match: $MANIFEST_ETAG"); check "the sheet's digest is its validator: a kept copy hears 304" 304 "$r"
 r=$(req marshal GET "$ANVIL/expense-manifests/$CONVOY/content"); check "the marshal holds no Read on the manifests: the file route refuses" 403 "$r"
