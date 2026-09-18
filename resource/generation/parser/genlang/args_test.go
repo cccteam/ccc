@@ -14,6 +14,7 @@ func TestArg_ParseInvocations(t *testing.T) {
 	subjectSpec := &ArgSpec{Positional: 1, Keys: []string{"value"}, Required: []string{"value"}}
 	transitionSpec := &ArgSpec{Positional: 1, Keys: []string{"from", "to"}, Required: []string{"from", "to"}, Multi: []string{"from"}}
 	typescriptSpec := &ArgSpec{Positional: 1, Keys: []string{"from"}}
+	fileSpec := &ArgSpec{Positional: 1, OptionalPositional: true, Keys: []string{"name", "type"}}
 
 	tests := []struct {
 		name        string
@@ -27,6 +28,24 @@ func TestArg_ParseInvocations(t *testing.T) {
 			arg:  Arg("crew"),
 			spec: bindingSpec,
 			want: []NamedArgs{{Positional: []string{"crew"}, named: map[string][]string{}}},
+		},
+		{
+			name: "an optional positional may be omitted",
+			arg:  Arg("name: FileName"),
+			spec: fileSpec,
+			want: []NamedArgs{{named: map[string][]string{"name": {"FileName"}}}},
+		},
+		{
+			name: "an optional positional may be given",
+			arg:  Arg("thumbnail, type: ContentType"),
+			spec: fileSpec,
+			want: []NamedArgs{{Positional: []string{"thumbnail"}, named: map[string][]string{"type": {"ContentType"}}}},
+		},
+		{
+			name:        "an optional positional is still bounded",
+			arg:         Arg("thumbnail, small"),
+			spec:        fileSpec,
+			wantContain: "expected at most 1 positional argument(s), found 2",
 		},
 		{
 			name: "positional with named",

@@ -130,7 +130,12 @@ func (c *client) resolveResource(resource *resourceInfo, pStruct *parser.Struct,
 		return err
 	}
 
-	return c.resolveStateAnnotations(resource, pStruct, annotations)
+	if err := c.resolveStateAnnotations(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	// The read route is known only now, and a file hangs under it.
+	return resolveResourceFiles(resource, pStruct, annotations)
 }
 
 // resolveVirtualAnnotations applies a virtual resource's struct- and
@@ -159,7 +164,12 @@ func resolveVirtualAnnotations(resource *resourceInfo, pStruct *parser.Struct, a
 
 	// Scope resolves above; the tenancy pairing (domain-scoped ⇔ @domain)
 	// validates against it.
-	return resolveVirtualDomain(resource, pStruct, annotations)
+	if err := resolveVirtualDomain(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	// The read route is known only now, and a file hangs under it.
+	return resolveResourceFiles(resource, pStruct, annotations)
 }
 
 // parsePermissionScopeAnnotation resolves a @permissionScope argument to one of the two
@@ -694,7 +704,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 		// The annotations other kinds own: a resource's bindings, a view's table, and a
 		// field type's TypeScript type; and the masking tag, which a method's request
 		// never carries.
-		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method")); err != nil {
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method")); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -930,6 +940,12 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 		}
 
 		if err := resolveComputedPaging(res, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := resolveComputedFiles(res, s, annotations); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue

@@ -279,14 +279,8 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
-	if r.genComputedResources {
-		compStructs := parser.ParsePackage(packageMap[r.computed.Package()]).Structs
-		computedResources, err := r.structsToCompResources(compStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
-		if err != nil {
-			return err
-		}
-
-		r.computedResources = computedResources
+	if err := r.extractComputedResources(packageMap, pkg); err != nil {
+		return err
 	}
 
 	// A field-scope @enumerate may name a computed resource, so the declarations
@@ -367,6 +361,25 @@ func (r *resourceGenerator) Generate() error {
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
+}
+
+// extractComputedResources parses the computed package into computedResources, when
+// enabled, and checks the content functions the struct-scope @file declarations name:
+// presence and signature against the package's types, so the refusal names the
+// function and its shape instead of a compile error in generated code.
+func (r *resourceGenerator) extractComputedResources(packageMap map[string]*packages.Package, pkg *packages.Package) error {
+	if !r.genComputedResources {
+		return nil
+	}
+
+	computedPkg := packageMap[r.computed.Package()]
+	computedResources, err := r.structsToCompResources(parser.ParsePackage(computedPkg).Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
+	if err != nil {
+		return err
+	}
+	r.computedResources = computedResources
+
+	return validateComputedContentFunctions(computedPkg.Types, r.computedResources)
 }
 
 // runWiringGeneration renders the enabled wiring outputs: routes, handlers,

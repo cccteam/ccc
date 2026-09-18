@@ -826,6 +826,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 		PageDefault:  pageDefault(res.PageDefault),
 		PageMax:      res.PageMax,
 		Order:        apiOrder(res.DeclaredOrder),
+		Files:        fileSegments(res.Files),
 	}
 
 	for _, field := range res.PrimaryKeys() {
@@ -924,6 +925,7 @@ func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIR
 		PageDefault: pageDefault(res.PageDefault),
 		PageMax:     res.PageMax,
 		Order:       apiOrder(res.DeclaredOrder),
+		Files:       fileSegments(res.Files),
 	}
 	for _, field := range res.PrimaryKeys() {
 		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})

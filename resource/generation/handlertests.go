@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
@@ -188,9 +190,11 @@ func queryRouteCase(route *generatedRoute, pkTypes []pkParamType, listQuery stri
 	var permission string
 	switch route.HandlerType {
 	case ListHandler:
-		permission = "List"
-	case ReadHandler:
-		permission = "Read"
+		permission = string(accesstypes.List)
+	case ReadHandler, fileHandler:
+		// A @file route is a read: Read on the resource opens it (the segment field
+		// rides the same scripted grant).
+		permission = string(accesstypes.Read)
 	default:
 		return authzCase{}, false, nil
 	}
@@ -202,7 +206,7 @@ func queryRouteCase(route *generatedRoute, pkTypes []pkParamType, listQuery stri
 		url = strings.Replace(url, "{"+pkParams[0].Key+"}", domainTestValue, 1)
 		pkParams = pkParams[1:]
 	}
-	if route.HandlerType == ReadHandler {
+	if route.HandlerType == ReadHandler || route.HandlerType == fileHandler {
 		if len(pkParams) != len(pkTypes) {
 			return authzCase{}, false, errors.Newf("route %s: %d route parameters but %d primary keys", route.Path, len(pkParams), len(pkTypes))
 		}
@@ -269,6 +273,18 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 					cases = append(cases, c)
 				}
 			}
+			files, err := r.resourceFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, err
+			}
+			for _, route := range files {
+				c, _, err := queryRouteCase(route, pkTypes, "")
+				if err != nil {
+					return nil, err
+				}
+				c.Name = authzCaseName(c.Name, &outlet)
+				cases = append(cases, c)
+			}
 		}
 	}
 
@@ -290,7 +306,11 @@ func (r *resourceGenerator) computedAuthzCases() (cases []authzCase, err error) 
 			if err != nil {
 				return nil, err
 			}
-			for _, route := range routes {
+			files, err := r.computedFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, err
+			}
+			for _, route := range slices.Concat(routes, files) {
 				c, ok, err := queryRouteCase(route, pkTypes, computedMatrixListQuery(res))
 				if err != nil {
 					return nil, err
@@ -424,13 +444,18 @@ func patchOpCases(name, url, opPathPrefix string, res *resourceInfo, pkTypes []p
 
 	method := httpMethodConst(http.MethodPatch)
 
-	cases := []authzCase{{
-		Name:       name + " create",
-		Method:     method,
-		URL:        url,
-		Body:       "[" + createOp + "]",
-		DeniedOnly: true,
-	}}
+	var cases []authzCase
+	// A resource whose NOT NULL @file key disables Create refuses a create op before
+	// any permission check, so the matrix has no denied case to pin for it.
+	if !res.CreateDisabled() {
+		cases = append(cases, authzCase{
+			Name:       name + " create",
+			Method:     method,
+			URL:        url,
+			Body:       "[" + createOp + "]",
+			DeniedOnly: true,
+		})
+	}
 	if patchable {
 		cases = append(cases, authzCase{
 			Name:       name + " update",

@@ -73,6 +73,24 @@ func Test_decodersTemplate_gating(t *testing.T) {
 			},
 		},
 		{
+			name: "file routes emit their two decoder constructors, and nothing else does",
+			data: decodersFileData{
+				Package:                "app",
+				ApplicationName:        "App",
+				ReceiverName:           "a",
+				RouterPackage:          "router",
+				HasFileDecoder:         true,
+				HasComputedFileDecoder: true,
+			},
+			wantContains: []string{
+				"func NewFileDecoder[Resource Resourcer, Request any](_ *App, segment string) *resource.FileDecoder[Resource, Request] {",
+				"resource.MustNewFileDecoder[Resource, Request](router.Collection(), segment)",
+				"func NewComputedFileDecoder[Resource Resourcer, Request any](_ *App, segment string) *resource.FileDecoder[Resource, Request] {",
+				"resource.MustNewComputedFileDecoder[Resource, Request](segment)",
+			},
+			wantNotContains: []string{"NewQueryDecoder", "NewDecoder[", "NewRPCDecoder"},
+		},
+		{
 			name: "query-only emits no computed, patch, or RPC constructor",
 			data: decodersFileData{
 				Package:         "app",
@@ -216,7 +234,21 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				"domainScopedApp",
 				"RPCClient",
 				"ComputedClient",
+				"fileApp",
 			},
+		},
+		{
+			name: "an @upload method or a stored @file asserts the FileStore",
+			data: appContractData{
+				Package:         "app",
+				ApplicationName: "App",
+				HasFileStore:    true,
+			},
+			wantContains: []string{
+				"FileStore() resource.FileStore",
+				"var _ fileApp = (*App)(nil)",
+			},
+			wantNotContains: []string{"UploadStore", "Promote"},
 		},
 	}
 

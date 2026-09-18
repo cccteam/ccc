@@ -283,7 +283,14 @@ func (r *resourceGenerator) collectResourceRegistrations(b *resource.CollectionB
 				continue
 			}
 
-			set, err := handlerSetData(res, handlerType)
+			// The Read set carries the @file routes' own fields where the read route is
+			// generated: a tag per segment, with no column behind it, that a Read grant
+			// names to open the file route.
+			var extra []resource.FieldTags
+			if handlerType == ReadHandler && generated {
+				extra = fileSetTags(res.Files)
+			}
+			set, err := handlerSetData(res, handlerType, extra...)
 			if err != nil {
 				return false, errors.Wrapf(err, "resource %q %s request struct", res.Name(), handlerType)
 			}
@@ -368,9 +375,11 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 		handlers := []struct {
 			suppressed bool
 			permission accesstypes.Permission
+			// files are the @file routes' own fields, registered under Read alone.
+			files []resource.FieldTags
 		}{
 			{suppressed: res.SuppressListHandler, permission: accesstypes.List},
-			{suppressed: res.ReadHandlerDisabled(), permission: accesstypes.Read},
+			{suppressed: res.ReadHandlerDisabled(), permission: accesstypes.Read, files: fileSetTags(res.Files)},
 		}
 		registered := false
 		for _, handler := range handlers {
@@ -378,7 +387,7 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 				continue
 			}
 
-			set, err := resource.NewSetData(fields, handler.permission)
+			set, err := resource.NewSetData(slices.Concat(fields, handler.files), handler.permission)
 			if err != nil {
 				return errors.Wrapf(err, "computed resource %q %s request struct", res.Name(), handler.permission)
 			}
@@ -446,8 +455,9 @@ func (r *resourceGenerator) collectManualRegistrations(b *resource.CollectionBui
 // handlerSetData computes the SetData one generated handler registers for res, by
 // rendering the handler's request-struct tags through the same helpers the handler
 // template calls and parsing them with the same reflect.StructTag semantics the runtime
-// applies.
-func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetData, error) {
+// applies. extra are route-own fields registered beside the struct's (a @file route's
+// segment under Read).
+func handlerSetData(res *resourceInfo, handlerType HandlerType, extra ...resource.FieldTags) (resource.SetData, error) {
 	var fields []resource.FieldTags
 	var permissions []accesstypes.Permission
 
@@ -465,16 +475,19 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetDat
 				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag(), field.MaskingTag()))
 		}
 	case PatchHandler:
-		permissions = []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete}
+		// Create is left out where a NOT NULL @file key means a row is added by the
+		// method that stores its file (CreateDisabled).
+		permissions = res.PatchPermissions()
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
 				field.JSONTagForPatch(), field.ImmutableTag(), field.SqltypeTag(), field.NullableTag()))
 		}
-	case AllHandlers:
+	case AllHandlers, fileHandler:
 		return resource.SetData{}, errors.Newf("handlerSetData(): unsupported handler type: %s", handlerType)
 	default:
 		return resource.SetData{}, errors.Newf("handlerSetData(): unknown handler type: %s", handlerType)
 	}
+	fields = append(fields, extra...)
 
 	set, err := resource.NewSetData(fields, permissions...)
 	if err != nil {

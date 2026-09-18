@@ -68,7 +68,8 @@ type Ship struct { ... }
 | `@transition` | `@rpc` struct | `RootStructName, from: a[, b…], to: c` | Declares the RPC method as a workflow state transition (ABAC design plan §09): the method moves rows of the named root resource along one edge. The root must carry `@state`, every `from`/`to` value must be a value of its state enum table, method and root permission scopes must match, and the struct's `Execute` must be the transaction form, carrying exactly one `@target` field. The generated handler owns the mechanical frame inside the transaction it already runs: before the body it locates the target row within the tenancy predicate (absent or cross-tenant is NotFound) and verifies the pre-image state is in the `from` set, then evaluates any row-referencing condition the caller's Execute grant carries against the same located row — either refusal is one uniform Forbidden naming the method and the row, so the wire never says whether the state or the condition said no (§12); after the body returns without error it stamps the `to` state as the last mutation. The body never reads or writes the state field — it carries only the edge's business effect. Who may run the method stays its Execute grant (grants-only, §09). The declared edge travels in the generated Collection, draws labeled edges in the workflow DOT file, rides the TypeScript method metadata, and answers `capabilities=Execute` per row. Example: [LaunchMission](lodestar/pkg/rpc/launch_mission.go). |
 | `@target` | field of an `@rpc` struct | none, or `RootStructName` | Marks the field carrying the target row's key — exactly one per method, its type matching the target's single-column primary key. With `@transition` it is bare (the declared root is the target); without one, `@target(Root)` names the row resource directly and the method gets the plain located-row form (ABAC design plan §12): the generated handler locates the row inside its transaction (absent or cross-tenant is NotFound) and evaluates any row-referencing condition on the caller's Execute grant against it, with no state check and no stamp. Either way, a targeted method's Execute grants may carry row conditions — `access.MigrateRoles` validates them against the target resource's binding vocabulary — and the method joins the target resource's per-row `capabilities=Execute` answer. Requires the transaction form of `Execute`; method and target permission scopes must match. A domain-scoped target resolves tenancy through its `@domain` binding, either form: a bare tenant column is read off the located row, a join-path binding is verified with one query in the same transaction — absent and cross-tenant rows answer the same NotFound either way. Example: [HailShip](lodestar/pkg/rpc/hail_ship.go). |
 | `@answers` | `@rpc` struct | `200, 409` | Declares the statuses the method may answer with; the result type carries `HTTPStatus() int` and chooses one per response. Allowed: `200`, `201`, `202`, `204`, and any 4xx except `401`, `403`, and `404`, which stay the frame's own refusals; at least one must be a 2xx. A 4xx answer is the method's refusal with its typed body: in the transaction form the transaction rolls back first, so nothing the body armed commits. `204` writes no body and requires a pointer result returned nil, or an answerless method, whose only permitted declaration is `@answers(204)`. A result declaring `HTTPStatus()` without `@answers`, or the reverse, is a generation error; an undeclared status at runtime answers 500. The TypeScript client resolves `{ status, result }` for a method with declared statuses and still throws on every undeclared 4xx. Example: [CompleteMission](lodestar/pkg/rpc/complete_mission.go). |
-| `@upload` | `@rpc` struct | `max: 5MB` | Declares the method as a multipart upload. Its `Execute` takes `resource.Files` third — `Execute(ctx, txn resource.ReadWriteTransaction, files resource.Files, client *Client)`, the transaction form only, since the transaction is what claims the files — and the declaration and the signature go together (either alone is a generation error). The request is `multipart/form-data`: one part named `request` first, carrying the JSON the method's decoder reads exactly as for a JSON RPC, then one or more parts named `file`. `max` (a byte count or `KB`/`MB`/`GB`, 1024-based) bounds the whole body; over it is a 413 naming the maximum, no `file` part a 400, a body that is not multipart a 415. The frame streams each file to the application's `UploadStore` (asserted on the application as `UploadStore() resource.UploadStore` while any method uploads) under a key it minted, runs the body with the `Files`, promotes the keys after the transaction commits, and discards them on any failure before it; the body records the keys wherever its schema wants them, and reading a file back is the application's own route. A dry run streams nothing: the `Files` describe the parts with empty keys. The TypeScript handle gains `upload(body, files)`, which refuses locally over the maximum. Example: [AttachMissionDocument](lodestar/pkg/rpc/attach_mission_document.go). |
+| `@upload` | `@rpc` struct | `max: 5MB` | Declares the method as a multipart upload. Its `Execute` takes `resource.Files` third — `Execute(ctx, txn resource.ReadWriteTransaction, files resource.Files, client *Client)`, the transaction form only, since the transaction is what claims the files — and the declaration and the signature go together (either alone is a generation error). The request is `multipart/form-data`: one part named `request` first, carrying the JSON the method's decoder reads exactly as for a JSON RPC, then one or more parts named `file`. `max` (a byte count or `KB`/`MB`/`GB`, 1024-based) bounds the whole body; over it is a 413 naming the maximum, no `file` part a 400, a body that is not multipart a 415. The frame streams each file to the application's `FileStore` (asserted on the application as `FileStore() resource.FileStore` while any method uploads or any struct declares `@file`) under a key it minted, runs the body with the `Files`, and on any failure before commit deletes the objects it streamed and answers with the failure; after a commit nothing more happens, since the rows the body wrote claim the keys. The body records the keys wherever its schema wants them; reading a file back is the `@file` route (section 13). A dry run streams nothing: the `Files` describe the parts with empty keys. The TypeScript handle gains `upload(body, files)`, which refuses locally over the maximum. Example: [AttachMissionDocument](lodestar/pkg/rpc/attach_mission_document.go). |
+| `@file` | field of a `@resource`, `@virtual`, or keyed `@computed` struct (the column holding the store key); or a keyed `@computed` struct | none, `segment`, and on a field `name: Field`, `type: Field` | A row says which stored object is its file, and the generator serves that file under the row's read route: `GET <read route>/content` answers the bytes with their type, name, size, time, and validator, gated by `Read` on the resource and a `Read` grant on `content`, the route's own field, which the Collection registers with no column behind it (`columns=content` on a read stays a 400; a grant naming it is accepted by `access.MigrateRoles`). On a field, the annotation marks the column holding the store key: `@file` bare serves under `content`, `@file(thumbnail)` under its own segment, and `name:` and `type:` name sibling columns carrying the file's name and media type (a struct may carry several, one per segment). The key column goes off the wire in both directions: never returned on read or list, never accepted on create or update, absent from the TypeScript interface and metadata; a `NOT NULL` key means a row is added by the `@upload` method that stores its file, so `Create` is not registered and the patch handlers refuse a create op naming that way in, while a nullable key leaves `Create` ordinary. On a keyed `@computed` struct, `@file` or `@file(segment)` declares a rendered file: the computed package declares `<Name><Segment>(ctx, key…, qSet *resource.QuerySet[Name], client resource.Client, computedClient *Client) (*resource.Content, error)` beside `Read<Name>`, checked at generation as `Read<Name>`'s callers are, and a nil content is 404. Refused at generation, naming the struct: a key-less struct, an unknown sibling, two declarations on one segment, a key, name, or type field that is not a `string` or `*string`, the struct-scope form on a table or view, a declaration under a suppressed read route, and a content function that is missing or has another signature. Examples: [MissionDocument.StoreKey](lodestar/pkg/resources/mission_documents.go), a stored file; [ExpenseManifest](lodestar/pkg/computedresources/expense_manifests.go), a rendered one. |
 | `@subjectSet` | user-id field of a `@resource` struct | `name, value: Field` | Declares subject-side set vocabulary: `subject.<name>` in grant conditions is the set of `value:` values on this table's rows whose annotated column matches the requesting user (`crew IN subject.crews`). The annotation designates the user-id column — no separate marker — and is repeatable per anchor; `value:` names the sibling Go field the set yields, dotted to continue through foreign-key hops with the same many-to-one validation as `via:`. **Tenancy:** the rendered subject subquery is tenant-filtered by the anchor resource's own `@domain` binding, so a domain-scoped anchor must declare one — generation rejects it otherwise, because without it `subject.<name>` matches the user's rows from every tenant (a membership held at tenant B would satisfy conditions evaluated at tenant A). A global-scoped anchor is the deliberately shared pattern — a certification earned once applies everywhere — and stays unfiltered. Note the anchor's own binding is what counts: tenancy never arrives transitively from a domain-scoped parent table (see `@domain`). **Type:** the set's comparison type is derived from the `value:` column (the terminal of a dotted value) exactly as `@attribute`'s is, and a grant may test only an attribute of the same type for membership in it; `MigrateRoles` refuses the mismatch at deploy. Example: [SquadronMembership](lodestar/pkg/resources/squadron_memberships.go). |
 | `@subjectValue` | user-id field of a `@resource` struct | `name, value: Field` | Declares subject-side scalar vocabulary for threshold comparisons (`amount <= subject.approvalLimit`). Same grammar — and the same tenancy rule — as `@subjectSet`, valid only where the annotated user-id column is the whole key of a unique index, the single-column primary key included, so the database enforces exactly one row per user; a column of a composite key or composite unique index does not qualify. **Type:** the value's comparison type is derived from the `value:` column as `@attribute`'s is, and a grant may compare it only against an attribute of the same type (`now` only against a timestamp-typed value); `MigrateRoles` refuses the mismatch at deploy. |
 | `@manualAddResource` | `accesstypes.Resource` constant | `permission[, scope]` | Registers the permission on the resource in the generated Collection for a hand-written route with no generated handler. Repeatable. Scope is `global` or `domain`; omitted means the global default. An `@outlet` annotation on the same constant names the outlets the hand-written route is mounted under, so an outlet-filtered TypeScript target (`ForOutlet`) carries the registration only when it names that outlet; omitted means the default outlet. The constant's value is the resource name and must not contain `:` (reserved for access-defined markers like `accesstypes.GlobalResource`); generation rejects it. The registration reaches the TypeScript constants like a generated one: an `Execute` registration joins `Methods`, any other permission joins `Resources`. |
@@ -339,12 +340,12 @@ across every application on this stack:
   the method is the client form, which the dry run refuses for exactly this reason.
   A file a request carries is the one exception, and it has its own form: an
   `@upload` method's frame streams the files to the application's store before the
-  body runs, the body records the minted keys, and the frame promotes them after
-  commit or discards them when nothing committed. The body never writes the store.
-  What the frame cannot cover is a crash between commit and promotion, which leaves
-  a pending object with a claiming row; the application sweeps pending objects older
-  than its own window against its rows, and the window is the application's
-  decision.
+  body runs, the body records the minted keys, and the transaction's commit is what
+  claims them; on any failure before commit the frame deletes the objects it streamed.
+  The body never writes the store. What the frame cannot cover is a crash between the
+  stream and the commit, which leaves an object no row claims; the application's sweep
+  removes such objects once they are older than its own window, and the window is the
+  application's decision. The sweep is the safety net, never the mechanism.
 
 Two things a method deliberately cannot do. It cannot reach the response writer: no
 cookies, no session started or ended, no header of its own. Its status is chosen
@@ -848,3 +849,65 @@ uploaded document on a `BYTES(32)` column, a `string` in both clients' interface
 display type `bytes`; and [Ship.CargoBays](lodestar/pkg/resources/ships.go), an
 `ARRAY<INT64>` column typed `[]int64`, `number[]` in the console's interface and its
 metadata.
+
+## 13. Files
+
+A row says which stored object is its file, and the generator serves that file under
+the row's read route. Two halves make a file's life: an `@upload` method (section 7)
+stores it and a row records the key the frame minted, and a `@file` declaration serves
+it back at `GET <read route>/<segment>`, `content` by default. Nothing is hand-written:
+not the permission check, not the not-found answer, not the content type.
+
+**The gate.** Read on the resource and a Read grant on the segment, a field of the
+resource with no column behind it. A role that lists documents and reads their rows but
+holds no grant on `content` sees the listing and cannot download; the store key is never
+the gate, and never on the wire.
+
+**The row.** Located through the resource's own read path with the caller's Read
+conditions and tenancy: an absent, cross-tenant, or hidden row is 404, as on the read
+route, and a conditional grant on `content` (`client = subject.client`) is the row
+condition the statement renders. The columns that deliver the file — the key, and the
+`name:` and `type:` columns where declared — are read by the frame for itself, without
+field grants. A NULL key is 404 in the row's words, and so is a key the store does not
+hold; the key itself is never written into a refusal.
+
+**The response.** `Content-Type` from the type column, then the stored object's type,
+then the name's extension, then `application/octet-stream`; `Content-Disposition:
+inline; filename="…"` from the name column or the content's name, so an `<img>` or a
+link shows the file and an anchor's `download` attribute forces a save;
+`Content-Length` and `Last-Modified` when known; `ETag` = the key, quoted, for a stored
+file, or the `Tag` a content function sets for a rendered one. When a validator is sent
+the frame sends `Cache-Control: private, no-cache` over the outlet's `no-store`, so the
+browser may keep the file and asks again with `If-None-Match`, which the frame answers
+304 after the gate and the row lookup, before the store is opened. A body that seeks
+(a file on disk) goes through `http.ServeContent`, range requests included; any other
+body is copied. Refusals are JSON bodies with their status, as on every generated
+route. Bytes go through the application: no store is exposed and no link is answered.
+
+**The store.** `resource.FileStore` is the application's object store as the frames
+drive it: `Put(ctx, key, contentType, r)` writes an object permanently, `Delete(ctx,
+keys)` removes objects, `Open(ctx, key)` reads one back as a `*resource.Content`
+(`ErrFileNotFound` when nothing is stored under the key). The application asserts
+`FileStore() resource.FileStore` while any struct declares `@upload` or `@file`.
+`resource.Content` carries `Name`, `ContentType`, `Size` (-1 unknown), `ModTime` (zero
+unknown), `Tag`, and the `Body` the frame closes. Lodestar's store is a directory
+confined by `os.Root` ([DirStore](lodestar/pkg/store/dirstore.go)); a bucket store
+implements the same three methods.
+
+**Rendered files.** A document produced at request time is a computed resource's
+content: struct-scope `@file` on a keyed `@computed` struct, and the computed package
+declares `<Name><Segment>(ctx, key…, qSet, client, computedClient) (*resource.Content,
+error)` beside `Read<Name>`, the QuerySet carrying the checked scope and identity as it
+does for `Read<Name>`. The function renders and returns; it never touches the response.
+A nil content is 404. Set `Tag` to something that changes when the document does and
+the browser revalidates for free.
+
+**The browser client.** The generated descriptor lists a resource's segments
+(`files: ['content']`), and its handle gains `fileUrl(key, segment = 'content')` beside
+`url(key)`. Nothing fetches: the browser addresses the route itself, in an `<img src>`
+or an `<a href>`, and the session cookie rides along.
+
+Examples: [MissionDocument.StoreKey](lodestar/pkg/resources/mission_documents.go), a
+stored file with its name and type columns, served to the console's crew and listed but
+not served to the client portal; [ExpenseManifest](lodestar/pkg/computedresources/expense_manifests.go),
+a rendered `text/csv` manifest of a mission's booked expenses.

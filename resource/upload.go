@@ -16,17 +16,20 @@ import (
 	perrors "github.com/go-playground/errors/v5"
 )
 
-// Uploads (decided 2026-09-08) are their own endpoint form: an @rpc struct whose
-// Execute takes resource.Files, declared with @upload(max: 5MB). The request
-// travels as multipart/form-data — one part named request carrying the JSON the
-// RPC decoder already understands, first, then one or more parts named file. The
-// generated frame bounds the body before a byte is read, decodes and checks the
-// request part exactly as a JSON RPC, streams each file to the application's
-// UploadStore under a key it minted, and runs the body inside the transaction with
-// the Files. The transaction claims the keys by recording them; after it commits
-// the frame promotes them, and on any failure before commit it discards them. The
-// store is the application's: resource never imports a cloud SDK, and reading a
-// file back is the application's own route.
+// Uploads (decided 2026-09-08, the store contract narrowed 2026-09-18) are their own
+// endpoint form: an @rpc struct whose Execute takes resource.Files, declared with
+// @upload(max: 5MB). The request travels as multipart/form-data — one part named
+// request carrying the JSON the RPC decoder already understands, first, then one or
+// more parts named file. The generated frame bounds the body before a byte is read,
+// decodes and checks the request part exactly as a JSON RPC, streams each file to the
+// application's FileStore under a key it minted, and runs the body inside the
+// transaction with the Files. The body records the keys wherever its schema wants
+// them, and the transaction is what claims them: on any failure before commit the
+// frame deletes the objects it streamed and answers with the failure, and after a
+// commit nothing more happens. An object no row claims is left only by a crash
+// between the two, and the application's sweep, outside the frame, removes such
+// objects once they are older than its own window. The store is the application's:
+// resource never imports a cloud SDK. Reading a file back is the @file route (file.go).
 
 // The multipart part names an upload request carries.
 const (
@@ -36,30 +39,16 @@ const (
 	UploadFilePart = "file"
 )
 
-// UploadStore is the application's object store as the frame drives it. Put
-// writes one part under a key the frame minted, temporarily: the key is the
-// permanent name the body records, and the store keeps the object pending until
-// Promote. Promote makes pending keys permanent after the transaction committed;
-// Discard removes pending keys whose transaction did not commit. A crash between
-// commit and Promote leaves a pending object with a claiming row; the
-// application's own sweep, outside the frame, promotes or deletes pending objects
-// older than its window by checking its rows.
-type UploadStore interface {
-	Put(ctx context.Context, key string, contentType string, r io.Reader) error
-	Promote(ctx context.Context, keys []string) error
-	Discard(ctx context.Context, keys []string) error
-}
-
 // File describes one uploaded part as the body receives it.
 type File struct {
 	// Key is the store key the frame minted; the body records it wherever its
-	// schema wants it, and the frame promotes it after commit. Empty on a dry
-	// run, which streams nothing.
+	// schema wants it, and the transaction's commit is what claims it. Empty on
+	// a dry run, which streams nothing.
 	Key string
 	// Name is the part's filename as the client sent it.
 	Name string
 	// ContentType is the part's declared media type, application/octet-stream
-	// when the client declared none.
+	// (octetStream) when the client declared none.
 	ContentType string
 	// Size is the part's length in bytes.
 	Size int64
@@ -137,7 +126,7 @@ func (u *Upload) Request() *http.Request {
 // streams nothing: the parts are measured and described with empty keys. A form
 // with no file part, or with a part under another name, is a 400; a body over the
 // declared maximum is a 413.
-func (u *Upload) Stream(ctx context.Context, store UploadStore, dryRun bool) (Files, error) {
+func (u *Upload) Stream(ctx context.Context, store FileStore, dryRun bool) (Files, error) {
 	var files Files
 	for {
 		part, err := u.reader.NextPart()
@@ -165,10 +154,10 @@ func (u *Upload) Stream(ctx context.Context, store UploadStore, dryRun bool) (Fi
 }
 
 // streamPart stores one part, or measures it on a dry run.
-func (u *Upload) streamPart(ctx context.Context, store UploadStore, part *multipart.Part, dryRun bool) (File, error) {
+func (u *Upload) streamPart(ctx context.Context, store FileStore, part *multipart.Part, dryRun bool) (File, error) {
 	contentType := part.Header.Get("Content-Type")
 	if contentType == "" {
-		contentType = "application/octet-stream"
+		contentType = octetStream
 	}
 	file := File{Name: part.FileName(), ContentType: contentType}
 
@@ -192,7 +181,7 @@ func (u *Upload) streamPart(ctx context.Context, store UploadStore, part *multip
 			return File{}, u.readError(readErr, "streaming a file part")
 		}
 
-		return File{}, perrors.Wrap(err, "resource.UploadStore.Put()")
+		return File{}, perrors.Wrap(err, "resource.FileStore.Put()")
 	}
 	file.Size = counter.n
 
@@ -210,16 +199,17 @@ func (u *Upload) readError(err error, during string) error {
 	return httpio.NewBadRequestMessageWithError(err, "malformed multipart upload while "+during)
 }
 
-// DiscardUpload removes the streamed objects of an upload whose transaction did
-// not commit and returns cause, the failure that ended it, so the frame answers
-// with the original refusal. A discard failure is noted on the cause.
-func DiscardUpload(ctx context.Context, store UploadStore, files Files, cause error) error {
+// DiscardUpload deletes the streamed objects of an upload whose transaction did not
+// commit and returns cause, the failure that ended it, so the frame answers with the
+// original refusal. A delete failure is noted on the cause: the objects it left are
+// the sweep's.
+func DiscardUpload(ctx context.Context, store FileStore, files Files, cause error) error {
 	keys := files.Keys()
 	if len(keys) == 0 {
 		return cause
 	}
-	if err := store.Discard(ctx, keys); err != nil {
-		return perrors.Wrapf(cause, "resource.UploadStore.Discard() failed too: %v", err)
+	if err := store.Delete(ctx, keys); err != nil {
+		return perrors.Wrapf(cause, "resource.FileStore.Delete() failed too: %v", err)
 	}
 
 	return cause

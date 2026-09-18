@@ -213,7 +213,11 @@ var Demonstrations = []Demonstration{
 	{"@answers", "@answers(200, 409) with HTTPStatus(): a method chooses its status; a declared 4xx rolls back and answers the typed body."},
 	{"@answers.no-content", "@answers(204): a method that writes no body."},
 	{"@upload", "@upload(max): a multipart method whose Execute takes resource.Files."},
-	{"rpc.upload-store", "UploadStore: the frame streams files to the application's store, promotes after commit, discards on failure."},
+	{"rpc.upload-store", "FileStore: the frame streams files to the application's store under minted keys, the transaction's commit claims them, and a failure before commit deletes them; an object no row claims is the application's sweep's."},
+
+	// Files.
+	{"@file.stored", "@file on the column holding a stored file's key: the generator serves the file under the row's read route, gated by Read on the resource and a Read grant on the route's own field (content), typed and named from the row's columns, the key its validator, and the key column off the wire in both directions; NOT NULL, the key leaves the resource no Create."},
+	{"@file.rendered", "The struct-scope @file on a keyed @computed struct: the computed package's <Name><Segment> function renders the document at request time as a resource.Content the generated route serves under the same gate, a nil content 404, the content's tag its validator."},
 
 	// Impersonation.
 	{"impersonation.view-as", "A session minted as another user under a List, Read mask."},

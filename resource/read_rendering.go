@@ -159,7 +159,26 @@ func (q *QuerySet[Resource]) readConditionPlan() (*readConditionPlan, error) {
 		return nil, err
 	}
 
-	if len(plan.fields) == 0 {
+	// A @file route projects the frame's columns, exempt every one, and its one
+	// grant-bearing field is the route's segment: its condition is the row
+	// predicate, with no CASE since no column stands behind it, and its
+	// unconditional grant admits every row the tenancy admits.
+	gateDisjuncts, gateUnconditional, err := q.fileGateDisjuncts()
+	if err != nil {
+		return nil, err
+	}
+	if gateUnconditional {
+		anyUnconditional = true
+	}
+	for _, disjunct := range gateDisjuncts {
+		key := disjunct.String()
+		if _, seen := unionKeys[key]; !seen {
+			unionKeys[key] = struct{}{}
+			union = append(union, disjunct)
+		}
+	}
+
+	if len(plan.fields) == 0 && len(gateDisjuncts) == 0 {
 		// Only the base resource was conditional: it is the handler gate, and
 		// it never renders on the read path.
 		return nil, nil
@@ -182,6 +201,29 @@ func (q *QuerySet[Resource]) readConditionPlan() (*readConditionPlan, error) {
 	}
 
 	return plan, nil
+}
+
+// fileGateDisjuncts reads the @file route's gate: nothing where no gate is stamped,
+// unconditional where the segment is granted outright or its condition folds true,
+// and the condition's disjuncts where a conditional grant covers it.
+func (q *QuerySet[Resource]) fileGateDisjuncts() (disjuncts []condition.Expr, unconditional bool, err error) {
+	if q.fileGate == "" {
+		return nil, false, nil
+	}
+	decision, ok := q.conditionalDecisions[q.fileGate]
+	if !ok {
+		return nil, true, nil
+	}
+	expr, err := conditionalExpr(q.fileGate, decision)
+	if err != nil {
+		return nil, false, err
+	}
+	expr = condition.WithoutPostImage(expr)
+	if t, ok := expr.(condition.Truth); ok && t.Value {
+		return nil, true, nil
+	}
+
+	return condition.Disjuncts(expr), false, nil
 }
 
 // addQueryOnlyConditions adds the conditional columns the query names outside

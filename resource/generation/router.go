@@ -149,10 +149,60 @@ func (r *resourceGenerator) accumulateResourceRoutes(outlets []routerOutlet, out
 				outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], route)
 				routerTestRoutes = append(routerTestRoutes, route)
 			}
+
+			files, err := r.resourceFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, nil, err
+			}
+			outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], files...)
+			routerTestRoutes = append(routerTestRoutes, files...)
 		}
 	}
 
 	return constResources, routerTestRoutes, nil
+}
+
+// resourceFileRoutes builds the @file routes of a resource under the outlet route
+// prefix: one GET per declared segment under the read route, with the read route's
+// parameters. Empty for a resource that declares none.
+func (r *resourceGenerator) resourceFileRoutes(res *resourceInfo, routePrefix string) ([]*generatedRoute, error) {
+	if len(res.Files) == 0 {
+		return nil, nil
+	}
+	read, err := r.resourceRoute(res, ReadHandler, routePrefix)
+	if err != nil {
+		return nil, err
+	}
+	routes := make([]*generatedRoute, 0, len(res.Files))
+	for _, file := range res.Files {
+		routes = append(routes, fileRouteFrom(read, res.Name(), file))
+	}
+
+	return routes, nil
+}
+
+// computedFileRoutes builds the @file routes of a computed resource under the outlet
+// route prefix, under its read route as resourceFileRoutes does.
+func (r *resourceGenerator) computedFileRoutes(res *computedResource, routePrefix string) ([]*generatedRoute, error) {
+	if len(res.Files) == 0 {
+		return nil, nil
+	}
+	routes, err := r.computedResourceRoutes(res, routePrefix)
+	if err != nil {
+		return nil, err
+	}
+	readIndex := slices.IndexFunc(routes, func(route *generatedRoute) bool {
+		return route.HandlerType == ReadHandler
+	})
+	if readIndex < 0 {
+		return nil, errors.Newf("computed resource %s declares @%s but serves no read route", res.Name(), fileKeyword)
+	}
+	files := make([]*generatedRoute, 0, len(res.Files))
+	for _, file := range res.Files {
+		files = append(files, fileRouteFrom(routes[readIndex], res.Name(), file))
+	}
+
+	return files, nil
 }
 
 // accumulateComputedRoutes builds every routed computed resource's routes into each
@@ -179,6 +229,11 @@ func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, out
 			if err != nil {
 				return nil, nil, err
 			}
+			files, err := r.computedFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, nil, err
+			}
+			routes = append(routes, files...)
 			outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], routes...)
 			routerTestRoutes = append(routerTestRoutes, routes...)
 		}
@@ -424,6 +479,13 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]nega
 			}
 			addRoute(route)
 		}
+		files, err := r.resourceFileRoutes(res, outlet.prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range files {
+			addRoute(route)
+		}
 	}
 
 	for _, res := range r.computedResources {
@@ -434,7 +496,11 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]nega
 		if err != nil {
 			return nil, err
 		}
-		for _, route := range routes {
+		files, err := r.computedFileRoutes(res, outlet.prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range slices.Concat(routes, files) {
 			addRoute(route)
 		}
 	}

@@ -132,6 +132,12 @@ type handlerContentData struct {
 	ReceiverName            string
 }
 
+// fileHandlerData feeds one @file route's handler on a table or view resource.
+type fileHandlerData struct {
+	handlerContentData
+	File *fileRoute
+}
+
 type computedHandlerData struct {
 	Source              string
 	LocalPackageImports string
@@ -275,6 +281,8 @@ type decodersFileData struct {
 	HasComputedQueryDecoder bool
 	HasPatchDecoder         bool
 	HasRPCDecoder           bool
+	HasFileDecoder          bool
+	HasComputedFileDecoder  bool
 	// HasCollection marks an application that generates the permission collection,
 	// which the RPC decoder wires in so armed writes render conditional grants.
 	HasCollection         bool
@@ -292,8 +300,10 @@ type appContractData struct {
 	HasValidator    bool
 	HasDomainScoped bool
 	HasRPC          bool
-	HasUpload       bool
-	HasComputed     bool
+	// HasFileStore asserts FileStore() while any @upload method streams into it or any
+	// @file route opens a stored file from it.
+	HasFileStore bool
+	HasComputed  bool
 	// ConcealedDomains swaps the domain-scoped contract method from
 	// DomainExists to DomainVisible (WithConcealedDomains).
 	ConcealedDomains bool
@@ -588,6 +598,9 @@ type tsAPIResource struct {
 	// ordered and issues cursors; empty when the resource declares none and lists by
 	// primary key.
 	Order []*tsAPISort
+	// Files are the resource's @file segments, so the handle addresses a row's file
+	// (fileUrl); empty when the resource declares none.
+	Files []string
 }
 
 // tsAPISort is one entry of a descriptor's declared order.

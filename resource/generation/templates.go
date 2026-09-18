@@ -826,6 +826,25 @@ func NewRPCDecoder[Method {{ .RPCPackage }}.Method, Request any]({{ .ReceiverNam
 	return resource.MustNewRPCDecoder[Request]({{ .ReceiverName }}, method.Method(), perm){{ if .HasCollection }}.WithCollection({{ .RouterPackage }}.Collection()){{ end }}
 }
 {{ end }}
+{{- if .HasFileDecoder }}
+// NewFileDecoder builds the decoder of a generated resource's @file route: Read on the
+// resource and on the route's own field checked as the read route checks them, wired to
+// the generated collection so a conditional Read grant renders into the row's
+// statement. The Resourcer union keeps construction inside the generated universe: a
+// decoder over any other struct is a compile error.
+func NewFileDecoder[Resource Resourcer, Request any](_ *{{ .ApplicationName }}, segment string) *resource.FileDecoder[Resource, Request] {
+	return resource.MustNewFileDecoder[Resource, Request]({{ .RouterPackage }}.Collection(), segment)
+}
+{{ end }}
+{{- if .HasComputedFileDecoder }}
+// NewComputedFileDecoder builds the decoder of a generated computed resource's @file
+// route: the gate checked at decode, as every computed resource's is, and the QuerySet
+// carrying the checked scope and identity to the application's function. The Resourcer
+// union keeps construction inside the generated universe.
+func NewComputedFileDecoder[Resource Resourcer, Request any](_ *{{ .ApplicationName }}, segment string) *resource.FileDecoder[Resource, Request] {
+	return resource.MustNewComputedFileDecoder[Resource, Request](segment)
+}
+{{ end }}
 {{- if .HasTargetedRPCDecoder }}
 // NewTargetedRPCDecoder builds a decoder for a @target-bearing RPC method
 // request, wired to the generated collection so a conditional Execute grant
@@ -913,16 +932,16 @@ var _ domainScopedApp = (*{{ .ApplicationName }})(nil)
 // its exact signature is enforced by the Execute call in each generated RPC handler.
 var _ = (*{{ .ApplicationName }}).RPCClient
 {{ end }}
-{{ if .HasUpload -}}
-// uploadApp is the application surface an @upload method's handler draws on: the
-// store the frame streams each file part to before the body runs, promotes after
-// the transaction commits, and discards when it does not. The store is the
-// application's; the frame owns only intake and lifecycle.
-type uploadApp interface {
-	UploadStore() resource.UploadStore
+{{ if .HasFileStore -}}
+// fileApp is the application surface the file frames draw on: the store an @upload
+// method's handler streams each file part to before the body runs and deletes from
+// when the transaction does not commit, and a @file route opens a stored file from.
+// The store is the application's; the frames own only intake and delivery.
+type fileApp interface {
+	FileStore() resource.FileStore
 }
 
-var _ uploadApp = (*{{ .ApplicationName }})(nil)
+var _ fileApp = (*{{ .ApplicationName }})(nil)
 {{ end }}
 {{ if .HasComputed -}}
 // The generated computed-resource handlers pass ComputedClient's result to the
@@ -1293,7 +1312,7 @@ import (
 	}
 	{{- end }}
 
-	decoder := NewDecoder[{{ .ResourcePackage }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+	decoder := NewDecoder[{{ .ResourcePackage }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, {{ .Resource.PatchPermissionList }})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -1320,6 +1339,13 @@ import (
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
 				}
+				{{- if .Resource.CreateDisabled }}
+				if op.Type == resource.OperationCreate {
+					// A NOT NULL @file key: a row is added by the @upload method that stores
+					// its file, since a create cannot supply the key.
+					return httpio.NewBadRequestMessage("a {{ .Resource.Name }} row is added by the @upload method that stores its file; a create cannot supply the file's key")
+				}
+				{{- end }}
 
 				patchSet, err := decoder.DecodeOperation(op, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 				if err != nil {
@@ -1420,7 +1446,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }}`" + `
 		{{- end }}
 	}
-	{{ GoCamel $resource.Name}}Decoder := NewDecoder[{{ $resourcePackage }}.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+	{{ GoCamel $resource.Name}}Decoder := NewDecoder[{{ $resourcePackage }}.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, {{ $resource.PatchPermissionList }})
 	{{ end }}
 
 	type response map[string][]ccc.UUID
@@ -1507,6 +1533,13 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 {{- end }}
 {{- define "consolidatedCaseBody" }}
 					{{- $primaryKeyType := .PrimaryKeyType }}
+					{{- if .CreateDisabled }}
+						if op.Type == resource.OperationCreate {
+							// A NOT NULL @file key: a row is added by the @upload method that
+							// stores its file, since a create cannot supply the key.
+							return httpio.NewBadRequestMessage("a {{ .Name }} row is added by the @upload method that stores its file; a create cannot supply the file's key")
+						}
+					{{- end }}
 						patchSet, err := {{ GoCamel .Name}}Decoder.DecodeOperation(op, userPermissions, {{ if .DomainPatternPrefix }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 						if err != nil {
 							return errors.Wrap(err, "{{ GoCamel .Name}}Decoder.DecodeOperation()")
@@ -1736,14 +1769,18 @@ import { PermissionScope{{ if or .Resources .ComputedResources }}, PermissionSco
 {{ range $resource := .Resources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
+{{- if not $field.IsFileKey }}
   {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
+{{- end }}
 {{- end }}
 }
 {{ TypescriptNamespaceOf (Pluralize $resource.Name) $resource.ColumnShapes }}{{ end }}
 {{- range $resource := .ComputedResources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
+{{- if not $field.IsFileKey }}
   {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
+{{- end }}
 {{- end }}
 }
 {{ TypescriptNamespace (Pluralize $resource.Name) $resource.Shape }}{{ end }}
@@ -1775,11 +1812,13 @@ const resourceMap: ResourceMap = {
     {{- end }}
     fields: [
       {{- range $field := $resource.Fields }}
+      {{- if not $field.IsFileKey }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
        {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end }}{{ if $field.TypescriptMaxLength }}, maxLength: {{ $field.TypescriptMaxLength }}{{ end -}}
       {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
       {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }} },
+      {{- end }}
       {{- end }}
     ],
   },
@@ -1802,11 +1841,13 @@ const resourceMap: ResourceMap = {
     deleteDisabled: true,
     fields: [
       {{- range $field := $resource.Fields }}
+      {{- if not $field.IsFileKey }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
        {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}
       {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
       {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }} },
+      {{- end }}
       {{- end }}
     ],
   },
@@ -2076,6 +2117,9 @@ export const apiDescriptor: ApiDescriptor = {
       {{- end }}
       {{- if $r.HasPatch }}
       patchable: [{{ range $i, $f := $r.PatchFields }}{{ if $i }}, {{ end }}'{{ $f.Name }}'{{ end }}],
+      {{- end }}
+      {{- if $r.Files }}
+      files: [{{ range $i, $f := $r.Files }}{{ if $i }}, {{ end }}'{{ $f }}'{{ end }}],
       {{- end }}
     },
 {{- end }}
@@ -2856,11 +2900,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{- end }}
 
 		// The files stream to the application's store under keys the frame minted;
-		// the body records the keys, and the transaction is what claims them. A dry
-		// run (X-Dry-Run: true) streams nothing: the Files describe the parts with
-		// empty keys, the body runs, and the transaction rolls back.
+		// the body records the keys, and the transaction's commit is what claims them.
+		// A dry run (X-Dry-Run: true) streams nothing: the Files describe the parts
+		// with empty keys, the body runs, and the transaction rolls back.
 		dryRun := resource.IsDryRun(r)
-		store := {{ .ReceiverName }}.UploadStore()
+		store := {{ .ReceiverName }}.FileStore()
 		files, err := upload.Stream(ctx, store, dryRun)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -2888,16 +2932,13 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 			return nil
 		}); err != nil {
 			// Nothing committed, so nothing claims the streamed objects: they are
-			// discarded, and the answer is the failure's own.
+			// deleted, and the answer is the failure's own.
 			err = resource.DiscardUpload(ctx, store, files, err)
 			{{- template "rpcTxnFailed" $ }}
 		}
 
-		// The transaction committed with the keys recorded: the store makes them
-		// permanent.
-		if err := store.Promote(ctx, files.Keys()); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.UploadStore.Promote()"))
-		}
+		// The transaction committed with the keys recorded: the rows claim the
+		// objects, and nothing more happens to the store.
 		{{- template "rpcWriteAnswer" $ }}
 	})
 }
@@ -3102,6 +3143,99 @@ type Method interface {
 {{ FormatRPCInterfaceTypes .Types }}
 }`
 
+	// fileHandlerTemplate is one @file route's handler on a table or view resource: the
+	// gate through the FileDecoder (Read on the resource and on the segment, the route's
+	// own field), the row through the resource's own read path with the caller's Read
+	// conditions and tenancy, and the file through the application's FileStore, its key
+	// the validator.
+	fileHandlerTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}{{ .File.Suffix }}() http.HandlerFunc {
+	// The frame's projection: the key, and the columns that deliver the file, read for
+	// the frame itself without field grants. The gate is Read on the resource and on
+	// {{ .File.Segment }}, the route's own field.
+	type request struct {
+		{{- range $_, $field := .Resource.PrimaryKeys }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\" perm:\"-\"`" + `
+		{{- end }}
+		{{- range $field := .File.FrameFields }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"-\" perm:\"-\"`" + `
+		{{- end }}
+	}
+
+	decoder := NewFileDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, "{{ .File.Segment }}")
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+	{{ if .Resource.HasCompoundPrimaryKey }}
+	{{- range $_, $field := .Resource.PrimaryKeys }}
+		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
+	{{- end }}
+	{{ else }}
+		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}{{ .Resource.PrimaryKey.Name }})
+	{{ end }}
+		{{ if .Resource.IsDomainScoped -}}
+		` + domainParamLine + `
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		// The row through the resource's own read path: absent, cross-tenant, or hidden
+		// by the caller's Read condition is 404, as on the read route.
+	{{ if .Resource.HasCompoundPrimaryKey }}
+		row, err := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet){{ range $_, $field := .Resource.PrimaryKeys }}.Set{{ $field.Name }}({{ GoCamel $field.Name }}){{ end }}.Read(ctx, {{ .ReceiverName }}.ResourceClient())
+	{{- else }}
+		row, err := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id).Read(ctx, {{ .ReceiverName }}.ResourceClient())
+	{{- end }}
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		source := &row.Data
+		{{- template "storedFileOfRow" .File }}
+
+		if err := resource.ServeStoredFile(ctx, w, r, {{ .ReceiverName }}.FileStore(), file, "{{ .File.Segment }}", "{{ .Resource.Name }}", {{ .Resource.KeyParamList }}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
+	})
+}` + fileHandlerDefines
+
+	// fileHandlerDefines is the frame piece the table and computed file handlers share:
+	// the StoredFile read off the located row, a nil pointer an empty value.
+	fileHandlerDefines = `
+{{- define "storedFileOfRow" }}
+		file := resource.StoredFile{}
+		{{- if .Key.Pointer }}
+		if source.{{ .Key.Name }} != nil {
+			file.Key = *source.{{ .Key.Name }}
+		}
+		{{- else }}
+		file.Key = source.{{ .Key.Name }}
+		{{- end }}
+		{{- with .Name }}
+		{{- if .Pointer }}
+		if source.{{ .Name }} != nil {
+			file.Name = *source.{{ .Name }}
+		}
+		{{- else }}
+		file.Name = source.{{ .Name }}
+		{{- end }}
+		{{- end }}
+		{{- with .Type }}
+		{{- if .Pointer }}
+		if source.{{ .Name }} != nil {
+			file.ContentType = *source.{{ .Name }}
+		}
+		{{- else }}
+		file.ContentType = source.{{ .Name }}
+		{{- end }}
+		{{- end }}
+{{- end }}
+`
+
 	computedResourceHandlerTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 // Source: {{ .Source }}
 
@@ -3258,7 +3392,80 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 	})
 }
 {{- end }}
-`
+{{- range $file := .Resource.Files }}
+
+func ({{ $.ReceiverName }} *{{ $.ApplicationName }}) {{ $.Resource.Name }}{{ $file.Suffix }}() http.HandlerFunc {
+	{{- if $file.Rendered }}
+	// The frame's projection is the key alone; the content function renders the file.
+	{{- else }}
+	// The frame's projection: the key, and the columns that deliver the file, read for
+	// the frame itself without field grants.
+	{{- end }}
+	// The gate is Read on the resource and on {{ $file.Segment }}, the route's own field,
+	// checked at decode as every computed resource's gate is.
+	type request struct {
+		{{- range $field := $.Resource.PrimaryKeys }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\" perm:\"-\"`" + `
+		{{- end }}
+		{{- range $field := $file.FrameFields }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"-\" perm:\"-\"`" + `
+		{{- end }}
+	}
+
+	decoder := NewComputedFileDecoder[{{ $.ComputedPackage }}.{{ $.Resource.Name }}, request]({{ $.ReceiverName }}, "{{ $file.Segment }}")
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		{{ range $_, $field := $.Resource.PrimaryKeys }}
+		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
+		{{- end }}
+
+		{{ if $.Resource.IsDomainScoped -}}
+		` + domainParamLine + `
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ $.ReceiverName }}.UserPermissions(r), {{ if $.Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		{{- if $file.Rendered }}
+
+		// The content function is the read path: nil is 404, as an absent row is on the
+		// read route, and the frame writes the response.
+		content, err := {{ $.ComputedPackage }}.{{ $.Resource.Name }}{{ $file.Suffix }}(ctx, {{ $.Resource.KeyParamList }}, querySet, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.ComputedClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		if err := resource.ServeRenderedFile(w, r, content, "{{ $file.Segment }}", "{{ $.Resource.Name }}", {{ $.Resource.KeyParamList }}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
+		{{- else }}
+
+		// The row through the resource's own read function: nil is 404, as on the read
+		// route.
+		source, err := {{ $.ComputedPackage }}.Read{{ $.Resource.Name }}(ctx, {{ $.Resource.KeyParamList }}, querySet, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.ComputedClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		if source == nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("{{ $.Resource.Name }} {{ $.Resource.KeyFormat }} does not exist", {{ $.Resource.KeyParamList }}))
+		}
+		{{- template "storedFileOfRow" $file }}
+
+		if err := resource.ServeStoredFile(ctx, w, r, {{ $.ReceiverName }}.FileStore(), file, "{{ $file.Segment }}", "{{ $.Resource.Name }}", {{ $.Resource.KeyParamList }}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
+		{{- end }}
+	})
+}
+{{- end }}
+` + fileHandlerDefines
 )
 
 func fieldAccessors(patchType patchType) string {

@@ -14,13 +14,14 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// memoryStore is an UploadStore that records what the frame asked of it.
+// memoryStore is a FileStore that records what the frame asked of it.
 type memoryStore struct {
-	objects   map[string][]byte
-	types     map[string]string
-	promoted  []string
-	discarded []string
-	putErr    error
+	objects map[string][]byte
+	types   map[string]string
+	deleted []string
+	opened  []string
+	putErr  error
+	openErr error
 }
 
 func newMemoryStore() *memoryStore {
@@ -41,15 +42,36 @@ func (m *memoryStore) Put(_ context.Context, key, contentType string, r io.Reade
 	return nil
 }
 
-func (m *memoryStore) Promote(_ context.Context, keys []string) error {
-	m.promoted = append(m.promoted, keys...)
+func (m *memoryStore) Delete(_ context.Context, keys []string) error {
+	m.deleted = append(m.deleted, keys...)
+	for _, key := range keys {
+		delete(m.objects, key)
+		delete(m.types, key)
+	}
 
 	return nil
 }
 
-func (m *memoryStore) Discard(_ context.Context, keys []string) error {
-	m.discarded = append(m.discarded, keys...)
+// Open answers with a seekable body, as a file on disk would.
+func (m *memoryStore) Open(_ context.Context, key string) (*Content, error) {
+	m.opened = append(m.opened, key)
+	if m.openErr != nil {
+		return nil, m.openErr
+	}
+	data, ok := m.objects[key]
+	if !ok {
+		return nil, ErrFileNotFound
+	}
 
+	return &Content{ContentType: m.types[key], Size: int64(len(data)), Body: readSeekCloser{bytes.NewReader(data)}}, nil
+}
+
+// readSeekCloser gives a bytes.Reader the Close the Content body needs.
+type readSeekCloser struct {
+	*bytes.Reader
+}
+
+func (readSeekCloser) Close() error {
 	return nil
 }
 
@@ -250,8 +272,8 @@ func TestDiscardUpload(t *testing.T) {
 	if err := DiscardUpload(t.Context(), store, files, cause); !errors.Is(err, cause) || !httpio.HasForbidden(err) {
 		t.Errorf("DiscardUpload() = %v, want the cause unchanged", err)
 	}
-	if len(store.discarded) != 2 || store.discarded[0] != "k1" || store.discarded[1] != "k2" {
-		t.Errorf("discarded = %v, want the two minted keys", store.discarded)
+	if len(store.deleted) != 2 || store.deleted[0] != "k1" || store.deleted[1] != "k2" {
+		t.Errorf("deleted = %v, want the two minted keys", store.deleted)
 	}
 
 	if err := DiscardUpload(t.Context(), newMemoryStore(), Files{{Name: "dry"}}, cause); !errors.Is(err, cause) {

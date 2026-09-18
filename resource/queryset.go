@@ -102,6 +102,13 @@ type QuerySet[Resource Resourcer] struct {
 	// to the Go field name.
 	jsonNames map[accesstypes.Field]string
 
+	// fileGate is the @file route's own field (Resource.content), stamped by the
+	// FileDecoder: the one grant-bearing projection of a file read. A Conditional
+	// decision on it is the row predicate, rendered with no CASE since no column
+	// stands behind it; a Granted one admits every row the tenancy admits. Empty on
+	// every other QuerySet.
+	fileGate accesstypes.Resource
+
 	// capabilities are the write permissions the request asked to evaluate
 	// per row (the §13 capability envelope), in request order;
 	// capabilityDecisions carries each one's full engine answer for the

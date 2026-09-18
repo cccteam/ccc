@@ -71,6 +71,10 @@ const (
 	ReadHandler HandlerType = "readHandler"
 	// PatchHandler is the patch handler.
 	PatchHandler HandlerType = "patchHandler"
+	// fileHandler is a @file route's handler: GET under the read route, one per
+	// declared segment. It is derived from the declaration, never named by an author
+	// (no @suppress argument), so it stays out of handlerTypes.
+	fileHandler HandlerType = "fileHandler"
 )
 
 // RouteType describes a route or set of routes for a resource-driven API.
@@ -159,7 +163,7 @@ func (h HandlerType) template() string {
 // method returns the proper http method type for a HandlerType
 func (h HandlerType) method() string {
 	switch h {
-	case ReadHandler, ListHandler:
+	case ReadHandler, ListHandler, fileHandler:
 		return http.MethodGet
 	case PatchHandler:
 		return http.MethodPatch
@@ -656,6 +660,9 @@ type computedResource struct {
 	// PermissionScope is the scope all of this resource's registrations use
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+	// Files are the resource's @file routes: a stored file per field-scope
+	// declaration, a rendered one for the struct-scope declaration.
+	Files []*fileRoute
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -716,6 +723,35 @@ func (c *computedResource) ReadHandlerDisabled() bool {
 	return c.SuppressReadHandler || !c.HasPrimaryKey()
 }
 
+// HasStoredFile reports whether any @file names a key column: the application must
+// then supply a FileStore.
+func (c *computedResource) HasStoredFile() bool {
+	for _, file := range c.Files {
+		if file.Key != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// KeyParamList renders the read route's key parameters as the generated handlers name
+// them: id for a single key, the camel-cased field names for a compound key.
+func (c *computedResource) KeyParamList() string {
+	names := make([]string, 0, len(c.PrimaryKeys()))
+	for _, f := range c.PrimaryKeys() {
+		names = append(names, f.Name())
+	}
+
+	// A computed handler names every key parameter, as its route consts do.
+	return keyParamList(c.HasCompoundPrimaryKey(), names)
+}
+
+// KeyFormat renders one %v per key part, slash-joined, for a refusal naming the row.
+func (c *computedResource) KeyFormat() string {
+	return keyFormat(len(c.PrimaryKeys()))
+}
+
 // Converters renders the closures a handler needs to build the named root mirror
 // from a computed row; empty for a flat resource, which converts whole.
 func (c *computedResource) Converters(rootMirror string) string {
@@ -748,6 +784,9 @@ type computedField struct {
 	enumeratedResource string
 	Enumeration        string
 	EnumerationValues  []*enumData
+	// IsFileKey marks the store-key column of a @file declaration: off the wire in
+	// both directions, read by the file route's frame for itself.
+	IsFileKey bool
 }
 
 // MirrorType is the field's type in the handlers' local mirrors.
@@ -789,6 +828,10 @@ func (c *computedField) applyEnumeration(src enumerationSource) {
 }
 
 func (c *computedField) JSONTag() string {
+	if c.IsFileKey {
+		return fmt.Sprintf("%s:%q", jsonTagKey, "-")
+	}
+
 	camelCaseName := caser.ToCamel(c.Name())
 
 	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
@@ -898,6 +941,10 @@ type resourceInfo struct {
 	DomainBinding *domainBinding
 	SubjectSets   []*subjectBinding
 	SubjectValues []*subjectBinding
+
+	// Files are the resource's @file routes, one per field-scope declaration: a
+	// stored file served under the read route, its key column off the wire.
+	Files []*fileRoute
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -958,8 +1005,74 @@ func (r *resourceInfo) ReadHandlerDisabled() bool {
 	return (r.IsVirtual && !r.HasPrimaryKey()) || slices.Contains(r.SuppressedHandlers, ReadHandler)
 }
 
+// CreateHandlerDisabled reports whether the resource offers no Create: its patch
+// handler is suppressed, or a @file key column is NOT NULL (CreateDisabled), so no
+// create could supply the row's file.
 func (r *resourceInfo) CreateHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers, PatchHandler)
+	return slices.Contains(r.SuppressedHandlers, PatchHandler) || r.CreateDisabled()
+}
+
+// CreateDisabled reports whether the resource carries a @file whose key column is NOT
+// NULL: a row is added by the @upload method that stores its file, so Create is not
+// registered and the patch handlers refuse a create op naming that way in. A nullable
+// key leaves Create ordinary: a row may exist before its file does.
+func (r *resourceInfo) CreateDisabled() bool {
+	for _, file := range r.Files {
+		if file.Key != nil && !file.Key.Nullable {
+			return true
+		}
+	}
+
+	return false
+}
+
+// PatchPermissions are the permissions the patch handler registers and its decoder
+// checks: Create, Update, and Delete, Create left out where CreateDisabled.
+func (r *resourceInfo) PatchPermissions() []accesstypes.Permission {
+	if r.CreateDisabled() {
+		return []accesstypes.Permission{accesstypes.Update, accesstypes.Delete}
+	}
+
+	return []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete}
+}
+
+// PatchPermissionList renders PatchPermissions as the decoder call's arguments.
+func (r *resourceInfo) PatchPermissionList() string {
+	parts := make([]string, 0, 3)
+	for _, perm := range r.PatchPermissions() {
+		parts = append(parts, "accesstypes."+string(perm))
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// HasStoredFile reports whether any @file names a key column: the application must
+// then supply a FileStore.
+func (r *resourceInfo) HasStoredFile() bool {
+	for _, file := range r.Files {
+		if file.Key != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// KeyParamList renders the read route's key parameters as the generated handlers name
+// them: id for a single key, the camel-cased field names for a compound key.
+func (r *resourceInfo) KeyParamList() string {
+	return keyParamList(r.HasCompoundPrimaryKey(), slices.Collect(func(yield func(string) bool) {
+		for _, f := range r.PrimaryKeys() {
+			if !yield(f.Name()) {
+				return
+			}
+		}
+	}))
+}
+
+// KeyFormat renders one %v per key part, slash-joined, for a refusal naming the row.
+func (r *resourceInfo) KeyFormat() string {
+	return keyFormat(r.keyCount())
 }
 
 func (r *resourceInfo) UpdateHandlerDisabled() bool {
@@ -1158,6 +1271,11 @@ type resourceField struct {
 	// name, declared on the member's anchoring FK field (the field IS the
 	// hop). Empty for fields outside any workflow.
 	WorkflowRoot string
+
+	// IsFileKey marks the store-key column of a @file declaration: off the wire in
+	// both directions (json:"-" on the read and the patch structs, absent from the
+	// TypeScript interface and metadata), read by the file route's frame for itself.
+	IsFileKey bool
 }
 
 // HasDeclaredEnumeration reports whether a field-scope @enumerate names the field's
@@ -1408,8 +1526,9 @@ func (f *resourceField) IsOutputOnly() bool {
 	// A state field decodes output-only by derivation: the wire must not be
 	// able to express a state write (transitions live in RPC bodies). A
 	// tenant-key column is the same shape: the framework stamps it from the
-	// request's domain partition, so the wire cannot write it.
-	if f.IsState || f.IsTenantKey {
+	// request's domain partition, so the wire cannot write it. A @file key
+	// column too: only Go code writes it, as an @upload body does.
+	if f.IsState || f.IsTenantKey || f.IsFileKey {
 		return true
 	}
 
@@ -1424,6 +1543,11 @@ func (f *resourceField) IsOutputOnly() bool {
 }
 
 func (f *resourceField) IsInputOnly() bool {
+	// A @file key column is never returned: the file route delivers what it names.
+	if f.IsFileKey {
+		return true
+	}
+
 	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return false
@@ -1648,6 +1772,7 @@ const (
 	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB); its Execute takes resource.Files
 	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
 	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
+	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field])]; on a keyed @computed struct, @file[(segment)] rendered by <Name><Segment>
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1681,6 +1806,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		uploadKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		rowsOfKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		typescriptKeyword:           {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
 	}
 }
 

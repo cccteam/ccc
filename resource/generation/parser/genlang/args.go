@@ -14,8 +14,13 @@ import (
 // with structured argument lists — one place for arity, unknown-key, and
 // duplicate-key errors instead of per-keyword string splitting.
 type ArgSpec struct {
-	// Positional is the exact number of leading positional values.
+	// Positional is the exact number of leading positional values, or their
+	// maximum when OptionalPositional is set.
 	Positional int
+
+	// OptionalPositional admits fewer positional values than Positional, none
+	// included: a keyword whose one positional value has a default.
+	OptionalPositional bool
 
 	// Keys is the set of accepted named-argument keys.
 	Keys []string
@@ -128,7 +133,10 @@ func parseInvocation(invocation string, spec *ArgSpec) (NamedArgs, error) {
 		lastKey = key
 	}
 
-	if len(args.Positional) != spec.Positional {
+	switch {
+	case spec.OptionalPositional && len(args.Positional) > spec.Positional:
+		return NamedArgs{}, errors.Newf("expected at most %d positional argument(s), found %d in %q", spec.Positional, len(args.Positional), invocation)
+	case !spec.OptionalPositional && len(args.Positional) != spec.Positional:
 		return NamedArgs{}, errors.Newf("expected %d positional argument(s), found %d in %q", spec.Positional, len(args.Positional), invocation)
 	}
 	for _, required := range spec.Required {
