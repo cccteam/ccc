@@ -71,7 +71,7 @@ type Ship struct { ... }
 | `@validateUpdateType` | `@resource` struct | type name | As above, for updates. |
 | `@primarykey` | field of a `@computed` or `@virtual` struct | none | Marks the field as (part of) the resource's primary key; multiple annotated fields form a compound key in declaration order. Primary-key fields are exempt from field-level permission enforcement (their readability follows the resource-level grant). The key is what gives a row identity: the read route (`/{key}`), the cursor's tie-break (the key fields end every order, so a keyset cursor walks a total order), and the browser's row identity (`keyOf`). Without a key the resource is a whole read-only list, with no read route and no paging: served in one response, sorted when asked or declared, refusing a numeric `limit` or a `cursor` with a 400 that names `@primarykey` as the way to page, and refusing `@page` at generation. Rejected on table-backed `@resource` structs, whose keys come from the schema. Compound example: [SectorHazardBoard](lodestar/pkg/computedresources/sector_hazard_boards.go); key-less example: [StandingOrder](lodestar/pkg/computedresources/standing_orders.go). |
 | `@rowsOf` | `@virtual` or `@computed` struct | table resource name | The view declares its backing table, a create goes into the table, and the new row shows up in the view on the next list because the view's SQL reads that table. The declaration states row identity, not columns: every row of the view is one row of the named table under the same key, and the view's other columns are its own — joined from other tables, aggregated, or computed in the projection; the generator compares none of them to the table. It checks, each refusal naming the fix: the named resource exists and is a table-backed `@resource` (a `@virtual` or `@computed` target is refused, since a view cannot back a view, and an `@enumerate` table — with or without a struct over it — is refused as a contradiction, since its rows are the program's constants and a create button for them would be policy about nothing); the view declares `@primarykey` fields matching the table's key in count, order, Go field name, and Go type, nullability included, and on a `@virtual` the `spanner` columns as well, the message naming the first mismatch and the table's key; the two share a `@permissionScope`; the table is served on every outlet the view is served on (fail loud, never a silent degrade); and the view does not name itself. Refused on `@resource` and `@rpc` structs. Several views may name one table. The view's TypeScript metadata carries `rowsOf: Resources.X`, so a page listing the view sends its create, edit, and delete to the table and opens a row on the table's page; a view without the declaration is what it is today, a read-only list. One backing table only: two tables sharing one key (a table and its one-to-one extension) is the door left open and not built, and a parent joined to its children is never one to one with anything and stays a read-only list or an RPC. Examples: [MissionBoard](lodestar/pkg/virtualresources/mission_boards.go), a same-row view over Missions; [SquadronRoster](lodestar/pkg/virtualresources/squadron_rosters.go) and [PilotAssignment](lodestar/pkg/virtualresources/pilot_assignments.go), two association views over SquadronMemberships whose compound key is edited and deleted from the list. [OpenMissionsBySquadron](lodestar/pkg/virtualresources/open_missions_by_squadrons.go) and [FeeByKind](lodestar/pkg/virtualresources/fee_by_kinds.go) declare nothing and stay read-only lists. |
-| `@typescript` | the declaration of a type used as a field: a struct, or a named type over another type (`type Position json.RawMessage`) | `Name`, or `Name, from: "module"` | Declares the TypeScript type of a Go type whose shape lives outside Go, once, on the type's declaration, and every generated file that carries the type imports `Name` from `module`, spelled verbatim. A table column, a computed field, or an RPC field typed by it is `Name` in its interface, with display type `object` in the metadata. Without `from:`, `Name` must be a TypeScript built-in (`string`, `number`, `boolean`, `unknown`). A plain struct needs no declaration: its interface is derived from its fields (section 12). A type that writes its own JSON (`MarshalJSON` or `UnmarshalJSON`) must declare, since its fields say nothing about the wire, and is refused without it. A slice comes from the field (`[]Position` is `Position[]`), never from the declaration; the declaration is read wherever the type is declared, in the application or in a dependency. Two declarations importing one `Name` from different modules are refused, as is `from:` on a built-in and a non-built-in without it. Not valid on a `@resource`, `@virtual`, `@computed`, or `@rpc` struct, which are typed field by field. Example: [Position](lodestar/pkg/resources/distress_calls.go). |
+| `@typescript` | the declaration of a type used as a field: a struct, or a named type over another type (`type Position json.RawMessage`) | `Name`, or `Name, from: "module"` | Declares the TypeScript type of a Go type whose shape lives outside Go, once, on the type's declaration, and every generated file that carries the type imports `Name` from `module`, spelled verbatim. A table column, a computed field, or an RPC field typed by it is `Name` in its interface, with display type `object` in the metadata. Without `from:`, `Name` must be a TypeScript built-in (`string`, `number`, `boolean`, `unknown`). A plain struct needs no declaration: its interface is derived from its fields (section 12). A type that writes its own JSON (`MarshalJSON` or `UnmarshalJSON`) must declare, since its fields say nothing about the wire, and is refused without it. A type declared over `json.RawMessage`, or over any type with JSON methods, needs no hand-written methods: the generator writes its JSON pair (section 12), so the type is its declaration and this annotation and nothing else; `json.RawMessage` itself is `unknown` without any declaration. A declaration promising anything but `string` on a plain byte slice (`type Token []byte` with no JSON methods) is refused, since the wire carries base64 there. A slice comes from the field (`[]Position` is `Position[]`), never from the declaration; the declaration is read wherever the type is declared, in the application or in a dependency. Two declarations importing one `Name` from different modules are refused, as is `from:` on a built-in and a non-built-in without it. Not valid on a `@resource`, `@virtual`, `@computed`, or `@rpc` struct, which are typed field by field. Example: [Position](lodestar/pkg/resources/distress_calls.go). |
 | `@attribute` | field of a `@resource` struct | `name[, via: Remote.Segments]` | Declares an attribute binding: the vocabulary name grant conditions reference for this row attribute (ABAC). Bare, the annotated column itself carries the attribute; with `via:`, the binding is a join path leaving through the annotated foreign key — `via:` carries only the remote segments, Go field names on each successive struct, dotted for multi-hop (`via: StationId.Sector`), and every hop must resolve many-to-one through a real foreign key or generation fails. Names follow the condition language's identifier rules (`[A-Za-z_][A-Za-z0-9_]*`); `subject`, `now`, and `new` are reserved; a name is declared once per resource. |
 | `@domain` | field of a `@resource` struct (bare form also on a `@virtual` struct) | none, or `via: Remote.Segments` | Declares the structural tenancy binding: how every row of a domain-scoped resource resolves to its tenant. Bare on the tenant-key column itself, or `via:` a foreign-key path to it (same grammar as `@attribute`). **Mandatory on every domain-scoped table-backed or virtual resource** — missing is a generation error, and so is declaring it on a resource that is not domain-scoped: global scope is the explicit opt-out (design plan §06). On a virtual resource only the bare form is valid, naming a column the view's projection carries. A bare `@domain` derives the tenant column's runtime behavior — never stated twice: the column decodes output-only (create and update closed, so the wire cannot express a tenant write or re-tenant a row) and the framework stamps it from the request's domain partition on create, so the checked domain and the written domain are the same value by construction; restating behavior through `conditions` or `default_create_fn` tags is rejected, and Create/Update on the column are ungrantable while reads stay grantable. Deliberately not an `@attribute` — it is consumed by tenancy injection and never referencable from grant conditions. At most one per resource. It also tenant-filters the subject subqueries anchored on the resource (see the subject rows). The `via:` path is resolved through foreign-key metadata, not through the remote resource's own bindings — a domain-scoped parent table does **not** transitively supply tenancy to resources referencing it; each resource declares its own `@domain`. Generation warns at every run for a listed table-backed resource whose lists the schema does not serve under this binding: a bare `@domain` with an `@order` and no index leading with the tenant column and then the order columns, where the warning names the index wanted, or a `via:` path, whose lists scan the whole table (section 9). |
 | `@state` | field of a `@resource` struct | `default: <value>` | Marks the resource's state column (ABAC design plan §09). The column must be a foreign key to its state enum table (the ordinary Id/Description convention — the FK identifies the table, nothing is declared on it), and the declared default must be one of that table's values. The marker derives the field's behavior — never stated twice: the field decodes output-only (create and update closed, so the wire cannot express a state write; transitions happen inside RPC bodies), Create/Update on it are ungrantable, reads stay grantable, and the generated create patch applies the declared initial state on insert (never a database DEFAULT). State values change only by migration: a mutation permission registered against the state enum table is a generation error, while Read stays grantable. |
@@ -695,9 +695,12 @@ generator tries, in order:
 1. the built-in table, by the type's qualified name;
 2. a generic row, by the type's origin: `ccc.NullEnum[T]` is `T`'s type;
 3. a `@typescript` declaration on the type's declaration (section 1);
-4. a basic type, or a named type over one, by the basic type's row (`type KindID string`
+4. the type a defined type is declared over, when that type writes its own JSON: `type
+   Payload json.RawMessage` is JSON by declaration and resolves as `json.RawMessage` does
+   (below);
+5. a basic type, or a named type over one, by the basic type's row (`type KindID string`
    is `string`);
-5. a byte slice: an unnamed `[]byte`, or a named slice over `byte` with no JSON methods,
+6. a byte slice: an unnamed `[]byte`, or a named slice over `byte` with no JSON methods,
    is the `bytes` leaf (below).
 
 A field that resolves here is a leaf. A field that does not is read once more as a list:
@@ -718,9 +721,31 @@ Every offending field in a run is reported together.
 `Date` in the interface); the Spanner Null wrappers (`spanner.NullString` is `string`,
 `NullInt64`, `NullFloat32`, `NullFloat64`, and `NullNumeric` are `number`, `NullBool` is
 `boolean`, `NullTime` is `Date`, `NullDate` is `civilDate`); `securehash.Hash` (`string`,
-its text form); and `spanner.NullJSON` (`unknown`, a value with no fixed shape, display
-type `object`). Nullability keeps coming from the schema, so a nullable `spanner.NullBool`
-column renders `nullboolean` exactly as `*bool` does.
+its text form); and `spanner.NullJSON` and `json.RawMessage` (`unknown`, a value with no
+fixed shape, display type `object`; the two share one wire form, any JSON value or
+`null`, and neither can carry a `@typescript` declaration). `unknown` passes
+`@typescript-eslint/no-explicit-any`, which rejects `any` alone, and the generated files
+are lint-ignored in every web application besides. Nullability keeps coming from the
+schema, so a nullable `spanner.NullBool` column renders `nullboolean` exactly as `*bool`
+does. A `json.RawMessage` is pass-through: a nil one marshals as `null`, and bytes that are
+not valid JSON fail `encoding/json` at response time, the application's own
+responsibility. Declare a type whenever a TypeScript type exists for the value (below);
+`json.RawMessage` is for the value the application does not model.
+
+**`json.RawMessage` on a Spanner column is refused.** The Spanner client types a named
+byte slice as `BYTES`, so a read of a `JSON` column through it fails with a type mismatch
+at the first row and a write sends `BYTES` to a `JSON` column, and the client's one hook,
+the `EncodeSpanner` and `DecodeSpanner` pair, is one a standard-library type cannot take.
+A table or view column typed `json.RawMessage`, a pointer to it, or a slice of it fails
+generation naming the two spellings that work, and no `@typescript` clause, since none
+can apply; a computed field and an RPC field carry the type as `unknown` without
+restriction. The refusal is lifted when the client reads and writes the type on `JSON`
+columns (googleapis/google-cloud-go#10720, the open request it cites):
+
+- `Shipments.Payload: the Spanner client stores json.RawMessage as BYTES, so a JSON
+  column cannot be read or written through it (googleapis/google-cloud-go#10720); type
+  the column spanner.NullJSON, or declare a type over json.RawMessage with
+  @typescript(...), whose JSON and Spanner methods the generator writes`
 
 **The `database/sql` Null wrappers are refused.** A field typed `sql.NullString`,
 `sql.NullInt64`, any of their six siblings, the generic `sql.Null[T]`, or a pointer to
@@ -751,9 +776,38 @@ limits draw (section 11): an unnamed `[]byte`, a named slice type over `byte` (`
 table or view column a pointer to a slice is refused, below); a `[][]byte` (an
 `ARRAY<BYTES>` column) is `string[]` with display type `bytes[]`. Not on it: a byte array (`[N]byte` stays
 `number[]`, since `encoding/json` writes an array as an array), a named type carrying
-`@typescript` (it keeps what it declares), and one writing its own JSON
-(`json.RawMessage` is refused as before, since it writes JSON, not base64). `maxLength`
-is never emitted for bytes (section 11); a byte limit can ride the `bytes` type later.
+`@typescript` (it keeps what it declares; a declaration promising anything but `string`
+on a plain byte slice with no JSON methods is refused, naming the two ways to carry JSON:
+declare the type over `json.RawMessage`, or write its `MarshalJSON` and `UnmarshalJSON`),
+one writing its own JSON, and `json.RawMessage` and the types declared over it, which
+write JSON, not base64 (the `unknown` row above, and JSON by declaration below).
+`maxLength` is never emitted for bytes (section 11); a byte limit can ride the `bytes`
+type later.
+
+**JSON by declaration.** A defined type inherits none of the methods of the type it is
+declared over, so `type Payload json.RawMessage` would marshal as its underlying byte
+slice, base64 where `json.RawMessage` writes JSON. The generator reads the declaration's
+right-hand side and gives the pair back: a defined type a field uses on any path (a table
+or view column, a computed field, an RPC request or result field, and the fields of every
+struct those reach) whose right-hand side is a type with JSON methods, and which has none
+of its own, gets `MarshalJSON` (value receiver) and `UnmarshalJSON` (pointer receiver)
+converting to and from the right-hand side, generated into `zz_gen_json.go` in the type's
+package. Such a type is JSON by declaration: with a `@typescript` declaration it is typed
+as declared, and without one it resolves as the type it is declared over does
+(`json.RawMessage` to `unknown`, `time.Time` to `Date`), never `bytes`. The whole
+declaration is two lines:
+
+```go
+// @typescript(Point, from: "geojson")
+type Position json.RawMessage
+```
+
+A type with hand-written JSON methods keeps them; one method without the other is
+refused. A right-hand side without JSON methods (a plain struct, a basic type) gets no
+pair, and the type marshals as before. Declare a type whenever a TypeScript type exists
+for the value; `json.RawMessage` itself is pass-through for the value the application
+does not model. Example: [Position](lodestar/pkg/resources/distress_calls.go), whose two
+hand-written methods the generated pair replaced.
 
 **Nullable slices.** A slice-typed column takes its nullability from the schema, since a
 Go slice has one form: the Spanner client reads a NULL `BYTES` or `ARRAY<T>` column into a
@@ -800,7 +854,7 @@ by construction and never checks the generator's output.
 | `civildate` | `Date` | `civil.Date`, `spanner.NullDate` |
 | `uuid` | `string` | `ccc.UUID`, `ccc.NullUUID` |
 | `enumerated` | the key's type | a declared or inferred picker (`@enumerate`, a key into a resource or an enumeration table) |
-| `object` | the derived or imported interface, or `unknown` | a struct, a `@typescript` type, `spanner.NullJSON` |
+| `object` | the derived or imported interface, or `unknown` | a struct, a `@typescript` type, `spanner.NullJSON`, `json.RawMessage` and a type declared over it |
 | `bytes` | `string` | a byte slice, base64 on the wire |
 | `string[]`, `number[]`, `boolean[]`, `date[]`, `civildate[]`, `uuid[]`, `object[]`, `bytes[]` | the element's interface type with `[]` | a slice, an array, or a named slice type of the leaf (an `ARRAY<...>` column); element pointers are read through, so `[]*int64` is `number[]` and a nullable `[]*bool` is `boolean[]` |
 
@@ -837,21 +891,40 @@ derivation by fields stays consistent. A `@typescript` declaration on a plain st
 over derivation, so an application can give a struct a richer TypeScript type when it
 wants one.
 
-**Storage.** A struct, a named slice of structs, or a declared type over anything but a
-basic type, held by a `JSON` column and implementing no Spanner methods of its own, gets
-`EncodeSpanner` (value receiver, `spanner.NullJSON{Value: v, Valid: true}`, so a type's
-own `MarshalJSON` is honoured for storage too) and `DecodeSpanner` (pointer receiver,
-reading the column's JSON text back, a NULL cell the zero value) generated into
-`zz_gen_storage.go` in the package that declares the type. An application writes no
-encoder. A type with hand-written Spanner methods keeps them, whatever column it handles;
-one method without the other is refused. Such a type on a column that is not `JSON`, on
-an unnamed slice (`[]Provenance` has nothing for a method to attach to), or declared in
-a package the generator does not write into (only the resources package and the virtual
-resources package) is refused naming the fixes:
+**Storage.** A struct, a named slice of structs, a declared type over anything but a
+basic type, or a type JSON by declaration, held by a `JSON` column and implementing no
+Spanner methods of its own, gets `EncodeSpanner` (value receiver, `spanner.NullJSON{Value:
+v, Valid: true}`, so a type's own or generated `MarshalJSON` is honoured for storage too)
+and `DecodeSpanner` (pointer receiver, reading the column's JSON text back, a NULL cell
+the zero value) generated into `zz_gen_storage.go` in the package that declares the type,
+beside the `zz_gen_json.go` the JSON pair goes into. An application writes no encoder. A
+type with hand-written Spanner methods keeps them, whatever column it handles; one method
+without the other is refused. Such a type on a column that is not `JSON`, on an unnamed
+slice (`[]Provenance` has nothing for a method to attach to), or declared in a package the
+generator does not write into is refused naming the fixes:
 
 - `MissionDocuments.Provenance: resources.Provenance is stored by generated JSON methods,
   but column Provenance is STRING(MAX); declare the column JSON, or implement
   EncodeSpanner and DecodeSpanner on the type`
+- `DroidReports.Frame: telemetry.Frame is stored by generated JSON methods, but it is
+  declared in example.com/app/pkg/telemetry, where the generator writes nothing; declare
+  the type in the resources package, implement EncodeSpanner and DecodeSpanner on it, or
+  name its package with WithTypes`
+
+**Writable packages and `WithTypes(dir)`.** The generator writes the two method files into
+the resources package, the virtual, computed, and RPC packages when configured, and every
+package named by `generation.WithTypes(dir)`, a `ResourceOption` in the shape of
+`WithRPC(dir)`: a directory whose package name matches, loaded with the run, given more
+than once when several packages qualify, and to one generator run when a module has
+several (the shared run owns the shared resources package). It is for a shared package
+whose types the resources package uses: an external system's client package whose model
+type a column holds, which a move into the resources package would misplace and a wrapper
+would make a conversion at every boundary, or a package the resources package already
+imports, which can never receive its types back without an import cycle. Nothing else is
+generated into a `WithTypes` package and its structs do not become resources. Example:
+[telemetry.Frame](lodestar/pkg/telemetry/telemetry.go), the droid link's frame type on a
+`DroidReports` column, named in
+[Lodestar's generator](lodestar/cmd/generate/generator.go).
 
 **Imports.** The names every `@typescript` declaration imports are grouped per module
 into one import line each, placed after the `@cccteam/resource` import of the file that
@@ -862,7 +935,9 @@ and patch shapes). The client library exports no application types.
 Examples: [MissionDocument.Provenance](lodestar/pkg/resources/mission_documents.go), a
 plain struct on a `JSON` column, derived and stored by generated methods;
 [DistressCall.Position](lodestar/pkg/resources/distress_calls.go), a GeoJSON `Point`
-declared with `@typescript(Point, from: "geojson")`; and
+declared with `@typescript(Point, from: "geojson")` over `json.RawMessage`, its JSON pair
+generated; [BriefingTemplate.Layout](lodestar/pkg/computedresources/briefing_templates.go),
+a computed field typed `json.RawMessage` itself, `unknown` in both clients; and
 [MissionDocument.Digest](lodestar/pkg/resources/mission_documents.go), the SHA-256 of an
 uploaded document on a `BYTES(32)` column, a `string` in both clients' interfaces with
 display type `bytes`; and [Ship.CargoBays](lodestar/pkg/resources/ships.go), an

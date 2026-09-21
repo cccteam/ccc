@@ -30,18 +30,24 @@ var typescriptArgSpec = &genlang.ArgSpec{Positional: 1, Keys: []string{"from"}}
 // typescriptIdentifier is what a TypeScript identifier may look like.
 var typescriptIdentifier = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)
 
-// typescriptDecls reads @typescript declarations by type, from the packages the
+// typescriptDecls reads what a type's declaration says: its @typescript annotation,
+// and the type it is declared over (its right-hand side), from the packages the
 // generator loaded and, for a type declared elsewhere, from that package loaded on
-// first sight. Every declaration read in one run is checked against the others: one
-// imported name comes from one module.
+// first sight, with its type information. Every declaration read in one run is checked
+// against the others: one imported name comes from one module.
 type typescriptDecls struct {
 	// loaded are the packages the generator loaded, by import path.
 	loaded map[string]*packages.Package
+	// fetched are the packages loaded on first sight, by import path.
+	fetched map[string]*packages.Package
 	// docs caches each package's type docs by import path once read.
 	docs map[string]map[string]string
 	// decls caches parsed declarations by import path and type name; a nil entry
 	// records a type that declares nothing.
 	decls map[string]*tsImport
+	// rhs caches each type's right-hand side by import path and type name; a nil
+	// entry records a type whose declaration the reader could not see.
+	rhs map[string]types.Type
 	// modules records the module each imported name comes from, and the type that
 	// declared it, for the collision refusal.
 	modules map[string]declaredBy
@@ -62,21 +68,33 @@ func newTypescriptDecls(loaded map[string]*packages.Package) *typescriptDecls {
 
 	return &typescriptDecls{
 		loaded:  byPath,
+		fetched: make(map[string]*packages.Package),
 		docs:    make(map[string]map[string]string),
 		decls:   make(map[string]*tsImport),
+		rhs:     make(map[string]types.Type),
 		modules: make(map[string]declaredBy),
 	}
+}
+
+// typeKey is a type's cache key: its import path and name, the origin's for a generic
+// instance.
+func typeKey(named *types.Named) (key string, obj *types.TypeName) {
+	obj = named.Origin().Obj()
+	if obj.Pkg() == nil {
+		return "", obj
+	}
+
+	return obj.Pkg().Path() + "." + obj.Name(), obj
 }
 
 // declFor reads the @typescript declaration on the named type's declaration, nil when
 // it carries none. A generic instance reads its origin's declaration.
 func (d *typescriptDecls) declFor(named *types.Named) (*tsImport, error) {
-	obj := named.Origin().Obj()
+	key, obj := typeKey(named)
 	pkg := obj.Pkg()
 	if pkg == nil {
 		return nil, nil
 	}
-	key := pkg.Path() + "." + obj.Name()
 	if decl, seen := d.decls[key]; seen {
 		return decl, nil
 	}
@@ -104,29 +122,73 @@ func (d *typescriptDecls) declFor(named *types.Named) (*tsImport, error) {
 	return decl, nil
 }
 
-// typeDocs returns the package's type docs, loading the package's syntax when the
-// generator did not load it.
+// rhsFor reads the type the named type is declared over, its declaration's right-hand
+// side as the type checker resolved it (an alias in between is read through by the
+// caller), nil when the declaration is not in reach: a type with no package, or one
+// whose package carries no syntax for it. A generic instance reads its origin's
+// declaration. go/types keeps only the underlying type, so `type Position
+// json.RawMessage` is read off the type spec's type expression.
+func (d *typescriptDecls) rhsFor(named *types.Named) (types.Type, error) {
+	key, obj := typeKey(named)
+	pkg := obj.Pkg()
+	if pkg == nil {
+		return nil, nil
+	}
+	if rhs, seen := d.rhs[key]; seen {
+		return rhs, nil
+	}
+
+	loaded, err := d.packageFor(pkg.Path())
+	if err != nil {
+		return nil, err
+	}
+	var rhs types.Type
+	if spec := parser.TypeSpecOf(loaded, obj.Name()); spec != nil && loaded.TypesInfo != nil {
+		rhs = loaded.TypesInfo.TypeOf(spec.Type)
+	}
+	d.rhs[key] = rhs
+
+	return rhs, nil
+}
+
+// typeDocs returns the package's type docs, loading the package when the generator did
+// not load it.
 func (d *typescriptDecls) typeDocs(path string) (map[string]string, error) {
 	if docs, ok := d.docs[path]; ok {
 		return docs, nil
 	}
 
-	pkg := d.loaded[path]
-	if pkg == nil {
-		pkgs, err := packages.Load(&packages.Config{Mode: packages.NeedName | packages.NeedCompiledGoFiles | packages.NeedSyntax}, path)
-		if err != nil {
-			return nil, errors.Wrapf(err, "packages.Load(%q)", path)
-		}
-		if len(pkgs) != 1 {
-			return nil, errors.Newf("packages.Load(%q): %d packages loaded, want one", path, len(pkgs))
-		}
-		pkg = pkgs[0]
+	pkg, err := d.packageFor(path)
+	if err != nil {
+		return nil, err
 	}
-
 	docs := parser.TypeDocs(pkg)
 	d.docs[path] = docs
 
 	return docs, nil
+}
+
+// packageFor returns the package at the import path: the one the generator loaded, or
+// the one loaded here on first sight, with its syntax and type information, so a
+// declaration's annotation and right-hand side are both in reach.
+func (d *typescriptDecls) packageFor(path string) (*packages.Package, error) {
+	if pkg := d.loaded[path]; pkg != nil {
+		return pkg, nil
+	}
+	if pkg := d.fetched[path]; pkg != nil {
+		return pkg, nil
+	}
+
+	pkgs, err := packages.Load(&packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypesInfo}, path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "packages.Load(%q)", path)
+	}
+	if len(pkgs) != 1 {
+		return nil, errors.Newf("packages.Load(%q): %d packages loaded, want one", path, len(pkgs))
+	}
+	d.fetched[path] = pkgs[0]
+
+	return pkgs[0], nil
 }
 
 // parseTypescriptDecl reads the @typescript declaration out of a type's doc comment.

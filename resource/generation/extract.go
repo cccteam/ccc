@@ -804,6 +804,7 @@ func (c *client) classifyRPCMethod(s *parser.Struct) (*rpcMethodInfo, error) {
 		Form:          signature.form,
 		Request:       request,
 		Result:        result,
+		ResultNamed:   signature.result,
 		ResultPointer: signature.resultPointer,
 		choosesStatus: signature.choosesStatus,
 		takesFiles:    signature.takesFiles,

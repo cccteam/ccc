@@ -14,6 +14,7 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/resource/generation/testdata/columnfixture/shapes"
+	"github.com/cccteam/ccc/resource/generation/testdata/columnfixture/shared"
 )
 
 // Kind is an enumeration-style named string.
@@ -119,11 +120,13 @@ type Label struct {
 // @typescript(string)
 type Code string
 
-// Doc is a derived struct reaching a declared type of this package and one of a package
-// the generator does not load.
+// Doc is a derived struct reaching a declared type of this package, one of a package
+// the generator does not load, and a type JSON by declaration, whose pair the struct's
+// use brings in.
 type Doc struct {
 	Where Position   `json:"where"`
 	Tag   shapes.Tag `json:"tag"`
+	Body  Payload    `json:"body"`
 }
 
 // Clash imports Point from another module than Position does.
@@ -139,6 +142,40 @@ func (c Clash) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON keeps the raw JSON.
 func (c *Clash) UnmarshalJSON(b []byte) error {
 	return (*json.RawMessage)(c).UnmarshalJSON(b)
+}
+
+// Payload is a defined type over json.RawMessage with no annotation and no methods of
+// its own: JSON by declaration, the unknown leaf as json.RawMessage is, never bytes. Its
+// JSON pair is generated (zz_gen_json.go, the fixture's copy of what the generator
+// writes, so the run that finds it is a fixed point) and so is its Spanner pair.
+type Payload json.RawMessage
+
+// Sheet is a defined type over json.RawMessage declaring its TypeScript type, with no
+// methods of its own: typed as declared, both pairs generated.
+//
+// @typescript(Sheet, from: "sheets")
+type Sheet json.RawMessage
+
+// Stamp is a defined type over a type with JSON methods that is no byte slice: JSON by
+// declaration too, resolving as time.Time does, its pair converting through time.Time.
+type Stamp time.Time
+
+// Wrapped is a defined type over a plain struct: no JSON methods behind it, so no pair,
+// and derived from the struct's fields as the struct is.
+type Wrapped Provenance
+
+// Token is a plain byte slice declaring a TypeScript type that promises JSON where the
+// wire carries base64: refused.
+//
+// @typescript(Token, from: "tokens")
+type Token []byte
+
+// Half implements one JSON method without the other over json.RawMessage: refused.
+type Half json.RawMessage
+
+// MarshalJSON writes the raw JSON; the type has no UnmarshalJSON.
+func (h Half) MarshalJSON() ([]byte, error) {
+	return json.RawMessage(h).MarshalJSON()
 }
 
 // Bound declares a built-in with a module, which no module exports.
@@ -183,19 +220,35 @@ type Row struct {
 	Code        Code               `spanner:"Code"`
 	Doc         Doc                `spanner:"Doc"`
 	Tag         shapes.Tag         `spanner:"Tag"`
+	Payload     *Payload           `spanner:"Payload"`
+	Payloads    []Payload          `spanner:"Payloads"`
+	Sheet       Sheet              `spanner:"Sheet"`
+	Stamp       Stamp              `spanner:"Stamp"`
+	Wrapped     Wrapped            `spanner:"Wrapped"`
+	Memo        shapes.Memo        `spanner:"Memo"`
+	Shared      shared.Manifest    `spanner:"Shared"`
 }
 
 // Bad carries one column per shape the classifier refuses.
 type Bad struct {
-	ID       ccc.UUID        `spanner:"Id"`
-	Count    sql.NullInt64   `spanner:"Count"`
-	Untagged Untagged        `spanner:"Untagged"`
-	Sealed   Sealed          `spanner:"Sealed"`
-	Matrix   [][]string      `spanner:"Matrix"`
-	Any      any             `spanner:"Any"`
-	Raw      json.RawMessage `spanner:"Raw"`
-	Bound    Bound           `spanner:"Bound"`
-	Loose    Loose           `spanner:"Loose"`
+	ID       ccc.UUID          `spanner:"Id"`
+	Count    sql.NullInt64     `spanner:"Count"`
+	Untagged Untagged          `spanner:"Untagged"`
+	Sealed   Sealed            `spanner:"Sealed"`
+	Matrix   [][]string        `spanner:"Matrix"`
+	Any      any               `spanner:"Any"`
+	Raw      json.RawMessage   `spanner:"Raw"`
+	RawPtr   *json.RawMessage  `spanner:"RawPtr"`
+	Raws     []json.RawMessage `spanner:"Raws"`
+	Token    Token             `spanner:"Token"`
+	Bound    Bound             `spanner:"Bound"`
+	Loose    Loose             `spanner:"Loose"`
+}
+
+// Partial carries the type implementing one JSON method without the other.
+type Partial struct {
+	ID   ccc.UUID `spanner:"Id"`
+	Half Half     `spanner:"Half"`
 }
 
 // Clashing carries both types importing Point.
@@ -206,19 +259,24 @@ type Clashing struct {
 }
 
 // Request is an RPC-shaped struct reaching declared types, so the walker's leaf is
-// the same imported type, byte slices in every shape the wire carries as base64, and
-// lists of the leaves whose display name is not their interface type.
+// the same imported type, byte slices in every shape the wire carries as base64, the
+// JSON values (json.RawMessage and the types declared over it), and lists of the leaves
+// whose display name is not their interface type.
 type Request struct {
-	ID     ccc.UUID
-	Where  Position
-	Marks  []shapes.Tag
-	Doc    Doc
-	Seal   []byte
-	Digest Digest
-	Sealed *[]byte
-	Chunks [][]byte
-	Hashes []Digest
-	Counts []int64
-	Days   []civil.Date
-	IDs    []ccc.UUID
+	ID      ccc.UUID
+	Where   Position
+	Marks   []shapes.Tag
+	Doc     Doc
+	Seal    []byte
+	Digest  Digest
+	Sealed  *[]byte
+	Chunks  [][]byte
+	Hashes  []Digest
+	Counts  []int64
+	Days    []civil.Date
+	IDs     []ccc.UUID
+	Raw     json.RawMessage
+	Payload Payload
+	Sheet   Sheet
+	Stamp   Stamp
 }

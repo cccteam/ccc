@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -659,6 +660,36 @@ func WithRPC(rpcPackageDir string) ResourceOption {
 	})
 }
 
+// WithTypes names an application package the generator may write the generated method
+// pairs into: the JSON pair (MarshalJSON and UnmarshalJSON) of a type declared over a
+// type with JSON methods, and the Spanner pair (EncodeSpanner and DecodeSpanner) of a
+// type a JSON column holds, each into its own file (zz_gen_json.go, zz_gen_storage.go)
+// in that package. Without it the writable set is the resources package and the
+// virtual, computed, and RPC packages when configured, and a type declared elsewhere is
+// refused naming this option among its fixes. It is for a shared package whose types the
+// resources package uses: an external system's client package whose model type a column
+// holds, which a move into the resources package would misplace and a wrapper would
+// make a conversion at every boundary, or a package the resources package already
+// imports, which can never receive its types back without an import cycle. Nothing else
+// is generated into the package and its structs do not become resources. The package's
+// name is expected to be the same as its directory name; the option may be given more
+// than once, and to one generator run when a module has several.
+func WithTypes(typesPackageDir string) ResourceOption {
+	return Option(func(g any) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+		case *typescriptGenerator: // no-op
+		case *client:
+			t.types = append(t.types, packageDir(typesPackageDir))
+			t.loadPackages = append(t.loadPackages, typesPackageDir)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithTypes(): %T", t))
+		}
+
+		return nil
+	})
+}
+
 // resolveOptions is called twice, once in the client constructor and once in either the resource or typescript generator's constructor.
 // That is why no-op cases are included to prevent falling through to the default panic case.
 func resolveOptions(generator any, options []option) error {
@@ -802,9 +833,11 @@ const (
 // field may carry (UUIDs, decimals, times, dates), the Spanner Null wrappers
 // (nullability comes from the schema, so a nullable spanner.NullBool column renders
 // nullboolean exactly as *bool does), securehash.Hash as its text form, and
-// spanner.NullJSON as unknown, a value with no fixed shape. ccc.NullEnum[T] resolves
-// to its type argument's row (leaf.go). Everything else is a struct the generator
-// derives an interface for, a type carrying a @typescript declaration, or a refusal.
+// spanner.NullJSON and json.RawMessage as unknown, a value with no fixed shape (the two
+// share one wire form, any JSON value or null, and neither can carry a @typescript
+// declaration). ccc.NullEnum[T] resolves to its type argument's row (leaf.go).
+// Everything else is a struct the generator derives an interface for, a type carrying a
+// @typescript declaration, or a refusal.
 func defaultTypescriptOverrides() map[string]string {
 	return map[string]string{
 		reflect.TypeFor[ccc.UUID]().String():            uuidTSType,
@@ -822,6 +855,7 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeFor[spanner.NullTime]().String():    dateTSType,
 		reflect.TypeFor[spanner.NullDate]().String():    civilDateTSType,
 		reflect.TypeFor[spanner.NullJSON]().String():    unknownTSType,
+		reflect.TypeFor[json.RawMessage]().String():     unknownTSType,
 		reflect.TypeFor[securehash.Hash]().String():     stringTSType,
 		boolGoType:       booleanStr,
 		stringGoType:     stringTSType,

@@ -123,9 +123,12 @@ type (
 		Many      [][]byte
 		ManyNamed []Blob
 	}
-	// RawJSON carries a named byte slice that writes its own JSON, which is no leaf.
+	// RawJSON carries json.RawMessage in every shape the wire accepts: each is the
+	// unknown leaf, a value with no fixed shape, carried as declared, never bytes.
 	RawJSON struct {
-		Raw json.RawMessage
+		Raw    json.RawMessage
+		RawPtr *json.RawMessage
+		Raws   []json.RawMessage
 	}
 	// SQLNullString carries a database/sql Null wrapper, refused naming the pointer:
 	// encoding/json writes it as {String, Valid}, not as the string or null.

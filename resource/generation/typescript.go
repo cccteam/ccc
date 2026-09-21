@@ -604,7 +604,7 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(res *resourceInfo) er
 		// The classifier read one pointer through; a pointer to a slice the client
 		// would decode natively is refused, since the client cannot, on either
 		// nullability.
-		if err := refusePointerToSlice(field.GoType(), field.SpannerType, class); err != nil {
+		if err := t.leaves().refusePointerToSlice(field.GoType(), field.SpannerType, class); err != nil {
 			errs = append(errs, columnTypeRefusal(path, err))
 
 			continue

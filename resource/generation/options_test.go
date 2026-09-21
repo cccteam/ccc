@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestApplicationName(t *testing.T) {
@@ -294,6 +296,45 @@ func Test_outletMembership_OnOutlet(t *testing.T) {
 			m := &outletMembership{OutletNames: tt.outlets}
 			if got := m.OnOutlet(tt.query); got != tt.want {
 				t.Errorf("OnOutlet(%q) = %v, want %v", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWithTypes pins the option's reading: every package named is loaded with the run and
+// joins the writable set, in option order, and nothing else about the client changes.
+func TestWithTypes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		opts      []option
+		wantTypes []packageDir
+		wantLoad  []string
+	}{
+		{name: "no option names no package", wantTypes: nil, wantLoad: nil},
+		{name: "one package", opts: []option{WithTypes("pkg/telemetry")}, wantTypes: []packageDir{"pkg/telemetry"}, wantLoad: []string{"pkg/telemetry"}},
+		{
+			name:      "several packages, in option order",
+			opts:      []option{WithTypes("pkg/telemetry"), WithRPC("pkg/rpc"), WithTypes("pkg/cms")},
+			wantTypes: []packageDir{"pkg/telemetry", "pkg/cms"},
+			wantLoad:  []string{"pkg/telemetry", "pkg/rpc", "pkg/cms"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			if err := resolveOptions(c, tt.opts); err != nil {
+				t.Fatalf("resolveOptions() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.wantTypes, c.types); diff != "" {
+				t.Errorf("types mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantLoad, c.loadPackages); diff != "" {
+				t.Errorf("loadPackages mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

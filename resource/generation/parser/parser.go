@@ -275,6 +275,20 @@ func TypeDocs(pkg *packages.Package) map[string]string {
 	return docs
 }
 
+// TypeSpecOf returns the package's declaration of the named type, nil when the package
+// declares none. A declaration's right-hand side (`type Position json.RawMessage`) is
+// read off it: go/types keeps a defined type's underlying type alone, and the type it
+// was declared over is what the JSON methods the generator writes convert through.
+func TypeSpecOf(pkg *packages.Package, name string) *ast.TypeSpec {
+	for _, typeSpec := range packageTypeSpecs(pkg.Syntax) {
+		if typeSpec.Name.Name == name {
+			return typeSpec
+		}
+	}
+
+	return nil
+}
+
 // packageConstants returns every package-level constant with its comments, so godoc
 // annotations on constants (e.g. @manualAddResource) can be scanned.
 func packageConstants(pkg *packages.Package) []*Constant {

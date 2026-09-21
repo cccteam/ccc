@@ -2,6 +2,7 @@ package generation
 
 import (
 	"fmt"
+	"go/types"
 	"iter"
 	"net/http"
 	"path/filepath"
@@ -388,8 +389,10 @@ type rpcMethodInfo struct {
 	// Result is the wire shape of the struct Execute answers with, nil for a method
 	// that answers with an empty 200; ResultPointer marks Execute returning a
 	// pointer to it.
-	Result          *wireShape
-	ResultPointer   bool
+	Result        *wireShape
+	ResultPointer bool
+	// ResultNamed is the named struct type Execute answers with, nil with Result.
+	ResultNamed     *types.Named
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses

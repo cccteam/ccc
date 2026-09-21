@@ -5,6 +5,7 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -153,5 +154,51 @@ func Test_sqltypeTag(t *testing.T) {
 	}
 	if _, err := resource.NewSetData([]resource.FieldTags{{Field: "Label", JSON: "label", SQLType: "STRING(64)"}}, accesstypes.Create, accesstypes.Update, accesstypes.Delete); err != nil {
 		t.Errorf("NewSetData() on the rendered tag error = %v", err)
+	}
+}
+
+// Test_valueKindOf pins the line between a byte slice the decoder sizes and a JSON value
+// it does not: json.RawMessage is a named byte slice to reflection but JSON on the wire,
+// so it, a pointer to it, and a slice of it are no bytes, while []byte and a named slice
+// over byte stay bytes.
+func Test_valueKindOf(t *testing.T) {
+	t.Parallel()
+
+	_, structs := columnFixtureClient(t)
+	fields := make(map[string]*parser.Field)
+	for _, name := range []string{"Row", "Bad"} {
+		for _, f := range structs[name].Fields() {
+			fields[f.Name()] = f
+		}
+	}
+
+	tests := []struct {
+		name      string
+		field     string
+		wantKind  resource.ValueKind
+		wantSlice bool
+	}{
+		{name: "json.RawMessage is no byte slice", field: "Raw", wantKind: resource.ValueKindOther},
+		{name: "a pointer to json.RawMessage is no byte slice", field: "RawPtr", wantKind: resource.ValueKindOther},
+		{name: "a slice of json.RawMessage is a slice of JSON values", field: "Raws", wantKind: resource.ValueKindOther, wantSlice: true},
+		{name: "spanner.NullJSON is no byte slice", field: "Blob", wantKind: resource.ValueKindOther},
+		{name: "an unnamed byte slice is bytes", field: "Seal", wantKind: resource.ValueKindBytes},
+		{name: "a named slice over byte is bytes", field: "Digest", wantKind: resource.ValueKindBytes},
+		{name: "a string is a string", field: "Code", wantKind: resource.ValueKindString},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := fields[tt.field]
+			if f == nil {
+				t.Fatalf("field %q not on the fixture", tt.field)
+			}
+			kind, slice := valueKindOf(f.GoType())
+			if kind != tt.wantKind || slice != tt.wantSlice {
+				t.Errorf("valueKindOf() = (%v, %v), want (%v, %v)", kind, slice, tt.wantKind, tt.wantSlice)
+			}
+		})
 	}
 }

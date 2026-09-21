@@ -32,8 +32,11 @@ import (
 var caser = strcase.NewCaser(false, nil, nil)
 
 type client struct {
-	loadPackages        []string
-	resource            packageDir
+	loadPackages []string
+	resource     packageDir
+	// types are the application packages WithTypes names: loaded with the run, and
+	// written into for the generated method pairs alone (storage.go, jsonmethods.go).
+	types               []packageDir
 	resources           []*resourceInfo
 	computedResources   []*computedResource
 	rpcMethods          []*rpcMethodInfo
@@ -162,7 +165,7 @@ func (c *client) leaves() *leafResolver {
 		if c.tsDecls == nil {
 			c.tsDecls = newTypescriptDecls(c.loadedPackages)
 		}
-		c.leafResolver = newLeafResolver(c.tsDecls.declFor)
+		c.leafResolver = newLeafResolver(c.tsDecls.declFor, c.tsDecls.rhsFor)
 	}
 
 	return c.leafResolver

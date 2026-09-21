@@ -6,12 +6,15 @@ import (
 	"github.com/cccteam/ccc/resource"
 )
 
-// Qualified names of the wrapper types the patch decoder sizes.
+// Qualified names of the wrapper types the patch decoder sizes, and of the one
+// standard-library JSON value, which it does not: json.RawMessage is a named byte slice
+// to reflection but JSON on the wire, so no byte limit applies to it.
 const (
 	spannerNullStringType  = "cloud.google.com/go/spanner.NullString"
 	spannerNullNumericType = "cloud.google.com/go/spanner.NullNumeric"
 	decimalDecimalType     = "github.com/shopspring/decimal.Decimal"
 	decimalNullDecimalType = "github.com/shopspring/decimal.NullDecimal"
+	jsonRawMessageType     = "encoding/json.RawMessage"
 )
 
 // valueKindOf classifies a source field's Go type the way the resource package
@@ -39,7 +42,8 @@ func valueKindOf(t types.Type) (kind resource.ValueKind, slice bool) {
 }
 
 // scalarValueKind classifies a non-slice, non-pointer type: the named wrappers by their
-// qualified name, then a string-kinded underlying type or a byte slice.
+// qualified name (json.RawMessage among them, a JSON value and no byte slice to size),
+// then a string-kinded underlying type or a byte slice.
 func scalarValueKind(t types.Type) resource.ValueKind {
 	if named, ok := t.(*types.Named); ok {
 		switch qualifiedTypeName(named) {
@@ -47,6 +51,8 @@ func scalarValueKind(t types.Type) resource.ValueKind {
 			return resource.ValueKindString
 		case decimalDecimalType, decimalNullDecimalType, spannerNullNumericType:
 			return resource.ValueKindDecimal
+		case jsonRawMessageType:
+			return resource.ValueKindOther
 		}
 	}
 

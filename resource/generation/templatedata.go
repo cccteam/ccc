@@ -64,6 +64,26 @@ type storageFileData struct {
 	Types []string
 }
 
+// jsonFileData renders a package's zz_gen_json.go: the JSON pair of every defined type
+// the package declares over a type with JSON methods.
+type jsonFileData struct {
+	Source  string
+	Package string
+	// Types are the pairs, sorted by type name.
+	Types []jsonPair
+}
+
+// typeImports names the packages the right-hand sides come from, so the import fixer
+// resolves their qualifiers.
+func (d *jsonFileData) typeImports() []fixerImport {
+	var imports []fixerImport
+	for _, pair := range d.Types {
+		imports = append(imports, pair.imports...)
+	}
+
+	return imports
+}
+
 type handlersFileData struct {
 	Source              string
 	LocalPackageImports string

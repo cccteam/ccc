@@ -17,7 +17,7 @@ func walkFixture(t *testing.T, structs map[string]*parser.Struct, name string) (
 		t.Fatalf("struct %q not in fixture", name)
 	}
 
-	return newWireWalker(newLeafResolver(nil), "wirefixture", "resources").walk(s)
+	return newWireWalker(newLeafResolver(nil, nil), "wirefixture", "resources").walk(s)
 }
 
 func Test_wireWalker(t *testing.T) {
@@ -59,7 +59,11 @@ func Test_wireWalker(t *testing.T) {
 			wantMirror: map[string]string{"Raw": "[]byte", "Named": "wirefixture.Blob", "Ptr": "*[]byte", "Many": "[][]byte", "ManyNamed": "[]wirefixture.Blob"},
 			wantTS:     map[string]string{"Raw": "string", "Named": "string", "Ptr": "string", "Many": "string[]", "ManyNamed": "string[]"},
 		},
-		{name: "a named byte slice writing its own JSON is no leaf", structName: "RawJSON", wantErr: "RawJSON.Raw: json.RawMessage is a named []byte; only named basic types and structs cross the wire"},
+		{
+			name: "json.RawMessage is the unknown leaf in every shape, carried as declared", structName: "RawJSON", wantFlat: true,
+			wantMirror: map[string]string{"Raw": "json.RawMessage", "RawPtr": "*json.RawMessage", "Raws": "[]json.RawMessage"},
+			wantTS:     map[string]string{"Raw": "unknown", "RawPtr": "unknown", "Raws": "unknown[]"},
+		},
 		{name: "a database/sql Null wrapper is refused naming the pointer", structName: "SQLNullString", wantErr: "sql.NullString has no JSON form of its own (encoding/json writes it as {String, Valid}); type a nullable column with the pointer *string"},
 		{name: "the generic database/sql wrapper is refused naming the pointer to its argument", structName: "SQLNullGeneric", wantErr: "sql.Null[int64] has no JSON form of its own (encoding/json writes it as {V, Valid}); type a nullable column with the pointer *int64"},
 		{name: "a pointer to a database/sql Null wrapper is refused through the pointer", structName: "SQLNullPointer", wantErr: "sql.NullTime has no JSON form of its own (encoding/json writes it as {Time, Valid}); type a nullable column with the pointer *time.Time"},
@@ -397,7 +401,7 @@ func fixtureAnsweringMethod(t *testing.T, structs map[string]*parser.Struct, nam
 	if err != nil {
 		t.Fatalf("classifyExecute(%s) error = %v", name, err)
 	}
-	walker := newWireWalker(newLeafResolver(nil), "wirefixture", "resources")
+	walker := newWireWalker(newLeafResolver(nil, nil), "wirefixture", "resources")
 	request, err := walker.walk(structs[name])
 	if err != nil {
 		t.Fatalf("walk(%s) error = %v", name, err)
@@ -509,7 +513,7 @@ func Test_rpcHandlerTemplate_answerlessNoContent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			walker := newWireWalker(newLeafResolver(nil), "wirefixture", "resources")
+			walker := newWireWalker(newLeafResolver(nil, nil), "wirefixture", "resources")
 			request, err := walker.walk(structs["Notify"])
 			if err != nil {
 				t.Fatalf("walk(Notify) error = %v", err)

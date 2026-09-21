@@ -599,11 +599,14 @@ func (w *wireWalker) Shapes() []*wireShape {
 // JSON and declares no TypeScript type: the runtime marshals the column value as
 // declared, so the struct's fields do not describe the wire.
 func (w *wireWalker) guardJSONMethods(named *types.Named, path string) error {
-	if !w.columns || !hasJSONMethods(named) {
+	if !w.columns {
 		return nil
 	}
+	if err := w.leaves.refuseOwnJSON(named); err != nil {
+		return errors.Wrap(err, path)
+	}
 
-	return errors.Newf("%s: %s writes its own JSON (MarshalJSON or UnmarshalJSON), so its fields do not describe the wire; add @%s(...) to its declaration", path, typeStringer(named), typescriptKeyword)
+	return nil
 }
 
 // walk walks a root struct, returning its shape with every nested struct behind it.

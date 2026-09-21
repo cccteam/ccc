@@ -309,7 +309,8 @@ func (r *resourceGenerator) Generate() error {
 	// are known before anything renders and survive a failure further down.
 	r.warnings = r.schemaWarnings(r.resources)
 
-	if err := r.runResourcesGeneration(); err != nil {
+	storage, err := r.runResourcesGeneration()
+	if err != nil {
 		return err
 	}
 
@@ -318,6 +319,13 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if err := r.extractAndGenerateRPC(packageMap, pkg); err != nil {
+		return err
+	}
+
+	// The method pairs render once every path is extracted, the RPC methods last, so
+	// the JSON pair covers each defined type a field uses anywhere, and after every
+	// package sweep, so a pair written into the RPC package survives its own sweep.
+	if err := r.runMethodGeneration(storage); err != nil {
 		return err
 	}
 
@@ -554,33 +562,33 @@ func (r *resourceGenerator) validateTypescriptTargets() error {
 }
 
 // runResourcesGeneration renders the resources package: the query builders and patch
-// types of every resource, then the storage methods of the column types that need them.
-// Storage resolves first, refused where a column is not JSON or a type is declared
-// where the generator does not write, so nothing renders for a resource that cannot be
-// stored.
-func (r *resourceGenerator) runResourcesGeneration() error {
+// types of every resource. The storage methods of the column types that need them
+// resolve first, refused where a column is not JSON or a type is declared where the
+// generator does not write, so nothing renders for a resource that cannot be stored;
+// they are returned for runMethodGeneration to write once every package is swept.
+func (r *resourceGenerator) runResourcesGeneration() (map[packageDir][]string, error) {
 	storage, err := r.resolveColumnStorage()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := removeGeneratedFiles(r.resource.Dir(), prefix); err != nil {
-		return err
+		return nil, err
 	}
 
 	if r.genVirtualResources {
 		if err := removeGeneratedFiles(r.virtual.Dir(), prefix); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	for _, res := range r.resources {
 		if err := r.generateResources(res); err != nil {
-			return errors.Wrap(err, "c.generateResources()")
+			return nil, errors.Wrap(err, "c.generateResources()")
 		}
 	}
 
-	return r.generateStorageFiles(storage)
+	return storage, nil
 }
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
