@@ -45,7 +45,6 @@ export interface DistressCalls {
   summary?: string;
   severity?: number;
   callerContact?: string;
-  transcript?: string;
   caseNumber?: string;
   filedBy?: string;
   position?: Point;
@@ -343,7 +342,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'summary', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'severity', displayType: 'number', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'callerContact', displayType: 'string', required: false, isIndex: false },
-      { fieldName: 'transcript', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'transcript', displayType: 'string', required: false, isIndex: false, writeOnly: true },
       { fieldName: 'caseNumber', displayType: 'string', required: false, isIndex: true, filterable: 'always', readOnly: true },
       { fieldName: 'filedBy', displayType: 'string', required: false, isIndex: false, readOnly: true },
       { fieldName: 'position', displayType: 'object', required: false, isIndex: false },
@@ -710,111 +709,6 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.ServiceLedgers]: PermissionScopes.global,
   [Resources.StandingOrders]: PermissionScopes.global,
 };
-
-export type OperationType = 'add' | 'patch' | 'remove';
-
-export interface ClientContactsOperation {
-  op: OperationType;
-  path: '/client-contacts' | `/client-contacts/${string}`;
-  value?: Partial<ClientContacts>;
-}
-
-export interface ConsignmentsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/consignments` | `/sectors/${string}/consignments/${string}`;
-  value?: Partial<Consignments>;
-}
-
-export interface DistressCallsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/distress-calls` | `/sectors/${string}/distress-calls/${string}`;
-  value?: Partial<DistressCalls>;
-}
-
-export interface MissionsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/missions` | `/sectors/${string}/missions/${string}`;
-  value?: Partial<Missions>;
-}
-
-export interface MissionDocumentsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/mission-documents` | `/sectors/${string}/mission-documents/${string}`;
-  value?: Partial<MissionDocuments>;
-}
-
-export interface PilotsOperation {
-  op: OperationType;
-  path: '/pilots' | `/pilots/${string}`;
-  value?: Partial<Pilots>;
-}
-
-export interface PilotCertificationsOperation {
-  op: OperationType;
-  path: '/pilot-certifications' | `/pilot-certifications/${string}`;
-  value?: Partial<PilotCertifications>;
-}
-
-export interface RefitsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/refits` | `/sectors/${string}/refits/${string}`;
-  value?: Partial<Refits>;
-}
-
-export interface RefitTasksOperation {
-  op: OperationType;
-  path: `/sectors/${string}/refit-tasks` | `/sectors/${string}/refit-tasks/${string}`;
-  value?: Partial<RefitTasks>;
-}
-
-export interface SectorsOperation {
-  op: OperationType;
-  path: '/sectors' | `/sectors/${string}`;
-  value?: Partial<Sectors>;
-}
-
-export interface ShipsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/ships` | `/sectors/${string}/ships/${string}`;
-  value?: Partial<Ships>;
-}
-
-export interface ShipClassesOperation {
-  op: OperationType;
-  path: '/ship-classes' | `/ship-classes/${string}`;
-  value?: Partial<ShipClasses>;
-}
-
-export interface SortiesOperation {
-  op: OperationType;
-  path: `/sectors/${string}/sorties` | `/sectors/${string}/sorties/${string}`;
-  value?: Partial<Sorties>;
-}
-
-export interface SortieExpensesOperation {
-  op: OperationType;
-  path: `/sectors/${string}/sortie-expenses` | `/sectors/${string}/sortie-expenses/${string}`;
-  value?: Partial<SortieExpenses>;
-}
-
-export interface SquadronsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/squadrons` | `/sectors/${string}/squadrons/${string}`;
-  value?: Partial<Squadrons>;
-}
-
-export interface SquadronMembershipsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/squadron-memberships` | `/sectors/${string}/squadron-memberships/${string}`;
-  value?: Partial<SquadronMemberships>;
-}
-
-export interface WingsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/wings` | `/sectors/${string}/wings/${string}`;
-  value?: Partial<Wings>;
-}
-export type ConsolidatedOperation = ClientContactsOperation | ConsignmentsOperation | DistressCallsOperation | MissionsOperation | MissionDocumentsOperation | PilotsOperation | PilotCertificationsOperation | RefitsOperation | RefitTasksOperation | SectorsOperation | ShipsOperation | ShipClassesOperation | SortiesOperation | SortieExpensesOperation | SquadronsOperation | SquadronMembershipsOperation | WingsOperation;
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */
 export interface WorkflowMember {

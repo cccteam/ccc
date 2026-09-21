@@ -25,7 +25,6 @@ export interface DistressCalls {
   summary?: string;
   severity?: number;
   callerContact?: string;
-  transcript?: string;
   caseNumber?: string;
   filedBy?: string;
   position?: Point;
@@ -108,7 +107,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'summary', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'severity', displayType: 'number', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'callerContact', displayType: 'string', required: false, isIndex: false },
-      { fieldName: 'transcript', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'transcript', displayType: 'string', required: false, isIndex: false, writeOnly: true },
       { fieldName: 'caseNumber', displayType: 'string', required: false, isIndex: true, filterable: 'always', readOnly: true },
       { fieldName: 'filedBy', displayType: 'string', required: false, isIndex: false, readOnly: true },
       { fieldName: 'position', displayType: 'object', required: false, isIndex: false },
@@ -187,33 +186,6 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.MissionDocuments]: PermissionScopes.domain,
   [Resources.BriefingTemplates]: PermissionScopes.global,
 };
-
-export type OperationType = 'add' | 'patch' | 'remove';
-
-export interface ClientContactsOperation {
-  op: OperationType;
-  path: '/client-contacts' | `/client-contacts/${string}`;
-  value?: Partial<ClientContacts>;
-}
-
-export interface DistressCallsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/distress-calls` | `/sectors/${string}/distress-calls/${string}`;
-  value?: Partial<DistressCalls>;
-}
-
-export interface MissionsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/missions` | `/sectors/${string}/missions/${string}`;
-  value?: Partial<Missions>;
-}
-
-export interface MissionDocumentsOperation {
-  op: OperationType;
-  path: `/sectors/${string}/mission-documents` | `/sectors/${string}/mission-documents/${string}`;
-  value?: Partial<MissionDocuments>;
-}
-export type ConsolidatedOperation = ClientContactsOperation | DistressCallsOperation | MissionsOperation | MissionDocumentsOperation;
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */
 export interface WorkflowMember {

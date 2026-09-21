@@ -9,6 +9,8 @@ package integration
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -65,6 +67,104 @@ func TestDistressCallServerFields(t *testing.T) {
 	if _, leaked := decodeRow(t, body)["transcript"]; leaked {
 		t.Errorf("input_only transcript serialized on read: %s", body)
 	}
+}
+
+// TestInputOnlyTypescript pins the TypeScript half of input_only over the console's
+// committed generated files: the transcript is absent from the row interface, as it is
+// absent from every list and read response, and present exactly where a client writes it
+// or a grant check names it (the metadata entry, flagged writeOnly, the Create and Patch
+// shapes, and the field-name constants); the per-resource operation types the row
+// interface once typed a write through are gone.
+func TestInputOnlyTypescript(t *testing.T) {
+	t.Parallel()
+
+	service := filepath.Join("..", "..", "web", "console", "src", "app", "core", "service")
+
+	tests := []struct {
+		name    string
+		file    string
+		block   string
+		want    string
+		absence bool
+	}{
+		{
+			name:    "the row interface has no transcript property",
+			file:    "zz_gen_resources.ts",
+			block:   "export interface DistressCalls {",
+			want:    "transcript",
+			absence: true,
+		},
+		{
+			name:  "the row interface keeps the fields a read returns",
+			file:  "zz_gen_resources.ts",
+			block: "export interface DistressCalls {",
+			want:  "  callerContact?: string;\n  caseNumber?: string;",
+		},
+		{
+			name: "the metadata entry stays, flagged writeOnly",
+			file: "zz_gen_resources.ts",
+			want: "{ fieldName: 'transcript', displayType: 'string', required: false, isIndex: false, writeOnly: true },",
+		},
+		{
+			name:  "the create shape carries the transcript",
+			file:  "zz_gen_api.ts",
+			block: "export interface DistressCallsCreate {",
+			want:  "  transcript?: string;",
+		},
+		{
+			name:  "the patch shape carries the transcript",
+			file:  "zz_gen_api.ts",
+			block: "export interface DistressCallsPatch {",
+			want:  "  transcript?: string;",
+		},
+		{
+			name: "the field-name constant stays for the grant check",
+			file: "zz_gen_constants.ts",
+			want: "transcript: 'DistressCalls.transcript' as Resource,",
+		},
+		{
+			name:    "no operation type is generated",
+			file:    "zz_gen_resources.ts",
+			want:    "OperationType",
+			absence: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source, err := os.ReadFile(filepath.Join(service, tt.file))
+			if err != nil {
+				t.Fatalf("os.ReadFile() error = %v", err)
+			}
+			text := string(source)
+			if tt.block != "" {
+				text = tsBlock(t, text, tt.block)
+			}
+
+			if got := strings.Contains(text, tt.want); got == tt.absence {
+				t.Errorf("%s contains %q = %v, want %v", tt.file, tt.want, got, !tt.absence)
+			}
+		})
+	}
+}
+
+// tsBlock returns the text of one top-level TypeScript declaration: from its opening
+// line to the closing brace on a line of its own.
+func tsBlock(t *testing.T, source, opening string) string {
+	t.Helper()
+
+	start := strings.Index(source, opening)
+	if start < 0 {
+		t.Fatalf("declaration %q not found", opening)
+	}
+	end := strings.Index(source[start:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("declaration %q has no closing brace", opening)
+	}
+
+	return source[start : start+end]
 }
 
 func TestMissionCreateDefaultsAndValidator(t *testing.T) {
