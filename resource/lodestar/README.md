@@ -139,7 +139,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `hazards` | Hazard Analyst Hale | A conditional (row-free `now`) grant on a computed resource, the whole board through `limit=all`. Demonstrates: computed.conditional-grant, paging.limit-all, computed.fold. |
 | `dock` / `watch` | Dockmaster Dara / Night Watch Nadia | `timeOfDay(now, local)` and the wrap-around `timeOfDay(now, 'America/Denver')` window; `dayOfWeek(now, local) NOT IN ('sat', 'sun')`. At any hour exactly one sees the hangar deck. Demonstrates: condition.time-of-day, condition.day-of-week, condition.local-zone. |
 | `client` | Client Cleo, portal only | Signs in through her company's directory, whose groups are her roles; the second browser app over the second TypeScript target; `client = subject.client` from the ClientContact anchor; a conditional Execute fired from a portal session; a PII field an external user writes; the portal-only client statement. Demonstrates: auth.directory-roles, auth.skipauth-directory, typescript.second-target, outlet.session, @subjectValue.second-anchor, @manualAddResource.outlet. |
-| `droid-r7` | R7, service account, no login | The API-keyed droids outlet: telemetry with no human route, one reading per call, releases through the shared method under its own read grant. Demonstrates: outlet.api-key, outlet.exclusive, machine-identity, rpc.row-free. |
+| `droid-r7` | R7, service account, no login | The API-keyed droids outlet: telemetry with no human route, one reading per call, each carrying the firmware's raw frame, a type declared in the droid link's own package whose generated methods the generator writes there (`WithTypes`); releases through the shared method under its own read grant. Demonstrates: outlet.api-key, outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package. |
 
 ## Where things live
 
@@ -165,6 +165,14 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   the replaced file's and the deleted document's alike
   ([`@file.released`](pkg/resources/mission_documents.go),
   [`@file.replaced`](pkg/rpc/replace_mission_document.go)).
+- `pkg/telemetry`: the droid link's own package, the one package the generator writes
+  into without reading a resource from it: `cmd/generate` names it with `WithTypes`, so
+  the frame type a `DroidReports` column holds gets its JSON and Spanner methods generated
+  beside it ([`typescript.types-package`](pkg/telemetry/telemetry.go)). The briefing
+  catalog's `Layout` is the one field typed `json.RawMessage` itself, a computed field
+  passed through unmodelled ([`typescript.raw-json`](pkg/computedresources/briefing_templates.go)),
+  and `DistressCall.Position` writes no JSON methods of its own any more
+  ([`typescript.generated-json-methods`](pkg/resources/distress_calls.go)).
 - `pkg/auth/crew` and `pkg/auth/members`: the two populations; `schema/roles/*.json`:
   every grant in §7 per auth; `cmd/bootstrap/users.json`: the personas and the droid.
 - `schema/migrations` and `schema/devseed`: the schema and the world the suites and the

@@ -4,39 +4,20 @@ import (
 	"encoding/json"
 
 	"github.com/cccteam/ccc"
-	"github.com/go-playground/errors/v5"
 )
 
 // Position is where a distress call was made, as a GeoJSON Point. Its shape lives
 // outside Go, in the GeoJSON specification and the geojson TypeScript package, so the
 // type declares its TypeScript type once, here: both clients' resources files import
-// Point from geojson, and the column is typed Point. The Go side keeps the raw JSON and
-// writes it as it is, so the two JSON methods are the whole implementation; the Spanner
-// methods that store it are generated (zz_gen_storage.go).
+// Point from geojson, and the column is typed Point. The type is its declaration and
+// its annotation alone: a defined type inherits none of json.RawMessage's methods, so
+// the generator writes the JSON pair that keeps the point the JSON it was received as
+// (zz_gen_json.go) beside the Spanner methods that store it (zz_gen_storage.go).
 //
-// Demonstrates: typescript.imported-type.
+// Demonstrates: typescript.imported-type, typescript.generated-json-methods.
 //
 // @typescript(Point, from: "geojson")
 type Position json.RawMessage
-
-// MarshalJSON writes the point as it was received.
-func (p Position) MarshalJSON() ([]byte, error) {
-	b, err := json.RawMessage(p).MarshalJSON()
-	if err != nil {
-		return nil, errors.Wrap(err, "json.RawMessage.MarshalJSON()")
-	}
-
-	return b, nil
-}
-
-// UnmarshalJSON keeps the point as it was received.
-func (p *Position) UnmarshalJSON(b []byte) error {
-	if err := (*json.RawMessage)(p).UnmarshalJSON(b); err != nil {
-		return errors.Wrap(err, "json.RawMessage.UnmarshalJSON()")
-	}
-
-	return nil
-}
 
 type (
 	// DistressCall is an incoming call before it becomes a mission, and the

@@ -4,6 +4,7 @@
 package app
 
 import (
+	"encoding/json"
 	"net/http"
 	"slices"
 
@@ -15,10 +16,11 @@ import (
 
 func (a *App) BriefingTemplates() http.HandlerFunc {
 	type briefingTemplate struct {
-		ID       string `json:"id"       perm:"-"`
-		Name     string `json:"name"`
-		Audience string `json:"audience"`
-		Summary  string `json:"summary"`
+		ID       string          `json:"id"       perm:"-"`
+		Name     string          `json:"name"`
+		Audience string          `json:"audience"`
+		Summary  string          `json:"summary"`
+		Layout   json.RawMessage `json:"layout"`
 	}
 
 	type response []map[string]any
@@ -55,6 +57,8 @@ func (a *App) BriefingTemplates() http.HandlerFunc {
 					rmap["audience"] = rec.Audience
 				case "Summary":
 					rmap["summary"] = rec.Summary
+				case "Layout":
+					rmap["layout"] = rec.Layout
 				}
 			}
 			resp = append(resp, rmap)

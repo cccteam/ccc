@@ -14,6 +14,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/telemetry"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
@@ -33,12 +34,13 @@ func (a *App) PatchDroidsResources() http.HandlerFunc {
 	consignmentDecoder := NewDecoder[resources.Consignment, consignmentRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type droidReportRequest struct {
-		ID         ccc.UUID  `json:"-"`
-		SectorID   string    `json:"-"`
-		ShipID     ccc.UUID  `json:"shipId"`
-		Subsystem  string    `json:"subsystem"`
-		Reading    float64   `json:"reading"`
-		RecordedAt time.Time `json:"recordedAt"`
+		ID         ccc.UUID         `json:"-"`
+		SectorID   string           `json:"-"`
+		ShipID     ccc.UUID         `json:"shipId"`
+		Subsystem  string           `json:"subsystem"`
+		Reading    float64          `json:"reading"`
+		RecordedAt time.Time        `json:"recordedAt"`
+		Frame      *telemetry.Frame `json:"frame"`
 	}
 	droidReportDecoder := NewDecoder[resources.DroidReport, droidReportRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

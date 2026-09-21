@@ -13,18 +13,20 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/telemetry"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 )
 
 func (a *App) DroidReports() http.HandlerFunc {
 	type droidReport struct {
-		ID         ccc.UUID  `json:"id"         index:"true" perm:"-"`
-		SectorID   string    `json:"sectorId"   index:"true"`
-		ShipID     ccc.UUID  `json:"shipId"     index:"true"`
-		Subsystem  string    `json:"subsystem"`
-		Reading    float64   `json:"reading"`
-		RecordedAt time.Time `json:"recordedAt"`
+		ID         ccc.UUID         `json:"id"         index:"true" perm:"-"`
+		SectorID   string           `json:"sectorId"   index:"true"`
+		ShipID     ccc.UUID         `json:"shipId"     index:"true"`
+		Subsystem  string           `json:"subsystem"`
+		Reading    float64          `json:"reading"`
+		RecordedAt time.Time        `json:"recordedAt"`
+		Frame      *telemetry.Frame `json:"frame"`
 	}
 
 	type response []map[string]any
@@ -86,6 +88,10 @@ func (a *App) DroidReports() http.HandlerFunc {
 				case "RecordedAt":
 					if !row.Masked("recordedAt") {
 						rmap["recordedAt"] = rec.RecordedAt
+					}
+				case "Frame":
+					if !row.Masked("frame") {
+						rmap["frame"] = rec.Frame
 					}
 				}
 			}

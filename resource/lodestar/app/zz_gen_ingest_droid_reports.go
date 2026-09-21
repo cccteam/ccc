@@ -13,6 +13,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/telemetry"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
@@ -20,10 +21,11 @@ import (
 
 func (a *App) IngestDroidReports() http.HandlerFunc {
 	type request struct {
-		ShipID     ccc.UUID  `json:"shipId"`
-		Subsystem  string    `json:"subsystem"`
-		Reading    float64   `json:"reading"`
-		RecordedAt time.Time `json:"recordedAt"`
+		ShipID     ccc.UUID        `json:"shipId"`
+		Subsystem  string          `json:"subsystem"`
+		Reading    float64         `json:"reading"`
+		RecordedAt time.Time       `json:"recordedAt"`
+		Frame      telemetry.Frame `json:"frame"`
 	}
 
 	decoder := NewRPCDecoder[rpc.IngestDroidReports, request](a, accesstypes.Execute)

@@ -13,7 +13,7 @@ import (
 // generate program (./resourcegenerator) runs it, and the schema-warning test runs it
 // in-process, so the two never drift.
 //
-// Demonstrates: GenerateRouter.
+// Demonstrates: GenerateRouter, typescript.types-package.
 func NewGenerator(ctx context.Context) (generation.Generator, error) {
 	generator, err := generation.NewResourceGenerator(
 		ctx,
@@ -54,6 +54,10 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.WithRPC("pkg/rpc"),
 		generation.WithVirtualResources("pkg/virtualresources"),
 		generation.WithComputedResources("pkg/computedresources"),
+		// The droid link's package declares the frame type a DroidReports column
+		// holds; naming it lets the generator write the type's JSON and Spanner
+		// methods beside it, so the type stays with the link it models.
+		generation.WithTypes("pkg/telemetry"),
 		generation.GenerateHandlerTests("test/authz"),
 		// Client (global) and Hangar (sector-scoped) keep standalone PATCH surfaces
 		// beside the consolidated handler.

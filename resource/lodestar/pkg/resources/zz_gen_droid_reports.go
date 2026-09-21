@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/telemetry"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
 )
@@ -27,12 +28,13 @@ func (DroidReport) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; droidReportReadSets holds one Set per read operation.
 type droidReportRead struct {
-	ID         ccc.UUID  `json:"id"         perm:"-"`
-	SectorID   string    `json:"sectorId"`
-	ShipID     ccc.UUID  `json:"shipId"`
-	Subsystem  string    `json:"subsystem"`
-	Reading    float64   `json:"reading"`
-	RecordedAt time.Time `json:"recordedAt"`
+	ID         ccc.UUID         `json:"id"         perm:"-"`
+	SectorID   string           `json:"sectorId"`
+	ShipID     ccc.UUID         `json:"shipId"`
+	Subsystem  string           `json:"subsystem"`
+	Reading    float64          `json:"reading"`
+	RecordedAt time.Time        `json:"recordedAt"`
+	Frame      *telemetry.Frame `json:"frame"`
 }
 
 var droidReportReadSets resource.SetCache[DroidReport, droidReportRead]
@@ -41,12 +43,13 @@ var droidReportReadSets resource.SetCache[DroidReport, droidReportRead]
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; droidReportWriteSets holds one Set per mutation.
 type droidReportWrite struct {
-	ID         ccc.UUID  `json:"-"`
-	SectorID   string    `json:"-"`
-	ShipID     ccc.UUID  `json:"shipId"`
-	Subsystem  string    `json:"subsystem"`
-	Reading    float64   `json:"reading"`
-	RecordedAt time.Time `json:"recordedAt"`
+	ID         ccc.UUID         `json:"-"`
+	SectorID   string           `json:"-"`
+	ShipID     ccc.UUID         `json:"shipId"`
+	Subsystem  string           `json:"subsystem"`
+	Reading    float64          `json:"reading"`
+	RecordedAt time.Time        `json:"recordedAt"`
+	Frame      *telemetry.Frame `json:"frame"`
 }
 
 var droidReportWriteSets resource.SetCache[DroidReport, droidReportWrite]
@@ -161,6 +164,7 @@ func (c *DroidReportColumns) All() *DroidReportColumns {
 		"Subsystem",
 		"Reading",
 		"RecordedAt",
+		"Frame",
 	}
 
 	return c
@@ -198,6 +202,12 @@ func (c *DroidReportColumns) Reading() *DroidReportColumns {
 
 func (c *DroidReportColumns) RecordedAt() *DroidReportColumns {
 	c.fields = append(c.fields, "RecordedAt")
+
+	return c
+}
+
+func (c *DroidReportColumns) Frame() *DroidReportColumns {
+	c.fields = append(c.fields, "Frame")
 
 	return c
 }
@@ -314,6 +324,10 @@ func (c *droidReportSort) Reading() *DroidReportSort {
 
 func (c *droidReportSort) RecordedAt() *DroidReportSort {
 	return c.addField("RecordedAt")
+}
+
+func (c *droidReportSort) Frame() *DroidReportSort {
+	return c.addField("Frame")
 }
 
 type DroidReportSort struct {
@@ -483,6 +497,26 @@ func (p *DroidReportCreatePatch) RecordedAtIsSet() bool {
 	return p.patchSet.IsSet("RecordedAt")
 }
 
+func (p *DroidReportCreatePatch) SetFrame(v *telemetry.Frame) *DroidReportCreatePatch {
+	if v != nil {
+		p.patchSet.Set("Frame", v)
+	} else {
+		p.patchSet.Set("Frame", nil)
+	}
+
+	return p
+}
+
+func (p *DroidReportCreatePatch) Frame() *telemetry.Frame {
+	v, _ := p.patchSet.Get("Frame").(*telemetry.Frame)
+
+	return v
+}
+
+func (p *DroidReportCreatePatch) FrameIsSet() bool {
+	return p.patchSet.IsSet("Frame")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *DroidReportCreatePatch) Diff(got *DroidReportCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -629,6 +663,26 @@ func (p *DroidReportUpdatePatch) RecordedAt() time.Time {
 
 func (p *DroidReportUpdatePatch) RecordedAtIsSet() bool {
 	return p.patchSet.IsSet("RecordedAt")
+}
+
+func (p *DroidReportUpdatePatch) SetFrame(v *telemetry.Frame) *DroidReportUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("Frame", v)
+	} else {
+		p.patchSet.Set("Frame", nil)
+	}
+
+	return p
+}
+
+func (p *DroidReportUpdatePatch) Frame() *telemetry.Frame {
+	v, _ := p.patchSet.Get("Frame").(*telemetry.Frame)
+
+	return v
+}
+
+func (p *DroidReportUpdatePatch) FrameIsSet() bool {
+	return p.patchSet.IsSet("Frame")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

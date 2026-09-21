@@ -357,11 +357,13 @@ r=$(req cadet GET "$API/permission-digest?domain=anvil"); assert_py "cadet's dig
 r=$(req cadet PATCH "$API/resources" '[{"op":"add","path":"/sectors/anvil/distress-calls","value":{"summary":"Debris on the approach","severity":2}}]'); check "cadet files a two-field call" 200 "$r"
 
 # ---- droid channel ----
+# The droid's first reading carries the firmware's raw frame, a type declared in the droid link's own package, which the generator writes the frame's JSON and Spanner methods into (WithTypes); the list reads the frame back as the JSON it was sent, and a reading sent without one carries null. Demonstrates: typescript.types-package.
 if [ -n "$KEY" ]; then
-  r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"subsystem\":\"hull\",\"reading\":0.95,\"recordedAt\":\"2026-09-04T12:00:00Z\"}"); check "droid posts a reading (one per call; the payload is flat)" 200 "$r"
+  r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"subsystem\":\"hull\",\"reading\":0.95,\"recordedAt\":\"2026-09-04T12:00:00Z\",\"frame\":{\"fw\":\"7.2\",\"hull\":{\"strain\":0.95,\"plates\":[3,7]}}}"); check "droid posts a reading (one per call; the payload is flat) with its raw frame" 200 "$r"
   r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"subsystem\":\"reactor\",\"reading\":0.55,\"recordedAt\":\"2026-09-04T12:01:00Z\"}"); check "droid posts a second reading" 200 "$r"
   r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"reading\":0.9}"); check "a reading without a subsystem is refused by the body" 400 "$r"
   r=$(droid GET "$DROIDS/sectors/anvil/droid-reports"); check "droid lists its channel" 200 "$r"
+  assert_py "the droid reads its raw frame back as the JSON it sent, and null for the reading sent without one" "$r" "any(x.get('frame')=={'fw':'7.2','hull':{'strain':0.95,'plates':[3,7]}} for x in rows) and any(x['subsystem']=='reactor' and x.get('frame') is None for x in rows)"
   r=$(req marshal GET "$ANVIL/droid-reports"); check "droid reports have no human route" 404 "$r"
   r=$(req hazards GET "$ANVIL/sector-hazard-boards?limit=all"); assert_py "hazard board shows the worst hull reading" "$r" "any(b['shipName']=='Kingfisher' and b['subsystem']=='hull' and b['worstReading']==0.95 for b in rows)"
   assert_py "the board carries the recent readings behind the worst, newest first" "$r" "any(b['subsystem']=='hull' and b['shipName']=='Kingfisher' and [x['value'] for x in b['recent']][0]==0.95 for b in rows)"

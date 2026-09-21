@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/telemetry"
 )
 
 type (
@@ -21,7 +22,12 @@ type (
 	// names the CREATE INDEX the list wants at every generate. Every other bare-tenant
 	// resource that lists in a declared order carries that index (migration 000032).
 	//
-	// Demonstrates: outlet.exclusive, @suppress, machine-identity, warning.tenant-index.
+	// Frame is the reading's raw frame, a telemetry.Frame: the type lives in the droid
+	// link's own package, which cmd/generate names with WithTypes, so the generator
+	// writes the frame's JSON and Spanner methods there and the type stays where the
+	// link is modeled.
+	//
+	// Demonstrates: outlet.exclusive, @suppress, machine-identity, warning.tenant-index, typescript.types-package.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -37,5 +43,7 @@ type (
 		Subsystem  string    `spanner:"Subsystem"`
 		Reading    float64   `spanner:"Reading"`
 		RecordedAt time.Time `spanner:"RecordedAt"`
+		// Frame is nullable: the seeded readings and a droid on old firmware send none.
+		Frame *telemetry.Frame `spanner:"Frame"`
 	}
 )

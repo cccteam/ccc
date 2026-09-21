@@ -9,6 +9,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/telemetry"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 	"github.com/shopspring/decimal"
@@ -159,7 +160,7 @@ func stampShipRefitted(ctx context.Context, txn resource.ReadWriteTransaction, r
 
 // ingestDroidReport writes one telemetry row, resolving the tenant through the ship's
 // hangar — the payload never asserts its own tenancy.
-func ingestDroidReport(ctx context.Context, txn resource.ReadWriteTransaction, shipID ccc.UUID, subsystem string, reading float64, recordedAt time.Time) error {
+func ingestDroidReport(ctx context.Context, txn resource.ReadWriteTransaction, shipID ccc.UUID, subsystem string, reading float64, recordedAt time.Time, frame telemetry.Frame) error {
 	ship, err := resources.NewShipQuery().AddColumns(resources.NewShipColumns().HangarID()).SetID(shipID).Read(ctx, txn)
 	if err != nil {
 		return errors.Wrap(err, "resources.ShipQuery.Read()")
@@ -189,6 +190,10 @@ func ingestDroidReport(ctx context.Context, txn resource.ReadWriteTransaction, s
 		SetSubsystem(subsystem).
 		SetReading(reading).
 		SetRecordedAt(recordedAt)
+	if len(frame) > 0 {
+		// The frame is stored as it came; a droid that sent none leaves the column NULL.
+		patch.SetFrame(&frame)
+	}
 	if err := patch.Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
 		return errors.Wrap(err, "resources.DroidReportCreatePatch.Buffer()")
 	}

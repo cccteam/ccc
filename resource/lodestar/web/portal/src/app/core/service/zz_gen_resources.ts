@@ -74,6 +74,7 @@ export interface BriefingTemplates {
   name?: string;
   audience?: string;
   summary?: string;
+  layout?: unknown;
 }
 
 const resourceMap: ResourceMap = {
@@ -163,6 +164,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'name', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'audience', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'summary', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'layout', displayType: 'object', required: false, isIndex: false },
     ],
   },
 };

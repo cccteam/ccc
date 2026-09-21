@@ -117,6 +117,7 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Update},
 				Tags: []resource.TagData{
+					{Name: "frame", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
 					{Name: "id"},
 					{Name: "reading", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
 					{Name: "recordedAt", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
@@ -559,6 +560,7 @@ func Collection() *resource.GeneratedCollection {
 				Tags: []resource.TagData{
 					{Name: "audience", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "id"},
+					{Name: "layout", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "summary", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},

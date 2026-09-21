@@ -1,11 +1,15 @@
-// Demonstrates: typescript.derived-object, typescript.imported-type, typescript.byte-slice, typescript.array-column.
+// Demonstrates: typescript.derived-object, typescript.imported-type, typescript.generated-json-methods, typescript.byte-slice, typescript.array-column, typescript.raw-json.
 package integration
 
 // column_types_test: the columns typed by application types, by a byte slice, and by a
-// slice. DistressCalls.Position is a GeoJSON Point whose TypeScript type the Go type
-// declares with @typescript; the marshal files a call with a point, reads it back as the
-// JSON it sent, and clears it with a null, while the seed's voice-relayed call carries
-// none. MissionDocuments.Provenance is a plain struct: the upload records the origin,
+// slice, and the computed field typed json.RawMessage. DistressCalls.Position is a
+// GeoJSON Point whose TypeScript type the Go type declares with @typescript, and whose
+// JSON methods the generator writes (the type is a declaration over json.RawMessage and
+// nothing else); the marshal files a call with a point, reads it back as the JSON it
+// sent, and clears it with a null, while the seed's voice-relayed call carries none.
+// BriefingTemplates.Layout is a json.RawMessage the catalog hands over unmodelled: every
+// sheet's layout arrives as the JSON object the catalog holds, in the console and in the
+// portal. MissionDocuments.Provenance is a plain struct: the upload records the origin,
 // the generated Spanner methods store it, and the console and the portal both list it as
 // one object under the field their grants name. MissionDocuments.Digest is a BYTES
 // column: the upload records the file's SHA-256, and the row carries it as one base64
@@ -26,11 +30,17 @@ import (
 	"testing"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 )
 
 func TestDistressCallPosition_importedType(t *testing.T) {
 	t.Parallel()
+
+	// Position writes no JSON methods of its own; the generated pair keeps it the JSON
+	// it was received as, on the wire and into the column.
+	var _ json.Marshaler = resources.Position(nil)
+	var _ json.Unmarshaler = (*resources.Position)(nil)
 
 	ctx, db, h := demoWorld(t)
 
@@ -92,6 +102,65 @@ func TestDistressCallPosition_importedType(t *testing.T) {
 	assertStatus(t, status, http.StatusOK, body)
 	if _, present := decodeRow(t, body)["position"]; present {
 		t.Errorf("position is present on the cadet's read, whose grant does not name it: %s", body)
+	}
+}
+
+// TestBriefingTemplateLayout_rawJSON pins the computed field typed json.RawMessage: each
+// sheet's layout arrives as the JSON object the catalog holds, passed through unmodelled,
+// on the console and on the portal alike, and a grant that does not name it leaves it
+// out.
+func TestBriefingTemplateLayout_rawJSON(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	db, err := prepareDatabase(ctx, t, migrationsSource, demoSeedSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantLayouts := map[string]any{
+		"standard":      map[string]any{"columns": float64(2), "sections": []any{"counts", "fees", "overdue"}},
+		"hazard-first":  map[string]any{"columns": float64(1), "sections": []any{"hazards", "counts"}, "banner": map[string]any{"tone": "warning"}},
+		"client-facing": map[string]any{"columns": float64(1), "sections": []any{"missions", "deadlines"}, "letterhead": true},
+		"dispatch":      map[string]any{"columns": float64(3), "sections": []any{"live", "squadrons"}},
+	}
+
+	tests := []struct {
+		name   string
+		fields []string
+		target string
+		user   string
+		// wantLayout says whether the rows carry the layout objects, or no layout key.
+		wantLayout bool
+	}{
+		{name: "the console reads every sheet's layout as the JSON the catalog holds", fields: []string{"name", "layout"}, target: "/api/briefing-templates?limit=all", user: "integration-test-user", wantLayout: true},
+		{name: "the portal reads the same objects", fields: []string{"name", "layout"}, target: "/portal/api/briefing-templates?limit=all", user: "client", wantLayout: true},
+		{name: "a grant that does not name the layout leaves it out", fields: []string{"name"}, target: "/api/briefing-templates?limit=all", user: "integration-test-user", wantLayout: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newTestApp(db, grants{accesstypes.List: withFields("BriefingTemplates", tt.fields...)})
+			status, body := doRequestAs(t, h, accesstypes.User(tt.user), http.MethodGet, tt.target, "")
+			assertStatus(t, status, http.StatusOK, body)
+			rows := decodeRows(t, body)
+			if len(rows) != len(wantLayouts) {
+				t.Fatalf("rows = %d, want %d sheets: %s", len(rows), len(wantLayouts), body)
+			}
+			for _, row := range rows {
+				id, _ := row["id"].(string)
+				got, present := row["layout"]
+				switch {
+				case !tt.wantLayout && present:
+					t.Errorf("sheet %s carries a layout under a grant that does not name it: %v", id, got)
+				case tt.wantLayout && !reflect.DeepEqual(got, wantLayouts[id]):
+					t.Errorf("sheet %s layout = %v, want %v", id, got, wantLayouts[id])
+				}
+			}
+		})
 	}
 }
 

@@ -20,10 +20,12 @@ import (
 // MissionDocuments.Provenance in the resource's namespace; and both type the BYTES column
 // MissionDocuments.Digest a string with display type bytes. The console alone carries
 // Ships, whose ARRAY<INT64> column CargoBays is number[] in the interface and in the
-// metadata, a member of the client's display-type union. Needs no emulator: it reads the
-// committed output.
+// metadata, a member of the client's display-type union. Both carry BriefingTemplates,
+// whose Layout is a json.RawMessage: unknown in the interface, object in the metadata, the
+// first unknown a real application's clients build and lint against. Needs no emulator:
+// it reads the committed output.
 //
-// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object, typescript.byte-slice, typescript.array-column, decode.nullable-slice.
+// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object, typescript.byte-slice, typescript.array-column, decode.nullable-slice, typescript.raw-json.
 func TestPortalTargetEmission(t *testing.T) {
 	t.Parallel()
 
@@ -59,6 +61,8 @@ func TestPortalTargetEmission(t *testing.T) {
 		"{ fieldName: 'provenance', displayType: 'object', required: false, isIndex: false }",
 		"  digest?: string;",
 		"{ fieldName: 'digest', displayType: 'bytes', required: true, isIndex: false }",
+		"  layout?: unknown;",
+		"{ fieldName: 'layout', displayType: 'object', required: false, isIndex: false }",
 	}
 
 	tests := []struct {

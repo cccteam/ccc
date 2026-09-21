@@ -80,12 +80,14 @@ export namespace BriefingTemplates {
   export const fieldName = {
     audience: 'audience' as FieldName,
     id: 'id' as FieldName,
+    layout: 'layout' as FieldName,
     name: 'name' as FieldName,
     summary: 'summary' as FieldName,
   };
   export const resourceName = {
     audience: 'BriefingTemplates.audience' as Resource,
     id: 'BriefingTemplates.id' as Resource,
+    layout: 'BriefingTemplates.layout' as Resource,
     name: 'BriefingTemplates.name' as Resource,
     summary: 'BriefingTemplates.summary' as Resource,
   };

@@ -2595,7 +2595,8 @@
                 "shipId",
                 "subsystem",
                 "reading",
-                "recordedAt"
+                "recordedAt",
+                "frame"
               ]
             },
             {
