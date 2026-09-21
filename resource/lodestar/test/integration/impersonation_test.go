@@ -122,7 +122,7 @@ func TestImpersonatedSessions(t *testing.T) {
 
 		// A deadline extension lands (grant B)...
 		status, body = greer.do(ctx, http.MethodPatch, "/api/resources",
-			fmt.Appendf(nil, `[{"op":"patch","path":%q,"value":{"deadline":"2026-10-02T08:00:00Z"}}]`, opPath(anvil, "missions/"+missionConvoyID)))
+			fmt.Appendf(nil, `[{"op":"patch","path":%q,"value":{"deadline":%q}}]`, opPath(anvil, "missions/"+missionConvoyID), deadline(27)))
 		assertStatus(t, status, http.StatusOK, body)
 		// ...and the change event names the actor and the role.
 		source, _ := latestChangeEvent(t, db, "Missions", missionConvoyID)

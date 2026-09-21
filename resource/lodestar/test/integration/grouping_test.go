@@ -32,7 +32,7 @@ func TestDispatcherWriteGrouping(t *testing.T) {
 
 	// Both groups pass: Dunn flies with Hammer and Tongs, the hauler is open, and the
 	// deadline moves out.
-	status, body := patch(missionHaulerID, fmt.Sprintf(`{"assignedSquadronId":%q,"notes":"Hammer takes it","deadline":"2026-09-21T12:00:00Z"}`, squadronHammerID))
+	status, body := patch(missionHaulerID, fmt.Sprintf(`{"assignedSquadronId":%q,"notes":"Hammer takes it","deadline":%q}`, squadronHammerID, deadline(16)))
 	assertStatus(t, status, http.StatusOK, body)
 
 	// Notes-only on a claimed mission: grant B's deadline term degenerates to the
@@ -40,12 +40,12 @@ func TestDispatcherWriteGrouping(t *testing.T) {
 	status, body = patch(missionCorvidID, `{"notes":"Client called twice"}`)
 	assertStatus(t, status, http.StatusOK, body)
 
-	// A deadline pulled in fails the old-vs-new term.
-	status, body = patch(missionConvoyID, `{"deadline":"2026-09-29T08:00:00Z"}`)
+	// A deadline pulled in (the convoy is seeded at +25 days) fails the old-vs-new term.
+	status, body = patch(missionConvoyID, `{"deadline":"`+deadline(24)+`"}`)
 	assertStatus(t, status, http.StatusForbidden, body)
 	// ...and pushed out passes, even on an underway mission (grant B has no state
 	// restriction beyond the terminal states).
-	status, body = patch(missionConvoyID, `{"deadline":"2026-10-01T08:00:00Z"}`)
+	status, body = patch(missionConvoyID, `{"deadline":"`+deadline(26)+`"}`)
 	assertStatus(t, status, http.StatusOK, body)
 
 	// Assignment to a squadron Dunn does not fly with fails grant A, and the refusal

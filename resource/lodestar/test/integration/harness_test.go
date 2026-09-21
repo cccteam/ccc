@@ -103,14 +103,14 @@ const (
 	shipBrassCompassID  = "70000000-0000-4000-8000-000000000011" // Anvil Dock One
 	shipSlowBoatID      = "70000000-0000-4000-8000-000000000012" // Quarantine Bay
 
-	missionHaulerID     = "80000000-0000-4000-8000-000000000001" // anvil open, hazard 2, fee 8000, no cert, Halvard, booking
+	missionHaulerID     = "80000000-0000-4000-8000-000000000001" // anvil open, hazard 2, fee 8000, no cert, Halvard, booking, deadline seed+15d
 	missionCorvidID     = "80000000-0000-4000-8000-000000000002" // anvil claimed (Hammer), hazard 3, fee 24000, salvage, Meridian, booking, deadline now+3m
-	missionConvoyID     = "80000000-0000-4000-8000-000000000003" // anvil underway (Hammer), hazard 4, fee 15000, escort, Meridian, marshal
-	missionCourierID    = "80000000-0000-4000-8000-000000000004" // anvil on_hold (Tongs), hazard 1, fee 3000, no cert, Vellum, booking
+	missionConvoyID     = "80000000-0000-4000-8000-000000000003" // anvil underway (Hammer), hazard 4, fee 15000, escort, Meridian, marshal, deadline seed+25d
+	missionCourierID    = "80000000-0000-4000-8000-000000000004" // anvil on_hold (Tongs), hazard 1, fee 3000, no cert, Vellum, booking, deadline seed+20d
 	missionPodID        = "80000000-0000-4000-8000-000000000005" // anvil completed (Hammer), hazard 5, fee 40000, hazmat, Halvard, governor, settlement 38500
 	missionTowID        = "80000000-0000-4000-8000-000000000006" // anvil failed (Tongs), hazard 1, fee 2000, no cert, Halvard, dispatcher
 	missionBullionID    = "80000000-0000-4000-8000-000000000007" // anvil stood_down, hazard 3, fee 12000, escort, Bastion Relay, booking
-	missionQuarantineID = "80000000-0000-4000-8000-000000000008" // anvil open, hazard 2, fee 6000, no cert, Halvard, booking, deadline 2026-08-20 (overdue)
+	missionQuarantineID = "80000000-0000-4000-8000-000000000008" // anvil open, hazard 2, fee 6000, no cert, Halvard, booking, deadline seed-16d (overdue)
 	missionBeaconID     = "80000000-0000-4000-8000-000000000009" // bastion open, hazard 2, fee 5000, Bastion Relay, dispatcher
 	missionPatrolID     = "80000000-0000-4000-8000-000000000010" // bastion claimed (Portcullis), hazard 4, fee 20000, escort, governor
 	missionSweepID      = "80000000-0000-4000-8000-000000000011" // cinder completed, hazard 5, fee 60000
@@ -370,6 +370,13 @@ func membersEngineFor(controller access.Controller) access.Controller {
 // missionID names a seeded mission by its ordinal in schema/devseed.
 func missionID(n int) string {
 	return fmt.Sprintf("80000000-0000-4000-8000-%012d", n)
+}
+
+// deadline is a mission deadline a suite writes: days from now, in RFC 3339. The seed
+// writes every mission deadline relative to seed time (schema/devseed), so a suite's
+// written deadline keeps its distance from the seeded one on any calendar day.
+func deadline(days int) string {
+	return time.Now().UTC().AddDate(0, 0, days).Format(time.RFC3339)
 }
 
 // newAppWithDocuments assembles the App over the given document store, for the suites

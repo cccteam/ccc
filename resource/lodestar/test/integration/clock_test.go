@@ -26,14 +26,14 @@ func TestOverseerClockFlip(t *testing.T) {
 	// where the request Environment's instant is bound into the check-SELECT. What this
 	// suite pins is that the environment reaches the engine and the decision stays
 	// conditional (never denied, never granted) at instants on both sides of the seeded
-	// deadline — the flip itself is observed through the data layer below and live in
-	// the walkthrough.
+	// deadline (the quarantine courier's, sixteen days before seed time) — the flip
+	// itself is observed through the data layer below and live in the walkthrough.
 	tests := []struct {
 		name string
 		env  accesstypes.Environment
 	}{
-		{name: "an instant before the seeded deadline evaluates", env: accesstypes.EnvironmentAt(time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC))},
-		{name: "an instant after the seeded deadline evaluates", env: accesstypes.EnvironmentAt(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC))},
+		{name: "an instant before the seeded deadline evaluates", env: accesstypes.EnvironmentAt(time.Now().UTC().AddDate(0, 0, -17))},
+		{name: "an instant after the seeded deadline evaluates", env: accesstypes.EnvironmentAt(time.Now().UTC().AddDate(0, 0, -15))},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

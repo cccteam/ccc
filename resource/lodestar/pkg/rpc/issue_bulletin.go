@@ -9,7 +9,7 @@ import (
 
 type (
 	// IssueBulletin is the global, row-free RPC: the Bulletin Officer's Execute grant
-	// carries `now < '2027-06-30T00:00:00Z'` — an authorization with an expiry, folded
+	// carries `now < '2099-06-30T00:00:00Z'` — an authorization with an expiry, folded
 	// at decode time since no row exists to evaluate against.
 	//
 	// Demonstrates: rpc.row-free, condition.now.

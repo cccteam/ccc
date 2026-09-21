@@ -65,7 +65,7 @@ func TestChangeTracking(t *testing.T) {
 		{
 			name:       "a tracked resource's create writes its change event in the same transaction",
 			target:     "/api/resources",
-			ops:        fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Tracked create","hazard":1,"fee":100,"deadline":"2027-01-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientHalvardID),
+			ops:        fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Tracked create","hazard":1,"fee":100,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(365)),
 			table:      "Missions",
 			wantEvents: 1,
 		},

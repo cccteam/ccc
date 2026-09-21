@@ -64,6 +64,10 @@ req() { # req <persona> <method> <url> [body] [extra curl args...]
 
 dryrun() { req "$1" "$2" "$3" "$4" -H 'X-Dry-Run: true'; }
 
+days() { # days <+N|-N>: a mission deadline N days from now, RFC 3339; the seed writes its deadlines relative to seed time, so the walkthrough's keep their distance from them on any calendar day
+  date -u -d "$1 days" +%Y-%m-%dT%H:%M:%SZ
+}
+
 upload() { # upload <persona> <url> <json> <file>... [-H header]: a multipart @upload, the request part first, a file part per file; a -H after the files adds a header
   local p=$1 u=$2 json=$3; shift 3
   local parts=(); while [ $# -gt 0 ]; do case $1 in -H) parts+=(-H "$2"); shift 2;; *) parts+=(-F "file=@$1"); shift;; esac; done
@@ -254,13 +258,13 @@ r=$(req marshal GET "$ANVIL/missions?limit=200"); assert_py "the convoy complete
 r=$(req archivist GET "$ANVIL/ships-log-entries"); assert_py "the ship's log names 'lead as role Paymaster' on the settlement" "$r" "any('lead as role Paymaster' in e['eventSource'] for e in rows)"
 
 # ---- dispatcher: the two-grant PATCH ----
-r=$(req dispatcher PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$QUARANTINE\",\"value\":{\"notes\":\"client called\",\"deadline\":\"2026-12-01T00:00:00Z\"}}]"); check "dispatcher extends a deadline and notes it" 200 "$r"
-r=$(req dispatcher PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$QUARANTINE\",\"value\":{\"deadline\":\"2026-09-05T00:00:00Z\"}}]"); check "pulling a deadline in is refused (new.deadline >= deadline)" 403 "$r"
+r=$(req dispatcher PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$QUARANTINE\",\"value\":{\"notes\":\"client called\",\"deadline\":\"$(days +87)\"}}]"); check "dispatcher extends a deadline and notes it" 200 "$r"
+r=$(req dispatcher PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$QUARANTINE\",\"value\":{\"deadline\":\"$(days -1)\"}}]"); check "pulling a deadline in is refused (new.deadline >= deadline)" 403 "$r"
 r=$(req dispatcher PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$QUARANTINE\",\"value\":{\"assignedSquadronId\":\"50000000-0000-4000-8000-000000000004\"}}]"); check "assigning a foreign squadron is refused (new.x IN subject.set)" 403 "$r"
 
 # ---- booking: fee limit ----
-r=$(req booking PATCH "$API/resources" "[{\"op\":\"add\",\"path\":\"/sectors/anvil/missions\",\"value\":{\"clientId\":\"$HALVARD\",\"kindId\":\"courier\",\"title\":\"Walkthrough booking\",\"hazard\":1,\"fee\":26000,\"deadline\":\"2027-01-01T00:00:00Z\"}}]"); check "booking over the fee limit is refused" 403 "$r"
-r=$(req booking PATCH "$API/resources" "[{\"op\":\"add\",\"path\":\"/sectors/anvil/missions\",\"value\":{\"clientId\":\"$HALVARD\",\"kindId\":\"courier\",\"title\":\"Walkthrough booking\",\"hazard\":1,\"fee\":9000,\"deadline\":\"2027-01-01T00:00:00Z\"}}]"); check "booking within the fee limit" 200 "$r"
+r=$(req booking PATCH "$API/resources" "[{\"op\":\"add\",\"path\":\"/sectors/anvil/missions\",\"value\":{\"clientId\":\"$HALVARD\",\"kindId\":\"courier\",\"title\":\"Walkthrough booking\",\"hazard\":1,\"fee\":26000,\"deadline\":\"$(days +365)\"}}]"); check "booking over the fee limit is refused" 403 "$r"
+r=$(req booking PATCH "$API/resources" "[{\"op\":\"add\",\"path\":\"/sectors/anvil/missions\",\"value\":{\"clientId\":\"$HALVARD\",\"kindId\":\"courier\",\"title\":\"Walkthrough booking\",\"hazard\":1,\"fee\":9000,\"deadline\":\"$(days +365)\"}}]"); check "booking within the fee limit" 200 "$r"
 
 # ---- the briefing: the client-form method ----
 r=$(req marshal POST "$ANVIL/compile-briefing" '{"includeHazards":true}'); check "the marshal compiles a briefing (a method that runs outside a transaction)" 200 "$r"
@@ -420,7 +424,7 @@ r=$(req governor DELETE "$API/impersonations/$MINTED"); check "the governor revo
 r=$(req marshal GET "$ANVIL/missions"); check "the revoked console's next request is refused" 401 "$r"
 login marshal
 r=$(req governor POST "$API/impersonate" '{"kind":"role","principal":"Dispatcher","reason":"walkthrough"}'); check "governor assumes the Dispatcher role" 200 "$r"
-r=$(req governor PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$COURIER\",\"value\":{\"deadline\":\"2026-12-02T00:00:00Z\"}}]"); check "deadline extended under the role (grant B, on hold is not terminal)" 200 "$r"
+r=$(req governor PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$COURIER\",\"value\":{\"deadline\":\"$(days +88)\"}}]"); check "deadline extended under the role (grant B, on hold is not terminal)" 200 "$r"
 r=$(req governor PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$CORVID\",\"value\":{\"assignedSquadronId\":\"$HAMMER\"}}]"); check "assignment refused on a claimed mission: subject is Greer, not a dispatcher" 403 "$r"
 r=$(req archivist GET "$ANVIL/ships-log-entries"); assert_py "the log names 'governor as role Dispatcher'" "$r" "any('governor as role Dispatcher' in e['eventSource'] for e in rows)"
 

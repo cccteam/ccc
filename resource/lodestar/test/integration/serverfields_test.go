@@ -180,19 +180,19 @@ func TestMissionCreateDefaultsAndValidator(t *testing.T) {
 
 	// The validator rejects a deadline that has passed — someone is waiting.
 	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Too late","hazard":2,"fee":100,"deadline":"2020-01-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientHalvardID))
+		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Too late","hazard":2,"fee":100,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(-1)))
 	if status != http.StatusBadRequest {
 		t.Fatalf("past deadline: status = %d, want 400: %s", status, body)
 	}
 	status, body = doRequest(t, h, http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Too hazardous","hazard":9,"fee":100,"deadline":"2027-01-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientHalvardID))
+		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Too hazardous","hazard":9,"fee":100,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(365)))
 	if status != http.StatusBadRequest {
 		t.Fatalf("hazard 9: status = %d, want 400: %s", status, body)
 	}
 
 	// The defaults type fills an omitted hazard at the lowest class.
 	status, body = doRequest(t, h, http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"courier","title":"Defaulted hazard","fee":100,"deadline":"2027-01-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientHalvardID))
+		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"courier","title":"Defaulted hazard","fee":100,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(365)))
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["missions"].([]any)
 	id, _ := ids[0].(string)

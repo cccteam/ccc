@@ -51,7 +51,7 @@ func TestConsolidatedBatchSemantics(t *testing.T) {
 
 	createGrants := grants{accesstypes.Create: withFields(missionsResource, "clientId", "kindId", "title", "hazard", "fee", "deadline")}
 	value := func(title string) string {
-		return fmt.Sprintf(`{"clientId":%q,"kindId":"courier","title":%q,"hazard":1,"fee":100,"deadline":"2027-01-01T00:00:00Z"}`, clientHalvardID, title)
+		return fmt.Sprintf(`{"clientId":%q,"kindId":"courier","title":%q,"hazard":1,"fee":100,"deadline":%q}`, clientHalvardID, title, deadline(365))
 	}
 
 	tests := []struct {

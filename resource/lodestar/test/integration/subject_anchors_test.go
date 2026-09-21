@@ -100,10 +100,10 @@ func TestSubjectAnchorWrites(t *testing.T) {
 		// keeps Bex off the Pilot's board (Bex holds no Pilot role anyway), while the
 		// fee limit admits a 25000 booking and refuses 25001.
 		status, body := doRequestAs(t, h, "booking", http.MethodPatch, "/api/resources",
-			fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"escort","title":"At the limit","hazard":2,"fee":25000,"deadline":"2027-02-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientMeridianID))
+			fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"escort","title":"At the limit","hazard":2,"fee":25000,"deadline":%q}}]`, opPath(anvil, "missions"), clientMeridianID, deadline(400)))
 		assertStatus(t, status, http.StatusOK, body)
 		status, body = doRequestAs(t, h, "booking", http.MethodPatch, "/api/resources",
-			fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"escort","title":"Over the limit","hazard":2,"fee":25001,"deadline":"2027-02-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientMeridianID))
+			fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"escort","title":"Over the limit","hazard":2,"fee":25001,"deadline":%q}}]`, opPath(anvil, "missions"), clientMeridianID, deadline(400)))
 		assertStatus(t, status, http.StatusForbidden, body)
 	})
 }

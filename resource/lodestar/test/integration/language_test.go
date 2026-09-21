@@ -63,7 +63,7 @@ func TestConditionLanguage(t *testing.T) {
 			construct: "deadline < now AND state NOT IN (...)",
 			user:      "overseer",
 			target:    sectorPath(anvil, "missions?limit=200"),
-			wantIDs:   []string{missionQuarantineID}, // the Corvid deadline is bootstrap+3m, still ahead at test time; the filler's open deadlines are in October
+			wantIDs:   []string{missionQuarantineID}, // the Corvid deadline is bootstrap+3m, still ahead at test time; the filler's open deadlines are weeks ahead of seed time
 		},
 		{
 			name:      "booking: > over a decimal OR subject scalar",
@@ -140,7 +140,7 @@ func TestConditionLanguage(t *testing.T) {
 		},
 		{
 			name:      "hazard analyst: row-free now on a computed resource admits the board today",
-			construct: "now < '2027-01-01T00:00:00Z'",
+			construct: "now < '2099-01-01T00:00:00Z'",
 			user:      "hazards",
 			target:    sectorPath(anvil, "sector-hazard-boards"),
 			wantIDs:   nil, // the board keys are compound; presence is asserted below
@@ -203,14 +203,14 @@ func TestConditionLanguageWrites(t *testing.T) {
 			name:       "booking: insert image within the fee limit is admitted",
 			construct:  "new.fee <= subject.feeLimit",
 			user:       "booking",
-			body:       `[{"op":"add","path":"` + opPath(anvil, "missions") + `","value":{"clientId":"` + clientHalvardID + `","kindId":"courier","title":"Within limit","hazard":1,"fee":24000,"deadline":"2027-01-01T00:00:00Z"}}]`,
+			body:       `[{"op":"add","path":"` + opPath(anvil, "missions") + `","value":{"clientId":"` + clientHalvardID + `","kindId":"courier","title":"Within limit","hazard":1,"fee":24000,"deadline":"` + deadline(365) + `"}}]`,
 			wantStatus: http.StatusOK,
 		},
 		{
 			name:       "booking: insert image over the fee limit is refused",
 			construct:  "new.fee <= subject.feeLimit (refused)",
 			user:       "booking",
-			body:       `[{"op":"add","path":"` + opPath(anvil, "missions") + `","value":{"clientId":"` + clientHalvardID + `","kindId":"courier","title":"Over limit","hazard":1,"fee":26000,"deadline":"2027-01-01T00:00:00Z"}}]`,
+			body:       `[{"op":"add","path":"` + opPath(anvil, "missions") + `","value":{"clientId":"` + clientHalvardID + `","kindId":"courier","title":"Over limit","hazard":1,"fee":26000,"deadline":"` + deadline(365) + `"}}]`,
 			wantStatus: http.StatusForbidden,
 		},
 		{

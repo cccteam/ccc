@@ -20,7 +20,7 @@ type (
 	// droids outlet only; this computed resource is how the browser sees them. Its
 	// compound key is declared with two primarykey annotations, and it is the one
 	// place a CONDITIONAL grant lands on a computed resource: the Hazard Analyst's
-	// List grant carries the row-free `now < '2027-01-01T00:00:00Z'`, so the board
+	// List grant carries the row-free `now < '2099-01-01T00:00:00Z'`, so the board
 	// goes dark when the certification lapses.
 	//
 	// Recent is a NESTED field: the readings behind the worst one, newest first.

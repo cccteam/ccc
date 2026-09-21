@@ -51,7 +51,7 @@ func TestMissionWorkflow(t *testing.T) {
 
 	// The wire cannot express a state write: the patch decode is closed over statusId.
 	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Smuggled state","hazard":1,"fee":100,"deadline":"2027-01-01T00:00:00Z","statusId":"completed"}}]`, opPath(anvil, "missions"), clientHalvardID))
+		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Smuggled state","hazard":1,"fee":100,"deadline":%q,"statusId":"completed"}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(365)))
 	if status != http.StatusBadRequest {
 		t.Fatalf("statusId on the wire: status = %d, want 400: %s", status, body)
 	}
@@ -59,7 +59,7 @@ func TestMissionWorkflow(t *testing.T) {
 	// Create as a specific user: BookedBy is server-stamped from the session and the
 	// initial state comes from the @state default, never the client.
 	status, body = doRequestAs(t, h, "workflow-booker", http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Drifting lifeboat","hazard":2,"fee":5000,"deadline":"2027-01-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientHalvardID))
+		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Drifting lifeboat","hazard":2,"fee":5000,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(365)))
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["missions"].([]any)
 	if len(ids) != 1 {

@@ -40,7 +40,7 @@ func TestValueLimit(t *testing.T) {
 		return fmt.Sprintf(`[{"op":"add","path":%q,"value":{"hangarId":%q,"classId":%q,"registry":%q,"name":"Long Registry"}}]`, opPath(anvil, "ships"), hangarAnvilDockID, shipClassKestrelID, registry)
 	}
 	mission := func(fee string) string {
-		return fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"courier","title":"Priced to the decimal","hazard":1,"fee":%s,"deadline":"2027-01-01T00:00:00Z"}}]`, opPath(anvil, "missions"), clientHalvardID, fee)
+		return fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"courier","title":"Priced to the decimal","hazard":1,"fee":%s,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, fee, deadline(365))
 	}
 	reprice := func(fee string) string {
 		return fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"fee":%s}}]`, opPath(anvil, "missions/"+missionHaulerID), fee)

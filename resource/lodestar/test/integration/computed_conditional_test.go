@@ -2,7 +2,7 @@
 package integration
 
 // computed_conditional_test (design plan §9): the hazard board answers under the
-// analyst's row-free `now < '2027-01-01T00:00:00Z'` grant before the certification
+// analyst's row-free `now < '2099-01-01T00:00:00Z'` grant before the certification
 // instant and refuses after it (pinned through the engine at two instants), and a
 // row-bearing condition on the same grant is refused by MigrateRoles.
 
@@ -54,7 +54,7 @@ func TestComputedConditionalGrant(t *testing.T) {
 		t.Parallel()
 
 		checker := client.ForUser("hazards")
-		before, err := checker.Check(ctx, accesstypes.EnvironmentAt(time.Date(2026, 12, 31, 23, 59, 0, 0, time.UTC)),
+		before, err := checker.Check(ctx, accesstypes.EnvironmentAt(time.Date(2098, 12, 31, 23, 59, 0, 0, time.UTC)),
 			accesstypes.DomainScope(anvil), accesstypes.List, "SectorHazardBoards")
 		if err != nil {
 			t.Fatalf("Check() before error = %v", err)
@@ -62,7 +62,7 @@ func TestComputedConditionalGrant(t *testing.T) {
 		if !before["SectorHazardBoards"].IsGranted() {
 			t.Errorf("before the instant: %v, want granted (the row-free term folds true)", before["SectorHazardBoards"])
 		}
-		after, err := checker.Check(ctx, accesstypes.EnvironmentAt(time.Date(2027, 1, 1, 0, 0, 1, 0, time.UTC)),
+		after, err := checker.Check(ctx, accesstypes.EnvironmentAt(time.Date(2099, 1, 1, 0, 0, 1, 0, time.UTC)),
 			accesstypes.DomainScope(anvil), accesstypes.List, "SectorHazardBoards")
 		if err != nil {
 			t.Fatalf("Check() after error = %v", err)

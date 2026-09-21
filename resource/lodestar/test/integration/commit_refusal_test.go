@@ -51,7 +51,7 @@ func TestCommitRefusal(t *testing.T) {
 		missingID       = "10000000-0000-4000-8000-000000000098"
 	)
 	mission := func(clientID, title string, hazard int) string {
-		return fmt.Sprintf(`{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"courier","title":%q,"hazard":%d,"fee":100,"deadline":"2027-01-01T00:00:00Z"}}`, opPath(anvil, "missions"), clientID, title, hazard)
+		return fmt.Sprintf(`{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"courier","title":%q,"hazard":%d,"fee":100,"deadline":%q}}`, opPath(anvil, "missions"), clientID, title, hazard, deadline(365))
 	}
 	remove := func(rest string) string {
 		return fmt.Sprintf(`{"op":"remove","path":%q}`, opPath(anvil, rest))
