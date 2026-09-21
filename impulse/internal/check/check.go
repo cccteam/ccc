@@ -130,6 +130,7 @@ func All() []Check {
 		eslintIgnore{},
 		resourceStyles{},
 		packageManager{},
+		testRunner{},
 		paging{},
 		rpcExecute{},
 		sitesGenerators{},

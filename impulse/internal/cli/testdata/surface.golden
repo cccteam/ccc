@@ -108,6 +108,7 @@ checks:
   eslint-ignore
   resource-styles
   package-manager
+  test-runner
   paging
   rpc-execute
   sites-generators

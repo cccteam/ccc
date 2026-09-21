@@ -113,10 +113,20 @@ elsewhere. Then `overmind start` runs everything: the console at http://127.0.0.
 and the portal at http://127.0.0.1:4303/portal/ (the sign-in button signs in as the
 simulated directory's `client`).
 
+Both projects' component specs run on Angular's unit-test builder (`@angular/build:unit-test`)
+with Vitest under jsdom in Node: no browser, no Karma. `bun run test` runs the console's and
+then the portal's once, the form the Checks section and CI use; `bun ng test console` or
+`bun ng test portal` watches one. The specs beside the skeleton's components are the
+pattern for the application's own: each dashboard renders a permission digest over a
+scripted client from `@cccteam/resource-angular/testing` (`provideResourceTesting` puts the
+generated client on a transport that records every request and answers from the test),
+and the login pages, headers, top bars, footers, and shells have creation specs with the
+same providers; the portal's login spec is the directory sign-in's.
+
 ## Checks
 
     go generate ./...           # regenerate; cmd/generate's test fails on drift
     go test -tags skipAuth ./...  # needs podman for the emulator; the tag simulates the
                                   # portal's directory, and the portal login tests skip without it
     golangci-lint-v2 run
-    cd web && bun run build && bun run lint
+    cd web && bun run build && bun run lint && bun run test

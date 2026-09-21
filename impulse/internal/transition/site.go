@@ -1126,7 +1126,7 @@ func (s Site) copyWorkspace(a *app.App, from, to string, ch *Change) (project st
 	// The project takes the site's name: its directory, and its name in the workspace
 	// configuration (not in the sources, where the word may mean something else).
 	project = old.Name
-	if old.Name != s.Name && old.Root != "" && old.Root != "." && s.renameProject(a, to, old, port) {
+	if old.Name != s.Name && old.Root != "" && old.Root != "." && s.renameProject(a, to, &old, port) {
 		project = s.Name
 	}
 	ch.didf("%s: the %s site's browser workspace, a copy of %s with its project named %s on port %d; its titles and API prefix still say what the %s site's do", to, s.Name, from, project, port, old.Name)
@@ -1197,7 +1197,7 @@ func workspaceName(pkg []byte) string {
 // angular.json, and reports whether the move succeeded. The lockfile spells the workspace
 // name too, and only there does the word mean the workspace (a dependency named like the
 // site keeps its name), so it follows package.json's name rather than the word.
-func (s Site) renameProject(a *app.App, to string, old app.AngularProject, port int) bool {
+func (s Site) renameProject(a *app.App, to string, old *app.AngularProject, port int) bool {
 	if err := moveTree(a, path.Join(to, old.Root), path.Join(to, s.Name)); err != nil {
 		return false
 	}

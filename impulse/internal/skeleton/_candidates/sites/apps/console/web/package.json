@@ -6,6 +6,7 @@
     "start": "ng serve console --no-hmr",
     "build": "ng build console",
     "lint": "ng lint console",
+    "test": "ng test console --watch=false",
     "ccclib:local": "./ccclib.sh local",
     "ccclib:push": "./ccclib.sh push",
     "ccclib:restore": "./ccclib.sh restore"
@@ -34,15 +35,17 @@
     "@cccteam/resource": "file:.yalc/@cccteam/resource"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^21.1.1",
+    "@angular/build": "^21.1.1",
     "@angular/cli": "^21.1.1",
     "@angular/compiler-cli": "^21.1.1",
     "@types/node": "^25.0.10",
     "angular-eslint": "^21.1.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^27.1.0",
     "prettier": "3.8.1",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.0.8"
   }
 }

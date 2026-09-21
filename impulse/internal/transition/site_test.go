@@ -258,8 +258,16 @@ func TestSiteApplyPromotes(t *testing.T) {
 			t.Errorf("portal angular.json lacks %q", want)
 		}
 	}
-	if pkg := read(t, a, "apps/portal/web/package.json"); !strings.Contains(pkg, `"start:portal": "ng serve portal --no-hmr"`) {
-		t.Errorf("portal package.json = %q", pkg)
+	// The scripts are renamed for the project, the test script with its flags kept, and the
+	// spec tsconfig came along with the project copy.
+	pkg := read(t, a, "apps/portal/web/package.json")
+	for _, want := range []string{`"start:portal": "ng serve portal --no-hmr"`, `"test": "ng test portal --watch=false"`} {
+		if !strings.Contains(pkg, want) {
+			t.Errorf("portal package.json lacks %s:\n%s", want, pkg)
+		}
+	}
+	if _, err := os.Stat(a.Abs("apps/portal/web/portal/tsconfig.spec.json")); err != nil {
+		t.Errorf("the portal site's spec tsconfig: %v", err)
 	}
 	// Each site's workspace is named for it, in the manifest and the lockfile alike.
 	for rel, want := range map[string]string{

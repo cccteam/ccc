@@ -88,9 +88,18 @@ both packages to the local yalc store, links them, and runs `bun install`):
 elsewhere. Then `overmind start` runs everything, with `ng serve` for the console at
 http://127.0.0.1:4301 proxying `/api` to the server.
 
+The console's component specs run on Angular's unit-test builder (`@angular/build:unit-test`)
+with Vitest under jsdom in Node: no browser, no Karma. `bun run test` runs them once, the
+form the Checks section and CI use; `bun ng test console` watches. The specs beside the
+skeleton's components are the pattern for the application's own: the dashboard renders a
+permission digest over a scripted client from `@cccteam/resource-angular/testing`
+(`provideResourceTesting` puts the generated client on a transport that records every
+request and answers from the test), and the login page, header, top bar, footer, and shell
+have creation specs with the same providers.
+
 ## Checks
 
     go generate ./...           # regenerate; cmd/generate's test fails on drift
     go test ./...               # needs podman for the emulator
     golangci-lint-v2 run
-    cd web && bun run build && bun run lint
+    cd web && bun run build && bun run lint && bun run test

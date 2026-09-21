@@ -113,6 +113,12 @@ const beaconAngular = `{
             }
           },
           "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "console/tsconfig.spec.json"
+          }
         }
       }
     }
@@ -131,6 +137,7 @@ const beaconPackage = `{
     "start:console": "ng serve console --no-hmr",
     "build": "ng build console",
     "lint": "ng lint console",
+    "test": "ng test console --watch=false",
     "ccclib:local": "./ccclib.sh local"
   },
   "private": true
@@ -162,6 +169,8 @@ func beacon(t *testing.T, extra map[string]string) *app.App {
 		"web/package.json":                               beaconPackage,
 		"web/console/proxy.conf.js":                      "module.exports = {\n  '/api/': {\n    target: 'http://127.0.0.1:8090',\n  },\n};\n",
 		"web/console/tsconfig.app.json":                  "{\n  \"compilerOptions\": {\n    \"outDir\": \"../out-tsc/console\"\n  }\n}\n",
+		"web/console/tsconfig.spec.json":                 "{\n  \"extends\": \"./tsconfig.app.json\",\n  \"include\": [\"src/**/*.spec.ts\"]\n}\n",
+		"web/console/src/app/app.component.spec.ts":      "// the spec the copy carries over\n",
 		"web/console/src/index.html":                     "<html>\n  <head>\n    <title>Beacon</title>\n    <base href=\"/\" />\n  </head>\n</html>\n",
 		"web/console/src/environments/environment.ts":    "export const environment = {\n  production: false,\n  baseUrl: '',\n  apiUrl: '/api',\n};\n",
 		"web/console/src/app/core/api/api.ts":            "import { Api } from '@app/service/zz_gen_api';\nexport const api = new Api();\n",
@@ -286,7 +295,7 @@ func TestOutletApply(t *testing.T) {
 				`cmd/generate/resourcegenerator/main.go: added GenerateTypescript("web/portal/src/app/core/service", ForOutlet("portal"), ...) with the default target's options`,
 				"copied the console browser project to web/portal, rewriting its API prefix (/api to /portal/api), base path (/portal/), and output paths; its titles still say console",
 				"web/angular.json: added the portal project as a copy of console, serving under /portal on port 4301",
-				"web/package.json: added start:portal and extended build and lint to the portal project",
+				"web/package.json: added start:portal and extended build, lint, and test to the portal project",
 				"Procfile: added the portal process, a copy of console running start:portal",
 				"ran go generate ./..., which emitted the portal outlet's routes and handlers and its browser client",
 			},
@@ -303,6 +312,13 @@ func TestOutletApply(t *testing.T) {
 				}
 				if got := read(t, a, "web/portal/tsconfig.app.json"); !strings.Contains(got, "out-tsc/portal") {
 					t.Errorf("tsconfig.app.json = %q", got)
+				}
+				// The spec tsconfig and the specs ride along: the copied project tests as the console does.
+				if got := read(t, a, "web/portal/tsconfig.spec.json"); !strings.Contains(got, "./tsconfig.app.json") {
+					t.Errorf("tsconfig.spec.json = %q", got)
+				}
+				if _, err := os.Stat(a.Abs("web/portal/src/app/app.component.spec.ts")); err != nil {
+					t.Errorf("the console's spec was not copied: %v", err)
 				}
 				if got := read(t, a, "web/portal/src/app/core/api/api.ts"); !strings.Contains(got, "zz_gen_api") {
 					t.Errorf("api.ts = %q", got)
@@ -339,6 +355,12 @@ func TestOutletApply(t *testing.T) {
 									} `json:"development"`
 								} `json:"configurations"`
 							} `json:"serve"`
+							Test struct {
+								Builder string `json:"builder"`
+								Options struct {
+									TsConfig string `json:"tsConfig"`
+								} `json:"options"`
+							} `json:"test"`
 						} `json:"architect"`
 					} `json:"projects"`
 				}
@@ -353,8 +375,9 @@ func TestOutletApply(t *testing.T) {
 					portal.Root, portal.SourceRoot, portal.Architect.Build.Options.BaseHref, portal.Architect.Build.Options.OutputPath.Base,
 					portal.Architect.Build.Options.TsConfig, portal.Architect.Serve.Options.ServePath, portal.Architect.Serve.Options.ProxyConfig,
 					portal.Architect.Serve.Configurations.Development.BuildTarget,
+					portal.Architect.Test.Builder, portal.Architect.Test.Options.TsConfig,
 				}
-				want := []string{"portal", "portal/src", "/portal/", "dist/portal", "portal/tsconfig.app.json", "/portal", "portal/proxy.conf.js", "portal:build:development"}
+				want := []string{"portal", "portal/src", "/portal/", "dist/portal", "portal/tsconfig.app.json", "/portal", "portal/proxy.conf.js", "portal:build:development", "@angular/build:unit-test", "portal/tsconfig.spec.json"}
 				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("portal project mismatch (-want +got):\n%s", diff)
 				}
@@ -370,6 +393,7 @@ func TestOutletApply(t *testing.T) {
 					"    \"start:console\": \"ng serve console --no-hmr\",\n    \"start:portal\": \"ng serve portal --no-hmr\",\n",
 					`"build": "ng build console && ng build portal"`,
 					`"lint": "ng lint console && ng lint portal"`,
+					`"test": "ng test console --watch=false && ng test portal --watch=false"`,
 				} {
 					if !strings.Contains(pkg, want) {
 						t.Errorf("package.json lacks %q:\n%s", want, pkg)

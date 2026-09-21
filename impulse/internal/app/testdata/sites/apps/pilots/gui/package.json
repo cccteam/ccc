@@ -2,6 +2,7 @@
   "name": "pilots",
   "scripts": {
     "start": "bun run ng serve",
-    "lint": "npx eslint ."
+    "lint": "npx eslint .",
+    "test": "ng test pilots"
   }
 }

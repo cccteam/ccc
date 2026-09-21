@@ -507,11 +507,12 @@ func (o Outlet) registerScripts(a *app.App, webDir, from string, ch *Change) {
 	indent, flags := text[m[2]:m[3]], text[m[4]:m[5]]
 	added := fmt.Sprintf("%s\"start:%s\": \"ng serve %s%s\",\n", indent, o.Name, o.Name, flags)
 	text = text[:m[1]] + added + text[m[1]:]
-	for _, script := range []string{"build", "lint"} {
-		re := regexp.MustCompile(`"` + script + `":\s*"(ng ` + script + ` [^"]*)"`)
-		if sm := re.FindStringSubmatchIndex(text); sm != nil {
-			value := text[sm[2]:sm[3]]
-			text = text[:sm[2]] + value + " && ng " + script + " " + o.Name + text[sm[3]:]
+	var extended []string
+	for _, script := range workspaceScripts {
+		edited, ok := extendScript(text, script, from, o.Name)
+		if ok {
+			text = edited
+			extended = append(extended, script)
 		}
 	}
 	if err := os.WriteFile(a.Abs(rel), []byte(text), mode); err != nil {
@@ -519,7 +520,54 @@ func (o Outlet) registerScripts(a *app.App, webDir, from string, ch *Change) {
 
 		return
 	}
-	ch.didf("%s: added start:%s and extended build and lint to the %s project", rel, o.Name, o.Name)
+	if len(extended) == 0 {
+		ch.didf("%s: added start:%s for the %s project", rel, o.Name, o.Name)
+
+		return
+	}
+	ch.didf("%s: added start:%s and extended %s to the %s project", rel, o.Name, joinAnd(extended), o.Name)
+}
+
+// workspaceScripts are the package scripts that run once per project and grow a segment
+// per outlet: ng build, ng lint, and ng test, each project's segment carrying the flags
+// the first project's does (ng test console --watch=false, so bun run test stays the
+// single-run form).
+var workspaceScripts = []string{"build", "lint", "test"}
+
+// scriptFlags are the flags a project's segment of a workspace script carries.
+const scriptFlags = `((?: --?[^\s"&]+)*)`
+
+// extendScript appends the project's segment to the named workspace script after the
+// from project's, with the same flags, and reports whether the script had a segment to
+// follow.
+func extendScript(text, script, from, project string) (string, bool) {
+	valueRE := regexp.MustCompile(`"` + script + `":\s*"([^"]*)"`)
+	vm := valueRE.FindStringSubmatchIndex(text)
+	if vm == nil {
+		return text, false
+	}
+	segmentRE := regexp.MustCompile(`\bng ` + script + ` ` + regexp.QuoteMeta(from) + scriptFlags)
+	sm := segmentRE.FindStringSubmatch(text[vm[2]:vm[3]])
+	if sm == nil {
+		return text, false
+	}
+
+	return text[:vm[3]] + " && ng " + script + " " + project + sm[1] + text[vm[3]:], true
+}
+
+// joinAnd writes a list the way a sentence does: "build", "build and lint", "build,
+// lint, and test".
+func joinAnd(words []string) string {
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		return words[0]
+	case 2:
+		return words[0] + " and " + words[1]
+	default:
+		return strings.Join(words[:len(words)-1], ", ") + ", and " + words[len(words)-1]
+	}
 }
 
 // registerProcess adds a Procfile process for the outlet's dev server, copied from the

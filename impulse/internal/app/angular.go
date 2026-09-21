@@ -13,6 +13,9 @@ import (
 // AngularProject is one project of a browser workspace's angular.json.
 type AngularProject struct {
 	Name string
+	// ProjectType is "application" or "library"; an entry naming neither is read as an
+	// application.
+	ProjectType string
 	// Root and SourceRoot are the project's directories relative to the workspace.
 	Root       string
 	SourceRoot string
@@ -21,6 +24,13 @@ type AngularProject struct {
 	ProxyConfig string
 	// DevPort is the development serve configuration's port, 0 when unset.
 	DevPort int
+	// TestBuilder is the test target's builder, empty when the project has no test
+	// target.
+	TestBuilder string
+	// TestTsConfig is the test target's tsConfig option relative to the workspace,
+	// empty when the target names none (the builder then reads tsconfig.spec.json from
+	// the project root).
+	TestTsConfig string
 }
 
 // ReadAngular reads the projects of the browser workspace at the root-relative
@@ -32,9 +42,10 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 	}
 	var angular struct {
 		Projects map[string]struct {
-			Root       string `json:"root"`
-			SourceRoot string `json:"sourceRoot"`
-			Architect  struct {
+			ProjectType string `json:"projectType"`
+			Root        string `json:"root"`
+			SourceRoot  string `json:"sourceRoot"`
+			Architect   struct {
 				Serve struct {
 					Options struct {
 						ProxyConfig string `json:"proxyConfig"`
@@ -45,6 +56,12 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 						} `json:"development"`
 					} `json:"configurations"`
 				} `json:"serve"`
+				Test struct {
+					Builder string `json:"builder"`
+					Options struct {
+						TsConfig string `json:"tsConfig"`
+					} `json:"options"`
+				} `json:"test"`
 			} `json:"architect"`
 		} `json:"projects"`
 	}
@@ -55,11 +72,14 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 	projects := make([]AngularProject, 0, len(angular.Projects))
 	for name, p := range angular.Projects {
 		projects = append(projects, AngularProject{
-			Name:        name,
-			Root:        path.Clean(p.Root),
-			SourceRoot:  path.Clean(p.SourceRoot),
-			ProxyConfig: p.Architect.Serve.Options.ProxyConfig,
-			DevPort:     p.Architect.Serve.Configurations.Development.Port,
+			Name:         name,
+			ProjectType:  p.ProjectType,
+			Root:         path.Clean(p.Root),
+			SourceRoot:   path.Clean(p.SourceRoot),
+			ProxyConfig:  p.Architect.Serve.Options.ProxyConfig,
+			DevPort:      p.Architect.Serve.Configurations.Development.Port,
+			TestBuilder:  p.Architect.Test.Builder,
+			TestTsConfig: p.Architect.Test.Options.TsConfig,
 		})
 	}
 	sort.Slice(projects, func(i, j int) bool { return projects[i].Name < projects[j].Name })

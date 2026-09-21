@@ -2,6 +2,9 @@
   "version": 1,
   "projects": {
     "console": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
       "architect": {
         "build": {
           "options": {
@@ -9,6 +12,12 @@
               "@angular/material/prebuilt-themes/azure-blue.css",
               "src/styles.scss"
             ]
+          }
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "tsconfig.spec.json"
           }
         }
       }

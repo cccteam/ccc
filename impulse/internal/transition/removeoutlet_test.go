@@ -68,7 +68,7 @@ func TestRemoveOutletApply(t *testing.T) {
 				`cmd/generate/resourcegenerator/main.go: removed GenerateTypescript("web/portal/src/app/core/service", ForOutlet("portal"), ...)`,
 				"deleted the portal browser project, web/portal, with the portal outlet's generated client",
 				"web/angular.json: removed the portal project",
-				"web/package.json: removed the portal project's scripts and its part of build and lint",
+				"web/package.json: removed the portal project's scripts and its part of build, lint, and test",
 				"Procfile: removed the portal process; the comments that describe it are still there",
 				"pkg/resources/announcements.go: Announcement stay on their other outlets; portal is out of their @outlet lists",
 				"ran go generate ./..., which regenerated without the portal outlet",

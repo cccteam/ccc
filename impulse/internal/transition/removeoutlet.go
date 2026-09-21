@@ -244,8 +244,8 @@ func (r RemoveOutlet) unregisterProject(a *app.App, webDir, project string, ch *
 	return nil
 }
 
-// unregisterScripts removes the project's start, build, and lint scripts and takes it
-// out of the workspace-wide build and lint scripts.
+// unregisterScripts removes the project's start, build, lint, and test scripts and takes
+// its segment (flags included) out of the workspace-wide build, lint, and test scripts.
 func (r RemoveOutlet) unregisterScripts(a *app.App, webDir, project string, ch *Change) {
 	rel := path.Join(webDir, "package.json")
 	data, mode, err := readFile(a, rel)
@@ -255,10 +255,15 @@ func (r RemoveOutlet) unregisterScripts(a *app.App, webDir, project string, ch *
 		return
 	}
 	text := string(data)
-	edited := regexp.MustCompile(`(?m)^[ \t]*"(start|build|lint):`+regexp.QuoteMeta(project)+`":\s*"[^"]*",?\n`).ReplaceAllString(text, "")
-	for _, script := range []string{"build", "lint"} {
-		edited = regexp.MustCompile(` && ng `+script+` `+regexp.QuoteMeta(project)+`\b`).ReplaceAllString(edited, "")
-		edited = regexp.MustCompile(`\bng `+script+` `+regexp.QuoteMeta(project)+` && `).ReplaceAllString(edited, "")
+	edited := regexp.MustCompile(`(?m)^[ \t]*"(start|build|lint|test):`+regexp.QuoteMeta(project)+`":\s*"[^"]*",?\n`).ReplaceAllString(text, "")
+	var retracted []string
+	for _, script := range workspaceScripts {
+		before := edited
+		edited = regexp.MustCompile(` && ng `+script+` `+regexp.QuoteMeta(project)+`\b`+scriptFlags).ReplaceAllString(edited, "")
+		edited = regexp.MustCompile(`\bng `+script+` `+regexp.QuoteMeta(project)+`\b`+scriptFlags+` && `).ReplaceAllString(edited, "")
+		if edited != before {
+			retracted = append(retracted, script)
+		}
 	}
 	// A script removed from the end of the block leaves a comma JSON forbids.
 	edited = regexp.MustCompile(`,(\s*\n\s*})`).ReplaceAllString(edited, "$1")
@@ -272,7 +277,12 @@ func (r RemoveOutlet) unregisterScripts(a *app.App, webDir, project string, ch *
 
 		return
 	}
-	ch.didf("%s: removed the %s project's scripts and its part of build and lint", rel, project)
+	if len(retracted) == 0 {
+		ch.didf("%s: removed the %s project's scripts", rel, project)
+
+		return
+	}
+	ch.didf("%s: removed the %s project's scripts and its part of %s", rel, project, joinAnd(retracted))
 }
 
 // unregisterProcess removes the Procfile process running the project's dev server.

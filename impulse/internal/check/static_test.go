@@ -211,6 +211,29 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no browser apps",
 		},
 		{
+			name: "test-runner flat: the console is wired, the portal has nothing", fixture: "flat", check: testRunner{},
+			wantStatus: Fail, wantSummary: "3 test wiring problem(s)",
+			wantDetails: []string{
+				"web/portal/angular.json: project portal has no test target (add one on @angular/build:unit-test)",
+				"web/portal/tsconfig.spec.json: project portal's spec tsconfig does not exist (the test target names none, so the builder reads it from the project root)",
+				"web/portal/package.json: no script runs ng test portal (bun run test is the single-run form: ng test portal --watch=false)",
+				"web/portal: project portal has no *.spec.ts under web/portal yet; the runner is wired and nothing runs on it",
+			},
+		},
+		{
+			name: "test-runner sites: another runner and a named tsconfig that is not there", fixture: "sites", check: testRunner{},
+			wantStatus: Fail, wantSummary: "2 test wiring problem(s)",
+			wantDetails: []string{
+				"apps/pilots/gui/angular.json: project pilots tests on @angular-devkit/build-angular:karma, not @angular/build:unit-test",
+				"apps/pilots/gui/angular.json: project pilots names tsConfig spec/tsconfig.json, which does not exist",
+				"apps/pilots/gui: project pilots has no *.spec.ts under apps/pilots/gui/src yet; the runner is wired and nothing runs on it",
+			},
+		},
+		{
+			name: "test-runner no browser apps", fixture: "badprogram", check: testRunner{},
+			wantStatus: Skip, wantSummary: "no browser apps",
+		},
+		{
 			name: "rpc-execute flat", fixture: "flat", check: rpcExecute{},
 			wantStatus: Fail, wantSummary: "1 RPC finding(s) (regenerate and read the generator output)",
 			wantDetails: []string{

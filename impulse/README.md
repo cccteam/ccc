@@ -127,6 +127,7 @@ impulse check --list
 | `eslint-ignore` | Each browser app receiving generated TypeScript ignores it in its eslint flat config (`ignores: ['**/zz_gen_*.ts']`) or `.eslintignore`. Generated shapes trip stylistic rules, and the output is not the developer's to change. |
 | `resource-styles` | Each browser app that depends on `@cccteam/resource-angular` imports the library's stylesheet (`@use '@cccteam/resource-angular/styles';`) from a global stylesheet its `angular.json` build names. The form and list components request its classes by name; without it fields lose their grid and section labels pile up in a corner. `--fix` prepends the import. |
 | `package-manager` | Every browser app carries the same kind of lockfile (bun, npm, yarn, or pnpm), and the process files and package scripts invoke that tool and no other. Two tools in one repository means two lockfiles drifting apart. |
+| `test-runner` | Every browser application project runs its component specs on Angular's unit-test builder, the runner `ng new` scaffolds (`@angular/build:unit-test`: Vitest under jsdom in Node, no browser): a `test` target on that builder, the spec tsconfig it reads (named in the target, or `tsconfig.spec.json` in the project root), and a package script running `ng test <project>`, so `bun run test` runs every project's specs once. A project with no `*.spec.ts` under its source root warns: the runner is wired and nothing runs on it yet. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
 | `sites-generators` | In the sites layout, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
@@ -357,7 +358,8 @@ option's wiring looks like so it is recognizable on the way out.
 generator program loses `WithRouterOutlet` (with the comment lines that introduced it) and,
 for a session outlet, the `GenerateTypescript` target for the outlet; the outlet's browser
 project is deleted and taken out of `angular.json`, the package scripts (`start:<name>`,
-`build:<name>`, `lint:<name>`, and its part of `build` and `lint`), and the Procfile; and
+`build:<name>`, `lint:<name>`, `test:<name>`, and its part of `build`, `lint`, and `test`),
+and the Procfile; and
 an `@outlet` list that names the outlet beside others drops it, so those structs keep
 their other outlets. A struct on the outlet alone keeps its annotation, which fails
 generation, because whether it moves to the default outlet (the console's people reach it
