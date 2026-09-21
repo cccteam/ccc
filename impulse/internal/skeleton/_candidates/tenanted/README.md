@@ -88,6 +88,17 @@ both packages to the local yalc store, links them, and runs `bun install`):
 elsewhere. Then `overmind start` runs everything, with `ng serve` for the console at
 http://127.0.0.1:4301 proxying `/api` to the server.
 
+After a change in ccc-lib, push the rebuilt packages, restart the dev server, and reload the
+page:
+
+    (cd web && ./ccclib.sh push)
+    overmind restart console
+
+The dev server does not watch `node_modules`, so the restart is what picks the new build up.
+The two packages are bundled with the application code rather than prebundled by Vite (the
+`prebundle` exclusion in `angular.json`), so a plain reload shows the new build in any
+browser profile: nothing is held behind an immutable URL, and no cache needs clearing.
+
 The console's component specs run on Angular's unit-test builder (`@angular/build:unit-test`)
 with Vitest under jsdom in Node: no browser, no Karma. `bun run test` runs them once, the
 form the Checks section and CI use; `bun ng test console` watches. The specs beside the

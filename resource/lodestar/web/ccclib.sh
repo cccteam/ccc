@@ -10,7 +10,8 @@ set -euo pipefail
 # it) and the Angular library @cccteam/resource-angular, which depends on it.
 #
 #   ccclib.sh local     build both packages, publish them to the local yalc store, attach, bun install
-#   ccclib.sh push      rebuild both packages and update every attached consumer
+#   ccclib.sh push      rebuild both packages and update every attached consumer; then restart the
+#                       dev server (`overmind restart console portal`), which does not watch node_modules
 #   ccclib.sh restore   detach and reinstall the pinned registry versions
 
 GUI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +34,10 @@ case "${1:-}" in
     ;;
   push)
     build_and_publish
+    # The dev server bundles the two packages with the application code (angular.json's serve
+    # options keep them out of Vite's prebundle), so a restart is all a push still needs: no
+    # cache to clear, and a plain reload in the browser shows the new build.
+    echo "ccclib.sh: packages pushed; restart the dev server to pick them up: overmind restart console portal"
     ;;
   restore)
     cd "$GUI_DIR"

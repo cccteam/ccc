@@ -41,6 +41,17 @@ Google directory is simulated from `APP_USERNAME` and `APP_ROLES` in `.envrc`, s
 tenant is contacted and the persona quick-fill still works. `APP_DROIDS_API_KEY` opens the
 droid channel.
 
+After a change in ccc-lib, push the rebuilt packages, restart the dev server, and reload the
+page:
+
+    (cd web && ./ccclib.sh push)
+    overmind restart console portal
+
+The dev server does not watch `node_modules`, so the restart is what picks the new build up.
+The two packages are bundled with the application code rather than prebundled by Vite (the
+`prebundle` exclusion in `angular.json`), so a plain reload shows the new build in any
+browser profile: nothing is held behind an immutable URL, and no cache needs clearing.
+
 The served application also serves the built bundles (`bun run build` in `web/`): the
 console at `/` and the portal at `/portal/`, paths overridable through
 `APP_CONSOLE_DIST` and `APP_PORTAL_DIST`. Mission documents land in the directory

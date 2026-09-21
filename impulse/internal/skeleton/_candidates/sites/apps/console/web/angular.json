@@ -75,7 +75,10 @@
           "builder": "@angular/build:dev-server",
           "options": {
             "servePath": "/",
-            "proxyConfig": "proxy.conf.js"
+            "proxyConfig": "proxy.conf.js",
+            "prebundle": {
+              "exclude": ["@cccteam/resource", "@cccteam/resource-angular"]
+            }
           },
           "configurations": {
             "production": {
