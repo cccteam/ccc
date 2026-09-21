@@ -23,7 +23,12 @@ import {
 // catalog whole once and maps it for every page. Nothing on this page reads a bounded
 // resource whole.
 //
-// Demonstrates: picker.paged, picker.whole, column.referenced-in.
+// CargoBays is an ARRAY<INT64> column typed []int64, number[] in the metadata: the list's
+// Cargo bays cell writes the elements joined (60, 60, 30), the row page shows them as
+// chips, and edit mode keeps them read-only, so a save of another field never carries the
+// array; the array editor is a later item.
+//
+// Demonstrates: picker.paged, picker.whole, column.referenced-in, field.array.
 export const shipsConfig = rootConfig({
   nav: { navItem: { label: 'Ships (config page)' }, group: 'Sector Ops' },
   routeData: { route: 'sector/ships' },
@@ -47,6 +52,7 @@ export const shipsConfig = rootConfig({
         concatFn: 'hyphen-concat',
       }),
       { id: Ships.fieldName.lastRefitAt, header: 'Last refit' },
+      { id: Ships.fieldName.cargoBays, header: 'Cargo bays' },
     ],
     elements: [
       section({
@@ -63,6 +69,7 @@ export const shipsConfig = rootConfig({
               viewDisplay: [ShipClasses.fieldName.designation],
             }),
           }),
+          field({ name: Ships.fieldName.cargoBays, label: 'Cargo bays', cols: 12 }),
         ],
       }),
       section({

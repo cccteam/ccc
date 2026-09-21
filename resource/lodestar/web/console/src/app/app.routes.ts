@@ -5,6 +5,8 @@ import { resourceRoutes } from '@cccteam/resource-angular/resource-route-generat
 import { sectorRoute } from '@components/sector/sector.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { clientsConfig } from './configs/clients.config';
+import { distressCallsConfig } from './configs/distressCalls.config';
+import { missionDocumentsConfig } from './configs/missionDocuments.config';
 import { missionsConfig } from './configs/missions.config';
 import { squadronsConfig } from './configs/squadrons.config';
 import { pilotsConfig } from './configs/pilots.config';
@@ -50,6 +52,10 @@ export const routes: Routes = [
       resourceRoutes(missionsConfig, resourceMeta),
       resourceRoutes(shipsConfig, resourceMeta),
       resourceRoutes(squadronsConfig, resourceMeta),
+      // The Documents and Calls pages carry the field shapes a form never types (bytes,
+      // an object) and the write-only transcript, beside the hand-written call log.
+      resourceRoutes(missionDocumentsConfig, resourceMeta),
+      resourceRoutes(distressCallsConfig, resourceMeta),
       sectorRoute(),
       { path: '**', redirectTo: 'dashboard' },
     ],

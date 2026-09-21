@@ -210,7 +210,19 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   [Standing Orders page](web/console/src/app/configs/standingOrders.config.ts) is the same
   list over a key-less resource ([`list.keyless`](web/console/src/app/configs/standingOrders.config.ts)):
   the whole book as one page, rows identified by position, no row route, and a config
-  asking for a page size or a row expansion refused when the page is built. The
+  asking for a page size or a row expansion refused when the page is built. Four pages
+  carry the field shapes a form never types and the write-only field: the
+  [Documents page](web/console/src/app/configs/missionDocuments.config.ts) shows a
+  document's digest as a size in its cell and as a download on its row page
+  ([`field.bytes`](web/console/src/app/configs/missionDocuments.config.ts)) and its
+  provenance as JSON, the [Calls page](web/console/src/app/configs/distressCalls.config.ts)
+  shows a call's position as JSON ([`field.object`](web/console/src/app/configs/distressCalls.config.ts))
+  and draws nothing for its write-only transcript in view mode and a blank input in its
+  create form whose value travels only when typed, while its edit form, over a row read
+  with a capability envelope planned on the read projection, keeps the transcript absent
+  ([`field.write-only`](web/console/src/app/configs/distressCalls.config.ts)), and the
+  Ships page's cargo bays and the Squadrons page's callsigns are joined in a cell and chips
+  on the row page, read-only in edit mode ([`field.array`](web/console/src/app/configs/ships.config.ts)). The
   [Ships page](web/console/src/app/configs/ships.config.ts) puts the two picker read
   modes side by side, each decided by the maximum page size the generated descriptor
   carries: [`picker.paged`](web/console/src/app/configs/ships.config.ts) over the

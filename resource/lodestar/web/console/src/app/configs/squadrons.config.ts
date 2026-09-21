@@ -28,7 +28,12 @@ import { SquadronChannelComponent } from '@components/sector/squadron-channel/sq
 // (componentConfig), and the sector's other squadrons, the same resource filtered by
 // the page's row and each drawn as its own form (arrayConfig).
 //
-// Demonstrates: @rowsOf.association, list.row-route, config.component, config.array.
+// Callsigns is a nullable ARRAY<STRING(16)> column typed by the plain slice, string[] in
+// the metadata with a per-element length: the list's cell writes the callsigns joined,
+// the row page shows them as chips, an empty list shows the placeholder, and edit mode
+// keeps them read-only until the array editor lands.
+//
+// Demonstrates: @rowsOf.association, list.row-route, config.component, config.array, field.array.
 export const squadronsConfig = rootConfig({
   nav: { navItem: { label: 'Squadrons (config page)' }, group: 'Sector Ops' },
   routeData: { route: 'sector/squadrons' },
@@ -36,7 +41,7 @@ export const squadronsConfig = rootConfig({
     title: 'Squadrons',
     createTitle: 'Squadron',
     primaryResource: Resources.Squadrons,
-    listColumns: [{ id: Squadrons.fieldName.name }, { id: Squadrons.fieldName.wingId }],
+    listColumns: [{ id: Squadrons.fieldName.name }, { id: Squadrons.fieldName.wingId }, { id: Squadrons.fieldName.callsigns }],
     elements: [
       section({
         label: 'Squadron',
@@ -51,6 +56,7 @@ export const squadronsConfig = rootConfig({
               viewDisplay: [Wings.fieldName.name],
             }),
           }),
+          field({ name: Squadrons.fieldName.callsigns, label: 'Callsigns', cols: 12 }),
         ],
       }),
     ],
