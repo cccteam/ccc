@@ -28,6 +28,12 @@ type (
 		ThumbKey *string `spanner:"ThumbKey"`
 	}
 
+	// NoFile declares no file at all.
+	NoFile struct {
+		ID    ccc.UUID `spanner:"Id"`
+		Title string   `spanner:"Title"`
+	}
+
 	// Logo's one file has a nullable key and no name or type column.
 	Logo struct {
 		ID ccc.UUID `spanner:"Id"`

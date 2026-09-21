@@ -605,6 +605,48 @@ func Test_fileHandlerTemplate(t *testing.T) {
 	}
 }
 
+// Test_resourceFileTemplate_fileKeys pins the generated DefaultConfig: a struct with
+// stored files names its key fields through SetFileKeys, in declaration order, and a
+// struct with none is unchanged.
+func Test_resourceFileTemplate_fileKeys(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "filefixture"))
+
+	tests := []struct {
+		name    string
+		fixture string
+		want    string
+	}{
+		{name: "two stored files name both keys", fixture: "Document", want: "func (Document) DefaultConfig() resource.Config {\n\treturn defaultConfig().SetFileKeys(\"StoreKey\", \"ThumbKey\")\n}"},
+		{name: "one stored file with a nullable key names it", fixture: "Logo", want: "func (Logo) DefaultConfig() resource.Config {\n\treturn defaultConfig().SetFileKeys(\"StoreKey\")\n}"},
+		{name: "a struct with no file keeps the plain default", fixture: "NoFile", want: "func (NoFile) DefaultConfig() resource.Config {\n\treturn defaultConfig()\n}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := fileFixtureResource(t, structs, tt.fixture, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := &client{}
+			out, err := c.generateTemplateOutput("resourceFile", resourceFileTemplate, &resourceFileData{Source: "fixture", Package: "resources", Resource: res})
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+			formatted, err := format.Source(out)
+			if err != nil {
+				t.Fatalf("format.Source() error = %v on:\n%s", err, out)
+			}
+			if !strings.Contains(string(formatted), tt.want) {
+				t.Errorf("DefaultConfig mismatch: want\n%s\nin\n%s", tt.want, formatted)
+			}
+		})
+	}
+}
+
 func Test_computedResourceHandlerTemplate_files(t *testing.T) {
 	t.Parallel()
 

@@ -1,6 +1,9 @@
 package resource
 
-import "cloud.google.com/go/spanner"
+import (
+	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
+)
 
 // DBType represents the type of database, such as Spanner or PostgreSQL.
 type DBType string
@@ -62,6 +65,14 @@ type Columns string
 type Config struct {
 	ChangeTrackingTable string
 	TrackChanges        bool
+	// FileKeys are the resource's fields holding a stored file's key, one per @file
+	// declaration: the columns whose old values the patch machinery records as
+	// released when a row is deleted or pointed at another object, so the
+	// transaction's executor deletes the objects after the commit. The generated
+	// DefaultConfig sets them from the struct's annotations; an application's own
+	// Config that leaves them empty inherits them, since which columns hold file keys
+	// is the schema's fact, never the application's choice.
+	FileKeys []accesstypes.Field
 }
 
 // SetChangeTrackingTable returns a new Config with the change tracking table name set.
@@ -74,6 +85,13 @@ func (c Config) SetChangeTrackingTable(changeTrackingTable string) Config {
 // SetTrackChanges returns a new Config with the change tracking flag set.
 func (c Config) SetTrackChanges(trackChanges bool) Config {
 	c.TrackChanges = trackChanges
+
+	return c
+}
+
+// SetFileKeys returns a new Config naming the fields that hold a stored file's key.
+func (c Config) SetFileKeys(fields ...accesstypes.Field) Config {
+	c.FileKeys = fields
 
 	return c
 }

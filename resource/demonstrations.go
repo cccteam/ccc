@@ -218,6 +218,8 @@ var Demonstrations = []Demonstration{
 	// Files.
 	{"@file.stored", "@file on the column holding a stored file's key: the generator serves the file under the row's read route, gated by Read on the resource and a Read grant on the route's own field (content), typed and named from the row's columns, the key its validator, and the key column off the wire in both directions; NOT NULL, the key leaves the resource no Create."},
 	{"@file.rendered", "The struct-scope @file on a keyed @computed struct: the computed package's <Name><Segment> function renders the document at request time as a resource.Content the generated route serves under the same gate, a nil content 404, the content's tag its validator."},
+	{"@file.released", "Deleting a row that carries a @file key releases its object: the patch machinery records the key on the transaction and the executor deletes it from the client's FileStore (WithFileStore) once the commit lands; a transaction that does not commit releases nothing."},
+	{"@file.replaced", "Pointing a @file row at another object releases the old one: an @upload method's body sets the key column and the executor deletes the object the row held after the commit; a dry run streams nothing and releases nothing."},
 
 	// Impersonation.
 	{"impersonation.view-as", "A session minted as another user under a List, Read mask."},

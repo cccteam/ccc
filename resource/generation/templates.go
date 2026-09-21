@@ -38,10 +38,12 @@ func ({{ .Resource.Name }}) Resource() accesstypes.Resource {
 }
 
 func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
-	{{- if not .Resource.IsVirtual }}
-	return defaultConfig()
-	{{- else }}
+	{{- if .Resource.IsVirtual }}
 	return resource.Config{}
+	{{- else if .Resource.FileKeyFields }}
+	return defaultConfig().SetFileKeys({{ range $i, $field := .Resource.FileKeyFields }}{{ if $i }}, {{ end }}"{{ $field }}"{{ end }})
+	{{- else }}
+	return defaultConfig()
 	{{- end }}
 }
 

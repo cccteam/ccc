@@ -523,6 +523,11 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn ReadWriteTran
 		return err
 	}
 
+	// A file key the patch sets releases the object the row held (recordReleasedOnWrite).
+	if err := p.recordReleasedOnWrite(ctx, txn); err != nil {
+		return err
+	}
+
 	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
@@ -556,6 +561,11 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn ReadW
 		return err
 	}
 
+	// A file key the patch sets on an existing row releases the object the row held.
+	if err := p.recordReleasedOnWrite(ctx, txn); err != nil {
+		return err
+	}
+
 	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
@@ -580,6 +590,11 @@ func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn ReadWriteTran
 	}
 
 	if err := p.enforceWriteConditions(ctx, txn); err != nil {
+		return err
+	}
+
+	// The row's file keys are released with it (recordReleasedOnDelete).
+	if err := p.recordReleasedOnDelete(ctx, txn); err != nil {
 		return err
 	}
 

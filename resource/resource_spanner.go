@@ -21,12 +21,19 @@ var _ Client = (*SpannerClient)(nil)
 // SpannerClient is a wrapper around the database.
 type SpannerClient struct {
 	spanner *spanner.Client
+	// store is the application's object store, where a committed transaction's
+	// released file objects are deleted from; nil when the client was given none.
+	store FileStore
 }
 
-// NewSpannerClient creates a new Client.
-func NewSpannerClient(db *spanner.Client) *SpannerClient {
+// NewSpannerClient creates a new Client. WithFileStore hands it the store a committed
+// transaction's released file objects are deleted from.
+func NewSpannerClient(db *spanner.Client, opts ...ClientOption) *SpannerClient {
+	options := applyClientOptions(opts)
+
 	return &SpannerClient{
 		spanner: db,
+		store:   options.store,
 	}
 }
 
@@ -46,16 +53,25 @@ func (c *SpannerClient) SpannerReadOnlyTransaction() spxapi.Querier {
 // answers as a 4xx whose message is composed from the patches the transaction buffered
 // (see translateCommitError); an error the function itself returns, and a commit refused
 // with any other code, pass through unchanged.
+//
+// Once the commit lands, the file objects the transaction's patches released (a deleted
+// row's @file keys, the old key of a row pointed at another object) are deleted from the
+// client's FileStore, synchronously, before ExecuteFunc returns; a failed delete, or a
+// client with no store, is logged naming the keys and the call still returns nil, since
+// the rows are gone. A transaction that does not commit, for any reason, releases
+// nothing.
 func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
 	var (
 		buffered   = newBufferedPatches()
+		released   = newReleasedKeys()
 		funcFailed bool
 	)
 	_, err := c.spanner.ReadWriteTransaction(ctx, func(ctx context.Context, txn *spanner.ReadWriteTransaction) error {
-		// A retried transaction runs f again; the record belongs to the attempt that commits.
+		// A retried transaction runs f again; the records belong to the attempt that commits.
 		buffered = newBufferedPatches()
+		released = newReleasedKeys()
 		funcFailed = false
-		if err := f(ctx, newSpannerReadWriteTransaction(txn, buffered)); err != nil {
+		if err := f(ctx, newSpannerReadWriteTransaction(txn, buffered, released)); err != nil {
 			funcFailed = true
 
 			return errors.Wrap(err, "f()")
@@ -71,6 +87,8 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 
 		return translateCommitError(err, buffered)
 	}
+
+	releaseFiles(ctx, c.store, released.list())
 
 	return nil
 }
@@ -335,31 +353,52 @@ var _ ReadWriteTransaction = (*SpannerReadWriteTransaction)(nil)
 
 // SpannerReadWriteTransaction represents a database transaction that can be used for both reads and writes.
 // It records the resource and patch type of every patch it buffers, so a commit Spanner
-// refuses can be answered in terms of what the transaction was asked to do.
+// refuses can be answered in terms of what the transaction was asked to do, and the
+// file objects its patches release, so the executor deletes them once the commit lands.
 type SpannerReadWriteTransaction struct {
 	txn              *spanner.ReadWriteTransaction
 	resourceRowIndex map[string]int
 	buffered         *bufferedPatches
+	released         *releasedKeys
 }
 
-// NewSpannerReadWriteTransaction creates a new SpannerReadWriteTransaction from a spanner.ReadWriteTransaction
-func NewSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) ReadWriteTransaction {
-	return newSpannerReadWriteTransaction(txn, newBufferedPatches())
+// NewSpannerReadWriteTransaction creates a new SpannerReadWriteTransaction from a
+// spanner.ReadWriteTransaction. A transaction an application wraps itself and commits
+// outside ExecuteFunc has no executor to delete the file objects its patches released:
+// read them off the wrapper with Released after the commit and delete them from the
+// store yourself.
+func NewSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) *SpannerReadWriteTransaction {
+	return newSpannerReadWriteTransaction(txn, newBufferedPatches(), newReleasedKeys())
 }
 
-// newSpannerReadWriteTransaction wraps a transaction over the record its buffered
-// patches are noted in; ExecuteFunc holds the same record when the commit comes back.
-func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction, buffered *bufferedPatches) *SpannerReadWriteTransaction {
+// newSpannerReadWriteTransaction wraps a transaction over the records its buffered
+// patches and released file keys are noted in; ExecuteFunc holds the same records when
+// the commit comes back.
+func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction, buffered *bufferedPatches, released *releasedKeys) *SpannerReadWriteTransaction {
 	return &SpannerReadWriteTransaction{
 		txn:              txn,
 		resourceRowIndex: make(map[string]int),
 		buffered:         buffered,
+		released:         released,
 	}
 }
 
 // DBType returns the database type.
 func (c *SpannerReadWriteTransaction) DBType() DBType {
 	return SpannerDBType
+}
+
+// recordReleased notes file keys the transaction's patches let go of.
+func (c *SpannerReadWriteTransaction) recordReleased(keys ...string) {
+	c.released.record(keys...)
+}
+
+// Released returns the file object keys the transaction's patches released so far: a
+// deleted row's @file keys, and the old key of a row pointed at another object. Under
+// ExecuteFunc the executor deletes them from the client's FileStore after the commit;
+// a transaction committed outside it leaves that to its caller.
+func (c *SpannerReadWriteTransaction) Released() []string {
+	return c.released.list()
 }
 
 // nullifyNilPointers reads every typed nil pointer in the patch as the untyped nil the

@@ -360,6 +360,10 @@ type Metadata[Resource Resourcer] struct {
 	dbFields            map[DBType][]accesstypes.Field
 	changeTrackingTable string
 	trackChanges        bool
+	// fileKeys are the fields holding a stored file's key (Config.FileKeys): the
+	// patch machinery reads their old values on a delete and on a write that sets
+	// one, and records the released objects on the transaction.
+	fileKeys []accesstypes.Field
 }
 
 // NewMetadata creates or retrieves cached metadata for a resource.
@@ -373,6 +377,7 @@ func NewMetadata[Resource Resourcer]() *Metadata[Resource] {
 		dbFields:            c.dbFields,
 		changeTrackingTable: c.cfg.ChangeTrackingTable,
 		trackChanges:        c.cfg.TrackChanges,
+		fileKeys:            c.cfg.FileKeys,
 	}
 }
 
@@ -434,13 +439,7 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 		panic(errors.Newf("expected struct, got %s", t.Kind()))
 	}
 
-	var cfg Config
-	switch t := res.(type) {
-	case configurer:
-		cfg = t.Config()
-	case defaultConfigurer:
-		cfg = t.DefaultConfig()
-	}
+	cfg := configOf(res)
 
 	dbMap := make(map[DBType]map[accesstypes.Field]dbFieldMetadata)
 	dbFields := make(map[DBType][]accesstypes.Field)
@@ -457,6 +456,26 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	}
 
 	return c.cache[t]
+}
+
+// configOf is the resource's configuration: its own Config where it declares one,
+// the generated DefaultConfig otherwise. The file keys are structural, read off the
+// struct's @file annotations by the generator into DefaultConfig, so a Config that
+// names none inherits them: an application that overrides Config to turn change
+// tracking on does not, by that, stop releasing its rows' files.
+func configOf(res Resourcer) Config {
+	var cfg Config
+	switch t := res.(type) {
+	case configurer:
+		cfg = t.Config()
+		if d, ok := res.(defaultConfigurer); ok && len(cfg.FileKeys) == 0 {
+			cfg.FileKeys = d.DefaultConfig().FileKeys
+		}
+	case defaultConfigurer:
+		cfg = t.DefaultConfig()
+	}
+
+	return cfg
 }
 
 func dbStructTags(t reflect.Type, dbType DBType) (map[accesstypes.Field]dbFieldMetadata, []accesstypes.Field) {

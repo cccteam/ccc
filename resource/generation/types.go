@@ -1046,6 +1046,20 @@ func (r *resourceInfo) PatchPermissionList() string {
 	return strings.Join(parts, ", ")
 }
 
+// FileKeyFields are the fields holding a stored file's key, one per field-scope @file
+// in declaration order: what the generated DefaultConfig hands resource.Config as
+// FileKeys, so a delete or a key replacement releases the old object after commit.
+func (r *resourceInfo) FileKeyFields() []string {
+	var fields []string
+	for _, file := range r.Files {
+		if file.Key != nil {
+			fields = append(fields, file.Key.Name)
+		}
+	}
+
+	return fields
+}
+
 // HasStoredFile reports whether any @file names a key column: the application must
 // then supply a FileStore.
 func (r *resourceInfo) HasStoredFile() bool {
