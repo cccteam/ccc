@@ -419,14 +419,10 @@ type tsResourcesData struct {
 	GenPrefix         string
 	// DomainRoutePrefix is the route pair domain-scoped routes are served under
 	// ("stations/{stationID}"), rendered ahead of their route value; frontends
-	// interpolate the parameter token. DomainRoutePrefixTS is the same pair as a
-	// TypeScript template-literal fragment ("stations/${string}") for operation path
-	// types.
-	DomainRoutePrefix   string
-	DomainRoutePrefixTS string
-	DomainRouteParam    string
-	HasDomainScoped     bool
-	HasConsolidated     bool
+	// interpolate the parameter token.
+	DomainRoutePrefix string
+	DomainRouteParam  string
+	HasDomainScoped   bool
 	// Workflows carries each stateful root's assembled graph — the same facts
 	// the DOT files draw (minus context references) — so a frontend can render
 	// the workflow itself. Empty for applications without workflows, which then

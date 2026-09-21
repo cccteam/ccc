@@ -77,7 +77,7 @@ var Demonstrations = []Demonstration{
 	{"cell-masking", "A field a conditional grant does not cover on a row arrives as an absent key."},
 	{"pii", "conditions:\"pii\": a field flagged in metadata and refused in URL filters."},
 	{"pii.filter-placement", "A PII filter is refused in the URL and accepted in the request body."},
-	{"input_only", "A field accepted on mutations and never serialized back."},
+	{"input_only", "A field accepted on mutations and never serialized back: absent from the TypeScript row interface, writeOnly in its metadata entry, and carried by the Create and Patch shapes."},
 	{"output_only", "A field the wire can never write."},
 	{"default_create_fn", "A server-side default computed at create time."},
 	{"immutable", "A field that can be created but never updated."},

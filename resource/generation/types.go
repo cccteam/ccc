@@ -837,6 +837,14 @@ func (c *computedField) JSONTag() string {
 	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
 }
 
+// IsInputOnly reports whether the field is never returned, so the TypeScript row
+// interface omits it as the resource path does. A computed struct has no write side,
+// so that is the @file key column alone: a conditions:"input_only" tag is not examined
+// here, as JSONTag does not examine it either, and the interface mirrors the wire.
+func (c *computedField) IsInputOnly() bool {
+	return c.IsFileKey
+}
+
 func (c *computedField) IsPII() bool {
 	tag, ok := c.LookupTag(conditionsTagKey)
 	if !ok {

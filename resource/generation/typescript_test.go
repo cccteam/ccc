@@ -92,6 +92,139 @@ func Test_typescriptResourcesTemplate_optionalFields(t *testing.T) {
 	}
 }
 
+// Test_typescriptTemplates_inputOnly pins where a write-only field appears in the
+// generated TypeScript: absent from the row interface, as it is absent from every list
+// and read response; present in the metadata, flagged writeOnly, so a form still renders
+// the input; and present in the Create and Patch shapes, which a client writes. The
+// output-only field is the mirror: in the interface, readOnly in the metadata, absent
+// from both write shapes. The field-name constants come from the collection, which
+// registers the write-only field under Create and Update (Test_computeCollectionData).
+func Test_typescriptTemplates_inputOnly(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+	widget := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+		res.IsConsolidated = true
+		for _, f := range res.Fields {
+			f.typescriptType = "string"
+		}
+	})
+
+	c := &client{resources: []*resourceInfo{widget}}
+	generator := &typescriptGenerator{client: c}
+
+	resources, err := c.generateTemplateOutput("typescriptResourcesTemplate", typescriptResourcesTemplate, tsResourcesData{File: generator, Resources: []*resourceInfo{widget}, ConsolidatedRoute: "resources", GenPrefix: "zz_gen"})
+	if err != nil {
+		t.Fatalf("resources template error = %v", err)
+	}
+	api, err := c.generateTemplateOutput("typescriptAPITemplate", typescriptAPITemplate, generator.apiClientData())
+	if err != nil {
+		t.Fatalf("api template error = %v", err)
+	}
+	outputs := map[string]string{"resources": string(resources), "api": string(api)}
+
+	tests := []struct {
+		name    string
+		output  string
+		block   string
+		want    string
+		absence bool
+	}{
+		{
+			name:    "the row interface omits the write-only field",
+			output:  "resources",
+			block:   "export interface Widgets {",
+			want:    "secret",
+			absence: true,
+		},
+		{
+			name:   "the row interface carries the immutable and the output-only fields",
+			output: "resources",
+			block:  "export interface Widgets {",
+			want:   "  code?: string;\n  derived?: string;",
+		},
+		{
+			name:   "the write-only field's metadata entry is flagged writeOnly and not readOnly",
+			output: "resources",
+			want:   "{ fieldName: 'secret', displayType: 'string', required: true, isIndex: false, writeOnly: true },",
+		},
+		{
+			name:   "the output-only field's metadata entry is flagged readOnly and not writeOnly",
+			output: "resources",
+			want:   "{ fieldName: 'derived', displayType: 'string', required: true, isIndex: false, readOnly: true },",
+		},
+		{
+			name:   "the create shape carries the write-only field",
+			output: "api",
+			block:  "export interface WidgetsCreate {",
+			want:   "  secret: string;",
+		},
+		{
+			name:    "the create shape omits the output-only field",
+			output:  "api",
+			block:   "export interface WidgetsCreate {",
+			want:    "derived",
+			absence: true,
+		},
+		{
+			name:   "the patch shape carries the write-only field",
+			output: "api",
+			block:  "export interface WidgetsPatch {",
+			want:   "  secret?: string;",
+		},
+		{
+			name:    "the patch shape omits the output-only field",
+			output:  "api",
+			block:   "export interface WidgetsPatch {",
+			want:    "derived",
+			absence: true,
+		},
+		{
+			name:   "the descriptor lists the write-only field as patchable",
+			output: "api",
+			want:   "patchable: ['name', 'listedName', 'secret'],",
+		},
+		{
+			name:    "no operation type is generated for the consolidated resource",
+			output:  "resources",
+			want:    "OperationType",
+			absence: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			text := outputs[tt.output]
+			if tt.block != "" {
+				text = tsDeclaration(t, text, tt.block)
+			}
+
+			if got := strings.Contains(text, tt.want); got == tt.absence {
+				t.Errorf("%s template output contains %q = %v, want %v:\n%s", tt.output, tt.want, got, !tt.absence, outputs[tt.output])
+			}
+		})
+	}
+}
+
+// tsDeclaration returns the text of one top-level TypeScript declaration: from its
+// opening line to the closing brace on a line of its own.
+func tsDeclaration(t *testing.T, source, opening string) string {
+	t.Helper()
+
+	start := strings.Index(source, opening)
+	if start < 0 {
+		t.Fatalf("declaration %q not found in:\n%s", opening, source)
+	}
+	end := strings.Index(source[start:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("declaration %q has no closing brace in:\n%s", opening, source)
+	}
+
+	return source[start : start+end]
+}
+
 // Test_typescriptResourcesTemplate_bytes pins how a byte slice renders: the interface
 // declares the field a string, since the wire carries base64, and the metadata carries
 // the bytes display type, on a table field and on a computed field alike.

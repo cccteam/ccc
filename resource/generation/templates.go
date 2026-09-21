@@ -1777,7 +1777,7 @@ import { PermissionScope{{ if or .Resources .ComputedResources }}, PermissionSco
 {{ range $resource := .Resources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
-{{- if not $field.IsFileKey }}
+{{- if not $field.IsInputOnly }}
   {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
 {{- end }}
 {{- end }}
@@ -1786,7 +1786,7 @@ export interface {{ Pluralize $resource.Name }} {
 {{- range $resource := .ComputedResources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
-{{- if not $field.IsFileKey }}
+{{- if not $field.IsInputOnly }}
   {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
 {{- end }}
 {{- end }}
@@ -1825,7 +1825,7 @@ const resourceMap: ResourceMap = {
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
        {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end }}{{ if $field.TypescriptMaxLength }}, maxLength: {{ $field.TypescriptMaxLength }}{{ end -}}
       {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
-      {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }} },
+      {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }}{{ if $field.IsInputOnly }}, writeOnly: true{{ end }} },
       {{- end }}
       {{- end }}
     ],
@@ -1882,17 +1882,6 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.{{ Pluralize $resource.Name }}]: PermissionScopes.{{ if $resource.IsDomainScoped }}domain{{ else }}global{{ end }},
   {{- end }}
 };
-{{ if .HasConsolidated }}
-export type OperationType = 'add' | 'patch' | 'remove';
-{{ range $resource := .Resources }}{{ if $resource.IsConsolidated }}
-export interface {{ Pluralize $resource.Name }}Operation {
-  op: OperationType;
-  path: {{ if $resource.IsDomainScoped }}` + "`" + `/{{ $.DomainRoutePrefixTS }}/{{ Kebab (Pluralize $resource.Name) }}` + "`" + ` | ` + "`" + `/{{ $.DomainRoutePrefixTS }}/{{ Kebab (Pluralize $resource.Name) }}/${string}` + "`" + `{{ else }}'/{{ Kebab (Pluralize $resource.Name) }}' | ` + "`" + `/{{ Kebab (Pluralize $resource.Name) }}/${string}` + "`" + `{{ end }};
-  value?: Partial<{{ Pluralize $resource.Name }}>;
-}
-{{ end }}{{ end -}}
-export type ConsolidatedOperation ={{ $first := true }}{{ range $resource := .Resources }}{{ if $resource.IsConsolidated }}{{ if $first }}{{ $first = false }} {{ else }} | {{ end }}{{ Pluralize $resource.Name }}Operation{{ end }}{{ end }};
-{{ end -}}
 {{ if .Workflows }}
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */
 export interface WorkflowMember {

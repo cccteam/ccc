@@ -121,9 +121,14 @@ Values recognized in a `conditions` tag:
 - `pii` — marks the field as personally identifiable. Emitted as `pii:"true"`, surfaced
   in the TypeScript metadata, and the field is rejected in URL `filter` expressions
   (filter via the POST body instead, which doesn't land in access logs).
-- `input_only` — write-only: accepted on create and update but never returned (read and
-  list structs get `json:"-"`, and the field is omitted from the TypeScript metadata).
-  Example: [DistressCall.Transcript](lodestar/pkg/resources/distress_calls.go).
+- `input_only` — write-only: the client sets the field on create and update, and the
+  server never returns it. Read and list structs get `json:"-"`, and a `columns=<field>`
+  naming it answers 400. The generated TypeScript row interface omits the property, since
+  no list or read response carries it; the metadata entry stays, flagged
+  `writeOnly: true`, so a config-driven form still renders the input; and the Create and
+  Patch shapes and the field-name constants carry it, since a client writes it and a
+  grant check names it. Example:
+  [DistressCall.Transcript](lodestar/pkg/resources/distress_calls.go).
 - `output_only` — the server owns the value: returned to clients but never accepted from
   them (patch structs get `json:"-"`, excluding it from both create and update input).
   The value comes from the database or from `default_create_fn` /

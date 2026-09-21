@@ -787,9 +787,11 @@ func Test_typescriptTemplates_files(t *testing.T) {
 			t.Errorf("resources metadata missing %q:\n%s", want, resources)
 		}
 	}
-	for _, notWant := range []string{"storeKey", "thumbKey"} {
+	// The key column is off the wire in both directions: absent from the interface and
+	// the metadata alike, so its input-only nature raises no writeOnly flag either.
+	for _, notWant := range []string{"storeKey", "thumbKey", "writeOnly"} {
 		if strings.Contains(string(resources), notWant) {
-			t.Errorf("resources metadata carries the key column %q:\n%s", notWant, resources)
+			t.Errorf("resources metadata carries %q:\n%s", notWant, resources)
 		}
 	}
 }

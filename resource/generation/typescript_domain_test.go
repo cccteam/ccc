@@ -10,8 +10,9 @@ import (
 
 // Test_typescriptResourcesTemplate_domain pins the TypeScript route/metadata awareness
 // of the domain segment: domain-scoped resources render their route pair prefix, every
-// resource gets a ResourceScopes entry, and DomainRouteParam is exported exactly when
-// something is domain-scoped.
+// resource gets a ResourceScopes entry, DomainRouteParam is exported exactly when
+// something is domain-scoped, and a consolidated resource names its route and nothing
+// more (the per-resource operation types are gone; the client carries its own).
 func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +37,7 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 				"export const ResourceScopes: Record<Resource, PermissionScope> = {",
 				"import { PermissionScope, PermissionScopes, Resources } from './zz_gen_constants';",
 			},
-			wantNotContains: []string{"WidgetsOperation", "ConsolidatedOperation"},
+			wantNotContains: []string{"consolidatedRoute:"},
 		},
 		{
 			name:  "global resource renders a bare route and no domain param export",
@@ -51,25 +52,34 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 			},
 		},
 		{
-			name:         "consolidated global resource gets a domainless operation type",
+			name:         "consolidated resource names its route and no operation type",
 			scope:        "",
 			consolidated: true,
 			wantContains: []string{
-				"export type OperationType = 'add' | 'patch' | 'remove';",
-				"export interface WidgetsOperation {",
-				"  path: '/widgets' | `/widgets/${string}`;",
-				"  value?: Partial<Widgets>;",
-				"export type ConsolidatedOperation = WidgetsOperation;",
+				"route: 'widgets',",
+				"consolidatedRoute: 'resources',",
+			},
+			wantNotContains: []string{
+				"OperationType",
+				"WidgetsOperation",
+				"ConsolidatedOperation",
+				"Partial<Widgets>",
 			},
 		},
 		{
-			name:            "consolidated domain-scoped resource requires the domain segment in its operation paths",
+			name:            "consolidated domain-scoped resource names its route under the domain pair and no operation type",
 			scope:           accesstypes.DomainPermissionScope,
 			consolidated:    true,
 			hasDomainScoped: true,
 			wantContains: []string{
-				"  path: `/stations/${string}/widgets` | `/stations/${string}/widgets/${string}`;",
-				"export type ConsolidatedOperation = WidgetsOperation;",
+				"route: 'stations/{stationID}/widgets',",
+				"consolidatedRoute: 'resources',",
+			},
+			wantNotContains: []string{
+				"OperationType",
+				"WidgetsOperation",
+				"ConsolidatedOperation",
+				"${string}",
 			},
 		},
 	}
@@ -90,14 +100,13 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 
 			c := &client{}
 			out, err := c.generateTemplateOutput("typescriptResourcesTemplate", typescriptResourcesTemplate, tsResourcesData{
-				File:                &typescriptGenerator{client: c},
-				Resources:           []*resourceInfo{res},
-				GenPrefix:           "zz_gen",
-				DomainRoutePrefix:   "stations/{stationID}",
-				DomainRoutePrefixTS: "stations/${string}",
-				DomainRouteParam:    "stationID",
-				HasDomainScoped:     tt.hasDomainScoped,
-				HasConsolidated:     tt.consolidated,
+				File:              &typescriptGenerator{client: c},
+				Resources:         []*resourceInfo{res},
+				ConsolidatedRoute: "resources",
+				GenPrefix:         "zz_gen",
+				DomainRoutePrefix: "stations/{stationID}",
+				DomainRouteParam:  "stationID",
+				HasDomainScoped:   tt.hasDomainScoped,
 			})
 			if err != nil {
 				t.Fatalf("generateTemplateOutput() error = %v", err)
