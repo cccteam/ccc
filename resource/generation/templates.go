@@ -38,14 +38,20 @@ func ({{ .Resource.Name }}) Resource() accesstypes.Resource {
 }
 
 func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
-	{{- if .Resource.IsVirtual }}
-	return resource.Config{}
-	{{- else if .Resource.FileKeyFields }}
-	return defaultConfig().SetFileKeys({{ range $i, $field := .Resource.FileKeyFields }}{{ if $i }}, {{ end }}"{{ $field }}"{{ end }})
-	{{- else }}
+	{{- if not .Resource.IsVirtual }}
 	return defaultConfig()
+	{{- else }}
+	return resource.Config{}
 	{{- end }}
 }
+{{- if .Resource.FileKeyFields }}
+
+// FileKeys names the fields holding a stored file's key (@file): the objects a delete,
+// or a write that points the row at another object, releases once the transaction commits.
+func ({{ .Resource.Name }}) FileKeys() []accesstypes.Field {
+	return []accesstypes.Field{ {{- range $i, $field := .Resource.FileKeyFields }}{{ if $i }}, {{ end }}"{{ $field }}"{{ end -}} }
+}
+{{- end }}
 
 // {{ PrivateType .Resource.Name }}Read mirrors the wire shape the resource routes list
 // and read, so a query armed with Enforce meets the field permissions the routes

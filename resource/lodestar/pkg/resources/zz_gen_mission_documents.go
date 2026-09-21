@@ -20,7 +20,13 @@ func (MissionDocument) Resource() accesstypes.Resource {
 }
 
 func (MissionDocument) DefaultConfig() resource.Config {
-	return defaultConfig().SetFileKeys("StoreKey")
+	return defaultConfig()
+}
+
+// FileKeys names the fields holding a stored file's key (@file): the objects a delete,
+// or a write that points the row at another object, releases once the transaction commits.
+func (MissionDocument) FileKeys() []accesstypes.Field {
+	return []accesstypes.Field{"StoreKey"}
 }
 
 // missionDocumentRead mirrors the wire shape the resource routes list

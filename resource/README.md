@@ -912,10 +912,10 @@ implements the same three methods.
 removes the old object from the store once the transaction commits, from every
 transaction the application runs: a generated frame, a patch applied on its own,
 application code calling `ExecuteFunc`. Nothing is generated into the frames and a body
-has nothing to remember. The generated `DefaultConfig` names the key fields
-(`resource.Config.FileKeys`, set with `SetFileKeys`; an application's own `Config` that
-names none inherits them), and the patch machinery reads them on the transaction: a
-delete makes one point read of the row's key columns and records each non-NULL key as
+has nothing to remember. The generator declares the key fields on the resource
+(`FileKeys() []accesstypes.Field`, beside `DefaultConfig`), a fact of the schema that no
+configuration carries and nothing an application writes changes, and the patch
+machinery reads them on the transaction: a delete makes one point read of the row's key columns and records each non-NULL key as
 released; an update or insert-or-update that sets a key field reads that field's current
 value and records it when the row exists, the value is non-NULL, and it differs from the
 new one (a new value of NULL included); an update that leaves the key fields alone reads

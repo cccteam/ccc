@@ -1047,8 +1047,8 @@ func (r *resourceInfo) PatchPermissionList() string {
 }
 
 // FileKeyFields are the fields holding a stored file's key, one per field-scope @file
-// in declaration order: what the generated DefaultConfig hands resource.Config as
-// FileKeys, so a delete or a key replacement releases the old object after commit.
+// in declaration order: what the generated FileKeys method declares, so a delete or a
+// key replacement releases the old object after commit.
 func (r *resourceInfo) FileKeyFields() []string {
 	var fields []string
 	for _, file := range r.Files {

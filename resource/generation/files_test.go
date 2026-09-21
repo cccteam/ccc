@@ -605,9 +605,9 @@ func Test_fileHandlerTemplate(t *testing.T) {
 	}
 }
 
-// Test_resourceFileTemplate_fileKeys pins the generated DefaultConfig: a struct with
-// stored files names its key fields through SetFileKeys, in declaration order, and a
-// struct with none is unchanged.
+// Test_resourceFileTemplate_fileKeys pins the generated FileKeys method: a struct with
+// stored files declares its key fields in declaration order beside an unchanged
+// DefaultConfig, and a struct with none declares no such method.
 func Test_resourceFileTemplate_fileKeys(t *testing.T) {
 	t.Parallel()
 
@@ -617,10 +617,11 @@ func Test_resourceFileTemplate_fileKeys(t *testing.T) {
 		name    string
 		fixture string
 		want    string
+		absent  string
 	}{
-		{name: "two stored files name both keys", fixture: "Document", want: "func (Document) DefaultConfig() resource.Config {\n\treturn defaultConfig().SetFileKeys(\"StoreKey\", \"ThumbKey\")\n}"},
-		{name: "one stored file with a nullable key names it", fixture: "Logo", want: "func (Logo) DefaultConfig() resource.Config {\n\treturn defaultConfig().SetFileKeys(\"StoreKey\")\n}"},
-		{name: "a struct with no file keeps the plain default", fixture: "NoFile", want: "func (NoFile) DefaultConfig() resource.Config {\n\treturn defaultConfig()\n}"},
+		{name: "two stored files name both keys", fixture: "Document", want: "func (Document) FileKeys() []accesstypes.Field {\n\treturn []accesstypes.Field{\"StoreKey\", \"ThumbKey\"}\n}"},
+		{name: "one stored file with a nullable key names it", fixture: "Logo", want: "func (Logo) FileKeys() []accesstypes.Field {\n\treturn []accesstypes.Field{\"StoreKey\"}\n}"},
+		{name: "a struct with no file declares no method", fixture: "NoFile", want: "func (NoFile) DefaultConfig() resource.Config {\n\treturn defaultConfig()\n}", absent: "FileKeys"},
 	}
 
 	for _, tt := range tests {
@@ -641,7 +642,13 @@ func Test_resourceFileTemplate_fileKeys(t *testing.T) {
 				t.Fatalf("format.Source() error = %v on:\n%s", err, out)
 			}
 			if !strings.Contains(string(formatted), tt.want) {
-				t.Errorf("DefaultConfig mismatch: want\n%s\nin\n%s", tt.want, formatted)
+				t.Errorf("resource file mismatch: want\n%s\nin\n%s", tt.want, formatted)
+			}
+			if tt.fixture != "NoFile" && !strings.Contains(string(formatted), "func ("+tt.fixture+") DefaultConfig() resource.Config {\n\treturn defaultConfig()\n}") {
+				t.Errorf("DefaultConfig changed for %s:\n%s", tt.fixture, formatted)
+			}
+			if tt.absent != "" && strings.Contains(string(formatted), tt.absent) {
+				t.Errorf("%s declares %s:\n%s", tt.fixture, tt.absent, formatted)
 			}
 		})
 	}

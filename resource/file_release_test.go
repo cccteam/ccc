@@ -14,7 +14,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// fileRow is a resource with two @file keys as the generator would configure it: one
+// fileRow is a resource with two @file keys as the generator would declare them: one
 // NOT NULL, one nullable.
 type fileRow struct {
 	ID       string  `spanner:"Id"`
@@ -27,12 +27,12 @@ func (fileRow) Resource() accesstypes.Resource {
 	return "FileRows"
 }
 
-func (fileRow) DefaultConfig() Config {
-	return Config{}.SetFileKeys("StoreKey", "ThumbKey")
+func (fileRow) FileKeys() []accesstypes.Field {
+	return []accesstypes.Field{"StoreKey", "ThumbKey"}
 }
 
-// trackedFileRow overrides Config, as an application turning change tracking on does,
-// without naming the file keys its generated DefaultConfig carries.
+// trackedFileRow overrides Config, as an application turning change tracking on does;
+// the generated FileKeys stands beside it, untouched by the override.
 type trackedFileRow struct {
 	ID       string `spanner:"Id"`
 	StoreKey string `spanner:"StoreKey"`
@@ -47,26 +47,11 @@ func (trackedFileRow) Config() Config {
 }
 
 func (trackedFileRow) DefaultConfig() Config {
-	return Config{}.SetFileKeys("StoreKey")
+	return Config{}
 }
 
-// ownKeysFileRow names its file keys in its own Config.
-type ownKeysFileRow struct {
-	ID       string `spanner:"Id"`
-	StoreKey string `spanner:"StoreKey"`
-	Other    string `spanner:"Other"`
-}
-
-func (ownKeysFileRow) Resource() accesstypes.Resource {
-	return "OwnKeysFileRows"
-}
-
-func (ownKeysFileRow) Config() Config {
-	return Config{}.SetFileKeys("Other")
-}
-
-func (ownKeysFileRow) DefaultConfig() Config {
-	return Config{}.SetFileKeys("StoreKey")
+func (trackedFileRow) FileKeys() []accesstypes.Field {
+	return []accesstypes.Field{"StoreKey"}
 }
 
 // plainRow carries no file keys.
@@ -486,10 +471,9 @@ func TestMetadata_fileKeys(t *testing.T) {
 		got  []accesstypes.Field
 		want []accesstypes.Field
 	}{
-		{name: "the generated DefaultConfig names the keys", got: NewMetadata[fileRow]().fileKeys, want: []accesstypes.Field{"StoreKey", "ThumbKey"}},
-		{name: "a Config override that names none inherits them", got: NewMetadata[trackedFileRow]().fileKeys, want: []accesstypes.Field{"StoreKey"}},
-		{name: "a Config override that names its own keeps them", got: NewMetadata[ownKeysFileRow]().fileKeys, want: []accesstypes.Field{"Other"}},
-		{name: "a resource with no configuration has none", got: NewMetadata[plainRow]().fileKeys},
+		{name: "the generated FileKeys names the keys", got: NewMetadata[fileRow]().fileKeys, want: []accesstypes.Field{"StoreKey", "ThumbKey"}},
+		{name: "a Config override leaves the generated keys untouched", got: NewMetadata[trackedFileRow]().fileKeys, want: []accesstypes.Field{"StoreKey"}},
+		{name: "a resource declaring no keys has none", got: NewMetadata[plainRow]().fileKeys},
 	}
 
 	for _, tt := range tests {
@@ -502,7 +486,7 @@ func TestMetadata_fileKeys(t *testing.T) {
 		})
 	}
 
-	// The inheriting override keeps what it set itself.
+	// The override's own configuration stands beside the keys.
 	if got := NewMetadata[trackedFileRow]().changeTrackingTable; got != "Changes" {
 		t.Errorf("changeTrackingTable = %q, want Changes", got)
 	}
