@@ -1,4 +1,4 @@
-// Demonstrates: computed.keyless.
+// Demonstrates: computed.keyless, list.keyless.
 package integration
 
 // This suite pins the key-less list. StandingOrders is a @computed struct with no
@@ -135,6 +135,45 @@ func TestKeylessList_gate(t *testing.T) {
 
 	status, body := doRequestAs(t, h, "cadet", http.MethodGet, "/api/standing-orders", "")
 	assertStatus(t, status, http.StatusForbidden, body)
+}
+
+// TestKeylessList_page pins the console's page over the key-less list as the library
+// builds it: the config names the resource with virtual scroll and asks for nothing the
+// page cannot have (no pageSize, no enableRowExpansion, no rowRoute), and the routes
+// register it. The page's own spec (standingOrders.config.spec.ts) proves the refusals,
+// the one whole-list request, and the rows by position against the generated client.
+func TestKeylessList_page(t *testing.T) {
+	t.Parallel()
+
+	app := filepath.Join("..", "..", "web", "console", "src", "app")
+
+	tests := []struct {
+		name   string
+		file   string
+		want   string
+		absent bool
+	}{
+		{name: "the page lists the standing orders", file: "configs/standingOrders.config.ts", want: "primaryResource: Resources.StandingOrders,"},
+		{name: "with virtual scroll over the whole book", file: "configs/standingOrders.config.ts", want: "enableVirtualScroll: true,"},
+		{name: "and asks for no page size, which the page would refuse", file: "configs/standingOrders.config.ts", want: "pageSize:", absent: true},
+		{name: "and no row expansion, which the page would refuse", file: "configs/standingOrders.config.ts", want: "enableRowExpansion:", absent: true},
+		{name: "and no row route, since a line has no key", file: "configs/standingOrders.config.ts", want: "rowRoute:", absent: true},
+		{name: "the routes register the page", file: "app.routes.ts", want: "resourceRoutes(standingOrdersConfig, resourceMeta),"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source, err := os.ReadFile(filepath.Join(app, tt.file))
+			if err != nil {
+				t.Fatalf("os.ReadFile() error = %v", err)
+			}
+			if got := strings.Contains(string(source), tt.want); got == tt.absent {
+				t.Errorf("%s contains %q = %v, want %v", tt.file, tt.want, got, !tt.absent)
+			}
+		})
+	}
 }
 
 // TestKeylessList_metadata pins what the console's generated TypeScript says about the

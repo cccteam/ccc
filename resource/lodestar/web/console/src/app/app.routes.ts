@@ -11,6 +11,7 @@ import { pilotsConfig } from './configs/pilots.config';
 import { sectorsConfig } from './configs/sectors.config';
 import { shipClassesConfig } from './configs/shipClasses.config';
 import { shipsConfig } from './configs/ships.config';
+import { standingOrdersConfig } from './configs/standingOrders.config';
 
 export const routes: Routes = [
   {
@@ -41,6 +42,9 @@ export const routes: Routes = [
       // Demonstrates: form.leave-page.
       resourceRoutes(clientsConfig, resourceMeta),
       resourceRoutes(shipClassesConfig, resourceMeta),
+      // The standing orders are a key-less list: resourceRoutes builds the list route
+      // alone, no `:uuid` row route, since a line has no key to open by.
+      resourceRoutes(standingOrdersConfig, resourceMeta),
       resourceRoutes(pilotsConfig, resourceMeta),
       resourceRoutes(sectorsConfig, resourceMeta),
       resourceRoutes(missionsConfig, resourceMeta),
