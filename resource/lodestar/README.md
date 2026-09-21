@@ -179,7 +179,11 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   demo share; one mission's deadline is written as bootstrap time plus three minutes so the
   overseer's grant flips during a live walkthrough.
 - `web/`: one bun workspace, two Angular applications: `console/` (default outlet) and
-  `portal/` (portal outlet), each over its own generated TypeScript client. The console's
+  `portal/` (portal outlet), each over its own generated TypeScript client; the workspace's
+  checks are `bun run build && bun run lint && bun run test`, the specs running on Angular's
+  unit-test builder with Vitest under jsdom, the wiring the Impulse skeleton carries (the
+  console's dashboard, login, header, top bar, footer, and shell, the portal's login and
+  tracker, over a scripted client from `@cccteam/resource-angular/testing`). The console's
   [`star-chart`](web/console/src/app/components/sector/sector.service.ts) carries the one
   labeled bypass of the digest-first rule. Two consumers page on the server: the
   hand-written flight deck, and the library's config-driven list on the

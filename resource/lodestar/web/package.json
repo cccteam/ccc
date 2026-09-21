@@ -7,6 +7,7 @@
     "start:portal": "ng serve portal --no-hmr",
     "build": "ng build console && ng build portal",
     "lint": "ng lint console && ng lint portal",
+    "test": "ng test console --watch=false && ng test portal --watch=false",
     "ccclib:local": "./ccclib.sh local",
     "ccclib:push": "./ccclib.sh push",
     "ccclib:restore": "./ccclib.sh restore"
@@ -35,7 +36,7 @@
     "@cccteam/resource": "file:.yalc/@cccteam/resource"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^21.1.1",
+    "@angular/build": "^21.1.1",
     "@angular/cli": "^21.1.1",
     "@angular/compiler-cli": "^21.1.1",
     "@types/geojson": "^7946.0.16",
@@ -43,8 +44,10 @@
     "angular-eslint": "^21.1.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^27.1.0",
     "prettier": "3.8.1",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.0.8"
   }
 }
