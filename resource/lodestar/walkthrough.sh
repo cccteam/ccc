@@ -64,9 +64,9 @@ req() { # req <persona> <method> <url> [body] [extra curl args...]
 
 dryrun() { req "$1" "$2" "$3" "$4" -H 'X-Dry-Run: true'; }
 
-upload() { # upload <persona> <url> <json> <file>...: a multipart @upload, the request part first, a file part per file
+upload() { # upload <persona> <url> <json> <file>... [-H header]: a multipart @upload, the request part first, a file part per file; a -H after the files adds a header
   local p=$1 u=$2 json=$3; shift 3
-  local parts=(); for f in "$@"; do parts+=(-F "file=@$f"); done
+  local parts=(); while [ $# -gt 0 ]; do case $1 in -H) parts+=(-H "$2"); shift 2;; *) parts+=(-F "file=@$1"); shift;; esac; done
   curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -H "X-XSRF-TOKEN: $(xsrf "$p")" -F "request=$json;type=application/json" "${parts[@]}" -w '\n%{http_code}' "$u"
 }
 
@@ -123,7 +123,7 @@ MERIDIAN=10000000-0000-4000-8000-000000000002
 BASTION_RELAY=10000000-0000-4000-8000-000000000003
 CONVOY_SORTIE=90000000-0000-4000-8000-000000000001
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser archivist assessor hazards dock watch; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch; do
   login "$p"
 done
 login_portal client
@@ -226,6 +226,27 @@ if grep -qi '^content-type: text/plain' "$S/doc.hdr" && grep -qi '^content-dispo
 r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "a kept copy asks again with the validator and hears 304" 304 "$r"
 r=$(req cadet GET "$ANVIL/mission-documents/$DOC/content"); check "the cadet holds no Read on the documents: the file route refuses" 403 "$r"
 r=$(req governor GET "$API/sectors/bastion/mission-documents/$DOC/content"); check "another sector's document is indistinguishable from none" 404 "$r"
+# ---- registrar: the document register; a replaced or deleted file leaves the store with the commit ----
+# The release is nobody's code: the patch machinery records the key a transaction lets go of, and the resource client, constructed over the DirStore (resource.WithFileStore), deletes it once the commit lands. Demonstrates: @file.released, @file.replaced.
+UPLOAD_DIR=${APP_UPLOAD_DIR:-uploads}
+r=$(req registrar PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/mission-documents/$DOC\",\"value\":{\"title\":\"Escort brief, revised\"}}]"); check "the registrar retitles the brief: an update that leaves the key alone releases nothing" 200 "$r"
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "the retitled brief still answers its validator with 304: the object is untouched" 304 "$r"
+printf 'Three survey barges through the debris belt; hold formation at the belt edge. Amended: two barges.' > "$S/brief2.txt"
+r=$(upload marshal "$ANVIL/replace-mission-document" "{\"documentId\":\"$DOC\"}" "$S/brief2.txt"); check "the marshal holds no Execute on Replace: refused, nothing stored, nothing released" 403 "$r"
+r=$(upload registrar "$ANVIL/replace-mission-document" "{\"documentId\":\"$DOC\"}" "$S/brief2.txt" -H 'X-Dry-Run: true'); check "a dry run of the replacement streams nothing and releases nothing" 200 "$r"
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "after the dry run the original object still answers its validator" 304 "$r"
+r=$(upload registrar "$ANVIL/replace-mission-document" "{\"documentId\":\"$DOC\"}" "$S/brief2.txt"); check "the registrar replaces the brief's file: the row points at the new object and the old one is released after the commit" 200 "$r"
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -D "$S/doc2.hdr"); check "the download is now the replacement" 200 "$r"
+if [ "$(body "$r")" = "$(cat "$S/brief2.txt")" ]; then echo "PASS  the download is the replacement's bytes"; else echo "FAIL  the download is the replacement's bytes: $(body "$r" | head -c 120)"; fails=$((fails + 1)); fi
+DOC_ETAG2=$(awk 'tolower($1)=="etag:" {print $2}' "$S/doc2.hdr" | tr -d '\r')
+if [ -n "$DOC_ETAG2" ] && [ "$DOC_ETAG2" != "$DOC_ETAG" ]; then echo "PASS  the validator changed with the object"; else echo "FAIL  the validator changed with the object: $DOC_ETAG -> $DOC_ETAG2"; fails=$((fails + 1)); fi
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "a copy kept under the old validator is stale: 200, not 304" 200 "$r"
+r=$(req marshal GET "$ANVIL/mission-documents?filter=missionId:eq:$CONVOY"); assert_py "the row carries the replacement's name and digest" "$r" "rows[0]['fileName']=='brief2.txt' and __import__('base64').b64decode(rows[0]['digest'])==__import__('hashlib').sha256(open('$S/brief2.txt','rb').read()).digest()"
+if [ -d "$UPLOAD_DIR" ]; then if [ ! -e "$UPLOAD_DIR/$(echo "$DOC_ETAG" | tr -d '"')" ] && [ -e "$UPLOAD_DIR/$(echo "$DOC_ETAG2" | tr -d '"')" ]; then echo "PASS  the store holds the new object and no longer the old one"; else echo "FAIL  the store holds the new object and no longer the old one: $(ls "$UPLOAD_DIR" | tr '\n' ' ')"; fails=$((fails + 1)); fi; fi
+r=$(req cadet PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/mission-documents/$DOC\"}]"); check "the cadet holds no Delete on the documents" 403 "$r"
+r=$(req registrar PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/mission-documents/$DOC\"}]"); check "the registrar deletes the brief: the row goes with the commit and the object with the row" 200 "$r"
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content"); check "the deleted document's file route answers 404" 404 "$r"
+if [ -d "$UPLOAD_DIR" ]; then if [ ! -e "$UPLOAD_DIR/$(echo "$DOC_ETAG2" | tr -d '"')" ]; then echo "PASS  no object of the deleted document remains in the store"; else echo "FAIL  no object of the deleted document remains in the store"; fails=$((fails + 1)); fi; fi
 r=$(dryrun lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead's dry run of Complete would commit (the Paymaster's checker posts the settlement)" 200 "$r"
 r=$(req lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead completes Hammer's convoy (the method answers with the settlement)" 200 "$r"
 assert_py "the settlement is the fee less the booked expenses" "$r" "rows['fee']=='15000' and rows['expenses']=='1600' and rows['net']=='13400'"

@@ -61,6 +61,21 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 	}
 	missionDecoder := NewDecoder[resources.Mission, missionRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
+	type missionDocumentRequest struct {
+		ID          ccc.UUID              `json:"-"`
+		MissionID   ccc.UUID              `json:"missionId"`
+		Title       string                `json:"title"`
+		FileName    string                `json:"fileName"`
+		ContentType string                `json:"contentType"`
+		Size        int64                 `json:"size"`
+		StoreKey    string                `json:"-"`
+		UploadedBy  string                `json:"uploadedBy"`
+		UploadedAt  time.Time             `json:"uploadedAt"`
+		Provenance  *resources.Provenance `json:"provenance"`
+		Digest      []byte                `json:"digest"      sqltype:"BYTES(32)"`
+	}
+	missionDocumentDecoder := NewDecoder[resources.MissionDocument, missionDocumentRequest](a, accesstypes.Update, accesstypes.Delete)
+
 	type response map[string][]ccc.UUID
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -194,6 +209,43 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 							id := httpio.Param[ccc.UUID](req, "id")
 							if err := resources.NewMissionDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.MissionDeletePatch.Buffer()")
+							}
+						}
+					case "mission-documents":
+						if op.Type == resource.OperationCreate {
+							// A NOT NULL @file key: a row is added by the @upload method that
+							// stores its file, since a create cannot supply the key.
+							return httpio.NewBadRequestMessage("a MissionDocument row is added by the @upload method that stores its file; a create cannot supply the file's key")
+						}
+						patchSet, err := missionDocumentDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))
+						if err != nil {
+							return errors.Wrap(err, "missionDocumentDecoder.DecodeOperation()")
+						}
+
+						req, err := op.ReqWithPattern("/sectors/{sectorID}/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+							patch, err := resources.NewMissionDocumentCreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "missionDocumentCreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.MissionDocumentCreatePatch.Buffer()")
+							}
+							resp["missionDocuments"] = append(resp["missionDocuments"], patch.ID())
+						case resource.OperationUpdate:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewMissionDocumentUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.MissionDocumentUpdatePatch.Buffer()")
+							}
+						case resource.OperationDelete:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewMissionDocumentDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.MissionDocumentDeletePatch.Buffer()")
 							}
 						}
 					default:

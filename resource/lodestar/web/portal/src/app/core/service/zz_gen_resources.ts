@@ -138,9 +138,8 @@ const resourceMap: ResourceMap = {
   },
   [Resources.MissionDocuments]: {
     route: 'sectors/{sectorID}/mission-documents',
+    consolidatedRoute: 'resources',
     createDisabled: true,
-    updateDisabled: true,
-    deleteDisabled: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'missionId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Missions },
@@ -208,7 +207,13 @@ export interface MissionsOperation {
   path: `/sectors/${string}/missions` | `/sectors/${string}/missions/${string}`;
   value?: Partial<Missions>;
 }
-export type ConsolidatedOperation = ClientContactsOperation | DistressCallsOperation | MissionsOperation;
+
+export interface MissionDocumentsOperation {
+  op: OperationType;
+  path: `/sectors/${string}/mission-documents` | `/sectors/${string}/mission-documents/${string}`;
+  value?: Partial<MissionDocuments>;
+}
+export type ConsolidatedOperation = ClientContactsOperation | DistressCallsOperation | MissionsOperation | MissionDocumentsOperation;
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */
 export interface WorkflowMember {

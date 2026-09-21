@@ -189,6 +189,13 @@ export interface ReleaseConsignmentResult {
   releasedAt: Date;
 }
 
+export interface ReplaceMissionDocumentConfig {
+  documentId: string | FieldPointer;
+}
+export interface ReplaceMissionDocument {
+  documentId: string;
+}
+
 export interface ResumeMissionConfig {
   missionId: string | FieldPointer;
 }
@@ -354,6 +361,13 @@ const methodMap: MethodMap = {
     answers: true,
     fields: [
       { fieldName: 'consignmentId', displayType: 'uuid' },
+    ],
+  },
+  [Methods.ReplaceMissionDocument]: {
+    route: 'replace-mission-document',
+    upload: { maxBytes: 5242880 },
+    fields: [
+      { fieldName: 'documentId', displayType: 'uuid' },
     ],
   },
   [Methods.ResumeMission]: {

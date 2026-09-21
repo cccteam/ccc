@@ -406,9 +406,8 @@ const resourceMap: ResourceMap = {
   },
   [Resources.MissionDocuments]: {
     route: 'sectors/{sectorID}/mission-documents',
+    consolidatedRoute: 'resources',
     createDisabled: true,
-    updateDisabled: true,
-    deleteDisabled: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'missionId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Missions },
@@ -738,6 +737,12 @@ export interface MissionsOperation {
   value?: Partial<Missions>;
 }
 
+export interface MissionDocumentsOperation {
+  op: OperationType;
+  path: `/sectors/${string}/mission-documents` | `/sectors/${string}/mission-documents/${string}`;
+  value?: Partial<MissionDocuments>;
+}
+
 export interface PilotsOperation {
   op: OperationType;
   path: '/pilots' | `/pilots/${string}`;
@@ -809,7 +814,7 @@ export interface WingsOperation {
   path: `/sectors/${string}/wings` | `/sectors/${string}/wings/${string}`;
   value?: Partial<Wings>;
 }
-export type ConsolidatedOperation = ClientContactsOperation | ConsignmentsOperation | DistressCallsOperation | MissionsOperation | PilotsOperation | PilotCertificationsOperation | RefitsOperation | RefitTasksOperation | SectorsOperation | ShipsOperation | ShipClassesOperation | SortiesOperation | SortieExpensesOperation | SquadronsOperation | SquadronMembershipsOperation | WingsOperation;
+export type ConsolidatedOperation = ClientContactsOperation | ConsignmentsOperation | DistressCallsOperation | MissionsOperation | MissionDocumentsOperation | PilotsOperation | PilotCertificationsOperation | RefitsOperation | RefitTasksOperation | SectorsOperation | ShipsOperation | ShipClassesOperation | SortiesOperation | SortieExpensesOperation | SquadronsOperation | SquadronMembershipsOperation | WingsOperation;
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */
 export interface WorkflowMember {

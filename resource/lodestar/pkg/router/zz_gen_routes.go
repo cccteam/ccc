@@ -151,6 +151,8 @@ type GeneratedHandlers interface {
 
 	ReleaseConsignment() http.HandlerFunc
 
+	ReplaceMissionDocument() http.HandlerFunc
+
 	ResumeMission() http.HandlerFunc
 
 	ScrapShip() http.HandlerFunc
@@ -381,6 +383,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Post("/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}", refitTaskHandler)
 
 	r.Post("/api/sectors/{sectorID}/release-consignment", domainGuard(h.ReleaseConsignment()))
+
+	r.Post("/api/sectors/{sectorID}/replace-mission-document", domainGuard(h.ReplaceMissionDocument()))
 
 	r.Post("/api/sectors/{sectorID}/resume-mission", domainGuard(h.ResumeMission()))
 

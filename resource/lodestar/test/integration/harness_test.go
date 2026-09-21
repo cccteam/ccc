@@ -289,8 +289,10 @@ func closeSharedDocuments() {
 // every suite's requests go through the same App.
 func (c *testConfigurer) CursorKey() *resource.CursorKey { return testCursorKey }
 
+// ResourceClient is the client over the test database and the document store, as
+// production's is: a committed transaction's released objects are deleted from the store.
 func (c *testConfigurer) ResourceClient() resource.Client {
-	return resource.NewSpannerClient(c.db.Client)
+	return resource.NewSpannerClient(c.db.Client, resource.WithFileStore(c.Documents()))
 }
 
 func (c *testConfigurer) Access() access.Controller { return c.access }

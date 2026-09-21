@@ -274,6 +274,21 @@
       }
     },
     {
+      "user": "registrar",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Registrar",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
       "user": "archivist",
       "password": "lodestar",
       "roles": {

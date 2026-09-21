@@ -3,7 +3,7 @@ import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullB
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
 import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders } from './zz_gen_resources';
-import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
+import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Clients. Server-owned fields are
@@ -151,6 +151,18 @@ export type MissionsKey = [id: string];
 /** The primary key of MissionBoards, in route order. */
 export type MissionBoardsKey = [id: string];
 
+/** The fields a client may change on MissionDocuments. Keys, server-owned, and immutable fields are absent. */
+export interface MissionDocumentsPatch {
+  missionId?: string;
+  title?: string;
+  fileName?: string;
+  contentType?: string;
+  size?: number;
+  uploadedBy?: string;
+  uploadedAt?: Date;
+  provenance?: MissionDocuments.Provenance;
+  digest?: string;
+}
 /** The primary key of MissionDocuments, in route order. */
 export type MissionDocumentsKey = [id: string];
 
@@ -517,11 +529,12 @@ export const apiDescriptor: ApiDescriptor = {
       property: 'missionDocuments',
       route: 'mission-documents',
       scope: 'domain',
-      consolidated: false,
+      consolidated: true,
       keys: ['id'],
-      operations: ['list', 'read'],
+      operations: ['list', 'read', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
       order: [{ field: 'uploadedAt', direction: 'desc' }],
+      patchable: ['missionId', 'title', 'fileName', 'contentType', 'size', 'uploadedBy', 'uploadedAt', 'provenance', 'digest'],
       files: ['content'],
     },
     [Resources.OpenMissionsBySquadrons]: {
@@ -781,6 +794,7 @@ export const apiDescriptor: ApiDescriptor = {
     [Methods.LaunchMission]: { method: Methods.LaunchMission, property: 'launchMission', route: 'launch-mission', scope: 'domain' },
     [Methods.PassFlightTest]: { method: Methods.PassFlightTest, property: 'passFlightTest', route: 'pass-flight-test', scope: 'domain' },
     [Methods.ReleaseConsignment]: { method: Methods.ReleaseConsignment, property: 'releaseConsignment', route: 'release-consignment', scope: 'domain', answers: true },
+    [Methods.ReplaceMissionDocument]: { method: Methods.ReplaceMissionDocument, property: 'replaceMissionDocument', route: 'replace-mission-document', scope: 'domain', upload: { maxBytes: 5242880 } },
     [Methods.ResumeMission]: { method: Methods.ResumeMission, property: 'resumeMission', route: 'resume-mission', scope: 'domain' },
     [Methods.ScrapShip]: { method: Methods.ScrapShip, property: 'scrapShip', route: 'scrap-ship', scope: 'domain' },
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
@@ -812,7 +826,7 @@ export interface DomainApi {
   hangars: ResourceHandle<Hangars, HangarsKey, 'list' | 'read' | 'create' | 'patch' | 'remove', HangarsCreate, HangarsPatch>;
   missions: ResourceHandle<Missions, MissionsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', MissionsCreate, MissionsPatch>;
   missionBoards: ResourceHandle<MissionBoards, MissionBoardsKey, 'list' | 'read'>;
-  missionDocuments: ResourceHandle<MissionDocuments, MissionDocumentsKey, 'list' | 'read'>;
+  missionDocuments: ResourceHandle<MissionDocuments, MissionDocumentsKey, 'list' | 'read' | 'patch' | 'remove' | 'batch', never, MissionDocumentsPatch>;
   openMissionsBySquadrons: ResourceHandle<OpenMissionsBySquadrons, OpenMissionsBySquadronsKey, 'list' | 'read'>;
   pilotAssignments: ResourceHandle<PilotAssignments, PilotAssignmentsKey, 'list' | 'read'>;
   refits: ResourceHandle<Refits, RefitsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', RefitsCreate, RefitsPatch>;
@@ -839,6 +853,7 @@ export interface DomainApi {
   launchMission: MethodHandle<LaunchMission>;
   passFlightTest: MethodHandle<PassFlightTest>;
   releaseConsignment: MethodHandle<ReleaseConsignment, ReleaseConsignmentResult>;
+  replaceMissionDocument: UploadMethodHandle<ReplaceMissionDocument>;
   resumeMission: MethodHandle<ResumeMission>;
   scrapShip: MethodHandle<ScrapShip>;
   standDownMission: MethodHandle<StandDownMission>;

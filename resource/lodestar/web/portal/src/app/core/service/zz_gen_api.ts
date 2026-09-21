@@ -84,6 +84,18 @@ export interface MissionsPatch {
 /** The primary key of Missions, in route order. */
 export type MissionsKey = [id: string];
 
+/** The fields a client may change on MissionDocuments. Keys, server-owned, and immutable fields are absent. */
+export interface MissionDocumentsPatch {
+  missionId?: string;
+  title?: string;
+  fileName?: string;
+  contentType?: string;
+  size?: number;
+  uploadedBy?: string;
+  uploadedAt?: Date;
+  provenance?: MissionDocuments.Provenance;
+  digest?: string;
+}
 /** The primary key of MissionDocuments, in route order. */
 export type MissionDocumentsKey = [id: string];
 
@@ -149,11 +161,12 @@ export const apiDescriptor: ApiDescriptor = {
       property: 'missionDocuments',
       route: 'mission-documents',
       scope: 'domain',
-      consolidated: false,
+      consolidated: true,
       keys: ['id'],
-      operations: ['list', 'read'],
+      operations: ['list', 'read', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
       order: [{ field: 'uploadedAt', direction: 'desc' }],
+      patchable: ['missionId', 'title', 'fileName', 'contentType', 'size', 'uploadedBy', 'uploadedAt', 'provenance', 'digest'],
       files: ['content'],
     },
     [Resources.BriefingTemplates]: {
@@ -183,7 +196,7 @@ export interface DomainApi {
   clientRosters: ResourceHandle<ClientRosters, ClientRostersKey, 'list' | 'read'>;
   distressCalls: ResourceHandle<DistressCalls, DistressCallsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', DistressCallsCreate, DistressCallsPatch>;
   missions: ResourceHandle<Missions, MissionsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', MissionsCreate, MissionsPatch>;
-  missionDocuments: ResourceHandle<MissionDocuments, MissionDocumentsKey, 'list' | 'read'>;
+  missionDocuments: ResourceHandle<MissionDocuments, MissionDocumentsKey, 'list' | 'read' | 'patch' | 'remove' | 'batch', never, MissionDocumentsPatch>;
   standDownMission: MethodHandle<StandDownMission>;
 }
 

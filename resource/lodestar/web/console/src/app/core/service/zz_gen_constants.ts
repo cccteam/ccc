@@ -67,6 +67,7 @@ export const Methods = {
   LaunchMission: 'LaunchMission' as Method,
   PassFlightTest: 'PassFlightTest' as Method,
   ReleaseConsignment: 'ReleaseConsignment' as Method,
+  ReplaceMissionDocument: 'ReplaceMissionDocument' as Method,
   ResumeMission: 'ResumeMission' as Method,
   ScrapShip: 'ScrapShip' as Method,
   StandDownMission: 'StandDownMission' as Method,
@@ -744,6 +745,12 @@ export namespace PassFlightTest {
 export namespace ReleaseConsignment {
   export const fieldName = {
     consignmentId: 'consignmentId' as FieldName,
+  };
+}
+
+export namespace ReplaceMissionDocument {
+  export const fieldName = {
+    documentId: 'documentId' as FieldName,
   };
 }
 

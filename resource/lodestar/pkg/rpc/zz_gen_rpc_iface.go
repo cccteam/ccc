@@ -9,6 +9,6 @@ type Method interface {
 	Method() accesstypes.Resource
 	AttachMissionDocument | BeginRefit | ClaimMission | CompileBriefing | CompleteMission |
 		FailFlightTest | FailMission | HailShip | HoldMission | IngestDroidReports | InspectShip |
-		IssueBulletin | LaunchMission | PassFlightTest | ReleaseConsignment | ResumeMission | ScrapShip |
-		StandDownMission | StartFlightTest
+		IssueBulletin | LaunchMission | PassFlightTest | ReleaseConsignment | ReplaceMissionDocument |
+		ResumeMission | ScrapShip | StandDownMission | StartFlightTest
 }

@@ -193,6 +193,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/issue-bulletin", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/launch-mission", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/pass-flight-test", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/replace-mission-document", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/resume-mission", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/scrap-ship", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/stand-down-mission", method: http.MethodPost},
@@ -311,6 +312,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/launch-mission", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/pass-flight-test", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/release-consignment", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/replace-mission-document", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/resume-mission", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/scrap-ship", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/start-flight-test", method: http.MethodPost},
@@ -1469,6 +1471,10 @@ func (s *generatedHandlersStub) RefitTask() http.HandlerFunc {
 
 func (s *generatedHandlersStub) ReleaseConsignment() http.HandlerFunc {
 	return s.record("ReleaseConsignment")
+}
+
+func (s *generatedHandlersStub) ReplaceMissionDocument() http.HandlerFunc {
+	return s.record("ReplaceMissionDocument")
 }
 
 func (s *generatedHandlersStub) ResumeMission() http.HandlerFunc {

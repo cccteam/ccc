@@ -73,7 +73,7 @@ type testConfigurer struct {
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
-	return resource.NewSpannerClient(c.db.Client)
+	return resource.NewSpannerClient(c.db.Client, resource.WithFileStore(c.documents))
 }
 
 // CursorKey seals the cursors the suites' paged lists issue; any key serves a test process.

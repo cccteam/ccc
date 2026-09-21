@@ -2657,6 +2657,62 @@
             }
           ]
         }
+      },
+      {
+        "name": "Registrar",
+        "permissions": {
+          "List": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "uploadedBy",
+                "uploadedAt",
+                "provenance",
+                "digest"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "uploadedBy",
+                "uploadedAt",
+                "provenance",
+                "digest",
+                "content"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "title"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "MissionDocuments"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "ReplaceMissionDocument"
+            }
+          ]
+        }
       }
     ]
   }

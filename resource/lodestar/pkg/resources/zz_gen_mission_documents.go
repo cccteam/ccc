@@ -20,7 +20,7 @@ func (MissionDocument) Resource() accesstypes.Resource {
 }
 
 func (MissionDocument) DefaultConfig() resource.Config {
-	return defaultConfig()
+	return defaultConfig().SetFileKeys("StoreKey")
 }
 
 // missionDocumentRead mirrors the wire shape the resource routes list

@@ -14,6 +14,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -44,12 +45,13 @@ func (s SpannerSettings) DatabasePath() string {
 }
 
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the resource client over it, and the crew auth (its
-// permission engine and session manager).
+// owns the Spanner client, the document store, the resource client over both, and the
+// crew auth (its permission engine and session manager).
 type DataConfiguration struct {
 	*coreConfiguration
 	env            *dataConfig
 	spannerClient  *cloudspanner.Client
+	documents      *store.DirStore
 	resourceClient *resource.SpannerClient
 	cursorKey      *resource.CursorKey
 	crew           *crew.Auth
@@ -92,11 +94,22 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "crew.New()")
 	}
 
+	// The document store belongs beside the database: the resource client is
+	// constructed over both, so a transaction that deletes a document, or points one at
+	// another file, has the old object deleted from the store once the commit lands.
+	//
+	// Demonstrates: @file.released.
+	documents, err := store.NewDirStore(env.UploadDir)
+	if err != nil {
+		return nil, errors.Wrap(err, "store.NewDirStore()")
+	}
+
 	conf := &DataConfiguration{
 		coreConfiguration: core,
 		env:               env,
 		spannerClient:     spannerClient,
-		resourceClient:    resource.NewSpannerClient(spannerClient),
+		documents:         documents,
+		resourceClient:    resource.NewSpannerClient(spannerClient, resource.WithFileStore(documents)),
 		cursorKey:         cursorKey,
 		crew:              crewAuth,
 	}
@@ -139,6 +152,9 @@ func (c *DataConfiguration) Close() {
 	if err := c.members.Close(); err != nil {
 		log.Print(errors.Wrap(err, "members.Auth.Close()"))
 	}
+	if err := c.documents.Close(); err != nil {
+		log.Print(errors.Wrap(err, "store.DirStore.Close()"))
+	}
 	c.spannerClient.Close()
 	c.coreConfiguration.Close()
 }
@@ -148,9 +164,16 @@ func (c *DataConfiguration) Spanner() SpannerSettings {
 	return c.env.Spanner
 }
 
-// ResourceClient returns the database client the resource layer uses.
+// ResourceClient returns the database client the resource layer uses, constructed over
+// the document store so a committed transaction's released objects are deleted from it.
 func (c *DataConfiguration) ResourceClient() resource.Client {
 	return c.resourceClient
+}
+
+// Documents returns the store the upload frames stream mission documents into, the
+// document route reads them back from, and the resource client releases them from.
+func (c *DataConfiguration) Documents() *store.DirStore {
+	return c.documents
 }
 
 // CursorKey returns the key that seals list cursors.
@@ -229,4 +252,9 @@ type dataConfig struct {
 	MembersGroupPrefix      string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
 	MembersAdminCredentials []byte `env:"APP_MEMBERS_OIDC_ADMIN_CREDENTIALS"`
 	MembersAdminSubject     string `env:"APP_MEMBERS_OIDC_ADMIN_SUBJECT"`
+
+	// UploadDir is the directory the document store keeps mission documents in: the
+	// upload frames stream into it, the file route reads from it, and the resource
+	// client deletes a released object from it after the commit that released it.
+	UploadDir string `env:"APP_UPLOAD_DIR,default=uploads"`
 }

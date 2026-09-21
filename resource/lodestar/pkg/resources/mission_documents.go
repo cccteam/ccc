@@ -31,20 +31,25 @@ type (
 	// the route's own field. The key column itself is off the wire both ways: no list or
 	// read returns it, no create or update accepts it, and no TypeScript interface names
 	// it; NOT NULL, it leaves the resource no Create, since a row is added by the upload
-	// method that stores its file. The resource serves the listing on the console and on
-	// the client portal, whose grant holds no content, so the client lists documents and
-	// cannot download them. Provenance is the document's origin as one JSON column typed
-	// by a plain struct. Digest is the SHA-256 of the stored bytes, a BYTES(32) column the
+	// method that stores its file, while Update and Delete are ordinary. A row deleted
+	// through the patch handler, or pointed at another object by ReplaceMissionDocument,
+	// releases the object it held: the patch machinery records the key on the
+	// transaction, and the resource client, constructed over the DirStore
+	// (pkg/config/data.go, resource.WithFileStore), deletes it once the commit lands;
+	// nothing here or in the frames does that, and a transaction that does not commit
+	// releases nothing. The resource serves the listing on the console and on the client
+	// portal, whose grant holds no content, so the client lists documents and cannot
+	// download them. Provenance is the document's origin as one JSON column typed by a
+	// plain struct. Digest is the SHA-256 of the stored bytes, a BYTES(32) column the
 	// method computes from the file the frame streamed: a []byte is one leaf to the
 	// generator, a string in both clients' interfaces (encoding/json carries it as base64)
 	// with display type bytes, never a number[].
 	//
-	// Demonstrates: @upload, @file.stored, outlet.shared, @suppress, typescript.derived-object, typescript.byte-slice.
+	// Demonstrates: @upload, @file.stored, @file.released, outlet.shared, typescript.derived-object, typescript.byte-slice.
 	//
 	// @resource
 	// @permissionScope(domain)
 	// @outlet(default, portal)
-	// @suppress(patchHandler)
 	// @order(UploadedAt desc)
 	// @page(default: 25, max: 200)
 	MissionDocument struct {

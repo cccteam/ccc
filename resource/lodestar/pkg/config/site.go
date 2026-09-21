@@ -2,9 +2,7 @@ package config
 
 import (
 	"context"
-	"log"
 
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/sethvargo/go-envconfig"
@@ -17,7 +15,6 @@ type SiteConfiguration struct {
 	env          *siteConfig
 	validator    *validator.Validate
 	droidsAPIKey string
-	documents    *store.DirStore
 }
 
 // NewSiteConfiguration loads every level and constructs the served site's
@@ -43,32 +40,17 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 		}
 	}
 
-	documents, err := store.NewDirStore(env.UploadDir)
-	if err != nil {
-		return nil, errors.Wrap(err, "store.NewDirStore()")
-	}
-
 	return &SiteConfiguration{
 		DataConfiguration: data,
 		env:               env,
 		validator:         validator.New(),
 		droidsAPIKey:      droidsAPIKey,
-		documents:         documents,
 	}, nil
 }
 
-// Close releases the level's clients, then the levels below it.
+// Close releases the levels below.
 func (c *SiteConfiguration) Close() {
-	if err := c.documents.Close(); err != nil {
-		log.Print(errors.Wrap(err, "store.DirStore.Close()"))
-	}
 	c.DataConfiguration.Close()
-}
-
-// Documents returns the store the upload frame streams mission documents into and the
-// document route reads them back from.
-func (c *SiteConfiguration) Documents() *store.DirStore {
-	return c.documents
 }
 
 // Addr returns the TCP address the site listens on, in the form ":port".
@@ -112,8 +94,4 @@ type siteConfig struct {
 	// Unset, an ephemeral key is generated at startup, which keeps the surface
 	// fail-closed but unreachable until a key is configured.
 	DroidsAPIKey string `env:"APP_DROIDS_API_KEY"`
-
-	// UploadDir is the directory the document store keeps mission documents in; uploads
-	// stream into its pending/ subdirectory until their transaction commits.
-	UploadDir string `env:"APP_UPLOAD_DIR,default=uploads"`
 }
