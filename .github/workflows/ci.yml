@@ -15,6 +15,51 @@ jobs:
       golangci-lint-version: 'v2.12.2'
   semantic-titles:
     uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+  lodestar-web:
+    # Lodestar's console and portal are built and linted against @cccteam/resource and
+    # @cccteam/resource-angular, so a library or generator change that breaks an
+    # application over the library fails here and not in a downstream application. Until
+    # the packages publish to npm, the job checks ccc-lib out beside ccc (the layout
+    # web/ccclib.sh expects), builds the two packages there, and copies them where
+    # web/package.json points (file:.yalc/@cccteam/...), the shape `ccclib.sh local`
+    # gives a developer, then installs with the lockfile frozen. After publication the
+    # job installs the published versions and the ccc-lib steps go.
+    name: lodestar web (console + portal)
+    runs-on: ubuntu-latest
+    env:
+      # The ccc-lib branch the packages are built from: feature/abac-permissions until it
+      # merges, master after. Pinned here, never in Lodestar's tree.
+      CCC_LIB_REF: feature/abac-permissions
+      # The bun that wrote resource/lodestar/web/bun.lock.
+      BUN_VERSION: 1.4.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: ccc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cccteam/ccc-lib
+          ref: ${{ env.CCC_LIB_REF }}
+          path: ccc-lib
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Build the packages
+        working-directory: ccc-lib
+        run: bun install --frozen-lockfile && bun run build
+      - name: Link the packages where web/package.json points
+        working-directory: ccc/resource/lodestar/web
+        run: |
+          mkdir -p .yalc/@cccteam
+          cp -r "$GITHUB_WORKSPACE/ccc-lib/dist/resource" .yalc/@cccteam/resource
+          cp -r "$GITHUB_WORKSPACE/ccc-lib/dist/resource-angular" .yalc/@cccteam/resource-angular
+          bun install --frozen-lockfile
+      - name: Build
+        working-directory: ccc/resource/lodestar/web
+        run: bun run build
+      - name: Lint
+        working-directory: ccc/resource/lodestar/web
+        run: bun run lint
   impulse-skeletons:
     # Every skeleton impulse can render is built, tested, and checked, against the
     # framework pins the template carries and against the framework at this commit (the
