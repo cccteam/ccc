@@ -70,11 +70,16 @@ func (options) programFindings(a *app.App, g *app.Generator) []string {
 		}
 	}
 
-	dirs := []struct{ label, dir string }{
-		{"resource package", g.ResourcePackageDir},
-		{"GenerateHandlers", g.HandlersDir()},
-		{"GenerateRoutes", g.RoutesDir()},
-		{"WithRPC", g.RPCDir()},
+	typesDirs := g.TypesDirs()
+	dirs := make([]struct{ label, dir string }, 0, 4+len(typesDirs))
+	dirs = append(dirs,
+		struct{ label, dir string }{"resource package", g.ResourcePackageDir},
+		struct{ label, dir string }{"GenerateHandlers", g.HandlersDir()},
+		struct{ label, dir string }{"GenerateRoutes", g.RoutesDir()},
+		struct{ label, dir string }{"WithRPC", g.RPCDir()},
+	)
+	for _, dir := range typesDirs {
+		dirs = append(dirs, struct{ label, dir string }{"WithTypes", dir})
 	}
 	for _, d := range dirs {
 		if d.dir == "" {

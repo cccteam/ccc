@@ -138,6 +138,19 @@ func (g *Generator) HandlerTestsDir() string { return g.firstString("GenerateHan
 // RPCDir is the WithRPC package directory, or empty.
 func (g *Generator) RPCDir() string { return g.firstString("WithRPC") }
 
+// TypesDirs are the WithTypes package directories, in option order; the option may be
+// given more than once.
+func (g *Generator) TypesDirs() []string {
+	var dirs []string
+	for _, c := range g.OptionsNamed("WithTypes") {
+		if len(c.Args) == 1 && c.Args[0].Kind == ArgString {
+			dirs = append(dirs, path.Clean(c.Args[0].Str))
+		}
+	}
+
+	return dirs
+}
+
 // EmulatorVersion is the WithSpannerEmulatorVersion argument, or empty.
 func (g *Generator) EmulatorVersion() string {
 	c, ok := g.Option("WithSpannerEmulatorVersion")

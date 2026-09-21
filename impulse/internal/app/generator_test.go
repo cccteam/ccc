@@ -59,6 +59,10 @@ func TestParseGeneratorProblems(t *testing.T) {
 			wantProblems: []string{"WithRPC takes 1 argument(s), found 2"},
 		},
 		{
+			name:    "WithTypes may be given more than once",
+			options: `generation.WithTypes("pkg/telemetry"), generation.WithTypes("pkg/cms"),`,
+		},
+		{
 			name:         "wrong literal kind",
 			options:      `generation.WithConsolidatedHandlers("resources", "yes"),`,
 			wantProblems: []string{`WithConsolidatedHandlers argument "yes" should be a bool literal`},

@@ -171,6 +171,7 @@ var knownOptions = map[string]optionSpec{
 	"WithVirtualResources":       {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithComputedResources":      {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithRPC":                    {kind: kindResourceOption, params: []paramKind{paramString}},
+	"WithTypes":                  {kind: kindResourceOption, params: []paramKind{paramString}},
 
 	optServesSessions: {kind: kindOutletOption},
 	optAuth:           {kind: kindOutletOption, params: []paramKind{paramString, paramFlavor}},
