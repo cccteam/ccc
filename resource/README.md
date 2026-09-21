@@ -8,6 +8,17 @@ including `zz_gen_api.ts`, the typed client surface the framework-neutral
 [`@cccteam/resource`](https://github.com/cccteam/ccc-lib/tree/master/projects/resource)
 runtime interprets (see the [lodestar demo](lodestar/README.md)).
 
+Every generated handler is a **frame** around the application's code: the generated
+part of one request, from reading the route parameters and the body, through the
+permission check at the gate and the row lookup within the caller's tenancy, to the
+call into the application and the response, refusals included. What sits inside the
+frame is the application's own: an RPC method's `Execute`, a computed resource's
+`Read<Name>` and `List<Name>`, a file's content function. The frame owns the response
+writer, the transaction, and every status the application does not choose through
+`@answers`, which is the guarantee the rest of this document leans on: JSON in, JSON
+out, permission-gated, transactional. This document says "the generated frame", or just
+"the frame", for that part and "the body" for the application's code inside it.
+
 ## Annotation and Struct-Tag Reference
 
 The generator and the runtime are driven by three small vocabularies, all defined in
