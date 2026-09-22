@@ -126,6 +126,7 @@ HALVARD=10000000-0000-4000-8000-000000000001
 MERIDIAN=10000000-0000-4000-8000-000000000002
 BASTION_RELAY=10000000-0000-4000-8000-000000000003
 CONVOY_SORTIE=90000000-0000-4000-8000-000000000001
+BEACON_CALL=d0000000-0000-4000-8000-000000000001
 
 for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch; do
   login "$p"
@@ -359,6 +360,8 @@ r=$(req salvor GET "$API/clients"); assert_py "salvor's roster is the covered an
 # ---- call log: create-form narrowing ----
 r=$(req cadet GET "$API/permission-digest?domain=anvil"); assert_py "cadet's digest narrows the call form to summary and severity" "$r" "'DistressCalls.summary' in rows and 'DistressCalls.callerContact' not in rows"
 r=$(req cadet PATCH "$API/resources" '[{"op":"add","path":"/sectors/anvil/distress-calls","value":{"summary":"Debris on the approach","severity":2}}]'); check "cadet files a two-field call" 200 "$r"
+# The Update envelope speaks for every field the caller may write, projected or not: the marshal's grant covers the write-only transcript, which no read returns, and the envelope on a seeded call names it, so the Calls page's edit form draws its blank input. Demonstrates: field.write-only.
+r=$(req marshal GET "$ANVIL/distress-calls/$BEACON_CALL?capabilities=Update"); assert_py "the marshal's Update envelope on a seeded call names the write-only transcript the read never returns" "$r" "'transcript' in rows['zzCapabilities']['Update'] and 'transcript' not in rows and rows['zzCapabilities']['Update']==sorted(rows['zzCapabilities']['Update'])"
 
 # ---- droid channel ----
 # The droid's first reading carries the firmware's raw frame, a type declared in the droid link's own package, which the generator writes the frame's JSON and Spanner methods into (WithTypes); the list reads the frame back as the JSON it was sent, and a reading sent without one carries null. Demonstrates: typescript.types-package.

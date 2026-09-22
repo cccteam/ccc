@@ -32,13 +32,24 @@ func TestCapabilityEnvelope(t *testing.T) {
 	}{
 		{
 			// Marshal's Update grant is unconditional (pure RBAC): the same positive
-			// list on every row, delete live everywhere.
+			// list on every row, in name order, delete live everywhere.
 			name:   "marshal's unconditional update lists every field on every row",
 			user:   "marshal",
 			target: sectorPath(anvil, "missions?capabilities=Update,Delete"),
 			want: map[string]wantCapability{
-				missionHaulerID: {update: []any{"clientId", "kindId", "title", "brief", "briefingTemplateId", "hazard", "fee", "deadline", "requiredCertId", "assignedSquadronId", "notes"}, del: true},
-				missionPodID:    {update: []any{"clientId", "kindId", "title", "brief", "briefingTemplateId", "hazard", "fee", "deadline", "requiredCertId", "assignedSquadronId", "notes"}, del: true},
+				missionHaulerID: {update: []any{"assignedSquadronId", "brief", "briefingTemplateId", "clientId", "deadline", "fee", "hazard", "kindId", "notes", "requiredCertId", "title"}, del: true},
+				missionPodID:    {update: []any{"assignedSquadronId", "brief", "briefingTemplateId", "clientId", "deadline", "fee", "hazard", "kindId", "notes", "requiredCertId", "title"}, del: true},
+			},
+		},
+		{
+			// The envelope speaks for every field the caller may write, projected or
+			// not: the marshal's grant covers the write-only transcript, which no read
+			// returns, and the envelope names it beside the fields the read carries.
+			name:   "marshal's update envelope on a call names the write-only transcript",
+			user:   "marshal",
+			target: sectorPath(anvil, "distress-calls?capabilities=Update"),
+			want: map[string]wantCapability{
+				callBeaconID: {update: []any{"callerContact", "position", "severity", "summary", "transcript"}},
 			},
 		},
 		{
@@ -60,7 +71,7 @@ func TestCapabilityEnvelope(t *testing.T) {
 			user:   "dispatcher",
 			target: sectorPath(anvil, "missions?capabilities=Update"),
 			want: map[string]wantCapability{
-				missionHaulerID: {update: []any{"deadline", "assignedSquadronId", "notes"}}, // open, projection order
+				missionHaulerID: {update: []any{"assignedSquadronId", "deadline", "notes"}}, // open, name order
 				missionConvoyID: {update: []any{"deadline", "notes"}},                       // underway: assignment closed
 			},
 		},

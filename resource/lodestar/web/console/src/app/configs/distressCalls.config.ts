@@ -7,11 +7,12 @@ import { field, listViewConfig, rootConfig, section } from '@cccteam/resource-an
 // metadata: the server accepts it on create and update and never returns it, so the row
 // page draws nothing for it in view mode and the create form draws a blank input whose
 // value travels only when typed; a list column naming it would fail when the page is
-// built, since a list never returns it, so none does. The row page's edit mode keeps the
-// transcript absent: the row is read with its capability envelope, which the server plans
-// over the read projection, so it never names a field the server never returns, and the
-// library takes the envelope as the positive list of editable fields. The hand-written
-// call log writes the transcript.
+// built, since a list never returns it, so none does. The row page's edit mode draws the
+// same blank input: the row is read with its capability envelope, which the server plans
+// over every field the caller may write, projected or not, so a caller whose Update grant
+// covers the transcript sees it named although no read returns it, and the library takes
+// the envelope as the positive list of editable fields. The hand-written call log writes
+// the transcript too.
 // Position is a GeoJSON Point, a type whose TypeScript shape is imported from the
 // geojson package: the list's cell shows the JSON on one line, the row page prints it
 // indented, and no mode offers an input; a call relayed by voice has none, the

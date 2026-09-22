@@ -218,8 +218,9 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   provenance as JSON, the [Calls page](web/console/src/app/configs/distressCalls.config.ts)
   shows a call's position as JSON ([`field.object`](web/console/src/app/configs/distressCalls.config.ts))
   and draws nothing for its write-only transcript in view mode and a blank input in its
-  create form whose value travels only when typed, while its edit form, over a row read
-  with a capability envelope planned on the read projection, keeps the transcript absent
+  create form and in its edit form, whose value travels only when typed; the edit form has
+  the input because the row's Update envelope names every field the caller may write,
+  projected or not, so the marshal's covers the transcript no read returns
   ([`field.write-only`](web/console/src/app/configs/distressCalls.config.ts)), and the
   Ships page's cargo bays and the Squadrons page's callsigns are joined in a cell and chips
   on the row page, read-only in edit mode ([`field.array`](web/console/src/app/configs/ships.config.ts)). The
