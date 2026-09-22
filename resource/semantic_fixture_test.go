@@ -165,11 +165,21 @@ func semanticCollection(t *testing.T) *GeneratedCollection {
 		}},
 	)
 
+	// Every grant-bearing field registers under the read and write permissions, as
+	// the generator registers it; the key is permission-exempt. The Update envelope
+	// is planned over the tags the collection registers Update on.
+	tags := make([]TagData, 0, 1+len(semanticFields))
+	tags = append(tags, TagData{Name: "id"})
+	for _, f := range semanticFields {
+		tags = append(tags, TagData{Name: accesstypes.Tag(f.json), Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}})
+	}
+
 	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{
 		{
 			Name:        semanticResource,
 			Scope:       accesstypes.DomainPermissionScope,
 			Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read, accesstypes.Create, accesstypes.Update, accesstypes.Delete},
+			Tags:        tags,
 			Attributes:  attributes,
 			Domain:      &DomainBindingData{Column: "Depot"},
 		},

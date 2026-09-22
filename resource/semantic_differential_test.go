@@ -923,13 +923,18 @@ func (h *semanticHarness) expectRead(t *testing.T, c *semanticCase, shape *seman
 			res := h.listSet.Resource(f.field)
 			e.visible[f.field] = permits(t, res, c.decisions[accesstypes.List][res], image)
 			survives = survives || e.visible[f.field]
-			if permits(t, res, c.decisions[accesstypes.Update][h.patchSet.Resource(f.field)], image) {
-				e.update = append(e.update, f.json)
-			}
 		}
 		if !survives {
 			continue
 		}
+		// The Update envelope speaks for every field the caller may write, projected
+		// or not, in name order.
+		for _, f := range semanticFields {
+			if permits(t, h.patchSet.Resource(f.field), c.decisions[accesstypes.Update][h.patchSet.Resource(f.field)], image) {
+				e.update = append(e.update, f.json)
+			}
+		}
+		slices.Sort(e.update)
 		e.delete = permits(t, semanticResource, c.decisions[accesstypes.Delete][semanticResource], image)
 		if e.visible[shape.field.field] {
 			e.key = semanticValue(semanticFieldValue(p, shape.field.field))

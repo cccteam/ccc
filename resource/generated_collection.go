@@ -672,6 +672,27 @@ func (g *GeneratedCollection) MembersOf(parent accesstypes.Resource) []accesstyp
 	return members
 }
 
+// TagsRequiring reports the tags of res whose registration requires perm, sorted
+// by name: the fields a caller needs perm on, whether or not a read projects them.
+// The per-row write affordance (design plan §13) is planned over this set, so a
+// write-only field, registered under the write permissions alone and never
+// returned, still answers capabilities=Update. A tag registered without a
+// permission (a permission-exempt primary key) is never in the set. Every scope is
+// searched: a resource registers under one.
+func (g *GeneratedCollection) TagsRequiring(res accesstypes.Resource, perm accesstypes.Permission) []accesstypes.Tag {
+	var tags []accesstypes.Tag
+	for _, store := range g.tagStore {
+		for tag, permissions := range store[res] {
+			if slices.Contains(permissions, perm) {
+				tags = append(tags, tag)
+			}
+		}
+	}
+	slices.Sort(tags)
+
+	return tags
+}
+
 // MethodTarget reports the row resource method's @target field addresses
 // within scope, and whether the method declares one. A targeted method's
 // Execute grants may carry row-referencing conditions — the generated handler

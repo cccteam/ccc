@@ -90,7 +90,9 @@ type plannedCapability struct {
 	// isDelete selects the boolean shape; otherwise the positive field list.
 	isDelete bool
 
-	// fields lists the Update affordance's candidates in projection order.
+	// fields lists the Update affordance's candidates in name order: every
+	// field of the resource the write permission is registered on, projected
+	// or not.
 	fields []capabilityField
 
 	// allowed is Delete's data-free answer; group overrides it when >= 0.
@@ -180,14 +182,19 @@ func (q *QuerySet[Resource]) checkCapabilityPermissions(ctx context.Context) err
 				continue
 			}
 		default:
-			// The affordance question is per displayed field: the projected
-			// grant-bearing fields, the same set the read rules govern
-			// (permission-exempt primary keys are never editable).
+			// The affordance question is per writable field: every field of the
+			// resource the write permission is registered on, whether or not the
+			// read projected it. The read's Set registers the read contract alone
+			// (a write-only field carries json:"-" there), so the generated
+			// collection, which registers every field with its permissions, is
+			// the carrier; permission-exempt primary keys carry none and are
+			// never editable.
+			if q.collection == nil {
+				return errors.Newf("resource %s asked for the %s capability, which names the fields the caller may write, but no generated collection is wired to name them", q.Resource(), perm)
+			}
 			resources = resources[:0]
-			for _, field := range q.Fields() {
-				if q.resourceSet.PermissionRequired(field, q.requiredPermission) {
-					resources = append(resources, q.resourceSet.Resource(field))
-				}
+			for _, tag := range q.collection.TagsRequiring(q.resourceSet.BaseResource(), perm) {
+				resources = append(resources, q.resourceSet.BaseResource().ResourceWithTag(tag))
 			}
 			if len(resources) == 0 {
 				continue
@@ -295,28 +302,32 @@ func (q *QuerySet[Resource]) plannedDelete(decisions accesstypes.Decisions, grou
 	return planned, nil
 }
 
-// plannedUpdate builds one write permission's per-field recipe over the
-// projected grant-bearing fields — the same set the read rules govern.
+// plannedUpdate builds one write permission's per-field recipe over every field
+// of the resource the permission is registered on, in name order, projected or
+// not: the envelope speaks for every field the caller may write, so a write-only
+// field, which no read returns, is one more field in the loop. The candidates
+// are the collection's; checkCapabilityPermissions asked the same set.
 func (q *QuerySet[Resource]) plannedUpdate(perm accesstypes.Permission, decisions accesstypes.Decisions, groups *capabilityGroups) (plannedCapability, error) {
 	planned := plannedCapability{perm: perm, group: -1}
-	for _, field := range q.Fields() {
-		if !q.resourceSet.PermissionRequired(field, q.requiredPermission) {
-			continue
-		}
-		decision := decisions[q.resourceSet.Resource(field)]
+	if q.collection == nil {
+		return planned, nil
+	}
+	for _, tag := range q.collection.TagsRequiring(q.resourceSet.BaseResource(), perm) {
+		res := q.resourceSet.BaseResource().ResourceWithTag(tag)
+		decision := decisions[res]
 		group := -1
 		switch {
 		case decision.IsGranted():
 		case decision.IsConditional():
 			var err error
-			group, err = groups.intern(q.resourceSet.Resource(field), decision)
+			group, err = groups.intern(res, decision)
 			if err != nil {
 				return plannedCapability{}, err
 			}
 		default:
 			continue
 		}
-		planned.fields = append(planned.fields, capabilityField{jsonName: q.jsonName(field), group: group})
+		planned.fields = append(planned.fields, capabilityField{jsonName: string(tag), group: group})
 	}
 
 	return planned, nil
