@@ -1031,8 +1031,8 @@ func (h *semanticHarness) checkRead(t *testing.T, c *semanticCase) {
 	for i, row := range rows {
 		e := expected[i]
 		for _, f := range c.projected {
-			field, _ := parcelType.FieldByName(string(f.field))
-			got := semanticValue(reflect.ValueOf(row.Data).FieldByName(string(f.field)).Interface())
+			field, _ := structField(parcelType, string(f.field))
+			got := semanticValue(fieldValue(reflect.ValueOf(row.Data), string(f.field)).Interface())
 			if e.visible[f.field] {
 				h.tally.visibleCells++
 				want := semanticValue(semanticFieldValue(e.parcel, f.field))

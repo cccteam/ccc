@@ -8,7 +8,13 @@
 impulse/internal/check/check.go
 impulse/internal/handoff/agent.go
 
-# Property-based tests draw their cases from a seeded math/rand, which is what a
-# reproducible property test needs; the crypto-randomness audit does not apply to them.
+# Property-based tests, and the conditiontest generator they draw their cases from, use a
+# seeded math/rand, which is what a reproducible property test needs; the crypto-randomness
+# audit does not apply to them.
 accesstypes/condition/property_test.go
+accesstypes/condition/conditiontest/generator.go
+accesstypes/condition/conditiontest/generator_test.go
+accesstypes/condition/conditiontest/evaluate_test.go
 resource/lowering_property_test.go
+resource/differential_property_test.go
+resource/semantic_differential_test.go

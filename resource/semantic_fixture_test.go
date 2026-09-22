@@ -351,7 +351,7 @@ func semanticDate(d civil.Date) conditiontest.Date {
 
 // semanticFieldValue reads one field of a parcel by name.
 func semanticFieldValue(p *semanticParcel, field accesstypes.Field) any {
-	return reflect.ValueOf(*p).FieldByName(string(field)).Interface()
+	return fieldValue(reflect.ValueOf(*p), string(field)).Interface()
 }
 
 // compareSemantic orders two evaluator values of one storage type, nil first

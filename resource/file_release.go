@@ -196,7 +196,7 @@ func (p *PatchSet[Resource]) readFileKeys(ctx context.Context, txn ReadWriteTran
 	data := reflect.Indirect(reflect.ValueOf(row.Data))
 	keys = make([]string, 0, len(fields))
 	for _, field := range fields {
-		value := data.FieldByName(string(field))
+		value := fieldValue(data, string(field))
 		if !value.IsValid() {
 			return nil, false, errors.Newf("file key field %s is not a field of %s", field, data.Type())
 		}
