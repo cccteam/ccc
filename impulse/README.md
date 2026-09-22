@@ -47,6 +47,17 @@ templates, this README, and the tool's source.
   embedding the one below it: **core** (every process), **data** (every process that opens
   the database), and **site** (one served site: its port and its built bundle). The site
   level is `SiteConfiguration` in both layouts, since a flat application is one site.
+- **Warning**: a schema finding the generator raises on every run and prints as a
+  `Warning:` line (an index a listed tenant-scoped resource wants, a tenant resolved
+  through a join path, an enumeration table too large to bake): a performance matter the
+  application decides, never a refusal. The generate program's warnings test pins the
+  accepted set as typed values, so a new warning fails the application's CI until it is
+  fixed or pinned.
+- **Audit finding**: an advisory finding about a shape the framework handles under a
+  stated limitation (a table storing files whose rows the database deletes by cascade),
+  printed as an `Audit:` line only when asked: the generate program's `-audit` flag, or
+  `impulse audit`, which runs every program that way. A normal generation never prints
+  one, and no test pins them.
 
 ## impulse new
 
@@ -114,7 +125,7 @@ impulse check --list
 
 | Check | Verifies |
 | --- | --- |
-| `generator-program` | Every generator program uses options this release knows, with literal arguments. A program the tool cannot read completely is one it cannot later edit or migrate. |
+| `generator-program` | Every generator program uses options this release knows, with literal arguments. A program the tool cannot read completely is one it cannot later edit or migrate. A program that never reads `Warnings()` after it generates (in its own package, or in the main package that runs a declaring package) warns: the schema warnings a generation raises go unseen. The skeletons' runner prints them and pins the accepted set in a test. |
 | `options` | The generator programs declare one coherent option set, and the report states it: layout (flat or sites), sites, tenancy (`WithDomainRoute`, `WithConcealedDomains`), outlets, and targets. Handlers come with routes, `ForOutlet` names a declared session-serving outlet, the referenced directories exist, a `//go:generate` directive runs every program (its own directory, or a main package of the module that imports the package declaring it, the layout an application takes when its tests run the declaration in-process), the sites agree on tenancy, and a second site lives under `apps/<site>/`. |
 | `tenancy-wired` | A program with `WithDomainRoute` has a migration creating the tenant-record table the segment names, at least one struct annotated `@permissionScope(domain)`, and every `access.MigrateRoles` call outside tests passing domains. A program without it has no tenant-scoped structs and passes no domains. The compiler and the generator hold the rest of the seam. |
 | `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted: by the generated router (`GenerateRouter`) from the declaration itself, or, in an application that kept a hand-written router, by a hand-written file in the router package calling `generated<Outlet>Routes`. A session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
@@ -134,10 +145,39 @@ impulse check --list
 | `env-template` | Every `env` struct tag without a default appears in the development environment template (`.envrc.template`, `.env.template`, or `.env.example`). `--fix` adds the missing lines. |
 | `pins` | Framework pins in `go.mod` are released versions. Pseudo-versions and local replaces warn but do not fail. |
 | `gowork-off` | `GOWORK=off go build ./...` and `go vet ./...` succeed, so the pins in `go.mod` resolve without the workspace. |
-| `regen` | `go generate ./...` reproduces the generated files on disk (content compared before and after, so it holds in untracked trees too). Needs the Spanner emulator and rewrites the working tree; `--skip-generate` leaves it out. |
+| `regen` | `go generate ./...` reproduces the generated files on disk (content compared before and after, so it holds in untracked trees too). The `Warning:` lines the generate programs printed are listed under the result and counted in its summary; they never fail the check, since the program's warnings test is what gates the accepted set. Needs the Spanner emulator and rewrites the working tree; `--skip-generate` leaves it out. |
 
 Statuses: `PASS`, `FAIL`, `WARN` (reported, does not fail the run), `SKIP` (with the
 reason).
+
+## impulse audit
+
+`audit` runs every generator program of the application with `-audit`, from the module
+root, and prints what each raised: the schema warnings a generation always prints, and
+the audit pass's findings, advisory findings about shapes the framework handles under a
+stated limitation, which a normal generation never prints. Today's one finding names a
+resource that stores files on a table whose rows the database deletes by cascade
+(`ON DELETE CASCADE` on an interleave or a foreign key): those rows never pass through
+the patch machinery, so the release of their objects never runs for them and the
+application's sweep removes the objects later. The section is one heading per program,
+`cmd/generate/resourcegenerator/generator.go (go run ./cmd/generate/resourcegenerator -audit)`,
+with the lines beneath it or `no findings`.
+
+```sh
+impulse audit
+impulse audit --app path/to/app
+```
+
+Findings never fail the command: it exits 0 with or without them. A program that fails
+exits 1 with its output tail, and a program that does not take `-audit` exits 1 saying to
+adopt the runner shape: the skeletons' generate program is three files in one directory,
+`generator.go` declaring the generator (`newGenerator`), `main.go` running it and
+printing the `Warning:` lines and, under `-audit`, the `Audit:` lines, and
+`warnings_test.go` pinning the accepted warnings. It regenerates the tree like
+`go generate` does, so it needs the Spanner emulator. It is a command of its own and not
+a check: the check is the gate on every change, and the audit is read by decision, before
+a release, after a schema change to a table that stores files, or when a stated
+limitation is in question.
 
 ## impulse render
 

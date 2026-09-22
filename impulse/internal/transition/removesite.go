@@ -101,11 +101,7 @@ func (r RemoveSite) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 		return nil, err
 	}
 
-	if out, err := exec.Run(ctx, a.Root, nil, "go", "generate", "./..."); err != nil {
-		ch.skipf("go generate ./... failed; fix the cause and run it:\n%s", strings.TrimSpace(string(out)))
-	} else {
-		ch.didf("ran go generate ./...: every remaining site's generated code at its place, without the %s site's", r.Name)
-	}
+	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", fmt.Sprintf("ran go generate ./...: every remaining site's generated code at its place, without the %s site's", r.Name))
 	remaining := make([]string, 0, len(p.Sites)-1)
 	for i := range p.Sites {
 		if p.Sites[i].Name != r.Name {

@@ -221,7 +221,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 			t.Errorf("deploy.go lacks %q:\n%s", want, deploy)
 		}
 	}
-	shared := read(t, a, "cmd/generate/sharedgenerator/main.go")
+	shared := read(t, a, "cmd/generate/sharedgenerator/generator.go")
 	for _, want := range []string{`"pkg/sharedresources"`, `"example.com/acme/beacon/pkg/sharedresources"`, `GenerateTypescript("apps/console/web/console/src/app/core/service/shared"`, `GenerateTypescript("apps/portal/web/portal/src/app/core/service/shared"`, `WithSpannerEmulatorVersion("1.5.56")`} {
 		if !strings.Contains(shared, want) {
 			t.Errorf("sharedgenerator lacks %q:\n%s", want, shared)
@@ -344,7 +344,7 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	if got := read(t, promoted, "pkg/deploy/deploy.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection(), kioskrouter.Collection())") || !strings.Contains(got, `kioskrouter "example.com/acme/beacon/apps/kiosk/pkg/router"`) {
 		t.Errorf("deploy.go = %q", got)
 	}
-	if got := read(t, promoted, "cmd/generate/sharedgenerator/main.go"); !strings.Contains(got, `GenerateTypescript("apps/kiosk/web/kiosk/src/app/core/service/shared"`) {
+	if got := read(t, promoted, "cmd/generate/sharedgenerator/generator.go"); !strings.Contains(got, `GenerateTypescript("apps/kiosk/web/kiosk/src/app/core/service/shared"`) {
 		t.Errorf("sharedgenerator = %q", got)
 	}
 	if got := read(t, promoted, "Procfile"); !strings.Contains(got, "APP_SERVICE_NAME=kiosk PORT=8092 APP_DIST=apps/kiosk/web/dist/kiosk go run ./apps/kiosk'") || !strings.Contains(got, "kiosk-web: ") {

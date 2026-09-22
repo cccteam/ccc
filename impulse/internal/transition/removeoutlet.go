@@ -96,11 +96,7 @@ func (r RemoveOutlet) Apply(ctx context.Context, a *app.App, exec check.Execer) 
 	}
 	r.noteEnvironment(a, ch)
 
-	if out, err := exec.Run(ctx, a.Root, nil, "go", "generate", "./..."); err != nil {
-		ch.skipf("go generate ./... failed, so the %s outlet's generated routes and handlers are still on disk; fix the cause (a resource still annotated @outlet(%s), most often) and run it:\n%s", r.Name, r.Name, strings.TrimSpace(string(out)))
-	} else {
-		ch.didf("ran go generate ./..., which regenerated without the %s outlet", r.Name)
-	}
+	generate(ctx, a, exec, ch, fmt.Sprintf("go generate ./... failed, so the %s outlet's generated routes and handlers are still on disk; fix the cause (a resource still annotated @outlet(%s), most often) and run it:", r.Name, r.Name), fmt.Sprintf("ran go generate ./..., which regenerated without the %s outlet", r.Name))
 
 	return ch, nil
 }

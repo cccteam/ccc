@@ -1,6 +1,7 @@
 package app
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -57,6 +58,80 @@ func (a *App) directiveTarget(d Directive) (string, bool) {
 
 	return path.Clean(target), true
 }
+
+// ProgramDir is the root-relative directory go run runs the generator program from: the
+// target of the //go:generate directive that runs it, when one does, since a program
+// declared in a package of its own runs through the main package beside it, and the
+// program's own directory otherwise.
+func (a *App) ProgramDir(g *Generator) string {
+	if d, ok := a.RunsGenerator(g); ok {
+		if target, ok := a.directiveTarget(d); ok {
+			return target
+		}
+	}
+
+	return path.Dir(g.File)
+}
+
+// readsWarnings reports whether the program reads Warnings(): a call with no arguments
+// on any receiver in the program's own directory or in a main package of the module
+// that imports the program's package, test files left out.
+func (a *App) readsWarnings(g *Generator) bool {
+	pkgDir := path.Dir(g.File)
+	dirs := []string{pkgDir}
+	for _, dir := range a.MainPackages {
+		if dir != pkgDir && a.mainPackageImports(dir, pkgDir) {
+			dirs = append(dirs, dir)
+		}
+	}
+	for _, dir := range dirs {
+		if a.dirCallsWarnings(dir) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// dirCallsWarnings reports whether a non-test Go file in the directory calls Warnings()
+// on something.
+func (a *App) dirCallsWarnings(dir string) bool {
+	entries, err := os.ReadDir(a.Abs(dir))
+	if err != nil {
+		return false
+	}
+	fset := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(a.Abs(dir), name), nil, parser.SkipObjectResolution)
+		if err != nil {
+			continue
+		}
+		found := false
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || len(call.Args) != 0 {
+				return !found
+			}
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == warningsMethod {
+				found = true
+			}
+
+			return !found
+		})
+		if found {
+			return true
+		}
+	}
+
+	return false
+}
+
+// warningsMethod is the generator method a program reads after a clean run.
+const warningsMethod = "Warnings"
 
 // mainPackageImports reports whether dir holds a main package of the module whose
 // non-test Go files import the module package at pkgDir. A file that does not parse

@@ -1,47 +1,52 @@
-// Package main implements the shared generator: it reads pkg/sharedresources and emits
-// its TypeScript into every site's web application, so the sites agree on the shared
-// vocabulary. It generates no handlers or routes — each site serves its own resources.
+// Package main is the shared vocabulary's generate program: it runs the resource generator
+// generator.go declares (newGenerator) and prints what a successful run raised, one line
+// each, to standard error with a fixed prefix and no timestamp, so a tool that reads the
+// lines has one contract per prefix. Every run prints the schema warnings as
+// "Warning: <text>": a performance finding about the schema, never a refusal, and the
+// run has written its output when the lines print; warnings_test.go pins the accepted
+// set. Run with -audit, it also prints the audit pass's findings as "Audit: <text>":
+// advisory findings about shapes the framework handles under a stated limitation, which
+// a normal generation (go generate passes no flag) never prints; impulse audit runs
+// every program that way.
 package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
+	"os"
 
-	"github.com/cccteam/ccc/resource/generation"
 	"github.com/go-playground/errors/v5"
 )
 
 func main() {
-	if err := run(context.Background()); err != nil {
+	audit := flag.Bool("audit", false, "print the audit pass's findings after the warnings")
+	flag.Parse()
+
+	if err := run(context.Background(), *audit); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context) error {
-	generator, err := generation.NewResourceGenerator(
-		ctx,
-		"pkg/sharedresources",
-		[]string{"file://schema/migrations"},
-		[]string{
-			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/sharedresources",
-		},
-		generation.WithSpannerEmulatorVersion("1.5.56"),
-		// One TypeScript target per site: adding a site means adding its target here,
-		// and `impulse check` fails the build if a site is missed.
-		generation.GenerateTypescript("apps/console/web/src/app/core/service/shared",
-			generation.GenerateEnums(),
-		),
-		generation.GenerateTypescript("apps/portal/web/src/app/core/service/shared",
-			generation.GenerateEnums(),
-		),
-	)
+func run(ctx context.Context, audit bool) error {
+	generator, err := newGenerator(ctx)
 	if err != nil {
-		return errors.Wrap(err, "generation.NewResourceGenerator()")
+		return err
 	}
 	defer generator.Close()
 
 	if err := generator.Generate(); err != nil {
 		return errors.Wrap(err, "generation.Generator.Generate()")
+	}
+
+	for _, warning := range generator.Warnings() {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+	}
+	if audit {
+		for _, finding := range generator.Audit() {
+			fmt.Fprintf(os.Stderr, "Audit: %s\n", finding)
+		}
 	}
 
 	return nil

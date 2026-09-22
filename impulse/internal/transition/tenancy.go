@@ -106,11 +106,7 @@ func (tn Tenancy) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Ch
 		return nil, err
 	}
 
-	if out, err := exec.Run(ctx, a.Root, nil, "go", "generate", "./..."); err != nil {
-		ch.skipf("go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:\n%s", strings.TrimSpace(string(out)))
-	} else {
-		ch.didf("ran go generate ./..., which emitted the %s resource and the tenant segment pair under /%s/{%sID}", tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record()))
-	}
+	generate(ctx, a, exec, ch, "go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s resource and the tenant segment pair under /%s/{%sID}", tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record())))
 
 	return ch, nil
 }

@@ -197,9 +197,10 @@ func beacon(t *testing.T, extra map[string]string) *app.App {
 	return a
 }
 
-// fakeExec answers go generate.
+// fakeExec answers go generate: its output, and its failure when err is set.
 type fakeExec struct {
 	calls []string
+	out   string
 	err   error
 }
 
@@ -209,7 +210,7 @@ func (f *fakeExec) Run(_ context.Context, _ string, _ []string, name string, arg
 		return []byte("generation: boom\n"), f.err
 	}
 
-	return nil, nil
+	return []byte(f.out), nil
 }
 
 func read(t *testing.T, a *app.App, rel string) string {
@@ -278,13 +279,15 @@ func TestOutletApply(t *testing.T) {
 		"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\"),\n\t\tgeneration.WithRouterOutlet(\"machines\", \"machines\"),\n", 1)
 
 	tests := []struct {
-		name        string
-		outlet      Outlet
-		generateErr error
-		wantProgram string
-		wantDid     []string
-		wantSkipped []string
-		check       func(t *testing.T, a *app.App)
+		name         string
+		outlet       Outlet
+		generateErr  error
+		generateOut  string
+		wantWarnings []string
+		wantProgram  string
+		wantDid      []string
+		wantSkipped  []string
+		check        func(t *testing.T, a *app.App)
 	}{
 		{
 			name:        "a session outlet",
@@ -420,6 +423,22 @@ func TestOutletApply(t *testing.T) {
 			},
 		},
 		{
+			name:   "generation prints schema warnings",
+			outlet: Outlet{Name: "machines", Prefix: "machines"},
+			generateOut: "2026/09/22 10:00:00 Finished Resource generation in 1s\n" +
+				"Warning: Reading lists in TenantId, RecordedAt DESC order with no index leading with those columns, so every page sorts the tenant's partition; wanted: CREATE INDEX ReadingsByTenantIdRecordedAt ON Readings(TenantId, RecordedAt DESC)\n" +
+				"Warning: Comment resolves its tenant through AnnouncementId, Announcements.TenantId, so its lists scan all of Comments, every tenant, and no index on Comments changes that; a table listed at volume carries the tenant key on the row\n",
+			wantProgram: machinesProgram,
+			wantDid: []string{
+				`cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("machines", "machines")`,
+				"ran go generate ./..., which emitted the machines outlet's routes and handlers",
+			},
+			wantWarnings: []string{
+				"Reading lists in TenantId, RecordedAt DESC order with no index leading with those columns, so every page sorts the tenant's partition; wanted: CREATE INDEX ReadingsByTenantIdRecordedAt ON Readings(TenantId, RecordedAt DESC)",
+				"Comment resolves its tenant through AnnouncementId, Announcements.TenantId, so its lists scan all of Comments, every tenant, and no index on Comments changes that; a table listed at volume carries the tenant key on the row",
+			},
+		},
+		{
 			name:        "generation fails",
 			outlet:      Outlet{Name: "machines", Prefix: "machines"},
 			generateErr: errors.New("exit status 1"),
@@ -433,13 +452,19 @@ func TestOutletApply(t *testing.T) {
 			t.Parallel()
 
 			a := beacon(t, nil)
-			exec := &fakeExec{err: tt.generateErr}
+			exec := &fakeExec{err: tt.generateErr, out: tt.generateOut}
 			ch, err := tt.outlet.Apply(t.Context(), a, exec)
 			if err != nil {
 				t.Fatalf("Apply() error = %v", err)
 			}
 			if diff := cmp.Diff([]string{"go generate ./..."}, exec.calls); diff != "" {
 				t.Errorf("commands mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantWarnings, ch.Warnings); diff != "" {
+				t.Errorf("Warnings mismatch (-want +got):\n%s", diff)
+			}
+			if len(tt.wantWarnings) > 0 && !strings.Contains(ch.Text(), "go generate printed these schema warnings; each is fixed in the schema or accepted by pinning its typed value in the program's warnings test:\n\n- "+tt.wantWarnings[0]+"\n") {
+				t.Errorf("Text() does not carry the warnings:\n%s", ch.Text())
 			}
 			if diff := cmp.Diff(tt.wantDid, ch.Did); diff != "" {
 				t.Errorf("Did mismatch (-want +got):\n%s", diff)

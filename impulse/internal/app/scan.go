@@ -57,6 +57,9 @@ func (a *App) scan() error {
 	if err := a.followRoleWrappers(); err != nil {
 		return err
 	}
+	for _, g := range a.Generators {
+		g.ReadsWarnings = a.readsWarnings(g)
+	}
 
 	return a.authPackages()
 }

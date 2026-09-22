@@ -33,6 +33,8 @@ impulse add tenancy
   --app string (default .)
   --skip-generate bool
   --tenant-table string (default Tenants)
+impulse audit
+  --app string (default .)
 impulse check
   --app string (default .)
   --fix bool

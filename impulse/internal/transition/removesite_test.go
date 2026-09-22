@@ -72,7 +72,7 @@ func TestRemoveSiteApply(t *testing.T) {
 		"deleted apps/portal: the portal site's main package, handlers, router, resources, authorization suite, and browser workspace",
 		"deleted cmd/generate/portalgenerator: the portal site's generator",
 		"cmd/generate/generate.go: no longer runs ./portalgenerator",
-		"cmd/generate/sharedgenerator/main.go: no longer emits the shared TypeScript into the portal site",
+		"cmd/generate/sharedgenerator/generator.go: no longer emits the shared TypeScript into the portal site",
 		"pkg/deploy/deploy.go: the portal site's router collection is out of the union",
 		"Procfile: removed the portal and portal-web process(es); the comments that describe them are still there",
 		"ran go generate ./...: every remaining site's generated code at its place, without the portal site's",
@@ -93,7 +93,7 @@ func TestRemoveSiteApply(t *testing.T) {
 	if got := read(t, a, "cmd/generate/generate.go"); !strings.Contains(got, "//go:generate go run ./consolegenerator\n//go:generate go run ./kioskgenerator\n//go:generate go run ./sharedgenerator\n") {
 		t.Errorf("generate.go = %q", got)
 	}
-	shared := read(t, a, "cmd/generate/sharedgenerator/main.go")
+	shared := read(t, a, "cmd/generate/sharedgenerator/generator.go")
 	if strings.Contains(shared, "apps/portal") || !strings.Contains(shared, `GenerateTypescript("apps/console/web/console/src/app/core/service/shared"`) || !strings.Contains(shared, `GenerateTypescript("apps/kiosk/web/kiosk/src/app/core/service/shared"`) {
 		t.Errorf("sharedgenerator = %q", shared)
 	}

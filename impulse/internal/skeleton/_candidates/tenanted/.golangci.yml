@@ -140,11 +140,12 @@ linters:
           # handwritten ones; preallocation noise adds nothing in tests.
           - prealloc
         path: _test\.go
-      # The regen test rewrites the working tree and must not run in parallel.
+      # The regen test and the schema-warning tests rewrite the working tree and must not
+      # run in parallel.
       - linters:
           - paralleltest
           - tparallel
-        path: cmd/generate/generate_test\.go
+        path: cmd/generate/.*_test\.go
       - linters:
           - gomoddirectives
         path: go\.mod

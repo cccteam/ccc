@@ -31,6 +31,11 @@ type Generator struct {
 	// Problems are the places the program could not be read as literal configuration:
 	// unknown options, non-literal arguments, wrong arities.
 	Problems []Problem
+	// ReadsWarnings reports that the program reads Warnings() after it generates: a call
+	// in the program's own package, or in the main package of the module that imports it
+	// (the runner beside a declaring package). A program that never reads them lets the
+	// schema warnings a generation raises go unseen.
+	ReadsWarnings bool
 }
 
 // Call is one option call such as generation.GenerateHandlers("app").

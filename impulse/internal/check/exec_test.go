@@ -83,6 +83,28 @@ func TestRegen(t *testing.T) {
 			wantCalls: []string{generate},
 		},
 		{
+			name: "clean, with the schema warnings the programs printed",
+			generateOut: "2026/09/22 10:00:00 Finished Resource generation in 1s\n" +
+				"Warning: Beacon lists in StationId, Name order with no index leading with those columns, so every page sorts the tenant's partition; wanted: CREATE INDEX BeaconsByStationIdName ON Beacons(StationId, Name)\n" +
+				"2026/09/22 10:00:01 Finished Typescript generation in 1s\n" +
+				"Warning: Lens resolves its tenant through BeaconId, Beacons.StationId, so its lists scan all of Lenses, every tenant, and no index on Lenses changes that; a table listed at volume carries the tenant key on the row\n",
+			wantStatus:  Pass,
+			wantSummary: "regeneration reproduces the generated files on disk; 2 schema warning(s)",
+			wantDetails: []string{
+				"Warning: Beacon lists in StationId, Name order with no index leading with those columns, so every page sorts the tenant's partition; wanted: CREATE INDEX BeaconsByStationIdName ON Beacons(StationId, Name)",
+				"Warning: Lens resolves its tenant through BeaconId, Beacons.StationId, so its lists scan all of Lenses, every tenant, and no index on Lenses changes that; a table listed at volume carries the tenant key on the row",
+			},
+			wantCalls: []string{generate},
+		},
+		{
+			name:        "a warning line in a failed run stays in the tail",
+			generateOut: "Warning: Beacon lists in StationId, Name order with no index\ngeneration: boom\n",
+			generateErr: errExit,
+			wantStatus:  Fail, wantSummary: "go generate ./... failed",
+			wantDetails: []string{"Warning: Beacon lists in StationId, Name order with no index", "generation: boom"},
+			wantCalls:   []string{generate},
+		},
+		{
 			name: "generated files under node_modules are not the application's",
 			generate: func(t *testing.T, root string) {
 				t.Helper()

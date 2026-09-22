@@ -27,8 +27,13 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		wantDetails []string
 	}{
 		{
+			// The fixture's program is the older shape, a main.go that returns after
+			// Generate(): it reads completely and never reads the warnings.
 			name: "generator-program flat", fixture: "flat", check: generatorProgram{},
-			wantStatus: Pass, wantSummary: "1 generator program(s) read completely",
+			wantStatus: Warn, wantSummary: "1 generator program(s) read completely; 1 never read Warnings()",
+			wantDetails: []string{
+				"cmd/generate/resourcegenerator/main.go: the program never reads Warnings(): the schema warnings a generation raises go unseen; print them after Generate() as the skeletons' runner does, and pin the accepted set in its warnings test",
+			},
 		},
 		{
 			name: "generator-program bad program", fixture: "badprogram", check: generatorProgram{},
@@ -40,6 +45,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 				"cmd/generate/main.go:21: GenerateEnums is a TSOption, but a ResourceOption is expected here",
 				`cmd/generate/main.go:22: WithConsolidatedHandlers argument "yes" should be a bool literal`,
 				"cmd/generate/main.go:23: WithRPC is a ResourceOption, but a TSOption is expected here",
+				"cmd/generate/main.go: the program never reads Warnings(): the schema warnings a generation raises go unseen; print them after Generate() as the skeletons' runner does, and pin the accepted set in its warnings test",
 			},
 		},
 		{

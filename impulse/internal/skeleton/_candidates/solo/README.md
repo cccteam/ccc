@@ -107,7 +107,18 @@ have creation specs with the same providers.
 
 ## Checks
 
-    go generate ./...           # regenerate; cmd/generate's test fails on drift
+    go generate ./...           # regenerate; cmd/generate's test fails on drift, and each
+                                # program prints its schema warnings as Warning: lines
     go test ./...               # needs podman for the emulator
     golangci-lint-v2 run
     cd web && bun run build && bun run lint && bun run test
+
+A generate program is three files in its directory: `generator.go` declares the generator
+(`newGenerator`), `main.go` runs it and prints every schema warning the run raised (an index a
+listed tenant-scoped resource wants, a tenant resolved through a join path, an enumeration
+table too large to bake), and `warnings_test.go` pins the accepted set as typed values, none
+to start: a new warning fails `go test` until the schema is fixed or the warning's value is
+added to the test, which records the acceptance in code. Run with `-audit`, the program also
+prints the audit pass's findings (`Audit:` lines, advisory and never printed by a plain
+generation); `impulse audit` runs every program that way, and `impulse check` lists the
+warning lines under its regen result.

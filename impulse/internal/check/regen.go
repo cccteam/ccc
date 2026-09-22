@@ -20,8 +20,13 @@ type regen struct{}
 func (regen) Name() string { return "regen" }
 
 func (regen) Describe() string {
-	return "go generate ./... reproduces the generated files on disk (needs the Spanner emulator)"
+	return "go generate ./... reproduces the generated files on disk and its schema warnings are listed (needs the Spanner emulator)"
 }
+
+// warningPrefix is how a generate program prints one schema warning: a performance
+// finding about the schema the application decides on, never a failure here. The
+// program's warnings test is what gates the accepted set.
+const warningPrefix = "Warning: "
 
 func (c regen) Run(ctx context.Context, env *Env) Result {
 	if env.SkipGenerate {
@@ -49,7 +54,31 @@ func (c regen) Run(ctx context.Context, env *Env) Result {
 		return fail(c.Name(), fmt.Sprintf("%d generated file(s) changed when regenerated; commit the regenerated files if the change is intentional", len(drift)), drift...)
 	}
 
-	return pass(c.Name(), "regeneration reproduces the generated files on disk")
+	warnings := warningLines(out)
+	if len(warnings) > 0 {
+		result := pass(c.Name(), fmt.Sprintf("%s; %d schema warning(s)", regenClean, len(warnings)))
+		result.Details = warnings
+
+		return result
+	}
+
+	return pass(c.Name(), regenClean)
+}
+
+// regenClean is the summary of a regeneration that changed nothing.
+const regenClean = "regeneration reproduces the generated files on disk"
+
+// warningLines returns the schema warnings in a generation's output, prefix included, in
+// the order the programs printed them.
+func warningLines(out []byte) []string {
+	var warnings []string
+	for line := range strings.Lines(string(out)) {
+		if line = strings.TrimRight(line, "\r\n"); strings.HasPrefix(line, warningPrefix) {
+			warnings = append(warnings, line)
+		}
+	}
+
+	return warnings
 }
 
 // skippedDirs are trees that never hold generated sources and are expensive to walk.

@@ -171,11 +171,7 @@ func (s Site) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change
 	if err := s.copySite(a, &first, ch); err != nil {
 		return nil, err
 	}
-	if out, err := exec.Run(ctx, a.Root, nil, "go", "generate", "./..."); err != nil {
-		ch.skipf("go generate ./... failed; fix the cause and run it:\n%s", strings.TrimSpace(string(out)))
-	} else {
-		ch.didf("ran go generate ./...: the %s site's generated code, and every site's at its place", s.Name)
-	}
+	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", fmt.Sprintf("ran go generate ./...: the %s site's generated code, and every site's at its place", s.Name))
 	ch.skipf("test/integration serves the %s site only; serve the %s site beside it over the same database, as the reference's harness does, and prove that a login on one site opens the other only where the auth is shared", first.Name, s.Name)
 	ch.skipf("deployment configuration outside the repository (Cloud Build path filters, Cloud Run source directories, CI paths) now has %s/%s to build and a host for the %s site to serve", sitesDir, s.Name, s.Name)
 
@@ -851,26 +847,21 @@ package sharedresources
 	if len(p.Sites) > 0 && p.Sites[0].Generator.EmulatorVersion() != "" {
 		emulator = fmt.Sprintf("\t\tgeneration.WithSpannerEmulatorVersion(%q),\n", p.Sites[0].Generator.EmulatorVersion())
 	}
-	program := fmt.Sprintf(`// Package main implements the shared generator: it reads %[1]s and emits
-// its TypeScript into every site's web application, so the sites agree on the shared
-// vocabulary. It generates no handlers or routes: each site serves its own resources.
-package main
+	declaration := fmt.Sprintf(`package main
 
 import (
 	"context"
-	"log"
 
 	"github.com/cccteam/ccc/resource/generation"
 	"github.com/go-playground/errors/v5"
 )
 
-func main() {
-	if err := run(context.Background()); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func run(ctx context.Context) error {
+// newGenerator declares the shared generator: it reads %[1]s and emits its TypeScript
+// into every site's web application, so the sites agree on the shared vocabulary. It
+// generates no handlers or routes: each site serves its own resources. The generate
+// program (main.go) runs it and warnings_test.go runs it in-process, so the two never
+// drift.
+func newGenerator(ctx context.Context) (generation.Generator, error) {
 	generator, err := generation.NewResourceGenerator(
 		ctx,
 		%[1]q,
@@ -882,21 +873,23 @@ func run(ctx context.Context) error {
 		// impulse check fails the build if a site is missed.
 %[5]s	)
 	if err != nil {
-		return errors.Wrap(err, "generation.NewResourceGenerator()")
-	}
-	defer generator.Close()
-
-	if err := generator.Generate(); err != nil {
-		return errors.Wrap(err, "generation.Generator.Generate()")
+		return nil, errors.Wrap(err, "generation.NewResourceGenerator()")
 	}
 
-	return nil
+	return generator, nil
 }
 `, sharedPackage, migrations, modulePath+"/"+sharedPackage, emulator, targets.String())
-	file := path.Join(generateDir, sharedGenName, "main.go")
-	if err := writeNew(a, file, program); err != nil {
+	dir := path.Join(generateDir, sharedGenName)
+	if err := writeNew(a, path.Join(dir, "generator.go"), declaration); err != nil {
 		return err
 	}
+	if err := writeNew(a, path.Join(dir, "main.go"), fmt.Sprintf(runnerProgram, "the shared vocabulary")); err != nil {
+		return err
+	}
+	if err := writeNew(a, path.Join(dir, "warnings_test.go"), warningsTest); err != nil {
+		return err
+	}
+	file := path.Join(dir, "generator.go")
 	if err := s.addDirective(a, sharedGenName, ch); err != nil {
 		return err
 	}
@@ -1233,27 +1226,48 @@ func (s Site) renameProject(a *app.App, to string, old *app.AngularProject, port
 // copyGenerator writes the new site's generator program as a copy of the first site's
 // with the site's directories, and runs it from the directive.
 func (s Site) copyGenerator(a *app.App, g *app.Generator, from, to, webDir, project string, ch *Change) error {
-	data, _, err := readFile(a, g.File)
-	if err != nil {
-		return err
-	}
-	text := strings.ReplaceAll(string(data), `"`+from+"/", `"`+to+"/")
-	text = strings.ReplaceAll(text, `"`+from+`"`, `"`+to+`"`)
 	modulePath := a.GoMod.Module.Mod.Path
-	text = strings.ReplaceAll(text, `"`+modulePath+"/"+from+"/", `"`+modulePath+"/"+to+"/")
+	var oldRoot, newWeb string
 	if webDir != "" && project != "" {
 		oldProjects, err := a.ReadAngular(webDir)
 		if err == nil && len(oldProjects) > 0 && oldProjects[0].Root != "" && oldProjects[0].Root != project {
-			newWeb := strings.Replace(webDir, from, to, 1)
-			text = strings.ReplaceAll(text, `"`+path.Join(newWeb, oldProjects[0].Root)+"/", `"`+path.Join(newWeb, project)+"/")
+			oldRoot = oldProjects[0].Root
+			newWeb = strings.Replace(webDir, from, to, 1)
 		}
 	}
-	text = strings.ReplaceAll(text, "the "+path.Base(from)+" site", "the "+s.Name+" site")
-	genDir := s.Name + "generator"
-	file := path.Join(path.Dir(path.Dir(g.File)), genDir, path.Base(g.File))
-	if err := writeNew(a, file, text); err != nil {
-		return err
+	rewrite := func(text string) string {
+		text = strings.ReplaceAll(text, `"`+from+"/", `"`+to+"/")
+		text = strings.ReplaceAll(text, `"`+from+`"`, `"`+to+`"`)
+		text = strings.ReplaceAll(text, `"`+modulePath+"/"+from+"/", `"`+modulePath+"/"+to+"/")
+		if oldRoot != "" {
+			text = strings.ReplaceAll(text, `"`+path.Join(newWeb, oldRoot)+"/", `"`+path.Join(newWeb, project)+"/")
+		}
+
+		return strings.ReplaceAll(text, "the "+path.Base(from)+" site", "the "+s.Name+" site")
 	}
+
+	// The program is its directory: the declaration, the runner beside it, and the
+	// warnings test, every one copied with the same rewrite.
+	srcDir := path.Dir(g.File)
+	entries, err := os.ReadDir(a.Abs(srcDir))
+	if err != nil {
+		return errors.Wrap(err, "os.ReadDir()")
+	}
+	genDir := s.Name + "generator"
+	dstDir := path.Join(path.Dir(srcDir), genDir)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		data, _, err := readFile(a, path.Join(srcDir, entry.Name()))
+		if err != nil {
+			return err
+		}
+		if err := writeNew(a, path.Join(dstDir, entry.Name()), rewrite(string(data))); err != nil {
+			return err
+		}
+	}
+	file := path.Join(dstDir, path.Base(g.File))
 	if err := s.addDirective(a, genDir, ch); err != nil {
 		return err
 	}
@@ -1388,3 +1402,115 @@ func (s Site) deployNote() string {
 
 	return fmt.Sprintf(", and what built the root now builds `apps/%s`", s.Existing)
 }
+
+// runnerProgram is the generate program in the skeletons' shape, with the program's
+// subject as its one argument: it runs the declaration beside it and prints the schema
+// warnings, and under -audit the audit findings, one line each to standard error.
+const runnerProgram = `// Package main is %s's generate program: it runs the resource generator
+// generator.go declares (newGenerator) and prints what a successful run raised, one line
+// each, to standard error with a fixed prefix and no timestamp, so a tool that reads the
+// lines has one contract per prefix. Every run prints the schema warnings as
+// "Warning: <text>": a performance finding about the schema, never a refusal, and the
+// run has written its output when the lines print; warnings_test.go pins the accepted
+// set. Run with -audit, it also prints the audit pass's findings as "Audit: <text>":
+// advisory findings about shapes the framework handles under a stated limitation, which
+// a normal generation (go generate passes no flag) never prints; impulse audit runs
+// every program that way.
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/go-playground/errors/v5"
+)
+
+func main() {
+	audit := flag.Bool("audit", false, "print the audit pass's findings after the warnings")
+	flag.Parse()
+
+	if err := run(context.Background(), *audit); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context, audit bool) error {
+	generator, err := newGenerator(ctx)
+	if err != nil {
+		return err
+	}
+	defer generator.Close()
+
+	if err := generator.Generate(); err != nil {
+		return errors.Wrap(err, "generation.Generator.Generate()")
+	}
+
+	for _, warning := range generator.Warnings() {
+		fmt.Fprintf(os.Stderr, "Warning: %%s\n", warning)
+	}
+	if audit {
+		for _, finding := range generator.Audit() {
+			fmt.Fprintf(os.Stderr, "Audit: %%s\n", finding)
+		}
+	}
+
+	return nil
+}
+`
+
+// warningsTest pins the schema warnings a program raises, none to start, in the
+// skeletons' shape.
+const warningsTest = `package main
+
+import (
+	"reflect"
+	"testing"
+
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+// TestSchemaWarnings pins the schema warnings the generator raises over this
+// application: none. A warning is a performance finding about the schema (an index a
+// listed tenant-scoped resource wants, a tenant resolved through a join path, an
+// enumeration table too large to bake), printed by every generation and never a
+// refusal; this test makes the accepted set explicit, so a new one fails CI until it
+// is either fixed in the schema (add the index the line names, carry the tenant key on
+// the row) or accepted by adding its typed value (generation.IndexWarning,
+// generation.JoinPathWarning, generation.EnumerationSizeWarning) to want, which
+// records the acceptance in code. Runs the generator in-process, so it regenerates the
+// tree like go generate does. Requires the Spanner emulator (podman/docker), like the
+// rest of this module's tests.
+func TestSchemaWarnings(t *testing.T) {
+	if testing.Short() {
+		t.Skip("generation requires the Spanner emulator")
+	}
+
+	generator, err := newGenerator(t.Context())
+	if err != nil {
+		t.Fatalf("newGenerator() error = %v", err)
+	}
+	defer generator.Close()
+
+	if err := generator.Generate(); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	var want []generation.Warning
+	got := generator.Warnings()
+	if len(want) == 0 && len(got) == 0 {
+		return
+	}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Warnings() = %d, want %d:", len(got), len(want))
+		for _, w := range got {
+			// The line, and the value to pin it with: the typed value carries fields the
+			// line leaves out.
+			t.Logf("got:  %s\n      %#v", w, w)
+		}
+		t.Logf("want: %v", want)
+	}
+}
+`

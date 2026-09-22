@@ -329,11 +329,7 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 	}
 	// Nothing here changes what the generator reads, but a regeneration proves the
 	// tree still generates.
-	if out, err := exec.Run(ctx, a.Root, nil, "go", "generate", "./..."); err != nil {
-		ch.skipf("go generate ./... failed; fix the cause and run it:\n%s", strings.TrimSpace(string(out)))
-	} else {
-		ch.didf("ran go generate ./...")
-	}
+	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", "ran go generate ./...")
 
 	return ch, nil
 }

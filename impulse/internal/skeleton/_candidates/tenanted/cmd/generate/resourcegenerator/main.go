@@ -1,61 +1,52 @@
-// Package main implements a code generator for resource types and handlers.
+// Package main is the application's generate program: it runs the resource generator
+// generator.go declares (newGenerator) and prints what a successful run raised, one line
+// each, to standard error with a fixed prefix and no timestamp, so a tool that reads the
+// lines has one contract per prefix. Every run prints the schema warnings as
+// "Warning: <text>": a performance finding about the schema, never a refusal, and the
+// run has written its output when the lines print; warnings_test.go pins the accepted
+// set. Run with -audit, it also prints the audit pass's findings as "Audit: <text>":
+// advisory findings about shapes the framework handles under a stated limitation, which
+// a normal generation (go generate passes no flag) never prints; impulse audit runs
+// every program that way.
 package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
+	"os"
 
-	"github.com/cccteam/ccc/resource/generation"
 	"github.com/go-playground/errors/v5"
 )
 
 func main() {
-	if err := run(context.Background()); err != nil {
+	audit := flag.Bool("audit", false, "print the audit pass's findings after the warnings")
+	flag.Parse()
+
+	if err := run(context.Background(), *audit); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context) error {
-	generator, err := generation.NewResourceGenerator(
-		ctx,
-		"pkg/resources",
-		[]string{"file://schema/migrations"},
-		[]string{
-			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/resources",
-			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router",
-		},
-		generation.GenerateHandlers("app"),
-		// The router is generated from the outlet declarations: the console is the default
-		// outlet, the staff auth's password sessions under /api with its browser application
-		// at /.
-		generation.GenerateRouter(),
-		generation.GenerateRoutes("pkg/router", "api",
-			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff", generation.Password),
-			generation.WebApp("/"),
-		),
-		generation.GenerateHandlerTests("test/authz"),
-		// Tenant-scoped resources and RPC methods are served under the tenant segment
-		// pair: /api/tenants/{tenantID}/... . The tenant is the permission domain, and
-		// Tenant is the tenant-record resource.
-		generation.WithDomainRoute("tenants"),
-		// Tenant existence is concealed: a tenant the caller holds no grant in answers
-		// exactly like a tenant that does not exist.
-		generation.WithConcealedDomains(),
-		generation.WithConsolidatedHandlers("resources", true),
-		generation.WithSpannerEmulatorVersion("1.5.56"),
-		generation.GenerateTypescript("web/console/src/app/core/service",
-			generation.GenerateMetadata(),
-			generation.GeneratePermissions(),
-			generation.GenerateEnums(),
-		),
-	)
+func run(ctx context.Context, audit bool) error {
+	generator, err := newGenerator(ctx)
 	if err != nil {
-		return errors.Wrap(err, "generation.NewResourceGenerator()")
+		return err
 	}
 	defer generator.Close()
 
 	if err := generator.Generate(); err != nil {
 		return errors.Wrap(err, "generation.Generator.Generate()")
+	}
+
+	for _, warning := range generator.Warnings() {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+	}
+	if audit {
+		for _, finding := range generator.Audit() {
+			fmt.Fprintf(os.Stderr, "Audit: %s\n", finding)
+		}
 	}
 
 	return nil
