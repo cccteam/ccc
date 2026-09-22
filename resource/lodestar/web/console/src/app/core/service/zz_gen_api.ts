@@ -606,6 +606,7 @@ export const apiDescriptor: ApiDescriptor = {
       page: { default: 25, max: 200 },
       order: [{ field: 'taskNumber', direction: 'asc' }],
       patchable: ['instructions', 'done', 'notes'],
+      files: ['photo'],
     },
     [Resources.Sectors]: {
       resource: Resources.Sectors,

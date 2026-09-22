@@ -121,6 +121,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		Instructions string   `json:"instructions"`
 		Done         bool     `json:"done"`
 		Notes        *string  `json:"notes"`
+		PhotoKey     *string  `json:"-"`
 	}
 	refitTaskDecoder := NewDecoder[resources.RefitTask, refitTaskRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

@@ -148,6 +148,7 @@ type GeneratedHandlers interface {
 
 	RefitTasks() http.HandlerFunc
 	RefitTask() http.HandlerFunc
+	RefitTaskPhoto() http.HandlerFunc
 
 	ReleaseConsignment() http.HandlerFunc
 
@@ -381,6 +382,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	refitTaskHandler := domainGuard(h.RefitTask())
 	r.Get("/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}", refitTaskHandler)
 	r.Post("/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}", refitTaskHandler)
+
+	r.Get("/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}/photo", domainGuard(h.RefitTaskPhoto()))
 
 	r.Post("/api/sectors/{sectorID}/release-consignment", domainGuard(h.ReleaseConsignment()))
 

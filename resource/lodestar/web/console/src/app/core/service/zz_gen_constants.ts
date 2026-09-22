@@ -424,6 +424,7 @@ export namespace RefitTasks {
     done: 'done' as FieldName,
     instructions: 'instructions' as FieldName,
     notes: 'notes' as FieldName,
+    photo: 'photo' as FieldName,
     refitId: 'refitId' as FieldName,
     taskNumber: 'taskNumber' as FieldName,
   };
@@ -431,6 +432,7 @@ export namespace RefitTasks {
     done: 'RefitTasks.done' as Resource,
     instructions: 'RefitTasks.instructions' as Resource,
     notes: 'RefitTasks.notes' as Resource,
+    photo: 'RefitTasks.photo' as Resource,
     refitId: 'RefitTasks.refitId' as Resource,
     taskNumber: 'RefitTasks.taskNumber' as Resource,
   };

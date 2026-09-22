@@ -329,6 +329,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "done", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "instructions", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "notes", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "photo", Permissions: []accesstypes.Permission{accesstypes.Read}},
 					{Name: "refitId"},
 					{Name: "taskNumber"},
 				},

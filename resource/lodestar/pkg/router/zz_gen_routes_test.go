@@ -127,6 +127,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/refit-tasks", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber/photo", method: http.MethodGet},
 		{url: "/droids/sectors", method: http.MethodGet},
 		{url: "/droids/sectors", method: http.MethodPost},
 		{url: "/droids/sectors/testSectorID", method: http.MethodGet},
@@ -246,6 +247,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/refit-tasks", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber/photo", method: http.MethodGet},
 		{url: "/portal/api/sectors", method: http.MethodGet},
 		{url: "/portal/api/sectors", method: http.MethodPost},
 		{url: "/portal/api/sectors/testSectorID", method: http.MethodGet},
@@ -933,6 +935,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain", "refitTaskRefitID": "testRefitTaskRefitID", "refitTaskTaskNumber": "testRefitTaskTaskNumber"},
 		},
 		{
+			url: "/api/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber/photo", method: http.MethodGet,
+			handlerFunc: "RefitTaskPhoto",
+			parameters:  map[string]string{"sectorID": "testDomain", "refitTaskRefitID": "testRefitTaskRefitID", "refitTaskTaskNumber": "testRefitTaskTaskNumber"},
+		},
+		{
 			url: "/api/sectors", method: http.MethodGet,
 			handlerFunc: "Sectors",
 			parameters:  map[string]string{},
@@ -1467,6 +1474,10 @@ func (s *generatedHandlersStub) RefitTasks() http.HandlerFunc {
 
 func (s *generatedHandlersStub) RefitTask() http.HandlerFunc {
 	return s.record("RefitTask")
+}
+
+func (s *generatedHandlersStub) RefitTaskPhoto() http.HandlerFunc {
+	return s.record("RefitTaskPhoto")
 }
 
 func (s *generatedHandlersStub) ReleaseConsignment() http.HandlerFunc {

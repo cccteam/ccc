@@ -16,7 +16,18 @@ type (
 	// A create that supplies a task number the refit already holds reaches the commit,
 	// where Spanner refuses the duplicate key; the library answers 409 naming RefitTasks.
 	//
-	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent, index.trailing-key, commit.constraint-refusal.
+	// PhotoKey's @file(photo) stores a photograph of the finished work under the task's
+	// read route (.../refit-tasks/{id}/{taskNumber}/photo); nullable, it leaves Create
+	// ordinary, and no seeded task carries one. It is here for the audit pass: RefitTasks
+	// is interleaved in Refits ON DELETE CASCADE, so a refit deleted by patch takes its
+	// tasks with it through the database, never through the patch machinery, and the
+	// release that deletes a stored object after the commit never runs for them; their
+	// photos are the sweep's. A normal generation says nothing about that, since it
+	// would say so on every run; `go run ./cmd/generate/resourcegenerator -audit`
+	// prints the one finding that names this table and its parent, and
+	// cmd/generate/audit_test.go pins it.
+	//
+	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent, index.trailing-key, commit.constraint-refusal, audit.cascade-release.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -34,5 +45,7 @@ type (
 		Instructions string   `spanner:"Instructions"`
 		Done         bool     `spanner:"Done"`
 		Notes        *string  `spanner:"Notes"`
+		// @file(photo)
+		PhotoKey *string `spanner:"PhotoKey"`
 	}
 )

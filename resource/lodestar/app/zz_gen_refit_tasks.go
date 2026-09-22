@@ -23,6 +23,7 @@ func (a *App) RefitTasks() http.HandlerFunc {
 		Instructions string   `json:"instructions"`
 		Done         bool     `json:"done"`
 		Notes        *string  `json:"notes"`
+		PhotoKey     *string  `json:"-"`
 	}
 
 	type response []map[string]any
@@ -106,6 +107,7 @@ func (a *App) RefitTask() http.HandlerFunc {
 		Instructions string   `json:"instructions"`
 		Done         bool     `json:"done"`
 		Notes        *string  `json:"notes"`
+		PhotoKey     *string  `json:"-"`
 	}
 
 	decoder := NewQueryDecoder[resources.RefitTask, response](a, accesstypes.Read)
@@ -160,5 +162,51 @@ func (a *App) RefitTask() http.HandlerFunc {
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)
+	})
+}
+
+func (a *App) RefitTaskPhoto() http.HandlerFunc {
+	// The frame's projection: the key, and the columns that deliver the file, read for
+	// the frame itself without field grants. The gate is Read on the resource and on
+	// photo, the route's own field.
+	type request struct {
+		RefitID    ccc.UUID `json:"refitId"    perm:"-"`
+		TaskNumber int64    `json:"taskNumber" perm:"-"`
+		PhotoKey   *string  `json:"-"          perm:"-"`
+	}
+
+	decoder := NewFileDecoder[resources.RefitTask, request](a, "photo")
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		refitID := httpio.Param[ccc.UUID](r, router.RefitTaskRefitID)
+		taskNumber := httpio.Param[int64](r, router.RefitTaskTaskNumber)
+
+		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		// The row through the resource's own read path: absent, cross-tenant, or hidden
+		// by the caller's Read condition is 404, as on the read route.
+
+		row, err := resources.NewRefitTaskQueryFromQuerySet(querySet).SetRefitID(refitID).SetTaskNumber(taskNumber).Read(ctx, a.ResourceClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		source := &row.Data
+		file := resource.StoredFile{}
+		if source.PhotoKey != nil {
+			file.Key = *source.PhotoKey
+		}
+
+		if err := resource.ServeStoredFile(ctx, w, r, a.FileStore(), file, "photo", "RefitTask", refitID, taskNumber); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
 	})
 }

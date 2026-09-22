@@ -21,6 +21,12 @@ func (RefitTask) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// FileKeys names the fields holding a stored file's key (@file): the objects a delete,
+// or a write that points the row at another object, releases once the transaction commits.
+func (RefitTask) FileKeys() []accesstypes.Field {
+	return []accesstypes.Field{"PhotoKey"}
+}
+
 // refitTaskRead mirrors the wire shape the resource routes list
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; refitTaskReadSets holds one Set per read operation.
@@ -30,6 +36,7 @@ type refitTaskRead struct {
 	Instructions string   `json:"instructions"`
 	Done         bool     `json:"done"`
 	Notes        *string  `json:"notes"`
+	PhotoKey     *string  `json:"-"`
 }
 
 var refitTaskReadSets resource.SetCache[RefitTask, refitTaskRead]
@@ -43,6 +50,7 @@ type refitTaskWrite struct {
 	Instructions string   `json:"instructions"`
 	Done         bool     `json:"done"`
 	Notes        *string  `json:"notes"`
+	PhotoKey     *string  `json:"-"`
 }
 
 var refitTaskWriteSets resource.SetCache[RefitTask, refitTaskWrite]
@@ -168,6 +176,7 @@ func (c *RefitTaskColumns) All() *RefitTaskColumns {
 		"Instructions",
 		"Done",
 		"Notes",
+		"PhotoKey",
 	}
 
 	return c
@@ -199,6 +208,12 @@ func (c *RefitTaskColumns) Done() *RefitTaskColumns {
 
 func (c *RefitTaskColumns) Notes() *RefitTaskColumns {
 	c.fields = append(c.fields, "Notes")
+
+	return c
+}
+
+func (c *RefitTaskColumns) PhotoKey() *RefitTaskColumns {
+	c.fields = append(c.fields, "PhotoKey")
 
 	return c
 }
@@ -303,6 +318,10 @@ func (c *refitTaskSort) Done() *RefitTaskSort {
 
 func (c *refitTaskSort) Notes() *RefitTaskSort {
 	return c.addField("Notes")
+}
+
+func (c *refitTaskSort) PhotoKey() *RefitTaskSort {
+	return c.addField("PhotoKey")
 }
 
 type RefitTaskSort struct {
@@ -442,6 +461,26 @@ func (p *RefitTaskCreatePatch) NotesIsSet() bool {
 	return p.patchSet.IsSet("Notes")
 }
 
+func (p *RefitTaskCreatePatch) SetPhotoKey(v *string) *RefitTaskCreatePatch {
+	if v != nil {
+		p.patchSet.Set("PhotoKey", v)
+	} else {
+		p.patchSet.Set("PhotoKey", nil)
+	}
+
+	return p
+}
+
+func (p *RefitTaskCreatePatch) PhotoKey() *string {
+	v, _ := p.patchSet.Get("PhotoKey").(*string)
+
+	return v
+}
+
+func (p *RefitTaskCreatePatch) PhotoKeyIsSet() bool {
+	return p.patchSet.IsSet("PhotoKey")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *RefitTaskCreatePatch) Diff(got *RefitTaskCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -568,6 +607,26 @@ func (p *RefitTaskUpdatePatch) Notes() *string {
 
 func (p *RefitTaskUpdatePatch) NotesIsSet() bool {
 	return p.patchSet.IsSet("Notes")
+}
+
+func (p *RefitTaskUpdatePatch) SetPhotoKey(v *string) *RefitTaskUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("PhotoKey", v)
+	} else {
+		p.patchSet.Set("PhotoKey", nil)
+	}
+
+	return p
+}
+
+func (p *RefitTaskUpdatePatch) PhotoKey() *string {
+	v, _ := p.patchSet.Get("PhotoKey").(*string)
+
+	return v
+}
+
+func (p *RefitTaskUpdatePatch) PhotoKeyIsSet() bool {
+	return p.patchSet.IsSet("PhotoKey")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

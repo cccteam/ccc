@@ -141,12 +141,12 @@ linters:
           # handwritten ones; preallocation noise adds nothing in tests.
           - prealloc
         path: _test\.go
-      # The regen test and the schema-warning test rewrite the working tree and must
-      # not run in parallel.
+      # The regen test, the schema-warning test, and the audit test rewrite the working
+      # tree and must not run in parallel.
       - linters:
           - paralleltest
           - tparallel
-        path: cmd/generate/(generate|warnings)_test\.go
+        path: cmd/generate/(generate|warnings|audit)_test\.go
       # These suites' cases share seeded rows and run in a declared order: a write in
       # one case is what the next case reads.
       - linters:

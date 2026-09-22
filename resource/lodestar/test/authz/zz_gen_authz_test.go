@@ -721,6 +721,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "RefitTaskPhoto denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/refit-tasks/00000000-0000-0000-0000-000000000001/1/photo",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "RefitTaskPhoto granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/refit-tasks/00000000-0000-0000-0000-000000000001/1/photo",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "Sectors denied",
 			method:       http.MethodGet,
 			target:       "/api/sectors",

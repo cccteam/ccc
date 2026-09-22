@@ -175,7 +175,15 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   (`resource.WithFileStore`), deletes the object a committed transaction released,
   the replaced file's and the deleted document's alike
   ([`@file.released`](pkg/resources/mission_documents.go),
-  [`@file.replaced`](pkg/rpc/replace_mission_document.go)).
+  [`@file.replaced`](pkg/rpc/replace_mission_document.go)). A `@file` table whose rows
+  the database deletes by cascade releases nothing, since its rows never pass through
+  the patch machinery, and the generator's audit pass names such tables without saying
+  so on every run: `RefitTask.PhotoKey` stores a task photo on a table interleaved in
+  Refits `ON DELETE CASCADE`
+  ([`audit.cascade-release`](pkg/resources/refit_tasks.go)), so `go run
+  ./cmd/generate/resourcegenerator -audit` prints the one `Audit:` line naming it after
+  the nine `Warning:` lines, `go generate ./...` prints the nine alone, and
+  `cmd/generate/audit_test.go` pins the finding as a typed value.
 - `pkg/telemetry`: the droid link's own package, the one package the generator writes
   into without reading a resource from it: `cmd/generate` names it with `WithTypes`, so
   the frame type a `DroidReports` column holds gets its JSON and Spanner methods generated
@@ -272,5 +280,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 output (Go, two TypeScript targets, two workflow DOT graphs) is the drift baseline, pinned
 by `cmd/generate/generate_test.go` as a content snapshot. After changing schema,
 annotations, or generator config: regenerate, `go test -tags skipAuth ./...`, and keep the
-diff. `impulse check` from the module root verifies the agreements between the parts the
-tool laid in.
+diff. The generate program prints the schema warnings after every run, one `Warning:`
+line each; `go run ./cmd/generate/resourcegenerator -audit` runs the same generation and
+also prints the audit pass's findings, one `Audit:` line each, the advisory findings
+a plain `go generate` stays silent on. `impulse check` from the module root verifies the
+agreements between the parts the tool laid in.
