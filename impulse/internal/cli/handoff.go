@@ -76,7 +76,7 @@ the verification removes it when everything is clean, and it is never committed.
 				return err
 			}
 			brief := &handoff.Brief{App: a, Results: results, Reference: reference, Guard: guard}
-			ag := handoff.Agent{Command: agentCommand, ExtraArgs: agentArgs}
+			ag := &handoff.Agent{Command: agentCommand, ExtraArgs: agentArgs}
 
 			return completeHandoff(ctx, out, appDir, env, repo, brief, ag, agent)
 		},
@@ -95,7 +95,7 @@ the verification removes it when everything is clean, and it is never committed.
 
 // completeHandoff writes the brief and either prints the command to run the agent or
 // launches it and verifies its work. It is the tail every transition shares.
-func completeHandoff(ctx context.Context, out io.Writer, appDir string, env *check.Env, repo handoff.Repo, brief *handoff.Brief, ag handoff.Agent, launch bool) error {
+func completeHandoff(ctx context.Context, out io.Writer, appDir string, env *check.Env, repo handoff.Repo, brief *handoff.Brief, ag *handoff.Agent, launch bool) error {
 	a := env.App
 	if err := os.WriteFile(a.Abs(handoff.File), []byte(brief.String()), 0o600); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
@@ -156,7 +156,7 @@ func removeBrief(a *app.App) error {
 // handoffReport tells the user what was written and how to run the agent by hand.
 type handoffReport struct {
 	results []check.Result
-	agent   handoff.Agent
+	agent   *handoff.Agent
 	// reference is the finished application the brief points at, or empty.
 	reference string
 	styled    bool

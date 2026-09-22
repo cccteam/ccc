@@ -33,6 +33,12 @@ impulse add tenancy
   --app string (default .)
   --skip-generate bool
   --tenant-table string (default Tenants)
+impulse advise
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --skip-generate bool
 impulse audit
   --app string (default .)
 impulse check

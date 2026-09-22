@@ -26,7 +26,7 @@ func TestHandoffReport(t *testing.T) {
 	}{
 		{
 			name:   "plain",
-			report: handoffReport{results: results, agent: handoff.Agent{Command: "claude"}},
+			report: handoffReport{results: results, agent: &handoff.Agent{Command: "claude"}},
 			want: `
 Wrote the brief to .impulse-handoff.md: 3 obligation(s) under 2 failing check(s).
 
@@ -39,7 +39,7 @@ Next steps
 		},
 		{
 			name:   "styled",
-			report: handoffReport{results: results[:2], agent: handoff.Agent{}, styled: true},
+			report: handoffReport{results: results[:2], agent: &handoff.Agent{}, styled: true},
 			want: "\nWrote the brief to .impulse-handoff.md: 2 obligation(s) under 1 failing check(s).\n" +
 				"\n\x1b[1mNext steps\x1b[0m\n" +
 				"  \x1b[1m1.\x1b[0m claude -p --permission-mode default --allowedTools Read,Edit,Write,MultiEdit,Glob,Grep,Bash(go:*),Bash(gofmt:*),Bash(impulse:*),Bash(golangci-lint-v2:*),Bash(bun:*),Bash(bunx:*),Bash(npm:*),Bash(npx:*) < .impulse-handoff.md\n" +

@@ -180,6 +180,46 @@ a check: the check is the gate on every change, and the audit is read by decisio
 a release, after a schema change to a table that stores files, or when a stated
 limitation is in question.
 
+## impulse advise
+
+`advise` is the one command that asks an agent for judgment, and it runs only when asked:
+the check gates every change and the audit is read by decision, and neither becomes slow
+or expensive on an ordinary run. It runs every generator program with `-audit`, as
+`impulse audit` does, and writes a brief for an agent to `.impulse-advice.md` at the
+application root: the option set in force; the `Warning:` and `Audit:` lines each program
+raised, with the warnings test that pins the accepted set beside it; the deploy test that
+pins the accepted role warnings (`pkg/deploy/deploy_test.go` in the skeletons), whose
+values the agent reads; impulse's own reading of each kind, fixed and deterministic (for a
+concealing key, whether the field is the default order, so every page pays, or a sort or
+filter key, so only a caller who asks pays, and why the CASE stands; for an index warning,
+the `CREATE INDEX` it wants; for a join path, that every list scans the table; for an
+enumeration, its size in the metadata; for a cascade, that the sweep removes the objects;
+for a grant warning, the disclosure a Forbidden answer makes); and the question each kind
+leaves to judgment (whether the field's rank is sensitive and the table will page at
+volume, whether the list pages at volume, whether the table will grow and the tenant
+column is worth adding while it is cheap, whether the table is really an enumeration,
+whether lingering objects are acceptable, whether the disclosure is intended). impulse
+reads no test file itself; the agent does.
+
+```sh
+impulse advise                      # write the brief and print the command to run the agent
+impulse advise --agent              # ask Claude Code, print its answer, remove the brief
+impulse advise --skip-generate      # no emulator: the brief names each program's warnings test instead
+```
+
+With `--agent` the tool launches Claude Code non-interactively with the brief on standard
+input and the read-only tools alone (`Read`, `Glob`, `Grep`), prints the answer, and
+removes the brief; `--agent-command` and `--agent-arg` are `impulse handoff`'s. Without
+`--agent` the brief stays and the command to run the agent is printed. The brief's rules
+are an answer and no edit: per warning and finding, in prose, which branch of the reading
+holds for this application, the answer to the question from what the code tells, and the
+edit recommended (`masking:"positional"`, the index migration, the tenant column, the
+runtime resource, the Read grant, or the accepted pin and where it goes), with the
+questions the code cannot answer stated for the developer; nothing is run that writes.
+There is no verify step, since nothing was to be changed. A program that fails, or does
+not take `-audit`, is an error with `impulse audit`'s message: the brief would miss its
+input.
+
 ## impulse render
 
 `render` copies one embedded skeleton into a new or empty directory under the module

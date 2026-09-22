@@ -91,7 +91,7 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 		if !provisioning {
 			details = append(details, fmt.Sprintf("%s: %s.RolesPath is read (%s) but not by a file that migrates roles; the %s auth's roles are never provisioned", p.Dir, p.Name, strings.Join(refs, ", "), p.Name))
 		} else if !validated(a, p) {
-			warnings = append(warnings, fmt.Sprintf("%s: no test validates the %s auth's roles file (access.ValidateRoles over the collection, reading %s.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the %s row to %s with its expected warnings empty", p.Dir, p.Name, p.Name, p.Name, validationTestFile(a)))
+			warnings = append(warnings, fmt.Sprintf("%s: no test validates the %s auth's roles file (access.ValidateRoles over the collection, reading %s.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the %s row to %s with its expected warnings empty", p.Dir, p.Name, p.Name, p.Name, ValidationTestFile(a)))
 		}
 		if rolesFile := rolesPathOf(a, p); rolesFile != "" {
 			if _, err := os.Stat(a.Abs(rolesFile)); err != nil {
@@ -137,10 +137,10 @@ func validated(a *app.App, p *app.AuthPackage) bool {
 // skeletonValidationTest is where the skeletons keep the roles validation test.
 const skeletonValidationTest = "pkg/deploy/deploy_test.go"
 
-// validationTestFile is where the roles validation test lives: beside the file that calls
+// ValidationTestFile is where the roles validation test lives: beside the file that calls
 // access.MigrateRoles itself (the deploy package), named after its package, or the
 // skeletons' file when no file does.
-func validationTestFile(a *app.App) string {
+func ValidationTestFile(a *app.App) string {
 	for _, m := range a.RoleMigrations {
 		if m.Via == "" {
 			dir := path.Dir(m.File)

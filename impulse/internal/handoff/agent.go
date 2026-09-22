@@ -19,42 +19,68 @@ type Agent struct {
 	Command string
 	// ExtraArgs are appended to the command line: a model, a turn limit, a budget.
 	ExtraArgs []string
+	// Tools are the tools the agent may use without asking, in Claude Code's own syntax.
+	// Empty means the editing set the handoff needs (EditingTools); a caller that wants
+	// an answer and no edit passes ReadOnlyTools.
+	Tools []string
+	// BriefFile is the root-relative brief the agent reads. Empty means the handoff's.
+	BriefFile string
 }
 
 // DefaultCommand is the Claude Code executable.
 const DefaultCommand = "claude"
 
-// allowedTools are the tools the agent may use without asking, in Claude Code's own
-// syntax. Non-interactive runs deny everything else, so git and the package managers
-// the application does not use are out by omission.
-var allowedTools = []string{
-	"Read", "Edit", "Write", "MultiEdit", "Glob", "Grep",
-	"Bash(go:*)", "Bash(gofmt:*)", "Bash(impulse:*)", "Bash(golangci-lint-v2:*)",
-	"Bash(bun:*)", "Bash(bunx:*)", "Bash(npm:*)", "Bash(npx:*)",
-}
+// The tool sets, in Claude Code's own syntax. Non-interactive runs deny everything else,
+// so git and the package managers the application does not use are out by omission.
+var (
+	// EditingTools are the tools the handoff's rules need: reading, editing, and the
+	// build commands.
+	EditingTools = []string{
+		"Read", "Edit", "Write", "MultiEdit", "Glob", "Grep",
+		"Bash(go:*)", "Bash(gofmt:*)", "Bash(impulse:*)", "Bash(golangci-lint-v2:*)",
+		"Bash(bun:*)", "Bash(bunx:*)", "Bash(npm:*)", "Bash(npx:*)",
+	}
+	// ReadOnlyTools read the tree and nothing else: for an agent asked for an answer and
+	// no edit.
+	ReadOnlyTools = []string{"Read", "Glob", "Grep"}
+)
 
 // Args returns the command line, executable first.
-func (ag Agent) Args() []string {
+func (ag *Agent) Args() []string {
 	command := ag.Command
 	if command == "" {
 		command = DefaultCommand
 	}
+	tools := ag.Tools
+	if len(tools) == 0 {
+		tools = EditingTools
+	}
 
 	args := make([]string, 0, 6+len(ag.ExtraArgs))
-	args = append(args, command, "-p", "--permission-mode", "default", "--allowedTools", strings.Join(allowedTools, ","))
+	args = append(args, command, "-p", "--permission-mode", "default", "--allowedTools", strings.Join(tools, ","))
 
 	return append(args, ag.ExtraArgs...)
 }
 
+// Brief is the root-relative file the agent reads: the handoff's unless the caller named
+// another.
+func (ag *Agent) Brief() string {
+	if ag.BriefFile != "" {
+		return ag.BriefFile
+	}
+
+	return File
+}
+
 // CommandLine renders the command a person runs to hand the brief to the agent by hand.
-func (ag Agent) CommandLine() string {
-	return strings.Join(ag.Args(), " ") + " < " + File
+func (ag *Agent) CommandLine() string {
+	return strings.Join(ag.Args(), " ") + " < " + ag.Brief()
 }
 
 // Run launches the agent in dir with the brief on standard input, streaming its output
 // to out until it exits. The directory holding this executable leads the agent's PATH,
 // so the impulse the agent runs the check with is the one that handed off.
-func (ag Agent) Run(ctx context.Context, dir, brief string, out io.Writer) error {
+func (ag *Agent) Run(ctx context.Context, dir, brief string, out io.Writer) error {
 	args := ag.Args()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = dir
@@ -63,7 +89,12 @@ func (ag Agent) Run(ctx context.Context, dir, brief string, out io.Writer) error
 	cmd.Stdout = out
 	cmd.Stderr = out
 	if err := cmd.Run(); err != nil {
-		return errors.Newf("%s exited with an error (%v); the brief stays at %s, so once the agent is fixed run `%s` and then `impulse handoff --verify`", args[0], err, File, ag.CommandLine())
+		then := ""
+		if ag.Brief() == File {
+			then = " and then `impulse handoff --verify`"
+		}
+
+		return errors.Newf("%s exited with an error (%v); the brief stays at %s, so once the agent is fixed run `%s`%s", args[0], err, ag.Brief(), ag.CommandLine(), then)
 	}
 
 	return nil

@@ -26,6 +26,11 @@ func TestAgentCommandLine(t *testing.T) {
 			agent: Agent{Command: "/opt/bin/claude-next"},
 			want:  "/opt/bin/claude-next -p --permission-mode default --allowedTools Read,Edit,Write,MultiEdit,Glob,Grep,Bash(go:*),Bash(gofmt:*),Bash(impulse:*),Bash(golangci-lint-v2:*),Bash(bun:*),Bash(bunx:*),Bash(npm:*),Bash(npx:*) < .impulse-handoff.md",
 		},
+		{
+			name:  "the read-only tools on another brief",
+			agent: Agent{Tools: ReadOnlyTools, BriefFile: ".impulse-advice.md"},
+			want:  "claude -p --permission-mode default --allowedTools Read,Glob,Grep < .impulse-advice.md",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

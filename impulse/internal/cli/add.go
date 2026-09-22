@@ -408,7 +408,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 		return err
 	}
 	brief := &handoff.Brief{App: a, Change: strings.Join(changes, "\n"), Meaning: strings.Join(meanings, "\n\n"), Results: results, Reference: referenceDir, Guard: guard}
-	ag := handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
+	ag := &handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
 
 	return completeHandoff(ctx, out, f.appDir, env, repo, brief, ag, f.agent)
 }
