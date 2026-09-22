@@ -50,12 +50,21 @@ type resourceGenerator struct {
 	manualRegistrations []ManualRegistration
 	// warnings are the schema findings the last Generate raised (Warnings).
 	warnings []Warning
+	// findings are the advisory findings the last Generate raised (Audit).
+	findings []Finding
 }
 
 // Warnings reports the schema findings the last Generate raised: informational, never
 // a refusal. Nil before Generate runs.
 func (r *resourceGenerator) Warnings() []Warning {
 	return r.warnings
+}
+
+// Audit reports the advisory findings the last Generate raised: shapes the framework
+// handles under a stated limitation, never printed by a normal generation. Nil before
+// Generate runs.
+func (r *resourceGenerator) Audit() []Finding {
+	return r.findings
 }
 
 // allOutlets returns every declared router outlet: the default outlet first,
@@ -229,6 +238,7 @@ func (r *resourceGenerator) Generate() error {
 
 	begin := time.Now()
 	r.warnings = nil
+	r.findings = nil
 
 	// Resilient load: stale generated output from a previous run must not stop the
 	// run that would overwrite it. Anything tolerated here is re-checked strictly
@@ -306,8 +316,10 @@ func (r *resourceGenerator) Generate() error {
 	r.deriveDomainRouteParam()
 
 	// The schema findings read the extracted resources against the table map, so they
-	// are known before anything renders and survive a failure further down.
+	// are known before anything renders and survive a failure further down; the audit
+	// pass reads the same resources for the shapes it reports.
 	r.warnings = r.schemaWarnings(r.resources)
+	r.findings = r.auditFindings(r.resources)
 
 	storage, err := r.runResourcesGeneration()
 	if err != nil {

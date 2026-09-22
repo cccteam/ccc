@@ -48,6 +48,10 @@ type Generator interface {
 	// never a refusal, performance matters the application decides (see Warning).
 	// Nil before Generate runs.
 	Warnings() []Warning
+	// Audit reports the advisory findings the last Generate raised: shapes the
+	// framework handles under a stated limitation, which a normal generation never
+	// prints and a runner prints on demand (see Finding). Nil before Generate runs.
+	Audit() []Finding
 	Close() error
 }
 
@@ -238,6 +242,9 @@ type informationSchemaResult struct {
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
 	HasDefault           bool    `spanner:"HAS_DEFAULT"`
 	IsInterleaved        bool    `spanner:"IS_INTERLEAVED"`
+	ParentTable          *string `spanner:"PARENT_TABLE_NAME"`
+	OnDeleteAction       *string `spanner:"ON_DELETE_ACTION"`
+	DeleteRule           *string `spanner:"DELETE_RULE"`
 }
 
 type enumData struct {
@@ -263,6 +270,12 @@ type tableMetadata struct {
 	Columns       map[string]columnMeta
 	PkCount       int
 	IsInterleaved bool
+	// ParentTable is the table this one is interleaved in, "" for a top-level table.
+	ParentTable string
+	// OnDeleteCascade marks an interleaved child declared ON DELETE CASCADE: the
+	// database deletes its rows with the parent's, outside the patch machinery. The
+	// audit pass reads it for a table that stores files (CascadeReleaseFinding).
+	OnDeleteCascade bool
 	// Indexes is the table's index composition as the information schema reports it:
 	// the primary key (PRIMARY_KEY), every declared index, and the indexes Spanner
 	// manages for foreign keys. The per-column index flags derive from it
@@ -315,7 +328,12 @@ type columnMeta struct {
 	KeyOrdinalPosition int64
 	ReferencedTable    string
 	ReferencedColumn   string
-	HasDefault         bool
+	// DeleteRule is the foreign key's delete rule as REFERENTIAL_CONSTRAINTS spells it,
+	// CASCADE or NO ACTION, on a foreign-key column; "" otherwise. A CASCADE deletes the
+	// row with the referenced one, outside the patch machinery, which the audit pass
+	// reads for a table that stores files (CascadeReleaseFinding).
+	DeleteRule string
+	HasDefault bool
 }
 
 type generatedRoute struct {

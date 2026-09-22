@@ -76,8 +76,10 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		table, ok := schemaMetadata[results[i].TableName]
 		if !ok {
 			table = &tableMetadata{
-				Columns:       make(map[string]columnMeta),
-				IsInterleaved: results[i].IsInterleaved,
+				Columns:         make(map[string]columnMeta),
+				IsInterleaved:   results[i].IsInterleaved,
+				ParentTable:     valueOrEmpty(results[i].ParentTable),
+				OnDeleteCascade: valueOrEmpty(results[i].OnDeleteAction) == cascadeDeleteAction,
 			}
 		}
 
@@ -113,7 +115,21 @@ const (
 	// descendingOrdering is INFORMATION_SCHEMA.INDEX_COLUMNS.COLUMN_ORDERING for a key
 	// column declared DESC.
 	descendingOrdering = "DESC"
+	// cascadeDeleteAction is INFORMATION_SCHEMA.TABLES.ON_DELETE_ACTION for an
+	// interleaved child declared ON DELETE CASCADE, and
+	// INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS.DELETE_RULE for a foreign key declared
+	// so; the other value both spell is NO ACTION.
+	cascadeDeleteAction = "CASCADE"
 )
+
+// valueOrEmpty reads a nullable information-schema string, "" for NULL.
+func valueOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+
+	return *s
+}
 
 const tableMapQuery string = `WITH DEPENDENCIES AS (
 		SELECT
@@ -139,7 +155,10 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 			WHEN 1 THEN MAX(kcu4.COLUMN_NAME)
 			WHEN 2 THEN MAX(kcu2.COLUMN_NAME)
 			ELSE NULL
-			END) AS REFERENCED_COLUMN
+			END) AS REFERENCED_COLUMN,
+			-- The delete rule of the column's foreign key, NULL on a key column with none; a
+			-- column in two foreign keys reads CASCADE when either cascades (MIN sorts it first).
+			MIN(rc.DELETE_RULE) AS DELETE_RULE
 		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu1 -- All columns that are Primary Key or Foreign Key
 		JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME -- Identify whether column is Primary Key or Foreign Key
 		-- All unique constraints (e.g. PK_Persons) referenced by foreign key constraints (e.g. FK_PersonPhones_PersonId)
@@ -164,11 +183,14 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		(d.IS_FOREIGN_KEY > 0 and d.IS_FOREIGN_KEY IS NOT NULL) as IS_FOREIGN_KEY,
 		d.REFERENCED_TABLE,
 		d.REFERENCED_COLUMN,
+		d.DELETE_RULE,
 		c.GENERATION_EXPRESSION,
 		c.ORDINAL_POSITION,
 		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
 		c.COLUMN_DEFAULT IS NOT NULL AS HAS_DEFAULT,
 		t.PARENT_TABLE_NAME IS NOT NULL AS IS_INTERLEAVED,
+		t.PARENT_TABLE_NAME,
+		t.ON_DELETE_ACTION,
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 			AND t.TABLE_TYPE = 'BASE TABLE'

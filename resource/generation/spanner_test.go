@@ -12,10 +12,12 @@ import (
 
 // Test_createTableMapUsingQuery reads the index-shapes fixture schema through the
 // emulator and pins what the information schema yields: every index's composition,
-// the primary key and Spanner's foreign-key backing indexes included, and the column
-// flags derived from it. Orders and Seats share the column name Note and every table
-// carries a PRIMARY_KEY index, so an index joined to its columns on index name alone
-// would leak across tables here. Requires the Spanner emulator (podman/docker).
+// the primary key and Spanner's foreign-key backing indexes included, the column flags
+// derived from it, and the cascade facts the audit pass reads: each table's parent and
+// delete action, and each foreign key's delete rule. Orders and Seats share the column
+// name Note and every table carries a PRIMARY_KEY index, so an index joined to its
+// columns on index name alone would leak across tables here. Requires the Spanner
+// emulator (podman/docker).
 func Test_createTableMapUsingQuery(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
@@ -63,6 +65,11 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 		wantIndexes []indexMeta
 		wantFlags   map[string][2]bool // column -> IsIndex, IsUniqueIndex
 		wantTypes   map[string]string  // column -> SpannerType, as the information schema spells it
+		// wantParent and wantCascade are the interleave facts; wantDeleteRules maps a
+		// column to its foreign key's delete rule, "" where it has none.
+		wantParent      string
+		wantCascade     bool
+		wantDeleteRules map[string]string
 	}{
 		{
 			name:        "a table with only its primary key, sharing the key column name with Orders",
@@ -90,6 +97,8 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 				"Reference": {true, true}, "ExternalRef": {true, true}, "Note": {true, false},
 			},
 			wantTypes: map[string]string{"TenantId": "STRING(36)", "PlacedAt": "TIMESTAMP", "Reference": "STRING(MAX)"},
+			// A top-level table: no parent, and its one foreign key keeps the default rule.
+			wantDeleteRules: map[string]string{"TenantId": "NO ACTION", "PlacedAt": ""},
 		},
 		{
 			// The foreign key on OrderId needs no backing index: the primary key leads
@@ -105,6 +114,34 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 			},
 			wantFlags: map[string][2]bool{"OrderId": {true, false}, "UserId": {false, false}, "Row": {false, false}, "Note": {true, false}},
 			wantTypes: map[string]string{"Row": "INT64", "Note": "STRING(MAX)"},
+		},
+		{
+			name:        "an interleaved child on cascade reports its parent and the action",
+			table:       "OrderLines",
+			wantIndexes: []indexMeta{{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "Id"}, {Column: "LineNumber"}}}},
+			wantFlags:   map[string][2]bool{"Id": {true, false}, "LineNumber": {false, false}},
+			wantTypes:   map[string]string{"StoreKey": "STRING(36)"},
+			wantParent:  "Orders",
+			wantCascade: true,
+		},
+		{
+			name:        "an interleaved child on no action reports its parent alone",
+			table:       "OrderNotes",
+			wantIndexes: []indexMeta{{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "Id"}, {Column: "NoteNumber"}}}},
+			wantFlags:   map[string][2]bool{"Id": {true, false}},
+			wantParent:  "Orders",
+		},
+		{
+			// Two foreign keys, one cascading: each column reads its own rule.
+			name:  "a table with a cascading foreign key and a plain one reports each rule",
+			table: "Attachments",
+			wantIndexes: []indexMeta{
+				{Managed: true, Key: []indexColumn{{Column: "OrderId"}}},
+				{Managed: true, Key: []indexColumn{{Column: "TenantId"}}},
+				{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "Id"}}},
+			},
+			wantFlags:       map[string][2]bool{"Id": {true, true}, "OrderId": {true, false}, "TenantId": {true, false}},
+			wantDeleteRules: map[string]string{"OrderId": "CASCADE", "TenantId": "NO ACTION", "StoreKey": ""},
 		},
 	}
 
@@ -136,6 +173,14 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 			for column, want := range tt.wantTypes {
 				if got := table.Columns[column].SpannerType; got != want {
 					t.Errorf("%s.%s SpannerType = %q, want %q", tt.table, column, got, want)
+				}
+			}
+			if table.ParentTable != tt.wantParent || table.OnDeleteCascade != tt.wantCascade || table.IsInterleaved != (tt.wantParent != "") {
+				t.Errorf("%s (ParentTable, OnDeleteCascade, IsInterleaved) = (%q, %v, %v), want (%q, %v, %v)", tt.table, table.ParentTable, table.OnDeleteCascade, table.IsInterleaved, tt.wantParent, tt.wantCascade, tt.wantParent != "")
+			}
+			for column, want := range tt.wantDeleteRules {
+				if got := table.Columns[column].DeleteRule; got != want {
+					t.Errorf("%s.%s DeleteRule = %q, want %q", tt.table, column, got, want)
 				}
 			}
 		})

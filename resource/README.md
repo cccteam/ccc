@@ -542,7 +542,9 @@ much from the schema:
   on the row. Generation warns at every run for every listed join-path resource, so the
   application decides knowingly. The warnings are informational, never a refusal, and the
   generator returns them through `Generator.Warnings()`; an application's generate program
-  prints them after a successful run, as Lodestar's does.
+  prints them after a successful run, one per line as `Warning: <text>`, as Lodestar's
+  does. The same program, run with `-audit`, prints the audit pass's findings after them
+  as `Audit: <text>` (section 13): advisory findings a normal generation never prints.
 - Subject-set conditions are key lookups per row against the anchor (its key leads with
   the compared column and the user), so their cost is the partition's size per page, not
   the anchor's. Subject values are one row through the unique index generation requires.
@@ -1024,10 +1026,32 @@ the executor reads what it released with `Released()` and deletes it itself.
   delete releases the object.
 - Rows the database deletes by cascade (`ON DELETE CASCADE`, an interleaved child) never
   pass through the patch machinery; their objects are the sweep's. An application that
-  cares deletes the children by patch first.
+  cares deletes the children by patch first. The audit pass names such tables.
 - A crash between the commit and the delete leaves an object no row claims; the sweep's.
 - A reader that located the row before the delete committed may find the object gone;
   the `@file` route answers 404 as for any absent object.
+
+**The audit pass.** The generator can tell you which `@file` tables the cascade
+limitation applies to. A finding of that kind is advisory, a shape the framework handles
+under a stated limitation, and raising it as a warning would print it on every
+generation of every application that carries the shape, so the generator reports it
+through a separate pass instead: `Generator.Audit()` returns the findings of the last
+`Generate()` (a `[]Finding`, each a sealed kind beside `Warnings()`; nil before a run),
+and a normal generation never prints them. An application's generate program prints them
+on demand: `go run ./cmd/generate/resourcegenerator -audit` in Lodestar, which prints
+the warnings as `Warning: <text>` and then each finding as `Audit: <text>`, one per line
+(`impulse audit` runs the same for a skeleton application once it lands); `go generate
+./...` passes no flag and prints no finding. The first finding, `CascadeReleaseFinding`,
+names a resource that stores files on a table whose rows the database deletes by cascade,
+because the table is an interleaved child declared `ON DELETE CASCADE` (the finding
+names the parent) or a foreign key on it carries the `CASCADE` delete rule (the finding
+names the column), one finding per cause, in resource order: a cascade releases none of
+their objects and the sweep removes them. The facts ride the table map the schema read
+records, `INFORMATION_SCHEMA.TABLES.ON_DELETE_ACTION` and
+`REFERENTIAL_CONSTRAINTS.DELETE_RULE`, so a cached schema audits like a fresh one.
+Further findings of this class arrive with their own register items. Example:
+[RefitTask.PhotoKey](lodestar/pkg/resources/refit_tasks.go), interleaved in Refits on
+cascade.
 
 **Rendered files.** A document produced at request time is a computed resource's
 content: struct-scope `@file` on a keyed `@computed` struct, and the computed package
