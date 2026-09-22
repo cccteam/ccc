@@ -42,6 +42,9 @@ type App struct {
 	// RoleMigrations are the calls to access.MigrateRoles outside tests: where the
 	// application provisions its roles.
 	RoleMigrations []RoleMigration
+	// RoleValidations are the calls to access.ValidateRoles in the application's tests:
+	// where a roles file's deploy-time warnings are pinned in code.
+	RoleValidations []RoleValidation
 	// OutletMembers are the structs the application's own code annotates @outlet: the
 	// resources attached to router outlets other than, or in addition to, the default.
 	OutletMembers []OutletMember
@@ -154,6 +157,16 @@ type RoleMigration struct {
 	// Via is the wrapper as the caller writes it (deploy.MigrateRoles), or empty for a
 	// direct access.MigrateRoles call.
 	Via string
+}
+
+// RoleValidation is one call to access.ValidateRoles in a test file: the roles files it
+// validates are the auth packages whose RolesPath the file names.
+type RoleValidation struct {
+	File string
+	Line int
+	// RolesPaths are the import paths of the packages whose RolesPath constant the file
+	// reads, sorted and without repeats; the roles files the call validates.
+	RolesPaths []string
 }
 
 // WithDomains reports whether the call can provision roles into tenants.

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -77,6 +78,13 @@ func (a *App) scanFile(abs, name string) error {
 			return errors.Wrap(err, "os.ReadFile()")
 		}
 		a.EmulatorHarnesses = append(a.EmulatorHarnesses, findRefs(rel, data, emulatorHarnessRE)...)
+		if bytes.Contains(data, []byte(validateRolesFunc+"(")) {
+			validations, err := parseRoleValidations(rel, data)
+			if err != nil {
+				return err
+			}
+			a.RoleValidations = append(a.RoleValidations, validations...)
+		}
 	case strings.HasSuffix(name, ".go"):
 		return a.scanGoFile(abs, rel)
 	}
@@ -171,6 +179,66 @@ func (a *App) scanRoleMigrations(rel string, data []byte) error {
 	}
 
 	return nil
+}
+
+// The validation entry point and the constant an auth package exports for its roles file.
+const (
+	validateRolesFunc = "ValidateRoles"
+	rolesPathConst    = "RolesPath"
+)
+
+// parseRoleValidations returns every access.ValidateRoles call in a test file, each
+// carrying the auth packages whose RolesPath the file reads: a test that validates a roles
+// file reads the file at the path its auth package exports, so the selector names the
+// file the call validates.
+func parseRoleValidations(rel string, src []byte) ([]RoleValidation, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := localImportName(f, accessImportPath)
+	if pkg == "" {
+		return nil, nil
+	}
+
+	imports := map[string]string{}
+	for _, imp := range f.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		local := path.Base(p)
+		if imp.Name != nil {
+			local = imp.Name.Name
+		}
+		imports[local] = p
+	}
+	var rolesPaths []string
+	var calls []RoleValidation
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch e := n.(type) {
+		case *ast.SelectorExpr:
+			id, ok := e.X.(*ast.Ident)
+			if ok && e.Sel.Name == rolesPathConst {
+				if p, imported := imports[id.Name]; imported && !slices.Contains(rolesPaths, p) {
+					rolesPaths = append(rolesPaths, p)
+				}
+			}
+		case *ast.CallExpr:
+			if isQualified(e.Fun, pkg, validateRolesFunc) {
+				calls = append(calls, RoleValidation{File: rel, Line: fset.Position(e.Pos()).Line})
+			}
+		}
+
+		return true
+	})
+	slices.Sort(rolesPaths)
+	for i := range calls {
+		calls[i].RolesPaths = rolesPaths
+	}
+
+	return calls, nil
 }
 
 // packagePath is the import path of a root-relative directory, or empty without a module

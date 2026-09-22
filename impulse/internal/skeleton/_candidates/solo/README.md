@@ -19,9 +19,12 @@ what they hold.
   reconciles. It authors `Administrator_Global`, the development login's role, with no
   grants yet: a new resource stays invisible to every login until a role in this file is
   granted it.
-- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
-  roles. `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it to stand
-  up an emulator database and adds the development logins from `cmd/bootstrap/users.json`.
+- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles.
+  `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it to stand up an
+  emulator database and adds the development logins from `cmd/bootstrap/users.json`. Its
+  test runs each roles file through the deploy-time validation (`access.ValidateRoles`)
+  and pins the warnings the deploy would print as typed values, none expected: a warning
+  is accepted by pinning it there, or the role is fixed.
 - `test/authz` is the generated authorization matrix over the generated test router;
   `test/integration` drives the served stack (real router, session, engine) end to end.
 - `web/` is the Angular workspace, one project per browser application (`console`).

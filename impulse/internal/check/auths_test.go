@@ -117,6 +117,40 @@ func MigrateRoles(ctx context.Context, manager access.UserManager, roles *access
 }
 `
 	rolesJSON = "{\"roles\": {\"global\": [], \"domain\": []}}\n"
+	// rolesValidation is the roles validation test with the staff row: it reads the roles
+	// file at staff.RolesPath and runs access.ValidateRoles over the collection.
+	rolesValidation = `package deploy_test
+
+import (
+	"testing"
+
+	"github.com/cccteam/access"
+
+	"example.com/harbor/pkg/auth/staff"
+)
+
+func TestRoles(t *testing.T) {
+	_ = staff.RolesPath
+	if _, err := access.ValidateRoles(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+`
+	// noValidation is a test that calls access.ValidateRoles for some other roles file.
+	noValidation = `package deploy_test
+
+import (
+	"testing"
+
+	"github.com/cccteam/access"
+)
+
+func TestRoles(t *testing.T) {
+	if _, err := access.ValidateRoles(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+`
 )
 
 // membersAuth is an OIDC auth package with the role-synchronization slot left to fill in.
@@ -206,18 +240,37 @@ type Configurer interface {
 	Members() *members.Auth
 }
 `
+	// membersValidation is the roles validation test with the members row.
+	membersValidation = `package deploy_test
+
+import (
+	"testing"
+
+	"github.com/cccteam/access"
+
+	"example.com/harbor/pkg/auth/members"
+)
+
+func TestRoles(t *testing.T) {
+	_ = members.RolesPath
+	if _, err := access.ValidateRoles(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+`
 )
 
 func TestAuthsWired(t *testing.T) {
 	t.Parallel()
 
 	wired := map[string]string{
-		"pkg/auth/staff/staff.go": staffAuth,
-		"pkg/config/data.go":      staffConfig,
-		"pkg/deploy/deploy.go":    rolesWrapper,
-		"cmd/bootstrap/main.go":   staffBootstrap,
-		"app/app.go":              staffApp,
-		"schema/roles/staff.json": rolesJSON,
+		"pkg/auth/staff/staff.go":   staffAuth,
+		"pkg/config/data.go":        staffConfig,
+		"pkg/deploy/deploy.go":      rolesWrapper,
+		"cmd/bootstrap/main.go":     staffBootstrap,
+		"app/app.go":                staffApp,
+		"schema/roles/staff.json":   rolesJSON,
+		"pkg/deploy/deploy_test.go": rolesValidation,
 	}
 	without := func(keys ...string) map[string]string {
 		files := map[string]string{}
@@ -256,6 +309,24 @@ func TestAuthsWired(t *testing.T) {
 			},
 		},
 		{
+			name: "the roles file has no validation test", files: without("pkg/deploy/deploy_test.go"),
+			wantStatus: Warn, wantSummary: "1 auth(s) constructed, provisioned, and bound: staff; 1 roles file(s) without a validation test",
+			wantDetails: []string{"pkg/auth/staff: no test validates the staff auth's roles file (access.ValidateRoles over the collection, reading staff.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the staff row to pkg/deploy/deploy_test.go with its expected warnings empty"},
+		},
+		{
+			name: "a validation test that reads another roles file", files: with(without(), "pkg/deploy/deploy_test.go", noValidation),
+			wantStatus: Warn, wantSummary: "1 auth(s) constructed, provisioned, and bound: staff; 1 roles file(s) without a validation test",
+			wantDetails: []string{"pkg/auth/staff: no test validates the staff auth's roles file (access.ValidateRoles over the collection, reading staff.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the staff row to pkg/deploy/deploy_test.go with its expected warnings empty"},
+		},
+		{
+			name: "a wiring failure lists the missing validation test beneath it", files: without("pkg/deploy/deploy_test.go", "schema/roles/staff.json"),
+			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/auth/staff: staff.RolesPath names schema/roles/staff.json, which does not exist",
+				"pkg/auth/staff: no test validates the staff auth's roles file (access.ValidateRoles over the collection, reading staff.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the staff row to pkg/deploy/deploy_test.go with its expected warnings empty",
+			},
+		},
+		{
 			name: "roles never provisioned", files: without("cmd/bootstrap/main.go"),
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{"pkg/auth/staff: nothing outside tests reads staff.RolesPath; the staff auth's roles are never provisioned"},
@@ -279,6 +350,7 @@ func TestAuthsWired(t *testing.T) {
 				"cmd/bootstrap/main.go":       membersBootstrap,
 				"app/app.go":                  membersApp,
 				"schema/roles/members.json":   rolesJSON,
+				"pkg/deploy/deploy_test.go":   membersValidation,
 			},
 			wantStatus: Pass, wantSummary: "1 auth(s) constructed, provisioned, and bound: members",
 		},
@@ -291,6 +363,7 @@ func TestAuthsWired(t *testing.T) {
 				"cmd/bootstrap/main.go":       membersBootstrap,
 				"app/app.go":                  membersApp,
 				"schema/roles/members.json":   rolesJSON,
+				"pkg/deploy/deploy_test.go":   membersValidation,
 			},
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{"cmd/bootstrap/main.go:18: the members auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)"},

@@ -22,9 +22,12 @@ concealed from logins that hold nothing there.
   application and generates nothing else.
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles
   across the tenant roster against the union of the sites' generated collections — one
-  policy store, one role configuration, one identity across sites. `cmd/deployment/migrate`
-  is the deploy step; `cmd/bootstrap` reuses it for the emulator and adds the development
-  tenants and logins.
+  policy store, one role configuration, one identity across sites.
+  `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it for the emulator
+  and adds the development tenants and logins. Its test runs each roles file through the
+  deploy-time validation (`access.ValidateRoles`) and pins the warnings the deploy would
+  print as typed values, none expected: a warning is accepted by pinning it there, or the
+  role is fixed.
 - `cmd/generate` runs the three generators: console, portal, shared. `impulse check`'s
   sites-generators check fails the build when a generator reads a different schema or the
   shared generator misses a site.

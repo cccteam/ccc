@@ -41,12 +41,15 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
   the readings; the members file authors `Administrator_Domain` over the portal's
   announcements. A new resource stays invisible until a role in its auth's file is granted
   it.
-- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
-  roles across the tenants read from the table. `cmd/deployment/migrate` is the deploy
-  step; `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development
+- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles
+  across the tenants read from the table. `cmd/deployment/migrate` is the deploy step;
+  `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development
   tenants first (the roster MigrateRoles reconciles across is data), and adds the
   development logins, the development member, and the machines service account from
-  `cmd/bootstrap/users.json`.
+  `cmd/bootstrap/users.json`. Its test runs each roles file through the deploy-time
+  validation (`access.ValidateRoles`) and pins the warnings the deploy would print as
+  typed values, none expected: a warning is accepted by pinning it there, or the role is
+  fixed.
 - `test/authz` is the generated authorization matrix over the generated test router;
   `test/integration` drives the served stack (real router, session, engine) end to end.
 - `web/` is the Angular workspace, one project per browser application (`console`,

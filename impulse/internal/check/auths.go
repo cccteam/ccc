@@ -28,7 +28,7 @@ const authsWiredName = "auths-wired"
 func (authsWired) Name() string { return authsWiredName }
 
 func (authsWired) Describe() string {
-	return "every auth package is constructed by the data level, provisioned from its roles file, and bound by a surface (an outlet's Auth declaration in the package's flavor, or a hand-written surface taking its type); no two auths share a session or XSRF cookie; and a directory-run auth has no role writers in the application"
+	return "every auth package is constructed by the data level, provisioned from its roles file, and bound by a surface (an outlet's Auth declaration in the package's flavor, or a hand-written surface taking its type); no two auths share a session or XSRF cookie; a directory-run auth has no role writers in the application; and a provisioned roles file is validated by a test (WARN)"
 }
 
 // The identifiers an auth package exports that the wiring is read from.
@@ -49,24 +49,30 @@ func (c authsWired) Run(_ context.Context, env *Env) Result {
 	}
 
 	profile := a.Profile()
-	var details, summaries []string
+	var details, warnings, summaries []string
 	for i := range a.AuthPackages {
 		p := &a.AuthPackages[i]
-		details = append(details, c.packageFindings(a, profile, p)...)
+		found, warned := c.packageFindings(a, profile, p)
+		details = append(details, found...)
+		warnings = append(warnings, warned...)
 		summaries = append(summaries, p.Name)
 	}
 	details = append(details, unknownAuthBindings(a, profile)...)
 	details = append(details, cookieCollisions(a.Auths)...)
 	if len(details) > 0 {
-		return fail(c.Name(), fmt.Sprintf("%d auth wiring problem(s)", len(details)), details...)
+		return fail(c.Name(), fmt.Sprintf("%d auth wiring problem(s)", len(details)), append(details, warnings...)...)
+	}
+	wired := fmt.Sprintf("%d auth(s) constructed, provisioned, and bound: %s", len(summaries), strings.Join(summaries, ", "))
+	if len(warnings) > 0 {
+		return warn(c.Name(), fmt.Sprintf("%s; %d roles file(s) without a validation test", wired, len(warnings)), warnings...)
 	}
 
-	return pass(c.Name(), fmt.Sprintf("%d auth(s) constructed, provisioned, and bound: %s", len(summaries), strings.Join(summaries, ", ")))
+	return pass(c.Name(), wired)
 }
 
-// packageFindings checks one auth against the application.
-func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPackage) []string {
-	var details []string
+// packageFindings checks one auth against the application: the findings that fail the
+// check, and the warnings that do not (a provisioned roles file no test validates).
+func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPackage) (details, warnings []string) {
 	if len(p.References(authNew, isTestFile)) == 0 {
 		details = append(details, fmt.Sprintf("%s: nothing outside tests calls %s.New; the %s auth is never constructed", p.Dir, p.Name, p.Name))
 	}
@@ -84,6 +90,8 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 		}
 		if !provisioning {
 			details = append(details, fmt.Sprintf("%s: %s.RolesPath is read (%s) but not by a file that migrates roles; the %s auth's roles are never provisioned", p.Dir, p.Name, strings.Join(refs, ", "), p.Name))
+		} else if !validated(a, p) {
+			warnings = append(warnings, fmt.Sprintf("%s: no test validates the %s auth's roles file (access.ValidateRoles over the collection, reading %s.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the %s row to %s with its expected warnings empty", p.Dir, p.Name, p.Name, p.Name, validationTestFile(a)))
 		}
 		if rolesFile := rolesPathOf(a, p); rolesFile != "" {
 			if _, err := os.Stat(a.Abs(rolesFile)); err != nil {
@@ -111,7 +119,37 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 		details = append(details, directoryWriters(a, p)...)
 	}
 
-	return details
+	return details, warnings
+}
+
+// validated reports whether a test calls access.ValidateRoles while reading the auth
+// package's RolesPath: the roles validation test with the auth's row.
+func validated(a *app.App, p *app.AuthPackage) bool {
+	for i := range a.RoleValidations {
+		if slices.Contains(a.RoleValidations[i].RolesPaths, p.Path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// skeletonValidationTest is where the skeletons keep the roles validation test.
+const skeletonValidationTest = "pkg/deploy/deploy_test.go"
+
+// validationTestFile is where the roles validation test lives: beside the file that calls
+// access.MigrateRoles itself (the deploy package), named after its package, or the
+// skeletons' file when no file does.
+func validationTestFile(a *app.App) string {
+	for _, m := range a.RoleMigrations {
+		if m.Via == "" {
+			dir := path.Dir(m.File)
+
+			return path.Join(dir, path.Base(dir)+"_test.go")
+		}
+	}
+
+	return skeletonValidationTest
 }
 
 // The session library's cookie names when a construction leaves them unset.
