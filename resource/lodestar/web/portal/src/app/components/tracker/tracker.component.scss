@@ -17,9 +17,19 @@
     font-family: 'Roboto Mono', monospace;
   }
 
+  // The field sits on the dark header: Material paints a select's chosen value with the
+  // theme's on-surface color, one shade from this background, so the tokens name white.
   .sector {
     width: 160px;
     margin-bottom: -20px;
+    --mat-select-enabled-trigger-text-color: #fff;
+    --mat-select-enabled-arrow-color: rgba(255, 255, 255, 0.7);
+    --mat-form-field-outlined-label-text-color: rgba(255, 255, 255, 0.7);
+    --mat-form-field-outlined-outline-color: rgba(255, 255, 255, 0.4);
+    --mat-form-field-outlined-hover-outline-color: rgba(255, 255, 255, 0.7);
+    --mat-form-field-outlined-hover-label-text-color: #fff;
+    --mat-form-field-outlined-focus-label-text-color: #f2b544;
+    --mat-form-field-outlined-focus-outline-color: #f2b544;
   }
 
   button {
