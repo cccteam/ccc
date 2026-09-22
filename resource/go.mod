@@ -9,7 +9,7 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
 	github.com/cccteam/ccc v0.3.2
-	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260908043255-2adf7c91cccf
+	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260922183153-31dedfd272da
 	github.com/cccteam/ccc/cache v0.1.6
 	github.com/cccteam/ccc/pkg v0.1.4
 	github.com/cccteam/ccc/securehash v0.0.13
@@ -17,7 +17,7 @@ require (
 	github.com/cccteam/db-initiator v0.3.13
 	github.com/cccteam/httpio v0.7.17
 	github.com/cccteam/logger v0.1.27
-	github.com/cccteam/session v0.11.2-0.20260906163135-2fdfc3b03ed3
+	github.com/cccteam/session v0.11.2-0.20260922184536-a333790eda73
 	github.com/cccteam/spxscan v0.0.14
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0
@@ -131,6 +131,6 @@ require (
 	google.golang.org/genproto v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260818201246-1b0934165a6f // indirect
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.2
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
