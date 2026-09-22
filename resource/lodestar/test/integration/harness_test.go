@@ -64,6 +64,11 @@ const (
 	// simulated directory; its roles are the groups the directory names (APP_ROLES).
 	clientUser = "client"
 	droidUser  = "droid-r7"
+
+	// The served world's idle session timeout, the application's default. A test signs in
+	// in its body and reads in parallel subtests, which start when a slot frees; on a loaded
+	// runner that was over a minute later, and a shorter timeout read as an expired session.
+	servedSessionTimeout = 10 * time.Minute
 )
 
 // Seeded row identifiers, matching schema/devseed. The values are patterned and stable
@@ -612,7 +617,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: servedSessionTimeout})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
 	}
@@ -629,7 +634,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 
 	membersAuth, err := members.New(ctx, db.Client, &members.Settings{
 		CookieKey:      testCookieKey,
-		SessionTimeout: time.Minute,
+		SessionTimeout: servedSessionTimeout,
 		LoginURL:       "/portal/login",
 		Domains:        func(context.Context) ([]accesstypes.Domain, error) { return sectors, nil },
 		Directory: members.Directory{
