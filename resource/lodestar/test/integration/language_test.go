@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 )
 
 // missionIDs names seeded missions by ordinal.
@@ -29,6 +30,24 @@ func TestConditionLanguage(t *testing.T) {
 	t.Parallel()
 
 	_, h, _ := sharedWorld(t)
+
+	// The List grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "ClientBrowser", "List", "Clients", "trusted = true")
+	provesGrant(t, crew.RolesPath, "SalvageDesk", "List", "Clients", "insured IS NULL OR insured = true")
+	provesGrant(t, crew.RolesPath, "Cadet", "List", "Missions", "hazard IN (1, 2)")
+	provesGrant(t, crew.RolesPath, "Cadet", "List", "DistressCalls", "filedBy = subject")
+	provesGrant(t, crew.RolesPath, "Pilot", "List", "Missions", "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)")
+	provesGrant(t, crew.RolesPath, "Pilot", "List", "Ships", "hangarZone != 'quarantine'")
+	provesGrant(t, crew.RolesPath, "Veteran", "List", "Missions", "NOT (hazard IN (1, 2) OR fee < 5000)")
+	provesGrant(t, crew.RolesPath, "FlightLead", "List", "Missions", "assignedSquadron IN subject.squadrons OR bookedBy = subject")
+	provesGrant(t, crew.RolesPath, "Dispatcher", "List", "Missions", "state NOT IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "Overseer", "List", "Missions", "deadline < now AND state NOT IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "BookingAgent", "List", "Missions", "fee > 10000 OR bookedBy = subject")
+	provesGrant(t, crew.RolesPath, "WingCommander", "List", "Missions", "hazard >= 4")
+	provesGrant(t, crew.RolesPath, "WingCommander", "List", "Squadrons", "wing IN subject.wings")
+	provesGrant(t, crew.RolesPath, "Archivist", "List", "Missions", "state IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "Archivist", "List", "Sorties", "state IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "Archivist", "List", "SortieExpenses", "state IN ('completed', 'failed', 'stood_down')")
 
 	tests := []struct {
 		name      string
@@ -184,6 +203,97 @@ func TestConditionLanguage(t *testing.T) {
 	}
 }
 
+// TestConditionLanguageReads pins the read side of the row conditions: for each role's
+// conditional Read grant, a seeded row the condition admits answers and a row it refuses
+// is not found, the concealment an unknown key gets, since the condition is folded into the
+// row's own WHERE clause. The rows are the ones the List cases above pin, read one at a
+// time; the archivist's second grant shows the fee on a completed mission alone.
+func TestConditionLanguageReads(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	// The Read grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Cadet", "Read", "Missions", "hazard IN (1, 2)")
+	provesGrant(t, crew.RolesPath, "Cadet", "Read", "DistressCalls", "filedBy = subject")
+	provesGrant(t, crew.RolesPath, "Pilot", "Read", "Missions", "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)")
+	provesGrant(t, crew.RolesPath, "Pilot", "Read", "Ships", "hangarZone != 'quarantine'")
+	provesGrant(t, crew.RolesPath, "Veteran", "Read", "Missions", "NOT (hazard IN (1, 2) OR fee < 5000)")
+	provesGrant(t, crew.RolesPath, "FlightLead", "Read", "Missions", "assignedSquadron IN subject.squadrons OR bookedBy = subject")
+	provesGrant(t, crew.RolesPath, "Dispatcher", "Read", "Missions", "state NOT IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "Overseer", "Read", "Missions", "deadline < now AND state NOT IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "BookingAgent", "Read", "Missions", "fee > 10000 OR bookedBy = subject")
+	provesGrant(t, crew.RolesPath, "WingCommander", "Read", "Missions", "hazard >= 4")
+	provesGrant(t, crew.RolesPath, "WingCommander", "Read", "Squadrons", "wing IN subject.wings")
+	provesGrant(t, crew.RolesPath, "Archivist", "Read", "Missions", "state IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "Archivist", "Read", "Missions", "state = 'completed'")
+	provesGrant(t, crew.RolesPath, "Archivist", "Read", "Sorties", "state IN ('completed', 'failed', 'stood_down')")
+	provesGrant(t, crew.RolesPath, "Archivist", "Read", "SortieExpenses", "state IN ('completed', 'failed', 'stood_down')")
+
+	tests := []struct {
+		name       string
+		user       accesstypes.User
+		target     string
+		wantStatus int
+		// present and absent name fields the row must and must not carry.
+		present []string
+		absent  []string
+	}{
+		{name: "cadet: a hazard-2 mission", user: "cadet", target: sectorPath(anvil, "missions/"+missionHaulerID), wantStatus: http.StatusOK},
+		{name: "cadet: a hazard-3 mission is not found", user: "cadet", target: sectorPath(anvil, "missions/"+missionCorvidID), wantStatus: http.StatusNotFound},
+		{name: "cadet: the call he filed", user: "cadet", target: sectorPath(anvil, "distress-calls/"+callDebrisID), wantStatus: http.StatusOK},
+		{name: "cadet: the client's call is not found", user: "cadet", target: sectorPath(anvil, "distress-calls/"+callBeaconID), wantStatus: http.StatusNotFound},
+		{name: "pilot: a mission within clearance needing no certificate", user: "pilot", target: sectorPath(anvil, "missions/"+missionHaulerID), wantStatus: http.StatusOK},
+		{name: "pilot: the hazard-4 convoy is not found", user: "pilot", target: sectorPath(anvil, "missions/"+missionConvoyID), wantStatus: http.StatusNotFound},
+		{name: "pilot: a docked ship", user: "pilot", target: sectorPath(anvil, "ships/"+shipKingfisherID), wantStatus: http.StatusOK},
+		{name: "pilot: the quarantined Lantern is not found", user: "pilot", target: sectorPath(anvil, "ships/"+shipLanternID), wantStatus: http.StatusNotFound},
+		{name: "veteran: a hazard-3, well-paid mission", user: "veteran", target: sectorPath(anvil, "missions/"+missionCorvidID), wantStatus: http.StatusOK},
+		{name: "veteran: routine work is not found", user: "veteran", target: sectorPath(anvil, "missions/"+missionHaulerID), wantStatus: http.StatusNotFound},
+		{name: "lead: own squadron's convoy", user: "lead", target: sectorPath(anvil, "missions/"+missionConvoyID), wantStatus: http.StatusOK},
+		{name: "lead: another squadron's courier, booked by someone else, is not found", user: "lead", target: sectorPath(anvil, "missions/"+missionCourierID), wantStatus: http.StatusNotFound},
+		{name: "dispatcher: a live mission", user: "dispatcher", target: sectorPath(anvil, "missions/"+missionHaulerID), wantStatus: http.StatusOK},
+		{name: "dispatcher: a completed mission is not found", user: "dispatcher", target: sectorPath(anvil, "missions/"+missionPodID), wantStatus: http.StatusNotFound},
+		{name: "overseer: the overdue courier", user: "overseer", target: sectorPath(anvil, "missions/"+missionQuarantineID), wantStatus: http.StatusOK},
+		{name: "overseer: a mission still within its deadline is not found", user: "overseer", target: sectorPath(anvil, "missions/"+missionHaulerID), wantStatus: http.StatusNotFound},
+		{name: "booking: a mission over the fee threshold", user: "booking", target: sectorPath(anvil, "missions/"+missionCorvidID), wantStatus: http.StatusOK},
+		{name: "booking: a cheap mission someone else booked is not found", user: "booking", target: sectorPath(anvil, "missions/"+missionTowID), wantStatus: http.StatusNotFound},
+		{name: "wingco: a hazard-4 mission", user: "wingco", target: sectorPath(anvil, "missions/"+missionConvoyID), wantStatus: http.StatusOK},
+		{name: "wingco: a hazard-2 mission is not found", user: "wingco", target: sectorPath(anvil, "missions/"+missionHaulerID), wantStatus: http.StatusNotFound},
+		// The seed has no Anvil squadron outside Forge Wing; the List case above pins the
+		// exact set the condition admits.
+		{name: "wingco: a squadron of the wing", user: "wingco", target: sectorPath(anvil, "squadrons/"+squadronHammerID), wantStatus: http.StatusOK},
+		{name: "archivist: a completed mission carries its fee", user: "archivist", target: sectorPath(anvil, "missions/"+missionPodID), wantStatus: http.StatusOK, present: []string{"fee"}},
+		{name: "archivist: a failed mission is read with the fee masked", user: "archivist", target: sectorPath(anvil, "missions/"+missionTowID), wantStatus: http.StatusOK, present: []string{"title"}, absent: []string{"fee"}},
+		{name: "archivist: an open mission is not found", user: "archivist", target: sectorPath(anvil, "missions/"+missionHaulerID), wantStatus: http.StatusNotFound},
+		{name: "archivist: a sortie of a completed mission", user: "archivist", target: sectorPath(anvil, "sorties/"+sortiePodID), wantStatus: http.StatusOK},
+		{name: "archivist: a sortie of the underway convoy is not found", user: "archivist", target: sectorPath(anvil, "sorties/"+sortieConvoyID), wantStatus: http.StatusNotFound},
+		{name: "archivist: an expense two hops under a completed mission", user: "archivist", target: sectorPath(anvil, "sortie-expenses/"+expensePodTowGearID), wantStatus: http.StatusOK},
+		{name: "archivist: an expense under the underway convoy is not found", user: "archivist", target: sectorPath(anvil, "sortie-expenses/"+expenseConvoyFuelID), wantStatus: http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, tt.user, http.MethodGet, tt.target, "")
+			assertStatus(t, status, tt.wantStatus, body)
+			if status != http.StatusOK {
+				return
+			}
+			row := decodeRow(t, body)
+			for _, key := range tt.present {
+				if _, ok := row[key]; !ok {
+					t.Errorf("row lacks %s: %s", key, body)
+				}
+			}
+			for _, key := range tt.absent {
+				if _, ok := row[key]; ok {
+					t.Errorf("row carries %s, which the grant masks here: %s", key, body)
+				}
+			}
+		})
+	}
+}
+
 // TestConditionLanguageWrites pins the write-side constructs both ways: the insert
 // image against a subject value, the post-image inside an Update, IS NULL / IS NOT
 // NULL on updates, and the date literal on a delete.
@@ -191,6 +301,16 @@ func TestConditionLanguageWrites(t *testing.T) {
 	t.Parallel()
 
 	_, _, h := demoWorld(t)
+
+	// The write grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "BookingAgent", "Create", "Missions", "new.fee <= subject.feeLimit")
+	provesGrant(t, crew.RolesPath, "BookingAgent", "Update", "Missions", "state = 'open' AND new.fee <= subject.feeLimit")
+	provesGrant(t, crew.RolesPath, "BookingAgent", "Delete", "Missions", "state = 'open'")
+	provesGrant(t, crew.RolesPath, "Engineer", "Update", "Refits", "inspectedAt IS NOT NULL")
+	provesGrant(t, crew.RolesPath, "Engineer", "Update", "RefitTasks", "state = 'in_refit'")
+	provesGrant(t, crew.RolesPath, "FlightLead", "Update", "Sorties", "state = 'underway'")
+	provesGrant(t, crew.RolesPath, "Supercargo", "Update", "Consignments", "releasedAt IS NULL")
+	provesGrant(t, crew.RolesPath, "Supercargo", "Delete", "Consignments", "expiresOn < '2026-09-01'")
 
 	tests := []struct {
 		name       string
@@ -288,6 +408,34 @@ func TestConditionLanguageWrites(t *testing.T) {
 			construct:  "state = 'open' on Delete (refused)",
 			user:       "booking",
 			body:       `[{"op":"remove","path":"` + opPath(anvil, "missions/"+missionBullionID) + `"}]`,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "lead: a sortie's state is its mission's, and underway admits the debrief",
+			construct:  "state = 'underway' one hop up, on Update",
+			user:       "lead",
+			body:       `[{"op":"patch","path":"` + opPath(anvil, "sorties/"+sortieConvoyID) + `","value":{"debrief":"Convoy escorted without incident"}}]`,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "lead: the held courier's sortie refuses the debrief",
+			construct:  "state = 'underway' one hop up, on Update (refused)",
+			user:       "lead",
+			body:       `[{"op":"patch","path":"` + opPath(anvil, "sorties/"+sortieCourierID) + `","value":{"debrief":"Nothing to report"}}]`,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "engineer: a task of a ship in the refit bay is ticked done",
+			construct:  "state = 'in_refit' on the task's refit, on Update",
+			user:       "engineer",
+			body:       `[{"op":"patch","path":"` + opPath(anvil, "refit-tasks/"+refitSamaritanID+"/2") + `","value":{"done":true}}]`,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "engineer: a task of an inspected ship not yet in refit is refused",
+			construct:  "state = 'in_refit' on the task's refit, on Update (refused)",
+			user:       "engineer",
+			body:       `[{"op":"patch","path":"` + opPath(anvil, "refit-tasks/"+refitMuleID+"/1") + `","value":{"done":true}}]`,
 			wantStatus: http.StatusForbidden,
 		},
 	}

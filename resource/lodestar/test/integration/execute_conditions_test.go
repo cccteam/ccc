@@ -16,12 +16,22 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 )
 
 func TestExecuteConditionsOnRows(t *testing.T) {
 	t.Parallel()
 
 	_, h, _ := sharedWorld(t)
+
+	// The Execute grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Cadet", "Execute", "ClaimMission", "hazard IN (1, 2)")
+	provesGrant(t, crew.RolesPath, "Pilot", "Execute", "ClaimMission", "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)")
+	provesGrant(t, crew.RolesPath, "Pilot", "Execute", "HailShip", "hangarZone != 'quarantine'")
+	provesGrant(t, crew.RolesPath, "FlightLead", "Execute", "CompleteMission", "assignedSquadron IN subject.squadrons")
+	provesGrant(t, crew.RolesPath, "FlightLead", "Execute", "FailMission", "assignedSquadron IN subject.squadrons")
+	provesGrant(t, crew.RolesPath, "BookingAgent", "Execute", "StandDownMission", "bookedBy = subject")
+	provesGrant(t, crew.RolesPath, "Supercargo", "Execute", "ReleaseConsignment", "releasedAt IS NULL")
 
 	// Each case: the persona's per-row Execute envelope over one list, pinned for the
 	// rows the persona can see, followed by one refused fire on a row whose condition

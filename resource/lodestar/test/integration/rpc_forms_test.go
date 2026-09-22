@@ -16,6 +16,7 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	initiator "github.com/cccteam/db-initiator"
 )
 
@@ -128,6 +129,9 @@ type releasedBody struct {
 // Demonstrates: rpc.armed-read, rpc.typed-result, execute-condition, machine-identity.
 func TestReleaseConsignment_armedManifest(t *testing.T) {
 	t.Parallel()
+
+	// The droid's grant this suite proves through its own outlet, pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "DroidIngest", "Execute", "ReleaseConsignment", "releasedAt IS NULL")
 
 	tests := []struct {
 		name        string

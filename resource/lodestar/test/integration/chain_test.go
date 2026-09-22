@@ -10,12 +10,19 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 )
 
 func TestTwoHopStateChain(t *testing.T) {
 	t.Parallel()
 
 	_, _, h := demoWorld(t)
+
+	// The grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Quartermaster", "Create", "SortieExpenses", "state = 'underway'")
+	provesGrant(t, crew.RolesPath, "Quartermaster", "Update", "SortieExpenses", "state = 'underway'")
+	provesGrant(t, crew.RolesPath, "Quartermaster", "Delete", "SortieExpenses", "state = 'underway'")
 
 	// Deliberately not a table: the sections move the convoy mission's state and
 	// each step depends on the state the previous one left behind.

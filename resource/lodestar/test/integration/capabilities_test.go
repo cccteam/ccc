@@ -12,12 +12,17 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 )
 
 func TestCapabilityEnvelope(t *testing.T) {
 	t.Parallel()
 
 	_, h, _ := sharedWorld(t)
+
+	// The Create grants this suite proves through the create-under-parent affordance, each pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "FlightLead", "Create", "Sorties", "state = 'underway'")
+	provesGrant(t, crew.RolesPath, "Engineer", "Create", "RefitTasks", "state IN ('inspected', 'in_refit')")
 
 	type wantCapability struct {
 		update []any

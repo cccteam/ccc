@@ -32,6 +32,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
@@ -141,6 +142,9 @@ func storedFiles(t *testing.T, dir string) []string {
 
 func TestAttachMissionDocument(t *testing.T) {
 	t.Parallel()
+
+	// The Execute grant this suite proves, pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Dispatcher", "Execute", "AttachMissionDocument", "state NOT IN ('completed', 'failed', 'stood_down')")
 
 	brief := uploadFile{name: "brief.pdf", contentType: "application/pdf", content: []byte("%PDF-1.7 escort brief")}
 	chart := uploadFile{name: "chart.png", contentType: "image/png", content: []byte("PNG chart")}
@@ -289,6 +293,10 @@ func TestMissionDocument_portalListing(t *testing.T) {
 
 	h, _, _ := documentWorld(t)
 	id := attachHaulerBrief(t, h)
+
+	// The portal grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, members.RolesPath, "client-portal", "List", "MissionDocuments", "client = subject.client")
+	provesGrant(t, members.RolesPath, "client-portal", "Read", "MissionDocuments", "client = subject.client")
 
 	portalStatus, portalBody := doRequestAs(t, h, "client", http.MethodGet, "/portal/api/sectors/anvil/mission-documents", "")
 	assertStatus(t, portalStatus, http.StatusOK, portalBody)

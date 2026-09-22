@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 )
 
 func TestOverseerClockFlip(t *testing.T) {
@@ -20,6 +21,9 @@ func TestOverseerClockFlip(t *testing.T) {
 	ctx := t.Context()
 	_, _, client := sharedWorld(t)
 	checker := client.ForUser("overseer")
+
+	// The grant this suite proves, pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Overseer", "Update", "Missions", "state = 'claimed' AND deadline < now")
 
 	// The engine's decision for a conditional grant is Conditional either way: a
 	// `deadline < now` term is a ROW term, so the engine defers it to the data layer,

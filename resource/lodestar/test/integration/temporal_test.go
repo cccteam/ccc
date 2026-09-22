@@ -20,6 +20,7 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
 )
@@ -254,10 +255,65 @@ func TestShiftPairIsComplementary(t *testing.T) {
 
 	_, h, _ := sharedWorld(t)
 
+	// The shipped shift grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Dockmaster", "List", "Refits", "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'")
+	provesGrant(t, crew.RolesPath, "Dockmaster", "Read", "Refits", "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'")
+	provesGrant(t, crew.RolesPath, "NightWatch", "List", "Refits", "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'")
+	provesGrant(t, crew.RolesPath, "NightWatch", "Read", "Refits", "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'")
+
 	dara, daraBody := doRequestAs(t, h, "dock", http.MethodGet, sectorPath(anvil, "refits"), "")
 	nadia, nadiaBody := doRequestAs(t, h, "watch", http.MethodGet, sectorPath(anvil, "refits"), "")
 	if (dara == http.StatusOK) == (nadia == http.StatusOK) {
 		t.Fatalf("dara = %d (%s), nadia = %d (%s): exactly one shift must see the deck", dara, daraBody, nadia, nadiaBody)
+	}
+
+	// The same pairing on a single refit: the row condition is row-free, so the read is
+	// admitted or not found by the clock alone.
+	daraRow, daraRowBody := doRequestAs(t, h, "dock", http.MethodGet, sectorPath(anvil, "refits/"+refitLanternID), "")
+	nadiaRow, nadiaRowBody := doRequestAs(t, h, "watch", http.MethodGet, sectorPath(anvil, "refits/"+refitLanternID), "")
+	if (daraRow == http.StatusOK) == (nadiaRow == http.StatusOK) {
+		t.Fatalf("dara = %d (%s), nadia = %d (%s): exactly one shift must read the Lantern's refit", daraRow, daraRowBody, nadiaRow, nadiaRowBody)
+	}
+}
+
+// TestNightWatchWeekdayTasks pins the night watch's shipped write grant: notes on a task
+// whose refit is in the bay are admitted on a weekday of the operations clock and refused
+// on a weekend, and a task of a refit outside the bay is refused on any day. The expected
+// status is computed from the grant and the clock the suite runs under, never from an
+// observed answer.
+func TestNightWatchWeekdayTasks(t *testing.T) {
+	t.Parallel()
+
+	_, _, h := demoWorld(t)
+
+	// The grant this suite proves, pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "NightWatch", "Update", "RefitTasks", "dayOfWeek(now, local) NOT IN ('sat', 'sun') AND state = 'in_refit'")
+
+	opsClock, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		t.Fatal(err)
+	}
+	onWeekday := http.StatusOK
+	if day := time.Now().In(opsClock).Weekday(); day == time.Saturday || day == time.Sunday {
+		onWeekday = http.StatusForbidden
+	}
+
+	tests := []struct {
+		name       string
+		target     string
+		wantStatus int
+	}{
+		{name: "a task of a ship in the refit bay follows the day of the week", target: "refit-tasks/" + refitSamaritanID + "/2", wantStatus: onWeekday},
+		{name: "a task of an inspected ship not yet in refit is refused on any day", target: "refit-tasks/" + refitMuleID + "/1", wantStatus: http.StatusForbidden},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, "watch", http.MethodPatch, "/api/resources",
+				fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"notes":"checked on watch"}}]`, opPath(anvil, tt.target)))
+			assertStatus(t, status, tt.wantStatus, body)
+		})
 	}
 }
 

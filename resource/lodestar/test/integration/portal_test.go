@@ -15,6 +15,13 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+)
+
+// The seeded contact records, matching schema/devseed: Cleo's own and another company's.
+const (
+	contactCleoID     = "31000000-0000-4000-8000-000000000001"
+	contactSurveyorID = "31000000-0000-4000-8000-000000000002"
 )
 
 // Demonstrates: outlet.session, outlet.isolation, @subjectValue.second-anchor, create-form-narrowing, @manualAddResource.outlet, tenancy.user-domains.
@@ -22,6 +29,14 @@ func TestClientPortal(t *testing.T) {
 	t.Parallel()
 
 	_, h, _ := sharedWorld(t)
+
+	// The portal grants this suite proves, each pinned to the roles file (conditions-proven).
+	provesGrant(t, members.RolesPath, "client-account", "List", "ClientContacts", "userId = subject")
+	provesGrant(t, members.RolesPath, "client-account", "Read", "ClientContacts", "userId = subject")
+	provesGrant(t, members.RolesPath, "client-portal", "List", "Missions", "client = subject.client")
+	provesGrant(t, members.RolesPath, "client-portal", "Read", "Missions", "client = subject.client")
+	provesGrant(t, members.RolesPath, "client-portal", "List", "DistressCalls", "filedBy = subject")
+	provesGrant(t, members.RolesPath, "client-portal", "Read", "DistressCalls", "filedBy = subject")
 
 	t.Run("cleo sees only Halvard's missions, with the portal width", func(t *testing.T) {
 		t.Parallel()
@@ -151,6 +166,33 @@ func TestClientPortal(t *testing.T) {
 		}
 	})
 
+	t.Run("cleo reads Halvard's mission and not Meridian's", func(t *testing.T) {
+		t.Parallel()
+
+		status, body := doRequestAs(t, h, clientUser, http.MethodGet, portalPath(anvil, "missions/"+missionHaulerID), "")
+		assertStatus(t, status, http.StatusOK, body)
+		status, body = doRequestAs(t, h, clientUser, http.MethodGet, portalPath(anvil, "missions/"+missionConvoyID), "")
+		assertStatus(t, status, http.StatusNotFound, body)
+	})
+
+	t.Run("cleo reads the call she filed and not the cadet's", func(t *testing.T) {
+		t.Parallel()
+
+		status, body := doRequestAs(t, h, clientUser, http.MethodGet, portalPath(anvil, "distress-calls/"+callBeaconID), "")
+		assertStatus(t, status, http.StatusOK, body)
+		status, body = doRequestAs(t, h, clientUser, http.MethodGet, portalPath(anvil, "distress-calls/"+callDebrisID), "")
+		assertStatus(t, status, http.StatusNotFound, body)
+	})
+
+	t.Run("cleo reads her own contact record and not the surveyor's", func(t *testing.T) {
+		t.Parallel()
+
+		status, body := doRequestAs(t, h, clientUser, http.MethodGet, portalAPI+"/client-contacts/"+contactCleoID, "")
+		assertStatus(t, status, http.StatusOK, body)
+		status, body = doRequestAs(t, h, clientUser, http.MethodGet, portalAPI+"/client-contacts/"+contactSurveyorID, "")
+		assertStatus(t, status, http.StatusNotFound, body)
+	})
+
 	t.Run("the client statement is the portal's route and nobody else's", func(t *testing.T) {
 		t.Parallel()
 
@@ -172,6 +214,9 @@ func TestClientPortalActions(t *testing.T) {
 	t.Parallel()
 
 	_, _, h := demoWorld(t)
+
+	// The grant this suite proves, pinned to the roles file (conditions-proven).
+	provesGrant(t, members.RolesPath, "client-portal", "Execute", "StandDownMission", "client = subject.client")
 
 	t.Run("cleo files a call with her contact: the one PII field a client writes", func(t *testing.T) {
 		t.Parallel()

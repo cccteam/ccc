@@ -13,6 +13,7 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 )
 
@@ -21,6 +22,9 @@ func TestComputedConditionalGrant(t *testing.T) {
 
 	ctx := t.Context()
 	_, h, client := sharedWorld(t)
+
+	// The grant this suite proves, pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "HazardAnalyst", "List", "SectorHazardBoards", "now < '2099-01-01T00:00:00Z'")
 
 	t.Run("the board answers today", func(t *testing.T) {
 		t.Parallel()

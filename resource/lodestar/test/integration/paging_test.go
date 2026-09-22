@@ -27,6 +27,7 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 )
 
 // linkRelations parses a Link header into rel → URL.
@@ -435,6 +436,9 @@ func TestPaging_visibleProjection(t *testing.T) {
 
 	_, h, _ := sharedWorld(t)
 
+	// The grant this suite proves, the archivist's fee on completed missions alone, pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Archivist", "List", "Missions", "state = 'completed'")
+
 	// Anvil's closed missions: three completed (fee visible) and four masked.
 	var (
 		completedPod    = missionPodID     // 40000
@@ -735,6 +739,9 @@ func TestPaging_namedVariantKey(t *testing.T) {
 	t.Parallel()
 
 	_, h, _ := sharedWorld(t)
+
+	// The grant this suite proves, pinned to the roles file (conditions-proven).
+	provesGrant(t, crew.RolesPath, "Assessor", "List", "Missions", "state = 'open'")
 
 	// From the seed: Anvil's open missions grouped by hazard, the primary key breaking
 	// ties within a group, and the sixteen missions in every other state, whose hazard

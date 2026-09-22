@@ -262,7 +262,10 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 - `test/authz`: the generated authorization matrix, which pins the endpoint gate with
   unconditional grants over the empty schema and so never meets a condition;
   `test/integration`: the suites (§9), where every condition is proven over the seeded
-  world through the real engines, including [`paging.nullable-sort`](test/integration/paging_test.go),
+  world through the real engines (each conditional grant names its case through
+  `provesGrant`, so `impulse check`'s conditions-proven check finds a grant no suite
+  proves, and `grants_test.go` proves the deploy path serves every unconditional grant),
+  including [`paging.nullable-sort`](test/integration/paging_test.go),
   [`rpc.armed-read`](test/integration/rpc_forms_test.go),
   [`impersonation.revoke`](test/integration/impersonation_ops_test.go), and the parity
   world provisioned from the shipped role files. The served suites need the simulated
