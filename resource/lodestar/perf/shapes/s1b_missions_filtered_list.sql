@@ -1,0 +1,2 @@
+-- Bare-column tenancy plus a filter on an attribute, the cadet's hazard 1 and 2 with a capability boolean, at the maximum page.
+SELECT Id, KindId, Title, Brief, Hazard, Deadline, AssignedSquadronId, StatusId, ARRAY<BOOL>[((`Missions`.`StatusId` IN ('open') AND `Missions`.`Hazard` IN (1, 2)))] AS zzCapabilityChecks FROM Missions WHERE (`Missions`.`SectorId` = 'anvil') AND (`Missions`.`Hazard` IN (1, 2)) ORDER BY `Deadline` ASC, `Id` ASC LIMIT 201

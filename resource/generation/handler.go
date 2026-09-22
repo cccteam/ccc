@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/ettle/strcase"
@@ -31,6 +31,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 
 	if err := r.generateAppContract(); err != nil {
 		return errors.Wrap(err, "generateAppContract()")
+	}
+
+	if err := r.generatePermissions(); err != nil {
+		return errors.Wrap(err, "generatePermissions()")
 	}
 
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
@@ -73,7 +77,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		if len(members) == 0 {
 			continue
 		}
-		if err := r.generateConsolidatedPatchHandler(outlet, members); err != nil {
+		if err := r.generateConsolidatedPatchHandler(&outlet, members); err != nil {
 			return errors.Wrap(err, "generateConsolidatedPatchHandler()")
 		}
 	}
@@ -165,6 +169,7 @@ func (r *resourceGenerator) generateDomainGuard() error {
 		LocalPackageImports: r.localPackageImports(),
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
+		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
@@ -181,8 +186,29 @@ type handlerFeatures struct {
 	hasPatch    bool
 	hasRPC      bool
 	hasComputed bool
+	// hasTargetedRPC reports a non-suppressed @target-bearing method: its
+	// handler decodes through the targeted constructor, which carries a
+	// conditional Execute decision to the frame instead of refusing it.
+	hasTargetedRPC bool
+	// hasUpload reports a non-suppressed @upload method: its handler streams
+	// the files to the application's FileStore.
+	hasUpload bool
+	// hasStoredFile reports a routed @file whose key column names an object in the
+	// application's FileStore; with hasUpload it asserts FileStore() on the
+	// application.
+	hasStoredFile bool
+	// hasFileDecoder and hasComputedFileDecoder report routed @file declarations on
+	// table or view resources and on computed resources: each emits its decoder
+	// constructor.
+	hasFileDecoder         bool
+	hasComputedFileDecoder bool
 	// rpcPackage qualifies the generated Method union; set iff hasRPC.
 	rpcPackage string
+}
+
+// hasFileStore reports whether the application must supply a FileStore.
+func (f handlerFeatures) hasFileStore() bool {
+	return f.hasUpload || f.hasStoredFile
 }
 
 func (r *resourceGenerator) handlerFeatures() handlerFeatures {
@@ -200,11 +226,23 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 		if hasConsolidatedHandler(res) {
 			f.hasPatch = true
 		}
+		if !res.RoutingDisabled() && len(res.Files) > 0 {
+			f.hasFileDecoder = true
+			if res.HasStoredFile() {
+				f.hasStoredFile = true
+			}
+		}
 	}
 	if r.genComputedResources {
 		for _, res := range r.computedResources {
-			if !res.SuppressReadHandler || !res.SuppressListHandler {
+			if !res.ReadHandlerDisabled() || !res.SuppressListHandler {
 				f.hasComputed = true
+			}
+			if !res.RoutingDisabled() && len(res.Files) > 0 {
+				f.hasComputedFileDecoder = true
+				if res.HasStoredFile() {
+					f.hasStoredFile = true
+				}
 			}
 		}
 	}
@@ -213,6 +251,12 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 			if !rpcMethod.SuppressHandler {
 				f.hasRPC = true
 				f.rpcPackage = r.rpc.Package()
+				if rpcMethod.Target != nil {
+					f.hasTargetedRPC = true
+				}
+				if rpcMethod.Upload != nil {
+					f.hasUpload = true
+				}
 			}
 		}
 	}
@@ -226,7 +270,7 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 // handler calls it.
 func (r *resourceGenerator) generateDecoders() error {
 	f := r.handlerFeatures()
-	if !f.hasQuery && !f.hasComputed && !f.hasPatch && !f.hasRPC {
+	if !f.hasQuery && !f.hasComputed && !f.hasPatch && !f.hasRPC && !f.hasFileDecoder && !f.hasComputedFileDecoder {
 		return nil
 	}
 
@@ -240,10 +284,15 @@ func (r *resourceGenerator) generateDecoders() error {
 		ApplicationName:         r.applicationName,
 		ReceiverName:            r.receiverName,
 		RPCPackage:              f.rpcPackage,
+		RouterPackage:           r.router.Package(),
 		HasQueryDecoder:         f.hasQuery,
 		HasComputedQueryDecoder: f.hasComputed,
 		HasPatchDecoder:         f.hasPatch,
 		HasRPCDecoder:           f.hasRPC,
+		HasCollection:           r.genRoutes,
+		HasTargetedRPCDecoder:   f.hasTargetedRPC,
+		HasFileDecoder:          f.hasFileDecoder,
+		HasComputedFileDecoder:  f.hasComputedFileDecoder,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
@@ -272,7 +321,9 @@ func (r *resourceGenerator) generateAppContract() error {
 		HasValidator:        f.hasPatch || f.hasRPC,
 		HasDomainScoped:     r.hasDomainScoped(),
 		HasRPC:              f.hasRPC,
+		HasFileStore:        f.hasFileStore(),
 		HasComputed:         f.hasComputed,
+		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
@@ -281,10 +332,33 @@ func (r *resourceGenerator) generateAppContract() error {
 	return nil
 }
 
+// generatePermissions emits the application's PermissionDigest and UserDomains
+// handlers — delegations to the library-owned handlers — unconditionally: every
+// generated application serves both permission endpoints on its default outlet,
+// wiring nothing.
+func (r *resourceGenerator) generatePermissions() error {
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(permissionsOutputName))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, "permissionsTemplate", permissionsTemplate, &permissionsData{
+		Source:                 r.resource.Dir(),
+		Package:                r.handler.Package(),
+		ApplicationName:        r.applicationName,
+		ReceiverName:           r.receiverName,
+		RoutePrefix:            r.routePrefix,
+		HasExtraSessionOutlets: slices.ContainsFunc(r.extraOutlets, func(outlet routerOutlet) bool { return outlet.servesSessions }),
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+	log.Printf("Generated permissions file in %s: %s", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
 func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 	handlerTypes := resourceEndpoints(res)
 
-	handlerData := make([][]byte, 0, len(handlerTypes))
+	handlerData := make([][]byte, 0, len(handlerTypes)+len(res.Files))
 	for _, handlerTyp := range handlerTypes {
 		data, err := r.handlerContent(handlerTyp, res)
 		if err != nil {
@@ -293,10 +367,22 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 
 		handlerData = append(handlerData, data)
 	}
+	// The @file routes hang under the read route, so their handlers live in the same
+	// file as the resource's; a resource whose routing is off generates none.
+	if !res.RoutingDisabled() {
+		for _, file := range res.Files {
+			data, err := r.fileHandlerContent(res, file)
+			if err != nil {
+				return errors.Wrap(err, "fileHandlerContent()")
+			}
+
+			handlerData = append(handlerData, data)
+		}
+	}
 
 	if len(handlerData) > 0 {
 		begin := time.Now()
-		fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
+		fileName := generatedGoFileName(fileStem(r.pluralize(res.Name())))
 		destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 		if err := r.writeFormattedGoFile(destinationFilePath, "handlers", handlerHeaderTemplate, &handlersFileData{
@@ -314,7 +400,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet routerOutlet, resources []*resourceInfo) error {
+func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutlet, resources []*resourceInfo) error {
 	begin := time.Now()
 	outputName := consolidatedHandlerOutputName
 	if outlet.name != defaultOutletName {
@@ -366,6 +452,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet routerOutlet
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
 		HandlerName:         fmt.Sprintf("Patch%sResources", outlet.suffix()),
+		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
@@ -382,6 +469,25 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInf
 		VirtualResourcesPackage: r.virtual.Package(),
 		ApplicationName:         r.applicationName,
 		ReceiverName:            r.receiverName,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	return output, nil
+}
+
+// fileHandlerContent renders one @file route's handler for a table or view resource.
+func (r *resourceGenerator) fileHandlerContent(res *resourceInfo, file *fileRoute) ([]byte, error) {
+	output, err := r.generateTemplateOutput("fileHandler", fileHandlerTemplate, fileHandlerData{
+		handlerContentData: handlerContentData{
+			ResourcePackage:         r.resource.Package(),
+			Resource:                res,
+			VirtualResourcesPackage: r.virtual.Package(),
+			ApplicationName:         r.applicationName,
+			ReceiverName:            r.receiverName,
+		},
+		File: file,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "generateTemplateOutput()")

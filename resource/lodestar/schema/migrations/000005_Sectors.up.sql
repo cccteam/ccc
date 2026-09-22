@@ -1,0 +1,10 @@
+CREATE TABLE Sectors (
+  Id STRING(64) NOT NULL,
+  Name STRING(MAX) NOT NULL,
+  Region STRING(MAX) NOT NULL,
+  Established DATE NOT NULL,
+
+  CONSTRAINT CK_Sectors_Id CHECK (REGEXP_CONTAINS(Id, r'^[a-z][a-z0-9-]{1,62}$')),
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX SectorsByName ON Sectors(Name);

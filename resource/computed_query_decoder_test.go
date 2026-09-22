@@ -29,8 +29,8 @@ func (computedEnforcementResource) DefaultConfig() Config { return Config{} }
 
 type computedEnforcementRequest struct {
 	ID     ccc.UUID `json:"id"     perm:"-"`
-	Public string   `json:"public"`
-	Tagged string   `json:"tagged"`
+	Public string   `json:"public" allow_filter:"true"`
+	Tagged string   `json:"tagged" allow_filter:"true"`
 }
 
 func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
@@ -40,20 +40,45 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		name            string
 		target          string
 		grants          map[accesstypes.Permission][]accesstypes.Resource
+		conditional     map[accesstypes.Permission][]accesstypes.Resource
 		permCheckErr    error
 		wantForbidden   bool
+		wantBadRequest  bool
 		wantErrContains string
 		wantFields      []accesstypes.Field
 	}{
+		// The filter is validated at decode, before any permission check and before
+		// the handler calls the body: a request the handler would refuse never runs.
+		{
+			name:            "filter on an unknown field is Bad Request at decode",
+			target:          "/?filter=nope:eq:x&limit=all",
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
+			wantBadRequest:  true,
+			wantErrContains: "'nope' is not filterable",
+		},
+		{
+			name:            "filter on a field without allow_filter is Bad Request at decode",
+			target:          "/?filter=id:eq:x&limit=all",
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
+			wantBadRequest:  true,
+			wantErrContains: "'id' is not filterable",
+		},
+		{
+			name:            "malformed filter is Bad Request at decode",
+			target:          "/?filter=public&limit=all",
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
+			wantBadRequest:  true,
+			wantErrContains: "must have at least field:operator",
+		},
 		{
 			name:          "missing resource-level grant is Forbidden",
-			target:        "/",
+			target:        "/?limit=all",
 			grants:        map[accesstypes.Permission][]accesstypes.Resource{},
 			wantForbidden: true,
 		},
 		{
 			name:   "missing resource-level grant is Forbidden even with every field grant",
-			target: "/",
+			target: "/?limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource + ".public", computedEnforcedResource + ".tagged"},
 			},
@@ -61,7 +86,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "explicitly requested field without its grant is Forbidden",
-			target: "/?columns=public,tagged",
+			target: "/?columns=public,tagged&limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},
@@ -69,7 +94,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "explicitly requested granted fields decode to exactly those fields",
-			target: "/?columns=public",
+			target: "/?columns=public&limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},
@@ -77,7 +102,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "no requested fields narrows to accessible fields silently",
-			target: "/",
+			target: "/?limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},
@@ -85,7 +110,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "no requested fields with every grant materializes every field",
-			target: "/",
+			target: "/?limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public", computedEnforcedResource + ".tagged"},
 			},
@@ -93,9 +118,77 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:            "permission check error propagates",
-			target:          "/",
+			target:          "/?limit=all",
 			permCheckErr:    errors.New("engine unavailable"),
 			wantErrContains: "engine unavailable",
+		},
+		{
+			name:   "sort on a granted field is admitted",
+			target: "/?sort=public",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			wantFields: []accesstypes.Field{"ID", "Public"},
+		},
+		{
+			name:   "sort on a denied field is Forbidden naming the field",
+			target: "/?sort=tagged",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			wantForbidden:   true,
+			wantErrContains: "sort or filter on tagged",
+		},
+		{
+			name:   "filter on a denied field is Forbidden naming the field",
+			target: "/?filter=tagged:eq:x&limit=all",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			wantForbidden:   true,
+			wantErrContains: "sort or filter on tagged",
+		},
+		{
+			name:   "sort on a conditionally granted field is Forbidden, not an invariant breach",
+			target: "/?sort=tagged",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource + ".tagged"},
+			},
+			wantForbidden:   true,
+			wantErrContains: "must be granted unconditionally",
+		},
+		{
+			name:   "conditional resource-level grant is an invariant breach, not Forbidden",
+			target: "/?limit=all",
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource},
+			},
+			wantErrContains: "invariant breach",
+		},
+		{
+			name:   "conditional grant on an explicitly requested field is an invariant breach",
+			target: "/?columns=public&limit=all",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource + ".public"},
+			},
+			wantErrContains: "invariant breach",
+		},
+		{
+			name:   "conditional field grant on the narrowing path is an invariant breach",
+			target: "/?limit=all",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource + ".tagged"},
+			},
+			wantErrContains: "invariant breach",
 		},
 	}
 
@@ -103,19 +196,22 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			decoder := MustNewComputedQueryDecoder[computedEnforcementResource, computedEnforcementRequest](accesstypes.List)
+			decoder := MustNewComputedQueryDecoder[computedEnforcementResource, computedEnforcementRequest](SpannerDBType, accesstypes.List)
 
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
-			userPermissions := &fakeUserPermissions{granted: tt.grants, err: tt.permCheckErr}
+			userPermissions := &fakeUserPermissions{granted: tt.grants, conditional: tt.conditional, err: tt.permCheckErr}
 
 			qSet, err := decoder.Decode(req, userPermissions, testScope)
 
-			if tt.wantForbidden || tt.wantErrContains != "" {
+			if tt.wantForbidden || tt.wantBadRequest || tt.wantErrContains != "" {
 				if err == nil {
 					t.Fatal("ComputedQueryDecoder.Decode() expected an error, got nil")
 				}
 				if httpio.HasForbidden(err) != tt.wantForbidden {
 					t.Errorf("ComputedQueryDecoder.Decode() error forbidden = %v, want %v: %v", httpio.HasForbidden(err), tt.wantForbidden, err)
+				}
+				if httpio.HasBadRequest(err) != tt.wantBadRequest {
+					t.Errorf("ComputedQueryDecoder.Decode() error bad request = %v, want %v: %v", httpio.HasBadRequest(err), tt.wantBadRequest, err)
 				}
 				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
 					t.Errorf("ComputedQueryDecoder.Decode() error = %v, want error containing %q", err, tt.wantErrContains)
@@ -133,10 +229,62 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 				t.Errorf("QuerySet.Fields() = %v, want %v", gotFields, wantFields)
 			}
 
+			// The decoded QuerySet carries the checked scope and permission for the
+			// application's List and Read to partition on.
+			if qSet.Scope() != testScope {
+				t.Errorf("QuerySet.Scope() = %v, want %v", qSet.Scope(), testScope)
+			}
+			if qSet.RequiredPermission() != accesstypes.List && qSet.RequiredPermission() != accesstypes.Read {
+				t.Errorf("QuerySet.RequiredPermission() = %v, want List or Read", qSet.RequiredPermission())
+			}
+
 			for _, scope := range userPermissions.gotScopes {
 				if scope != testScope {
 					t.Errorf("Check() scope = %v, want %v", scope, testScope)
 				}
+			}
+		})
+	}
+}
+
+// TestNewComputedQueryDecoder_databaseType pins the constructor's database-type
+// argument: the placement a computed list sorts and pages NULL in comes from it,
+// so a type the package knows no placement for is refused at construction.
+func TestNewComputedQueryDecoder_databaseType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dbType  DBType
+		wantErr string
+	}{
+		{name: "Spanner", dbType: SpannerDBType},
+		{name: "PostgreSQL", dbType: PostgresDBType},
+		{name: "none", dbType: "", wantErr: "unsupported dbType"},
+		{name: "the mock type has no placement", dbType: MockDBType, wantErr: "unsupported dbType"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[computedEnforcementResource, computedEnforcementRequest](accesstypes.List)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+			decoder, err := NewComputedQueryDecoder[computedEnforcementResource, computedEnforcementRequest](rSet, tt.dbType)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("NewComputedQueryDecoder() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewComputedQueryDecoder() error = %v", err)
+			}
+			if decoder.dbType != tt.dbType {
+				t.Errorf("dbType = %q, want %q", decoder.dbType, tt.dbType)
 			}
 		})
 	}

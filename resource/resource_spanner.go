@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"reflect"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
@@ -11,6 +12,8 @@ import (
 	"github.com/cccteam/spxscan"
 	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/api/iterator"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var _ Client = (*SpannerClient)(nil)
@@ -18,13 +21,25 @@ var _ Client = (*SpannerClient)(nil)
 // SpannerClient is a wrapper around the database.
 type SpannerClient struct {
 	spanner *spanner.Client
+	// store is the application's object store, where a committed transaction's
+	// released file objects are deleted from; nil when the client was given none.
+	store FileStore
 }
 
-// NewSpannerClient creates a new Client.
-func NewSpannerClient(db *spanner.Client) *SpannerClient {
+// NewSpannerClient creates a new Client. WithFileStore hands it the store a committed
+// transaction's released file objects are deleted from.
+func NewSpannerClient(db *spanner.Client, opts ...ClientOption) *SpannerClient {
+	options := applyClientOptions(opts)
+
 	return &SpannerClient{
 		spanner: db,
+		store:   options.store,
 	}
+}
+
+// DBType returns the database type.
+func (c *SpannerClient) DBType() DBType {
+	return SpannerDBType
 }
 
 // SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
@@ -32,18 +47,48 @@ func (c *SpannerClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	return c.spanner.Single()
 }
 
-// ExecuteFunc executes a function within a read-write transaction.
+// ExecuteFunc executes a function within a read-write transaction. A commit Spanner
+// refuses for a reason the caller can act on (a referential refusal, a duplicate key or
+// unique value, a violated CHECK constraint, an update of a row that does not exist)
+// answers as a 4xx whose message is composed from the patches the transaction buffered
+// (see translateCommitError); an error the function itself returns, and a commit refused
+// with any other code, pass through unchanged.
+//
+// Once the commit lands, the file objects the transaction's patches released (a deleted
+// row's @file keys, the old key of a row pointed at another object) are deleted from the
+// client's FileStore, synchronously, before ExecuteFunc returns; a failed delete, or a
+// client with no store, is logged naming the keys and the call still returns nil, since
+// the rows are gone. A transaction that does not commit, for any reason, releases
+// nothing.
 func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
+	var (
+		buffered   = newBufferedPatches()
+		released   = newReleasedKeys()
+		funcFailed bool
+	)
 	_, err := c.spanner.ReadWriteTransaction(ctx, func(ctx context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := f(ctx, NewSpannerReadWriteTransaction(txn)); err != nil {
+		// A retried transaction runs f again; the records belong to the attempt that commits.
+		buffered = newBufferedPatches()
+		released = newReleasedKeys()
+		funcFailed = false
+		if err := f(ctx, newSpannerReadWriteTransaction(txn, buffered, released)); err != nil {
+			funcFailed = true
+
 			return errors.Wrap(err, "f()")
 		}
 
 		return nil
 	})
 	if err != nil {
-		return errors.Wrap(err, "c.db.ReadWriteTransaction()")
+		err = errors.Wrap(err, "c.db.ReadWriteTransaction()")
+		if funcFailed {
+			return err
+		}
+
+		return translateCommitError(err, buffered)
 	}
+
+	releaseFiles(ctx, c.store, released.list())
 
 	return nil
 }
@@ -71,11 +116,31 @@ func (c *spannerReader[Resource]) DBType() DBType {
 	return SpannerDBType
 }
 
+// envelopeScan reports whether the statement carries reserved metadata
+// columns (masked names, capability checks, the cursor's sort-key copies) or
+// an assembly plan, requiring the lenient per-row scan instead of the plain
+// spxscan path.
+func envelopeScan(stmt *Statement) bool {
+	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil || len(stmt.cursorColumns) > 0
+}
+
 // Read reads a single resource from the database.
-func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Resource, error) {
+func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	var res Resource
-	dst := new(Resource)
-	if err := spxscan.Get(ctx, c.readTxn(), dst, stmt.SpannerStatement()); err != nil {
+	if envelopeScan(stmt) {
+		row, err := c.readEnvelope(ctx, stmt)
+		if err != nil {
+			return nil, err
+		}
+		if row == nil {
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
+		}
+
+		return row, nil
+	}
+
+	row := new(Row[Resource])
+	if err := spxscan.Get(ctx, c.readTxn(), &row.Data, stmt.SpannerStatement()); err != nil {
 		if errors.Is(err, spxapi.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
 		}
@@ -83,23 +148,174 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 
-	return dst, nil
+	return row, nil
+}
+
+// readEnvelope reads the first row of an envelope statement; a nil row with
+// no error means no row matched.
+func (c *spannerReader[Resource]) readEnvelope(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
+	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+	defer it.Stop()
+
+	spannerRow, err := it.Next()
+	if err != nil {
+		if errors.Is(err, iterator.Done) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "spanner.RowIterator.Next()")
+	}
+
+	return scanEnvelopeRow[Resource](spannerRow, stmt)
 }
 
 // List reads a list of resources from the database.
-func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	if envelopeScan(stmt) {
+		return c.listEnvelope(ctx, stmt)
+	}
+
+	return func(yield func(*Row[Resource], error) bool) {
 		for r, err := range spxscan.SelectSeq[Resource](ctx, c.readTxn(), stmt.SpannerStatement()) {
 			if err != nil {
 				yield(nil, errors.Wrap(err, "spxscan.SelectSeq()"))
 
 				return
 			}
-			if !yield(r, nil) {
+			if !yield(&Row[Resource]{Data: *r}, nil) {
 				return
 			}
 		}
 	}
+}
+
+// Count runs a COUNT(*) statement and returns its one value.
+func (c *spannerReader[Resource]) Count(ctx context.Context, stmt *Statement) (int64, error) {
+	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+	defer it.Stop()
+
+	spannerRow, err := it.Next()
+	if err != nil {
+		return 0, errors.Wrap(err, "spanner.RowIterator.Next()")
+	}
+	var total int64
+	if err := spannerRow.Columns(&total); err != nil {
+		return 0, errors.Wrap(err, "spanner.Row.Columns()")
+	}
+
+	return total, nil
+}
+
+// listEnvelope iterates an envelope statement, scanning each row's data and
+// its reserved metadata columns into the Row envelope.
+func (c *spannerReader[Resource]) listEnvelope(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
+		it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+		defer it.Stop()
+
+		for {
+			spannerRow, err := it.Next()
+			if err != nil {
+				if !errors.Is(err, iterator.Done) {
+					yield(nil, errors.Wrap(err, "spanner.RowIterator.Next()"))
+				}
+
+				return
+			}
+
+			row, err := scanEnvelopeRow[Resource](spannerRow, stmt)
+			if err != nil {
+				yield(nil, err)
+
+				return
+			}
+			if !yield(row, nil) {
+				return
+			}
+		}
+	}
+}
+
+// scanEnvelopeRow scans one envelope-statement row: the resource columns into
+// the envelope's data (leniently, so the reserved columns are skipped), the
+// reserved masked-names column into the mask list, the reserved cursor
+// columns into the cursor values, and the reserved capability-checks column
+// through the plan into the capability answers. A NULL check boolean reads as
+// false — a condition permits only on TRUE.
+func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statement) (*Row[Resource], error) {
+	row := new(Row[Resource])
+	if err := spannerRow.ToStructLenient(&row.Data); err != nil {
+		return nil, errors.Wrap(err, "spanner.Row.ToStructLenient()")
+	}
+	if stmt.maskedNamesColumn != "" {
+		if err := spannerRow.ColumnByName(stmt.maskedNamesColumn, &row.masked); err != nil {
+			return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+		}
+	}
+	for _, column := range stmt.cursorColumns {
+		copied, err := scanCursorColumn(spannerRow, column)
+		if err != nil {
+			return nil, err
+		}
+		if row.cursorValues == nil {
+			row.cursorValues = make(map[accesstypes.Field]reflect.Value, len(stmt.cursorColumns))
+		}
+		row.cursorValues[column.field] = copied
+	}
+	if plan := stmt.capabilityPlan; plan != nil {
+		var checks []bool
+		if plan.checksColumn != "" {
+			var scanned []spanner.NullBool
+			if err := spannerRow.ColumnByName(plan.checksColumn, &scanned); err != nil {
+				return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+			}
+			if len(scanned) != plan.groups {
+				return nil, errors.Newf("capability checks column carries %d booleans, plan expects %d", len(scanned), plan.groups)
+			}
+			checks = make([]bool, len(scanned))
+			for i, b := range scanned {
+				checks[i] = b.Valid && b.Bool
+			}
+		}
+		row.capabilities = plan.assemble(checks)
+	}
+
+	return row, nil
+}
+
+// scanCursorColumn reads one cursor copy off the row. The copy arrives as a
+// fresh value of the field's own type, so the cursor encodes it exactly as it
+// would the cell; a copy that can be NULL where the type cannot (a concealing
+// key's CASE) arrives as a pointer to the type, nil for NULL, which the cursor
+// writes as the NULL key.
+//
+// The copy is not scanned into a pointer to a pointer to the field's type. The
+// client decodes a pointer to a pointer for the base kinds, for its own value
+// types, and for a Decoder, and refuses it for a named variant of a base kind
+// (type HazardLevel int64), the type a resource column may well declare. So
+// the copy is read as a generic column value: NULL is seen on the wire and
+// never decoded, and a value decodes into a single pointer to the field's type,
+// the client's own definition of decoding into that type, which admits every
+// kind the sortable rule admits, named variants included. A type the client
+// cannot decode at all still fails with the client's error, naming the alias.
+func scanCursorColumn(spannerRow *spanner.Row, column cursorColumn) (reflect.Value, error) {
+	var generic spanner.GenericColumnValue
+	if err := spannerRow.ColumnByName(column.alias, &generic); err != nil {
+		return reflect.Value{}, errors.Wrapf(err, "spanner.Row.ColumnByName(%s)", column.alias)
+	}
+	pointerCopy := column.nullable && !isNullableType(column.fieldType)
+	if _, isNull := generic.Value.GetKind().(*structpb.Value_NullValue); isNull && pointerCopy {
+		return reflect.Zero(reflect.PointerTo(column.fieldType)), nil
+	}
+	dest := reflect.New(column.fieldType)
+	if err := generic.Decode(dest.Interface()); err != nil {
+		return reflect.Value{}, errors.Wrapf(err, "spanner.GenericColumnValue.Decode(%s)", column.alias)
+	}
+	if pointerCopy {
+		return dest, nil
+	}
+
+	return dest.Elem(), nil
 }
 
 var _ ReadOnlyTransactionCloser = (*SpannerReadOnlyTransaction)(nil)
@@ -136,22 +352,67 @@ func (c *SpannerReadOnlyTransaction) PostgresReadOnlyTransaction() any {
 var _ ReadWriteTransaction = (*SpannerReadWriteTransaction)(nil)
 
 // SpannerReadWriteTransaction represents a database transaction that can be used for both reads and writes.
+// It records the resource and patch type of every patch it buffers, so a commit Spanner
+// refuses can be answered in terms of what the transaction was asked to do, and the
+// file objects its patches release, so the executor deletes them once the commit lands.
 type SpannerReadWriteTransaction struct {
 	txn              *spanner.ReadWriteTransaction
 	resourceRowIndex map[string]int
+	buffered         *bufferedPatches
+	released         *releasedKeys
 }
 
-// NewSpannerReadWriteTransaction creates a new SpannerReadWriteTransaction from a spanner.ReadWriteTransaction
-func NewSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) ReadWriteTransaction {
+// NewSpannerReadWriteTransaction creates a new SpannerReadWriteTransaction from a
+// spanner.ReadWriteTransaction. A transaction an application wraps itself and commits
+// outside ExecuteFunc has no executor to delete the file objects its patches released:
+// read them off the wrapper with Released after the commit and delete them from the
+// store yourself.
+func NewSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) *SpannerReadWriteTransaction {
+	return newSpannerReadWriteTransaction(txn, newBufferedPatches(), newReleasedKeys())
+}
+
+// newSpannerReadWriteTransaction wraps a transaction over the records its buffered
+// patches and released file keys are noted in; ExecuteFunc holds the same records when
+// the commit comes back.
+func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction, buffered *bufferedPatches, released *releasedKeys) *SpannerReadWriteTransaction {
 	return &SpannerReadWriteTransaction{
 		txn:              txn,
 		resourceRowIndex: make(map[string]int),
+		buffered:         buffered,
+		released:         released,
 	}
 }
 
 // DBType returns the database type.
 func (c *SpannerReadWriteTransaction) DBType() DBType {
 	return SpannerDBType
+}
+
+// recordReleased notes file keys the transaction's patches let go of.
+func (c *SpannerReadWriteTransaction) recordReleased(keys ...string) {
+	c.released.record(keys...)
+}
+
+// Released returns the file object keys the transaction's patches released so far: a
+// deleted row's @file keys, and the old key of a row pointed at another object. Under
+// ExecuteFunc the executor deletes them from the client's FileStore after the commit;
+// a transaction committed outside it leaves that to its caller.
+func (c *SpannerReadWriteTransaction) Released() []string {
+	return c.released.list()
+}
+
+// nullifyNilPointers reads every typed nil pointer in the patch as the untyped nil the
+// Spanner client encodes as NULL. A nullable column typed by a pointer to a type with
+// Spanner methods (a struct on a JSON column, whose EncodeSpanner the generator writes
+// on the value receiver so the type's own MarshalJSON is honored) would otherwise reach
+// the client as a nil pointer that satisfies spanner.Encoder, and the client calls the
+// value method through it.
+func nullifyNilPointers(patch map[string]any) {
+	for column, value := range patch {
+		if rv := reflect.ValueOf(value); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			patch[column] = nil
+		}
+	}
 }
 
 // DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction.
@@ -169,6 +430,8 @@ func (c *SpannerReadWriteTransaction) SpannerReadOnlyTransaction() spxapi.Querie
 
 // BufferMap buffers a map of changes to be applied to the database.
 func (c *SpannerReadWriteTransaction) BufferMap(r PatchSetMetadata, patch map[string]any) error {
+	nullifyNilPointers(patch)
+
 	var m *spanner.Mutation
 
 	switch r.PatchType() {
@@ -187,6 +450,7 @@ func (c *SpannerReadWriteTransaction) BufferMap(r PatchSetMetadata, patch map[st
 	if err := c.txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
 		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
 	}
+	c.buffered.record(r)
 
 	return nil
 }
@@ -219,6 +483,7 @@ func (c *SpannerReadWriteTransaction) BufferStruct(patch PatchSetMetadata) error
 	if err := c.txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
 		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
 	}
+	c.buffered.record(patch)
 
 	return nil
 }

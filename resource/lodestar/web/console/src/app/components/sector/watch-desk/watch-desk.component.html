@@ -1,0 +1,53 @@
+<h1>Watch Desk</h1>
+<p>
+  Every live view-as and act-as-role session in the service, who established it, as whom, and when its two-hour hard cap
+  ends it. Revoke one and the revoked console's next request is refused; its banner says so.
+</p>
+
+@if (!canOperate()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">The watch desk is the Governor's and the Marshal's: your posting does not include it.</p>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="table-card">
+    <mat-card-content>
+      <div class="controls">
+        <button mat-stroked-button type="button" (click)="sessions.reload()">Refresh</button>
+      </div>
+      @if (refusal(); as refusal) {
+        <p class="refusal">{{ refusal }}</p>
+      }
+      <table mat-table [dataSource]="sessions.value()">
+        <ng-container matColumnDef="actor">
+          <th mat-header-cell *matHeaderCellDef>Established by</th>
+          <td mat-cell *matCellDef="let row">{{ row.actor }}</td>
+        </ng-container>
+        <ng-container matColumnDef="principal">
+          <th mat-header-cell *matHeaderCellDef>As</th>
+          <td mat-cell *matCellDef="let row">{{ row.kind === 'role' ? 'role ' : '' }}{{ row.principal }}</td>
+        </ng-container>
+        <ng-container matColumnDef="reason">
+          <th mat-header-cell *matHeaderCellDef>Reason</th>
+          <td mat-cell *matCellDef="let row">{{ row.reason || '—' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="startedAt">
+          <th mat-header-cell *matHeaderCellDef>Started</th>
+          <td mat-cell *matCellDef="let row">{{ row.startedAt | date: 'medium' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="expiresAt">
+          <th mat-header-cell *matHeaderCellDef>Hard cap</th>
+          <td mat-cell *matCellDef="let row">{{ row.expiresAt | date: 'medium' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let row"><button mat-stroked-button type="button" (click)="revoke(row)">Revoke</button></td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="columns"></tr>
+        <tr mat-row *matRowDef="let row; columns: columns"></tr>
+      </table>
+      @if (!sessions.value().length) {
+        <p class="empty">No impersonated session is live.</p>
+      }
+    </mat-card-content>
+  </mat-card>
+}

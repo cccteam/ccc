@@ -14,6 +14,7 @@ import (
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/tools/go/packages"
 )
 
 func loadCollectionFixture(t *testing.T) *parser.Package {
@@ -23,6 +24,22 @@ func loadCollectionFixture(t *testing.T) *parser.Package {
 }
 
 func loadFixture(t *testing.T, name string) *parser.Package {
+	t.Helper()
+
+	_, parsed := loadFixturePackage(t, name)
+
+	return parsed
+}
+
+// loadCollectionFixturePackage returns the collection fixture's loaded package
+// alongside its parse, for validators that read file positions.
+func loadCollectionFixturePackage(t *testing.T) (loaded *packages.Package, parsed *parser.Package) {
+	t.Helper()
+
+	return loadFixturePackage(t, "collectionfixture")
+}
+
+func loadFixturePackage(t *testing.T, name string) (loaded *packages.Package, parsed *parser.Package) {
 	t.Helper()
 
 	// Other tests in the package chdir to the module root (client construction does),
@@ -49,7 +66,7 @@ func loadFixture(t *testing.T, name string) *parser.Package {
 		t.Fatalf("fixture package %s not loaded", name)
 	}
 
-	return parser.ParsePackage(pkg)
+	return pkg, parser.ParsePackage(pkg)
 }
 
 func fixtureStructs(pkg *parser.Package) map[string]*parser.Struct {
@@ -135,14 +152,42 @@ func collectionFixtureGenerator(t *testing.T) *resourceGenerator {
 			res.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
 			res.ManualAddResourceSets = []HandlerType{ListHandler}
 			res.PermissionScope = accesstypes.DomainPermissionScope
+			fields := map[string]*resourceField{}
+			for _, f := range res.Fields {
+				fields[f.Name()] = f
+			}
+			res.DomainBinding = &domainBinding{Anchor: fields["ID"]}
+			res.SubjectValues = []*subjectBinding{
+				{Name: "vaultLimit", Anchor: fields["ID"], ValueField: fields["Name"], Type: "string", Scalar: true},
+			}
 		}),
 		fixtureResource(t, structs, "Sprocket", func(res *resourceInfo) {
 			res.IsConsolidated = true
+			fields := map[string]*resourceField{}
+			for _, f := range res.Fields {
+				fields[f.Name()] = f
+			}
+			res.Attributes = []*attributeBinding{
+				{Name: "sprocketName", Anchor: fields["Name"]},
+				{Name: "linkedGadget", Anchor: fields["ID"], Path: []bindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
+			}
+			res.SubjectSets = []*subjectBinding{
+				{Name: "ownedSprockets", Anchor: fields["ID"], ValueField: fields["Name"], Type: "string"},
+			}
 		}),
 		fixtureResource(t, structs, "Widget", nil),
+		fixtureResource(t, structs, "Beacon", func(res *resourceInfo) {
+			res.DeclaredOrder = []resource.SortField{{Field: "Deadline", Direction: resource.SortAscending}}
+			for _, f := range res.Fields {
+				if f.Name() == "Name" {
+					f.IsIndex = true
+				}
+			}
+		}),
 	}
 	r.computedResources = []*computedResource{
 		fixtureComputedResource(t, structs, "Summary"),
+		fixtureComputedResource(t, structs, "Digest"),
 	}
 	r.rpcMethods = []*rpcMethodInfo{
 		{Struct: structs["DoSomething"], PermissionScope: accesstypes.DomainPermissionScope},
@@ -179,13 +224,14 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.Execute},
 				},
 				{
-					// @permissionScope(domain) on a generated (virtual) resource.
+					// @permissionScope(domain) on a generated (virtual) resource; the view
+					// declares its key, so it serves a keyed read beside its list.
 					Name:        "Gadgets",
 					Scope:       accesstypes.DomainPermissionScope,
-					Permissions: []accesstypes.Permission{accesstypes.List},
+					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{
@@ -201,6 +247,33 @@ func Test_computeCollectionData(t *testing.T) {
 					Tags: []resource.TagData{
 						{Name: "id"},
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
+					},
+					Domain:        &resource.DomainBindingData{Column: "Id"},
+					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
+				},
+				{
+					// A listed resource carries its list's order and query keys, and a
+					// positional field's masking rides its tag.
+					Name:        "Beacons",
+					Scope:       accesstypes.GlobalPermissionScope,
+					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+					Tags: []resource.TagData{
+						{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}, Masking: resource.MaskingPositional},
+						{Name: "id"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					},
+					Order:     []accesstypes.Tag{"deadline"},
+					QueryKeys: []accesstypes.Tag{"name"},
+				},
+				{
+					// A key-less computed resource is a whole read-only list: List only, no
+					// read registration, no key tag.
+					Name:        "Digests",
+					Scope:       accesstypes.GlobalPermissionScope,
+					Computed:    true,
+					Permissions: []accesstypes.Permission{accesstypes.List},
+					Tags: []resource.TagData{
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 				},
 				{
@@ -232,10 +305,16 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					},
+					Attributes: []resource.AttributeData{
+						{Name: "linkedGadget", Column: "Id", Path: []resource.BindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
+						{Name: "sprocketName", Column: "Name"},
+					},
+					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
 				},
 				{
 					Name:        "Summaries",
 					Scope:       accesstypes.GlobalPermissionScope,
+					Computed:    true,
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
@@ -279,6 +358,8 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
+					Domain:        &resource.DomainBindingData{Column: "Id"},
+					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
 				},
 				{
 					Name:        "Ledgers",
@@ -288,6 +369,17 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
+				},
+				{
+					// Bindings register independently of routing: the vocabulary
+					// describes the data model, not the generated handlers.
+					Name:  "Sprockets",
+					Scope: accesstypes.GlobalPermissionScope,
+					Attributes: []resource.AttributeData{
+						{Name: "linkedGadget", Column: "Id", Path: []resource.BindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
+						{Name: "sprocketName", Column: "Name"},
+					},
+					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
 				},
 				{
 					Name:        "UploadThings",
@@ -332,11 +424,33 @@ func Test_collectionTemplate(t *testing.T) {
 				{Name: "name"},
 			},
 			ImmutableTags: []accesstypes.Tag{"code"},
+			Attributes: []resource.AttributeData{
+				{Name: "owner", Column: "OwnerId", Type: resource.AttributeTypeString},
+				{Name: "shipClass", Column: "ShipId", Type: resource.AttributeTypeString, Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},
+			},
+			Domain:      &resource.DomainBindingData{Column: "StationId"},
+			SubjectSets: []resource.SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: resource.AttributeTypeString}},
+			SubjectValues: []resource.SubjectBindingData{
+				{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit", Type: resource.AttributeTypeNumber},
+				{Name: "homeSector", UserColumn: "UserId", Column: "StationId", Type: resource.AttributeTypeString, Path: []resource.BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}},
+			},
 		},
 		{
 			Name:        "DoSomething",
 			Scope:       accesstypes.DomainPermissionScope,
 			Permissions: []accesstypes.Permission{accesstypes.Execute},
+		},
+		{
+			Name:        "Missions",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.List},
+			Tags: []resource.TagData{
+				{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: resource.MaskingPositional},
+				{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}},
+				{Name: "id"},
+			},
+			Order:     []accesstypes.Tag{"deadline"},
+			QueryKeys: []accesstypes.Tag{"fee", "id"},
 		},
 	}}
 
@@ -369,6 +483,15 @@ func Test_collectionTemplate(t *testing.T) {
 		`ImmutableTags: []accesstypes.Tag{"code"},`,
 		"Scope: accesstypes.DomainPermissionScope,",
 		"Permissions: []accesstypes.Permission{accesstypes.Execute},",
+		`{Name: "owner", Column: "OwnerId", Type: "string"},`,
+		`{Name: "shipClass", Column: "ShipId", Type: "string", Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},`,
+		`Domain: &resource.DomainBindingData{Column: "StationId"},`,
+		`SubjectSets: []resource.SubjectBindingData{ {Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: "string"}, },`,
+		`SubjectValues: []resource.SubjectBindingData{ {Name: "approvalLimit", UserColumn: "UserId", Column: "Limit", Type: "number"}, {Name: "homeSector", UserColumn: "UserId", Column: "StationId", Type: "string", Path: []resource.BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}}, },`,
+		`{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: resource.MaskingPositional},`,
+		`{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}},`,
+		`Order: []accesstypes.Tag{"deadline"},`,
+		`QueryKeys: []accesstypes.Tag{"fee", "id"},`,
 	} {
 		if !strings.Contains(normalized, want) {
 			t.Errorf("rendered collection file missing %q:\n%s", want, formatted)
@@ -389,9 +512,10 @@ func Test_manualRegistrationsFromConstants(t *testing.T) {
 		t.Fatalf("manualRegistrationsFromConstants() error = %v", err)
 	}
 
-	// An absent scope stays empty; the global default applies at registration.
+	// An absent scope stays empty; the global default applies at registration. An
+	// absent @outlet leaves Outlets empty: the default outlet.
 	want := []ManualRegistration{
-		{Permission: accesstypes.Execute, Resource: "ManualThings"},
+		{Permission: accesstypes.Execute, Resource: "ManualThings", Outlets: []string{"portal"}},
 		{Scope: accesstypes.DomainPermissionScope, Permission: accesstypes.Read, Resource: "ScopedThings"},
 		{Permission: accesstypes.Execute, Resource: "UploadThings"},
 	}

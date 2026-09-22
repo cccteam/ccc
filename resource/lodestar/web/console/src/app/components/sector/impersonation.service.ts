@@ -1,0 +1,140 @@
+import { HttpClient } from '@angular/common/http';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { API_URL, SessionInfo } from '@cccteam/resource-angular/types';
+import { firstValueFrom } from 'rxjs';
+
+/** The impersonation record the session endpoint reports for a minted session. */
+export interface ImpersonationRecord {
+  actor: string;
+  principalKind: 'User' | 'Role';
+  principal: string;
+  mask?: string[];
+  reason?: string;
+  expiresAt: string;
+}
+
+/** The session endpoint's answer as the crew auth writes it: the library's SessionInfo plus the record. */
+type SessionResponse = SessionInfo & { impersonation?: ImpersonationRecord };
+
+interface EndImpersonationResponse {
+  /** Whether the actor's own session was still live and the browser is back in it. */
+  restored: boolean;
+}
+
+/**
+ * ImpersonationService drives the two impersonation moments (design plan §3): "view
+ * as" mints a session that operates as another user under a List, Read mask, and
+ * "act as a role" mints one that operates as a role with subject still bound to the
+ * actor. The mint route is hand-written and gated by the ViewAsUser and AssumeRole
+ * Execute registrations; the session endpoint reports the record back, which the
+ * header renders as the persistent banner.
+ *
+ * Demonstrates: impersonation.view-as, impersonation.act-as-role, impersonation.end, impersonation.mask.
+ */
+@Injectable({ providedIn: 'root' })
+export class ImpersonationService {
+  private http = inject(HttpClient);
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private apiUrl = inject(API_URL);
+
+  /**
+   * The current session's impersonation record, if the session was minted. It is read
+   * off the library's session signal rather than fetched on its own: checkUserSession
+   * stores the endpoint's whole answer, and login, logout, the route guard, and a
+   * rebind all run it, so the record follows the cookie. A record kept in a separate
+   * signal outlived a revoked session — the banner stayed up through the forced
+   * re-login until a hard reload.
+   */
+  readonly record = computed<ImpersonationRecord | undefined>(() => {
+    const session = this.auth.sessionInfo() as SessionResponse;
+    return session.authenticated ? session.impersonation : undefined;
+  });
+
+  /** A clock the banner's countdown ticks on. */
+  private readonly now = signal(Date.now());
+
+  readonly banner = computed(() => {
+    const record = this.record();
+    if (!record) return undefined;
+    const remaining = this.remaining(record.expiresAt);
+    if (record.principalKind === 'Role') {
+      return {
+        kind: 'Role' as const,
+        text: `Acting as role ${record.principal}. You are ${record.actor}; subject still binds to you.`,
+        remaining,
+      };
+    }
+    const mask = record.mask?.length ? `${record.mask.join(', ')} only` : 'unrestricted';
+    return {
+      kind: 'User' as const,
+      text: `Viewing as ${record.principal}, ${mask}. You are ${record.actor}.`,
+      remaining,
+    };
+  });
+
+  /** The time left before the session's hard cap (MaxDuration, two hours) ends it. */
+  private remaining(expiresAt: string): string {
+    const ms = new Date(expiresAt).getTime() - this.now();
+    if (Number.isNaN(ms)) return '';
+    if (ms <= 0) return 'expired';
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return h > 0 ? `${h}h ${m}m left` : `${m}m ${s}s left`;
+  }
+
+  constructor() {
+    setInterval(() => this.now.set(Date.now()), 1000);
+  }
+
+  /** Whether the session mask removes the permission (the service card's stripe). */
+  masked(permission: string): boolean {
+    const mask = this.record()?.mask;
+    return !!mask?.length && !mask.includes(permission);
+  }
+
+  /** Mints a read-only session as another user and reloads the console as them. */
+  async viewAs(user: string): Promise<void> {
+    await this.mint({ kind: 'user', principal: user, reason: 'crew roster: view as' });
+  }
+
+  /** Mints a session that acts as a role and reloads the console under it. */
+  async assumeRole(role: string): Promise<void> {
+    await this.mint({ kind: 'role', principal: role, reason: 'crew roster: assume role' });
+  }
+
+  private async mint(body: { kind: 'user' | 'role'; principal: string; reason: string }): Promise<void> {
+    await firstValueFrom(this.http.post(`${this.apiUrl}/impersonate`, body));
+    await this.rebind();
+  }
+
+  /**
+   * Ends the minted session (its record ends Released) and returns to the actor's own
+   * session when that session is still live. Resolves true when the browser is back in
+   * the actor's session; false when it is not (the source session expired or the hard
+   * cap passed), in which case the caller sends the actor to login.
+   */
+  async end(): Promise<boolean> {
+    const { restored } = await firstValueFrom(
+      this.http.post<EndImpersonationResponse>(`${this.apiUrl}/impersonate/end`, {}),
+    );
+    if (restored) {
+      await this.rebind();
+    }
+    return restored;
+  }
+
+  /**
+   * The cookie now names a different session: re-establish the client-side session and
+   * its permission cache as the new principal, then start over at the dashboard.
+   */
+  private async rebind(): Promise<void> {
+    this.auth.permissions.clear();
+    await firstValueFrom(this.auth.checkUserSession());
+    await this.auth.permissions.refresh();
+    await this.router.navigateByUrl('/dashboard');
+  }
+}

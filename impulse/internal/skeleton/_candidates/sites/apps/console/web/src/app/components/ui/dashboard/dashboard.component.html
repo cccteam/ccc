@@ -1,0 +1,54 @@
+<h1>Signed in as {{ auth.sessionInfo().username }}</h1>
+<p>
+  Every page consults the permission digest before asking the server, and the server checks every request. The card
+  below is that digest: tenant-scoped resources in <strong>{{ tenants.current() || 'no tenant' }}</strong
+  >, global resources as is. Change the tenant in the header to re-scope it.
+</p>
+
+<mat-card appearance="outlined" class="permissions-card">
+  <mat-card-header>
+    <mat-card-title>Your permissions</mat-card-title>
+    <mat-card-subtitle>Per resource: granted, conditional (terms apply), or nothing.</mat-card-subtitle>
+  </mat-card-header>
+  <mat-card-content>
+    <table class="card-table">
+      <thead>
+        <tr>
+          <th>Resource</th>
+          @for (permission of permissionNames; track permission) {
+            <th>{{ permission }}</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.resource) {
+          <tr>
+            <td>
+              {{ row.resource }} <span class="scope">{{ row.scope }}</span>
+            </td>
+            @for (permission of permissionNames; track permission) {
+              <td class="state {{ row.states[permission] ?? 'absent' }}">
+                @switch (row.states[permission]) {
+                  @case ('granted') {
+                    ●
+                  }
+                  @case ('conditional') {
+                    ◐
+                  }
+                  @default {
+                    ·
+                  }
+                }
+              </td>
+            }
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="7" class="empty">You hold nothing here.</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    <p class="legend">● granted &nbsp; ◐ conditional — terms apply, the server narrows per row &nbsp; · absent</p>
+  </mat-card-content>
+</mat-card>

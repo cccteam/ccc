@@ -27,7 +27,10 @@ const accesstypesResourceType = "github.com/cccteam/ccc/accesstypes.Resource"
 // manualRegistrationsFromConstants extracts @manualAddResource annotations from the
 // resources package's accesstypes.Resource constants. The registered resource name is
 // the constant's value; the annotation supplies the permission and, optionally, the
-// scope: @manualAddResource(Execute) or @manualAddResource(Read, domain).
+// scope: @manualAddResource(Execute) or @manualAddResource(Read, domain). An @outlet
+// annotation beside it names the outlets the hand-written route is mounted under, with
+// the same meaning it has on a struct; every registration the constant declares
+// shares it.
 func manualRegistrationsFromConstants(constants []*parser.Constant) ([]ManualRegistration, error) {
 	var registrations []ManualRegistration
 	for _, c := range constants {
@@ -44,11 +47,17 @@ func manualRegistrationsFromConstants(constants []*parser.Constant) ([]ManualReg
 			continue
 		}
 
+		var outlets outletMembership
+		if err := resolveOutlets(annotations.Const, &outlets); err != nil {
+			return nil, errors.Wrapf(err, "constant %q", c.Name())
+		}
+
 		for arg := range annotations.Const.Get(manualAddResourceKeyword).Seq() {
 			registration, err := parseManualAddResourceArgs(c, arg)
 			if err != nil {
 				return nil, err
 			}
+			registration.Outlets = outlets.OutletNames
 
 			registrations = append(registrations, registration)
 		}
@@ -200,7 +209,53 @@ func (r *resourceGenerator) computeCollectionData() (resource.CollectionData, er
 		return resource.CollectionData{}, err
 	}
 
-	return b.Data(), nil
+	r.collectBindingRegistrations(b)
+	r.collectWorkflowMemberRegistrations(b)
+
+	data := b.Data()
+	if err := r.validateStateEnumTables(data); err != nil {
+		return resource.CollectionData{}, err
+	}
+
+	return data, nil
+}
+
+// collectBindingRegistrations registers every resource's compiled binding
+// vocabulary (§04 annotations). Bindings are registered independently of
+// routing and suppression: the vocabulary describes the data model, not the
+// generated handlers, and conditions may reference a resource's attributes
+// regardless of which endpoints exist.
+func (r *resourceGenerator) collectBindingRegistrations(b *resource.CollectionBuilder) {
+	for _, res := range r.resources {
+		b.SetResourceBindings(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), collectionBindings(res))
+	}
+}
+
+// collectWorkflowMemberRegistrations registers every workflow member's
+// immediate parent hop (@stateRoot). Like bindings, membership describes the
+// data model, not the generated handlers: the create-under-parent affordance
+// (design plan §11) reads it back at runtime to answer, per parent row, which
+// member resources the user may create beneath it.
+func (r *resourceGenerator) collectWorkflowMemberRegistrations(b *resource.CollectionBuilder) {
+	byTable := make(map[string]*resourceInfo, len(r.resources))
+	for _, res := range r.resources {
+		byTable[r.pluralize(res.Name())] = res
+	}
+	for _, res := range r.resources {
+		for _, field := range res.Fields {
+			if field.WorkflowRoot == "" {
+				continue
+			}
+			// Workflow validation has already resolved every hop onto a parsed
+			// resource; a missing entry here would be a generator bug, not a
+			// user error, so it is simply skipped.
+			parent, ok := byTable[field.ReferencedResource]
+			if !ok {
+				continue
+			}
+			b.SetResourceParent(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), accesstypes.Resource(r.pluralize(parent.Name())))
+		}
+	}
 }
 
 // collectResourceRegistrations registers every routed resource's endpoints, plus the
@@ -228,7 +283,14 @@ func (r *resourceGenerator) collectResourceRegistrations(b *resource.CollectionB
 				continue
 			}
 
-			set, err := handlerSetData(res, handlerType)
+			// The Read set carries the @file routes' own fields where the read route is
+			// generated: a tag per segment, with no column behind it, that a Read grant
+			// names to open the file route.
+			var extra []resource.FieldTags
+			if handlerType == ReadHandler && generated {
+				extra = fileSetTags(res.Files)
+			}
+			set, err := handlerSetData(res, handlerType, extra...)
 			if err != nil {
 				return false, errors.Wrapf(err, "resource %q %s request struct", res.Name(), handlerType)
 			}
@@ -236,10 +298,43 @@ func (r *resourceGenerator) collectResourceRegistrations(b *resource.CollectionB
 			if err := b.AddResourceSet(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), set); err != nil {
 				return false, errors.Wrapf(err, "registering resource %q %s handler", res.Name(), handlerType)
 			}
+
+			// A listed resource says how its list is ordered and narrowed, so
+			// deploy-time role validation can tell which conditional grants put a
+			// CASE in the ORDER BY or the WHERE.
+			if handlerType == ListHandler {
+				order, keys := listQueryKeys(res)
+				b.SetResourceQueryKeys(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), order, keys)
+			}
 		}
 	}
 
 	return consolidatedRouteWired, nil
+}
+
+// listQueryKeys names, as wire tags, the fields a list of res sorts and filters
+// by: the declared @order, and the fields a request may filter and sort by with
+// an index behind it (indexed and allow_filter), primary keys aside — keys are
+// exempt from masking, so they never carry a CASE. Fields the read structs hide
+// are skipped.
+func listQueryKeys(res *resourceInfo) (order, keys []accesstypes.Tag) {
+	byName := make(map[string]*resourceField, len(res.Fields))
+	for _, field := range res.Fields {
+		byName[field.Name()] = field
+	}
+	for _, sf := range res.DeclaredOrder {
+		if field, ok := byName[sf.Field]; ok && field.WireName() != "" {
+			order = append(order, accesstypes.Tag(field.WireName()))
+		}
+	}
+	for _, field := range res.Fields {
+		if field.IsPrimaryKey || !field.IsQueryClauseEligible() || field.WireName() == "" {
+			continue
+		}
+		keys = append(keys, accesstypes.Tag(field.WireName()))
+	}
+
+	return order, keys
 }
 
 // collectConsolidatedRegistrations registers the patch permissions of ALL consolidated
@@ -280,22 +375,32 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 		handlers := []struct {
 			suppressed bool
 			permission accesstypes.Permission
+			// files are the @file routes' own fields, registered under Read alone.
+			files []resource.FieldTags
 		}{
 			{suppressed: res.SuppressListHandler, permission: accesstypes.List},
-			{suppressed: res.SuppressReadHandler, permission: accesstypes.Read},
+			{suppressed: res.ReadHandlerDisabled(), permission: accesstypes.Read, files: fileSetTags(res.Files)},
 		}
+		registered := false
 		for _, handler := range handlers {
 			if handler.suppressed {
 				continue
 			}
 
-			set, err := resource.NewSetData(fields, handler.permission)
+			set, err := resource.NewSetData(slices.Concat(fields, handler.files), handler.permission)
 			if err != nil {
 				return errors.Wrapf(err, "computed resource %q %s request struct", res.Name(), handler.permission)
 			}
 			if err := b.AddResourceSet(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), set); err != nil {
 				return errors.Wrapf(err, "registering computed resource %q %s handler", res.Name(), handler.permission)
 			}
+			registered = true
+		}
+
+		// The kind marker rides only registered resources: a computed resource with
+		// every handler suppressed grants nothing, so there is nothing to validate.
+		if registered {
+			b.SetResourceComputed(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())))
 		}
 	}
 
@@ -315,6 +420,17 @@ func (r *resourceGenerator) collectRPCRegistrations(b *resource.CollectionBuilde
 
 		if err := b.AddMethodResource(scopeOrGlobal(method.PermissionScope), accesstypes.Execute, accesstypes.Resource(method.Name())); err != nil {
 			return errors.Wrapf(err, "registering RPC method %q", method.Name())
+		}
+
+		if t := method.Transition; t != nil {
+			b.SetMethodTransition(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), resource.TransitionData{
+				Target: accesstypes.Resource(t.RootResource),
+				From:   t.From,
+				To:     t.To,
+			})
+		}
+		if t := method.Target; t != nil {
+			b.SetMethodTarget(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), accesstypes.Resource(t.RootResource))
 		}
 	}
 
@@ -339,8 +455,9 @@ func (r *resourceGenerator) collectManualRegistrations(b *resource.CollectionBui
 // handlerSetData computes the SetData one generated handler registers for res, by
 // rendering the handler's request-struct tags through the same helpers the handler
 // template calls and parsing them with the same reflect.StructTag semantics the runtime
-// applies.
-func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetData, error) {
+// applies. extra are route-own fields registered beside the struct's (a @file route's
+// segment under Read).
+func handlerSetData(res *resourceInfo, handlerType HandlerType, extra ...resource.FieldTags) (resource.SetData, error) {
 	var fields []resource.FieldTags
 	var permissions []accesstypes.Permission
 
@@ -349,25 +466,28 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetDat
 		permissions = []accesstypes.Permission{accesstypes.List}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.PermTag(), field.PIITag()))
+				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.PermTag(), field.PIITag(), field.MaskingTag()))
 		}
 	case ReadHandler:
 		permissions = []accesstypes.Permission{accesstypes.Read}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag()))
+				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag(), field.MaskingTag()))
 		}
 	case PatchHandler:
-		permissions = []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete}
+		// Create is left out where a NOT NULL @file key means a row is added by the
+		// method that stores its file (CreateDisabled).
+		permissions = res.PatchPermissions()
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTagForPatch(), field.ImmutableTag()))
+				field.JSONTagForPatch(), field.ImmutableTag(), field.SqltypeTag(), field.NullableTag()))
 		}
-	case AllHandlers:
+	case AllHandlers, fileHandler:
 		return resource.SetData{}, errors.Newf("handlerSetData(): unsupported handler type: %s", handlerType)
 	default:
 		return resource.SetData{}, errors.Newf("handlerSetData(): unknown handler type: %s", handlerType)
 	}
+	fields = append(fields, extra...)
 
 	set, err := resource.NewSetData(fields, permissions...)
 	if err != nil {

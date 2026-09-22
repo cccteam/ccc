@@ -1,0 +1,150 @@
+{
+  "roles": {
+    "global": [
+      {
+        "name": "Administrator_Global",
+        "permissions": {
+          "Create": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Tenants"
+            }
+          ],
+          "List": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "domain": [
+      {
+        "name": "Administrator_Domain",
+        "permissions": {
+          "Create": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "title"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Announcements"
+            }
+          ],
+          "List": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "tenantId",
+                "title"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "tenantId",
+                "title"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "title"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Machines_Domain",
+        "permissions": {
+          "Create": [
+            {
+              "resource": "Readings",
+              "fields": [
+                "recordedAt",
+                "source",
+                "value"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Readings"
+            }
+          ],
+          "List": [
+            {
+              "resource": "Readings",
+              "fields": [
+                "recordedAt",
+                "source",
+                "tenantId",
+                "value"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Readings",
+              "fields": [
+                "recordedAt",
+                "source",
+                "tenantId",
+                "value"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Readings",
+              "fields": [
+                "recordedAt",
+                "source",
+                "value"
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

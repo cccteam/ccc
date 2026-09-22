@@ -35,6 +35,11 @@ type Decoder[Resource Resourcer, Request any] struct {
 	validate    ValidatorFunc
 	fieldMapper *RequestFieldMapper
 	resourceSet *Set[Resource]
+
+	// collection resolves condition rendering for the mutations' live
+	// check-SELECT; nil leaves conditions unrenderable (an error if one ever
+	// arrives).
+	collection *GeneratedCollection
 }
 
 // NewDecoder creates a new Decoder for a given Resource and Request type.
@@ -52,10 +57,12 @@ func NewDecoder[Resource Resourcer, Request any](rSet *Set[Resource]) (*Decoder[
 }
 
 // MustNewDecoder builds a patch decoder for a resource and request pair, validating
-// requests with the accessor's validator. It panics on construction errors: they are
-// programming errors (a request struct out of sync with its resource), surfaced at
-// application startup where generated handlers construct their decoders.
-func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, permissions ...accesstypes.Permission) *Decoder[Resource, Request] {
+// requests with the accessor's validator and wired to the application's generated
+// collection so conditional grants can render into the mutations' live check. It
+// panics on construction errors: they are programming errors (a request struct out of
+// sync with its resource), surfaced at application startup where generated handlers
+// construct their decoders.
+func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, collection *GeneratedCollection, permissions ...accesstypes.Permission) *Decoder[Resource, Request] {
 	rSet, err := NewSet[Resource, Request](permissions...)
 	if err != nil {
 		panic(err)
@@ -65,6 +72,7 @@ func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, permissi
 	if err != nil {
 		panic(err)
 	}
+	decoder.collection = collection
 
 	return decoder.WithValidator(a.Validator())
 }
@@ -83,6 +91,7 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 	if err != nil {
 		return nil, err
 	}
+	p.querySet.collection = d.collection
 
 	return p, nil
 }
@@ -94,8 +103,17 @@ func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissio
 	if err != nil {
 		return nil, err
 	}
+	p.querySet.collection = d.collection
 
 	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, requiredPermission)
+
+	// Structural tenancy: a create's tenant key is stamped from the request's
+	// domain partition — the wire cannot express it (design plan §06).
+	if requiredPermission == accesstypes.Create {
+		if err := p.stampTenantKey(); err != nil {
+			return nil, err
+		}
+	}
 
 	return p, nil
 }
@@ -118,7 +136,11 @@ func (d *Decoder[Resource, Request]) DecodeOperationWithoutPermissions(oper *Ope
 // enforcement in the given domain partition.
 func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions, scope accesstypes.Scope) (*PatchSet[Resource], error) {
 	if oper.Type == OperationDelete {
-		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, permissionFromType(oper.Type)), nil
+		patchSet := NewPatchSet(d.resourceSet.ResourceMetadata())
+		patchSet.querySet.env = newRequestEnvironment()
+		patchSet.querySet.collection = d.collection
+
+		return patchSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, permissionFromType(oper.Type)), nil
 	}
 
 	patchSet, err := d.Decode(oper.Req, userPermissions, scope, permissionFromType(oper.Type))
@@ -127,6 +149,33 @@ func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermis
 	}
 
 	return patchSet, nil
+}
+
+// acceptsNull reports whether a JSON null may land in the request field: a pointer, one
+// of the Spanner client's Null wrappers, or a slice the generator marked nullable
+// because its column allows NULL (nullable_fields.go). The value stored is then the
+// field's zero, a nil pointer, an invalid wrapper, or a nil slice, each of which the
+// client writes as NULL. An unmarked slice refuses null like every other field whose
+// type has no null form: the column behind it is NOT NULL.
+func acceptsNull(nullableFields map[accesstypes.Field]struct{}, fieldName accesstypes.Field, field reflect.Value) bool {
+	if field.Kind() == reflect.Pointer {
+		return true
+	}
+	switch field.Interface().(type) {
+	// Taken from cloud.google.com/go/spanner@v1.83.0/value.go
+	// these types are handled by the driver
+	case spanner.NullInt64, spanner.NullFloat64, spanner.NullFloat32, spanner.NullBool,
+		spanner.NullString, spanner.NullTime, spanner.NullDate, spanner.NullNumeric,
+		spanner.NullProtoEnum, spanner.NullUUID, guid.NullUUID, spanner.Encoder:
+		return true
+	default:
+	}
+	if field.Kind() != reflect.Slice {
+		return false
+	}
+	_, nullable := nullableFields[fieldName]
+
+	return nullable
 }
 
 func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission) (*PatchSet[Resource], *Request, error) {
@@ -177,23 +226,21 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 
 		field := vValue.FieldByName(string(fieldName))
 		value := field.Interface()
-		if jsonValue == nil {
-			if field.Kind() != reflect.Pointer {
-				switch value.(type) {
-				// Taken from cloud.google.com/go/spanner@v1.83.0/value.go
-				// these types are handled by the driver
-				case spanner.NullInt64, spanner.NullFloat64, spanner.NullFloat32, spanner.NullBool,
-					spanner.NullString, spanner.NullTime, spanner.NullDate, spanner.NullNumeric,
-					spanner.NullProtoEnum, spanner.NullUUID, guid.NullUUID, spanner.Encoder:
-				default:
-					return nil, nil, httpio.NewBadRequestMessagef(`%s cannot be null`, jsonField)
-				}
-			}
+		if jsonValue == nil && !acceptsNull(rSet.nullableFields, fieldName, field) {
+			return nil, nil, httpio.NewBadRequestMessagef(`%s cannot be null`, jsonField)
 		}
 		changes[fieldName] = value
 	}
 
+	// A value the column cannot hold is refused here, naming every such field, before
+	// the validator runs and before any permission is checked: the limit is a fact about
+	// the wire value alone, like a null into a non-nullable field.
+	if err := checkValueLimits(rSet.valueLimits, vValue.Type(), changes); err != nil {
+		return nil, nil, err
+	}
+
 	patchSet := NewPatchSet(rSet.ResourceMetadata())
+	patchSet.querySet.env = newRequestEnvironment()
 	// Add to patchset in order of struct fields
 	// Every key in changes is guaranteed to be a field in the struct
 	for _, f := range reflect.VisibleFields(vValue.Type()) {

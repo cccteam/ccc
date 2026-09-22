@@ -6,9 +6,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
@@ -116,19 +120,81 @@ func (r *resourceGenerator) authzMatrixCases() ([]authzCase, error) {
 		return nil, err
 	}
 	cases = append(cases, consolidated...)
+	cases = append(cases, r.rpcAuthzCases()...)
 
-	return append(cases, r.rpcAuthzCases()...), nil
+	if r.concealedDomains {
+		// Concealed domains answer a caller with no grants as if the domain
+		// did not exist. The URL decides which surface answers — exactly how
+		// the request routes: a route with segments BELOW the domain value is
+		// wrapped by the DomainGuard (404), and a consolidated operation whose
+		// path descends below a domain value meets the dispatcher's descent
+		// check (400). The tenant-record resource's own routes terminate AT
+		// the domain segment's value and are global — unguarded either way.
+		guardedRoute := regexp.MustCompile("/" + regexp.QuoteMeta(r.domainRouteSegment) + "/[^/]+/")
+		guardedOp := regexp.MustCompile(`"path":"/` + regexp.QuoteMeta(r.domainRouteSegment) + `/[^/"]+/`)
+		for i := range cases {
+			switch {
+			case guardedRoute.MatchString(cases[i].URL):
+				cases[i].DeniedStatus = "http.StatusNotFound"
+			case guardedOp.MatchString(cases[i].Body):
+				cases[i].DeniedStatus = "http.StatusBadRequest"
+			}
+		}
+	}
+
+	return cases, nil
+}
+
+// matrixListQuery is the query string the matrix's List request carries so the
+// request pins the gate and not the order: every paged list request needs an order
+// (resource.QueryDecoder), and the matrix must reach data access with exactly the
+// List grant. Nothing where the struct declares an @order; else a sort on the first
+// key field, which is always granted (perm:"-"); else nothing, since a key-less
+// resource is served whole and a whole list needs no order. keys are the resource's
+// key names in wire (JSON) spelling.
+func matrixListQuery(declaresOrder bool, keys []string) string {
+	if declaresOrder || len(keys) == 0 {
+		return ""
+	}
+
+	return sortParam + "=" + keys[0]
+}
+
+// The list query parameter the matrix spells, as the resource package reads it.
+const sortParam = "sort"
+
+// resourceMatrixListQuery is matrixListQuery for a table or view resource.
+func resourceMatrixListQuery(res *resourceInfo) string {
+	var keys []string
+	for _, f := range res.PrimaryKeys() {
+		keys = append(keys, f.WireName())
+	}
+
+	return matrixListQuery(len(res.DeclaredOrder) > 0, keys)
+}
+
+// computedMatrixListQuery is matrixListQuery for a computed resource.
+func computedMatrixListQuery(res *computedResource) string {
+	keys := make([]string, 0, len(res.PrimaryKeys()))
+	for _, f := range res.PrimaryKeys() {
+		keys = append(keys, caser.ToCamel(f.Name()))
+	}
+
+	return matrixListQuery(len(res.DeclaredOrder) > 0, keys)
 }
 
 // queryRouteCase builds the denied/granted case for a list or read route; ok is false
-// for every other handler type.
-func queryRouteCase(route *generatedRoute, pkTypes []pkParamType) (c authzCase, ok bool, err error) {
+// for every other handler type. listQuery is the query string a List request carries
+// (matrixListQuery), "" for none.
+func queryRouteCase(route *generatedRoute, pkTypes []pkParamType, listQuery string) (c authzCase, ok bool, err error) {
 	var permission string
 	switch route.HandlerType {
 	case ListHandler:
-		permission = "List"
-	case ReadHandler:
-		permission = "Read"
+		permission = string(accesstypes.List)
+	case ReadHandler, fileHandler:
+		// A @file route is a read: Read on the resource opens it (the segment field
+		// rides the same scripted grant).
+		permission = string(accesstypes.Read)
 	default:
 		return authzCase{}, false, nil
 	}
@@ -140,7 +206,7 @@ func queryRouteCase(route *generatedRoute, pkTypes []pkParamType) (c authzCase, 
 		url = strings.Replace(url, "{"+pkParams[0].Key+"}", domainTestValue, 1)
 		pkParams = pkParams[1:]
 	}
-	if route.HandlerType == ReadHandler {
+	if route.HandlerType == ReadHandler || route.HandlerType == fileHandler {
 		if len(pkParams) != len(pkTypes) {
 			return authzCase{}, false, errors.Newf("route %s: %d route parameters but %d primary keys", route.Path, len(pkParams), len(pkTypes))
 		}
@@ -151,6 +217,9 @@ func queryRouteCase(route *generatedRoute, pkTypes []pkParamType) (c authzCase, 
 			}
 			url = strings.Replace(url, "{"+p.Key+"}", value, 1)
 		}
+	}
+	if route.HandlerType == ListHandler && listQuery != "" {
+		url += "?" + listQuery
 	}
 
 	return authzCase{
@@ -164,7 +233,7 @@ func queryRouteCase(route *generatedRoute, pkTypes []pkParamType) (c authzCase, 
 // authzCaseName qualifies a case name with the serving outlet, so the same handler
 // reached through two outlets stays two distinct matrix cases. Default-outlet names
 // are unqualified.
-func authzCaseName(base string, outlet routerOutlet) string {
+func authzCaseName(base string, outlet *routerOutlet) string {
 	if outlet.name == defaultOutletName {
 		return base
 	}
@@ -187,7 +256,7 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 					return nil, err
 				}
 				if ht == PatchHandler {
-					opCases, err := patchOpCases(authzCaseName(route.HandlerFunc, outlet), route.TestURL, "", res, pkTypes)
+					opCases, err := patchOpCases(authzCaseName(route.HandlerFunc, &outlet), route.TestURL, "", res, pkTypes)
 					if err != nil {
 						return nil, err
 					}
@@ -195,14 +264,26 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 
 					continue
 				}
-				c, ok, err := queryRouteCase(route, pkTypes)
+				c, ok, err := queryRouteCase(route, pkTypes, resourceMatrixListQuery(res))
 				if err != nil {
 					return nil, err
 				}
 				if ok {
-					c.Name = authzCaseName(c.Name, outlet)
+					c.Name = authzCaseName(c.Name, &outlet)
 					cases = append(cases, c)
 				}
+			}
+			files, err := r.resourceFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, err
+			}
+			for _, route := range files {
+				c, _, err := queryRouteCase(route, pkTypes, "")
+				if err != nil {
+					return nil, err
+				}
+				c.Name = authzCaseName(c.Name, &outlet)
+				cases = append(cases, c)
 			}
 		}
 	}
@@ -225,13 +306,17 @@ func (r *resourceGenerator) computedAuthzCases() (cases []authzCase, err error) 
 			if err != nil {
 				return nil, err
 			}
-			for _, route := range routes {
-				c, ok, err := queryRouteCase(route, pkTypes)
+			files, err := r.computedFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, err
+			}
+			for _, route := range slices.Concat(routes, files) {
+				c, ok, err := queryRouteCase(route, pkTypes, computedMatrixListQuery(res))
 				if err != nil {
 					return nil, err
 				}
 				if ok {
-					c.Name = authzCaseName(c.Name, outlet)
+					c.Name = authzCaseName(c.Name, &outlet)
 					cases = append(cases, c)
 				}
 			}
@@ -275,6 +360,10 @@ func (r *resourceGenerator) consolidatedAuthzCases() (cases []authzCase, err err
 	return cases, nil
 }
 
+// emptyObjectBody is the minimal RPC body: it parses, so the request reaches the
+// permission check the case pins.
+const emptyObjectBody = "{}"
+
 // rpcAuthzCases covers the RPC method routes. The RPC decoder checks the method
 // permission after parsing the body (the parsed request is what a data-dependent rule
 // evaluates against) and before executing anything; an empty object reaches that check
@@ -292,12 +381,24 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 		for _, outlet := range r.memberOutlets(&rpcStruct.outletMembership) {
 			route := r.rpcRoute(rpcStruct, outlet.prefix)
 			cases = append(cases, authzCase{
-				Name:       authzCaseName(route.HandlerFunc, outlet),
+				Name:       authzCaseName(route.HandlerFunc, &outlet),
 				Method:     httpMethodConst(route.Method),
 				URL:        route.TestURL,
-				Body:       "{}",
+				Body:       emptyObjectBody,
 				DeniedOnly: true,
 			})
+			// A dry run of a transaction-form method refuses exactly as the real
+			// call does: the header changes what commits, never what is checked.
+			if rpcStruct.IsTxnForm() {
+				cases = append(cases, authzCase{
+					Name:       authzCaseName(route.HandlerFunc, &outlet) + " dry run",
+					Method:     httpMethodConst(route.Method),
+					URL:        route.TestURL,
+					Body:       emptyObjectBody,
+					Headers:    []authzHeader{{Name: resource.DryRunHeader, Value: jsonTrueLiteral}},
+					DeniedOnly: true,
+				})
+			}
 		}
 	}
 
@@ -343,13 +444,18 @@ func patchOpCases(name, url, opPathPrefix string, res *resourceInfo, pkTypes []p
 
 	method := httpMethodConst(http.MethodPatch)
 
-	cases := []authzCase{{
-		Name:       name + " create",
-		Method:     method,
-		URL:        url,
-		Body:       "[" + createOp + "]",
-		DeniedOnly: true,
-	}}
+	var cases []authzCase
+	// A resource whose NOT NULL @file key disables Create refuses a create op before
+	// any permission check, so the matrix has no denied case to pin for it.
+	if !res.CreateDisabled() {
+		cases = append(cases, authzCase{
+			Name:       name + " create",
+			Method:     method,
+			URL:        url,
+			Body:       "[" + createOp + "]",
+			DeniedOnly: true,
+		})
+	}
 	if patchable {
 		cases = append(cases, authzCase{
 			Name:       name + " update",
@@ -432,7 +538,7 @@ func authzJSONValue(t pkParamType) (string, bool) {
 		return "1", true
 	case declared == boolGoType || underlying == boolGoType:
 		return jsonTrueLiteral, true
-	case declared == "civil.Date":
+	case declared == civilDateGoType:
 		return `"2000-01-01"`, true
 	case declared == "time.Time":
 		return `"2000-01-01T00:00:00Z"`, true
@@ -462,8 +568,8 @@ func authzParamValue(t pkParamType) (string, bool) {
 	case strings.HasPrefix(t.declared, "int") || strings.HasPrefix(t.underlying, "int"):
 		return "1", true
 	case t.declared == boolGoType || t.underlying == boolGoType:
-		return "true", true
-	case t.declared == "civil.Date":
+		return jsonTrueLiteral, true
+	case t.declared == civilDateGoType:
 		return "2000-01-01", true
 	default:
 		return "", false

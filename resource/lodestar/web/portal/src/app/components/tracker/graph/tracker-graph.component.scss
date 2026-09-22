@@ -1,0 +1,62 @@
+.graph {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  display: block;
+
+  .arrowhead {
+    fill: currentColor;
+  }
+
+  .edge {
+    color: rgba(0, 0, 0, 0.2);
+
+    path {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.4;
+    }
+
+    text {
+      font-size: 9px;
+      text-anchor: middle;
+      fill: currentColor;
+      font-family: 'Roboto Mono', monospace;
+    }
+
+    &.live {
+      color: #1f6f8b;
+      cursor: pointer;
+
+      path {
+        stroke-width: 2.4;
+      }
+
+      text {
+        font-weight: 700;
+      }
+    }
+  }
+
+  .node {
+    rect {
+      fill: #fff;
+      stroke: #15161d;
+      stroke-width: 1.2;
+    }
+
+    text {
+      font-size: 11px;
+      text-anchor: middle;
+      fill: #15161d;
+    }
+
+    &.terminal rect {
+      fill: #e9ebf2;
+    }
+
+    &.current rect {
+      fill: #f2b544;
+    }
+  }
+}

@@ -17,6 +17,9 @@ type MockClient struct {
 	readOnlyMocks []any
 	txnReadMocks  []any
 	txnMock       ReadWriteTransaction
+	// store is the FileStore a committed transaction's released file objects are
+	// deleted from, as on the Spanner client; nil when none was given.
+	store FileStore
 }
 
 // NewMockClient creates a new MockClient for testing resource database interactions.
@@ -29,13 +32,24 @@ type MockClient struct {
 // IMPORTANT: For readOnlyMocks and txnReadMocks, provide only one mock per
 // resource type (e.g., Read[MyResource]). Multiple calls for the same Resource
 // must be configured on that single mock.
-func NewMockClient(txnMock ReadWriteTransaction, readOnlyMocks, txnReadMocks []any) *MockClient {
+//
+// WithFileStore hands it the store ExecuteFunc deletes released file objects from after
+// the function returns, so a test can assert what a patch released.
+func NewMockClient(txnMock ReadWriteTransaction, readOnlyMocks, txnReadMocks []any, opts ...ClientOption) *MockClient {
+	options := applyClientOptions(opts)
+
 	return &MockClient{
 		dbType:        SpannerDBType,
 		readOnlyMocks: readOnlyMocks,
 		txnReadMocks:  txnReadMocks,
 		txnMock:       txnMock,
+		store:         options.store,
 	}
+}
+
+// DBType returns the database type the mock stands in for.
+func (c *MockClient) DBType() DBType {
+	return c.dbType
 }
 
 // Close closes the database connection.
@@ -52,11 +66,16 @@ func (c *MockClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	return nil
 }
 
-// ExecuteFunc executes a function within a read-write transaction.
+// ExecuteFunc executes a function within a read-write transaction. As the Spanner
+// client's does, it deletes the file objects the function's patches released from the
+// client's FileStore once the function returns nil, and releases nothing when it errors.
 func (c *MockClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
-	if err := f(ctx, NewMockReadWriteTransaction(c.txnMock, c.txnReadMocks...)); err != nil {
+	txn := newMockReadWriteTransaction(c.txnMock, newReleasedKeys(), c.txnReadMocks...)
+	if err := f(ctx, txn); err != nil {
 		return errors.Wrap(err, "f()")
 	}
+
+	releaseFiles(ctx, c.store, txn.Released())
 
 	return nil
 }
@@ -78,19 +97,38 @@ var _ ReadWriteTransaction = (*MockReadWriteTransaction)(nil)
 type MockReadWriteTransaction struct {
 	txnReaderMocks []any
 	txnMock        ReadWriteTransaction
+	released       *releasedKeys
 }
 
 // NewMockReadWriteTransaction creates a new MockReadWriteTransaction.
-func NewMockReadWriteTransaction(mock ReadWriteTransaction, txnReaderMocks ...any) ReadWriteTransaction {
+func NewMockReadWriteTransaction(mock ReadWriteTransaction, txnReaderMocks ...any) *MockReadWriteTransaction {
+	return newMockReadWriteTransaction(mock, newReleasedKeys(), txnReaderMocks...)
+}
+
+// newMockReadWriteTransaction wraps the mocks over the record the released file keys
+// are noted in; the Mock client's ExecuteFunc reads it back when the function returns.
+func newMockReadWriteTransaction(mock ReadWriteTransaction, released *releasedKeys, txnReaderMocks ...any) *MockReadWriteTransaction {
 	return &MockReadWriteTransaction{
 		txnReaderMocks: txnReaderMocks,
 		txnMock:        mock,
+		released:       released,
 	}
 }
 
 // DBType returns the database type.
 func (c *MockReadWriteTransaction) DBType() DBType {
 	return c.txnMock.DBType()
+}
+
+// recordReleased notes file keys the transaction's patches let go of.
+func (c *MockReadWriteTransaction) recordReleased(keys ...string) {
+	c.released.record(keys...)
+}
+
+// Released returns the file object keys the transaction's patches released so far, as
+// SpannerReadWriteTransaction.Released does.
+func (c *MockReadWriteTransaction) Released() []string {
+	return c.released.list()
 }
 
 // DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction.
@@ -131,12 +169,13 @@ func (c *MockReadWriteTransaction) PostgresReadOnlyTransaction() any {
 	panic("MockReadWriteTransaction.PostgresReadOnlyTransaction() should never be called.")
 }
 
-// MockIterSeq2 is used for mocking iter.Seq2[Resourcer, error] type. If both err and resource are
-// provided, it will yield all elements in resource first and then err
-func MockIterSeq2[Resource Resourcer](err error, resource ...*Resource) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+// MockIterSeq2 is used for mocking the iter.Seq2[*Row[Resource], error] type returned by List.
+// Each resource is wrapped in the Row envelope. If both err and resource are provided, it will
+// yield all elements in resource first and then err
+func MockIterSeq2[Resource Resourcer](err error, resource ...*Resource) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
 		for _, r := range resource {
-			if !yield(r, nil) {
+			if !yield(&Row[Resource]{Data: *r}, nil) {
 				return
 			}
 		}

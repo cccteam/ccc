@@ -1,0 +1,540 @@
+package resource
+
+import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/httpio"
+)
+
+func newQueryTestDecoder(t *testing.T, paging Paging, key *CursorKey) *QueryDecoder[enforcementResource, enforcementQueryRequest] {
+	t.Helper()
+
+	resSet, err := NewSet[enforcementResource, enforcementQueryRequest](accesstypes.List)
+	if err != nil {
+		t.Fatalf("NewSet() error = %v", err)
+	}
+	decoder, err := NewQueryDecoder[enforcementResource, enforcementQueryRequest](resSet)
+	if err != nil {
+		t.Fatalf("NewQueryDecoder() error = %v", err)
+	}
+
+	return decoder.WithPaging(paging).WithCursorKey(key)
+}
+
+// TestQueryDecoder_declaredPageSizes pins the declared contract: the default page
+// a limit-less request takes, the maximum a request may not exceed, and that a
+// maximum also closes limit=all. Every paged request carries a sort, as
+// requireOrder demands (TestQueryDecoder_requireOrder).
+func TestQueryDecoder_declaredPageSizes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		paging    Paging
+		target    string
+		wantPage  pageRequest
+		wantLimit string
+		wantErr   string
+	}{
+		{
+			name:      "generator-wide default page",
+			target:    "/?sort=public",
+			wantPage:  pageRequest{size: DefaultPageSize},
+			wantLimit: "LIMIT 51",
+		},
+		{
+			name:      "declared default page",
+			paging:    Paging{DefaultLimit: 25},
+			target:    "/?sort=public",
+			wantPage:  pageRequest{size: 25},
+			wantLimit: "LIMIT 26",
+		},
+		{
+			name:      "a request within the maximum",
+			paging:    Paging{DefaultLimit: 25, MaxLimit: 200},
+			target:    "/?sort=public&limit=200",
+			wantPage:  pageRequest{size: 200},
+			wantLimit: "LIMIT 201",
+		},
+		{
+			name:    "a request over the maximum is refused naming it",
+			paging:  Paging{DefaultLimit: 25, MaxLimit: 200},
+			target:  "/?sort=public&limit=201",
+			wantErr: "limit 201 exceeds this resource's maximum page size of 200",
+		},
+		{
+			name:    "limit=all is refused where a maximum is declared",
+			paging:  Paging{MaxLimit: 200},
+			target:  "/?limit=all",
+			wantErr: "limit=all is not permitted: this resource serves at most 200 rows per page",
+		},
+		{
+			name:      "limit=all reads every row where no maximum is declared",
+			target:    "/?limit=all",
+			wantPage:  pageRequest{size: DefaultPageSize, all: true},
+			wantLimit: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			decoder := newQueryTestDecoder(t, tt.paging, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
+			qSet, err := decoder.DecodeWithoutPermissions(req)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("DecodeWithoutPermissions() error = %v, want error containing %q", err, tt.wantErr)
+				}
+				if !httpio.HasBadRequest(err) {
+					t.Errorf("DecodeWithoutPermissions() error = %v, want a 400", err)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+			}
+			if *qSet.page != tt.wantPage {
+				t.Errorf("page = %+v, want %+v", *qSet.page, tt.wantPage)
+			}
+			limit, err := qSet.limitClause()
+			if err != nil {
+				t.Fatalf("limitClause() error = %v", err)
+			}
+			if limit != tt.wantLimit {
+				t.Errorf("limitClause() = %q, want %q", limit, tt.wantLimit)
+			}
+		})
+	}
+}
+
+// TestQueryDecoder_requireOrder pins the rule that every paged list request carries
+// an order: with no @order on the struct and no sort on the request, a bare GET or a
+// limit is refused with a 400 naming the resource and the way out, on an unbounded
+// and on a bounded resource; a declared order, a request sort, or limit=all on an
+// unbounded resource passes; limit=all stays refused where a maximum is declared; a
+// read decoder decodes one row and asks for no order.
+func TestQueryDecoder_requireOrder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		paging  Paging
+		target  string
+		read    bool
+		wantErr string
+	}{
+		{
+			name:    "a bare GET on an unbounded resource with no order is refused naming both ways out",
+			target:  "/",
+			wantErr: "enforcementResources declares no order; add a sort, or ask limit=all",
+		},
+		{
+			name:    "a limit on an unbounded resource with no order is refused the same way",
+			target:  "/?limit=10",
+			wantErr: "enforcementResources declares no order; add a sort, or ask limit=all",
+		},
+		{
+			name:    "a bare GET on a bounded resource with no order is refused naming the maximum and the sort",
+			paging:  Paging{MaxLimit: 200},
+			target:  "/",
+			wantErr: "enforcementResources serves at most 200 rows per page and declares no order; add a sort",
+		},
+		{
+			name:    "a filter alone is not an order",
+			target:  "/?filter=public:eq:x",
+			wantErr: "enforcementResources declares no order; add a sort, or ask limit=all",
+		},
+		{
+			name:   "a declared order pages a sort-less request",
+			paging: Paging{Order: []SortField{{Field: "Public", Direction: SortAscending}}},
+			target: "/",
+		},
+		{
+			name:   "a request sort pages a resource that declares none",
+			target: "/?sort=public&limit=10",
+		},
+		{
+			name:   "limit=all needs no order on an unbounded resource: the whole list",
+			target: "/?limit=all",
+		},
+		{
+			name:    "limit=all stays refused where a maximum is declared, before the order is asked",
+			paging:  Paging{MaxLimit: 200},
+			target:  "/?limit=all",
+			wantErr: "limit=all is not permitted: this resource serves at most 200 rows per page",
+		},
+		{
+			name:   "a read decoder decodes one row and asks for no order",
+			target: "/",
+			read:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var qSet *QuerySet[enforcementResource]
+			var err error
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
+			if tt.read {
+				resSet, err := NewSet[enforcementResource, enforcementReadRequest](accesstypes.Read)
+				if err != nil {
+					t.Fatalf("NewSet() error = %v", err)
+				}
+				decoder, err := NewQueryDecoder[enforcementResource, enforcementReadRequest](resSet)
+				if err != nil {
+					t.Fatalf("NewQueryDecoder() error = %v", err)
+				}
+				qSet, err = decoder.WithPaging(tt.paging).DecodeWithoutPermissions(req)
+				if err != nil {
+					t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+				}
+			} else {
+				qSet, err = newQueryTestDecoder(t, tt.paging, nil).DecodeWithoutPermissions(req)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("DecodeWithoutPermissions() error = %v, want error containing %q", err, tt.wantErr)
+				}
+				if !httpio.HasBadRequest(err) {
+					t.Errorf("DecodeWithoutPermissions() error = %v, want a 400", err)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+			}
+			if qSet == nil {
+				t.Fatal("DecodeWithoutPermissions() returned no QuerySet")
+			}
+		})
+	}
+}
+
+// TestQuerySet_limitClause_handBuilt pins that a QuerySet built in code reads
+// exactly the limit its builder set: the page-plus-one fetch belongs to decoded
+// requests alone.
+func TestQuerySet_limitClause_handBuilt(t *testing.T) {
+	t.Parallel()
+
+	qSet := NewQuerySet(NewMetadata[SortTestResource]())
+	if limit, err := qSet.limitClause(); err != nil || limit != "" {
+		t.Errorf("limitClause() = %q, %v; want no LIMIT", limit, err)
+	}
+	qSet.SetLimit(new(uint64(10)))
+	if limit, err := qSet.limitClause(); err != nil || limit != "LIMIT 10" {
+		t.Errorf("limitClause() = %q, %v; want LIMIT 10", limit, err)
+	}
+}
+
+// TestQueryDecoder_bindCursor pins how a presented cursor is admitted: sealed under
+// the application's key, fingerprinted to this query in this scope, on a list with
+// an order worth walking; and how each departure is refused.
+func TestQueryDecoder_bindCursor(t *testing.T) {
+	t.Parallel()
+
+	key := mustCursorKey(t, testCookieKey)
+	grants := map[accesstypes.Permission][]accesstypes.Resource{
+		accesstypes.List: {enforcedResource, enforcedResource + ".public", enforcedResource + ".tagged"},
+	}
+	order := []SortField{{Field: "Public", Direction: SortAscending}, {Field: "ID", Direction: SortAscending}}
+	seal := func(t *testing.T, k *CursorKey, scope accesstypes.Scope, filter string, order []SortField, limit string) string {
+		t.Helper()
+
+		token, err := k.seal(cursor{Query: queryHash(enforcedResource, scope, filter, order, limit), Direction: pageNext, Keys: []*string{strPtr("m"), strPtr("id")}})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return token
+	}
+
+	tests := []struct {
+		name          string
+		paging        Paging
+		key           *CursorKey
+		target        func(t *testing.T) string
+		wantBound     bool
+		wantErr       string
+		wantBadReq    bool
+		wantPlainErr  bool
+		wantDirection pageDirection
+	}{
+		{
+			name:          "a genuine cursor for this query binds",
+			key:           key,
+			target:        func(t *testing.T) string { return "/?sort=public&cursor=" + seal(t, key, testScope, "", order, "50") },
+			wantBound:     true,
+			wantDirection: pageNext,
+		},
+		{
+			name:          "a cursor issued under the declared order binds on a sort-less request",
+			paging:        Paging{Order: []SortField{{Field: "Public", Direction: SortAscending}}},
+			key:           key,
+			target:        func(t *testing.T) string { return "/?cursor=" + seal(t, key, testScope, "", order, "50") },
+			wantBound:     true,
+			wantDirection: pageNext,
+		},
+		{
+			name: "a cursor from another tenant's walk is refused",
+			key:  key,
+			target: func(t *testing.T) string {
+				return "/?sort=public&cursor=" + seal(t, key, accesstypes.DomainScope("otherDomain"), "", order, "50")
+			},
+			wantErr:    "invalid cursor",
+			wantBadReq: true,
+		},
+		{
+			name: "a cursor presented with a different filter is refused",
+			key:  key,
+			target: func(t *testing.T) string {
+				return "/?sort=public&filter=public:eq:x&cursor=" + seal(t, key, testScope, "", order, "50")
+			},
+			wantErr:    "invalid cursor",
+			wantBadReq: true,
+		},
+		{
+			name: "a cursor presented with a different sort is refused",
+			key:  key,
+			target: func(t *testing.T) string {
+				return "/?sort=public:desc&cursor=" + seal(t, key, testScope, "", order, "50")
+			},
+			wantErr:    "invalid cursor",
+			wantBadReq: true,
+		},
+		{
+			name: "a cursor presented with a different page size is refused",
+			key:  key,
+			target: func(t *testing.T) string {
+				return "/?sort=public&limit=10&cursor=" + seal(t, key, testScope, "", order, "50")
+			},
+			wantErr:    "invalid cursor",
+			wantBadReq: true,
+		},
+		{
+			name: "a cursor on a list with no sort and no declared order never reaches the cursor: the paged request itself is refused",
+			key:  key,
+			target: func(t *testing.T) string {
+				return "/?cursor=" + seal(t, key, testScope, "", nil, "50")
+			},
+			wantErr:    "enforcementResources declares no order; add a sort, or ask limit=all",
+			wantBadReq: true,
+		},
+		{
+			name:         "a cursor reaching a decoder with no key is a wiring error, not a client error",
+			key:          nil,
+			target:       func(t *testing.T) string { return "/?sort=public&cursor=" + seal(t, key, testScope, "", order, "50") },
+			wantErr:      "no cursor key",
+			wantPlainErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			decoder := newQueryTestDecoder(t, tt.paging, tt.key)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target(t), http.NoBody)
+			qSet, err := decoder.Decode(req, &fakeUserPermissions{granted: grants}, testScope)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Decode() error = %v, want error containing %q", err, tt.wantErr)
+				}
+				if httpio.HasBadRequest(err) != tt.wantBadReq {
+					t.Errorf("Decode() error = %v, bad request = %v, want %v", err, httpio.HasBadRequest(err), tt.wantBadReq)
+				}
+				if tt.wantPlainErr && httpio.HasClientMessage(err) {
+					t.Errorf("Decode() error = %v, want a server-side error with no client message", err)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if (qSet.cursor != nil) != tt.wantBound {
+				t.Fatalf("cursor bound = %v, want %v", qSet.cursor != nil, tt.wantBound)
+			}
+			if qSet.cursor.Direction != tt.wantDirection {
+				t.Errorf("cursor direction = %v, want %v", qSet.cursor.Direction, tt.wantDirection)
+			}
+		})
+	}
+}
+
+// TestQuerySet_stmt_unboundCursorFailsClosed pins that a request decoded without
+// permissions, and so without a scope to bind its cursor to, never runs.
+func TestQuerySet_stmt_unboundCursorFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	decoder := newQueryTestDecoder(t, Paging{}, mustCursorKey(t, testCookieKey))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?sort=public&cursor=v4.local.abc", http.NoBody)
+	qSet, err := decoder.DecodeWithoutPermissions(req)
+	if err != nil {
+		t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+	}
+	if _, err := qSet.stmt(SpannerDBType); err == nil || !strings.Contains(err.Error(), "never bound to a scope") {
+		t.Errorf("stmt() error = %v, want the unbound-cursor refusal", err)
+	}
+}
+
+// keylessResource is a computed or virtual struct with no @primarykey: its generated
+// list request marks no perm:"-" field, which is how the decoder knows the list has no
+// row identity.
+type keylessResource struct {
+	Section   string `spanner:"Section"`
+	Directive string `spanner:"Directive"`
+}
+
+func (keylessResource) Resource() accesstypes.Resource { return "keylessResources" }
+
+type keylessListRequest struct {
+	Section   string `json:"section"   index:"true"`
+	Directive string `json:"directive"`
+}
+
+func newKeylessTestDecoder(t *testing.T, paging Paging) *QueryDecoder[keylessResource, keylessListRequest] {
+	t.Helper()
+
+	resSet, err := NewSet[keylessResource, keylessListRequest](accesstypes.List)
+	if err != nil {
+		t.Fatalf("NewSet() error = %v", err)
+	}
+	decoder, err := NewQueryDecoder[keylessResource, keylessListRequest](resSet)
+	if err != nil {
+		t.Fatalf("NewQueryDecoder() error = %v", err)
+	}
+
+	return decoder.WithPaging(paging)
+}
+
+// TestQueryDecoder_keyless pins the key-less list: a list decoder whose request type
+// marks no primary key serves the whole list on every request, with or without
+// limit=all, needs no order for it, answers count=true, and refuses a numeric limit
+// or a cursor with a 400 naming the resource, the missing key, and @primarykey as the
+// way to page. TakePage never answers true on such a list.
+func TestQueryDecoder_keyless(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		target    string
+		wantErr   string
+		wantCount bool
+	}{
+		{
+			name:   "a bare GET is the whole list, with no order asked and none declared",
+			target: "/",
+		},
+		{
+			name:   "limit=all is the explicit spelling of the same shape",
+			target: "/?limit=all",
+		},
+		{
+			name:   "a sort orders the whole list",
+			target: "/?sort=section",
+		},
+		{
+			name:      "count=true answers on the whole list",
+			target:    "/?count=true",
+			wantCount: true,
+		},
+		{
+			name:    "a numeric limit is refused naming the resource, the missing key, and the way to page",
+			target:  "/?limit=10",
+			wantErr: "keylessResources declares no primary key, so its list is served whole and does not page; drop the limit, or declare @primarykey to page",
+		},
+		{
+			name:    "a numeric limit with a sort is refused the same way: a sort does not make a page",
+			target:  "/?sort=section&limit=10",
+			wantErr: "keylessResources declares no primary key, so its list is served whole and does not page; drop the limit",
+		},
+		{
+			name:    "a cursor is refused the same way",
+			target:  "/?cursor=v4.local.anything",
+			wantErr: "keylessResources declares no primary key, so its list is served whole and does not page; drop the cursor, or declare @primarykey to page",
+		},
+		{
+			name:    "offset stays refused as on every list",
+			target:  "/?offset=5",
+			wantErr: "offset is not supported",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
+			qSet, err := newKeylessTestDecoder(t, Paging{}).DecodeWithoutPermissions(req)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("DecodeWithoutPermissions() error = %v, want error containing %q", err, tt.wantErr)
+				}
+				if !httpio.HasBadRequest(err) {
+					t.Errorf("DecodeWithoutPermissions() error = %v, want a 400", err)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+			}
+			if !qSet.page.all {
+				t.Errorf("page.all = false, want true: a key-less list is only ever whole")
+			}
+			if qSet.page.count != tt.wantCount {
+				t.Errorf("page.count = %v, want %v", qSet.page.count, tt.wantCount)
+			}
+			if limit, err := qSet.limitClause(); err != nil || limit != "" {
+				t.Errorf("limitClause() = (%q, %v), want no LIMIT and no error", limit, err)
+			}
+			qSet.TakeSort()
+			if _, ok := qSet.TakePage(); ok {
+				t.Error("TakePage() = true, want false: a key-less list does not page")
+			}
+		})
+	}
+}
+
+// TestQueryDecoder_keyless_pageSizePanics pins that a page size on a key-less list is
+// a construction error: the generator refuses @page on such a struct, and a decoder
+// wired by hand with one panics at startup like every other generated-code mismatch.
+func TestQueryDecoder_keyless_pageSizePanics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		paging Paging
+	}{
+		{name: "a default page size", paging: Paging{DefaultLimit: 25}},
+		{name: "a maximum page size", paging: Paging{MaxLimit: 200}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("WithPaging() did not panic")
+				}
+				if want := "keylessResources declares no primary key and does not page; a page size needs a key"; !strings.Contains(fmt.Sprint(r), want) {
+					t.Errorf("WithPaging() panic = %v, want it to contain %q", r, want)
+				}
+			}()
+			newKeylessTestDecoder(t, tt.paging)
+		})
+	}
+}

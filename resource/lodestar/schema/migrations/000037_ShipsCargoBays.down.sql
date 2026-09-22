@@ -1,0 +1,1 @@
+ALTER TABLE Ships DROP COLUMN CargoBays;

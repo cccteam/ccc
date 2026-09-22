@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestApplicationName(t *testing.T) {
@@ -182,6 +184,95 @@ func Test_validateOutletConfig(t *testing.T) {
 	}
 }
 
+func TestServesSessions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		options []OutletOption
+		want    bool
+	}{
+		{name: "without the option the outlet serves no sessions", options: nil, want: false},
+		{name: "the option marks the outlet session-serving", options: []OutletOption{ServesSessions()}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rg := &resourceGenerator{}
+			opt, ok := WithRouterOutlet("portal", "portal", tt.options...).(resourceOption)
+			if !ok {
+				t.Fatal("WithRouterOutlet must be a resourceOption")
+			}
+			if err := opt(rg); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := rg.extraOutlets[0].servesSessions; got != tt.want {
+				t.Errorf("servesSessions = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_validateTypescriptOutletTargets(t *testing.T) {
+	t.Parallel()
+
+	outlets := []routerOutlet{
+		{name: "portal", prefix: "portal", servesSessions: true},
+		{name: "automation", prefix: "automation"},
+	}
+
+	tests := []struct {
+		name         string
+		options      []TSOption
+		wantErr      bool
+		wantContains string
+	}{
+		{name: "a target without ForOutlet serves the default outlet"},
+		{name: "naming the default outlet explicitly passes", options: []TSOption{ForOutlet("default")}},
+		{name: "a session-serving outlet passes", options: []TSOption{ForOutlet("portal")}},
+		{
+			name: "a session-less outlet is rejected", options: []TSOption{ForOutlet("automation")},
+			wantErr: true, wantContains: "does not serve browser sessions",
+		},
+		{
+			name: "an undeclared outlet is rejected", options: []TSOption{ForOutlet("bogus")},
+			wantErr: true, wantContains: "undeclared outlet",
+		},
+		{
+			name: "an empty outlet name is rejected", options: []TSOption{ForOutlet("")},
+			wantErr: true, wantContains: "requires an outlet name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rg := &resourceGenerator{
+				routePrefix:       "api",
+				extraOutlets:      outlets,
+				typescriptTargets: []typescriptTarget{{destination: "ui/src", options: tt.options}},
+			}
+			err := rg.validateTypescriptOutletTargets()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				if !strings.Contains(err.Error(), tt.wantContains) {
+					t.Fatalf("error %q does not contain %q", err, tt.wantContains)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func Test_outletMembership_OnOutlet(t *testing.T) {
 	t.Parallel()
 
@@ -205,6 +296,45 @@ func Test_outletMembership_OnOutlet(t *testing.T) {
 			m := &outletMembership{OutletNames: tt.outlets}
 			if got := m.OnOutlet(tt.query); got != tt.want {
 				t.Errorf("OnOutlet(%q) = %v, want %v", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestWithTypes pins the option's reading: every package named is loaded with the run and
+// joins the writable set, in option order, and nothing else about the client changes.
+func TestWithTypes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		opts      []option
+		wantTypes []packageDir
+		wantLoad  []string
+	}{
+		{name: "no option names no package", wantTypes: nil, wantLoad: nil},
+		{name: "one package", opts: []option{WithTypes("pkg/telemetry")}, wantTypes: []packageDir{"pkg/telemetry"}, wantLoad: []string{"pkg/telemetry"}},
+		{
+			name:      "several packages, in option order",
+			opts:      []option{WithTypes("pkg/telemetry"), WithRPC("pkg/rpc"), WithTypes("pkg/cms")},
+			wantTypes: []packageDir{"pkg/telemetry", "pkg/cms"},
+			wantLoad:  []string{"pkg/telemetry", "pkg/rpc", "pkg/cms"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			if err := resolveOptions(c, tt.opts); err != nil {
+				t.Fatalf("resolveOptions() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.wantTypes, c.types); diff != "" {
+				t.Errorf("types mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantLoad, c.loadPackages); diff != "" {
+				t.Errorf("loadPackages mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -24,6 +24,11 @@ func NewPostgresClient(db *pgxpool.Pool) *PostgresClient {
 	}
 }
 
+// DBType returns the database type.
+func (c *PostgresClient) DBType() DBType {
+	return PostgresDBType
+}
+
 // Close closes the database connection.
 func (c *PostgresClient) Close() {
 	c.postgres.Close()
@@ -64,13 +69,18 @@ func (c *postgresReader[Resource]) DBType() DBType {
 }
 
 // Read reads a single resource from the database.
-func (c *postgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Resource, error) {
+func (c *postgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Row[Resource], error) {
 	panic("Read() not implemented for PostgresReader[Resource]")
 }
 
 // List reads a list of resources from the database.
-func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
+func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Row[Resource], error] {
 	panic("List() not implemented for PostgresReader[Resource]")
+}
+
+// Count runs a COUNT(*) statement and returns its one value.
+func (c *postgresReader[Resource]) Count(_ context.Context, _ *Statement) (int64, error) {
+	panic("Count() not implemented for PostgresReader[Resource]")
 }
 
 var _ ReadOnlyTransactionCloser = (*PostgresReadOnlyTransaction)(nil)

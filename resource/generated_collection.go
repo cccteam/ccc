@@ -18,6 +18,9 @@ type FieldTags struct {
 	JSON      string // json tag name (first comma-separated part); "" or "-" is unregistered
 	Perm      string // raw perm tag value; "" (enforced) or "-" (primary-key exemption) are the only legal values
 	Immutable bool   // immutable:"true"
+	Masking   string // raw masking tag value; "" (concealing) or "positional" are the only legal values
+	SQLType   string // raw sqltype tag value, the column's declared Spanner type; "" where the decoder sizes nothing
+	Nullable  string // raw nullable tag value; "" or "true" are the only legal values, and true only on a slice-typed field
 }
 
 // FieldTagsFromStructTag extracts the registration-relevant values from a struct tag: the
@@ -34,8 +37,33 @@ func FieldTagsFromStructTag(field accesstypes.Field, tag reflect.StructTag) Fiel
 		JSON:      jsonTag,
 		Perm:      tag.Get(permTagKey),
 		Immutable: immutableTag == trueStr,
+		Masking:   tag.Get(maskingTagKey),
+		SQLType:   tag.Get(sqltypeTagKey),
+		Nullable:  tag.Get(nullableTagKey),
 	}
 }
+
+// Masking is how a field's masked cells meet a sort or a filter. A
+// conditionally granted field is masked on the rows its condition does not
+// select; the question is what the query sees there.
+type Masking string
+
+const (
+	// MaskingConcealing is the default: the query runs over the visible
+	// projection, CASE WHEN <condition> THEN column END, so a masked cell is
+	// NULL wherever the query looks at it and nothing about a hidden value
+	// leaks through order or match. No index serves the expression, so a page
+	// sorted or filtered by the field sorts the tenant's partition. The empty
+	// Masking means the same.
+	MaskingConcealing Masking = "concealing"
+
+	// MaskingPositional is the field-level opt-in (struct tag
+	// masking:"positional"): the cell stays hidden in the output, but ordering
+	// and filtering run on the real column, so the index serves the page and
+	// the field's rank is disclosed — a reader who sees some values can tell
+	// where the hidden ones fall between them.
+	MaskingPositional Masking = "positional"
+)
 
 // SetData describes what registering a resource.Set built from a request struct adds to
 // a GeneratedCollection: the resource-level permissions, the tag-to-permission mappings
@@ -44,6 +72,8 @@ type SetData struct {
 	Permissions     []accesstypes.Permission
 	TagPermissions  accesstypes.TagPermissions
 	ImmutableFields map[accesstypes.Tag]struct{}
+	// PositionalFields are the tags declared masking:"positional".
+	PositionalFields map[accesstypes.Tag]struct{}
 }
 
 // NewSetData computes the registration data for a request struct described by fields,
@@ -57,21 +87,22 @@ type SetData struct {
 // grantable, while the runtime Set keeps requiring it (defense-in-depth behind the
 // decoder's 400-on-update).
 func NewSetData(fields []FieldTags, permissions ...accesstypes.Permission) (SetData, error) {
-	tagPermissions, _, perms, immutableFields, err := permissionsFromFieldTags(fields, permissions, true)
+	reg, err := permissionsFromFieldTags(fields, permissions, true)
 	if err != nil {
 		return SetData{}, errors.Wrap(err, "permissionsFromFieldTags()")
 	}
 
-	for tag := range immutableFields {
-		tagPermissions[tag] = slices.DeleteFunc(tagPermissions[tag], func(p accesstypes.Permission) bool {
+	for tag := range reg.immutableFields {
+		reg.tags[tag] = slices.DeleteFunc(reg.tags[tag], func(p accesstypes.Permission) bool {
 			return p == accesstypes.Update
 		})
 	}
 
 	return SetData{
-		Permissions:     perms,
-		TagPermissions:  tagPermissions,
-		ImmutableFields: immutableFields,
+		Permissions:      reg.permissions,
+		TagPermissions:   reg.tags,
+		ImmutableFields:  reg.immutableFields,
+		PositionalFields: reg.positionalFields,
 	}, nil
 }
 
@@ -85,6 +116,11 @@ type ManualRegistration struct {
 	Scope      accesstypes.PermissionScope
 	Permission accesstypes.Permission
 	Resource   accesstypes.Resource
+	// Outlets names the router outlets the hand-written route is mounted under, as
+	// @outlet does for a generated one. Empty means the default outlet only. A
+	// TypeScript target filtered to an outlet (ForOutlet) emits the registration's
+	// constants only when the target's outlet is named here.
+	Outlets []string
 }
 
 // CollectionData is the stable, serializable description of a permission collection. It
@@ -98,11 +134,65 @@ type CollectionData struct {
 // CollectionResource describes one resource's registrations within a permission collection.
 // RPC methods and manually registered resources carry only Permissions.
 type CollectionResource struct {
-	Name          accesstypes.Resource
-	Scope         accesstypes.PermissionScope
+	Name  accesstypes.Resource
+	Scope accesstypes.PermissionScope
+
+	// Computed marks a computed resource: a hand-written query surface whose
+	// permission checks run at decode time, where no row exists. Deploy-time
+	// grant validation (access.MigrateRoles) uses it to reject conditions that
+	// could never settle there.
+	Computed bool
+
 	Permissions   []accesstypes.Permission
 	Tags          []TagData
 	ImmutableTags []accesstypes.Tag
+
+	// The resource's binding vocabulary (ABAC design plan §04), compiled from
+	// the field-level binding annotations: attributes conditions reference,
+	// the structural tenancy binding, and the subject-side vocabulary.
+	Attributes    []AttributeData
+	Domain        *DomainBindingData
+	SubjectSets   []SubjectBindingData
+	SubjectValues []SubjectBindingData
+
+	// Transition is an RPC method resource's declared state transition
+	// (@transition, design plan §09); nil for everything else.
+	Transition *TransitionData
+
+	// Target is the row resource an RPC method's @target field addresses —
+	// set for every @target method, transition or plain (a transition's
+	// Target repeats its TransitionData.Target); empty for everything else.
+	// A targeted method's Execute grants may carry row-referencing
+	// conditions: the generated handler locates the row in its transaction
+	// and evaluates them there (design plan §12).
+	Target accesstypes.Resource
+
+	// Parent is a workflow member's immediate parent: the resource its
+	// @stateRoot foreign key references (the root, or another member on the
+	// chain); empty for everything else. The create-under-parent affordance
+	// (design plan §11) rides it: capabilities=Create on the parent's read
+	// answers, per row, which member resources the user may create beneath it.
+	Parent accesstypes.Resource
+
+	// How a list of the resource is ordered and narrowed, for a listed table
+	// or view resource. Order is the declared default order (@order), the
+	// fields every page sorts by when the request carries no sort; QueryKeys
+	// are the fields a request may name in a filter and sort by with an index
+	// behind it — the indexed and allow_filter fields — primary keys aside,
+	// which are exempt from masking. Deploy-time role validation
+	// (access.MigrateRoles) reads them with each tag's Masking to warn where a
+	// conditional grant puts a CASE in the ORDER BY or the WHERE.
+	Order     []accesstypes.Tag
+	QueryKeys []accesstypes.Tag
+}
+
+// TransitionData records a declared state transition on an RPC method
+// resource: the workflow root it moves, the pre-image states it may run from,
+// and the state the generated handler stamps after the body.
+type TransitionData struct {
+	Target accesstypes.Resource
+	From   []string
+	To     string
 }
 
 // TagData describes one field-level tag registration. An empty Permissions slice records
@@ -110,6 +200,9 @@ type CollectionResource struct {
 type TagData struct {
 	Name        accesstypes.Tag
 	Permissions []accesstypes.Permission
+	// Masking is how the field's masked cells meet a sort or a filter; empty
+	// is MaskingConcealing, the default.
+	Masking Masking
 }
 
 // CollectionBuilder assembles CollectionData by replaying the registration semantics a
@@ -126,7 +219,21 @@ func NewCollectionBuilder() *CollectionBuilder {
 
 // AddResourceSet registers a request struct's SetData under scope.
 func (b *CollectionBuilder) AddResourceSet(scope accesstypes.PermissionScope, res accesstypes.Resource, set SetData) error {
-	return b.g.addResourceSet(scope, res, set.Permissions, set.TagPermissions, set.ImmutableFields)
+	if err := b.g.addResourceSet(scope, res, set.Permissions, set.TagPermissions, set.ImmutableFields); err != nil {
+		return err
+	}
+	for tag := range set.PositionalFields {
+		b.g.setTagMasking(scope, res, tag, MaskingPositional)
+	}
+
+	return nil
+}
+
+// SetResourceQueryKeys records how a list of res is ordered and narrowed within
+// scope: its declared default order and the fields a request may filter and
+// sort by with an index behind it (see CollectionResource).
+func (b *CollectionBuilder) SetResourceQueryKeys(scope accesstypes.PermissionScope, res accesstypes.Resource, order, queryKeys []accesstypes.Tag) {
+	b.g.setResourceQueryKeys(scope, res, order, queryKeys)
 }
 
 // AddResource registers a single resource permission, allowing duplicate registrations
@@ -149,6 +256,30 @@ func (b *CollectionBuilder) AddMethodResource(scope accesstypes.PermissionScope,
 	return b.g.addResource(false, scope, permission, res)
 }
 
+// SetResourceComputed marks res as a computed resource within scope: a hand-written
+// query surface whose permission checks run at decode time, where no row exists.
+func (b *CollectionBuilder) SetResourceComputed(scope accesstypes.PermissionScope, res accesstypes.Resource) {
+	b.g.setResourceComputed(scope, res)
+}
+
+// SetMethodTransition records an RPC method resource's declared state transition
+// (@transition) within scope.
+func (b *CollectionBuilder) SetMethodTransition(scope accesstypes.PermissionScope, method accesstypes.Resource, transition TransitionData) {
+	b.g.setMethodTransition(scope, method, transition)
+}
+
+// SetMethodTarget records the row resource an RPC method's @target field
+// addresses within scope.
+func (b *CollectionBuilder) SetMethodTarget(scope accesstypes.PermissionScope, method, target accesstypes.Resource) {
+	b.g.setMethodTarget(scope, method, target)
+}
+
+// SetResourceParent records a workflow member's immediate parent within scope:
+// the resource its @stateRoot foreign key references.
+func (b *CollectionBuilder) SetResourceParent(scope accesstypes.PermissionScope, member, parent accesstypes.Resource) {
+	b.g.setResourceParent(scope, member, parent)
+}
+
 // Data returns the canonical, deterministically sorted form of everything registered so
 // far.
 func (b *CollectionBuilder) Data() CollectionData {
@@ -165,9 +296,16 @@ func (b *CollectionBuilder) GeneratedCollection() *GeneratedCollection {
 type (
 	tagStore          map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
 	resourceStore     map[accesstypes.Resource][]accesstypes.Permission
-	permissionMap     map[accesstypes.Resource]map[accesstypes.Permission]bool
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
+	maskingMap        map[accesstypes.Resource]map[accesstypes.Tag]Masking
 )
+
+// queryKeys is how a list of one resource is ordered and narrowed: the declared
+// default order and the request-time filter and sort keys, as tags.
+type queryKeys struct {
+	order []accesstypes.Tag
+	keys  []accesstypes.Tag
+}
 
 // GeneratedCollection is a read-only permission collection constructed from generated
 // CollectionData. It is immutable after construction: nothing in its API mutates it once
@@ -176,6 +314,13 @@ type GeneratedCollection struct {
 	tagStore        map[accesstypes.PermissionScope]tagStore
 	resourceStore   map[accesstypes.PermissionScope]resourceStore
 	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
+	bindings        map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings
+	computed        map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}
+	transitions     map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData
+	targets         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
+	parents         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
+	masking         map[accesstypes.PermissionScope]maskingMap
+	queryKeys       map[accesstypes.PermissionScope]map[accesstypes.Resource]queryKeys
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -184,6 +329,13 @@ func newGeneratedCollection() *GeneratedCollection {
 		tagStore:        make(map[accesstypes.PermissionScope]tagStore, 2),
 		resourceStore:   make(map[accesstypes.PermissionScope]resourceStore, 2),
 		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
+		bindings:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings, 2),
+		computed:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}, 2),
+		transitions:     make(map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData, 2),
+		targets:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
+		parents:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
+		masking:         make(map[accesstypes.PermissionScope]maskingMap, 2),
+		queryKeys:       make(map[accesstypes.PermissionScope]map[accesstypes.Resource]queryKeys, 2),
 	}
 }
 
@@ -193,13 +345,18 @@ func newGeneratedCollection() *GeneratedCollection {
 func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 	g := newGeneratedCollection()
 
+	if err := validateCollectionBindings(data.Resources); err != nil {
+		return nil, err
+	}
+
 	type resourceKey struct {
 		scope accesstypes.PermissionScope
 		name  accesstypes.Resource
 	}
 	seen := make(map[resourceKey]struct{}, len(data.Resources))
 
-	for _, res := range data.Resources {
+	for i := range data.Resources {
+		res := &data.Resources[i]
 		if res.Name == "" {
 			return nil, errors.New("resource with empty name")
 		}
@@ -221,29 +378,8 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			}
 		}
 
-		if len(res.Tags) > 0 {
-			if g.tagStore[res.Scope] == nil {
-				g.tagStore[res.Scope] = make(tagStore)
-			}
-			g.tagStore[res.Scope][res.Name] = make(map[accesstypes.Tag][]accesstypes.Permission, len(res.Tags))
-
-			for _, tag := range res.Tags {
-				if _, ok := g.tagStore[res.Scope][res.Name][tag.Name]; ok {
-					return nil, errors.Newf("duplicate tag %q under resource %q", tag.Name, res.Name)
-				}
-
-				var permissions []accesstypes.Permission
-				for _, perm := range tag.Permissions {
-					if perm == accesstypes.NullPermission {
-						return nil, errors.Newf("tag %q under resource %q registers a null permission", tag.Name, res.Name)
-					}
-					if slices.Contains(permissions, perm) {
-						return nil, errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag.Name, perm, res.Name)
-					}
-					permissions = append(permissions, perm)
-				}
-				g.tagStore[res.Scope][res.Name][tag.Name] = permissions
-			}
+		if err := g.addResourceTags(res); err != nil {
+			return nil, err
 		}
 
 		if len(res.ImmutableTags) > 0 {
@@ -256,9 +392,156 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			}
 			g.immutableFields[res.Scope][res.Name] = immutable
 		}
+
+		g.setResourceBindings(res.Scope, res.Name, &Bindings{
+			Attributes:    res.Attributes,
+			Domain:        res.Domain,
+			SubjectSets:   res.SubjectSets,
+			SubjectValues: res.SubjectValues,
+		})
+
+		if err := g.addResourceDeclarations(res); err != nil {
+			return nil, err
+		}
 	}
 
 	return g, nil
+}
+
+// addResourceDeclarations stores what one CollectionResource declares beyond
+// its registrations: the computed marker, a method's transition and target, a
+// member's parent, and how a list of it is ordered and narrowed.
+func (g *GeneratedCollection) addResourceDeclarations(res *CollectionResource) error {
+	if res.Computed {
+		g.setResourceComputed(res.Scope, res.Name)
+	}
+
+	if res.Transition != nil {
+		if res.Transition.Target == "" || len(res.Transition.From) == 0 || res.Transition.To == "" {
+			return errors.Newf("method resource %q declares an incomplete transition", res.Name)
+		}
+		if res.Target != "" && res.Target != res.Transition.Target {
+			return errors.Newf("method resource %q declares target %q but its transition targets %q", res.Name, res.Target, res.Transition.Target)
+		}
+		g.setMethodTransition(res.Scope, res.Name, *res.Transition)
+	}
+
+	if res.Target != "" {
+		g.setMethodTarget(res.Scope, res.Name, res.Target)
+	}
+
+	if res.Parent != "" {
+		g.setResourceParent(res.Scope, res.Name, res.Parent)
+	}
+
+	if len(res.Order) > 0 || len(res.QueryKeys) > 0 {
+		for _, tag := range slices.Concat(res.Order, res.QueryKeys) {
+			if _, ok := g.tagStore[res.Scope][res.Name][tag]; !ok {
+				return errors.Newf("resource %q orders or filters by %q, which is not one of its tags", res.Name, tag)
+			}
+		}
+		g.setResourceQueryKeys(res.Scope, res.Name, res.Order, res.QueryKeys)
+	}
+
+	return nil
+}
+
+// addResourceTags validates and stores one CollectionResource's tag registrations:
+// duplicate tags, duplicate tag permissions, and null tag permissions are invalid.
+func (g *GeneratedCollection) addResourceTags(res *CollectionResource) error {
+	if len(res.Tags) == 0 {
+		return nil
+	}
+
+	if g.tagStore[res.Scope] == nil {
+		g.tagStore[res.Scope] = make(tagStore)
+	}
+	g.tagStore[res.Scope][res.Name] = make(map[accesstypes.Tag][]accesstypes.Permission, len(res.Tags))
+
+	for _, tag := range res.Tags {
+		if _, ok := g.tagStore[res.Scope][res.Name][tag.Name]; ok {
+			return errors.Newf("duplicate tag %q under resource %q", tag.Name, res.Name)
+		}
+
+		var permissions []accesstypes.Permission
+		for _, perm := range tag.Permissions {
+			if perm == accesstypes.NullPermission {
+				return errors.Newf("tag %q under resource %q registers a null permission", tag.Name, res.Name)
+			}
+			if slices.Contains(permissions, perm) {
+				return errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag.Name, perm, res.Name)
+			}
+			permissions = append(permissions, perm)
+		}
+		g.tagStore[res.Scope][res.Name][tag.Name] = permissions
+
+		switch tag.Masking {
+		case "", MaskingConcealing:
+		case MaskingPositional:
+			g.setTagMasking(res.Scope, res.Name, tag.Name, MaskingPositional)
+		default:
+			return errors.Newf("tag %q under resource %q declares masking %q; %q and %q are the behaviors", tag.Name, res.Name, tag.Masking, MaskingConcealing, MaskingPositional)
+		}
+	}
+
+	return nil
+}
+
+// setTagMasking records a field's masking behavior within scope; only the
+// non-default behavior is stored.
+func (g *GeneratedCollection) setTagMasking(scope accesstypes.PermissionScope, res accesstypes.Resource, tag accesstypes.Tag, masking Masking) {
+	if g.masking[scope] == nil {
+		g.masking[scope] = make(maskingMap)
+	}
+	if g.masking[scope][res] == nil {
+		g.masking[scope][res] = make(map[accesstypes.Tag]Masking)
+	}
+	g.masking[scope][res][tag] = masking
+}
+
+// setResourceQueryKeys records how a list of res is ordered and narrowed
+// within scope.
+func (g *GeneratedCollection) setResourceQueryKeys(scope accesstypes.PermissionScope, res accesstypes.Resource, order, keys []accesstypes.Tag) {
+	if g.queryKeys[scope] == nil {
+		g.queryKeys[scope] = make(map[accesstypes.Resource]queryKeys)
+	}
+	g.queryKeys[scope][res] = queryKeys{order: slices.Clone(order), keys: slices.Clone(keys)}
+}
+
+// FieldMasking reports how the field's masked cells meet a sort or a filter
+// within scope: MaskingPositional where the field declared it, else
+// MaskingConcealing, the default for every field.
+func (g *GeneratedCollection) FieldMasking(scope accesstypes.PermissionScope, res accesstypes.Resource, tag accesstypes.Tag) Masking {
+	if masking, ok := g.masking[scope][res][tag]; ok {
+		return masking
+	}
+
+	return MaskingConcealing
+}
+
+// ConcealingKeys reports the fields a list of res orders or filters on whose
+// masked cells conceal: the declared default order, and the request-time
+// filter and sort keys, each less the positional fields. Deploy-time role
+// validation (access.MigrateRoles) warns where a conditional grant lands on
+// one of these and the row filter does not prove its condition, because the
+// CASE then stands in the ORDER BY or the WHERE and no index serves it.
+func (g *GeneratedCollection) ConcealingKeys(scope accesstypes.PermissionScope, res accesstypes.Resource) (order, keys []accesstypes.Tag) {
+	qk, ok := g.queryKeys[scope][res]
+	if !ok {
+		return nil, nil
+	}
+	concealing := func(tags []accesstypes.Tag) []accesstypes.Tag {
+		var out []accesstypes.Tag
+		for _, tag := range tags {
+			if g.FieldMasking(scope, res, tag) == MaskingConcealing {
+				out = append(out, tag)
+			}
+		}
+
+		return out
+	}
+
+	return concealing(qk.order), concealing(qk.keys)
 }
 
 // MustNewGeneratedCollection is NewGeneratedCollection panicking on invalid data, for
@@ -323,12 +606,180 @@ func (g *GeneratedCollection) IsResourceImmutable(scope accesstypes.PermissionSc
 	return ok
 }
 
+// IsComputedResource reports whether res is a computed resource within scope: a
+// hand-written query surface whose permission checks run at decode time, where
+// no row exists. A field resource answers as its base resource.
+func (g *GeneratedCollection) IsComputedResource(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
+	base, _ := res.ResourceAndTag()
+	_, ok := g.computed[scope][base]
+
+	return ok
+}
+
+// setResourceComputed records res as a computed resource within scope.
+func (g *GeneratedCollection) setResourceComputed(scope accesstypes.PermissionScope, res accesstypes.Resource) {
+	if g.computed[scope] == nil {
+		g.computed[scope] = make(map[accesstypes.Resource]struct{})
+	}
+	g.computed[scope][res] = struct{}{}
+}
+
+// setMethodTransition records an RPC method resource's declared transition
+// within scope. Every transition addresses a target row, so the target
+// registers alongside it — a transition-only registration still answers
+// MethodTarget and MethodsTargeting.
+func (g *GeneratedCollection) setMethodTransition(scope accesstypes.PermissionScope, method accesstypes.Resource, transition TransitionData) {
+	if g.transitions[scope] == nil {
+		g.transitions[scope] = make(map[accesstypes.Resource]TransitionData)
+	}
+	g.transitions[scope][method] = transition
+	g.setMethodTarget(scope, method, transition.Target)
+}
+
+// setMethodTarget records the row resource an RPC method's @target field
+// addresses within scope.
+func (g *GeneratedCollection) setMethodTarget(scope accesstypes.PermissionScope, method, target accesstypes.Resource) {
+	if g.targets[scope] == nil {
+		g.targets[scope] = make(map[accesstypes.Resource]accesstypes.Resource)
+	}
+	g.targets[scope][method] = target
+}
+
+// setResourceParent records a workflow member's immediate parent within scope.
+func (g *GeneratedCollection) setResourceParent(scope accesstypes.PermissionScope, member, parent accesstypes.Resource) {
+	if g.parents[scope] == nil {
+		g.parents[scope] = make(map[accesstypes.Resource]accesstypes.Resource)
+	}
+	g.parents[scope][member] = parent
+}
+
+// MembersOf lists the workflow member resources whose immediate parent hop is
+// parent, sorted by name — the create-under-parent affordance's candidates
+// (design plan §11): capabilities=Create on the parent's read answers, per
+// row, which of these the user may create beneath it. Every scope is
+// searched: a member and its parent share their scope kind by construction.
+func (g *GeneratedCollection) MembersOf(parent accesstypes.Resource) []accesstypes.Resource {
+	var members []accesstypes.Resource
+	for _, store := range g.parents {
+		for member, memberParent := range store {
+			if memberParent == parent {
+				members = append(members, member)
+			}
+		}
+	}
+	slices.Sort(members)
+
+	return members
+}
+
+// TagsRequiring reports the tags of res whose registration requires perm, sorted
+// by name: the fields a caller needs perm on, whether or not a read projects them.
+// The per-row write affordance (design plan §13) is planned over this set, so a
+// write-only field, registered under the write permissions alone and never
+// returned, still answers capabilities=Update. A tag registered without a
+// permission (a permission-exempt primary key) is never in the set. Every scope is
+// searched: a resource registers under one.
+func (g *GeneratedCollection) TagsRequiring(res accesstypes.Resource, perm accesstypes.Permission) []accesstypes.Tag {
+	var tags []accesstypes.Tag
+	for _, store := range g.tagStore {
+		for tag, permissions := range store[res] {
+			if slices.Contains(permissions, perm) {
+				tags = append(tags, tag)
+			}
+		}
+	}
+	slices.Sort(tags)
+
+	return tags
+}
+
+// MethodTarget reports the row resource method's @target field addresses
+// within scope, and whether the method declares one. A targeted method's
+// Execute grants may carry row-referencing conditions — the generated handler
+// locates the row inside its transaction and evaluates them there — so
+// deploy-time grant validation (access.MigrateRoles) asks this to tell a
+// targeted method from a plain one.
+func (g *GeneratedCollection) MethodTarget(scope accesstypes.PermissionScope, method accesstypes.Resource) (accesstypes.Resource, bool) {
+	target, ok := g.targets[scope][method]
+
+	return target, ok
+}
+
+// TransitionMethod pairs an RPC method resource with its declared transition.
+type TransitionMethod struct {
+	Method     accesstypes.Resource
+	Transition TransitionData
+}
+
+// TargetedMethod pairs an RPC method resource with the row resource its
+// @target field addresses; Transition carries the declared edge when the
+// method is a transition, nil for the plain located-row form.
+type TargetedMethod struct {
+	Method     accesstypes.Resource
+	Target     accesstypes.Resource
+	Transition *TransitionData
+}
+
+// MethodsTargeting lists the RPC method resources whose @target field
+// addresses target, sorted by method name — the capability envelope's Execute
+// candidates: a transition method's affordance is gated on the row's state
+// membership in its from set, a plain method's only on its Execute grant's
+// condition. Every scope is searched: a targeted method and its row resource
+// share their scope kind by construction.
+func (g *GeneratedCollection) MethodsTargeting(target accesstypes.Resource) []TargetedMethod {
+	var methods []TargetedMethod
+	for scope, store := range g.targets {
+		for method, methodTarget := range store {
+			if methodTarget != target {
+				continue
+			}
+			tm := TargetedMethod{Method: method, Target: methodTarget}
+			if transition, ok := g.transitions[scope][method]; ok {
+				tm.Transition = &transition
+			}
+			methods = append(methods, tm)
+		}
+	}
+	slices.SortFunc(methods, func(a, b TargetedMethod) int {
+		return strings.Compare(string(a.Method), string(b.Method))
+	})
+
+	return methods
+}
+
+// TransitionsOnto lists the RPC method resources whose declared transitions
+// target res, sorted by method name — the capability envelope's Execute
+// candidates. Every scope is searched: a transition's method and root share
+// their scope kind by construction.
+func (g *GeneratedCollection) TransitionsOnto(target accesstypes.Resource) []TransitionMethod {
+	var methods []TransitionMethod
+	for _, store := range g.transitions {
+		for method, transition := range store {
+			if transition.Target == target {
+				methods = append(methods, TransitionMethod{Method: method, Transition: transition})
+			}
+		}
+	}
+	slices.SortFunc(methods, func(a, b TransitionMethod) int {
+		return strings.Compare(string(a.Method), string(b.Method))
+	})
+
+	return methods
+}
+
 // Resources returns a sorted list of all unique base resource names in the collection.
 func (g *GeneratedCollection) Resources() []accesstypes.Resource {
+	return g.resources(nil)
+}
+
+func (g *GeneratedCollection) resources(skip map[accesstypes.Resource]struct{}) []accesstypes.Resource {
 	resources := []accesstypes.Resource{}
 	for _, stores := range g.resourceStore {
 		for resource, permissions := range stores {
 			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+			if _, skipped := skip[resource]; skipped {
 				continue
 			}
 
@@ -357,16 +808,66 @@ func (g *GeneratedCollection) ResourceExists(r accesstypes.Resource) bool {
 	return false
 }
 
+// permissionVocabulary and scopeVocabulary are every permission and scope the framework
+// defines, in the sorted order the generated TypeScript constants list them. The
+// constants name the vocabulary, not the application's registrations, so the browser
+// client's references hold in an application that has registered nothing yet.
+var (
+	permissionVocabulary = []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Execute, accesstypes.List, accesstypes.Read, accesstypes.Update}
+	scopeVocabulary      = []accesstypes.PermissionScope{accesstypes.DomainPermissionScope, accesstypes.GlobalPermissionScope}
+)
+
 // TypescriptData returns a struct containing all the data needed for TypeScript code generation.
 func (g *GeneratedCollection) TypescriptData() *TypescriptData {
-	return &TypescriptData{
-		Permissions:           g.permissions(),
-		ResourcePermissions:   g.resourcePermissions(),
-		Resources:             g.Resources(),
-		ResourceTags:          g.tags(),
-		ResourcePermissionMap: g.resourcePermissionMap(),
-		PermissionScopes:      g.permissionScopes(),
+	return g.TypescriptDataExcluding()
+}
+
+// TypescriptDataExcluding returns the TypeScript generation data with every
+// registration on the named resources omitted: the resources themselves and their
+// tags. The TypeScript generator passes the resources and methods that belong
+// exclusively to other router outlets, so an outlet-scoped target emits only its own
+// members. Permissions and scopes are the framework's whole vocabulary regardless: a
+// browser app names Permissions.Execute before the application registers a method,
+// and an all-global application still names the domain scope.
+func (g *GeneratedCollection) TypescriptDataExcluding(excluded ...accesstypes.Resource) *TypescriptData {
+	var skip map[accesstypes.Resource]struct{}
+	if len(excluded) > 0 {
+		skip = make(map[accesstypes.Resource]struct{}, len(excluded))
+		for _, res := range excluded {
+			skip[res] = struct{}{}
+		}
 	}
+
+	return &TypescriptData{
+		Permissions:      slices.Clone(permissionVocabulary),
+		Resources:        g.resources(skip),
+		Methods:          g.methods(skip),
+		ResourceTags:     g.tags(skip),
+		PermissionScopes: slices.Clone(scopeVocabulary),
+	}
+}
+
+// methods returns the sorted Execute-gated registrations not skipped: the
+// complement of resources, so every registration lands in exactly one of the
+// two lists.
+func (g *GeneratedCollection) methods(skip map[accesstypes.Resource]struct{}) []accesstypes.Resource {
+	methods := []accesstypes.Resource{}
+	for _, stores := range g.resourceStore {
+		for resource, permissions := range stores {
+			if !slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+			if _, skipped := skip[resource]; skipped {
+				continue
+			}
+
+			methods = append(methods, resource)
+		}
+	}
+
+	slices.Sort(methods)
+
+	return slices.Compact(methods)
 }
 
 // HasPermission reports whether the collection registers permission on res within scope.
@@ -439,46 +940,14 @@ func (g *GeneratedCollection) addResourceSet(scope accesstypes.PermissionScope, 
 	return nil
 }
 
-func (g *GeneratedCollection) permissions() []accesstypes.Permission {
-	permissions := []accesstypes.Permission{}
-	for _, stores := range g.resourceStore {
-		for _, perms := range stores {
-			permissions = append(permissions, perms...)
-		}
-	}
-	for _, stores := range g.tagStore {
-		for _, tags := range stores {
-			for _, perms := range tags {
-				permissions = append(permissions, perms...)
-			}
-		}
-	}
-	slices.Sort(permissions)
-
-	return slices.Compact(permissions)
-}
-
-// resourcePermissions is permissions() minus Execute (method resources carry Execute
-// alone, so they never contribute a resource-level permission a role can be granted).
-func (g *GeneratedCollection) resourcePermissions() []accesstypes.Permission {
-	permissions := g.permissions()
-
-	filtered := permissions[:0]
-	for _, perm := range permissions {
-		if perm != accesstypes.Execute {
-			filtered = append(filtered, perm)
-		}
-	}
-	clear(permissions[len(filtered):])
-
-	return filtered
-}
-
-func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag {
+func (g *GeneratedCollection) tags(skip map[accesstypes.Resource]struct{}) map[accesstypes.Resource][]accesstypes.Tag {
 	resourcetags := make(map[accesstypes.Resource][]accesstypes.Tag)
 
 	for _, tagStore := range g.tagStore {
 		for resource, tags := range tagStore {
+			if _, skipped := skip[resource]; skipped {
+				continue
+			}
 			for tag := range tags {
 				resourcetags[resource] = append(resourcetags[resource], tag)
 				slices.Sort(resourcetags[resource])
@@ -489,76 +958,15 @@ func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag 
 	return resourcetags
 }
 
-func (g *GeneratedCollection) resourcePermissionMap() permissionMap {
-	permMap := make(map[accesstypes.Resource]map[accesstypes.Permission]bool)
-	permSet := make(map[accesstypes.Permission]struct{})
-	resources := make(map[accesstypes.Resource]struct{})
-
-	setRequiredPerms := func(res accesstypes.Resource, permissions []accesstypes.Permission) {
-		permMap[res] = make(map[accesstypes.Permission]bool)
-		for _, perm := range permissions {
-			permSet[perm] = struct{}{}
-			permMap[res][perm] = true
-		}
-	}
-
-	for _, store := range g.resourceStore {
-		for resource, permissions := range store {
-			if slices.Contains(permissions, accesstypes.Execute) {
-				continue
-			}
-
-			resources[resource] = struct{}{}
-			setRequiredPerms(resource, permissions)
-		}
-	}
-
-	for _, store := range g.tagStore {
-		for resource, tagmap := range store {
-			for tag, permissions := range tagmap {
-				if slices.Contains(permissions, accesstypes.Execute) {
-					continue
-				}
-
-				resources[resource.ResourceWithTag(tag)] = struct{}{}
-				setRequiredPerms(resource.ResourceWithTag(tag), permissions)
-			}
-		}
-	}
-
-	for resource := range resources {
-		for perm := range permSet {
-			if _, ok := permMap[resource][perm]; !ok {
-				permMap[resource][perm] = false
-			}
-		}
-	}
-
-	return permMap
+// resourceKey identifies one resource registration: its scope and name.
+type resourceKey struct {
+	scope accesstypes.PermissionScope
+	name  accesstypes.Resource
 }
 
-// permissionScopes returns the permission scopes the collection registers resources
-// under, sorted for deterministic generated output. These are scopes (global/domain),
-// not tenant domains — the tenant universe is app-owned.
-func (g *GeneratedCollection) permissionScopes() []accesstypes.PermissionScope {
-	scopes := make([]accesstypes.PermissionScope, 0, len(g.resourceStore))
-	for scope := range g.resourceStore {
-		scopes = append(scopes, scope)
-	}
-	slices.Sort(scopes)
-
-	return scopes
-}
-
-// collectionDataFrom canonicalizes a collection's stores: resources sorted by scope then
-// name, tags and permissions sorted, and resource-level permissions deduplicated (manual
-// registration permits duplicates).
-func collectionDataFrom(g *GeneratedCollection) CollectionData {
-	type resourceKey struct {
-		scope accesstypes.PermissionScope
-		name  accesstypes.Resource
-	}
-
+// collectionResourceKeys enumerates every (scope, resource) pair any of the
+// collection's stores mention, sorted by scope then name.
+func collectionResourceKeys(g *GeneratedCollection) []resourceKey {
 	keySet := make(map[resourceKey]struct{})
 	for scope, store := range g.resourceStore {
 		for res := range store {
@@ -571,6 +979,21 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 		}
 	}
 	for scope, store := range g.immutableFields {
+		for res := range store {
+			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
+		}
+	}
+	for scope, store := range g.bindings {
+		for res := range store {
+			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
+		}
+	}
+	for scope, store := range g.computed {
+		for res := range store {
+			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
+		}
+	}
+	for scope, store := range g.transitions {
 		for res := range store {
 			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
 		}
@@ -597,11 +1020,24 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 		return 0
 	})
 
+	return keys
+}
+
+// collectionDataFrom canonicalizes a collection's stores: resources sorted by scope then
+// name, tags and permissions sorted, and resource-level permissions deduplicated (manual
+// registration permits duplicates).
+func collectionDataFrom(g *GeneratedCollection) CollectionData {
+	keys := collectionResourceKeys(g)
+
 	data := CollectionData{Resources: make([]CollectionResource, 0, len(keys))}
 	for _, key := range keys {
 		res := CollectionResource{
 			Name:  key.name,
 			Scope: key.scope,
+		}
+
+		if _, ok := g.computed[key.scope][key.name]; ok {
+			res.Computed = true
 		}
 
 		perms := slices.Clone(g.resourceStore[key.scope][key.name])
@@ -626,7 +1062,7 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 				if len(tagPerms) == 0 {
 					tagPerms = nil
 				}
-				res.Tags = append(res.Tags, TagData{Name: tag, Permissions: tagPerms})
+				res.Tags = append(res.Tags, TagData{Name: tag, Permissions: tagPerms, Masking: g.masking[key.scope][key.name][tag]})
 			}
 		}
 
@@ -639,8 +1075,40 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 			slices.Sort(res.ImmutableTags)
 		}
 
+		if bindings, ok := g.bindings[key.scope][key.name]; ok {
+			applyBindingData(&res, &bindings)
+		}
+
+		if transition, ok := g.transitions[key.scope][key.name]; ok {
+			transition.From = slices.Clone(transition.From)
+			res.Transition = &transition
+		}
+
+		if target, ok := g.targets[key.scope][key.name]; ok {
+			res.Target = target
+		}
+
+		if parent, ok := g.parents[key.scope][key.name]; ok {
+			res.Parent = parent
+		}
+
+		if qk, ok := g.queryKeys[key.scope][key.name]; ok {
+			res.Order = slices.Clone(qk.order)
+			res.QueryKeys = slices.Clone(qk.keys)
+		}
+
 		data.Resources = append(data.Resources, res)
 	}
 
 	return data
+}
+
+// applyBindingData copies a resource's stored binding vocabulary onto its
+// serializable form, in canonical (name-sorted) order.
+func applyBindingData(res *CollectionResource, bindings *Bindings) {
+	sorted := bindings.sorted()
+	res.Attributes = sorted.Attributes
+	res.Domain = sorted.Domain
+	res.SubjectSets = sorted.SubjectSets
+	res.SubjectValues = sorted.SubjectValues
 }

@@ -17,7 +17,7 @@ const (
 	allowFilterTagKey        = "allow_filter"
 	indexTagKey              = "index"
 	uniqueIndexTagKey        = "uniqueindex"
-	enumeratedTagKey         = "enumerated"
+	maskingTagKey            = "masking"
 )
 
 // sourceStructTagKeys registers every author-written struct-tag key for the
@@ -30,8 +30,21 @@ var sourceStructTagKeys = []string{
 	allowFilterTagKey,
 	indexTagKey,
 	uniqueIndexTagKey,
-	enumeratedTagKey,
+	maskingTagKey,
 }
+
+// Values recognized in a masking tag: how a field's masked cells meet a sort or a
+// filter. concealing is the default and says so; positional opts the field into
+// sorting and filtering on the real column while the cell stays hidden — register new
+// values in maskingValues below.
+const (
+	maskingPositional = "positional"
+	maskingConcealing = "concealing"
+)
+
+// maskingValues registers every recognized masking value, for the refusal's
+// suggestion and the README completeness test.
+var maskingValues = []string{maskingPositional, maskingConcealing}
 
 // Values recognized inside a conditions tag's comma-separated list — register new values
 // in conditionValues below.
@@ -57,4 +70,12 @@ const (
 	jsonTagKey         = "json"
 	immutableOutTagKey = "immutable"
 	piiOutTagKey       = "pii"
+	maskingOutTagKey   = "masking"
+	// sqltypeOutTagKey carries a column's declared Spanner type onto a patch request
+	// struct field the decoder sizes (resourceField.SqltypeTag).
+	sqltypeOutTagKey = "sqltype"
+	// nullableOutTagKey marks a slice-typed patch request struct field whose column
+	// allows NULL, the one nullability fact the decoder cannot read off the field's
+	// type (resourceField.NullableTag).
+	nullableOutTagKey = "nullable"
 )

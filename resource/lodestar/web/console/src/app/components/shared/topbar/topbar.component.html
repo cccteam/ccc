@@ -1,0 +1,18 @@
+<!--
+  Items carry the permission their destination requires; cccHasPermission answers from
+  the permission digest, so a persona sees only the decks they can open.
+-->
+<nav class="menu">
+  @for (item of menuData; track item.label) {
+    @if (item.children && item.children.length) {
+      <button mat-button [matMenuTriggerFor]="groupMenu">{{ item.label }} ▾</button>
+      <mat-menu #groupMenu="matMenu">
+        @for (child of item.children; track child.label) {
+          <a mat-menu-item *cccHasPermission="scopeFor(child)" [routerLink]="child.route">{{ child.label }}</a>
+        }
+      </mat-menu>
+    } @else {
+      <a mat-button *cccHasPermission="scopeFor(item)" [routerLink]="item.route">{{ item.label }}</a>
+    }
+  }
+</nav>

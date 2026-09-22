@@ -138,3 +138,44 @@ type Widget struct {
 		})
 	}
 }
+
+// Test_rpcTypeImports_result pins that the RPC handler's type imports cover the
+// result's leaf packages: the response mirror declares them, and a result reaching
+// time.Time (or decimal.Decimal) fell back to goimports before this.
+func Test_rpcTypeImports_result(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "wirefixture"))
+	result, err := walkFixture(t, structs, "Shared")
+	if err != nil {
+		t.Fatalf("walkFixture(Shared) error = %v", err)
+	}
+	request, err := walkFixture(t, structs, "Reading")
+	if err != nil {
+		t.Fatalf("walkFixture(Reading) error = %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		method   *rpcMethodInfo
+		wantPath string
+	}{
+		{name: "the result's packages are declared", method: &rpcMethodInfo{Struct: structs["Shared"], Result: result}, wantPath: "time"},
+		{name: "the request's packages are declared", method: &rpcMethodInfo{Struct: structs["Reading"], Request: request}, wantPath: "time"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var found bool
+			for _, imp := range rpcTypeImports(nil, tt.method) {
+				if imp.path == tt.wantPath {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("rpcTypeImports() = %v, want %q among them", rpcTypeImports(nil, tt.method), tt.wantPath)
+			}
+		})
+	}
+}

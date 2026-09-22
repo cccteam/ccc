@@ -1,0 +1,2 @@
+DROP INDEX WingsByName;
+DROP TABLE Wings;

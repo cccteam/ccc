@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"strings"
+
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
@@ -53,6 +55,35 @@ type resourceEnumsData struct {
 	EnumMap    map[string][]*enumData
 }
 
+// storageFileData feeds the storage-methods file of one package: the types declared
+// there that a JSON column holds and that implement no Spanner methods of their own.
+type storageFileData struct {
+	Source  string
+	Package string
+	// Types are the unqualified type names, sorted.
+	Types []string
+}
+
+// jsonFileData renders a package's zz_gen_json.go: the JSON pair of every defined type
+// the package declares over a type with JSON methods.
+type jsonFileData struct {
+	Source  string
+	Package string
+	// Types are the pairs, sorted by type name.
+	Types []jsonPair
+}
+
+// typeImports names the packages the right-hand sides come from, so the import fixer
+// resolves their qualifiers.
+func (d *jsonFileData) typeImports() []fixerImport {
+	var imports []fixerImport
+	for _, pair := range d.Types {
+		imports = append(imports, pair.imports...)
+	}
+
+	return imports
+}
+
 type handlersFileData struct {
 	Source              string
 	LocalPackageImports string
@@ -90,6 +121,9 @@ type consolidatedPatchData struct {
 	// HandlerName is the dispatcher method's name: PatchResources on the default
 	// outlet, Patch<Suffix>Resources on an extra outlet's dispatcher.
 	HandlerName string
+	// ConcealedDomains swaps the descent's question from DomainExists to
+	// DomainVisible (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 // consolidatedCaseData is one resource case of the consolidated dispatch, carrying the
@@ -118,6 +152,12 @@ type handlerContentData struct {
 	ReceiverName            string
 }
 
+// fileHandlerData feeds one @file route's handler on a table or view resource.
+type fileHandlerData struct {
+	handlerContentData
+	File *fileRoute
+}
+
 type computedHandlerData struct {
 	Source              string
 	LocalPackageImports string
@@ -132,6 +172,9 @@ func (d *computedHandlerData) typeImports() []fixerImport {
 	imports := appendTypeImports(nil, d.Resource.Imports())
 	for _, field := range d.Resource.Fields {
 		imports = appendTypeImports(imports, field.Imports())
+	}
+	if d.Resource.Shape != nil {
+		imports = appendTypeImports(imports, d.Resource.Shape.Imports())
 	}
 
 	return imports
@@ -188,6 +231,14 @@ type routerFileData struct {
 type outletRouteData struct {
 	Name   string
 	Suffix string
+	// Prefix is the outlet's route prefix, under which the session routes render
+	// when the outlet serves sessions (resource routes carry it pre-rendered in
+	// their paths).
+	Prefix string
+	// ServesSessions registers the permission-digest and user-domains routes under
+	// the outlet's prefix and adds their handler requirements to the outlet's
+	// interface (see the ServesSessions option).
+	ServesSessions bool
 	// RoutesMap groups the outlet's routes by source struct name (template map
 	// iteration is name-sorted, keeping output deterministic).
 	RoutesMap             map[string][]*generatedRoute
@@ -206,12 +257,31 @@ type negativeRouterTest struct {
 	URL    string
 }
 
+// permissionsData feeds the permissions template: the application's
+// library-delegating PermissionDigest and UserDomains handlers.
+type permissionsData struct {
+	Source          string
+	Package         string
+	ApplicationName string
+	ReceiverName    string
+	// RoutePrefix names the default outlet's route prefix in the emitted doc
+	// comments; the routes themselves are registered by the routes template.
+	RoutePrefix string
+	// HasExtraSessionOutlets extends the doc comments when additional outlets
+	// serve sessions (ServesSessions), whose routes the same handlers serve.
+	HasExtraSessionOutlets bool
+}
+
 type domainGuardData struct {
 	Source              string
 	Package             string
 	LocalPackageImports string
 	ApplicationName     string
 	ReceiverName        string
+	// ConcealedDomains swaps the guard's question from DomainExists to
+	// DomainVisible, collapsing "unauthorized" into "nonexistent"
+	// (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 type decodersFileData struct {
@@ -222,12 +292,21 @@ type decodersFileData struct {
 	ReceiverName        string
 	// RPCPackage qualifies the generated Method union constraining NewRPCDecoder.
 	RPCPackage string
+	// RouterPackage qualifies the generated collection the query decoders render
+	// conditional grants against.
+	RouterPackage string
 	// The Has* fields emit each constructor only when a generated handler calls it,
 	// so an application carries no constructor its code does not use.
 	HasQueryDecoder         bool
 	HasComputedQueryDecoder bool
 	HasPatchDecoder         bool
 	HasRPCDecoder           bool
+	HasFileDecoder          bool
+	HasComputedFileDecoder  bool
+	// HasCollection marks an application that generates the permission collection,
+	// which the RPC decoder wires in so armed writes render conditional grants.
+	HasCollection         bool
+	HasTargetedRPCDecoder bool
 }
 
 type appContractData struct {
@@ -241,7 +320,13 @@ type appContractData struct {
 	HasValidator    bool
 	HasDomainScoped bool
 	HasRPC          bool
-	HasComputed     bool
+	// HasFileStore asserts FileStore() while any @upload method streams into it or any
+	// @file route opens a stored file from it.
+	HasFileStore bool
+	HasComputed  bool
+	// ConcealedDomains swaps the domain-scoped contract method from
+	// DomainExists to DomainVisible (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 type handlerTestsMainData struct {
@@ -273,6 +358,19 @@ type authzCase struct {
 	Body string
 	// DeniedOnly suppresses the granted case (mutation endpoints).
 	DeniedOnly bool
+	// DeniedStatus overrides the denied case's expected status (default 403).
+	// Concealed domains (WithConcealedDomains) answer a caller with no grants
+	// as if the domain did not exist: 404 from the route guard, 400 from the
+	// consolidated dispatcher's operation-path descent.
+	DeniedStatus string
+	// Headers are request headers the case sends (the dry-run header).
+	Headers []authzHeader
+}
+
+// authzHeader is one request header a generated authorization case sends.
+type authzHeader struct {
+	Name  string
+	Value string
 }
 
 type authzTestData struct {
@@ -298,6 +396,9 @@ type rpcHandlerData struct {
 	Package             string
 	ApplicationName     string
 	ReceiverName        string
+	// ResourcesPackage names the resources package, whose generated query and
+	// patch builders the declared-transition frame works through.
+	ResourcesPackage string
 }
 
 func (d *rpcHandlerData) typeImports() []fixerImport {
@@ -323,7 +424,11 @@ type tsConstantsData struct {
 	File       *typescriptGenerator
 	Data       *resource.TypescriptData
 	RPCMethods []*rpcMethodInfo
-	PIIMap     map[accesstypes.Resource]map[accesstypes.Tag]bool
+	// ManualMethods are the Execute registrations without a parsed RPC struct
+	// (@manualAddResource(Execute)); they join the Methods constants after the
+	// generated methods.
+	ManualMethods []accesstypes.Resource
+	PIIMap        map[accesstypes.Resource]map[accesstypes.Tag]bool
 }
 
 type tsResourcesData struct {
@@ -334,14 +439,15 @@ type tsResourcesData struct {
 	GenPrefix         string
 	// DomainRoutePrefix is the route pair domain-scoped routes are served under
 	// ("stations/{stationID}"), rendered ahead of their route value; frontends
-	// interpolate the parameter token. DomainRoutePrefixTS is the same pair as a
-	// TypeScript template-literal fragment ("stations/${string}") for operation path
-	// types.
-	DomainRoutePrefix   string
-	DomainRoutePrefixTS string
-	DomainRouteParam    string
-	HasDomainScoped     bool
-	HasConsolidated     bool
+	// interpolate the parameter token.
+	DomainRoutePrefix string
+	DomainRouteParam  string
+	HasDomainScoped   bool
+	// Workflows carries each stateful root's assembled graph — the same facts
+	// the DOT files draw (minus context references) — so a frontend can render
+	// the workflow itself. Empty for applications without workflows, which then
+	// emit nothing (byte-identical output).
+	Workflows []*workflowGraph
 }
 
 type tsMethodsData struct {
@@ -380,9 +486,247 @@ func resourceTypeImports(dst []fixerImport, res *resourceInfo) []fixerImport {
 // field types.
 func rpcTypeImports(dst []fixerImport, method *rpcMethodInfo) []fixerImport {
 	dst = appendTypeImports(dst, method.Imports())
+	if method.Request != nil {
+		dst = appendTypeImports(dst, method.Request.Imports())
+	}
+	if method.Result != nil {
+		// The response mirror declares the result's leaf types too.
+		dst = appendTypeImports(dst, method.Result.Imports())
+	}
 	for _, field := range method.Fields {
 		dst = appendTypeImports(dst, field.Imports())
 	}
 
 	return dst
+}
+
+// tsAPIData feeds the typed API client template (zz_gen_api.ts): the descriptor the
+// @cccteam/resource runtime interprets plus the per-resource write shapes and key
+// tuples only the generator can derive. Only default-outlet resources and methods
+// appear — the browser client addresses the default outlet.
+type tsAPIData struct {
+	File               *typescriptGenerator
+	GenPrefix          string
+	Resources          []*tsAPIResource
+	Methods            []*tsAPIMethod
+	DomainRouteSegment string
+	DomainRouteParam   string
+	ConsolidatedRoute  string
+	HasDomainScoped    bool
+	HasGlobal          bool
+	HasDomain          bool
+}
+
+// HasUpload reports whether any method on this outlet is an @upload, so the client
+// file imports the upload handle type.
+func (d *tsAPIData) HasUpload() bool {
+	for _, method := range d.Methods {
+		if method.UploadMaxBytes > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HasNullBoolean reports whether a key or write shape on this outlet is typed
+// NullBoolean, so the client file imports the type it names.
+func (d *tsAPIData) HasNullBoolean() bool {
+	return d.hasFieldType(func(fieldType string) bool { return fieldType == nullBooleanTSType })
+}
+
+// TypeImports lists the imports the client file needs: the @typescript declarations
+// behind every key, create, and patch field it renders, grouped per module.
+func (d *tsAPIData) TypeImports() []tsImportGroup {
+	var imports []*tsImport
+	for _, res := range d.Resources {
+		for _, fields := range [][]*tsAPIField{res.Keys, res.CreateFields, res.PatchFields} {
+			for _, field := range fields {
+				imports = append(imports, field.Import)
+			}
+		}
+	}
+
+	return groupImports(imports)
+}
+
+// hasFieldType reports whether any key, create, or patch field the client file
+// renders has a type the predicate accepts.
+func (d *tsAPIData) hasFieldType(accept func(fieldType string) bool) bool {
+	for _, res := range d.Resources {
+		for _, fields := range [][]*tsAPIField{res.Keys, res.CreateFields, res.PatchFields} {
+			for _, field := range fields {
+				if accept(field.Type) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// ResourceImports lists the row types the client file imports from the resources file.
+func (d *tsAPIData) ResourceImports() string {
+	names := make([]string, 0, len(d.Resources))
+	for _, res := range d.Resources {
+		names = append(names, res.Name)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// MethodImports lists the body and result types the client file imports from the
+// methods file.
+func (d *tsAPIData) MethodImports() string {
+	names := make([]string, 0, len(d.Methods)*2)
+	for _, method := range d.Methods {
+		names = append(names, method.Name)
+		if method.Answers {
+			names = append(names, method.ResolvesWith())
+		}
+	}
+
+	return strings.Join(names, ", ")
+}
+
+type tsAPIResource struct {
+	// Name is the plural PascalCase resource name — the Resources constant and the row type.
+	Name string
+	// Property is the camelCase name the handle hangs off the client under.
+	Property     string
+	Route        string
+	Scope        accesstypes.PermissionScope
+	Consolidated bool
+	Keys         []*tsAPIField
+	Operations   []string
+	HasCreate    bool
+	CreateFields []*tsAPIField
+	HasPatch     bool
+	PatchFields  []*tsAPIField
+	// PageDefault and PageMax are the resource's page sizes as the client
+	// descriptor carries them: the page a limit-less request receives, and
+	// the largest page it may ask for (0 = none, which also permits limit=all).
+	PageDefault uint64
+	PageMax     uint64
+	// Order is the declared @order as the descriptor carries it, each entry a JSON
+	// field name and direction, so a client knows a request without a sort is already
+	// ordered and issues cursors; empty when the resource declares none and lists by
+	// primary key.
+	Order []*tsAPISort
+	// Files are the resource's @file segments, so the handle addresses a row's file
+	// (fileUrl); empty when the resource declares none.
+	Files []string
+}
+
+// tsAPISort is one entry of a descriptor's declared order.
+type tsAPISort struct {
+	Field     string
+	Direction string
+}
+
+// HandleType renders the ResourceHandle instantiation for the resource: the row type,
+// the key tuple, the operations the server generated, and the write shapes when the
+// resource accepts writes.
+func (r *tsAPIResource) HandleType() string {
+	ops := make([]string, 0, len(r.Operations))
+	for _, op := range r.Operations {
+		ops = append(ops, "'"+op+"'")
+	}
+	args := []string{r.Name, r.Name + "Key", strings.Join(ops, " | ")}
+	switch {
+	case r.HasPatch:
+		args = append(args, r.createTypeName(), r.Name+"Patch")
+	case r.HasCreate:
+		args = append(args, r.createTypeName())
+	}
+
+	return "ResourceHandle<" + strings.Join(args, ", ") + ">"
+}
+
+func (r *tsAPIResource) createTypeName() string {
+	if r.HasCreate {
+		return r.Name + "Create"
+	}
+
+	return "never"
+}
+
+type tsAPIField struct {
+	Name     string
+	Type     string
+	Required bool
+	// Import is the @typescript declaration behind the field's type, nil for a
+	// built-in row or a derived interface.
+	Import *tsImport
+}
+
+type tsAPIMethod struct {
+	Name     string
+	Property string
+	Route    string
+	Scope    accesstypes.PermissionScope
+	// Answers marks a method whose Execute returns a result: its handle is typed
+	// with the generated <Name>Result, or <Name>Answer when it declares statuses.
+	Answers bool
+	// Statuses is the method's @answers declaration, carried on the descriptor
+	// so the client tells the method's own 4xx from the frame's.
+	Statuses []int
+	// UploadMaxBytes is the method's @upload maximum, 0 for a JSON method; the
+	// descriptor carries it so the client refuses an oversized upload locally.
+	UploadMaxBytes int64
+}
+
+// HandleType is the handle the client exposes the method under: an
+// UploadMethodHandle, which adds upload(body, files), for an @upload method.
+func (m *tsAPIMethod) HandleType() string {
+	if m.UploadMaxBytes > 0 {
+		return "UploadMethodHandle"
+	}
+
+	return "MethodHandle"
+}
+
+// ResultName is the generated TypeScript result interface's name.
+func (m *tsAPIMethod) ResultName() string {
+	return m.Name + "Result"
+}
+
+// AnswerName is the generated TypeScript answer interface's name: the status
+// the method chose with its typed result.
+func (m *tsAPIMethod) AnswerName() string {
+	return m.Name + "Answer"
+}
+
+// ResolvesWith is the type the method's handle resolves with: the answer when
+// the method declares statuses, else the result.
+func (m *tsAPIMethod) ResolvesWith() string {
+	if len(m.Statuses) > 0 {
+		return m.AnswerName()
+	}
+
+	return m.ResultName()
+}
+
+// StatusArray renders the declared statuses as a TypeScript array literal.
+func (m *tsAPIMethod) StatusArray() string {
+	return "[" + statusList(m.Statuses, ", ") + "]"
+}
+
+// ScopeKind renders the resource's permission scope as the client descriptor spells it.
+func (r *tsAPIResource) ScopeKind() string {
+	return scopeKind(r.Scope)
+}
+
+// ScopeKind renders the method's permission scope as the client descriptor spells it.
+func (m *tsAPIMethod) ScopeKind() string {
+	return scopeKind(m.Scope)
+}
+
+func scopeKind(scope accesstypes.PermissionScope) string {
+	if scope == accesstypes.DomainPermissionScope {
+		return string(accesstypes.DomainPermissionScope)
+	}
+
+	return string(accesstypes.GlobalPermissionScope)
 }

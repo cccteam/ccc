@@ -1,0 +1,5 @@
+processes:
+  spanner:
+    command: podman run --rm -p 9010:9010 gcr.io/cloud-spanner-emulator/emulator:1.5.43
+  pilots-gui:
+    command: cd apps/pilots/gui && npm run start

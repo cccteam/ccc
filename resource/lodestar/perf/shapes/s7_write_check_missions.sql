@@ -1,0 +1,2 @@
+-- Write check: one conditional group over the target row located by primary key.
+SELECT (EXISTS (SELECT 1 FROM `SquadronMemberships` `ca1` WHERE `ca1`.`UserId` = 'lead' AND `ca1`.`SquadronId` = `Missions`.`AssignedSquadronId` AND EXISTS (SELECT 1 FROM `Squadrons` `ca2` WHERE `ca2`.`Id` = `ca1`.`SquadronId` AND EXISTS (SELECT 1 FROM `Wings` `ca3` WHERE `ca3`.`Id` = `ca2`.`WingId` AND `ca3`.`SectorId` = 'anvil')))) AS g0 FROM Missions WHERE Id = '80000000-0000-4000-8000-000000000002'

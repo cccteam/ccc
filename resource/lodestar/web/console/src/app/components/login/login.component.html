@@ -1,0 +1,55 @@
+<div class="login-page">
+  <mat-card class="login-card" appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>✦ Lodestar</mat-card-title>
+      <mat-card-subtitle>Rescue and salvage operations console</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form (ngSubmit)="login()">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Login</mat-label>
+          <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Password</mat-label>
+          <input
+            matInput
+            name="password"
+            type="password"
+            [(ngModel)]="password"
+            autocomplete="current-password"
+            required />
+        </mat-form-field>
+        <button mat-flat-button color="primary" type="submit" class="full-width" [disabled]="busy()">Sign in</button>
+      </form>
+      <p class="hint">
+        Every persona shares the password <code>lodestar</code>. Pick a card from the crew manifest to fill the form,
+        then sign in.
+      </p>
+    </mat-card-content>
+  </mat-card>
+
+  <div class="manifest">
+    @for (deck of decks; track deck) {
+      <h3>{{ deck }}</h3>
+      <div class="cards">
+        @for (persona of personasOn(deck); track persona.login) {
+          <button
+            type="button"
+            class="persona"
+            [class.selected]="username === persona.login"
+            (click)="fillPersona(persona.login)">
+            <span class="login">{{ persona.login }}</span>
+            <span class="name">{{ persona.name }}</span>
+            <span class="proves">{{ persona.proves }}</span>
+          </button>
+        }
+      </div>
+    }
+    <p class="droid">
+      <mat-icon>smart_toy</mat-icon>
+      R7, the droid service account, has no login: it posts telemetry through the API-keyed droid channel (see
+      walkthrough.sh).
+    </p>
+  </div>
+</div>

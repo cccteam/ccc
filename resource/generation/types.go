@@ -2,13 +2,17 @@ package generation
 
 import (
 	"fmt"
+	"go/types"
 	"iter"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 
@@ -17,11 +21,37 @@ import (
 
 const (
 	booleanStr = "boolean"
+
+	// reservedMaskedNamesColumn is the read statements' reserved output column
+	// (the masked cells' JSON names); resource columns must not collide with it.
+	reservedMaskedNamesColumn = "zzMaskedFields"
+
+	// reservedCapabilitiesProperty is the reserved per-row JSON property the
+	// capability envelope rides (resource.CapabilitiesProperty), and
+	// reservedCapabilityChecksColumn its statement's reserved boolean-array
+	// output column; resource columns must not collide with either.
+	reservedCapabilitiesProperty   = "zzCapabilities"
+	reservedCapabilityChecksColumn = "zzCapabilityChecks"
+
+	// reservedCursorColumnPrefix begins the reserved output columns a paged
+	// read statement selects the cursor's copy of a sort key under (zzCursor
+	// followed by the column name): a key outside the columns projection, or
+	// a positional key whose cell is masked; resource columns must not begin
+	// with it.
+	reservedCursorColumnPrefix = "zzCursor"
 )
 
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
 type Generator interface {
 	Generate() error
+	// Warnings reports the schema findings the last Generate raised: informational,
+	// never a refusal, performance matters the application decides (see Warning).
+	// Nil before Generate runs.
+	Warnings() []Warning
+	// Audit reports the advisory findings the last Generate raised: shapes the
+	// framework handles under a stated limitation, which a normal generation never
+	// prints and a runner prints on demand (see Finding). Nil before Generate runs.
+	Audit() []Finding
 	Close() error
 }
 
@@ -46,6 +76,10 @@ const (
 	ReadHandler HandlerType = "readHandler"
 	// PatchHandler is the patch handler.
 	PatchHandler HandlerType = "patchHandler"
+	// fileHandler is a @file route's handler: GET under the read route, one per
+	// declared segment. It is derived from the declaration, never named by an author
+	// (no @suppress argument), so it stays out of handlerTypes.
+	fileHandler HandlerType = "fileHandler"
 )
 
 // RouteType describes a route or set of routes for a resource-driven API.
@@ -134,7 +168,7 @@ func (h HandlerType) template() string {
 // method returns the proper http method type for a HandlerType
 func (h HandlerType) method() string {
 	switch h {
-	case ReadHandler, ListHandler:
+	case ReadHandler, ListHandler, fileHandler:
 		return http.MethodGet
 	case PatchHandler:
 		return http.MethodPatch
@@ -182,10 +216,13 @@ const (
 	resourceInterfaceOutputName   = "resources_iface"
 	resourceEnumsFileName         = "enums"
 	domainGuardOutputName         = "domain_guard"
+	permissionsOutputName         = "permissions"
 	decodersOutputName            = "decoders"
 	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
+	servedRouterOutputName        = "router"
+	servedRouterTestOutputName    = "router_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
 	collectionOutputName          = "collection"
 )
@@ -200,13 +237,14 @@ type informationSchemaResult struct {
 	ReferencedColumn     *string `spanner:"REFERENCED_COLUMN"`
 	SpannerType          string  `spanner:"SPANNER_TYPE"`
 	IsNullable           bool    `spanner:"IS_NULLABLE"`
-	IsIndex              bool    `spanner:"IS_INDEX"`
-	IsUniqueIndex        bool    `spanner:"IS_UNIQUE_INDEX"`
 	GenerationExpression *string `spanner:"GENERATION_EXPRESSION"`
 	OrdinalPosition      int64   `spanner:"ORDINAL_POSITION"`
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
 	HasDefault           bool    `spanner:"HAS_DEFAULT"`
 	IsInterleaved        bool    `spanner:"IS_INTERLEAVED"`
+	ParentTable          *string `spanner:"PARENT_TABLE_NAME"`
+	OnDeleteAction       *string `spanner:"ON_DELETE_ACTION"`
+	DeleteRule           *string `spanner:"DELETE_RULE"`
 }
 
 type enumData struct {
@@ -214,23 +252,88 @@ type enumData struct {
 	Description string `spanner:"description"`
 }
 
+// indexSchemaResult is one row of the index query: one column of one index, the
+// primary key included as its PRIMARY_KEY index.
+type indexSchemaResult struct {
+	TableName       string  `spanner:"TABLE_NAME"`
+	IndexName       string  `spanner:"INDEX_NAME"`
+	IndexType       string  `spanner:"INDEX_TYPE"`
+	IsUnique        bool    `spanner:"IS_UNIQUE"`
+	IsNullFiltered  bool    `spanner:"IS_NULL_FILTERED"`
+	IsManaged       bool    `spanner:"SPANNER_IS_MANAGED"`
+	ColumnName      string  `spanner:"COLUMN_NAME"`
+	OrdinalPosition *int64  `spanner:"ORDINAL_POSITION"`
+	ColumnOrdering  *string `spanner:"COLUMN_ORDERING"`
+}
+
 type tableMetadata struct {
 	Columns       map[string]columnMeta
 	PkCount       int
 	IsInterleaved bool
+	// ParentTable is the table this one is interleaved in, "" for a top-level table.
+	ParentTable string
+	// OnDeleteCascade marks an interleaved child declared ON DELETE CASCADE: the
+	// database deletes its rows with the parent's, outside the patch machinery. The
+	// audit pass reads it for a table that stores files (CascadeReleaseFinding).
+	OnDeleteCascade bool
+	// Indexes is the table's index composition as the information schema reports it:
+	// the primary key (PRIMARY_KEY), every declared index, and the indexes Spanner
+	// manages for foreign keys. The per-column index flags derive from it
+	// (deriveIndexFlags), and the generation-time index warning reads it.
+	Indexes []indexMeta
+}
+
+// indexMeta is one index of a table: its key in order, with each column's
+// direction, and the columns it stores.
+type indexMeta struct {
+	Name string
+	// PrimaryKey marks the table's PRIMARY_KEY index.
+	PrimaryKey bool
+	Unique     bool
+	// NullFiltered indexes skip rows with a NULL key column, so they serve no order
+	// over every row.
+	NullFiltered bool
+	// Managed marks an index Spanner created to back a foreign key.
+	Managed bool
+	Key     []indexColumn
+	Storing []string
+}
+
+// indexColumn is one key column of an index and its direction.
+type indexColumn struct {
+	Column     string
+	Descending bool
 }
 
 type columnMeta struct {
-	IsPrimaryKey       bool
-	IsForeignKey       bool
-	IsNullable         bool
-	IsIndex            bool
+	IsPrimaryKey bool
+	IsForeignKey bool
+	IsNullable   bool
+	// SpannerType is the column's declared type as INFORMATION_SCHEMA.COLUMNS spells
+	// it: STRING(64), STRING(MAX), NUMERIC, ARRAY<STRING(4)>. The patch request structs
+	// carry it as sqltype where the decoder sizes the field's value against it.
+	SpannerType string
+	// IsIndex marks a column that leads some index of the table, the PRIMARY_KEY index
+	// and Spanner's managed foreign-key indexes included: a filter on it alone has a
+	// seek path. A trailing key column and a stored column are not marked; a predicate
+	// on either alone scans the index. Whether a trailing column seeks with the tenant
+	// bound before it is a resource-level fact (resourceInfo.deriveTenantIndexFlags).
+	IsIndex bool
+	// IsUniqueIndex marks a column that alone identifies a row: some unique index,
+	// the PRIMARY_KEY index included, has exactly this column as its key. A column of
+	// a composite key or composite unique index is not one; the database enforces
+	// nothing per value of it.
 	IsUniqueIndex      bool
 	OrdinalPosition    int64
 	KeyOrdinalPosition int64
 	ReferencedTable    string
 	ReferencedColumn   string
-	HasDefault         bool
+	// DeleteRule is the foreign key's delete rule as REFERENTIAL_CONSTRAINTS spells it,
+	// CASCADE or NO ACTION, on a foreign-key column; "" otherwise. A CASCADE deletes the
+	// row with the referenced one, outside the patch machinery, which the audit pass
+	// reads for a table that stores files (CascadeReleaseFinding).
+	DeleteRule string
+	HasDefault bool
 }
 
 type generatedRoute struct {
@@ -296,11 +399,55 @@ type routeTestParam struct {
 type rpcMethodInfo struct {
 	*parser.Struct
 	outletMembership
+	// Form is how Execute runs, read off its signature at extraction.
+	Form rpcForm
+	// Request is the struct's wire shape: the fields as the handler's local request
+	// mirror declares them, with every struct they reach.
+	Request *wireShape
+	// Result is the wire shape of the struct Execute answers with, nil for a method
+	// that answers with an empty 200; ResultPointer marks Execute returning a
+	// pointer to it.
+	Result        *wireShape
+	ResultPointer bool
+	// ResultNamed is the named struct type Execute answers with, nil with Result.
+	ResultNamed     *types.Named
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+	// Transition is the method's validated @transition declaration; nil for a
+	// plain RPC method, whose generated handler is unchanged.
+	Transition *rpcTransition
+	// Target is the method's validated @target declaration — set for every
+	// targeted method (a transition's Target aliases its embedded rpcTarget);
+	// nil for a method with no target row.
+	Target *rpcTarget
+	// Statuses is the method's validated @answers declaration: the statuses
+	// its result may choose per response, in declaration order. Nil for a
+	// method that answers 200.
+	Statuses []int
+	// choosesStatus marks a result type declaring HTTPStatus() int, read off
+	// the Execute signature; @answers must accompany it.
+	choosesStatus bool
+	// Upload is the method's validated @upload declaration; nil for a JSON
+	// method. Set iff Execute takes resource.Files.
+	Upload *rpcUpload
+	// takesFiles marks an Execute whose third parameter is resource.Files,
+	// read off the signature; @upload must accompany it.
+	takesFiles bool
+}
+
+// rpcUpload is a method's @upload declaration.
+type rpcUpload struct {
+	// MaxBytes bounds the whole multipart body; the frame answers 413 naming
+	// it before a byte over the limit is read.
+	MaxBytes int64
+}
+
+// MaxBytesText renders the maximum the way the declaration wrote it.
+func (u *rpcUpload) MaxBytesText() string {
+	return resource.FormatByteSize(u.MaxBytes)
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -309,17 +456,23 @@ func (r *rpcMethodInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
-func (r *rpcMethodInfo) IsTxnRunner() bool {
-	return r.Implements("TxnRunner")
+// IsTxnForm reports whether Execute runs inside the generated handler's
+// read-write transaction (its second parameter is resource.ReadWriteTransaction).
+func (r *rpcMethodInfo) IsTxnForm() bool {
+	return r.Form == rpcFormTxn
 }
 
-func (r *rpcMethodInfo) IsDBRunner() bool {
-	return r.Implements("DBRunner")
+// IsClientForm reports whether Execute runs outside a handler-owned
+// transaction (its second parameter is *resource.Client).
+func (r *rpcMethodInfo) IsClientForm() bool {
+	return r.Form == rpcFormClient
 }
 
+// hasEnumeratedResource reports whether a field's picker lists a resource, which the
+// metadata names through the Resources constant; an inline enumeration names none.
 func (r *rpcMethodInfo) hasEnumeratedResource() bool {
 	for _, field := range r.Fields {
-		if field.IsEnumerated() {
+		if field.IsEnumerated() && field.Enumeration == "" {
 			return true
 		}
 	}
@@ -327,59 +480,186 @@ func (r *rpcMethodInfo) hasEnumeratedResource() bool {
 	return false
 }
 
-func (r *rpcMethodInfo) HasLocalType() bool {
-	for _, field := range r.Fields {
-		if field.IsLocalType() {
-			return true
+// RequestConverters renders the closures the handler needs to build the method's
+// struct from the decoded request mirror; empty for a flat request, which converts
+// whole.
+func (r *rpcMethodInfo) RequestConverters() string {
+	return r.Request.Converters(toSource, requestMirror)
+}
+
+// RequestConverterName is the root request converter's name.
+func (r *rpcMethodInfo) RequestConverterName() string {
+	return r.Request.ConverterName(toSource, requestMirror)
+}
+
+// requestMirror and responseMirror are the names every generated RPC handler gives
+// its request and result mirrors.
+const (
+	requestMirror  = "request"
+	responseMirror = "response"
+)
+
+// Answers reports whether Execute returns a result beside its error.
+func (r *rpcMethodInfo) Answers() bool {
+	return r.Result != nil
+}
+
+// DeclaresNoContent reports whether @answers declares 204, the status a nil
+// result (or an answerless method) is written with.
+func (r *rpcMethodInfo) DeclaresNoContent() bool {
+	return slices.Contains(r.Statuses, http.StatusNoContent)
+}
+
+// StatusList renders the declared statuses as Go call arguments.
+func (r *rpcMethodInfo) StatusList() string {
+	return statusList(r.Statuses, ", ")
+}
+
+// StatusUnion renders the declared statuses as a TypeScript literal union.
+func (r *rpcMethodInfo) StatusUnion() string {
+	return statusList(r.Statuses, " | ")
+}
+
+// ResponseExpr renders the expression that converts the captured result into
+// the response mirror the handler encodes.
+func (r *rpcMethodInfo) ResponseExpr() string {
+	if r.Result.Flat() {
+		if r.ResultPointer {
+			return "(*" + responseMirror + ")(result)"
 		}
+
+		return "(*" + responseMirror + ")(&result)"
+	}
+	if r.ResultPointer {
+		return r.ResultConverterName() + "(*result)"
 	}
 
-	return false
+	return r.ResultConverterName() + "(result)"
+}
+
+// statusList joins statuses with sep.
+func statusList(statuses []int, sep string) string {
+	parts := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		parts = append(parts, strconv.Itoa(status))
+	}
+
+	return strings.Join(parts, sep)
+}
+
+// ResultType is the type Execute returns, as the handler declares the variable
+// that captures it.
+func (r *rpcMethodInfo) ResultType() string {
+	if r.ResultPointer {
+		return "*" + r.Result.Source
+	}
+
+	return r.Result.Source
+}
+
+// MirrorDecls renders the mirrors of every struct the request and the result
+// reach, each once, leaves first.
+func (r *rpcMethodInfo) MirrorDecls() string {
+	return mirrorDecls(mergeNested(r.Request, r.Result))
+}
+
+// ResultConverters renders the closures the handler needs to build the response
+// mirror from the result; empty for a flat result, which converts whole.
+func (r *rpcMethodInfo) ResultConverters() string {
+	return r.Result.Converters(toMirror, responseMirror)
+}
+
+// ResultConverterName is the root result converter's name.
+func (r *rpcMethodInfo) ResultConverterName() string {
+	return r.Result.ConverterName(toMirror, responseMirror)
+}
+
+// ResultFields are the result's fields for the response mirror the template
+// declares and the TypeScript result interface.
+func (r *rpcMethodInfo) ResultFields() []*wireField {
+	if r.Result == nil {
+		return nil
+	}
+
+	return r.Result.Fields
+}
+
+// TypescriptNamespace renders the nested interfaces the request and result share,
+// in a namespace named for the method.
+func (r *rpcMethodInfo) TypescriptNamespace() string {
+	return typescriptNamespaceOf(r.Name(), mergeNested(r.Request, r.Result))
+}
+
+// ResultTypescriptType is a result field's TypeScript type in the method's namespace.
+func (r *rpcMethodInfo) ResultTypescriptType(f *wireField) string {
+	return f.TypescriptType(r.Name())
 }
 
 type rpcField struct {
 	*parser.Field
-	typescriptType     string
-	enumeratedResource *string
+	// wire is the field as the walker classified it; nil only in tests that build
+	// fields by hand.
+	wire *wireField
+	// namespace is the TypeScript namespace the method's nested interfaces
+	// declare in: the method's name.
+	namespace      string
+	typescriptType string
+	// A picker's source, from the field's @enumerate: enumeratedResource is the name as
+	// written — the resource whose rows the picker lists, or an enumeration table
+	// whose values ride inline (Enumeration names the type, EnumerationValues its rows).
+	enumeratedResource string
+	Enumeration        string
+	EnumerationValues  []*enumData
 }
 
-func (r rpcField) JSONTag() string {
+// MirrorType is the field's type in the handler's request mirror.
+func (r *rpcField) MirrorType() string {
+	if r.wire == nil {
+		return r.Type()
+	}
+
+	return r.wire.MirrorType()
+}
+
+func (r *rpcField) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(r.Name())
 
 	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
 }
 
+// TypescriptDataType is the field's type in the generated interface: the walked wire
+// type, or, for a field built without a walk, the leaf's interface type (tsDataType)
+// with [] for a list.
 func (r *rpcField) TypescriptDataType() string {
-	switch r.typescriptType {
-	case uuidTSType:
-		return stringGoType
-	case uuidTSType + "[]":
-		return stringGoType + "[]"
-	case civilDateTSType:
-		return dateTSType
-	case civilDateTSType + "[]":
-		return dateTSType + "[]"
-	default:
-		return r.typescriptType
+	if r.wire != nil {
+		return r.wire.TypescriptType(r.namespace)
 	}
+
+	return leafDataType(r.typescriptType)
 }
 
 func (r *rpcField) IsEnumerated() bool {
-	return r.enumeratedResource != nil
+	return r.enumeratedResource != ""
 }
 
 func (r *rpcField) EnumeratedResource() string {
-	if r.enumeratedResource == nil {
-		return ""
-	}
+	return r.enumeratedResource
+}
 
-	return *r.enumeratedResource
+// applyEnumeration marks the field enumerated from its resolved @enumerate.
+func (r *rpcField) applyEnumeration(src enumerationSource) {
+	r.enumeratedResource = src.Name
+	r.Enumeration = src.Enumeration
+	r.EnumerationValues = src.Values
 }
 
 func (r *rpcField) TypescriptDisplayType() string {
 	if r.IsEnumerated() {
-		return "enumerated"
+		return enumeratedDisplayType
+	}
+	if r.wire != nil {
+		return r.wire.TypescriptDisplayType()
 	}
 
 	return r.typescriptType
@@ -388,6 +668,12 @@ func (r *rpcField) TypescriptDisplayType() string {
 type computedResource struct {
 	*parser.Struct
 	outletMembership
+	pagingDecl
+	rowsOfDecl
+	// Shape is the struct's wire shape: the fields as the handlers' local mirrors
+	// declare them, with every struct they reach. A nested field is opaque: one
+	// field for permission, PII, and selection, never filtered or keyed.
+	Shape               *wireShape
 	Fields              []*computedField
 	SuppressReadHandler bool
 	SuppressListHandler bool
@@ -395,6 +681,9 @@ type computedResource struct {
 	// PermissionScope is the scope all of this resource's registrations use
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+	// Files are the resource's @file routes: a stored file per field-scope
+	// declaration, a rendered one for the struct-scope declaration.
+	Files []*fileRoute
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -439,17 +728,142 @@ func (c *computedResource) RoutingDisabled() bool {
 	return slices.Contains(c.SuppressedRoutes, AllRoutes)
 }
 
+// HasPrimaryKey reports whether the resource has a read identity: at least one
+// @primarykey field. A struct with none is a whole read-only list: one list route
+// serving every row the filter admits, no read route, no page, no row identity.
+func (c *computedResource) HasPrimaryKey() bool {
+	return len(c.PrimaryKeys()) > 0
+}
+
+// ReadHandlerDisabled reports whether the resource has no keyed read: suppressed
+// with @suppress(readHandler), or key-less, which has no read identity to address
+// a row by (an explicit @suppress(readHandler) on such a struct is redundant and
+// accepted). The router registers no read route for it, the Collection registers
+// List only, and the metadata says so.
+func (c *computedResource) ReadHandlerDisabled() bool {
+	return c.SuppressReadHandler || !c.HasPrimaryKey()
+}
+
+// HasStoredFile reports whether any @file names a key column: the application must
+// then supply a FileStore.
+func (c *computedResource) HasStoredFile() bool {
+	for _, file := range c.Files {
+		if file.Key != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// KeyParamList renders the read route's key parameters as the generated handlers name
+// them: id for a single key, the camel-cased field names for a compound key.
+func (c *computedResource) KeyParamList() string {
+	names := make([]string, 0, len(c.PrimaryKeys()))
+	for _, f := range c.PrimaryKeys() {
+		names = append(names, f.Name())
+	}
+
+	// A computed handler names every key parameter, as its route consts do.
+	return keyParamList(c.HasCompoundPrimaryKey(), names)
+}
+
+// KeyFormat renders one %v per key part, slash-joined, for a refusal naming the row.
+func (c *computedResource) KeyFormat() string {
+	return keyFormat(len(c.PrimaryKeys()))
+}
+
+// Converters renders the closures a handler needs to build the named root mirror
+// from a computed row; empty for a flat resource, which converts whole.
+func (c *computedResource) Converters(rootMirror string) string {
+	return c.Shape.Converters(toMirror, rootMirror)
+}
+
+// ConverterName is the root converter's name for the named root mirror.
+func (c *computedResource) ConverterName(rootMirror string) string {
+	return c.Shape.ConverterName(toMirror, rootMirror)
+}
+
 type computedField struct {
 	*parser.Field
+	// wire is the field as the walker classified it; nil only in tests that build
+	// fields by hand.
+	wire *wireField
+	// namespace is the TypeScript namespace the resource's nested interfaces
+	// declare in: the resource's plural name.
+	namespace          string
 	typescriptType     string
 	IsPrimaryKey       bool
 	KeyOrdinalPosition int
+	// enumerateArg is the field-scope @enumerate argument as written, resolved once
+	// every kind is extracted (resolveFieldEnumerations); nil when none is declared.
+	enumerateArg *genlang.Arg
+	// A picker's source, from that declaration: enumeratedResource is the name as
+	// written — the resource whose rows the picker lists, or an enumeration table
+	// whose values ride inline (Enumeration names the type, EnumerationValues its rows).
+	IsEnumerated       bool
+	enumeratedResource string
+	Enumeration        string
+	EnumerationValues  []*enumData
+	// IsFileKey marks the store-key column of a @file declaration: off the wire in
+	// both directions, read by the file route's frame for itself.
+	IsFileKey bool
+}
+
+// MirrorType is the field's type in the handlers' local mirrors.
+func (c *computedField) MirrorType() string {
+	if c.wire == nil {
+		return c.Type()
+	}
+
+	return c.wire.MirrorType()
+}
+
+// TypescriptDisplayType is the field's display type in generated metadata: enumerated
+// for a declared picker, and otherwise the leaf's own display name (uuid, civilDate,
+// bytes), object for a nested field, with [] for a slice, exactly as the column and RPC
+// paths carry it; see rpcField.TypescriptDisplayType.
+func (c *computedField) TypescriptDisplayType() string {
+	if c.IsEnumerated {
+		return enumeratedDisplayType
+	}
+	if c.wire != nil {
+		return c.wire.TypescriptDisplayType()
+	}
+
+	return c.typescriptType
+}
+
+// EnumeratedResource is the name the field's @enumerate wrote: the resource whose
+// rows a picker for the field lists.
+func (c *computedField) EnumeratedResource() string {
+	return c.enumeratedResource
+}
+
+// applyEnumeration marks the field enumerated from its resolved @enumerate.
+func (c *computedField) applyEnumeration(src enumerationSource) {
+	c.IsEnumerated = true
+	c.enumeratedResource = src.Name
+	c.Enumeration = src.Enumeration
+	c.EnumerationValues = src.Values
 }
 
 func (c *computedField) JSONTag() string {
+	if c.IsFileKey {
+		return fmt.Sprintf("%s:%q", jsonTagKey, "-")
+	}
+
 	camelCaseName := caser.ToCamel(c.Name())
 
 	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
+}
+
+// IsInputOnly reports whether the field is never returned, so the TypeScript row
+// interface omits it as the resource path does. A computed struct has no write side,
+// so that is the @file key column alone: a conditions:"input_only" tag is not examined
+// here, as JSONTag does not examine it either, and the interface mirrors the wire.
+func (c *computedField) IsInputOnly() bool {
+	return c.IsFileKey
 }
 
 func (c *computedField) IsPII() bool {
@@ -471,6 +885,29 @@ func (c *computedField) PIITag() string {
 	return ""
 }
 
+// AllowFilterTag copies the source field's allow_filter tag onto the request struct,
+// where the query decoder reads it: the same declaration a table field makes, so the
+// generated handler filters a computed list by exactly the declared fields.
+func (c *computedField) AllowFilterTag() string {
+	if _, ok := c.LookupTag(allowFilterTagKey); ok {
+		return allowFilterTagKey + `:"true"`
+	}
+
+	return ""
+}
+
+// TypescriptFilterable is the filterable value the TypeScript field metadata carries
+// for a computed field: 'always' for an allow_filter field, since a computed resource
+// filters in its List function and needs no indexed companion in the filter, and
+// nothing otherwise; see resourceField.TypescriptFilterable.
+func (c *computedField) TypescriptFilterable() string {
+	if _, ok := c.LookupTag(allowFilterTagKey); ok {
+		return tsFilterableAlways
+	}
+
+	return ""
+}
+
 // PermTag renders the perm:"-" primary-key exemption marker on @primarykey fields; see
 // resourceField.PermTag.
 func (c *computedField) PermTag() string {
@@ -481,21 +918,26 @@ func (c *computedField) PermTag() string {
 	return ""
 }
 
+// TypescriptDataType is the field's type in the generated interface: the walked wire
+// type, or, for a field built without a walk, the leaf's interface type (tsDataType)
+// with [] for a list.
 func (c *computedField) TypescriptDataType() string {
-	if c.typescriptType == uuidTSType {
-		return stringGoType
-	}
-	if c.typescriptType == civilDateTSType {
-		return dateTSType
+	if c.wire != nil {
+		return c.wire.TypescriptType(c.namespace)
 	}
 
-	return c.typescriptType
+	return leafDataType(c.typescriptType)
 }
 
 type resourceInfo struct {
 	*parser.TypeInfo
 	outletMembership
-	Fields             []*resourceField
+	pagingDecl
+	rowsOfDecl
+	Fields []*resourceField
+	// ColumnShapes are the structs the resource's columns hold, leaves first, each
+	// once: the interfaces the resource's TypeScript namespace declares.
+	ColumnShapes       []*wireShape
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
 	// ManualAddResourceSets lists the handler types whose permission Sets are
@@ -513,12 +955,53 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+	// EnumerationType names the @enumerate type whose table this struct backs. Such a
+	// resource is read-only by derivation: the table's rows are the program's
+	// constants, so no mutation handler is generated and its permissions stop at
+	// List and Read (deriveEnumerationResource).
+	EnumerationType string
+
+	// The resource's compiled binding vocabulary (ABAC design plan §04):
+	// Attributes are the row attributes conditions reference (@attribute),
+	// DomainBinding resolves rows to their tenant (@domain), and SubjectSets /
+	// SubjectValues are the subject-side vocabulary anchored at user-id
+	// columns (@subjectSet / @subjectValue).
+	Attributes    []*attributeBinding
+	DomainBinding *domainBinding
+	SubjectSets   []*subjectBinding
+	SubjectValues []*subjectBinding
+
+	// Files are the resource's @file routes, one per field-scope declaration: a
+	// stored file served under the read route, its key column off the wire.
+	Files []*fileRoute
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
 // domain scope (an absent annotation defaults to global).
 func (r *resourceInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
+}
+
+// TouchFields returns the fields a generated touch stamps: every field carrying
+// an output_only_update_fn, the mechanical enforcement stamp that fires on
+// every update — a touch included. Timestamps with domain meaning are never
+// update functions; they are explicit updates in application code.
+func (r *resourceInfo) TouchFields() []*resourceField {
+	fields := make([]*resourceField, 0, len(r.Fields))
+	for _, f := range r.Fields {
+		if f.HasOutputOnlyUpdateFunc() {
+			fields = append(fields, f)
+		}
+	}
+
+	return fields
+}
+
+// HasTouch reports whether the resource gets a generated Touch: it does exactly
+// when at least one field declares an update function, so touching a resource
+// with nothing to stamp does not compile.
+func (r *resourceInfo) HasTouch() bool {
+	return len(r.TouchFields()) > 0
 }
 
 func (r *resourceInfo) HasNullBool() bool {
@@ -539,12 +1022,100 @@ func (r *resourceInfo) ListHandlerDisabled() bool {
 	return slices.Contains(r.SuppressedHandlers, ListHandler)
 }
 
+// ReadHandlerDisabled reports whether the resource has no keyed read: suppressed with
+// @suppress(readHandler), or a view with no @primarykey, which has no read identity
+// and is a whole read-only list (the router registers no read route for it, the
+// Collection registers List only, and the metadata says so, so a picker over it
+// resolves a picked row's display from the list; computedResource.ReadHandlerDisabled
+// is the same rule for a computed struct). A view that declares its key serves a
+// keyed read as a table does, which a picker over a bounded view needs to read the
+// chosen row.
 func (r *resourceInfo) ReadHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers, ReadHandler)
+	return (r.IsVirtual && !r.HasPrimaryKey()) || slices.Contains(r.SuppressedHandlers, ReadHandler)
 }
 
+// CreateHandlerDisabled reports whether the resource offers no Create: its patch
+// handler is suppressed, or a @file key column is NOT NULL (CreateDisabled), so no
+// create could supply the row's file.
 func (r *resourceInfo) CreateHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers, PatchHandler)
+	return slices.Contains(r.SuppressedHandlers, PatchHandler) || r.CreateDisabled()
+}
+
+// CreateDisabled reports whether the resource carries a @file whose key column is NOT
+// NULL: a row is added by the @upload method that stores its file, so Create is not
+// registered and the patch handlers refuse a create op naming that way in. A nullable
+// key leaves Create ordinary: a row may exist before its file does.
+func (r *resourceInfo) CreateDisabled() bool {
+	for _, file := range r.Files {
+		if file.Key != nil && !file.Key.Nullable {
+			return true
+		}
+	}
+
+	return false
+}
+
+// PatchPermissions are the permissions the patch handler registers and its decoder
+// checks: Create, Update, and Delete, Create left out where CreateDisabled.
+func (r *resourceInfo) PatchPermissions() []accesstypes.Permission {
+	if r.CreateDisabled() {
+		return []accesstypes.Permission{accesstypes.Update, accesstypes.Delete}
+	}
+
+	return []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete}
+}
+
+// PatchPermissionList renders PatchPermissions as the decoder call's arguments.
+func (r *resourceInfo) PatchPermissionList() string {
+	parts := make([]string, 0, 3)
+	for _, perm := range r.PatchPermissions() {
+		parts = append(parts, "accesstypes."+string(perm))
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// FileKeyFields are the fields holding a stored file's key, one per field-scope @file
+// in declaration order: what the generated FileKeys method declares, so a delete or a
+// key replacement releases the old object after commit.
+func (r *resourceInfo) FileKeyFields() []string {
+	var fields []string
+	for _, file := range r.Files {
+		if file.Key != nil {
+			fields = append(fields, file.Key.Name)
+		}
+	}
+
+	return fields
+}
+
+// HasStoredFile reports whether any @file names a key column: the application must
+// then supply a FileStore.
+func (r *resourceInfo) HasStoredFile() bool {
+	for _, file := range r.Files {
+		if file.Key != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// KeyParamList renders the read route's key parameters as the generated handlers name
+// them: id for a single key, the camel-cased field names for a compound key.
+func (r *resourceInfo) KeyParamList() string {
+	return keyParamList(r.HasCompoundPrimaryKey(), slices.Collect(func(yield func(string) bool) {
+		for _, f := range r.PrimaryKeys() {
+			if !yield(f.Name()) {
+				return
+			}
+		}
+	}))
+}
+
+// KeyFormat renders one %v per key part, slash-joined, for a refusal naming the row.
+func (r *resourceInfo) KeyFormat() string {
+	return keyFormat(r.keyCount())
 }
 
 func (r *resourceInfo) UpdateHandlerDisabled() bool {
@@ -593,8 +1164,33 @@ func (r *resourceInfo) PrimaryKeys() iter.Seq2[int, *resourceField] {
 	}
 }
 
+// IsEnumeration reports whether the struct backs an @enumerate table (read-only by derivation).
+func (r *resourceInfo) IsEnumeration() bool {
+	return r.EnumerationType != ""
+}
+
 func (r *resourceInfo) HasCompoundPrimaryKey() bool {
-	return r.PkCount > 1
+	return r.keyCount() > 1
+}
+
+// HasPrimaryKey reports whether the resource has a read identity: a table's key from
+// the schema, a view's from its @primarykey fields.
+func (r *resourceInfo) HasPrimaryKey() bool {
+	return r.keyCount() > 0
+}
+
+// keyCount is the number of key columns: the schema's for a table, the @primarykey
+// fields for a view (PkCount is a table fact and stays 0 on a view).
+func (r *resourceInfo) keyCount() int {
+	if !r.IsVirtual {
+		return r.PkCount
+	}
+	var n int
+	for range r.PrimaryKeys() {
+		n++
+	}
+
+	return n
 }
 
 func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
@@ -608,7 +1204,7 @@ func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 				return false
 			}
 
-			return f.Type() == "ccc.UUID"
+			return f.Type() == cccUUIDGoType
 		}
 	}
 
@@ -660,11 +1256,23 @@ func (r *resourceInfo) IsQueryClauseEligible() bool {
 
 type resourceField struct {
 	*parser.Field
-	Parent         *resourceInfo
-	typescriptType string
+	Parent *resourceInfo
+	// typescriptType is the field's TypeScript type as the built-in table spells it
+	// (uuid, civilDate, boolean, ...) with [] for a list; TypescriptDataType maps it
+	// onto the interface's type. A derived struct or a declared type carries its final
+	// interface type here (Missions.Provenance, Point) and its display type in
+	// typescriptDisplay, and a declared type its import in tsImport.
+	typescriptType    string
+	typescriptDisplay string
+	tsImport          *tsImport
 	// Spanner stuff
-	IsPrimaryKey       bool
-	IsForeignKey       bool
+	IsPrimaryKey bool
+	IsForeignKey bool
+	// IsIndex says a filter on this field alone has a seek path, so the generated list
+	// struct tags it index:"true" and the metadata says filterable: 'always'. On a
+	// table-backed resource it is the column's table flag (leads some index) or, on a
+	// resource with a bare @domain column, the column directly after the tenant column
+	// in an index key (deriveTenantIndexFlags). On a view it is the authored tag.
 	IsIndex            bool
 	IsUniqueIndex      bool
 	IsNullable         bool
@@ -672,8 +1280,69 @@ type resourceField struct {
 	KeyOrdinalPosition int64 // Position of primary or foreign key in a compound key definition
 	IsEnumerated       bool
 	ReferencedResource string
-	ReferencedField    string
-	HasDefault         bool
+	// Enumeration names the @enumerate type a foreign key into an enum table resolves
+	// to, and EnumerationValues carries that table's rows; the TypeScript metadata
+	// emits them inline so a picker renders without a request or a List grant.
+	Enumeration       string
+	EnumerationValues []*enumData
+	ReferencedField   string
+	HasDefault        bool
+	// SpannerType is the backing column's declared type (columnMeta.SpannerType);
+	// empty on a view, whose fields have no schema type.
+	SpannerType string
+	// enumerateArg is the field-scope @enumerate argument as written, resolved once
+	// every kind is extracted (resolveFieldEnumerations); nil when none is declared.
+	enumerateArg *genlang.Arg
+	// declaredResource is the name that declaration wrote, once resolved; empty for
+	// an inferred enumeration, whose resource is the foreign key's target.
+	declaredResource string
+
+	// The @state marker (design plan §09): IsState derives output-only decode
+	// and the ungrantable Create/Update; StateDefault is the declared initial
+	// state, applied on the insert path.
+	IsState      bool
+	StateDefault string
+
+	// IsTenantKey marks the anchor of a bare-column @domain binding (design
+	// plan §06): the tenant column decodes output-only — the wire cannot
+	// express a tenant write, on create or update — and the framework stamps
+	// the value from the request's domain partition at decode, so the checked
+	// domain and the written domain are the same value by construction.
+	IsTenantKey bool
+
+	// WorkflowRoot is the @stateRoot argument: the workflow root's struct
+	// name, declared on the member's anchoring FK field (the field IS the
+	// hop). Empty for fields outside any workflow.
+	WorkflowRoot string
+
+	// IsFileKey marks the store-key column of a @file declaration: off the wire in
+	// both directions (json:"-" on the read and the patch structs, absent from the
+	// TypeScript interface and metadata), read by the file route's frame for itself.
+	IsFileKey bool
+}
+
+// HasDeclaredEnumeration reports whether a field-scope @enumerate names the field's
+// picker source, so the schema's foreign key is not consulted for one.
+func (f *resourceField) HasDeclaredEnumeration() bool {
+	return f.enumerateArg != nil
+}
+
+// EnumeratedResource is the resource whose rows a picker for the field lists: the
+// declared one when a field-scope @enumerate names it, else the foreign key's target.
+func (f *resourceField) EnumeratedResource() string {
+	if f.declaredResource != "" {
+		return f.declaredResource
+	}
+
+	return f.ReferencedResource
+}
+
+// applyEnumeration marks the field enumerated from its resolved field-scope @enumerate.
+func (f *resourceField) applyEnumeration(src enumerationSource) {
+	f.IsEnumerated = true
+	f.declaredResource = src.Name
+	f.Enumeration = src.Enumeration
+	f.EnumerationValues = src.Values
 }
 
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type
@@ -713,30 +1382,51 @@ func (f *resourceField) UnwrappedNullType() *string {
 	return nil
 }
 
+// TypescriptDataType is the field's type in the generated interface: the table row's
+// interface type (uuid is a string, civilDate a Date, a nullable boolean the
+// NullBoolean value type), with [] for a list, or the final type a derived struct or
+// a declared type carries.
 func (f *resourceField) TypescriptDataType() string {
-	if f.typescriptType == uuidTSType {
-		return stringGoType
-	}
-	if f.typescriptType == civilDateTSType {
-		return dateTSType
+	if f.typescriptDisplay != "" {
+		return f.typescriptType
 	}
 	if f.IsNullable && f.typescriptType == booleanStr {
-		return "NullBoolean"
+		return nullBooleanTSType
+	}
+
+	return leafDataType(f.typescriptType)
+}
+
+// TypescriptDisplayType is the field's display type in generated metadata: enumerated
+// for a picker, nullboolean for a nullable boolean, object for a derived struct or an
+// imported type, and the table row's type otherwise.
+func (f *resourceField) TypescriptDisplayType() string {
+	if f.IsEnumerated {
+		return enumeratedDisplayType
+	}
+
+	if f.IsNullable && f.typescriptType == booleanStr {
+		return nullBooleanDisplayType
+	}
+	if f.typescriptDisplay != "" {
+		return f.typescriptDisplay
 	}
 
 	return f.typescriptType
 }
 
-func (f *resourceField) TypescriptDisplayType() string {
-	if f.IsEnumerated {
-		return "enumerated"
+// setColumnType records a column's resolved TypeScript type: the leaf's table type, or
+// a derived struct's interface in the resource's namespace, with [] for a list.
+func (f *resourceField) setColumnType(dataType, displayType string, imported *tsImport, slice bool) {
+	if slice {
+		dataType += sliceSuffix
+		displayType += sliceSuffix
 	}
-
-	if f.IsNullable && f.typescriptType == booleanStr {
-		return "nullboolean"
+	f.typescriptType = dataType
+	f.tsImport = imported
+	if displayType != dataType {
+		f.typescriptDisplay = displayType
 	}
-
-	return f.typescriptType
 }
 
 func (f *resourceField) JSONTag() string {
@@ -763,6 +1453,12 @@ func (f *resourceField) JSONTagForPatch() string {
 
 const indexTrue string = indexTagKey + `:"true"`
 
+// The FieldMeta.filterable values of the TypeScript metadata.
+const (
+	tsFilterableAlways      = "always"
+	tsFilterableWithIndexed = "withIndexed"
+)
+
 func (f *resourceField) IndexTag() string {
 	if f.IsIndex {
 		return indexTrue
@@ -770,7 +1466,7 @@ func (f *resourceField) IndexTag() string {
 
 	if f.Parent.IsVirtual {
 		t, ok := f.LookupTag(indexTagKey)
-		if ok && t == "true" {
+		if ok && t == jsonTrueLiteral {
 			return indexTrue
 		}
 	}
@@ -786,8 +1482,53 @@ func (f *resourceField) PIITag() string {
 	return ""
 }
 
+// IsPositional reports whether the field declared masking:"positional": its masked
+// cells stay hidden, but a list orders and filters on the real column, so the page
+// comes off the index and a reader can tell where the hidden values fall. Every
+// other field conceals.
+func (f *resourceField) IsPositional() bool {
+	value, ok := f.LookupTag(maskingTagKey)
+
+	return ok && value == maskingPositional
+}
+
+// MaskingTag renders the masking tag the generated list and read request structs
+// carry: masking:"positional" for a positional field, nothing for a concealing one.
+func (f *resourceField) MaskingTag() string {
+	if f.IsPositional() {
+		return maskingOutTagKey + `:"` + maskingPositional + `"`
+	}
+
+	return ""
+}
+
+// WireName is the field's JSON name on the wire, the tag its permissions register
+// under; "" for a field the read structs hide (input-only).
+func (f *resourceField) WireName() string {
+	name := reflect.StructTag(f.JSONTag()).Get(jsonTagKey)
+	if name == "-" {
+		return ""
+	}
+
+	return name
+}
+
+// AddressesRow reports whether the field is a row address: a primary-key column, every
+// part of a composite key included, or a column a single-column unique index covers.
+// The generated query type carries a key accessor (Set<Field>, <Field>) for exactly
+// these fields, and the generated read handler sets every primary-key part through
+// them; a column of a composite unique index is not one, whatever its index enforces
+// with the key's other columns. On a view the uniqueindex tag is authored and stands
+// as declared, and a @primarykey field addresses a row as a table's key does: a keyed
+// view serves a read through it.
+func (f *resourceField) AddressesRow() bool {
+	return f.IsUniqueIndex || f.IsPrimaryKey
+}
+
+// UniqueIndexTag renders index:"true" on the fields a keyed read addresses a row by
+// (AddressesRow).
 func (f *resourceField) UniqueIndexTag() string {
-	if f.IsUniqueIndex {
+	if f.AddressesRow() {
 		return indexTrue
 	}
 
@@ -825,6 +1566,15 @@ func (f *resourceField) IsImmutable() bool {
 }
 
 func (f *resourceField) IsOutputOnly() bool {
+	// A state field decodes output-only by derivation: the wire must not be
+	// able to express a state write (transitions live in RPC bodies). A
+	// tenant-key column is the same shape: the framework stamps it from the
+	// request's domain partition, so the wire cannot write it. A @file key
+	// column too: only Go code writes it, as an @upload body does.
+	if f.IsState || f.IsTenantKey || f.IsFileKey {
+		return true
+	}
+
 	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return f.HasOutputOnlyUpdateFunc()
@@ -836,6 +1586,11 @@ func (f *resourceField) IsOutputOnly() bool {
 }
 
 func (f *resourceField) IsInputOnly() bool {
+	// A @file key column is never returned: the file route delivers what it names.
+	if f.IsFileKey {
+		return true
+	}
+
 	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return false
@@ -891,6 +1646,69 @@ func (f *resourceField) ImmutableTag() string {
 	return ""
 }
 
+// SqltypeTag renders sqltype:"<column type>" onto a patch request-struct field whose
+// value the decoder sizes against its column's declared type (resource.HasValueLimit): a
+// string-kinded field on STRING(n), []byte on BYTES(n), a decimal on NUMERIC, and a
+// slice of one of those, named or not, on the matching ARRAY. The tag consults the Go
+// type and the column alone: a @typescript declaration on the type changes the
+// interface, never the limit. A field hidden from the patch wire (a key, an output-only
+// field), a view's field, and every other pair carry no tag, so the structs stay quiet
+// where nothing is checked.
+func (f *resourceField) SqltypeTag() string {
+	if f.IsPrimaryKey || f.IsOutputOnly() {
+		return ""
+	}
+
+	kind, slice := valueKindOf(f.GoType())
+	if !resource.HasValueLimit(f.SpannerType, kind, slice) {
+		return ""
+	}
+
+	return fmt.Sprintf("%s:%q", sqltypeOutTagKey, f.SpannerType)
+}
+
+// TypescriptMaxLength is the character limit the field's TypeScript metadata carries:
+// the declared length of the STRING(n) column, or of the ARRAY<STRING(n)>'s element,
+// behind a string-kinded field the patch decoder sizes, where the field's display type
+// is one the client reads the limit on (maxLengthDisplayTypes: string, string[], and
+// enumerated, whose key is a string the picker selects). Zero where the metadata says
+// nothing: a bytes or decimal rule has no per-character form a form control applies,
+// and a field a @typescript declaration types object carries the tag, since the limit
+// is the column's, and no maxLength, since the interface type is not a string and a
+// form would count the wrong thing. Read after the TypeScript types are resolved.
+func (f *resourceField) TypescriptMaxLength() int {
+	if f.SqltypeTag() == "" {
+		return 0
+	}
+	if kind, _ := valueKindOf(f.GoType()); kind != resource.ValueKindString {
+		return 0
+	}
+	if !slices.Contains(maxLengthDisplayTypes, displayType(strings.ToLower(f.TypescriptDisplayType()))) {
+		return 0
+	}
+
+	return resource.DeclaredLength(f.SpannerType)
+}
+
+// NullableTag renders nullable:"true" onto a patch request-struct field typed by a slice
+// whose column allows NULL. A Go slice has one form, so the nullability check reads a
+// slice field's nullability from the column (validateNullability) and the decoder, which
+// reads nullability off a pointer or a Null wrapper, needs the column's answer carried
+// to it to accept a null for the field (decodeToPatch). Every other field carries
+// nothing: a pointer or wrapper says so by its type, a slice on a NOT NULL column refuses
+// null as before, a view's field has no schema, and a key or an output-only field is
+// hidden from the patch wire.
+func (f *resourceField) NullableTag() string {
+	if f.IsPrimaryKey || f.IsOutputOnly() {
+		return ""
+	}
+	if !f.IsNullable || !f.IsSlice() {
+		return ""
+	}
+
+	return nullableOutTagKey + `:"true"`
+}
+
 func (f *resourceField) IsView() bool {
 	return f.Parent.IsVirtual
 }
@@ -919,6 +1737,24 @@ func (f *resourceField) IsQueryClauseEligible() bool {
 	return f.HasTag(allowFilterTagKey)
 }
 
+// TypescriptFilterable is the filterable value the TypeScript field metadata carries:
+// the same eligibility the query decoder applies, so the browser knows which columns
+// the server will filter. An indexed or unique-indexed field is 'always'. An
+// allow_filter field is 'withIndexed': the database parse accepts the filter only when
+// it also touches an indexed field, since once one index has narrowed the rows a second
+// is rarely used and indexes are a scarce commodity, so allow_filter conserves them.
+// Any other field carries nothing, and a filter naming it is refused.
+func (f *resourceField) TypescriptFilterable() string {
+	if f.IsIndex || f.IsUniqueIndex {
+		return tsFilterableAlways
+	}
+	if f.HasTag(allowFilterTagKey) {
+		return tsFilterableWithIndexed
+	}
+
+	return ""
+}
+
 func generatedGoFileName(name string) string {
 	return generatedFileName(name, "go")
 }
@@ -929,6 +1765,24 @@ func generatedTypescriptFileName(name string) string {
 
 func generatedFileName(name, suffix string) string {
 	return fmt.Sprintf("%s_%s.%s", genPrefix, name, suffix)
+}
+
+// testFileMarker is appended to a file stem that would otherwise end in _test: Go
+// compiles a _test.go file only under go test, so the struct would vanish from the
+// build and its generated files with it. Only the singular kinds (RPC methods) can
+// reach it; the plural kinds' stems end in the plural.
+const testFileMarker = "_rpc"
+
+// fileStem is the file-name stem shared by every file derived from a struct: the
+// authored source file the validator expects and the zz_gen_ files generated beside
+// it. name is the struct name, already pluralized for the plural kinds.
+func fileStem(name string) string {
+	stem := strings.ToLower(caser.ToSnake(name))
+	if strings.HasSuffix(stem, "_test") {
+		stem += testFileMarker
+	}
+
+	return stem
 }
 
 const (
@@ -946,7 +1800,22 @@ const (
 	manualAddResourceKeyword    string = "manualAddResource"    // Declares a manual permission registration on an accesstypes.Resource constant
 	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
 	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use
-	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes are registered under
+	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes — or a manual registration's hand-written route — are registered under
+	orderKeyword                string = "order"                // Declares the order a list takes when the request states none; the primary key is appended
+	pageKeyword                 string = "page"                 // Declares the default and maximum page size of a list
+	attributeKeyword            string = "attribute"            // Declares an attribute binding on its anchor field: a column binding, or a join-path binding via a FK
+	domainKeyword               string = "domain"               // Declares the structural tenancy binding on its anchor field (bare, or via: a FK path to the tenant key)
+	subjectSetKeyword           string = "subjectSet"           // Declares subject-side set vocabulary (subject.<name>, used with IN) anchored on a user-id column
+	subjectValueKeyword         string = "subjectValue"         // Declares subject-side scalar vocabulary (threshold comparisons) anchored on a unique user-id column
+	stateKeyword                string = "state"                // Marks a resource's state column (FK to its state enum table) and declares the initial state
+	stateRootKeyword            string = "stateRoot"            // Declares workflow membership on the member's anchoring FK field, naming the workflow root struct
+	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
+	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
+	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
+	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB); its Execute takes resource.Files
+	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
+	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
+	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field])]; on a keyed @computed struct, @file[(segment)] rendered by <Name><Segment>
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -955,7 +1824,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		virtualKeyword:              {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		computedKeyword:             {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		rpcKeyword:                  {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:             {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsCreateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		defaultsUpdateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
@@ -965,7 +1834,22 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		manualAddResourceKeyword:    {genlang.ScanConstant: genlang.ArgsRequired},
 		manualAddResourceSetKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		permissionScopeKeyword:      {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired},
+		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired, genlang.ScanConstant: genlang.ArgsRequired},
+		orderKeyword:                {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		pageKeyword:                 {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		attributeKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		domainKeyword:               {genlang.ScanField: genlang.Exclusive},
+		subjectSetKeyword:           {genlang.ScanField: genlang.ArgsRequired},
+		subjectValueKeyword:         {genlang.ScanField: genlang.ArgsRequired},
+		stateKeyword:                {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		stateRootKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		transitionKeyword:           {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		targetKeyword:               {genlang.ScanField: genlang.Exclusive},
+		answersKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		uploadKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		rowsOfKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		typescriptKeyword:           {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
 	}
 }
 

@@ -31,6 +31,8 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		outletRoutes[i] = &outletRouteData{
 			Name:                    outlet.name,
 			Suffix:                  outlet.suffix(),
+			Prefix:                  outlet.prefix,
+			ServesSessions:          outlet.servesSessions,
 			RoutesMap:               make(map[string][]*generatedRoute),
 			ConsolidatedHandlerFunc: fmt.Sprintf("Patch%sResources", outlet.suffix()),
 			ConsolidatedPath:        fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
@@ -103,6 +105,12 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 
+	if r.genRouter {
+		if err := r.runServedRouterGeneration(outlets, negativeTests); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -141,10 +149,60 @@ func (r *resourceGenerator) accumulateResourceRoutes(outlets []routerOutlet, out
 				outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], route)
 				routerTestRoutes = append(routerTestRoutes, route)
 			}
+
+			files, err := r.resourceFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, nil, err
+			}
+			outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], files...)
+			routerTestRoutes = append(routerTestRoutes, files...)
 		}
 	}
 
 	return constResources, routerTestRoutes, nil
+}
+
+// resourceFileRoutes builds the @file routes of a resource under the outlet route
+// prefix: one GET per declared segment under the read route, with the read route's
+// parameters. Empty for a resource that declares none.
+func (r *resourceGenerator) resourceFileRoutes(res *resourceInfo, routePrefix string) ([]*generatedRoute, error) {
+	if len(res.Files) == 0 {
+		return nil, nil
+	}
+	read, err := r.resourceRoute(res, ReadHandler, routePrefix)
+	if err != nil {
+		return nil, err
+	}
+	routes := make([]*generatedRoute, 0, len(res.Files))
+	for _, file := range res.Files {
+		routes = append(routes, fileRouteFrom(read, res.Name(), file))
+	}
+
+	return routes, nil
+}
+
+// computedFileRoutes builds the @file routes of a computed resource under the outlet
+// route prefix, under its read route as resourceFileRoutes does.
+func (r *resourceGenerator) computedFileRoutes(res *computedResource, routePrefix string) ([]*generatedRoute, error) {
+	if len(res.Files) == 0 {
+		return nil, nil
+	}
+	routes, err := r.computedResourceRoutes(res, routePrefix)
+	if err != nil {
+		return nil, err
+	}
+	readIndex := slices.IndexFunc(routes, func(route *generatedRoute) bool {
+		return route.HandlerType == ReadHandler
+	})
+	if readIndex < 0 {
+		return nil, errors.Newf("computed resource %s declares @%s but serves no read route", res.Name(), fileKeyword)
+	}
+	files := make([]*generatedRoute, 0, len(res.Files))
+	for _, file := range res.Files {
+		files = append(files, fileRouteFrom(routes[readIndex], res.Name(), file))
+	}
+
+	return files, nil
 }
 
 // accumulateComputedRoutes builds every routed computed resource's routes into each
@@ -154,7 +212,7 @@ func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, out
 	constComputedResources = make([]*computedResource, 0, len(r.computedResources))
 	routerTestRoutes = make([]*generatedRoute, 0, len(r.computedResources))
 	for _, res := range r.computedResources {
-		if !res.SuppressReadHandler {
+		if !res.ReadHandlerDisabled() {
 			constComputedResources = append(constComputedResources, res)
 		}
 
@@ -171,6 +229,11 @@ func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, out
 			if err != nil {
 				return nil, nil, err
 			}
+			files, err := r.computedFileRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, nil, err
+			}
+			routes = append(routes, files...)
 			outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], routes...)
 			routerTestRoutes = append(routerTestRoutes, routes...)
 		}
@@ -221,6 +284,16 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix strin
 	}
 }
 
+// singleKeyRouteTestParam names a single-key read route's parameter after the key
+// field, as the compound case and the handler's route constant do: a resource keyed
+// by Code reads {resourceCode}, one keyed by ID reads {resourceID}.
+func singleKeyRouteTestParam(resourceName, pkName string) routeTestParam {
+	return routeTestParam{
+		Key:   strcase.ToGoCamel(resourceName + pkName),
+		Value: strcase.ToGoCamel(fmt.Sprintf("test%s%s", caser.ToPascal(resourceName), pkName)),
+	}
+}
+
 // resourceRoute builds the route for one handler type of a resource under the outlet
 // route prefix, including read-route primary-key params and, for domain-scoped
 // resources, the domain segment pair.
@@ -242,10 +315,13 @@ func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType, rou
 			}
 			route.TestParams = readRouteTestParams(res.Name(), pkNames)
 		} else {
-			route.TestParams = []routeTestParam{{
-				Key:   strcase.ToGoCamel(res.Name() + "ID"),
-				Value: strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(res.Name()))),
-			}}
+			var pkName string
+			for _, field := range res.PrimaryKeys() {
+				pkName = field.Name()
+
+				break
+			}
+			route.TestParams = []routeTestParam{singleKeyRouteTestParam(res.Name(), pkName)}
 		}
 		route.appendParamsToPaths()
 	}
@@ -280,7 +356,7 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource, routeP
 		routes = append(routes, route)
 	}
 
-	if !res.SuppressReadHandler {
+	if !res.ReadHandlerDisabled() {
 		pkNames := make([]string, 0, len(res.PrimaryKeys()))
 		for _, field := range res.PrimaryKeys() {
 			pkNames = append(pkNames, field.Name())
@@ -354,7 +430,7 @@ func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negat
 
 	var tests []negativeRouterTest
 	for _, outlet := range outlets {
-		outletTests, err := r.negativeTestsForOutlet(outlet)
+		outletTests, err := r.negativeTestsForOutlet(&outlet)
 		if err != nil {
 			return nil, err
 		}
@@ -365,13 +441,21 @@ func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negat
 }
 
 // negativeTestsForOutlet builds one outlet's isolation cases: the URLs of everything
-// routed that is NOT attached to the outlet, addressed under the outlet's prefix.
-func (r *resourceGenerator) negativeTestsForOutlet(outlet routerOutlet) ([]negativeRouterTest, error) {
+// routed that is NOT attached to the outlet, addressed under the outlet's prefix —
+// including the permission routes for an outlet that does not serve sessions.
+func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]negativeRouterTest, error) {
 	var tests []negativeRouterTest
 	addRoute := func(route *generatedRoute) {
 		for _, method := range route.TestMethods() {
 			tests = append(tests, negativeRouterTest{Method: method, URL: route.TestURL})
 		}
+	}
+
+	if !outlet.servesSessions {
+		tests = append(tests,
+			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/permission-digest", outlet.prefix)},
+			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/user-domains", outlet.prefix)},
+		)
 	}
 
 	anyConsolidated, outletHasConsolidated := false, false
@@ -395,6 +479,13 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet routerOutlet) ([]negat
 			}
 			addRoute(route)
 		}
+		files, err := r.resourceFileRoutes(res, outlet.prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range files {
+			addRoute(route)
+		}
 	}
 
 	for _, res := range r.computedResources {
@@ -405,7 +496,11 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet routerOutlet) ([]negat
 		if err != nil {
 			return nil, err
 		}
-		for _, route := range routes {
+		files, err := r.computedFileRoutes(res, outlet.prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range slices.Concat(routes, files) {
 			addRoute(route)
 		}
 	}

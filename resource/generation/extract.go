@@ -14,12 +14,19 @@ import (
 )
 
 func (c *client) structsToResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
+	// structsByTable resolves a binding path's remote hops: each hop names Go
+	// fields on the struct backing the table the hop lands on.
+	structsByTable := make(map[string]*parser.Struct, len(structs))
+	for _, s := range structs {
+		structsByTable[c.pluralize(s.Name())] = s
+	}
+
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		annotations, err := scanStruct(pStruct)
 		if err != nil {
-			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+			resourceErrors = append(resourceErrors, err)
 
 			continue
 		}
@@ -36,6 +43,14 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 
 		if fieldAnnotationErr := rejectPrimaryKeyAnnotations(pStruct, annotations); fieldAnnotationErr != nil {
 			resourceErrors = append(resourceErrors, fieldAnnotationErr)
+
+			continue
+		}
+
+		// The annotations other kinds own: a method's frame, a view's table, and a
+		// field type's TypeScript type.
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource"), rejectTypescriptAnnotation(pStruct, annotations, "table-backed resource")); err != nil {
+			resourceErrors = append(resourceErrors, err)
 
 			continue
 		}
@@ -60,14 +75,13 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 		resource.Fields = fields
-
-		if err := validateNullability(pStruct, table); err != nil {
+		if err := declareFieldEnumerations(pStruct, fields, annotations); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
 		}
 
-		if err := resolveResourceAnnotations(resource, annotations); err != nil {
+		if err := c.resolveResource(resource, pStruct, annotations, structsByTable, table); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -80,7 +94,82 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		return nil, errors.Wrapf(errors.Join(resourceErrors...), "encountered %d errors converting structs to resources", len(resourceErrors))
 	}
 
+	// Workflow chains cross resources, so they resolve — and the uniform
+	// state bindings synthesize — only once every resource is extracted.
+	if err := c.resolveWorkflows(resources); err != nil {
+		return nil, err
+	}
+
 	return resources, nil
+}
+
+// resolveResource applies everything a table-backed resource declares beyond its
+// fields, in dependency order: nullability against the table, the struct annotations,
+// the bindings, the per-field index flags the tenant anchor decides, the positional
+// masking check that reads those flags, and the state annotations.
+func (c *client) resolveResource(resource *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations, structsByTable map[string]*parser.Struct, table *tableMetadata) error {
+	if err := validateNullability(pStruct, table); err != nil {
+		return err
+	}
+
+	if err := c.resolveStructAnnotations(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	if err := c.resolveBindingAnnotations(resource, pStruct, annotations, structsByTable); err != nil {
+		return err
+	}
+
+	// The tenant anchor is known only now, and the field flag for the column after it
+	// in an index key depends on it.
+	resource.deriveTenantIndexFlags(table)
+
+	// With the order and the index flags known, a positional declaration can be
+	// checked against what a list of the resource sorts and filters by.
+	if err := checkMaskingDeclarations(resource); err != nil {
+		return err
+	}
+
+	if err := c.resolveStateAnnotations(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	// The read route is known only now, and a file hangs under it.
+	return resolveResourceFiles(resource, pStruct, annotations)
+}
+
+// resolveVirtualAnnotations applies a virtual resource's struct- and
+// field-level annotations: suppression, manual Sets, permission scope,
+// outlets, and — with the scope resolved — the @domain tenancy binding.
+func resolveVirtualAnnotations(resource *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	if annotations.Struct.Has(suppressKeyword) {
+		if err := applySuppressDirectives(resource, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@suppress on %s", pStruct.Name())
+		}
+	}
+
+	if annotations.Struct.Has(manualAddResourceSetKeyword) {
+		if err := applyManualAddResourceSetDirectives(resource, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, pStruct.Name())
+		}
+	}
+
+	if err := resolvePermissionScope(annotations, &resource.PermissionScope); err != nil {
+		return errors.Wrapf(err, "on %s", pStruct.Name())
+	}
+
+	if err := resolveOutlets(annotations.Struct, &resource.outletMembership); err != nil {
+		return errors.Wrapf(err, "on %s", pStruct.Name())
+	}
+
+	// Scope resolves above; the tenancy pairing (domain-scoped ⇔ @domain)
+	// validates against it.
+	if err := resolveVirtualDomain(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	// The read route is known only now, and a file hangs under it.
+	return resolveResourceFiles(resource, pStruct, annotations)
 }
 
 // parsePermissionScopeAnnotation resolves a @permissionScope argument to one of the two
@@ -130,8 +219,12 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
 
-	if err := resolveOutlets(annotations, &res.outletMembership); err != nil {
+	if err := resolveOutlets(annotations.Struct, &res.outletMembership); err != nil {
 		return errors.Wrapf(err, "on %s", res.Name())
+	}
+
+	if err := resolveResourcePaging(res, annotations); err != nil {
+		return err
 	}
 
 	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
@@ -150,16 +243,66 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 	return nil
 }
 
+// resolveStructAnnotations applies a table-backed struct's annotations and then the
+// derivation the schema imposes on it: a struct backing an @enumerate table is
+// read-only (deriveEnumerationResource).
+func (c *client) resolveStructAnnotations(res *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	if err := resolveResourceAnnotations(res, annotations); err != nil {
+		return err
+	}
+	if typeName, ok := c.enumerationOf(c.pluralize(pStruct.Name())); ok {
+		return deriveEnumerationResource(res, typeName)
+	}
+
+	return nil
+}
+
+// deriveEnumerationResource makes a struct that backs an @enumerate table read-only:
+// the table's rows are the program's constants (generated as Go constants and a
+// TypeScript enum), so a mutation handler would let the rows drift from the code
+// generated from them. The patch handler is suppressed as if @suppress(PatchHandler)
+// were written, which also drops Create, Update, and Delete from the collection and
+// the consolidated handler. Anything on the struct that only a mutable table needs is
+// a contradiction and fails generation, rather than being dropped quietly.
+func deriveEnumerationResource(res *resourceInfo, typeName string) error {
+	var conflicts []string
+	for _, c := range []struct{ keyword, value string }{
+		{defaultsCreateTypeKeyword, res.DefaultsCreateType},
+		{defaultsUpdateTypeKeyword, res.DefaultsUpdateType},
+		{validateCreateTypeKeyword, res.ValidateCreateType},
+		{validateUpdateTypeKeyword, res.ValidateUpdateType},
+	} {
+		if c.value != "" {
+			conflicts = append(conflicts, "@"+c.keyword)
+		}
+	}
+	if slices.Contains(res.ManualAddResourceSets, PatchHandler) {
+		conflicts = append(conflicts, fmt.Sprintf("@%s(%s)", manualAddResourceSetKeyword, PatchHandler))
+	}
+	if len(conflicts) > 0 {
+		return errors.Newf("struct %s backs the enumeration table %s (@%s on type %s), so it is read-only: its rows are the program's constants; remove %s", res.Name(), typeName, enumerateKeyword, typeName, strings.Join(conflicts, ", "))
+	}
+
+	res.EnumerationType = typeName
+	if !slices.Contains(res.SuppressedHandlers, PatchHandler) {
+		res.SuppressedHandlers = append(res.SuppressedHandlers, PatchHandler)
+	}
+	res.IsConsolidated = false
+
+	return nil
+}
+
 // resolveOutlets applies an @outlet annotation to dest if present; both comma lists
-// and repeated annotations are accepted. Names are validated against the declared
-// outlets after every struct kind is extracted (validateAnnotatedOutlets); here only
-// empty and duplicate names are rejected.
-func resolveOutlets(annotations genlang.StructAnnotations, dest *outletMembership) error {
-	if !annotations.Struct.Has(outletKeyword) {
+// and repeated annotations are accepted. The annotations are a struct's or, for a
+// manual registration, an accesstypes.Resource constant's. Names are validated
+// against the declared outlets after everything is extracted
+// (validateAnnotatedOutlets); here only empty and duplicate names are rejected.
+func resolveOutlets(annotations genlang.ArgMap, dest *outletMembership) error {
+	if !annotations.Has(outletKeyword) {
 		return nil
 	}
 
-	for arg := range annotations.Struct.Get(outletKeyword).Seq() {
+	for arg := range annotations.Get(outletKeyword).Seq() {
 		for part := range strings.SplitSeq(arg, ",") {
 			name := strings.TrimSpace(part)
 			if name == "" {
@@ -232,14 +375,26 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 	resources := make([]*resourceInfo, 0, len(structs))
 	var errs []error
 	for _, pStruct := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		annotations, err := scanStruct(pStruct)
 		if err != nil {
-			errs = append(errs, errors.Wrap(err, "scanner.ScanStruct()"))
+			errs = append(errs, err)
 
 			continue
 		}
 
 		if !annotations.Struct.Has(virtualKeyword) {
+			continue
+		}
+
+		if err := rejectBindingAnnotations(pStruct, annotations, "virtual resource", domainKeyword); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "virtual resource"), rejectTypescriptAnnotation(pStruct, annotations, "virtual resource")); err != nil {
+			errs = append(errs, err)
+
 			continue
 		}
 
@@ -261,6 +416,21 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 		resource.Fields = fields
+		declareRowsOf(annotations, &resource.rowsOfDecl)
+
+		// A view declares the pickers its fields list and its order and page sizes as a
+		// table does, and its list handler and descriptor carry them the same way.
+		if err := errors.Join(declareFieldEnumerations(pStruct, fields, annotations), resolveResourcePaging(resource, annotations)); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		if err := checkMaskingDeclarations(resource); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
 
 		nullableFields, err := fieldNullability(pStruct)
 		if err != nil {
@@ -279,30 +449,8 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			field.IsNullable = nullability
 		}
 
-		if annotations.Struct.Has(suppressKeyword) {
-			if err := applySuppressDirectives(resource, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
-				errs = append(errs, errors.Wrapf(err, "@suppress on %s", pStruct.Name()))
-
-				continue
-			}
-		}
-
-		if annotations.Struct.Has(manualAddResourceSetKeyword) {
-			if err := applyManualAddResourceSetDirectives(resource, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
-				errs = append(errs, errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, pStruct.Name()))
-
-				continue
-			}
-		}
-
-		if err := resolvePermissionScope(annotations, &resource.PermissionScope); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
-
-			continue
-		}
-
-		if err := resolveOutlets(annotations, &resource.outletMembership); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
+		if err := resolveVirtualAnnotations(resource, pStruct, annotations); err != nil {
+			errs = append(errs, err)
 
 			continue
 		}
@@ -315,6 +463,43 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 	}
 
 	return resources, nil
+}
+
+// scanStruct scans a struct's annotations and refuses the struct when it claims more
+// than one kind, before any extractor can claim it.
+func scanStruct(pStruct *parser.Struct) (genlang.StructAnnotations, error) {
+	annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+	if err != nil {
+		return genlang.StructAnnotations{}, errors.Wrap(err, "scanner.ScanStruct()")
+	}
+	if err := rejectMultipleKinds(pStruct, annotations); err != nil {
+		return genlang.StructAnnotations{}, err
+	}
+
+	return annotations, nil
+}
+
+// structKindKeywords decide what a struct is to the generator. Exactly one may appear
+// on a struct (README: "Exactly one of @resource, @virtual, @computed, or @rpc may
+// appear on a struct"). The scanner's Exclusive flag only stops one keyword from
+// repeating, and every extractor scans every struct in its package and claims the ones
+// carrying its own keyword, so without this check a struct carrying two kinds would be
+// extracted twice, once as each, instead of refused.
+var structKindKeywords = []string{resourceKeyword, virtualKeyword, computedKeyword, rpcKeyword}
+
+// rejectMultipleKinds fails a struct that carries more than one kind keyword.
+func rejectMultipleKinds(pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	var kinds []string
+	for _, keyword := range structKindKeywords {
+		if annotations.Struct.Has(keyword) {
+			kinds = append(kinds, "@"+keyword)
+		}
+	}
+	if len(kinds) > 1 {
+		return errors.Newf("struct %s carries %s: exactly one of @%s, @%s, @%s, or @%s may appear on a struct", pStruct.Name(), strings.Join(kinds, " and "), resourceKeyword, virtualKeyword, computedKeyword, rpcKeyword)
+	}
+
+	return nil
 }
 
 // rejectPrimaryKeyAnnotations errors when a table-backed @resource struct carries
@@ -347,6 +532,14 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 
 			continue
 		}
+		if reserved, collides := reservedRowName(spannerTag, field.Name()); collides {
+			// The read statements' reserved output columns and the reserved
+			// per-row wire property: a colliding resource column would be
+			// indistinguishable from the envelope metadata.
+			field.AddError(fmt.Sprintf("column name %q is reserved for the row envelope", reserved))
+
+			continue
+		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
 			field.AddError("spanner tag does not match any table columns")
@@ -355,6 +548,11 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 		}
 		if field.HasTag(indexTagKey) {
 			field.AddError("cannot use index tag in non-virtual resource")
+
+			continue
+		}
+		if refusal, ok := listColumnTagRefusal(field); ok {
+			field.AddError(refusal)
 
 			continue
 		}
@@ -372,6 +570,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 			ReferencedResource: tableColumn.ReferencedTable,
 			ReferencedField:    tableColumn.ReferencedColumn,
 			HasDefault:         tableColumn.HasDefault,
+			SpannerType:        tableColumn.SpannerType,
 		})
 	}
 
@@ -380,6 +579,71 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 	}
 
 	return fields, nil
+}
+
+// deriveTenantIndexFlags marks the fields a filter seeks with the tenant bound. The
+// generated list of a resource with a bare @domain column always binds that column by
+// equality (the partition filter), so the column directly after it in any index key
+// has a seek path of its own: an equality on the prefix, then a range on the column.
+// The table-level flag (deriveIndexFlags) knows no tenant and marks leading columns
+// only; this pass adds the tenant-second columns for exactly the resources whose lists
+// bind the tenant on the row. A join-path resource compares its foreign key to the
+// parent row, not to a parameter, and a global resource binds nothing, so both keep the
+// table flags alone. Direction does not matter for a seek, and null filtering leaves
+// the reading as it is for a leading column. A global request carries no partition
+// predicate, so for it the seek is an index scan, the same cost class as its ordered
+// list, which already sorts the whole table.
+func (r *resourceInfo) deriveTenantIndexFlags(table *tableMetadata) {
+	if r.DomainBinding == nil || len(r.DomainBinding.Path) > 0 {
+		return
+	}
+	anchor := fieldColumn(r.DomainBinding.Anchor)
+
+	byColumn := make(map[string]*resourceField, len(r.Fields))
+	for _, field := range r.Fields {
+		byColumn[fieldColumn(field)] = field
+	}
+
+	for _, index := range table.Indexes {
+		if len(index.Key) < 2 || index.Key[0].Column != anchor {
+			continue
+		}
+		if field, ok := byColumn[index.Key[1].Column]; ok {
+			field.IsIndex = true
+		}
+	}
+}
+
+// The refusals a list field's query tags and picker declaration meet, on every path
+// that reads one. Spanner has no array equality and cannot index an ARRAY column, and a
+// computed resource's evaluator compares single values, so a filter or an index on a
+// list is refused at generation naming the field, with one sentence shape wherever it
+// is met. A picker stores one key, so a field-scope @enumerate on a list is refused the
+// same way, where the argument is captured and before it is read: the list field hears
+// this sentence and never a second one about the resource it names.
+const (
+	listFieldFilterRefusal    = allowFilterTagKey + " on a list field; a filter compares single values"
+	listFieldIndexRefusal     = " on a list field; no index serves an ARRAY column"
+	listFieldEnumerateRefusal = "@" + enumerateKeyword + " on a list field; a picker stores one key"
+)
+
+// listColumnTagRefusal is the refusal a table or view field earns for a query tag on a
+// list: allow_filter, index, or uniqueindex on a field whose type is a slice, an array,
+// or a named type over one (isListColumn). ok is false for every other field.
+func listColumnTagRefusal(field *parser.Field) (refusal string, ok bool) {
+	if !isListColumn(field.GoType()) {
+		return "", false
+	}
+	for _, key := range []string{indexTagKey, uniqueIndexTagKey} {
+		if field.HasTag(key) {
+			return key + listFieldIndexRefusal, true
+		}
+	}
+	if field.HasTag(allowFilterTagKey) {
+		return listFieldFilterRefusal, true
+	}
+
+	return "", false
 }
 
 func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) ([]*resourceField, error) {
@@ -392,6 +656,11 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations 
 		_, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			field.AddError("missing spanner tag")
+
+			continue
+		}
+		if refusal, ok := listColumnTagRefusal(field); ok {
+			field.AddError(refusal)
 
 			continue
 		}
@@ -423,12 +692,21 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
 	var errs []error
 	for _, s := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+		annotations, err := scanStruct(s)
 		if err != nil {
-			errs = append(errs, errors.Wrap(err, "scanner.ScanStruct()"))
+			errs = append(errs, err)
 		}
 
 		if !annotations.Struct.Has(rpcKeyword) {
+			continue
+		}
+
+		// The annotations other kinds own: a resource's bindings, a view's table, and a
+		// field type's TypeScript type; and the masking tag, which a method's request
+		// never carries.
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method")); err != nil {
+			errs = append(errs, err)
+
 			continue
 		}
 
@@ -438,22 +716,16 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		rpcMethod := &rpcMethodInfo{
-			Struct: s,
-			Fields: make([]*rpcField, 0, len(s.Fields())),
+		rpcMethod, err := c.classifyRPCMethod(s)
+		if err != nil {
+			errs = append(errs, err)
+
+			continue
 		}
 
-		for _, field := range s.Fields() {
-			field := rpcField{Field: field}
-			if enumeratedResource, hasEnumeratedTag := field.LookupTag(enumeratedTagKey); hasEnumeratedTag {
-				if !c.doesResourceExist(enumeratedResource) {
-					field.AddError(fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource))
-
-					continue
-				}
-				field.enumeratedResource = &enumeratedResource
-			}
-
+		for i, field := range s.Fields() {
+			field := rpcField{Field: field, wire: rpcMethod.Request.Fields[i], namespace: s.Name(), typescriptType: rpcMethod.Request.Fields[i].TypescriptDisplayType()}
+			c.declareRPCEnumeration(&field, annotations.Fields[i])
 			rpcMethod.Fields = append(rpcMethod.Fields, &field)
 		}
 
@@ -471,8 +743,26 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		if err := resolveOutlets(annotations, &rpcMethod.outletMembership); err != nil {
+		if err := resolveOutlets(annotations.Struct, &rpcMethod.outletMembership); err != nil {
 			errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
+
+			continue
+		}
+
+		if err := c.resolveTransition(rpcMethod, s, annotations); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		if err := resolveAnswers(rpcMethod, s, annotations); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		if err := resolveUpload(rpcMethod, s, annotations); err != nil {
+			errs = append(errs, err)
 
 			continue
 		}
@@ -487,18 +777,119 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 	return rpcMethods, nil
 }
 
-func structsToCompResources(structs []*parser.Struct, validators ...structValidator) ([]*computedResource, error) {
+// classifyRPCMethod reads what the struct's Execute declares: how it runs, what it
+// answers, and the wire shapes of its request and result. A struct without a
+// recognizable Execute never reaches the templates, so no handler can be generated
+// that decodes and returns without running it.
+func (c *client) classifyRPCMethod(s *parser.Struct) (*rpcMethodInfo, error) {
+	signature, err := classifyExecute(s)
+	if err != nil {
+		return nil, err
+	}
+
+	// One walker for the request and the result: a struct both reach keeps one
+	// mirror in the handler, and every name is checked against the whole file.
+	walker := newWireWalker(c.leaves(), s.PackageName(), c.resource.Package())
+	request, err := c.walkRequest(walker, s)
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.walkResult(walker, s, signature)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rpcMethodInfo{
+		Struct:        s,
+		Form:          signature.form,
+		Request:       request,
+		Result:        result,
+		ResultNamed:   signature.result,
+		ResultPointer: signature.resultPointer,
+		choosesStatus: signature.choosesStatus,
+		takesFiles:    signature.takesFiles,
+		Fields:        make([]*rpcField, 0, len(s.Fields())),
+	}, nil
+}
+
+// walkRequest reads an RPC struct's wire shape: what the handler's request mirror
+// declares and every struct it reaches, under the one vocabulary shared with
+// results and computed resources. It refuses the one leaf the RPC decoder does
+// not carry, a *bool at the top level, which the decoder cannot tell apart from
+// an absent field.
+func (c *client) walkRequest(walker *wireWalker, s *parser.Struct) (*wireShape, error) {
+	request, err := walker.walk(s)
+	if err != nil {
+		return nil, errors.Wrap(err, "RPC request")
+	}
+	for _, f := range request.Fields {
+		if f.IsLeaf() && f.Pointer && !f.Slice && f.tsLeaf == booleanStr {
+			return nil, errors.Newf("struct %s.%s: *bool is not supported in RPC requests; use bool", s.Name(), f.Name)
+		}
+	}
+
+	return request, nil
+}
+
+// walkResult reads the wire shape of the struct Execute answers with, nil when it
+// answers with error alone. A method answers with identifiers and outcomes, never
+// rows: a @resource or @computed struct in the result position is refused, since
+// rows are read through their resource routes, where permission masking applies.
+func (c *client) walkResult(walker *wireWalker, s *parser.Struct, signature executeSignature) (*wireShape, error) {
+	if signature.result == nil {
+		return nil, nil
+	}
+	name, pkg := signature.result.Obj().Name(), ""
+	if signature.result.Obj().Pkg() != nil {
+		pkg = signature.result.Obj().Pkg().Name()
+	}
+	if pkg == c.resource.Package() {
+		for _, res := range c.resources {
+			if res.Name() == name {
+				return nil, errors.Newf("struct %s: Execute answers with the resource %s.%s; a method answers with identifiers and outcomes, and rows are read through the resource's own routes, where permission masking applies", s.Name(), pkg, name)
+			}
+		}
+	}
+	if pkg == c.computed.Package() {
+		for _, res := range c.computedResources {
+			if res.Name() == name {
+				return nil, errors.Newf("struct %s: Execute answers with the computed resource %s.%s; a method answers with identifiers and outcomes, and rows are read through the resource's own routes, where permission masking applies", s.Name(), pkg, name)
+			}
+		}
+	}
+
+	result, err := walker.walkNamed(signature.result, s.Name()+" result "+typeStringer(signature.result))
+	if err != nil {
+		return nil, errors.Wrap(err, "RPC result")
+	}
+
+	return result, nil
+}
+
+func (c *client) structsToCompResources(structs []*parser.Struct, validators ...structValidator) ([]*computedResource, error) {
 	compResources := make([]*computedResource, 0, len(structs))
 	var resourceErrors []error
 	for _, s := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+		annotations, err := scanStruct(s)
 		if err != nil {
-			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+			resourceErrors = append(resourceErrors, err)
 
 			continue
 		}
 
 		if !annotations.Struct.Has(computedKeyword) {
+			continue
+		}
+
+		if err := rejectBindingAnnotations(s, annotations, "computed resource"); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource")); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
 			continue
 		}
 
@@ -508,10 +899,20 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 			continue
 		}
 
+		// The row's wire shape, under the one vocabulary shared with RPC requests
+		// and results. A nested field is opaque to the resource machinery.
+		shape, err := newWireWalker(c.leaves(), s.PackageName()).walk(s)
+		if err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrap(err, "computed resource"))
+
+			continue
+		}
+
 		res := &computedResource{
 			Struct: s,
-			Fields: make([]*computedField, 0, len(s.Fields())),
+			Shape:  shape,
 		}
+		declareRowsOf(annotations, &res.rowsOfDecl)
 
 		if annotations.Struct.Has(suppressKeyword) {
 			if err := applyComputedSuppressDirectives(res, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
@@ -527,26 +928,28 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 			continue
 		}
 
-		if err := resolveOutlets(annotations, &res.outletMembership); err != nil {
+		if err := resolveOutlets(annotations.Struct, &res.outletMembership); err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrapf(err, "on %s", s.Name()))
 
 			continue
 		}
 
-		var keyCount int
-		for i, field := range s.Fields() {
-			field := &computedField{
-				Field:        field,
-				IsPrimaryKey: annotations.Fields[i].Has(primarykeyKeyword),
-			}
+		if err := c.computedFields(res, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
 
-			if annotations.Fields[i].Has(primarykeyKeyword) {
-				field.IsPrimaryKey = true
-				field.KeyOrdinalPosition = keyCount
-				keyCount++
-			}
+			continue
+		}
 
-			res.Fields = append(res.Fields, field)
+		if err := resolveComputedPaging(res, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := resolveComputedFiles(res, s, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
 		}
 		compResources = append(compResources, res)
 	}
@@ -558,6 +961,166 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 	return compResources, nil
 }
 
+// computedFields builds the resource's fields off its walked shape and the
+// primarykey annotations, enforcing the opaque rule on every nested field.
+func (c *client) computedFields(res *computedResource, annotations genlang.StructAnnotations) error {
+	res.Fields = make([]*computedField, 0, len(res.Struct.Fields()))
+	var keyCount int
+	var errs []error
+	for i, field := range res.Struct.Fields() {
+		field := &computedField{
+			Field:          field,
+			wire:           res.Shape.Fields[i],
+			namespace:      c.pluralize(res.Name()),
+			typescriptType: res.Shape.Fields[i].TypescriptDisplayType(),
+		}
+
+		if annotations.Fields[i].Has(primarykeyKeyword) {
+			field.IsPrimaryKey = true
+			field.KeyOrdinalPosition = keyCount
+			keyCount++
+		}
+		if annotations.Fields[i].Has(enumerateKeyword) {
+			if field.wire.IsLeaf() && isListColumn(field.GoType()) {
+				// Refused before the argument is read, so the resolution says nothing
+				// more about it; a nested field, list or not, meets the opaque refusal
+				// below instead.
+				errs = append(errs, errors.Newf("struct %s field %s: %s", res.Name(), field.Name(), listFieldEnumerateRefusal))
+			} else {
+				arg := annotations.Fields[i].Get(enumerateKeyword)
+				field.enumerateArg = &arg
+			}
+		}
+
+		if err := checkOpaqueField(res.Name(), field); err != nil {
+			errs = append(errs, err)
+		}
+		if err := checkComputedQueryTags(res.Name(), field); err != nil {
+			errs = append(errs, err)
+		}
+
+		res.Fields = append(res.Fields, field)
+	}
+	if len(errs) > 0 {
+		return errors.Wrap(errors.Join(errs...), "computed resource fields")
+	}
+
+	return nil
+}
+
+// checkComputedQueryTags enforces the query tags a computed field may carry. index
+// and uniqueindex name database indexes, which a computed resource has none of,
+// so they are refused; allow_filter declares a filterable field, whose type the
+// in-memory evaluator must be able to compare, decided here with the field named
+// rather than at request time.
+func checkComputedQueryTags(resource string, field *computedField) error {
+	path := resource + "." + field.Name()
+	for _, key := range []string{indexTagKey, uniqueIndexTagKey} {
+		if _, ok := field.LookupTag(key); ok {
+			return errors.Newf("%s: the %s tag names a database index, which a computed resource has none of; use allow_filter to make a field filterable", path, key)
+		}
+	}
+	if _, ok := field.LookupTag(maskingTagKey); ok {
+		return errors.Newf("%s: the %s tag says how a masked cell meets a sort or a filter, and a computed resource never masks: its permission checks run at decode time, where conditional grants are refused", path, maskingTagKey)
+	}
+	if _, ok := field.LookupTag(allowFilterTagKey); !ok {
+		return nil
+	}
+	if field.wire == nil || field.wire.IsLeaf() {
+		base := strings.TrimPrefix(field.DerefUnqualifiedType(), "*")
+		if field.wire != nil {
+			base = strings.TrimPrefix(field.wire.SourceType, "*")
+		}
+		if field.wire != nil && field.wire.Slice {
+			return errors.Newf("%s: %s", path, listFieldFilterRefusal)
+		}
+		// The evaluator compares exactly the types a grant condition compares.
+		if _, ok := goTypeToAttributeType(base); ok {
+			return nil
+		}
+
+		return errors.Newf("%s: allow_filter on a field of type %s, which the filter evaluator cannot compare (text, numbers, booleans, time, date, decimal, and UUID compare)", path, base)
+	}
+
+	return nil
+}
+
+// opaqueTagKeys are the tags that mean nothing on or inside a nested computed
+// field: the field is one unit for permission, PII, and selection, and the
+// query decoder never filters or sorts into it.
+var opaqueTagKeys = []string{allowFilterTagKey, indexTagKey, uniqueIndexTagKey}
+
+// checkOpaqueField enforces the opaque rule on a computed resource's nested field:
+// never a primary key, never filterable or indexed, and no permission, PII, or
+// filter tag on any field inside it.
+func checkOpaqueField(resource string, field *computedField) error {
+	if field.wire == nil || field.wire.IsLeaf() {
+		return nil
+	}
+	path := resource + "." + field.Name()
+	if field.IsPrimaryKey {
+		return errors.Newf("%s: a nested field cannot be a primary key", path)
+	}
+	if field.enumerateArg != nil {
+		return errors.Newf("%s: a nested field is opaque and cannot carry a field-scope @%s; a picker stores one value", path, enumerateKeyword)
+	}
+	for _, key := range opaqueTagKeys {
+		if _, ok := field.LookupTag(key); ok {
+			return errors.Newf("%s: a nested field is opaque and cannot carry the %s tag; the query decoder never filters or sorts into it", path, key)
+		}
+	}
+
+	return checkOpaqueInner(path, field.wire.Nested, map[*wireShape]bool{})
+}
+
+// checkOpaqueInner refuses permission, PII, and filter tags on the fields inside a
+// nested shape: the nested field is granted, masked, and selected whole.
+func checkOpaqueInner(path string, shape *wireShape, seen map[*wireShape]bool) error {
+	if seen[shape] {
+		return nil
+	}
+	seen[shape] = true
+	for _, f := range shape.Fields {
+		for _, key := range append([]string{permTagKey, conditionsTagKey}, opaqueTagKeys...) {
+			if _, ok := f.Tag.Lookup(key); ok {
+				return errors.Newf("%s: %s.%s carries the %s tag, which means nothing inside a nested field: the field is granted, masked, and selected whole", path, shape.Source, f.Name, key)
+			}
+		}
+		if f.Nested != nil {
+			if err := checkOpaqueInner(path, f.Nested, seen); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// reservedRowName reports whether a column or field name collides with one of
+// the row envelope's reserved names, returning the name it collides with.
+func reservedRowName(spannerTag, fieldName string) (string, bool) {
+	for _, reserved := range []string{reservedMaskedNamesColumn, reservedCapabilitiesProperty, reservedCapabilityChecksColumn} {
+		if strings.EqualFold(spannerTag, reserved) || strings.EqualFold(fieldName, reserved) {
+			return reserved, true
+		}
+	}
+	for _, name := range []string{spannerTag, fieldName} {
+		if len(name) >= len(reservedCursorColumnPrefix) && strings.EqualFold(name[:len(reservedCursorColumnPrefix)], reservedCursorColumnPrefix) {
+			return reservedCursorColumnPrefix + "…", true
+		}
+	}
+
+	return "", false
+}
+
+// validateNullability checks every field's nillability against its column's
+// nullability and reports the mismatches in one table. A slice-typed field is left out:
+// a Go slice has one form, which the Spanner client reads NULL into as nil and writes as
+// NULL when nil, so the plain slice fits a nullable column and a NOT NULL one alike, and
+// the column alone decides (resourceField.IsNullable, carried onto the patch request
+// struct by NullableTag). A pointer to a slice is no alternative on either column, since
+// the client cannot decode into it; the column typing refuses it naming the plain slice
+// (refusePointerToSlice).
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	nullableFields, err := fieldNullability(pStruct)
 	if err != nil {
@@ -566,6 +1129,9 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 
 	var errRows []string
 	for _, field := range pStruct.Fields() {
+		if field.IsSlice() {
+			continue
+		}
 		spannerTag, _ := field.LookupTag(spannerTagKey)
 		if nullableFields[spannerTag] != table.Columns[spannerTag].IsNullable {
 			errRow := fmt.Sprintf("| %-32s | %13t | %15t |", spannerTag, nullableFields[spannerTag], table.Columns[spannerTag].IsNullable)
@@ -592,6 +1158,11 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	return nil
 }
 
+// fieldNullability reads which fields can carry NULL off their Go types alone: a
+// pointer, one of the listed Null wrappers, or a type named Null-something. A slice is
+// recorded under neither reading: its nullability is its column's (validateNullability),
+// so a slice-typed field is absent from the map, and a named slice type's Null prefix
+// says nothing.
 func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 	nullableFields := make(map[string]bool)
 	var missingTags []string
@@ -599,6 +1170,10 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 		spannerTag, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			missingTags = append(missingTags, field.Name())
+		}
+
+		if field.IsSlice() {
+			continue
 		}
 
 		if slices.Contains([]string{
@@ -610,7 +1185,6 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 			"*time.Time",
 			"*interface {}",
 			"ccc.NullUUID",
-			"sql.NullBool", "sql.NullByte", "sql.NullFloat64", "sql.NullInt16", "sql.NullInt32", "sql.NullInt64", "sql.NullString", "sql.NullTime",
 			"spanner.NullBool", "spanner.NullDate", "spanner.NullFloat32", "spanner.NullFloat64", "spanner.NullInt64", "spanner.NullJSON", "spanner.NullNumeric", "spanner.NullString", "spanner.NullTime",
 			"*civil.Date",
 		}, field.Type()) {
@@ -645,4 +1219,49 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 	}
 
 	return nullableFields, nil
+}
+
+// rejectMaskingTags refuses the masking tag on a kind that never masks: a
+// method's request is neither listed nor masked, so the tag has nothing to say.
+func rejectMaskingTags(s *parser.Struct, kind string) error {
+	var errs []error
+	for _, field := range s.Fields() {
+		if _, ok := field.LookupTag(maskingTagKey); ok {
+			errs = append(errs, errors.Newf("field %s.%s carries the %s tag, which says how a masked cell meets a sort or a filter; an %s is never listed or masked", s.Name(), field.Name(), maskingTagKey, kind))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Wrap(errors.Join(errs...), "masking tag error")
+	}
+
+	return nil
+}
+
+// checkMaskingDeclarations refuses a masking:"positional" declaration the field
+// cannot honor. On a primary key nothing is ever masked: keys are exempt from the
+// visibility rules, so there is no hidden cell to order positionally. On a field no
+// list orders or filters by with an index behind it — neither indexed, nor
+// allow_filter, nor named in @order — there is no index for the declaration to
+// restore, and it would disclose the field's rank for nothing.
+func checkMaskingDeclarations(res *resourceInfo) error {
+	var errs []error
+	for _, field := range res.Fields {
+		if !field.IsPositional() {
+			continue
+		}
+		path := res.Name() + "." + field.Name()
+		switch {
+		case field.IsPrimaryKey:
+			errs = append(errs, errors.Newf("%s: masking:%q on a primary key: keys are exempt from masking, so no cell of it is ever hidden and there is nothing to order positionally", path, maskingPositional))
+		case !field.IsQueryClauseEligible() && !res.declaresOrderOn(field.Name()):
+			errs = append(errs, errors.Newf("%s: masking:%q on a field no list orders or filters by with an index behind it (neither indexed, nor %s, nor named in @%s): there is no index to restore, and the declaration would disclose the field's rank for nothing", path, maskingPositional, allowFilterTagKey, orderKeyword))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Wrap(errors.Join(errs...), "masking declarations")
+	}
+
+	return nil
 }

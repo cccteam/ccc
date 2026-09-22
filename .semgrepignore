@@ -1,0 +1,20 @@
+# Semgrep path exclusions for the mono-repo scan (semgrep ci runs from the repository root
+# and from each module directory; each module keeps its own copy of what applies to it).
+#
+# impulse is a build tool: running go, git, and the agent's command line with arguments
+# read from the application under construction is its purpose, so the two places that
+# spawn processes are excluded from the dangerous-exec-command audit rather than marked
+# inline. Everything else in the module stays scanned.
+impulse/internal/check/check.go
+impulse/internal/handoff/agent.go
+
+# Property-based tests, and the conditiontest generator they draw their cases from, use a
+# seeded math/rand, which is what a reproducible property test needs; the crypto-randomness
+# audit does not apply to them.
+accesstypes/condition/property_test.go
+accesstypes/condition/conditiontest/generator.go
+accesstypes/condition/conditiontest/generator_test.go
+accesstypes/condition/conditiontest/evaluate_test.go
+resource/lowering_property_test.go
+resource/differential_property_test.go
+resource/semantic_differential_test.go

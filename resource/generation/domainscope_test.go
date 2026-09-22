@@ -655,6 +655,38 @@ func Test_domainGuardTemplate(t *testing.T) {
 	}
 }
 
+// Test_domainGuardTemplate_concealed pins the concealed variant
+// (WithConcealedDomains): the guard asks DomainVisible with the caller's
+// identity — "unauthorized" answers exactly like "nonexistent" — and the
+// default-mode DomainExists never appears.
+func Test_domainGuardTemplate_concealed(t *testing.T) {
+	t.Parallel()
+
+	c := &client{}
+	out, err := c.generateTemplateOutput("domainGuardTemplate", domainGuardTemplate, &domainGuardData{
+		Source:           "resources",
+		Package:          "app",
+		ApplicationName:  "App",
+		ReceiverName:     "a",
+		ConcealedDomains: true,
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+
+	for _, want := range []string{
+		"if ok, err := a.DomainVisible(ctx, a.UserPermissions(r).User(), domain); err != nil {",
+		`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("domainGuardTemplate output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(string(out), "DomainExists") {
+		t.Errorf("concealed domainGuardTemplate must not consult DomainExists:\n%s", out)
+	}
+}
+
 // Test_consolidatedTemplate_domainDispatch pins the consolidated handler's two-level
 // dispatch: global resources dispatch on the first path segment, domain-scoped
 // resources dispatch under the domain route segment's descent case with the domain
@@ -738,6 +770,26 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
 				`vaultDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))`,
 			},
+		},
+		{
+			name: "concealed domains ask DomainVisible with the caller's identity",
+			data: consolidatedPatchData{
+				Resources:           []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
+				GlobalCases:         []consolidatedCaseData{globalCase},
+				DomainCases:         []consolidatedCaseData{domainCase},
+				DomainRouteSegment:  "stations",
+				DomainPatternPrefix: "/stations/{stationID}",
+				Package:             "app",
+				ResourcePackage:     "resources",
+				ApplicationName:     "App",
+				ReceiverName:        "a",
+				ConcealedDomains:    true,
+			},
+			wantContains: []string{
+				`if ok, err := a.DomainVisible(ctx, userPermissions.User(), domain); err != nil {`,
+				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
+			},
+			wantNotContains: []string{"DomainExists"},
 		},
 		{
 			name: "all-global consolidation has no descent case",

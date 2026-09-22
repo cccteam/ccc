@@ -1,6 +1,9 @@
 package generation
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -119,163 +122,6 @@ func Test_formatInterfaceTypes(t *testing.T) {
 			got := formatInterfaceTypes(tt.args.types)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("formatInterfaceTypes() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
-func Test_client_HasCustomTypesInResources(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name              string
-		resources         []*resourceInfo
-		computedResources []*computedResource
-		want              bool
-	}{
-		{
-			name: "no custom types",
-			resources: []*resourceInfo{
-				{
-					Fields: []*resourceField{
-						{typescriptType: "string"},
-						{typescriptType: "number"},
-					},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "has CustomTypes in resource field",
-			resources: []*resourceInfo{
-				{
-					Fields: []*resourceField{
-						{typescriptType: "string"},
-						{typescriptType: "CustomTypes.RichText"},
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "has CustomTypes in computed resource field",
-			computedResources: []*computedResource{
-				{
-					Fields: []*computedField{
-						{typescriptType: "CustomTypes.CustomDate"},
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "has CustomTypes in both resource and computed resource",
-			resources: []*resourceInfo{
-				{
-					Fields: []*resourceField{
-						{typescriptType: "CustomTypes.Type1"},
-					},
-				},
-			},
-			computedResources: []*computedResource{
-				{
-					Fields: []*computedField{
-						{typescriptType: "CustomTypes.Type2"},
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name:              "empty resources",
-			resources:         []*resourceInfo{},
-			computedResources: []*computedResource{},
-			want:              false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			c := &client{
-				resources:         tt.resources,
-				computedResources: tt.computedResources,
-			}
-
-			got := c.HasCustomTypesInResources()
-			if got != tt.want {
-				t.Errorf("HasCustomTypesInResources() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_client_HasCustomTypesInMethods(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		rpcMethods []*rpcMethodInfo
-		want       bool
-	}{
-		{
-			name: "no custom types",
-			rpcMethods: []*rpcMethodInfo{
-				{
-					Fields: []*rpcField{
-						{typescriptType: "string"},
-						{typescriptType: "number"},
-					},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "has CustomTypes in rpc method field",
-			rpcMethods: []*rpcMethodInfo{
-				{
-					Fields: []*rpcField{
-						{typescriptType: "CustomTypes.SpecialType"},
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "has CustomTypes in multiple rpc methods",
-			rpcMethods: []*rpcMethodInfo{
-				{
-					Fields: []*rpcField{
-						{typescriptType: "string"},
-					},
-				},
-				{
-					Fields: []*rpcField{
-						{typescriptType: "CustomTypes.Type1"},
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name:       "empty rpc methods",
-			rpcMethods: []*rpcMethodInfo{},
-			want:       false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			c := &client{
-				rpcMethods: tt.rpcMethods,
-			}
-
-			got := c.HasCustomTypesInMethods()
-			if got != tt.want {
-				t.Errorf("HasCustomTypesInMethods() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -477,6 +323,77 @@ func Test_client_localPackageImports(t *testing.T) {
 
 			if got := c.localPackageImports(); got != tt.want {
 				t.Errorf("localPackageImports() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_removeGeneratedFiles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		create    bool
+		files     []string
+		wantKept  []string
+		wantError bool
+	}{
+		{
+			name:     "missing directory holds nothing to remove",
+			create:   false,
+			wantKept: nil,
+		},
+		{
+			name:     "generated files go, handwritten files stay",
+			create:   true,
+			files:    []string{genPrefix + "ships.go", "ships.go", genPrefix + "api.ts", "notes.txt"},
+			wantKept: []string{"notes.txt", "ships.go"},
+		},
+		{
+			name:     "empty directory is left as is",
+			create:   true,
+			wantKept: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "target")
+			if tt.create {
+				if err := os.MkdirAll(dir, 0o750); err != nil {
+					t.Fatalf("os.MkdirAll() error = %v", err)
+				}
+				for _, f := range tt.files {
+					if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
+						t.Fatalf("os.WriteFile() error = %v", err)
+					}
+				}
+			}
+
+			err := removeGeneratedFiles(dir, prefix)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("removeGeneratedFiles() error = %v, wantError %v", err, tt.wantError)
+			}
+
+			if !tt.create {
+				if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("removeGeneratedFiles() created %q, want it untouched", dir)
+				}
+
+				return
+			}
+
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("os.ReadDir() error = %v", err)
+			}
+			kept := make([]string, 0, len(entries))
+			for _, e := range entries {
+				kept = append(kept, e.Name())
+			}
+			if diff := cmp.Diff(tt.wantKept, kept); diff != "" {
+				t.Errorf("removeGeneratedFiles() kept files mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
