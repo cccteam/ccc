@@ -32,9 +32,48 @@ func main() {
 `
 }
 
+// declaredProgram renders a generator program declared in a package of its own,
+// cmd/generate, as an application lays it out when tests run the declaration in-process:
+// the package holds NewGenerator; the runner, a main package beside it, imports it.
+func declaredProgram(resourceDir string, options ...string) string {
+	return `package generate
+
+import (
+	"context"
+
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func NewGenerator(ctx context.Context) (generation.Generator, error) {
+	return generation.NewResourceGenerator(ctx, "` + resourceDir + `", []string{"file://schema/migrations"}, []string{"example.com/harbor/` + resourceDir + `"},
+		` + strings.Join(options, "\n\t\t") + `
+	)
+}
+`
+}
+
+// generateDirective renders the cmd/generate/generate.go that runs the named program
+// directory. The directive is spliced in so this file's own source does not start a
+// line with it.
+func generateDirective(program string) string {
+	return "package generate\n\n" + "//go:generate go run ./" + program + "\n"
+}
+
+// runner renders a main package that runs the declared program through the package it
+// imports; imports lists the packages it imports.
+func runner(imports ...string) string {
+	quoted := make([]string, 0, len(imports))
+	for _, imp := range imports {
+		quoted = append(quoted, "\t\""+imp+"\"")
+	}
+
+	return "package main\n\nimport (\n\t\"context\"\n\t\"log\"\n\n" + strings.Join(quoted, "\n") + "\n)\n\nfunc main() {\n\tif err := run(context.Background()); err != nil {\n\t\tlog.Fatal(err)\n\t}\n}\n\nfunc run(ctx context.Context) error {\n\t_ = ctx\n\n\treturn nil\n}\n"
+}
+
 // TestOptionsCoherence builds small applications in a temporary directory and pins the
 // findings of the options check. The fixture applications cover the passing shapes; these
-// cases cover the disagreements.
+// cases cover the disagreements, and the layout where the program is declared in a
+// package the runner imports.
 func TestOptionsCoherence(t *testing.T) {
 	t.Parallel()
 
@@ -253,6 +292,38 @@ func TestOptionsCoherence(t *testing.T) {
 				"console (cmd/generate/console/main.go): resources apps/console/pkg/resources, handlers apps/console/app, routes apps/console/pkg/router under /api",
 				"portal (cmd/generate/portal/main.go): resources apps/portal/pkg/resources, handlers apps/portal/app, routes apps/portal/pkg/router under /api",
 				"shared (cmd/generate/shared/main.go): resources pkg/sharedresources, typescript apps/console/web/src",
+			},
+		},
+		{
+			// The declaration lives in cmd/generate so tests can import it; go generate
+			// runs the runner beside it, which imports the declaring package.
+			name: "a program declared in a package the runner imports is run",
+			files: map[string]string{
+				"cmd/generate/generate.go":               generateDirective("resourcegenerator"),
+				"cmd/generate/generator.go":              declaredProgram("pkg/resources", `generation.GenerateHandlers("app"),`, `generation.GenerateRoutes("pkg/router", "api"),`),
+				"cmd/generate/resourcegenerator/main.go": runner("example.com/harbor/cmd/generate"),
+				"pkg/resources":                          "", "app": "", "pkg/router": "",
+			},
+			wantStatus:  Pass,
+			wantSummary: "flat layout, 1 site(s); not tenanted; no outlets",
+			wantDetails: []string{
+				"harbor (cmd/generate/generator.go): resources pkg/resources, handlers app, routes pkg/router under /api",
+			},
+		},
+		{
+			// A runner that does not import the declaration runs something else: the
+			// declared program is not run.
+			name: "a runner that does not import the declaration leaves the program unrun",
+			files: map[string]string{
+				"cmd/generate/generate.go":               generateDirective("resourcegenerator"),
+				"cmd/generate/generator.go":              declaredProgram("pkg/resources", `generation.GenerateHandlers("app"),`, `generation.GenerateRoutes("pkg/router", "api"),`),
+				"cmd/generate/resourcegenerator/main.go": runner("example.com/harbor/pkg/resources"),
+				"pkg/resources":                          "", "app": "", "pkg/router": "",
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 option set problem(s)",
+			wantDetails: []string{
+				"cmd/generate/generator.go: no //go:generate directive runs this program, so go generate ./... never regenerates it",
 			},
 		},
 	}
