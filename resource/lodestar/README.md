@@ -199,11 +199,11 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   overseer's grant flips during a live walkthrough.
 - `web/`: one bun workspace, two Angular applications: `console/` (default outlet) and
   `portal/` (portal outlet), each over its own generated TypeScript client; the workspace's
-  checks are `bun run build && bun run lint && bun run test`; ccc's CI runs the build and
-  the lint in its `lodestar-web` job against `@cccteam/resource` and
-  `@cccteam/resource-angular` built in the job from ccc-lib's branch and linked the way
-  `web/ccclib.sh local` links them (the published versions once they publish); the
-  specs run on Angular's unit-test builder with Vitest under jsdom, the wiring the
+  checks are `bun run build && bun run lint && bun run test`; ccc's CI runs all three in
+  its `lodestar-web` job against `@cccteam/resource` and `@cccteam/resource-angular` built
+  in the job from ccc-lib's branch and linked the way `web/ccclib.sh local` links them (the
+  published versions once they publish); the specs run on Angular's unit-test builder with
+  Vitest under jsdom, no browser, the wiring the
   Impulse skeleton carries (the console's dashboard, login, header, top bar, footer, and
   shell, the portal's login and tracker, over a scripted client from
   `@cccteam/resource-angular/testing`). The console's
