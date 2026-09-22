@@ -40,7 +40,10 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
   over the console's announcements, and `Machines_Domain`, the service account's role, over
   the readings; the members file authors `Administrator_Domain` over the portal's
   announcements. A new resource stays invisible until a role in its auth's file is granted
-  it.
+  it. Every grant in either file is proven live by `test/integration/grants_test.go`, which
+  provisions the file the way the deployment does and asks the engine about each
+  unconditional grant; a conditional grant is proven by a test case that names it through
+  `provesGrant`, and `impulse check` fails on one no case names.
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles
   across the tenants read from the table. `cmd/deployment/migrate` is the deploy step;
   `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development

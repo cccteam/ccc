@@ -25,7 +25,10 @@ the digest for the selected tenant.
   reconciles across the tenant roster. It authors the development logins' roles,
   `Administrator_Global` over the tenant record and `Administrator_Domain` over every
   tenant-scoped resource; a new resource stays invisible to every login until a role in
-  this file is granted it.
+  this file is granted it. Every grant in it is proven live by `test/integration/grants_test.go`, which
+  provisions the file the way the deployment does and asks the engine about each
+  unconditional grant; a conditional grant is proven by a test case that names it through
+  `provesGrant`, and `impulse check` fails on one no case names.
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles
   across the tenants read from the table. `cmd/deployment/migrate` is the deploy step;
   `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development

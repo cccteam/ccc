@@ -71,6 +71,27 @@ type Check interface {
 	Run(ctx context.Context, env *Env) Result
 }
 
+// Explainer is a check that can say what its failure means in this framework, for the
+// handoff brief: the pattern the obligations under it are met by.
+type Explainer interface {
+	Meaning() string
+}
+
+// Meaning returns what a failing check means, for the brief, or empty for a check whose
+// lines say everything.
+func Meaning(name string) string {
+	for _, c := range All() {
+		if c.Name() != name {
+			continue
+		}
+		if e, ok := c.(Explainer); ok {
+			return e.Meaning()
+		}
+	}
+
+	return ""
+}
+
 // Env is what a check runs against.
 type Env struct {
 	App *app.App
@@ -124,6 +145,7 @@ func All() []Check {
 		sitesWired{},
 		sessionTables{},
 		authsWired{},
+		conditionsProven{},
 		skipAuth{},
 		emulatorVersion{},
 		prettierIgnore{},

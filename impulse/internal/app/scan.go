@@ -88,6 +88,13 @@ func (a *App) scanFile(abs, name string) error {
 			}
 			a.RoleValidations = append(a.RoleValidations, validations...)
 		}
+		if bytes.Contains(data, []byte(ProvesGrantFunc+"(")) {
+			proofs, err := parseGrantProofs(rel, data)
+			if err != nil {
+				return err
+			}
+			a.GrantProofs = append(a.GrantProofs, proofs...)
+		}
 	case strings.HasSuffix(name, ".go"):
 		return a.scanGoFile(abs, rel)
 	}

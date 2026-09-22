@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -265,4 +266,39 @@ func (b *browser) xsrfToken() string {
 	}
 
 	return ""
+}
+
+// provesGrant names the conditional grant a test case proves. It reads the roles file at
+// rolesPath (root-relative, as the auth package's RolesPath spells it) and fails unless a
+// grant for the role, permission, and resource carries exactly that condition text, so a
+// case whose grant is gone or reworded fails here even when nobody ran impulse check, whose
+// conditions-proven check reads these calls to find the conditional grants no case names.
+// Write the arguments as literals: the check reads them from the source.
+func provesGrant(t *testing.T, rolesPath string, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
+	t.Helper()
+
+	raw, err := os.ReadFile(filepath.Join("..", "..", rolesPath))
+	if err != nil {
+		t.Fatalf("reading %s: %v", rolesPath, err)
+	}
+	var roles access.RoleConfig
+	if err := json.Unmarshal(raw, &roles); err != nil {
+		t.Fatalf("parsing %s: %v", rolesPath, err)
+	}
+	var conditions []string
+	for _, r := range slices.Concat(roles.Roles.Global, roles.Roles.Domain) {
+		if r.Name != role {
+			continue
+		}
+		for _, g := range r.Permissions[permission] {
+			if g.Resource != res {
+				continue
+			}
+			if g.Condition == condition {
+				return
+			}
+			conditions = append(conditions, g.Condition)
+		}
+	}
+	t.Fatalf("%s: no %s grant of the %s role on %s carries the condition %q (the file's conditions there: %q); the case proves a grant the file no longer carries", rolesPath, permission, role, res, condition, conditions)
 }

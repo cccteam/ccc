@@ -56,8 +56,8 @@ func (b *Brief) Write(w io.Writer) {
 	} else {
 		fmt.Fprintf(w, "%s\n\n", strings.TrimSpace(b.Change))
 	}
-	if b.Meaning != "" {
-		fmt.Fprintf(w, "## What it means\n\n%s\n\n", strings.TrimSpace(b.Meaning))
+	if meanings := b.meanings(); len(meanings) > 0 {
+		fmt.Fprintf(w, "## What it means\n\n%s\n\n", strings.Join(meanings, "\n\n"))
 	}
 
 	if options, ok := b.result("options"); ok && options.Status == check.Pass {
@@ -113,6 +113,22 @@ func (b *Brief) result(name string) (check.Result, bool) {
 	}
 
 	return check.Result{}, false
+}
+
+// meanings collects what the brief explains: the option's meaning when a transition gave
+// one, then what each failing check means, for the checks that carry a meaning.
+func (b *Brief) meanings() []string {
+	var meanings []string
+	if b.Meaning != "" {
+		meanings = append(meanings, strings.TrimSpace(b.Meaning))
+	}
+	for _, r := range b.failing() {
+		if m := check.Meaning(r.Name); m != "" {
+			meanings = append(meanings, m)
+		}
+	}
+
+	return meanings
 }
 
 func (b *Brief) failing() []check.Result {

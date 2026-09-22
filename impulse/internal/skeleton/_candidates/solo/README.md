@@ -18,7 +18,10 @@ what they hold.
   the tables they describe; `schema/roles/staff.json` the role configuration the deployment
   reconciles. It authors `Administrator_Global`, the development login's role, with no
   grants yet: a new resource stays invisible to every login until a role in this file is
-  granted it.
+  granted it. Every grant in it is proven live by `test/integration/grants_test.go`, which
+  provisions the file the way the deployment does and asks the engine about each
+  unconditional grant; a conditional grant is proven by a test case that names it through
+  `provesGrant`, and `impulse check` fails on one no case names.
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles.
   `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it to stand up an
   emulator database and adds the development logins from `cmd/bootstrap/users.json`. Its

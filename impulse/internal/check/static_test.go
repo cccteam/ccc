@@ -100,6 +100,10 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
+			name: "conditions-proven no auth package", fixture: "flat", check: conditionsProven{},
+			wantStatus: Skip, wantSummary: "no auth package",
+		},
+		{
 			name: "sites-wired flat", fixture: "flat", check: sitesWired{},
 			wantStatus: Skip, wantSummary: "flat layout: one site",
 		},

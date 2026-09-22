@@ -104,6 +104,7 @@ checks:
   sites-wired
   session-tables
   auths-wired
+  conditions-proven
   skipauth
   emulator-version
   prettier-ignore

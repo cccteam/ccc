@@ -45,6 +45,9 @@ type App struct {
 	// RoleValidations are the calls to access.ValidateRoles in the application's tests:
 	// where a roles file's deploy-time warnings are pinned in code.
 	RoleValidations []RoleValidation
+	// GrantProofs are the calls to the harness helper provesGrant in the application's
+	// tests: where a test case names the conditional grant it proves.
+	GrantProofs []GrantProof
 	// OutletMembers are the structs the application's own code annotates @outlet: the
 	// resources attached to router outlets other than, or in addition to, the default.
 	OutletMembers []OutletMember

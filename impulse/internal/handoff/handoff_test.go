@@ -1,6 +1,7 @@
 package handoff
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -95,6 +96,57 @@ func TestBriefWrite(t *testing.T) {
 			tt.brief.App = beacon(t)
 			if diff := cmp.Diff(tt.want, tt.brief.String()); diff != "" {
 				t.Errorf("Brief.String() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestBriefMeanings pins where a failing check's own meaning lands: under "What it
+// means", after the transition's meaning when there is one, and only for a check that
+// carries one.
+func TestBriefMeanings(t *testing.T) {
+	t.Parallel()
+
+	conditions := check.Result{Name: "conditions-proven", Status: check.Fail, Summary: "1 conditional grant(s) proven by no test case", Details: []string{`schema/roles/staff.json: Cadet List Missions under "hazard IN (1, 2)" is proven by no test case`}}
+	tenancy := check.Result{Name: "tenancy-wired", Status: check.Fail, Summary: "1 tenancy wiring problem(s)", Details: []string{"x"}}
+	conditionsMeaning := check.Meaning("conditions-proven")
+	if conditionsMeaning == "" {
+		t.Fatal("conditions-proven carries no meaning")
+	}
+
+	tests := []struct {
+		name  string
+		brief Brief
+		want  string
+	}{
+		{
+			name:  "a failing check with a meaning",
+			brief: Brief{Results: []check.Result{conditions}},
+			want:  "## What it means\n\n" + conditionsMeaning + "\n\n## The failing checks",
+		},
+		{
+			name:  "after the transition's meaning",
+			brief: Brief{Meaning: "Tenancy scopes resources to a tenant record.", Results: []check.Result{tenancy, conditions}},
+			want:  "## What it means\n\nTenancy scopes resources to a tenant record.\n\n" + conditionsMeaning + "\n\n## The failing checks",
+		},
+		{
+			name:  "a failing check without one adds no section",
+			brief: Brief{Results: []check.Result{tenancy}},
+			want:  "## What changed\n\nNothing was changed by the tool. `impulse check` found the obligations below in the tree as it is.\n\n## The failing checks",
+		},
+		{
+			name:  "a passing check adds no section",
+			brief: Brief{Results: []check.Result{{Name: "conditions-proven", Status: check.Pass, Summary: "ok"}, tenancy}},
+			want:  "## What changed\n\nNothing was changed by the tool. `impulse check` found the obligations below in the tree as it is.\n\n## The failing checks",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.brief.App = beacon(t)
+			if got := tt.brief.String(); !strings.Contains(got, tt.want) {
+				t.Errorf("Brief.String() lacks %q:\n%s", tt.want, got)
 			}
 		})
 	}
