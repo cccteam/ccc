@@ -21,13 +21,14 @@ func (a *App) Announcements() http.HandlerFunc {
 		ID       ccc.UUID `json:"id"       index:"true" perm:"-"`
 		TenantID string   `json:"tenantId" index:"true"`
 		KindID   string   `json:"kindId"   index:"true"`
-		Title    string   `json:"title"`
+		Title    string   `json:"title"    index:"true"`
 		Body     string   `json:"body"`
 	}
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Announcement, announcement](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Announcement, announcement](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Title", Direction: resource.SortAscending}}})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

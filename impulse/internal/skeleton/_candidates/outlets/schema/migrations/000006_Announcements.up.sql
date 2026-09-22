@@ -7,3 +7,5 @@ CREATE TABLE Announcements (
   CONSTRAINT CK_Announcements_Id CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
   CONSTRAINT FK_Announcements_TenantId FOREIGN KEY (TenantId) REFERENCES Tenants(Id),
 ) PRIMARY KEY (Id);
+
+CREATE INDEX AnnouncementsByTenantIdTitle ON Announcements(TenantId, Title);

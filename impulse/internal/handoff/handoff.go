@@ -48,7 +48,7 @@ type Brief struct {
 // Write renders the brief as Markdown.
 func (b *Brief) Write(w io.Writer) {
 	fmt.Fprintf(w, "# Impulse handoff: %s\n\n", b.appName())
-	fmt.Fprintf(w, "You are working in an Impulse application (Go services built on the cccteam libraries, with ccc/resource generating the handlers, routes, and browser clients from annotated resource structs). The application root is `%s`, and it is your working directory.\n\n", b.App.Root)
+	fmt.Fprintf(w, "You are working in an Impulse application (Go services built on the cccteam libraries, with ccc/resource generating the handlers, routes, and browser clients from annotated resource structs; a listed resource declares its order with `@order` on the struct or every page of it names a `sort`, since a paged request with neither is refused). The application root is `%s`, and it is your working directory.\n\n", b.App.Root)
 
 	fmt.Fprintf(w, "## What changed\n\n")
 	if b.Change == "" {

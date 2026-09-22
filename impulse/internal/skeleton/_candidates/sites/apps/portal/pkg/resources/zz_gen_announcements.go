@@ -41,7 +41,7 @@ var announcementReadSets resource.SetCache[Announcement, announcementRead]
 type announcementWrite struct {
 	ID       ccc.UUID `json:"-"`
 	TenantID string   `json:"-"`
-	KindID   string   `json:"kindId"`
+	KindID   string   `json:"kindId" sqltype:"STRING(64)"`
 	Title    string   `json:"title"`
 	Body     string   `json:"body"`
 }
@@ -214,6 +214,10 @@ func (p AnnouncementQueryPartialClause) TenantID() AnnouncementQueryIdent[string
 
 func (p AnnouncementQueryPartialClause) KindID() AnnouncementQueryIdent[string] {
 	return AnnouncementQueryIdent[string]{Ident: resource.NewIdent[string]("KindID", p.partialClause, true)}
+}
+
+func (p AnnouncementQueryPartialClause) Title() AnnouncementQueryIdent[string] {
+	return AnnouncementQueryIdent[string]{Ident: resource.NewIdent[string]("Title", p.partialClause, true)}
 }
 
 type AnnouncementQueryClause struct {

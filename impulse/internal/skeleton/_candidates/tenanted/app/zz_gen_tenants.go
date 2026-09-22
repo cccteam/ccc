@@ -23,7 +23,8 @@ func (a *App) Tenants() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Tenant, tenant](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Tenant, tenant](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Name", Direction: resource.SortAscending}}})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

@@ -12,9 +12,10 @@ type (
 	// slug shape with a CHECK constraint. Creating a tenant therefore supplies its key.
 	//
 	// Tenant itself is a GLOBAL resource — administering the tenant list is a global
-	// concern.
+	// concern. Its list comes in name order (@order) when the request names no sort.
 	//
 	// @resource
+	// @order(Name asc)
 	Tenant struct {
 		ID   string `spanner:"Id"`
 		Name string `spanner:"Name"`

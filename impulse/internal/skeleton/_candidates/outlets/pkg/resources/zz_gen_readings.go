@@ -213,6 +213,10 @@ func (p ReadingQueryPartialClause) TenantID() ReadingQueryIdent[string] {
 	return ReadingQueryIdent[string]{Ident: resource.NewIdent[string]("TenantID", p.partialClause, true)}
 }
 
+func (p ReadingQueryPartialClause) RecordedAt() ReadingQueryIdent[time.Time] {
+	return ReadingQueryIdent[time.Time]{Ident: resource.NewIdent[time.Time]("RecordedAt", p.partialClause, true)}
+}
+
 type ReadingQueryClause struct {
 	clause resource.QueryClause
 }

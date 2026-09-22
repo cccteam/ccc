@@ -23,7 +23,7 @@ func beacon(t *testing.T) *app.App {
 }
 
 const preamble = "# Impulse handoff: example.com/acme/beacon\n\n" +
-	"You are working in an Impulse application (Go services built on the cccteam libraries, with ccc/resource generating the handlers, routes, and browser clients from annotated resource structs). The application root is `/w/beacon`, and it is your working directory.\n\n"
+	"You are working in an Impulse application (Go services built on the cccteam libraries, with ccc/resource generating the handlers, routes, and browser clients from annotated resource structs; a listed resource declares its order with `@order` on the struct or every page of it names a `sort`, since a paged request with neither is refused). The application root is `/w/beacon`, and it is your working directory.\n\n"
 
 const rulesTail = "5. Do not stage or commit. Leave your work in the working tree; the pull request is the review.\n" +
 	"6. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +

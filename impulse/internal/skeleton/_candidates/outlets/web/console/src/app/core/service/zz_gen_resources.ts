@@ -19,9 +19,9 @@ const resourceMap: ResourceMap = {
     route: 'tenants/{tenantID}/announcements',
     consolidatedRoute: 'resources',
     fields: [
-      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'tenantId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Tenants, readOnly: true },
-      { fieldName: 'title', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
+      { fieldName: 'tenantId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Tenants, readOnly: true },
+      { fieldName: 'title', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'body', displayType: 'string', required: true, isIndex: false },
     ],
   },
@@ -29,8 +29,8 @@ const resourceMap: ResourceMap = {
     route: 'tenants',
     consolidatedRoute: 'resources',
     fields: [
-      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true },
-      { fieldName: 'name', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
+      { fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
     ],
   },
 };
@@ -50,18 +50,3 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Announcements]: PermissionScopes.domain,
   [Resources.Tenants]: PermissionScopes.global,
 };
-
-export type OperationType = 'add' | 'patch' | 'remove';
-
-export interface AnnouncementsOperation {
-  op: OperationType;
-  path: `/tenants/${string}/announcements` | `/tenants/${string}/announcements/${string}`;
-  value?: Partial<Announcements>;
-}
-
-export interface TenantsOperation {
-  op: OperationType;
-  path: '/tenants' | `/tenants/${string}`;
-  value?: Partial<Tenants>;
-}
-export type ConsolidatedOperation = AnnouncementsOperation | TenantsOperation;

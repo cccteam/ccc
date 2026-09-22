@@ -15,10 +15,10 @@ const resourceMap: ResourceMap = {
     route: 'tenants/{domain}/announcements',
     consolidatedRoute: 'resources',
     fields: [
-      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'tenantId', displayType: 'string', required: true, isIndex: true, readOnly: true },
-      { fieldName: 'kindId', displayType: 'string', required: true, isIndex: true },
-      { fieldName: 'title', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
+      { fieldName: 'tenantId', displayType: 'string', required: true, isIndex: true, filterable: 'always', readOnly: true },
+      { fieldName: 'kindId', displayType: 'string', required: true, isIndex: true, filterable: 'always', maxLength: 64 },
+      { fieldName: 'title', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'body', displayType: 'string', required: true, isIndex: false },
     ],
   },
@@ -38,12 +38,3 @@ export const DomainRouteParam = 'domain';
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Announcements]: PermissionScopes.domain,
 };
-
-export type OperationType = 'add' | 'patch' | 'remove';
-
-export interface AnnouncementsOperation {
-  op: OperationType;
-  path: `/tenants/${string}/announcements` | `/tenants/${string}/announcements/${string}`;
-  value?: Partial<Announcements>;
-}
-export type ConsolidatedOperation = AnnouncementsOperation;

@@ -35,6 +35,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 50 },
+      order: [{ field: 'title', direction: 'asc' }],
       patchable: ['title', 'body'],
     },
   },

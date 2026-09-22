@@ -23,12 +23,13 @@ func (a *App) Readings() http.HandlerFunc {
 		TenantID   string    `json:"tenantId"   index:"true"`
 		Source     string    `json:"source"`
 		Value      float64   `json:"value"`
-		RecordedAt time.Time `json:"recordedAt"`
+		RecordedAt time.Time `json:"recordedAt" index:"true"`
 	}
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Reading, reading](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Reading, reading](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "RecordedAt", Direction: resource.SortDescending}}})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

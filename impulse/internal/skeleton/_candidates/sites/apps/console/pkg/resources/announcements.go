@@ -14,11 +14,15 @@ type (
 	// wire can never write it. KindId references the AnnouncementKinds enum table the
 	// shared generator (pkg/sharedresources) emits for every site.
 	//
+	// A list without a sort comes in title order (@order), so a paged request is never
+	// refused for want of one; the index on (TenantId, Title) serves every page.
+	//
 	// Both sites serve announcements, each from its own resource package: a site's
 	// generator reads one package, so a table both sites serve is declared in both.
 	//
 	// @resource
 	// @permissionScope(domain)
+	// @order(Title asc)
 	Announcement struct {
 		ID ccc.UUID `spanner:"Id"`
 		// @domain

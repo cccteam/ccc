@@ -47,15 +47,19 @@ A list answers one page at a time: `limit` rows, or the resource's declared defa
 (`@page(default: N, max: M)`, otherwise 50), positioned by a sealed cursor the server
 issues in its `Link` header (`rel="next"`, `rel="prev"`), never by an offset. A resource
 declares the order a sort-less list takes with `@order(Field asc, …)`; the primary key is
-appended so the order is total, and a list with no declared order and no requested sort
-issues no cursor. `count=true` on a first page answers the total in `Total-Count`;
-`limit=all` returns every row where the resource declares no maximum. The cursors are
-sealed under a key derived from the cookie key: `pkg/config` builds it with
+appended so the order is total. Every paged request needs an order from somewhere: a
+listed resource declares its `@order` or every page of it names a `sort`, and a request
+with neither is refused with a 400 unless it asks `limit=all`, the whole list, unsorted.
+Declare it on the column a person reads first; on a tenant-scoped resource, an index
+leading with the tenant column and then the order columns serves the pages (the generator
+warns where one is missing). `count=true` on a first page answers the total in
+`Total-Count`; `limit=all` returns every row where the resource declares no maximum. The
+cursors are sealed under a key derived from the cookie key: `pkg/config` builds it with
 `resource.NewCursorKey` and the App hands it to every generated decoder through
-`CursorKey()`. In the browser, `@cccteam/resource` follows the relations with `page()`
-and reads every row with `all()`. Computed resources answer the same query surface;
-their List function may take the conditions, sort, or page it pushes down and the
-generated handler applies the rest.
+`CursorKey()`. In the browser, `@cccteam/resource` follows the relations with `page()` and
+reads every row with `all()`. Computed resources answer the same query surface; their List
+function may take the conditions, sort, or page it pushes down and the generated handler
+applies the rest.
 
 ## Running it
 

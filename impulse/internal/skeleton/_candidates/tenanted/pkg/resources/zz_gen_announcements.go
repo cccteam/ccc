@@ -203,6 +203,10 @@ func (p AnnouncementQueryPartialClause) TenantID() AnnouncementQueryIdent[string
 	return AnnouncementQueryIdent[string]{Ident: resource.NewIdent[string]("TenantID", p.partialClause, true)}
 }
 
+func (p AnnouncementQueryPartialClause) Title() AnnouncementQueryIdent[string] {
+	return AnnouncementQueryIdent[string]{Ident: resource.NewIdent[string]("Title", p.partialClause, true)}
+}
+
 type AnnouncementQueryClause struct {
 	clause resource.QueryClause
 }

@@ -9,3 +9,5 @@ CREATE TABLE Announcements (
   CONSTRAINT FK_Announcements_TenantId FOREIGN KEY (TenantId) REFERENCES Tenants(Id),
   CONSTRAINT FK_Announcements_KindId FOREIGN KEY (KindId) REFERENCES AnnouncementKinds(Id),
 ) PRIMARY KEY (Id);
+
+CREATE INDEX AnnouncementsByTenantIdTitle ON Announcements(TenantId, Title);
