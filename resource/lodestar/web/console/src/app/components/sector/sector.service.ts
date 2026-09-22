@@ -6,6 +6,7 @@ import {
   linkedSignal,
   resource,
   ResourceRef,
+  Signal,
   signal,
   untracked,
 } from '@angular/core';
@@ -340,28 +341,38 @@ export class SectorService {
     });
   }
 
-  /** globalList is sectorList's global-resource sibling: no sector involved, same List gate. */
+  /**
+   * globalList is sectorList's global-resource sibling: no sector involved, same List gate.
+   * The params are the handle itself while the grant holds, one object for the life of
+   * the client, and undefined otherwise, when the resource idles at its default; they are
+   * a computed, since resource() re-runs its loader whenever the params function's
+   * dependencies change, and only a computed holds its consumers still while its value is
+   * the same. So a digest load that changes no answer to the global question (the
+   * selected sector's digest landing after sign-in, a sector change) reads nothing, and
+   * the list is read once per answer, not once per digest.
+   */
   globalList<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Row[]> {
     return resource({
-      params: () => {
-        this.permissions();
-        const handle = select(this.api);
-        return { handle: handle.can(Permissions.List) ? handle : undefined };
-      },
-      loader: ({ params }) => (params.handle ? params.handle.list(query) : Promise.resolve([])),
+      params: this.grantedGlobal(select),
+      loader: ({ params }) => params.list(query),
       defaultValue: [],
     });
   }
 
-  /** globalPage is sectorPage's global-resource sibling. */
+  /** globalPage is sectorPage's global-resource sibling, its params globalList's. */
   globalPage<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Page<Row> | undefined> {
     return resource({
-      params: () => {
-        this.permissions();
-        const handle = select(this.api);
-        return { handle: handle.can(Permissions.List) ? handle : undefined };
-      },
-      loader: ({ params }) => (params.handle ? params.handle.page(query) : Promise.resolve(undefined)),
+      params: this.grantedGlobal(select),
+      loader: ({ params }) => params.page(query),
+    });
+  }
+
+  /** The selected global handle while the digest grants List on it, else undefined: a global reader's params. */
+  private grantedGlobal<Row>(select: (api: Api) => ListHandle<Row>): Signal<ListHandle<Row> | undefined> {
+    return computed(() => {
+      this.permissions();
+      const handle = select(this.api);
+      return handle.can(Permissions.List) ? handle : undefined;
     });
   }
 }
