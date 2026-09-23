@@ -1,10 +1,12 @@
 // Demonstrates: bindings.dot, @attribute.join-path, @domain.join-path, @subjectSet.dotted-value.
 package integration
 
-// bindings_graph_test reads the committed bindings graph and asserts every join path
-// the resources declare is drawn exactly once, hop by hop, in its kind's style, so a
-// path cannot vanish from the review surface or draw twice silently. The generator's
-// own test pins the file format; this one pins Lodestar's facts.
+// bindings_graph_test reads the committed bindings graph and asserts every binding the
+// resources declare is drawn exactly once: each join path hop by hop in its kind's style,
+// each bare binding as a line in its resource's box, each bare binding on a foreign key
+// pointing at its table, and the requester entering each anchor once, so a name cannot
+// vanish from the review surface or draw twice silently. The generator's own test pins the
+// file format; this one pins Lodestar's facts.
 
 import (
 	"os"
@@ -12,7 +14,7 @@ import (
 	"testing"
 )
 
-func TestBindingsGraphDrawsEveryPathOnce(t *testing.T) {
+func TestBindingsGraphDrawsEveryBindingOnce(t *testing.T) {
 	t.Parallel()
 
 	raw, err := os.ReadFile("../../pkg/resources/zz_gen_bindings.dot")
@@ -20,6 +22,8 @@ func TestBindingsGraphDrawsEveryPathOnce(t *testing.T) {
 		t.Fatalf("reading the bindings graph: %v", err)
 	}
 	dot := string(raw)
+
+	const reference = `color=gray55, fontcolor=gray35, arrowhead=vee, arrowsize=0.6, `
 
 	tests := []struct {
 		name string
@@ -44,12 +48,34 @@ func TestBindingsGraphDrawsEveryPathOnce(t *testing.T) {
 		{name: "SortieExpense domain continues through Sorties", line: `"SortieExpense" -> "Sortie" [style=dotted, label="domain: SortieId"];`},
 		{name: "Squadron domain lands on Wings.SectorId", line: `"Squadron" -> "Wing" [style=dotted, label="domain: WingId ⇒ SectorId"];`},
 		{name: "SquadronMembership domain continues through Squadrons", line: `"SquadronMembership" -> "Squadron" [style=dotted, label="domain: SquadronId"];`},
-		// The dotted subject value, dashed: from the requester through the anchor.
-		{name: "subject enters SquadronMembership on UserId for wings", line: `"subject" -> "SquadronMembership" [style=dashed, label="wings: UserId"];`},
+		// The requester enters each anchor once, naming every set and value it yields.
+		{name: "subject enters SquadronMembership for squadrons and wings", line: `"subject" -> "SquadronMembership" [style=dashed, label="squadrons, wings: UserId"];`},
+		{name: "subject enters Pilot for clearance and feeLimit", line: `"subject" -> "Pilot" [style=dashed, label="clearance, feeLimit: UserId"];`},
+		{name: "subject enters PilotCertification for certifications", line: `"subject" -> "PilotCertification" [style=dashed, label="certifications: UserId"];`},
+		{name: "subject enters ClientContact for client", line: `"subject" -> "ClientContact" [style=dashed, label="client: UserId"];`},
+		// The dotted subject value, dashed.
 		{name: "wings lands on Squadrons.WingId", line: `"SquadronMembership" -> "Squadron" [style=dashed, label="wings: SquadronId ⇒ WingId"];`},
-		// Nodes: a table only landed on is dashed; the requester is an ellipse.
+		// Bare bindings listed in their resource's box.
+		{name: "Mission lists assignedSquadron", line: `<tr><td align="left">assignedSquadron: AssignedSquadronId</td></tr>`},
+		{name: "Mission lists its bare state binding last", line: `<tr><td align="left">settlement: Settlement</td></tr><tr><td align="left">state: StatusId</td></tr></table>`},
+		{name: "Refit lists its bare state binding last", line: `<tr><td align="left">openedBy: OpenedBy</td></tr><tr><td align="left">state: StatusId</td></tr></table>`},
+		{name: "Pilot lists both subject values", line: `<tr><td align="left">subject.clearance: Clearance</td></tr><tr><td align="left">subject.feeLimit: FeeLimit</td></tr>`},
+		{name: "SquadronMembership lists the bare squadrons set", line: `<tr><td align="left">subject.squadrons: SquadronId</td></tr>`},
+		{name: "Client lists insured and trusted", line: `<tr><td align="left">insured: Insured</td></tr><tr><td align="left">trusted: Trusted</td></tr>`},
+		// Bare bindings on foreign keys point at their tables: the two sides of
+		// assignedSquadron IN subject.squadrons meet at Squadron, requiredCert IN
+		// subject.certifications at Certifications, client = subject.client at Client.
+		{name: "assignedSquadron points at Squadron", line: `"Mission" -> "Squadron" [` + reference + `label="assignedSquadron"];`},
+		{name: "subject.squadrons points at Squadron", line: `"SquadronMembership" -> "Squadron" [` + reference + `label="subject.squadrons"];`},
+		{name: "requiredCert points at Certifications", line: `"Mission" -> "Certifications" [` + reference + `label="requiredCert"];`},
+		{name: "subject.certifications points at Certifications", line: `"PilotCertification" -> "Certifications" [` + reference + `label="subject.certifications"];`},
+		{name: "client points at Client", line: `"Mission" -> "Client" [` + reference + `label="client"];`},
+		{name: "subject.client points at Client", line: `"ClientContact" -> "Client" [` + reference + `label="subject.client"];`},
+		{name: "kind points at MissionKinds", line: `"Mission" -> "MissionKinds" [` + reference + `label="kind"];`},
+		{name: "wing points at Wing", line: `"Squadron" -> "Wing" [` + reference + `label="wing"];`},
+		// Nodes: a table only landed on or pointed at is dashed; the requester is an ellipse.
 		{name: "Hangar is landed on", line: `"Hangar" [style=dashed];`},
-		{name: "Wing is landed on", line: `"Wing" [style=dashed];`},
+		{name: "Certifications is pointed at", line: `"Certifications" [style=dashed];`},
 		{name: "the requester node", line: `"subject" [shape=ellipse];`},
 	}
 
@@ -63,11 +89,12 @@ func TestBindingsGraphDrawsEveryPathOnce(t *testing.T) {
 		})
 	}
 
-	// Bare bindings are not drawn, so a resource declaring only bare ones is absent:
-	// the bare subject anchors and the bare-attribute resources.
-	for _, absent := range []string{`"ClientContact"`, `"Pilot"`, `"PilotCertification"`, `"Client"`, `"Consignment"`, `"DistressCall"`} {
+	// Not drawn: the state columns' references to their enum tables (the workflow
+	// graphs cover the states), the bare tenant column (never a condition operand), and
+	// any resource declaring no attribute or subject binding.
+	for _, absent := range []string{`"MissionStatus`, `"RefitStatus`, `: SectorId</td>`, `"Sector"`, `"Hangar";`, `"Wing";`} {
 		if strings.Contains(dot, absent) {
-			t.Errorf("bindings graph draws %s, which declares no join path:\n%s", absent, dot)
+			t.Errorf("bindings graph draws %s, which the rulings leave out:\n%s", absent, dot)
 		}
 	}
 }

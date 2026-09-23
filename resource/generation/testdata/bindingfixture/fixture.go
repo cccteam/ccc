@@ -281,13 +281,16 @@ type (
 
 type (
 	// PathTenantLog resolves its tenant two hops away, through PathTenantTask's own
-	// hop: the bindings graph draws the hop the two paths share once.
+	// hop: the bindings graph draws the hop the two paths share once. Its bare
+	// task attribute sits on that same foreign key, so the graph points it at
+	// PathTenantTask with a reference edge.
 	//
 	// @permissionScope(domain)
 	PathTenantLog struct {
 		ID ccc.UUID `spanner:"Id"`
 
 		// @domain(via: BerthID.StationID)
+		// @attribute(task)
 		TaskID ccc.UUID `spanner:"TaskId"`
 
 		Note string `spanner:"Note"`
