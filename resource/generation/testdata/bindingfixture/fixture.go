@@ -279,6 +279,21 @@ type (
 	}
 )
 
+type (
+	// PathTenantLog resolves its tenant two hops away, through PathTenantTask's own
+	// hop: the bindings graph draws the hop the two paths share once.
+	//
+	// @permissionScope(domain)
+	PathTenantLog struct {
+		ID ccc.UUID `spanner:"Id"`
+
+		// @domain(via: BerthID.StationID)
+		TaskID ccc.UUID `spanner:"TaskId"`
+
+		Note string `spanner:"Note"`
+	}
+)
+
 // VirtualWithBinding stands in for every schemaless struct kind in the
 // rejection test.
 type VirtualWithBinding struct {

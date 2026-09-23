@@ -44,6 +44,7 @@ var Demonstrations = []Demonstration{
 	{"@subjectValue", "@subjectValue(name, value: Column): a scalar attribute of the requesting user."},
 	{"@subjectValue.two-per-anchor", "Two subject values bound on one unique-indexed user column."},
 	{"@subjectValue.second-anchor", "A second @subjectValue anchor, so a condition can compare a foreign key to the subject's company."},
+	{"bindings.dot", "The generated DOT graph of every join-path binding in a package: attribute, domain, and subject paths drawn hop by hop, a shared hop once."},
 	{"condition.subject-scalar", "subject as a scalar compared to a user column."},
 	{"condition.now", "now as an operand, on either side, folded at decision time; a row-free condition on an Execute grant."},
 	{"condition.time-of-day", "timeOfDay(now, zone) compared against 'HH:MM' literals, folded in the engine and never rendered to SQL."},

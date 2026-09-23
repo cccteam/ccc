@@ -346,10 +346,10 @@ func (r *resourceGenerator) Generate() error {
 	// it.
 	r.warnings = append(r.warnings, r.enumerationWarnings()...)
 
-	// Workflow DOT files draw declared transitions, so they render only after
-	// RPC extraction resolves them.
-	if err := r.generateWorkflowGraphs(); err != nil {
-		return errors.Wrap(err, "resourceGenerator.generateWorkflowGraphs()")
+	// The DOT graphs draw declared transitions and synthesized state paths, so
+	// they render only after RPC extraction and workflow resolution.
+	if err := r.generateGraphs(); err != nil {
+		return err
 	}
 
 	// Runs after every annotated struct kind is extracted (rpc methods last).

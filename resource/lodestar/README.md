@@ -280,7 +280,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 ## Regen discipline
 
 `go generate ./...` from the module root is idempotent from a clean tree; the `zz_gen_*`
-output (Go, two TypeScript targets, two workflow DOT graphs) is the drift baseline, pinned
+output (Go, two TypeScript targets, two workflow DOT graphs, the bindings DOT graph) is the drift baseline, pinned
 by `cmd/generate/generate_test.go` as a content snapshot. After changing schema,
 annotations, or generator config: regenerate, `go test -tags skipAuth ./...`, and keep the
 diff. The generate program prints the schema warnings after every run, one `Warning:`
