@@ -3,7 +3,6 @@ package generation
 import (
 	"bytes"
 	"go/format"
-	"os"
 	"sync"
 
 	"github.com/go-playground/errors/v5"
@@ -11,25 +10,14 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-// FileWriter provides convenience methods to safely goformat & write bytes to file.
-type FileWriter struct {
-	muAlign sync.Mutex
-}
+// alignMu serializes the struct-tag alignment step. The align package keeps its
+// manager in a package-level variable (align.Init writes it, align.Do reads it), so the
+// lock guarding it is package-level too: a lock per FileWriter guards nothing once two
+// writers exist, as they do in tests that build one client per parallel subtest.
+var alignMu sync.Mutex
 
-// WriteBytesToFile truncates a file and writes given bytes to it.
-func (f *FileWriter) WriteBytesToFile(file *os.File, data []byte) error {
-	if err := file.Truncate(0); err != nil {
-		return errors.Wrapf(err, "file.Truncate(): file: %s", file.Name())
-	}
-	if _, err := file.Seek(0, 0); err != nil {
-		return errors.Wrapf(err, "file.Seek(): file: %s", file.Name())
-	}
-	if _, err := file.Write(data); err != nil {
-		return errors.Wrapf(err, "file.Write(): file: %s", file.Name())
-	}
-
-	return nil
-}
+// FileWriter provides convenience methods to goformat the bytes of a Go source file.
+type FileWriter struct{}
 
 // GoFormatBytes runs Go Format on bytes for a go source file, resolving missing or unused
 // imports via goimports. If the Go source data is not syntactically correct, GoFormatBytes
@@ -59,10 +47,11 @@ func (f *FileWriter) formatBytes(fileName string, data []byte) ([]byte, error) {
 	return f.alignBytes(fileName, formattedData)
 }
 
+// alignBytes aligns the struct tags of a formatted Go file through the process-global
+// align manager, under the package-level lock that guards it.
 func (f *FileWriter) alignBytes(fileName string, data []byte) ([]byte, error) {
-	// we use a mutex because align package is not concurrent safe
-	f.muAlign.Lock()
-	defer f.muAlign.Unlock()
+	alignMu.Lock()
+	defer alignMu.Unlock()
 
 	align.Init(bytes.NewReader(data))
 	alignedData, err := align.Do()

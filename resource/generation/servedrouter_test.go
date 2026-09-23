@@ -308,10 +308,10 @@ func Test_servedRouterData(t *testing.T) {
 // Test_servedRouterTemplates pins the rendered shapes: the chain comment opens the file,
 // the flavor routes and guards render inline per outlet, BindAuth and the auth imports
 // appear only with two session auths, an API-key group carries no session handling, and
-// the test renders a recording stub per flavor in use. The cases format their output the
-// way the generator does, and the aligner behind that is process-global, so they run
-// sequentially.
+// the test renders a recording stub per flavor in use.
 func Test_servedRouterTemplates(t *testing.T) {
+	t.Parallel()
+
 	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
 	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", flavor: OIDCGoogle}
 
@@ -413,6 +413,8 @@ func Test_servedRouterTemplates(t *testing.T) {
 	r.resource = packageDir("pkg/resources")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			data := r.servedRouterData(tt.outlets, nil)
 
 			router := render(t, r, "servedRouterTemplate", servedRouterTemplate, data)
