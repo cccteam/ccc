@@ -114,6 +114,9 @@ linters:
       config:
         # Generated source files are written world-readable, matching os.Create defaults
         G306: '0644'
+        # The atomic write creates its temporary file at 0600 and sets the generated
+        # file's mode before the rename
+        G302: '0644'
     godox:
       keywords:
         - TODO

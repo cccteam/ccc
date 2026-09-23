@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html"
 	"log"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -339,8 +338,8 @@ func renderBindingsDOT(graph *bindingsGraph) string {
 
 // generateBindingsGraph emits the package's bindings graph into the resources
 // package as zz_gen_bindings.dot, beside the workflow graphs. A package
-// declaring no attribute or subject binding writes no file; the
-// generated-file sweep has already removed a stale one.
+// declaring no attribute or subject binding writes no file, and the stale
+// sweep at the end of the run removes one left from an earlier run.
 func (r *resourceGenerator) generateBindingsGraph() error {
 	graph := r.assembleBindingsGraph()
 	if len(graph.Declaring) == 0 {
@@ -348,8 +347,8 @@ func (r *resourceGenerator) generateBindingsGraph() error {
 	}
 
 	destination := filepath.Join(r.resource.Dir(), genPrefix+"_bindings.dot")
-	if err := os.WriteFile(destination, []byte(renderBindingsDOT(graph)), 0o644); err != nil {
-		return errors.Wrapf(err, "os.WriteFile(): file: %s", destination)
+	if err := r.output.writeGeneratedFile(destination, []byte(renderBindingsDOT(graph))); err != nil {
+		return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 	}
 	log.Printf("Generated bindings graph: %v\n", destination)
 

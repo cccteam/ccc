@@ -290,6 +290,12 @@ func (t *typescriptGenerator) Generate() error {
 		return errors.Wrap(err, "os.MkdirAll()")
 	}
 
+	// The target's generated files are the ones opening with the generation header;
+	// whichever this run does not rewrite go in the stale sweep at the end of the run.
+	if t.genMetadata || t.genPermission || t.genEnums {
+		t.output.registerOutput(t.typescriptDestination, headerComment)
+	}
+
 	if err := t.runTypescriptMetadataGeneration(); err != nil {
 		return err
 	}
@@ -312,12 +318,6 @@ func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.N
 		return nil
 	}
 
-	if !t.genMetadata && !t.genPermission {
-		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
-			return errors.Wrap(err, "RemoveGeneratedFiles()")
-		}
-	}
-
 	if err := t.generateEnums(namedTypes); err != nil {
 		return errors.Wrap(err, "generateEnums")
 	}
@@ -330,11 +330,6 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		return nil
 	}
 	begin := time.Now()
-	if !t.genMetadata {
-		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
-			return errors.Wrap(err, "RemoveGeneratedFiles()")
-		}
-	}
 
 	log.Println("Starting typescript resource permission generation...")
 
@@ -377,17 +372,11 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	}
 
 	destinationFilePath := filepath.Join(t.typescriptDestination, generatedTypescriptFileName("constants"))
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	if err := t.WriteBytesToFile(file, output); err != nil {
-		return err
+	if err := t.output.writeGeneratedFile(destinationFilePath, output); err != nil {
+		return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 	}
 
-	log.Printf("Generated Permissions in %s: %s\n", time.Since(begin), file.Name())
+	log.Printf("Generated Permissions in %s: %s\n", time.Since(begin), destinationFilePath)
 
 	return nil
 }
@@ -395,10 +384,6 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
 	if !t.genMetadata {
 		return nil
-	}
-
-	if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
-		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
 	if err := t.generateTypescriptMetadata(); err != nil {
@@ -460,17 +445,11 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	}
 
 	destinationFilePath := filepath.Join(t.typescriptDestination, generatedTypescriptFileName("resources"))
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	if err := t.WriteBytesToFile(file, output); err != nil {
-		return err
+	if err := t.output.writeGeneratedFile(destinationFilePath, output); err != nil {
+		return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 	}
 
-	log.Printf("Generated resource metadata in %s: %s\n", time.Since(begin), file.Name())
+	log.Printf("Generated resource metadata in %s: %s\n", time.Since(begin), destinationFilePath)
 
 	return nil
 }
@@ -489,17 +468,11 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	}
 
 	destinationFilePath := filepath.Join(t.typescriptDestination, generatedTypescriptFileName("methods"))
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	if err := t.WriteBytesToFile(file, output); err != nil {
-		return err
+	if err := t.output.writeGeneratedFile(destinationFilePath, output); err != nil {
+		return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 	}
 
-	log.Printf("Generated methods metadata in %s: %s\n", time.Since(begin), file.Name())
+	log.Printf("Generated methods metadata in %s: %s\n", time.Since(begin), destinationFilePath)
 
 	return nil
 }
@@ -531,17 +504,12 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	file, err := os.Create(filepath.Join(t.typescriptDestination, generatedTypescriptFileName("enums")))
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	if err := t.WriteBytesToFile(file, output); err != nil {
-		return err
+	destinationFilePath := filepath.Join(t.typescriptDestination, generatedTypescriptFileName("enums"))
+	if err := t.output.writeGeneratedFile(destinationFilePath, output); err != nil {
+		return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 	}
 
-	log.Printf("Generated enums in %s: %s\n", time.Since(begin), file.Name())
+	log.Printf("Generated enums in %s: %s\n", time.Since(begin), destinationFilePath)
 
 	return nil
 }
@@ -731,17 +699,11 @@ func (t *typescriptGenerator) generateAPIClient() error {
 	}
 
 	destinationFilePath := filepath.Join(t.typescriptDestination, generatedTypescriptFileName("api"))
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	if err := t.WriteBytesToFile(file, output); err != nil {
-		return err
+	if err := t.output.writeGeneratedFile(destinationFilePath, output); err != nil {
+		return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 	}
 
-	log.Printf("Generated API client in %s: %s\n", time.Since(begin), file.Name())
+	log.Printf("Generated API client in %s: %s\n", time.Since(begin), destinationFilePath)
 
 	return nil
 }

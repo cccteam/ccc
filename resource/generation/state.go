@@ -3,7 +3,6 @@ package generation
 import (
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -544,8 +543,8 @@ func (r *resourceGenerator) generateWorkflowGraphs() error {
 	for _, wf := range r.assembleWorkflows() {
 		fileName := fmt.Sprintf("%s_workflow_%s.dot", genPrefix, caser.ToSnake(wf.Root.Name()))
 		destination := filepath.Join(r.resource.Dir(), fileName)
-		if err := os.WriteFile(destination, []byte(renderWorkflowDOT(wf)), 0o644); err != nil {
-			return errors.Wrapf(err, "os.WriteFile(): file: %s", destination)
+		if err := r.output.writeGeneratedFile(destination, []byte(renderWorkflowDOT(wf))); err != nil {
+			return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 		}
 		log.Printf("Generated workflow graph: %v\n", destination)
 	}

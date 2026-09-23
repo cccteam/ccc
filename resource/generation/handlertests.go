@@ -30,9 +30,7 @@ func (r *resourceGenerator) runHandlerTestsGeneration() error {
 	if err := os.MkdirAll(r.handlerTests.Dir(), 0o750); err != nil {
 		return errors.Wrap(err, "os.MkdirAll()")
 	}
-	if err := removeGeneratedFiles(r.handlerTests.Dir(), prefix); err != nil {
-		return errors.Wrap(err, "removeGeneratedFiles()")
-	}
+	r.output.registerOutput(r.handlerTests.Dir(), prefix)
 
 	migrationSources, err := r.testRelativeMigrationSources()
 	if err != nil {

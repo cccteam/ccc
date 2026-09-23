@@ -13,9 +13,7 @@ import (
 )
 
 func (r *resourceGenerator) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(r.handler.Dir(), prefix); err != nil {
-		return errors.Wrap(err, "removeGeneratedFiles()")
-	}
+	r.output.registerOutput(r.handler.Dir(), prefix)
 
 	if err := r.generateResourceInterfaces(); err != nil {
 		return errors.Wrap(err, "generateResourceInterfaces()")

@@ -3,7 +3,6 @@ package generation
 import (
 	"go/types"
 	"log"
-	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -216,26 +215,23 @@ func jsonTagOmits(tag string) bool {
 }
 
 // methodFileNames are the generated files a writable package may carry, and the only
-// files the method pass ever removes.
+// files the stale sweep ever removes from a WithTypes or computed package.
 var methodFileNames = []string{generatedGoFileName(storageOutputName), generatedGoFileName(jsonOutputName)}
 
 // runMethodGeneration writes the generated method files, the Spanner storage pair and
 // the JSON pair, one file each per package that declares a type needing them. It runs
 // once every path is extracted (the RPC methods last), so the JSON pair covers each
-// field on every path, and after every package sweep. The two files are removed from
-// every writable package first, so a package whose types no longer need a pair loses
-// its stale file; nothing else in a WithTypes or computed package is touched.
+// field on every path. Every writable package is registered for the stale sweep by
+// the two file names, so a package whose types no longer need a pair loses its stale
+// file at the end of the run; nothing else in a WithTypes or computed package is
+// touched.
 func (r *resourceGenerator) runMethodGeneration(storage map[packageDir][]string) error {
 	pairs, err := r.resolveJSONMethods()
 	if err != nil {
 		return err
 	}
 	for _, dir := range r.writableDirs() {
-		for _, name := range methodFileNames {
-			if err := os.Remove(filepath.Join(dir.Dir(), name)); err != nil && !os.IsNotExist(err) {
-				return errors.Wrap(err, "os.Remove()")
-			}
-		}
+		r.output.registerOutput(dir.Dir(), methodFiles)
 	}
 	if err := r.generateStorageFiles(storage); err != nil {
 		return err

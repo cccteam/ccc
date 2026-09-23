@@ -66,6 +66,9 @@ type client struct {
 	genVirtualResources    bool
 	spannerEmulatorVersion string
 	FileWriter
+	// output records the directories the run writes generated files into and the files
+	// it wrote, for the atomic writes and the stale sweep at the end of the run.
+	output   generatedOutput
 	genCache *cache.Cache
 }
 
@@ -488,11 +491,8 @@ func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplat
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o750); err != nil {
-		return errors.Wrap(err, "os.MkdirAll()")
-	}
-	if err := os.WriteFile(destinationPath, formattedOutput, 0o644); err != nil {
-		return errors.Wrapf(err, "os.WriteFile(): file: %s", destinationPath)
+	if err := c.output.writeGeneratedFile(destinationPath, formattedOutput); err != nil {
+		return errors.Wrap(err, "generatedOutput.writeGeneratedFile()")
 	}
 
 	return nil
@@ -621,11 +621,13 @@ func isVowel(b byte) bool {
 	}
 }
 
-// removeGeneratedFiles sweeps the previous run's output from directory. A directory
-// that does not exist yet holds nothing to remove: the first generate into a fresh
-// target creates it when the first file is written.
-func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) error {
-	log.Printf("removing generated files in directory %q...", directory)
+// removeGeneratedFiles removes the previous run's stale output from directory: the
+// generated files there, by method, that this run did not write (written holds the
+// paths it did). It runs after the run has written everything, so a package compiling
+// against the tree during the run never misses a file. A directory that does not exist
+// holds nothing to remove.
+func removeGeneratedFiles(directory string, method generatedFileDeleteMethod, written map[string]struct{}) error {
+	log.Printf("removing stale generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -648,6 +650,9 @@ func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) er
 		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") && !strings.HasSuffix(f, ".dot") {
 			continue
 		}
+		if _, ok := written[filepath.Join(directory, f)]; ok {
+			continue
+		}
 
 		switch method {
 		case prefix:
@@ -658,6 +663,21 @@ func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) er
 			if err := removeGeneratedFileByHeaderComment(directory, f); err != nil {
 				return errors.Wrap(err, "removeGeneratedFileByHeaderComment()")
 			}
+		case methodFiles:
+			if err := removeGeneratedFileByName(directory, f, methodFileNames); err != nil {
+				return errors.Wrap(err, "removeGeneratedFileByName()")
+			}
+		}
+	}
+
+	return nil
+}
+
+// removeGeneratedFileByName removes the file when its name is one of names.
+func removeGeneratedFileByName(directory, file string, names []string) error {
+	if slices.Contains(names, file) {
+		if err := os.Remove(filepath.Join(directory, file)); err != nil {
+			return errors.Wrap(err, "os.Remove()")
 		}
 	}
 

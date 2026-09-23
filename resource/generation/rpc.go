@@ -10,9 +10,7 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := removeGeneratedFiles(r.rpc.Dir(), prefix); err != nil {
-		return err
-	}
+	r.output.registerOutput(r.rpc.Dir(), prefix)
 
 	begin := time.Now()
 

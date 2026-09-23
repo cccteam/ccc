@@ -17,9 +17,7 @@ const domainTestValue = "testDomain"
 
 func (r *resourceGenerator) runRouteGeneration() error {
 	begin := time.Now()
-	if err := removeGeneratedFiles(r.router.Dir(), prefix); err != nil {
-		return err
-	}
+	r.output.registerOutput(r.router.Dir(), prefix)
 
 	if err := r.validateDomainSegmentResources(); err != nil {
 		return err

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -334,24 +335,53 @@ func Test_removeGeneratedFiles(t *testing.T) {
 	tests := []struct {
 		name      string
 		create    bool
-		files     []string
+		method    generatedFileDeleteMethod
+		files     map[string]string
+		written   []string
 		wantKept  []string
 		wantError bool
 	}{
 		{
 			name:     "missing directory holds nothing to remove",
 			create:   false,
+			method:   prefix,
 			wantKept: nil,
 		},
 		{
-			name:     "generated files go, handwritten files stay",
+			name:     "stale generated files go, handwritten files stay",
 			create:   true,
-			files:    []string{genPrefix + "ships.go", "ships.go", genPrefix + "api.ts", "notes.txt"},
+			method:   prefix,
+			files:    map[string]string{genPrefix + "_ships.go": "x", "ships.go": "x", genPrefix + "_api.ts": "x", "notes.txt": "x"},
 			wantKept: []string{"notes.txt", "ships.go"},
+		},
+		{
+			name:     "files the run wrote survive the sweep",
+			create:   true,
+			method:   prefix,
+			files:    map[string]string{genPrefix + "_ships.go": "x", genPrefix + "_hangars.go": "x", genPrefix + "_workflow_ships.dot": "x", "ships.go": "x"},
+			written:  []string{genPrefix + "_ships.go", genPrefix + "_workflow_ships.dot"},
+			wantKept: []string{"ships.go", genPrefix + "_ships.go", genPrefix + "_workflow_ships.dot"},
+		},
+		{
+			name:     "header files go by their header, written ones stay",
+			create:   true,
+			method:   headerComment,
+			files:    map[string]string{genPrefix + "_api.ts": generationHeader + "\n", genPrefix + "_resources.ts": generationHeader + "\n", "api.service.ts": "// hand-written\n", "old.ts": generationHeader + "\n"},
+			written:  []string{genPrefix + "_api.ts"},
+			wantKept: []string{"api.service.ts", genPrefix + "_api.ts"},
+		},
+		{
+			name:     "method files go by name alone, other generated files are not the sweep's",
+			create:   true,
+			method:   methodFiles,
+			files:    map[string]string{generatedGoFileName(storageOutputName): "x", generatedGoFileName(jsonOutputName): "x", genPrefix + "_other.go": "x", "payload.go": "x"},
+			written:  []string{generatedGoFileName(jsonOutputName)},
+			wantKept: []string{"payload.go", genPrefix + "_other.go", generatedGoFileName(jsonOutputName)},
 		},
 		{
 			name:     "empty directory is left as is",
 			create:   true,
+			method:   prefix,
 			wantKept: []string{},
 		},
 	}
@@ -364,14 +394,18 @@ func Test_removeGeneratedFiles(t *testing.T) {
 				if err := os.MkdirAll(dir, 0o750); err != nil {
 					t.Fatalf("os.MkdirAll() error = %v", err)
 				}
-				for _, f := range tt.files {
-					if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
+				for name, content := range tt.files {
+					if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
 						t.Fatalf("os.WriteFile() error = %v", err)
 					}
 				}
 			}
+			written := make(map[string]struct{}, len(tt.written))
+			for _, name := range tt.written {
+				written[filepath.Join(dir, name)] = struct{}{}
+			}
 
-			err := removeGeneratedFiles(dir, prefix)
+			err := removeGeneratedFiles(dir, tt.method, written)
 			if (err != nil) != tt.wantError {
 				t.Fatalf("removeGeneratedFiles() error = %v, wantError %v", err, tt.wantError)
 			}
@@ -392,6 +426,7 @@ func Test_removeGeneratedFiles(t *testing.T) {
 			for _, e := range entries {
 				kept = append(kept, e.Name())
 			}
+			slices.Sort(tt.wantKept)
 			if diff := cmp.Diff(tt.wantKept, kept); diff != "" {
 				t.Errorf("removeGeneratedFiles() kept files mismatch (-want +got):\n%s", diff)
 			}

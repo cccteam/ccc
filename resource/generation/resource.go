@@ -369,16 +369,32 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
-	if toleratedStaleOutput {
-		// Everything has been regenerated; whatever still fails to type-check is real
-		// breakage the generator does not own (hand-written call sites, bad struct
-		// definitions) and must fail the run.
-		if _, err := parser.LoadPackages(r.loadPackages...); err != nil {
-			return errors.Wrap(err, "post-generation type check: generated files were written, remaining errors are outside generator-owned output")
-		}
+	if err := r.finishGeneration(toleratedStaleOutput); err != nil {
+		return err
 	}
 
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
+
+	return nil
+}
+
+// finishGeneration closes the run once everything is written. The previous run's
+// generated files this run did not rewrite go now, never earlier, so a package
+// compiling against the tree during the run never misses a file. Then, when the
+// initial load tolerated stale output, the packages are type-checked strictly:
+// whatever still fails is real breakage the generator does not own (hand-written call
+// sites, bad struct definitions) and fails the run.
+func (r *resourceGenerator) finishGeneration(toleratedStaleOutput bool) error {
+	if err := r.output.removeStaleOutput(); err != nil {
+		return err
+	}
+
+	if !toleratedStaleOutput {
+		return nil
+	}
+	if _, err := parser.LoadPackages(r.loadPackages...); err != nil {
+		return errors.Wrap(err, "post-generation type check: generated files were written, remaining errors are outside generator-owned output")
+	}
 
 	return nil
 }
@@ -577,21 +593,16 @@ func (r *resourceGenerator) validateTypescriptTargets() error {
 // types of every resource. The storage methods of the column types that need them
 // resolve first, refused where a column is not JSON or a type is declared where the
 // generator does not write, so nothing renders for a resource that cannot be stored;
-// they are returned for runMethodGeneration to write once every package is swept.
+// they are returned for runMethodGeneration to write once every path is extracted.
 func (r *resourceGenerator) runResourcesGeneration() (map[packageDir][]string, error) {
 	storage, err := r.resolveColumnStorage()
 	if err != nil {
 		return nil, err
 	}
 
-	if err := removeGeneratedFiles(r.resource.Dir(), prefix); err != nil {
-		return nil, err
-	}
-
+	r.output.registerOutput(r.resource.Dir(), prefix)
 	if r.genVirtualResources {
-		if err := removeGeneratedFiles(r.virtual.Dir(), prefix); err != nil {
-			return nil, err
-		}
+		r.output.registerOutput(r.virtual.Dir(), prefix)
 	}
 
 	for _, res := range r.resources {
