@@ -16,7 +16,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/audit"
 	"github.com/cccteam/ccc/impulse/internal/check"
 )

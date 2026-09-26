@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // envTemplate verifies that every env tag without a default appears in the development

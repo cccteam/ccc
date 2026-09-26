@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // threeSites is the beacon application promoted to console, portal, and kiosk.

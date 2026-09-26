@@ -10,14 +10,14 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // fixture discovers one of the app package's fixture applications.
 func fixture(t *testing.T, name string) *app.App {
 	t.Helper()
 
-	a, err := app.Discover(filepath.Join("..", "app", "testdata", name))
+	a, err := app.Discover(filepath.Join("..", "..", "app", "testdata", name))
 	if err != nil {
 		t.Fatalf("app.Discover(%s) error = %v", name, err)
 	}
@@ -31,7 +31,7 @@ func fixtureCopy(t *testing.T, name string) *app.App {
 	t.Helper()
 
 	dst := t.TempDir()
-	if err := os.CopyFS(dst, os.DirFS(filepath.Join("..", "app", "testdata", name))); err != nil {
+	if err := os.CopyFS(dst, os.DirFS(filepath.Join("..", "..", "app", "testdata", name))); err != nil {
 		t.Fatalf("copy fixture: %v", err)
 	}
 

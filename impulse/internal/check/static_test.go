@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/mod/modfile"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // TestStaticChecksOnFixtures runs every check that reads files against the fixture

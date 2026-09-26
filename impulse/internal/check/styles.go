@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 	"github.com/go-playground/errors/v5"
 )
 

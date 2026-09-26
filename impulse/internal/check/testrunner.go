@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // testRunner verifies that every browser application project runs its component specs

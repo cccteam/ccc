@@ -3,6 +3,10 @@
 // There is no manifest: everything the tool needs is read from files that are already
 // load-bearing for the application itself — the generator program, go.mod, the browser
 // apps' angular.json, the Procfile, the test harnesses, and the config struct tags.
+//
+// This is the reader other tools import: bedrock derives an application's infrastructure
+// from what Discover reports. The dependency points one way: impulse imports nothing from
+// those tools, so an application stays deployable by hand with impulse alone.
 package app
 
 import (

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // The flat site's hand-written files in the base's shape, minimal.

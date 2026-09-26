@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // fakeExec answers each go run by its command line.
@@ -102,7 +102,7 @@ func TestRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			a, err := app.Discover(filepath.Join("..", "app", "testdata", tt.fixture))
+			a, err := app.Discover(filepath.Join("..", "..", "app", "testdata", tt.fixture))
 			if err != nil {
 				t.Fatalf("app.Discover() error = %v", err)
 			}

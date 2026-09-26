@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // sessionTables verifies that every session authenticator the application constructs has

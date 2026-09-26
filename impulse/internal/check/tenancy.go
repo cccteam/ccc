@@ -12,7 +12,7 @@ import (
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // tenancyWired verifies that the tenancy option is wired through the application: a

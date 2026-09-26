@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
 )
 
@@ -93,7 +93,7 @@ func TestBrief(t *testing.T) {
 			t.Parallel()
 
 			root := t.TempDir()
-			if err := os.CopyFS(root, os.DirFS(filepath.Join("..", "app", "testdata", "flat"))); err != nil {
+			if err := os.CopyFS(root, os.DirFS(filepath.Join("..", "..", "app", "testdata", "flat"))); err != nil {
 				t.Fatalf("copy fixture: %v", err)
 			}
 			for rel, content := range tt.files {

@@ -503,6 +503,6 @@ go test ./...
 golangci-lint-v2 run
 ```
 
-Fixture applications for the tests live under `internal/app/testdata/`. They are
+Fixture applications for the tests live under `app/testdata/`. They are
 synthetic: a lighthouse-keeping flat application (`flat`), a harbor application in the sites
 layout (`sites`), and a generator program the tool cannot read (`badprogram`).

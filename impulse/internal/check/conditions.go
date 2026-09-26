@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // conditionsProven verifies that every conditional grant in a roles file the deployment

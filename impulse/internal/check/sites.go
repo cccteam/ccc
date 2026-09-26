@@ -15,7 +15,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // sitesWired verifies that every site of an application in the sites layout is served and

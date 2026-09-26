@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // options verifies that the generator programs declare one coherent option set and

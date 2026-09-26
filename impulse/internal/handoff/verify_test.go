@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
 )
 
@@ -47,7 +47,7 @@ func copyFixture(t *testing.T, name string) *app.App {
 	t.Helper()
 
 	dst := t.TempDir()
-	if err := os.CopyFS(dst, os.DirFS(filepath.Join("..", "app", "testdata", name))); err != nil {
+	if err := os.CopyFS(dst, os.DirFS(filepath.Join("..", "..", "app", "testdata", name))); err != nil {
 		t.Fatalf("copy fixture: %v", err)
 	}
 	a, err := app.Discover(dst)
@@ -61,11 +61,11 @@ func copyFixture(t *testing.T, name string) *app.App {
 func TestVerify(t *testing.T) {
 	t.Parallel()
 
-	program, err := os.ReadFile(filepath.Join("..", "app", "testdata", "flat", flatProgram))
+	program, err := os.ReadFile(filepath.Join("..", "..", "app", "testdata", "flat", flatProgram))
 	if err != nil {
 		t.Fatal(err)
 	}
-	eslint, err := os.ReadFile(filepath.Join("..", "app", "testdata", "flat", "web", "console", "eslint.config.js"))
+	eslint, err := os.ReadFile(filepath.Join("..", "..", "app", "testdata", "flat", "web", "console", "eslint.config.js"))
 	if err != nil {
 		t.Fatal(err)
 	}

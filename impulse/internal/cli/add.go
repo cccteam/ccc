@@ -11,7 +11,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
-	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
