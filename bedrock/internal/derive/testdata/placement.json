@@ -10,6 +10,6 @@
   "stateBucket": "imp-boot-gbl-state-REPLACEME",
   "placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello",
   "defaultBranch": "master",
-  "repository": "imp-impulse-infrastructure",
+  "repository": "harbor",
   "labels": {"bedrock-lab": "true"}
 }

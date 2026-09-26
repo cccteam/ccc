@@ -35,7 +35,7 @@ type Placement struct {
 	PlaceholderImage string `json:"placeholderImage"`
 	// DefaultBranch is the branch pull requests target.
 	DefaultBranch string `json:"defaultBranch"`
-	// Repository is the infrastructure repository's name, for the source_repo label.
+	// Repository is the application repository's name, for the source_repo label.
 	Repository string `json:"repository"`
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.

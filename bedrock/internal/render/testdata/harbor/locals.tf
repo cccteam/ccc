@@ -132,10 +132,14 @@ locals {
     APP_SERVICE_NAME = "${local.app}-migrate"
   })
 
+  # Every resource carries these. terraform_source_path is the stack's state slot
+  # in the organization's bucket (3-app/harbor) written as a label value, which
+  # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the
+  # application repository's name, from the placement.
   labels = {
     terraform             = "true"
-    terraform_source_path = "3-app-harbor" # a label value admits no slash (Secret Manager and Cloud Run refuse it)
-    source_repo           = "imp-impulse-infrastructure"
+    terraform_source_path = "3-app-harbor"
+    source_repo           = "harbor"
     environment           = var.environment
     application           = local.app
     bedrock-lab           = "true"

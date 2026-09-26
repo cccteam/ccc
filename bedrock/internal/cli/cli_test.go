@@ -111,6 +111,127 @@ func TestRenderThenCheck(t *testing.T) {
 	}
 }
 
+// appRepo builds an application-layout repository in a temporary directory: the harbor
+// fixture as the application at its root, marked a repository, with the placement in its
+// infrastructure directory and nothing else there yet, as before the first render.
+func appRepo(t *testing.T) string {
+	t.Helper()
+
+	dir := copyRepo(t, fixtureApp)
+	infra := filepath.Join(dir, "infrastructure")
+	if err := os.Mkdir(infra, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(placement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(infra, placementFile), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return dir
+}
+
+// bareApp is the harbor fixture marked a repository, with no infrastructure directory.
+func bareApp(t *testing.T) string {
+	t.Helper()
+
+	return copyRepo(t, fixtureApp)
+}
+
+// flatRepo is the organization layout with one application layer, quill.
+func flatRepo(t *testing.T) string {
+	t.Helper()
+
+	return copyRepo(t, fixtureFlat)
+}
+
+// nestedRepo is the organization layout under infrastructure/ with two applications.
+func nestedRepo(t *testing.T) string {
+	t.Helper()
+
+	return copyRepo(t, fixtureNested)
+}
+
+// noRepo is a directory outside every repository.
+func noRepo(t *testing.T) string {
+	t.Helper()
+
+	return t.TempDir()
+}
+
+func TestStackFromLayout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// repo builds the repository and cwd is where the commands run, inside it.
+		repo func(t *testing.T) string
+		cwd  string
+		// withApp names the harbor fixture with --app and its placement with
+		// --placement; outside puts the stack in a directory outside the repository
+		// with --out and --dir, and names the placement.
+		withApp bool
+		outside bool
+		// wantStack is where the stack lands, relative to the repository (ignored with
+		// outside).
+		wantStack string
+		wantErr   string
+	}{
+		{name: "the application repository, from inside it", repo: appRepo, cwd: filepath.Join("pkg", "config"), wantStack: "infrastructure"},
+		{name: "the application repository, from its root", repo: appRepo, cwd: ".", wantStack: "infrastructure"},
+		{name: "--out overrides the stack directory, the application still from the repository", repo: appRepo, cwd: "pkg", outside: true},
+		{name: "the organization layout, the application named", repo: flatRepo, cwd: filepath.Join("3-app", "quill"), withApp: true, wantStack: filepath.Join("3-app", "quill")},
+		{name: "several application layers are refused", repo: nestedRepo, cwd: ".", withApp: true, wantErr: "several application layers under"},
+		{name: "an application repository with no stack directory yet is refused", repo: bareApp, cwd: ".", wantErr: "is not the application's stack (a terraform.tfvars or a placement.json, and no layers): pass --dir"},
+		{name: "a working directory outside every repository is refused", repo: noRepo, cwd: ".", wantErr: "no repository above"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := tt.repo(t)
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: filepath.Join(repo, tt.cwd), interactive: never}
+			stack := filepath.Join(repo, tt.wantStack)
+			renderArgs, checkArgs := []string{"render"}, []string{"check"}
+			if tt.withApp {
+				renderArgs = append(renderArgs, "--app", fixtureApp, "--placement", placement)
+				checkArgs = append(checkArgs, "--app", fixtureApp, "--placement", placement)
+			}
+			if tt.outside {
+				stack = filepath.Join(t.TempDir(), "stack")
+				renderArgs = append(renderArgs, "--out", stack, "--placement", placement)
+				checkArgs = append(checkArgs, "--dir", stack, "--placement", placement)
+			}
+			out, err := execute(d, "", renderArgs...)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("render error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("render error = %v; output:\n%s", err, out)
+			}
+			if want := "Rendered the harbor stack into " + stack + ":"; !strings.Contains(out, want) {
+				t.Errorf("render output lacks %q:\n%s", want, out)
+			}
+			if _, err := os.Stat(filepath.Join(stack, "README.md")); err != nil {
+				t.Errorf("the stack's README is not there: %v", err)
+			}
+			out, err = execute(d, "", checkArgs...)
+			if err != nil {
+				t.Fatalf("check error = %v; output:\n%s", err, out)
+			}
+			if want := "11 owned file(s) match the code"; !strings.Contains(out, want) {
+				t.Errorf("check output lacks %q:\n%s", want, out)
+			}
+		})
+	}
+}
+
 func TestPlacementDefault(t *testing.T) {
 	t.Parallel()
 

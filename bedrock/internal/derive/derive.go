@@ -363,6 +363,17 @@ const (
 // segment every resource name carries.
 var appCodeRE = regexp.MustCompile(`^[a-z]{1,6}$`)
 
+// ApplicationCode is the application code the module path names: its last segment,
+// which must be one to six lowercase letters.
+func ApplicationCode(module string) (string, error) {
+	code := path.Base(module)
+	if !appCodeRE.MatchString(code) {
+		return "", errors.Newf("application code %q (the module path's last segment) is not one to six lowercase letters", code)
+	}
+
+	return code, nil
+}
+
 // Derive reads the application's infrastructure model.
 func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := p.Validate(); err != nil {
@@ -372,9 +383,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, errors.New("the application's go.mod has no module directive")
 	}
 	module := a.GoMod.Module.Mod.Path
-	code := path.Base(module)
-	if !appCodeRE.MatchString(code) {
-		return nil, errors.Newf("application code %q (the module path's last segment) is not one to six lowercase letters", code)
+	code, err := ApplicationCode(module)
+	if err != nil {
+		return nil, err
 	}
 
 	m := &Model{App: code, Module: module, Repository: repositoryURL(module), EnvTemplate: a.EnvTemplate, Placement: p}

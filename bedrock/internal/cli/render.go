@@ -11,25 +11,35 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
-func newRender() *cobra.Command {
+func newRender(d deps) *cobra.Command {
 	var (
-		appDir    string
-		outDir    string
+		appFlag   string
+		outFlag   string
 		placement string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "render --app <dir> --out <dir>",
+		Use:   "render [--app <dir>] [--out <dir>]",
 		Short: "Write the application stack from the code",
 		Long: `render reads the application (its config struct tags, its main packages, its auths, its
-generated router) and the placement, and writes the stack into the output directory.
+generated router) and the placement, and writes the stack into the stack directory.
+
+Run from anywhere inside the repository, it finds both directories: the stack is the
+application repository's infrastructure directory, or the one application layer under
+3-app of an infrastructure root (the repository root, or its infrastructure directory);
+--out overrides. The application is read from the repository root when the stack is in its
+infrastructure directory, else from the working directory; --app overrides.
 
 The stack's .tf files and its README are owned: render rewrites them every time, and each
 says in a comment which declaration it comes from. terraform.tfvars is seeded: written when
 absent, then a person's, holding the placement values filled in per environment. The
-placement is read from --placement, or from placement.json in the output directory.`,
+placement is read from --placement, or from placement.json in the stack directory.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			appDir, outDir, err := d.stack(appFlag, outFlag)
+			if err != nil {
+				return err
+			}
 			m, err := model(appDir, placement, outDir)
 			if err != nil {
 				return err
@@ -54,10 +64,11 @@ placement is read from --placement, or from placement.json in the output directo
 		},
 	}
 
-	cmd.Flags().StringVar(&appDir, "app", ".", "application root (the directory holding go.mod)")
-	cmd.Flags().StringVar(&outDir, "out", "", "the stack directory to write (required)")
+	cmd.Flags().StringVar(&appFlag, "app", "", "application root, the directory holding go.mod (default: the repository root when the stack is in its infrastructure directory, else the working directory)")
+	cmd.Flags().StringVar(&outFlag, "out", "", "the stack directory to write (default: the application's stack, found from the working directory)")
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the stack directory)")
-	_ = cmd.MarkFlagRequired("out")
+	_ = cmd.MarkFlagDirname("app")
+	_ = cmd.MarkFlagDirname("out")
 
 	return cmd
 }

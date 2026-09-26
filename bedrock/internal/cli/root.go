@@ -82,8 +82,8 @@ its own: the code and a placement are the inputs, the stack is the output.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newRender())
-	root.AddCommand(newCheck())
+	root.AddCommand(newRender(d))
+	root.AddCommand(newCheck(d))
 	root.AddCommand(newDomain(d))
 	root.AddCommand(newSecret(d))
 
@@ -139,6 +139,39 @@ func applicationDirOf(infraRoot string) string {
 	}
 
 	return where.ApplicationDir(repoRoot, infraRoot)
+}
+
+// stack is where render and check work. The stack directory is the flag (--out, --dir)
+// as given, else the one application's layer under the infrastructure root found from
+// the working directory: the application repository's infrastructure directory, or the
+// one layer under 3-app. The application's source directory is --app as given, else the
+// one the layout around the working directory knows (the repository root, with the
+// stack in its infrastructure directory), else the working directory itself.
+func (d deps) stack(appFlag, dirFlag string) (appDir, stackDir string, err error) {
+	if appFlag != "" && dirFlag != "" {
+		return appFlag, dirFlag, nil
+	}
+	infraRoot, layoutAppDir, err := d.infrastructureRoot("")
+	stackDir = dirFlag
+	if stackDir == "" {
+		if err != nil {
+			return "", "", err
+		}
+		application, err := where.SingleApplication(infraRoot)
+		if err != nil {
+			return "", "", err
+		}
+		stackDir = where.LayerDir(infraRoot, application)
+	}
+	appDir = appFlag
+	if appDir == "" {
+		appDir = layoutAppDir
+	}
+	if appDir == "" {
+		appDir = "."
+	}
+
+	return appDir, stackDir, nil
 }
 
 // asker is the prompter that asks a person on the command's terminal, or nil when

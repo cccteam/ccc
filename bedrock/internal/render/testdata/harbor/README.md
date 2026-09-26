@@ -1,9 +1,12 @@
-# 3-app/harbor
+# harbor's infrastructure
 
 The application stack of [harbor](https://github.com/impulseframework/harbor):
 everything the application needs in one environment that is not the
-environment itself. One directory, applied once per environment, as the
+environment itself. It lives here, in the application repository's
+`infrastructure` directory, and is applied once per environment, as the
 application apply identity `imp-<env>-gbl-harbor-tofu` that `2-env` created.
+Its state lives at `3-app/harbor/<env>` in the organization's state bucket,
+the layer's slot there.
 
 Every resource here is derived from something harbor declares, and each one
 says in a comment which declaration (a struct field under `pkg/config`, a
@@ -12,11 +15,12 @@ the code; until then they are the hand-written statement of that derivation.
 
 ## Applying
 
-Same shape as `2-env`: no workspaces, one state prefix per environment,
+Same shape as `2-env`: no workspaces, one state prefix per environment
+(`3-app/harbor/<env>`, the stack's slot in the organization's state bucket),
 supplied at init, with a backend cache per environment:
 
 ```bash
-cd 3-app/harbor
+cd infrastructure
 export TF_DATA_DIR=.terraform.tst
 tofu init -backend-config="prefix=3-app/harbor/tst"
 tofu plan -var environment=tst
@@ -216,7 +220,7 @@ Per environment, after the first apply:
 | Layer | Output | Used for |
 |---|---|---|
 | `1-org` | (read for completeness; nothing used directly yet) | |
-| `2-env` | `applications[harbor]`, `spanner_instance`, `records_bucket`, `project_id`, `prefix`, `region`, `region_code`, `secondary_region`, `secondary_region_code` | everything; this repository defines them |
+| `2-env` | `applications[harbor]`, `spanner_instance`, `records_bucket`, `project_id`, `prefix`, `region`, `region_code`, `secondary_region`, `secondary_region_code` | everything; the organization's infrastructure repository defines them |
 | `2-shr` | `image_paths` | `_REGISTRY`: `<registry hostname>/<shr project>/<repository>` for harbor |
 
 `2-shr` grants `roles/artifactregistry.reader` on every repository to each

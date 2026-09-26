@@ -61,8 +61,9 @@ request's plan for that environment shows the template change and nothing elsewh
 after the apply the release is re-run in the environment to move traffic to the new revision.
 
 Run from anywhere inside the repository, it finds the rest: the infrastructure root (the
-repository root, or its infrastructure directory; --dir overrides), the application (the one
-layer under 3-app; --app chooses among several), the environment project (the active project
+repository root, or its infrastructure directory; --dir overrides), the application (the
+application repository's own stack in its infrastructure directory, or the one layer under
+3-app; --app chooses among several), the environment project (the active project
 labeled environment=<env> and terraform_source_path=1-org; --project overrides) and the
 secret container (the one labeled terraform_source_path=3-app-<app> whose name ends with the
 variable's kebab case, -cookie-key for APP_COOKIE_KEY; --container overrides). Secret Manager
@@ -101,8 +102,8 @@ absent. A variable already pinned to the version leaves the file as it is.`,
 	}
 
 	cmd.Flags().StringVar(&f.dir, "dir", "", "the infrastructure root (default: found from the working directory)")
-	cmd.Flags().StringVar(&f.app, "app", "", "the application whose secret is pinned (default: the one layer under 3-app)")
-	cmd.Flags().StringVar(&f.layer, "layer", "", "the layer whose placement holds the pins (default: 3-app/<app>)")
+	cmd.Flags().StringVar(&f.app, "app", "", "the application whose secret is pinned (default: the one application layer)")
+	cmd.Flags().StringVar(&f.layer, "layer", "", "the layer whose placement holds the pins (default: the application's layer)")
 	cmd.Flags().StringVar(&f.project, "project", "", "the environment project to verify the version in (default: found by its labels)")
 	cmd.Flags().StringVar(&f.container, "container", "", "the secret container's name in the project (default: found by its labels and the variable)")
 	cmd.Flags().StringVar(&f.container, secretFlag, "", "an older name for --container")

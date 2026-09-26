@@ -9,12 +9,15 @@ import (
 )
 
 // The fixture repositories: flat holds the layers at its root, nested under
-// infrastructure/. Each is copied into a temporary directory and given its .git there,
-// a directory for flat and a file (as a worktree carries) for nested: a committed .git
-// would make the fixture a repository of its own.
+// infrastructure/, and apprepo is an application repository whose infrastructure/ is the
+// stack itself, the application named by the module at its root. Each is copied into a
+// temporary directory and given its .git there, a directory for flat and apprepo and a
+// file (as a worktree carries) for nested: a committed .git would make the fixture a
+// repository of its own.
 const (
-	flat   = "flat"
-	nested = "nested"
+	flat    = "flat"
+	nested  = "nested"
+	apprepo = "apprepo"
 	// harborApp is the application fixture the derive package reads.
 	harborApp = "../derive/testdata/harbor"
 	// harborPlacement is the placement it is derived under.
@@ -95,12 +98,39 @@ func TestInfrastructureRoot(t *testing.T) {
 	tests := []struct {
 		name    string
 		fixture string
+		// mutate reshapes the copied repository before it is looked at.
+		mutate  func(t *testing.T, dir string)
 		want    string
 		wantErr string
 	}{
 		{name: "the layers at the root", fixture: flat, want: "."},
 		{name: "the layers under infrastructure", fixture: nested, want: "infrastructure"},
-		{name: "no layers in either", fixture: "", wantErr: "holds the layers (1-org and 3-app): pass --dir"},
+		{name: "the application's stack under infrastructure", fixture: apprepo, want: "infrastructure"},
+		{
+			name:    "the placement alone marks the stack before the first render",
+			fixture: apprepo,
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				if err := os.Rename(filepath.Join(dir, infrastructureDir, tfvarsFile), filepath.Join(dir, infrastructureDir, placementFile)); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: "infrastructure",
+		},
+		{
+			name:    "a stack beside a layer is neither layout",
+			fixture: apprepo,
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				if err := os.Mkdir(filepath.Join(dir, infrastructureDir, appLayers), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantErr: "is not the application's stack (a terraform.tfvars or a placement.json, and no layers): pass --dir",
+		},
+		{name: "no layers in either", fixture: "", wantErr: "holds the layers (1-org and 3-app), and"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -109,6 +139,9 @@ func TestInfrastructureRoot(t *testing.T) {
 			dir := t.TempDir()
 			if tt.fixture != "" {
 				dir = copyRepo(t, tt.fixture)
+			}
+			if tt.mutate != nil {
+				tt.mutate(t, dir)
 			}
 			got, err := InfrastructureRoot(dir)
 			if tt.wantErr != "" {
@@ -160,23 +193,45 @@ func TestApplications(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		fixture    string
-		infra      string
+		name    string
+		fixture string
+		infra   string
+		// goMod replaces the module file at the repository root; "" leaves the fixture's,
+		// and "-" removes it.
+		goMod      string
 		want       []string
 		wantSingle string
+		// wantLayer is the single application's layer, relative to the infrastructure
+		// root.
+		wantLayer  string
 		wantErr    string
 		wantOneErr string
 	}{
-		{name: "one application, a directory without a placement skipped", fixture: flat, want: []string{"quill"}, wantSingle: "quill"},
+		{name: "one application, a directory without a placement skipped", fixture: flat, want: []string{"quill"}, wantSingle: "quill", wantLayer: filepath.Join(appLayers, "quill")},
 		{name: "two applications", fixture: nested, infra: "infrastructure", want: []string{"harbor", "quill"}, wantOneErr: "several application layers under"},
 		{name: "no 3-app", fixture: nested, wantErr: "no 3-app under"},
+		{name: "the application's stack itself, named by the module", fixture: apprepo, infra: "infrastructure", want: []string{"quill"}, wantSingle: "quill", wantLayer: "."},
+		{name: "a module whose last segment is not an application code", fixture: apprepo, infra: "infrastructure", goMod: "module example.com/acme/quill-app\n\ngo 1.26\n", wantErr: `application code "quill-app" (the module path's last segment) is not one to six lowercase letters`},
+		{name: "a module file without a module directive", fixture: apprepo, infra: "infrastructure", goMod: "go 1.26\n", wantErr: "has no module directive to name the application"},
+		{name: "no go.mod at the repository root", fixture: apprepo, infra: "infrastructure", goMod: "-", wantErr: "the application layout needs the module at the repository root"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			dir := filepath.Join(copyRepo(t, tt.fixture), tt.infra)
+			repo := copyRepo(t, tt.fixture)
+			switch tt.goMod {
+			case "":
+			case "-":
+				if err := os.Remove(filepath.Join(repo, goModFile)); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				if err := os.WriteFile(filepath.Join(repo, goModFile), []byte(tt.goMod), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			dir := filepath.Join(repo, tt.infra)
 			got, err := Applications(dir)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -204,6 +259,9 @@ func TestApplications(t *testing.T) {
 			}
 			if single != tt.wantSingle {
 				t.Errorf("SingleApplication() = %q, want %q", single, tt.wantSingle)
+			}
+			if got, want := LayerDir(dir, single), filepath.Join(dir, tt.wantLayer); got != want {
+				t.Errorf("LayerDir() = %q, want %q", got, want)
 			}
 		})
 	}
@@ -235,6 +293,7 @@ func TestEnvironments(t *testing.T) {
 	}{
 		{name: "the placement's environments in order", fixture: flat, app: "quill", want: []string{"tst", "stg", "prd"}},
 		{name: "a placement pinning two", fixture: nested, infra: "infrastructure", app: "harbor", want: []string{"tst", "prd"}},
+		{name: "the application's stack itself", fixture: apprepo, infra: "infrastructure", app: "quill", want: []string{"tst", "stg"}},
 		{name: "an application that is not there", fixture: flat, app: "none", wantErr: "no placement at"},
 	}
 	for _, tt := range tests {
@@ -307,6 +366,16 @@ func TestVariables(t *testing.T) {
 				t.Helper()
 
 				return LayerDir(copyRepo(t, flat), "quill")
+			},
+			want: quillLocals,
+		},
+		{
+			name:   "an application repository whose code cannot be read falls back to its stack's locals",
+			appDir: "testdata/apprepo",
+			layerDir: func(t *testing.T) string {
+				t.Helper()
+
+				return LayerDir(filepath.Join(copyRepo(t, apprepo), infrastructureDir), "quill")
 			},
 			want: quillLocals,
 		},

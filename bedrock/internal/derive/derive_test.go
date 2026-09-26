@@ -191,7 +191,7 @@ func TestPlacementValidate(t *testing.T) {
 		return Placement{
 			Prefix: "imp", Environments: []string{"tst", "prd"}, Regions: []Region{{Name: "us-central1", Code: "uc1"}},
 			AppsDomain: "lab.example.com", HostedDomain: "example.com", StateBucket: "b", PlaceholderImage: "i",
-			DefaultBranch: "main", Repository: "imp-impulse-infrastructure",
+			DefaultBranch: "main", Repository: "harbor",
 		}
 	}
 	tests := []struct {

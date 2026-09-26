@@ -78,6 +78,10 @@ linters:
             - cloud.google.com/go/secretmanager
             - cloud.google.com/go/resourcemanager
             - google.golang.org/api/iterator
+            # In the application layout the application is named by the module at the
+            # repository root, read from its go.mod with the same parser impulse's
+            # reader uses.
+            - golang.org/x/mod/modfile
     exhaustive:
       default-signifies-exhaustive: true
     funlen:
