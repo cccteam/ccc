@@ -241,14 +241,20 @@ func moduleApplication(repoRoot string) (string, error) {
 	return application, nil
 }
 
-// LayerDir is the application's layer: the infrastructure root itself when it is the
-// application's stack, else the application's directory under 3-app.
-func LayerDir(infraRoot, application string) string {
+// Layer is the application's layer relative to the infrastructure root: "." when the
+// root is the application's stack itself, else the application's directory under 3-app.
+func Layer(infraRoot, application string) string {
 	if isApplicationLayer(infraRoot) {
-		return infraRoot
+		return "."
 	}
 
-	return filepath.Join(infraRoot, appLayers, application)
+	return filepath.Join(appLayers, application)
+}
+
+// LayerDir is the application's layer as a directory: the infrastructure root joined
+// with Layer.
+func LayerDir(infraRoot, application string) string {
+	return filepath.Join(infraRoot, Layer(infraRoot, application))
 }
 
 // Environments lists the environments the application's placement pins secrets for: the

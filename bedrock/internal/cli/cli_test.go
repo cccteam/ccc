@@ -26,6 +26,9 @@ const (
 	// quill; fixtureNested one with the layers under infrastructure/ and two.
 	fixtureFlat   = "../where/testdata/flat"
 	fixtureNested = "../where/testdata/nested"
+	// fixtureAppRepo is an application repository carrying its own stack under
+	// infrastructure/, the application named by its go.mod.
+	fixtureAppRepo = "../where/testdata/apprepo"
 )
 
 // run executes the command tree with the arguments and returns the exit code and the
@@ -661,6 +664,14 @@ func TestSecretPin(t *testing.T) {
 			wantFile: file3,
 		},
 		{
+			name:     "the application repository's own stack, run from its root",
+			fixture:  fixtureAppRepo,
+			cwd:      ".",
+			args:     []string{"tst", "APP_COOKIE_KEY", "3"},
+			wantOut:  pinned3,
+			wantFile: []string{`APP_COOKIE_KEY = "3"`, "stg = {}"},
+		},
+		{
 			name:        "the values themselves answer too",
 			cwd:         ".",
 			interactive: always,
@@ -802,8 +813,12 @@ func TestSecretPin(t *testing.T) {
 			}
 			dir := copyRepo(t, fixture)
 			infra := dir
-			if fixture == fixtureNested {
+			if fixture == fixtureNested || fixture == fixtureAppRepo {
 				infra = filepath.Join(dir, "infrastructure")
+			}
+			placement := filepath.Join(infra, "3-app", "quill", "terraform.tfvars")
+			if fixture == fixtureAppRepo {
+				placement = filepath.Join(infra, "terraform.tfvars")
 			}
 			d := deps{domains: noCloudDomains, secrets: quillSecrets().open, projects: labs, cwd: filepath.Join(dir, tt.cwd), interactive: never}
 			if tt.projects != nil {
@@ -835,7 +850,7 @@ func TestSecretPin(t *testing.T) {
 					t.Errorf("output lacks %q:\n%s", want, out)
 				}
 			}
-			data, err := os.ReadFile(filepath.Join(infra, "3-app", "quill", "terraform.tfvars"))
+			data, err := os.ReadFile(placement)
 			if err != nil {
 				t.Fatal(err)
 			}

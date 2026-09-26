@@ -125,12 +125,14 @@ absent. A variable already pinned to the version leaves the file as it is.`,
 	return cmd
 }
 
-// pinPlace is where a pin goes: the infrastructure root, the application, its layer,
-// and the application's source directory when known.
+// pinPlace is where a pin goes: the infrastructure root, the application, its layer
+// (relative to the root, and as a directory), and the application's source directory
+// when known.
 type pinPlace struct {
 	infraRoot string
 	appDir    string
 	app       string
+	layer     string
 	layerDir  string
 }
 
@@ -147,12 +149,12 @@ func (d deps) place(f *pinFlags) (*pinPlace, error) {
 			return nil, err
 		}
 	}
-	layerDir := where.LayerDir(infraRoot, application)
-	if f.layer != "" {
-		layerDir = filepath.Join(infraRoot, f.layer)
+	layer := f.layer
+	if layer == "" {
+		layer = where.Layer(infraRoot, application)
 	}
 
-	return &pinPlace{infraRoot: infraRoot, appDir: appDir, app: application, layerDir: layerDir}, nil
+	return &pinPlace{infraRoot: infraRoot, appDir: appDir, app: application, layer: layer, layerDir: filepath.Join(infraRoot, layer)}, nil
 }
 
 // resolvePin fills the request from the arguments, the flags and what is found, asking
@@ -202,7 +204,7 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 		Variable:  variable,
 		Version:   version,
 		Dir:       place.infraRoot,
-		Layer:     f.layer,
+		Layer:     place.layer,
 		Project:   project,
 		Container: container,
 	}, nil
