@@ -45,6 +45,7 @@ locals {
     _RELEASE_ACTORS          = "{{.P.ReleaseActor}}"                                                               # the logins whose GitHub Releases the tag check accepts, comma-separated: release-please runs as the release app
     _PREVIOUS_ENV            = local.previous_environment                                                                    # the environment whose live deployment record a release needs first; empty in the first environment
     _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                                 # that environment's records bucket, which 2-env there lets this deploy identity read
+    _APPLY_IDENTITY          = local.identities.apply_identity_email                                                         # the identity the pull-request build applies a pull request's stack as, impersonated by the deploy identity (2-env grants it in the first environment)
   }
 }
 
