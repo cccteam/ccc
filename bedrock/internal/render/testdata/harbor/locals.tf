@@ -46,7 +46,7 @@ locals {
   # names the field it comes from.
   # ---------------------------------------------------------------------------
 
-  # Secrets: the fields of pkg/config that hold a credential. One container per
+  # Secrets: the fields of pkg/config tagged secret:"true". One container per
   # variable per environment, named imp-<env>-gbl-harbor-<kebab of the
   # variable without its APP_ prefix>. No versions: an operator adds the value
   # (Secret Version Adder), and var.secret_versions pins which one runs.

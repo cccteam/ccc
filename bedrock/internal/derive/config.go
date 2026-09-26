@@ -60,6 +60,8 @@ type fieldDecl struct {
 	typeName string
 	line     int
 	doc      string
+	// secret is the secret tag's value as written ("true", "false"), or empty.
+	secret string
 	// tag is the env tag's value, or empty.
 	tag string
 }
@@ -182,7 +184,9 @@ func (c *config) readStructs(fset *token.FileSet, rel string, d *ast.GenDecl) {
 				fd.doc = strings.TrimSpace(field.Doc.Text())
 			}
 			if field.Tag != nil {
-				fd.tag, _ = reflect.StructTag(strings.Trim(field.Tag.Value, "`")).Lookup("env")
+				tags := reflect.StructTag(strings.Trim(field.Tag.Value, "`"))
+				fd.tag, _ = tags.Lookup("env")
+				fd.secret, _ = tags.Lookup(secretTag)
 			}
 			if len(field.Names) == 0 {
 				fd.name = path.Base(fd.typeName)
@@ -313,7 +317,7 @@ func (c *config) collect(level, structName string, located map[string]Variable) 
 	}
 	for _, f := range decl.fields {
 		if f.tag != "" {
-			v := Variable{Level: level, Struct: structName, Field: f.name, File: decl.file, Line: f.line, Type: f.typeName, Doc: f.doc}
+			v := Variable{Level: level, Struct: structName, Field: f.name, File: decl.file, Line: f.line, Type: f.typeName, Doc: f.doc, SecretTag: f.secret}
 			v.Default, v.HasDefault = tagDefault(f.tag)
 			located[decl.file+":"+strconv.Itoa(f.line)] = v
 

@@ -252,6 +252,50 @@ func TestSecretName(t *testing.T) {
 	}
 }
 
+func TestSecretFor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		v       Variable
+		want    bool
+		wantErr string
+	}{
+		{name: "tagged true", v: Variable{Name: "APP_COOKIE_KEY", SecretTag: "true"}, want: true},
+		{name: "tagged true with a plain name", v: Variable{Name: "APP_SMTP_PASS", SecretTag: "true"}, want: true},
+		{name: "tagged false with a credential-sounding name", v: Variable{Name: "APP_LICENSE_KEY", SecretTag: "false"}, want: false},
+		{name: "untagged plain name", v: Variable{Name: "APP_STAFF_OIDC_CLIENT_ID"}, want: false},
+		{
+			name:    "untagged credential-sounding name is refused",
+			v:       Variable{Name: "APP_MAIL_API_KEY", File: "pkg/config/data.go", Line: 12, Struct: "dataConfig", Field: "MailAPIKey"},
+			wantErr: `pkg/config/data.go:12: APP_MAIL_API_KEY sounds like a credential (its name ends in _KEY) and dataConfig.MailAPIKey carries no secret tag: add secret:"true" to mount it from Secret Manager, or secret:"false" if it is a plain value`,
+		},
+		{
+			name:    "another value is refused",
+			v:       Variable{Name: "APP_COOKIE_KEY", SecretTag: "yes", File: "pkg/config/data.go", Line: 3, Struct: "dataConfig", Field: "CookieKey"},
+			wantErr: `pkg/config/data.go:3: secret:"yes" on dataConfig.CookieKey: the secret tag takes "true" or "false"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			v := tt.v
+			got, err := secretFor(&v)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("secretFor() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Errorf("secretFor() = %v, %v; want %v", got, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsSecret(t *testing.T) {
 	t.Parallel()
 

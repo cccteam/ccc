@@ -104,8 +104,10 @@ type Variable struct {
 	// Image reports that the container image sets the variable (a Dockerfile ENV), so no
 	// deploy step does.
 	Image bool
-	// Secret reports that the variable holds a credential.
-	Secret bool
+	// Secret reports that the variable holds a credential: the field carries the
+	// secret tag, secret:"true". SecretTag is that tag's value as written, or empty.
+	Secret    bool
+	SecretTag string
 }
 
 // Declaration is the field as a reader of the code would name it: <struct>.<field>.
@@ -259,9 +261,19 @@ var directoryRoles = map[string]Role{
 // name for it.
 const cookieKeyField = "CookieKey"
 
-// secretSuffixes mark a variable as holding a credential. There is no marker on the
-// struct tag (go-envconfig refuses an option it does not know), so the name says it:
-// a key, a secret, credentials, a password, or a token.
+// secretTag is the struct tag that declares a secret: secret:"true" mounts the
+// variable from Secret Manager at a pinned version, secret:"false" says a value whose
+// name sounds like a credential is a plain one. The environment library reads its own
+// env tag only, so the second tag costs the running program nothing.
+const (
+	secretTag   = "secret"
+	secretTrue  = "true"
+	secretFalse = "false"
+)
+
+// secretSuffixes are the name endings that sound like a credential: a key, a secret,
+// credentials, a password, or a token. They decide nothing; a variable with such a name
+// and no secret tag is refused, so the author says which it is.
 var secretSuffixes = []string{"_KEY", "_SECRET", "_CREDENTIALS", "_PASSWORD", "_TOKEN"}
 
 // Secret is one variable that holds a credential.
@@ -422,7 +434,11 @@ func (m *Model) classify(cfg *config) error {
 			v.Role = RoleCookieKey
 		}
 		v.Image = cfg.image[v.Name]
-		v.Secret = isSecret(v.Name)
+		secret, err := secretFor(v)
+		if err != nil {
+			return err
+		}
+		v.Secret = secret
 		if v.Secret {
 			m.Secrets = append(m.Secrets, Secret{Variable: v, Name: secretName(v.Name)})
 		}
@@ -498,7 +514,38 @@ func (m *Model) Level(name string) (Level, bool) {
 	return Level{}, false
 }
 
-// isSecret reports whether the variable's name says it holds a credential.
+// secretFor reads the variable's secret tag: "true" makes it a secret, "false" a plain
+// value. Any other value is refused, and so is a variable whose name sounds like a
+// credential and carries no tag, since the name alone decides nothing.
+func secretFor(v *Variable) (bool, error) {
+	switch v.SecretTag {
+	case secretTrue:
+		return true, nil
+	case secretFalse:
+		return false, nil
+	case "":
+		if isSecret(v.Name) {
+			return false, errors.Newf("%s:%d: %s sounds like a credential (its name ends in %s) and %s carries no secret tag: add secret:\"true\" to mount it from Secret Manager, or secret:\"false\" if it is a plain value", v.File, v.Line, v.Name, suffixOf(v.Name), v.Declaration())
+		}
+
+		return false, nil
+	default:
+		return false, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes \"true\" or \"false\"", v.File, v.Line, v.SecretTag, v.Declaration())
+	}
+}
+
+// suffixOf is the credential-sounding ending of the name.
+func suffixOf(name string) string {
+	for _, suffix := range secretSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			return suffix
+		}
+	}
+
+	return ""
+}
+
+// isSecret reports whether the variable's name sounds like a credential.
 func isSecret(name string) bool {
 	for _, suffix := range secretSuffixes {
 		if strings.HasSuffix(name, suffix) {

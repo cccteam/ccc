@@ -177,17 +177,17 @@ type dataConfig struct {
 	// CookieKey signs session cookies: a Base64-encoded string of at least 32 bytes of
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
-	CookieKey string `env:"APP_COOKIE_KEY"`
+	CookieKey string `env:"APP_COOKIE_KEY" secret:"true"`
 	// The staff auth's directory registration (pkg/auth/staff): the application's client
 	// credentials, the callback Google returns the browser to, the Workspace domain logins are
 	// restricted to, the prefix of the Google Groups that carry roles, and the Admin SDK service
 	// account (a key with domain-wide delegation, and the admin it impersonates) that reads them.
 	// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.
 	StaffClientID         string `env:"APP_STAFF_OIDC_CLIENT_ID"`
-	StaffClientSecret     string `env:"APP_STAFF_OIDC_CLIENT_SECRET"`
+	StaffClientSecret     string `env:"APP_STAFF_OIDC_CLIENT_SECRET" secret:"true"`
 	StaffRedirectURL      string `env:"APP_STAFF_OIDC_REDIRECT_URL"`
 	StaffHostedDomain     string `env:"APP_STAFF_OIDC_HOSTED_DOMAIN"`
 	StaffGroupPrefix      string `env:"APP_STAFF_OIDC_GROUP_PREFIX"`
-	StaffAdminCredentials []byte `env:"APP_STAFF_OIDC_ADMIN_CREDENTIALS"`
+	StaffAdminCredentials []byte `env:"APP_STAFF_OIDC_ADMIN_CREDENTIALS" secret:"true"`
 	StaffAdminSubject     string `env:"APP_STAFF_OIDC_ADMIN_SUBJECT"`
 }

@@ -46,7 +46,7 @@ locals {
   # names the field it comes from.
   # ---------------------------------------------------------------------------
 
-  # Secrets: the fields of {{.ConfigDir}} that hold a credential. One container per
+  # Secrets: the fields of {{.ConfigDir}} tagged secret:"true". One container per
   # variable per environment, named {{.Prefix}}-<env>-gbl-{{.App}}-<kebab of the
   # variable without its APP_ prefix>. No versions: an operator adds the value
   # (Secret Version Adder), and var.secret_versions pins which one runs.
