@@ -46,6 +46,12 @@ locals {
     _PREVIOUS_ENV            = local.previous_environment                                                                    # the environment whose live deployment record a release needs first; empty in the first environment
     _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                                 # that environment's records bucket, which 2-env there lets this deploy identity read
     _APPLY_IDENTITY          = local.identities.apply_identity_email                                                         # the identity the pull-request build applies a pull request's stack as, impersonated by the deploy identity (2-env grants it in the first environment)
+    # The schema migrations, root-relative: /gcbrun shared-db is refused when a
+    # pull request changes anything under it. The repository as GitHub names it
+    # (owner/name, from the module path): the sweep asks GitHub about each pull
+    # request by it.
+    _MIGRATIONS_DIR = "{{.Schema.MigrationsDir}}"
+    _REPO_FULL_NAME = "{{.RepoFullName}}"
   }
 }
 
@@ -99,6 +105,67 @@ resource "google_cloudbuild_trigger" "pr" {
     pull_request {
       branch          = "^{{.P.DefaultBranch}}$"
       comment_control = "COMMENTS_ENABLED"
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# The sweep, {{.Integration}} only. A pull request's environment outlives the pull
+# request when nobody comments /gcbrun down, and closing or merging one starts
+# no build (Cloud Build has no event for it). Every hour Cloud Scheduler runs
+# the sweep trigger as the deploy identity: cloudbuild-sweep.yaml in the
+# repository lists this application's pull-request services by their
+# pull_request label, asks GitHub whether each pull request is closed, and
+# destroys the stacks of the closed ones as the apply identity, the way
+# /gcbrun down does. The design brief gives the sweep an identity of its own;
+# the lab runs it as the deploy identity, which already holds the impersonation
+# the pull-request build uses.
+# ---------------------------------------------------------------------------
+
+resource "google_cloudbuild_trigger" "sweep" {
+  count = var.environment == "{{.Integration}}" && local.identities.repository_id != null && !local.is_pr ? 1 : 0
+
+  project  = local.project_id
+  location = local.primary_region
+  name     = "${local.name}-${local.primary_region_code}-${local.app}-sweep"
+
+  service_account    = local.identities.deploy_identity_id
+  include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
+  substitutions      = merge(local.substitutions, { _PR_NUMBER = "" })
+
+  source_to_build {
+    repository = local.identities.repository_id
+    ref        = "refs/heads/{{.P.DefaultBranch}}"
+    repo_type  = "GITHUB"
+  }
+
+  git_file_source {
+    path       = "cloudbuild-sweep.yaml"
+    repository = local.identities.repository_id
+    revision   = "refs/heads/{{.P.DefaultBranch}}"
+    repo_type  = "GITHUB"
+  }
+}
+
+resource "google_cloud_scheduler_job" "sweep" {
+  count = length(google_cloudbuild_trigger.sweep)
+
+  project     = local.project_id
+  region      = local.primary_region
+  name        = "${local.name}-${local.primary_region_code}-${local.app}-sweep"
+  description = "Hourly: destroy the environments of {{.App}}'s closed pull requests (the sweep trigger)."
+  schedule    = "0 * * * *"
+  time_zone   = "Etc/UTC"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://cloudbuild.googleapis.com/v1/${google_cloudbuild_trigger.sweep[0].id}:run"
+    headers     = { "Content-Type" = "application/json" }
+    body        = base64encode("{}")
+
+    oauth_token {
+      service_account_email = local.identities.deploy_identity_email
+      scope                 = "https://www.googleapis.com/auth/cloud-platform"
     }
   }
 }

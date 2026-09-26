@@ -12,11 +12,11 @@ output "backend_service_self_link" {
 }
 
 output "database" {
-  description = "The Spanner database: its project, instance, and name."
+  description = "The Spanner database the site opens: its project, instance, and name; for a pull-request stack in shared mode, {{.Integration}}'s."
   value = {
     project  = local.instance.project
     instance = local.instance.name
-    name     = google_spanner_database.{{.App}}.name
+    name     = local.database_name
   }
 }
 

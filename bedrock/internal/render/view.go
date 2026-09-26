@@ -20,6 +20,9 @@ import (
 type view struct {
 	*derive.Model
 	P *derive.Placement
+	// RepoFullName is the repository as GitHub names it, owner/name, from the module
+	// path; a placeholder when the module path names no GitHub repository.
+	RepoFullName string
 
 	// Prefix is the placement's naming prefix.
 	Prefix string
@@ -136,6 +139,7 @@ func newView(m *derive.Model) (*view, error) {
 	}
 	p := m.Placement
 	v := &view{Model: m, P: p, Prefix: p.Prefix, Integration: p.Integration(), Production: p.Production()}
+	v.RepoFullName = repoFullName(m.Repository)
 	v.Auth = &m.Auths[0]
 	v.AuthVar = v.Auth.VariablePrefix()
 	v.RoutesDir = path.Dir(v.Auth.Callback.File)
@@ -472,4 +476,15 @@ func (v *view) order(envs []string) {
 		previous = append(previous, env+" = "+strconv.Quote(v.P.Previous(env)))
 	}
 	v.PreviousEnvMap = "{ " + strings.Join(previous, ", ") + " }"
+}
+
+// repoFullName is owner/name from a GitHub repository URL, or the placeholder the
+// pipeline reads as a refusal.
+func repoFullName(repository string) string {
+	const host = "https://github.com/"
+	if !strings.HasPrefix(repository, host) {
+		return "REPOSITORY_NOT_ON_GITHUB"
+	}
+
+	return strings.TrimSuffix(strings.TrimPrefix(repository, host), "/")
 }

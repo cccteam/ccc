@@ -85,6 +85,8 @@ from `2-env`'s state.
   tag `^v\d+\.\d+\.\d+$` in every environment, with Cloud Build approval
   required in stg and prd (the placement's `approvals`); `imp-tst-uc1-harbor-pr` in tst only, on a pull
   request against `master`, run only on a `/gcbrun` comment.
+- `imp-tst-<primary region code>-harbor-sweep`, tst only: the sweep, run
+  hourly by the Cloud Scheduler job of the same name.
   The environments chain by deployment records: a release runs in an
   environment only after the previous one in the order (tst, stg, prd) holds
   a live record of it, which the pipeline checks before it builds.
@@ -135,8 +137,12 @@ substitutions and this stack's outputs:
   connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
   check accepts (the release app as `<slug>[bot]`); `_PREVIOUS_ENV` and
   `_PREVIOUS_RECORDS_BUCKET`, the environment before this one and its records
-  bucket, empty in the first environment. Output `substitutions` is the same
-  map, for a build submitted by hand before the triggers exist.
+  bucket, empty in the first environment; `_APPLY_IDENTITY`, the identity the
+  pull-request build applies a pull request's stack as; `_MIGRATIONS_DIR`, the
+  schema migrations directory, which decides whether `/gcbrun shared-db` is
+  allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep.
+  Output `substitutions` is the same map, for a build submitted by hand before
+  the triggers exist.
 - The services and the job are deployed with `gcloud run services update
   --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
   --wait`, which leave the template's variables and secrets alone: the
@@ -185,6 +191,32 @@ tst's secret containers at tst's pinned versions and creates no
 containers, no triggers and no backend of its own. The pull-request build
 applies it as the tst apply identity before it deploys, and destroys it on
 `/gcbrun down` or when the pull request closes.
+
+Shared mode. `/gcbrun shared-db` applies the stack with `shared_database`
+true: no database of its own, the app identity granted database user on
+tst's database (an additive membership naming the pull request's own
+account), the migrate job present but never run. The pipeline refuses it when
+the pull request changes anything under `schema/migrations` against its
+base, because a migration on the shared database would change tst before
+any release. A later plain `/gcbrun` switches back: the pull request's own
+database is created, the membership on tst's is removed, and the migrations
+run. `/gcbrun reload-db` recreates the pull request's own database and cannot
+be combined with `shared-db`.
+
+The guard. A pull request may have edited this stack any way at all, so the
+pull-request build plans first and applies only when every resource the plan
+creates, changes or destroys carries the pull request's name (`harbor-pr<N>` in its
+name, account, service, database or parent), except an IAM membership whose
+member is one of the pull request's own accounts. Anything else stops the run
+and is posted on the pull request. Before that, `bedrock check` refuses an
+authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the
+stack: one apply would remove another's members.
+
+The sweep. Closing or merging a pull request starts no build, so every hour
+Cloud Scheduler runs the sweep trigger (`cloudbuild-sweep.yaml`) in tst as
+the deploy identity: it lists the pull-request services by their
+`pull_request` label, asks GitHub whether each pull request is closed, and
+destroys the stacks of the closed ones as the apply identity.
 
 ## Hand steps
 

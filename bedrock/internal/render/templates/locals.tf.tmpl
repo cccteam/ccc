@@ -24,6 +24,18 @@ locals {
   app_account     = local.is_pr ? "${local.pr_name}-app" : "${local.name}-gbl-${local.app}-app"
   migrate_account = local.is_pr ? "${local.pr_name}-migrate" : "${local.name}-gbl-${local.app}-migrate"
 
+  # The same accounts as members and as resource names, spelled out rather than
+  # read from the account resources, so a plan knows every membership before
+  # the accounts exist: the pull-request build's guard reads the pull request's
+  # name off each planned change, and a member known only after apply would
+  # stop the first build of every pull request.
+  app_email            = "${local.app_account}@${local.project_id}.iam.gserviceaccount.com"
+  migrate_email        = "${local.migrate_account}@${local.project_id}.iam.gserviceaccount.com"
+  app_member           = "serviceAccount:${local.app_email}"
+  migrate_member       = "serviceAccount:${local.migrate_email}"
+  app_account_name     = "projects/${local.project_id}/serviceAccounts/${local.app_email}"
+  migrate_account_name = "projects/${local.project_id}/serviceAccounts/${local.migrate_email}"
+
   # The environment before this one in the promotion order ({{.EnvsComma}}) and
   # its deployment-records bucket: the pipeline runs a release here only after
   # that environment holds a live record of it. The first environment has none.
@@ -56,7 +68,11 @@ locals {
   # {{.Auth.Callback.Method}} {{.Auth.Callback.Path}}, on the environment's canonical host.
   redirect_url = "https://${local.hostnames[0]}{{.Auth.Callback.Path}}"
 
-  database_name = local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
+  # The database the site opens: the environment's own, a pull request's own,
+  # or in shared mode (var.shared_database) {{.Integration}}'s, which the pull-request
+  # stack then only reads by name and grants its app identity on.
+  own_database  = !(local.is_pr && var.shared_database)
+  database_name = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
 
   # ---------------------------------------------------------------------------
   # What the code declares, read from {{.ConfigDir}} by bedrock render; each entry

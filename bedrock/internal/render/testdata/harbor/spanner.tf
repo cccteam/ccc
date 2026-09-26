@@ -11,9 +11,16 @@
 # both its forms is on for prd: the provider-side flag stops a plan from
 # destroying the database, and drop protection stops every interface,
 # including the console, and with it the parent instance.
+#
+# A pull-request stack in shared mode (var.shared_database) creates none: the
+# site runs against tst's database, named by local.database_name, and
+# the app identity is granted on it below; no DDL grant, and the pipeline
+# never runs the migrate job.
 # ---------------------------------------------------------------------------
 
 resource "google_spanner_database" "harbor" {
+  count = local.own_database ? 1 : 0
+
   project  = local.instance.project
   instance = local.instance.name
   name     = local.database_name
@@ -24,23 +31,44 @@ resource "google_spanner_database" "harbor" {
   enable_drop_protection   = local.is_prd
 }
 
+# The database gained a count when shared mode arrived; the one that exists
+# keeps its state.
+moved {
+  from = google_spanner_database.harbor
+  to   = google_spanner_database.harbor[0]
+}
+
 # Rows, as the site reads and writes them (config.NewDataConfiguration opens
-# the Spanner client as this identity).
+# the Spanner client as this identity). By name, so that in shared mode the
+# membership lands on tst's database: an additive member naming the pull
+# request's own account, destroyed with the stack.
 resource "google_spanner_database_iam_member" "app_user" {
   project  = local.instance.project
   instance = local.instance.name
-  database = google_spanner_database.harbor.name
+  database = local.database_name
   role     = "roles/spanner.databaseUser"
-  member   = google_service_account.app.member
+  member   = local.app_member
+
+  depends_on = [google_spanner_database.harbor, google_service_account.app]
 }
 
-# DDL, for the migrations (pkg/deploy MigrateSchema), on this database only.
+# DDL, for the migrations (pkg/deploy MigrateSchema), on this database only, and
+# never on a shared one.
 resource "google_spanner_database_iam_member" "migrate_admin" {
+  count = local.own_database ? 1 : 0
+
   project  = local.instance.project
   instance = local.instance.name
-  database = google_spanner_database.harbor.name
+  database = google_spanner_database.harbor[0].name
   role     = "roles/spanner.databaseAdmin"
-  member   = google_service_account.migrate.member
+  member   = local.migrate_member
+
+  depends_on = [google_service_account.migrate]
+}
+
+moved {
+  from = google_spanner_database_iam_member.migrate_admin
+  to   = google_spanner_database_iam_member.migrate_admin[0]
 }
 
 # ---------------------------------------------------------------------------
@@ -56,7 +84,7 @@ resource "google_spanner_backup_schedule" "weekly_full" {
 
   project  = local.instance.project
   instance = local.instance.name
-  database = google_spanner_database.harbor.name
+  database = google_spanner_database.harbor[0].name
   name     = "${local.database_name}-weekly-backup"
 
   retention_duration = "7776000s" # 90 days
@@ -75,7 +103,7 @@ resource "google_spanner_backup_schedule" "daily_incremental" {
 
   project  = local.instance.project
   instance = local.instance.name
-  database = google_spanner_database.harbor.name
+  database = google_spanner_database.harbor[0].name
   name     = "${local.database_name}-daily-backup"
 
   retention_duration = "7776000s" # 90 days
