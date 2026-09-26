@@ -57,6 +57,7 @@ func TestRun(t *testing.T) {
 		wantClean    bool
 		wantFindings []Finding
 		wantUnseeded []string
+		wantRefused  []Authoritative
 		wantOutput   []string
 	}{
 		{
@@ -109,6 +110,19 @@ func TestRun(t *testing.T) {
 			wantOutput:   []string{"unseeded terraform.tfvars"},
 		},
 		{
+			name: "an authoritative IAM resource anywhere in the stack is refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				custom := "# a person's file\nresource \"google_project_iam_binding\" \"owners\" {\n  project = \"p\"\n  role    = \"roles/owner\"\n  members = []\n}\n"
+				if err := os.WriteFile(filepath.Join(dir, "custom.tf"), []byte(custom), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRefused: []Authoritative{{Path: "custom.tf", Line: 2, Address: "google_project_iam_binding.owners"}},
+			wantOutput:  []string{"11 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners"},
+		},
+		{
 			name: "an edited seeded file is a person's",
 			mutate: func(t *testing.T, dir string) {
 				t.Helper()
@@ -143,6 +157,14 @@ func TestRun(t *testing.T) {
 			}
 			if strings.Join(report.Unseeded, ",") != strings.Join(tt.wantUnseeded, ",") {
 				t.Errorf("Unseeded = %v, want %v", report.Unseeded, tt.wantUnseeded)
+			}
+			if len(report.Authoritative) != len(tt.wantRefused) {
+				t.Fatalf("Authoritative = %+v, want %+v", report.Authoritative, tt.wantRefused)
+			}
+			for i, want := range tt.wantRefused {
+				if report.Authoritative[i] != want {
+					t.Errorf("Authoritative[%d] = %+v, want %+v", i, report.Authoritative[i], want)
+				}
 			}
 			var out bytes.Buffer
 			report.Write(&out)

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -30,6 +31,20 @@ type Finding struct {
 	Got  string
 }
 
+// Authoritative is an authoritative IAM resource (a *_iam_binding or *_iam_policy)
+// declared in one of the stack's files. The stack refuses them: such a resource
+// replaces every member of its role or policy on each apply, so a pull-request stack
+// applying one would remove the environment's members, and two pull requests each
+// other's. A *_iam_member adds one member and removes only that one.
+type Authoritative struct {
+	// Path is the file's path relative to the stack directory.
+	Path string
+	// Line is the resource block's line (1-based).
+	Line int
+	// Address is the resource's type.name.
+	Address string
+}
+
 // Report is the outcome of one check.
 type Report struct {
 	// Dir is the directory checked.
@@ -41,11 +56,14 @@ type Report struct {
 	// Unseeded lists the seeded files the directory lacks: not drift, since the tool
 	// writes them once and a person keeps them, but worth a line.
 	Unseeded []string
+	// Authoritative lists the authoritative IAM resources declared anywhere in the
+	// stack, owned files and a person's alike, in path then line order.
+	Authoritative []Authoritative
 }
 
-// Clean reports no drift.
+// Clean reports no drift and no refused resource.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's.
@@ -77,8 +95,42 @@ func Run(m *derive.Model, dir string) (*Report, error) {
 			r.Findings = append(r.Findings, Finding{Path: f.Path, Line: line, Want: want, Got: got})
 		}
 	}
+	authoritative, err := scanAuthoritative(dir)
+	if err != nil {
+		return nil, err
+	}
+	r.Authoritative = authoritative
 
 	return r, nil
+}
+
+// authoritativeResource matches the opening line of an authoritative IAM resource
+// block: resource "<type>_iam_binding" "<name>" or resource "<type>_iam_policy" "<name>".
+var authoritativeResource = regexp.MustCompile(`^\s*resource\s+"([A-Za-z0-9_]+_iam_(?:binding|policy))"\s+"([^"]+)"`)
+
+// scanAuthoritative finds the authoritative IAM resources in every .tf file of the
+// directory, a person's files included.
+func scanAuthoritative(dir string) ([]Authoritative, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.tf"))
+	if err != nil {
+		return nil, errors.Wrap(err, "filepath.Glob()")
+	}
+	var found []Authoritative
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "os.ReadFile(): %s", path)
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			m := authoritativeResource.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			found = append(found, Authoritative{Path: filepath.Base(path), Line: i + 1, Address: m[1] + "." + m[2]})
+		}
+	}
+
+	return found, nil
 }
 
 // firstDifference finds the first line where the two texts part, or reports them the
@@ -108,7 +160,7 @@ func firstDifference(want, got []byte) (line int, wantLine, gotLine string, same
 // Write prints the report the way a person reads it: one line per file, the first
 // differing line under each.
 func (r *Report) Write(w io.Writer) {
-	if r.Clean() {
+	if len(r.Findings) == 0 {
 		fmt.Fprintf(w, "%s: %d owned file(s) match the code\n", r.Dir, r.Checked)
 	} else {
 		fmt.Fprintf(w, "%s: %d of %d owned file(s) differ from the code\n", r.Dir, len(r.Findings), r.Checked)
@@ -125,5 +177,8 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, path := range r.Unseeded {
 		fmt.Fprintf(w, "  unseeded %s (bedrock render creates it once)\n", path)
+	}
+	for _, a := range r.Authoritative {
+		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead\n", a.Path, a.Line, a.Address)
 	}
 }
