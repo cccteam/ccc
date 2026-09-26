@@ -11,5 +11,6 @@
   "placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello",
   "defaultBranch": "master",
   "repository": "harbor",
+  "releaseApp": "impulseframework-release",
   "labels": {"bedrock-lab": "true"}
 }

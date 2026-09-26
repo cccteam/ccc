@@ -129,8 +129,9 @@ substitutions and this stack's outputs:
   comma-separated; `_MIGRATE_JOB` as `<region>=<job>`; `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
   `_REPO_CONNECTION_NAME` and `_REPO_NAME` (placeholders until 2-env holds the
-  connection). Output `substitutions` is the same map, for a build submitted
-  by hand before the triggers exist.
+  connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
+  check accepts (the release app as `<slug>[bot]`). Output `substitutions` is
+  the same map, for a build submitted by hand before the triggers exist.
 - The services and the job are deployed with `gcloud run services update
   --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
   --wait`, which leave the template's variables and secrets alone: the

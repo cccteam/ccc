@@ -13,6 +13,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
+	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/prompt"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 	"github.com/cccteam/ccc/bedrock/internal/where"
@@ -50,6 +51,8 @@ type deps struct {
 	domains  domain.ClientFunc
 	secrets  secret.ClientFunc
 	projects where.ProjectClientFunc
+	// github opens the GitHub API client with the token found for the account.
+	github github.ClientFunc
 	// cwd is where the repository is looked for when --dir is not given; empty means
 	// the process's working directory.
 	cwd string
@@ -63,6 +66,7 @@ func newRoot() *cobra.Command {
 		domains:     domain.NewCloudDomains,
 		secrets:     secret.NewSecretManager,
 		projects:    where.NewProjects,
+		github:      github.Open,
 		interactive: stdinIsTerminal,
 	})
 }
@@ -86,6 +90,8 @@ its own: the code and a placement are the inputs, the stack is the output.`,
 	root.AddCommand(newCheck(d))
 	root.AddCommand(newDomain(d))
 	root.AddCommand(newSecret(d))
+	root.AddCommand(newRepository(d))
+	root.AddCommand(newHotfix(d))
 
 	return root
 }

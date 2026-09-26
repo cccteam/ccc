@@ -37,6 +37,10 @@ type Placement struct {
 	DefaultBranch string `json:"defaultBranch"`
 	// Repository is the application repository's name, for the source_repo label.
 	Repository string `json:"repository"`
+	// ReleaseApp is the slug of the GitHub App that cuts the releases (release-please
+	// runs as it): the pipeline accepts a release tag only from a GitHub Release it
+	// authored, and the repository's rules let it alone, with the admins, create one.
+	ReleaseApp string `json:"releaseApp"`
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
 	Labels map[string]string `json:"labels"`
@@ -102,6 +106,7 @@ func (p *Placement) Validate() error {
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
 		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
+		"releaseApp": p.ReleaseApp,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return errors.Newf("%s is empty", name)
@@ -109,6 +114,11 @@ func (p *Placement) Validate() error {
 	}
 
 	return nil
+}
+
+// ReleaseActor is the login the release app's releases carry: <slug>[bot].
+func (p *Placement) ReleaseActor() string {
+	return p.ReleaseApp + "[bot]"
 }
 
 // Integration is the environment pull requests deploy to: the first.

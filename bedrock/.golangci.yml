@@ -169,6 +169,16 @@ linters:
           - gosec
         path: _test\.go
         text: G703
+      # The GitHub API's JSON is snake_case; the client and its stand-in write the
+      # wire names as the API defines them.
+      - linters:
+          - tagliatelle
+        path: internal/github/
+      # tokenEnv names the variable a token is read from; it holds no token.
+      - linters:
+          - gosec
+        path: internal/github/github\.go
+        text: G101
     paths:
       - third_party$
       - builtin$
