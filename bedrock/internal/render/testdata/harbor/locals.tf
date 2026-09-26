@@ -13,6 +13,17 @@ locals {
 
   is_prd = var.environment == "prd"
 
+  # A pull-request stack: this code in tst with var.pull_request set, into
+  # its own state. Its resources carry the short name harbor-pr<N> (2-env's wildcard
+  # backend picks the Cloud Run service by that name from the hostname), and it
+  # shares tst's secret containers, identity registration and registry.
+  is_pr   = var.pull_request != 0
+  pr_name = "${local.app}-pr${var.pull_request}"
+
+  # The runtime accounts' IDs: by the convention, or the short name.
+  app_account     = local.is_pr ? "${local.pr_name}-app" : "${local.name}-gbl-${local.app}-app"
+  migrate_account = local.is_pr ? "${local.pr_name}-migrate" : "${local.name}-gbl-${local.app}-migrate"
+
   # The environment before this one in the promotion order (tst, stg, prd) and
   # its deployment-records bucket: the pipeline runs a release here only after
   # that environment holds a live record of it. The first environment has none.
@@ -38,14 +49,14 @@ locals {
   # pipeline appends /<image>:<tag>. Null until 2-shr knows the application.
   registry = try(data.terraform_remote_state.shr.outputs.image_paths[local.app], null)
 
-  hostnames = var.hostnames[var.environment]
+  hostnames = local.is_pr ? ["${local.pr_name}.impulseframework.dev"] : var.hostnames[var.environment]
 
   # From .envrc.template: APP_STAFF_OIDC_REDIRECT_URL is the browser-facing
   # callback, the route pkg/router/zz_gen_router.go registers as
   # GET /api/user/callback, on the environment's canonical host.
   redirect_url = "https://${local.hostnames[0]}/api/user/callback"
 
-  database_name = "${local.name}-gbl-${local.app}-db"
+  database_name = local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
 
   # ---------------------------------------------------------------------------
   # What the code declares, read from pkg/config by bedrock render; each entry
@@ -81,6 +92,10 @@ locals {
       purpose = "Service-account key (JSON) with domain-wide delegation for the Admin SDK groups scope, through which the staff auth reads role groups."
     }
   }
+
+  # The container each secret lives in, by the naming convention: this
+  # environment's, which a pull-request stack shares with tst and never creates.
+  secret_ids = { for key, s in local.secrets : key => "${local.name}-gbl-${local.app}-${s.name}" }
 
   secret_versions = lookup(var.secret_versions, var.environment, {})
 
@@ -142,7 +157,7 @@ locals {
   # in the organization's bucket (3-app/harbor) written as a label value, which
   # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the
   # application repository's name, from the placement.
-  labels = {
+  base_labels = {
     terraform             = "true"
     terraform_source_path = "3-app-harbor"
     source_repo           = "harbor"
@@ -150,4 +165,6 @@ locals {
     application           = local.app
     bedrock-lab           = "true"
   }
+  # A pull-request stack also carries its number, for the sweep and the bill.
+  labels = merge(local.base_labels, local.is_pr ? { pull_request = tostring(var.pull_request) } : {})
 }

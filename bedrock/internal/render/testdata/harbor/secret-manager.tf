@@ -14,7 +14,8 @@
 # ---------------------------------------------------------------------------
 
 resource "google_secret_manager_secret" "harbor" {
-  for_each = local.secrets
+  # A pull-request stack reads tst's containers and creates none.
+  for_each = local.is_pr ? {} : local.secrets
 
   project   = local.project_id
   secret_id = "${local.name}-gbl-${local.app}-${each.value.name}"
@@ -36,7 +37,9 @@ resource "google_secret_manager_secret_iam_member" "app_accessor" {
   for_each = local.secrets
 
   project   = local.project_id
-  secret_id = google_secret_manager_secret.harbor[each.key].secret_id
+  secret_id = local.secret_ids[each.key]
   role      = "roles/secretmanager.secretAccessor"
   member    = google_service_account.app.member
+
+  depends_on = [google_secret_manager_secret.harbor]
 }

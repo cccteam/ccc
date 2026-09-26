@@ -13,15 +13,15 @@
 
 resource "google_service_account" "app" {
   project      = local.project_id
-  account_id   = "${local.name}-gbl-${local.app}-app"
-  display_name = "Runtime SA - ${local.name}-gbl-${local.app}-app"
+  account_id   = local.app_account
+  display_name = "Runtime SA - ${local.app_account}"
   description  = "Runtime identity of the harbor site (main.go) in ${var.environment}."
 }
 
 resource "google_service_account" "migrate" {
   project      = local.project_id
-  account_id   = "${local.name}-gbl-${local.app}-migrate"
-  display_name = "Runtime SA - ${local.name}-gbl-${local.app}-migrate"
+  account_id   = local.migrate_account
+  display_name = "Runtime SA - ${local.migrate_account}"
   description  = "Runtime identity of the harbor migration job (cmd/deployment/migrate) in ${var.environment}."
 }
 

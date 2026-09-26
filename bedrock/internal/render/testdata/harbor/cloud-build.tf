@@ -33,23 +33,23 @@
 
 locals {
   substitutions = {
-    _ENV                  = var.environment
-    _APP                  = local.app
-    _PROJECT              = local.project_id
-    _SERVICES             = join(",", [for code, service in google_cloud_run_v2_service.app : "${service.location}=${service.name}"]) # region=service per region; the pipeline updates each
-    _MIGRATE_JOB          = "${google_cloud_run_v2_job.migrate.location}=${google_cloud_run_v2_job.migrate.name}"                     # region=job; the pipeline updates it to the image and runs it
-    _REGISTRY             = coalesce(local.registry, "REGISTRY_NOT_REGISTERED_IN_2-SHR")
-    _RECORDS_BUCKET       = local.env.records_bucket
-    _REPO_CONNECTION_NAME = coalesce(try(local.env.connection_name, null), "CONNECTION_NOT_AUTHORIZED_IN_2-ENV")          # the pipeline mints a GitHub token from the connection for the tag check and the comment read; a null output is absent from remote state, hence try
-    _REPO_NAME            = coalesce(local.env.applications[local.app].repository_name, "REPOSITORY_NOT_LINKED_IN_2-ENV") # null until 2-env holds the connection
-    _RELEASE_ACTORS       = "impulseframework-release[bot]"                                                                        # the logins whose GitHub Releases the tag check accepts, comma-separated: release-please runs as the release app
-    _PREVIOUS_ENV         = local.previous_environment                                                                     # the environment whose live deployment record a release needs first; empty in the first environment
-    _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                               # that environment's records bucket, which 2-env there lets this deploy identity read
+    _ENV                     = var.environment
+    _APP                     = local.app
+    _PROJECT                 = local.project_id
+    _SERVICES                = join(",", [for code, service in google_cloud_run_v2_service.app : "${service.location}=${service.name}"]) # region=service per region; the pipeline updates each
+    _MIGRATE_JOB             = "${google_cloud_run_v2_job.migrate.location}=${google_cloud_run_v2_job.migrate.name}"                     # region=job; the pipeline updates it to the image and runs it
+    _REGISTRY                = coalesce(local.registry, "REGISTRY_NOT_REGISTERED_IN_2-SHR")
+    _RECORDS_BUCKET          = local.env.records_bucket
+    _REPO_CONNECTION_NAME    = coalesce(try(local.env.connection_name, null), "CONNECTION_NOT_AUTHORIZED_IN_2-ENV")          # the pipeline mints a GitHub token from the connection for the tag check and the comment read; a null output is absent from remote state, hence try
+    _REPO_NAME               = coalesce(local.env.applications[local.app].repository_name, "REPOSITORY_NOT_LINKED_IN_2-ENV") # null until 2-env holds the connection
+    _RELEASE_ACTORS          = "impulseframework-release[bot]"                                                               # the logins whose GitHub Releases the tag check accepts, comma-separated: release-please runs as the release app
+    _PREVIOUS_ENV            = local.previous_environment                                                                    # the environment whose live deployment record a release needs first; empty in the first environment
+    _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                                 # that environment's records bucket, which 2-env there lets this deploy identity read
   }
 }
 
 resource "google_cloudbuild_trigger" "version" {
-  count = local.identities.repository_id == null ? 0 : 1
+  count = local.identities.repository_id == null || local.is_pr ? 0 : 1
 
   project  = local.project_id
   location = local.primary_region
@@ -77,7 +77,7 @@ resource "google_cloudbuild_trigger" "version" {
 }
 
 resource "google_cloudbuild_trigger" "pr" {
-  count = var.environment == "tst" && local.identities.repository_id != null ? 1 : 0
+  count = var.environment == "tst" && local.identities.repository_id != null && !local.is_pr ? 1 : 0
 
   project  = local.project_id
   location = local.primary_region

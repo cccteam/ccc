@@ -17,7 +17,7 @@ resource "google_cloud_run_v2_service" "app" {
 
   project  = local.project_id
   location = each.value
-  name     = "${local.name}-${each.key}-${local.app}-app"
+  name     = local.is_pr ? local.pr_name : "${local.name}-${each.key}-${local.app}-app"
 
   # Reachable only through the load balancer in the net project (and from
   # inside the VPC); the org policy run.allowedIngress pins this value.
@@ -74,7 +74,7 @@ resource "google_cloud_run_v2_service" "app" {
           name = env.key
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.harbor[env.key].secret_id
+              secret  = local.secret_ids[env.key]
               version = env.value.version
             }
           }
@@ -152,7 +152,7 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
 resource "google_cloud_run_v2_job" "migrate" {
   project  = local.project_id
   location = local.primary_region
-  name     = "${local.name}-${local.primary_region_code}-${local.app}-migrate"
+  name     = local.is_pr ? "${local.pr_name}-migrate" : "${local.name}-${local.primary_region_code}-${local.app}-migrate"
 
   deletion_protection = false
 

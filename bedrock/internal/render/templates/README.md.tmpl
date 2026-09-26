@@ -169,6 +169,21 @@ hosts = {
 DNS (the wildcard A record) and the certificate already cover the hostname;
 adding the entry and applying `2-net` is the whole registration.
 
+## Pull-request environments
+
+The same stack, applied in {{.Integration}} with `pull_request` set to the pull request's
+number, is that pull request's environment: its own state
+(`3-app/{{.App}}/{{.Integration}}/pr<N>`), its own database on {{.Integration}}'s instance and its
+own runtime identities, short names throughout (`{{.App}}-pr<N>` for the service in
+each region, `{{.App}}-pr<N>-migrate`, `{{.App}}-pr<N>-app`, `{{.App}}-pr<N>-db`), and the
+hostname `{{.App}}-pr<N>.{{.P.AppsDomain}}`, which the wildcard backend 2-env creates once
+in {{.Integration}} serves by picking the Cloud Run service named by the hostname's
+first label (2-net's `*.{{.P.AppsDomain}}` host rule points at it). It reads
+{{.Integration}}'s secret containers at {{.Integration}}'s pinned versions and creates no
+containers, no triggers and no backend of its own. The pull-request build
+applies it as the {{.Integration}} apply identity before it deploys, and destroys it on
+`/gcbrun down` or when the pull request closes.
+
 ## Hand steps
 
 Per environment, after the first apply:

@@ -171,6 +171,21 @@ hosts = {
 DNS (the wildcard A record) and the certificate already cover the hostname;
 adding the entry and applying `2-net` is the whole registration.
 
+## Pull-request environments
+
+The same stack, applied in tst with `pull_request` set to the pull request's
+number, is that pull request's environment: its own state
+(`3-app/harbor/tst/pr<N>`), its own database on tst's instance and its
+own runtime identities, short names throughout (`harbor-pr<N>` for the service in
+each region, `harbor-pr<N>-migrate`, `harbor-pr<N>-app`, `harbor-pr<N>-db`), and the
+hostname `harbor-pr<N>.impulseframework.dev`, which the wildcard backend 2-env creates once
+in tst serves by picking the Cloud Run service named by the hostname's
+first label (2-net's `*.impulseframework.dev` host rule points at it). It reads
+tst's secret containers at tst's pinned versions and creates no
+containers, no triggers and no backend of its own. The pull-request build
+applies it as the tst apply identity before it deploys, and destroys it on
+`/gcbrun down` or when the pull request closes.
+
 ## Hand steps
 
 Per environment, after the first apply:

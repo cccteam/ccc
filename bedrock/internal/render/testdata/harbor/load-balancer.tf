@@ -14,7 +14,9 @@
 # ---------------------------------------------------------------------------
 
 resource "google_compute_region_network_endpoint_group" "app" {
-  for_each = local.regions
+  # A pull-request stack has no backend of its own: 2-env's wildcard backend in
+  # tst reaches its service by name from the hostname.
+  for_each = local.is_pr ? {} : local.regions
 
   project               = local.project_id
   region                = each.value
@@ -26,7 +28,16 @@ resource "google_compute_region_network_endpoint_group" "app" {
   }
 }
 
+# The backend gained its count when pull-request stacks arrived; the one
+# already in every environment's state keeps its place.
+moved {
+  from = google_compute_backend_service.app
+  to   = google_compute_backend_service.app[0]
+}
+
 resource "google_compute_backend_service" "app" {
+  count = local.is_pr ? 0 : 1
+
   project     = local.project_id
   name        = "${local.name}-gbl-${local.app}-backend"
   description = "harbor site in ${var.environment}: ${join(", ", local.hostnames)}"

@@ -2,13 +2,13 @@
 # hostnames. Readable by anything that can read the state bucket; no secrets.
 
 output "backend_service_id" {
-  description = "Backend service URI in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>."
-  value       = google_compute_backend_service.app.id
+  description = "Backend service URI in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>; null for a pull-request stack."
+  value       = try(google_compute_backend_service.app[0].id, null)
 }
 
 output "backend_service_self_link" {
-  description = "Full self link of the backend service the net project's URL map routes this environment's hostnames to (cross-project reference)."
-  value       = google_compute_backend_service.app.self_link
+  description = "Full self link of the backend service the net project's URL map routes this environment's hostnames to (cross-project reference); null for a pull-request stack."
+  value       = try(google_compute_backend_service.app[0].self_link, null)
 }
 
 output "database" {
@@ -34,8 +34,8 @@ output "identities" {
 }
 
 output "net_hosts" {
-  description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI."
-  value       = { for host in local.hostnames : host => google_compute_backend_service.app.id }
+  description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI. Empty for a pull-request stack, whose hostname the wildcard rule serves."
+  value       = local.is_pr ? {} : { for host in local.hostnames : host => google_compute_backend_service.app[0].id }
 }
 
 output "migrate_job" {
@@ -55,7 +55,7 @@ output "secrets" {
   description = "Secret container ID by the environment variable it feeds, and the version this environment runs (null when not pinned yet)."
   value = {
     for key, s in local.secrets : key => {
-      secret_id = google_secret_manager_secret.harbor[key].secret_id
+      secret_id = local.secret_ids[key]
       version   = lookup(local.secret_versions, key, null)
     }
   }

@@ -2,7 +2,8 @@ terraform {
   # The application stack of harbor: the application repository's infrastructure
   # directory, applied once per environment with -var environment=<env>, as the
   # application apply identity imp-<env>-gbl-harbor-tofu that 2-env created.
-  # No workspaces: the state of each environment lives at 3-app/harbor/<env>, the
+  # No workspaces: the state of each environment lives at 3-app/harbor/<env> (a
+  # pull-request stack at 3-app/harbor/tst/pr<N>), the
   # stack's slot in the organization's state bucket. A backend block cannot read
   # a variable, so the prefix below is a placeholder that every init overrides:
   #

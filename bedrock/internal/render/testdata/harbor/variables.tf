@@ -8,6 +8,31 @@ variable "environment" {
   }
 }
 
+variable "pull_request" {
+  description = <<-EOT
+    (Optional) The pull request this stack is an environment for, in tst only;
+    0 for the environment itself. A pull-request stack is applied by the
+    pull-request build into its own prefix (3-app/harbor/tst/pr<N>). Its
+    resources carry the short name harbor-pr<N>, which is how the wildcard backend
+    2-env creates once in tst picks the Cloud Run service from the hostname
+    harbor-pr<N>.impulseframework.dev; it has a database and identities of its own, reads
+    tst's secret containers, and creates no triggers, no containers and no
+    backend of its own.
+  EOT
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.pull_request >= 0 && floor(var.pull_request) == var.pull_request
+    error_message = "pull_request is a pull request's number, or 0 for none."
+  }
+
+  validation {
+    condition     = var.pull_request == 0 || var.environment == "tst"
+    error_message = "A pull-request stack lives in tst only."
+  }
+}
+
 variable "hostnames" {
   description = <<-EOT
     Hostnames the site answers on, per environment, in 2-net's convention:
