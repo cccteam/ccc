@@ -1,6 +1,7 @@
 package app
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -165,6 +166,52 @@ func TestParseGeneratorNotAProgram(t *testing.T) {
 			}
 			if g != nil {
 				t.Errorf("parseGenerator() = %+v, want nil", g)
+			}
+		})
+	}
+}
+
+func TestParseEnvTagsSecret(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		src     string
+		want    []EnvTag
+		wantErr string
+	}{
+		{
+			name: "the secret tag marks the variable",
+			src:  "package config\n\ntype dataConfig struct {\n\tCookieKey string `env:\"APP_COOKIE_KEY\" secret:\"true\"`\n\tClientID string `env:\"APP_CLIENT_ID\"`\n\tLicenseKey string `env:\"APP_LICENSE_KEY\" secret:\"false\"`\n}\n",
+			want: []EnvTag{
+				{File: "pkg/config/data.go", Line: 4, Name: "APP_COOKIE_KEY", Secret: true},
+				{File: "pkg/config/data.go", Line: 5, Name: "APP_CLIENT_ID"},
+				{File: "pkg/config/data.go", Line: 6, Name: "APP_LICENSE_KEY"},
+			},
+		},
+		{
+			name:    "another value is refused",
+			src:     "package config\n\ntype dataConfig struct {\n\tCookieKey string `env:\"APP_COOKIE_KEY\" secret:\"yes\"`\n}\n",
+			wantErr: `pkg/config/data.go:4: secret:"yes" on APP_COOKIE_KEY: the secret tag takes "true" or "false"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseEnvTags("pkg/config/data.go", []byte(tt.src))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("parseEnvTags() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseEnvTags() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseEnvTags() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

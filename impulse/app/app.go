@@ -208,6 +208,9 @@ type EnvTag struct {
 	Name       string
 	Required   bool
 	HasDefault bool
+	// Secret reports the field's secret tag, secret:"true": the variable holds a
+	// credential that the infrastructure mounts from a secret store.
+	Secret bool
 }
 
 // Discover reads the application rooted at dir. dir must hold a go.mod.

@@ -538,13 +538,16 @@ func parseEnvTags(rel string, src []byte) ([]EnvTag, error) {
 	}
 
 	var tags []EnvTag
+	// bad is the first malformed secret tag: the field's variable, line and value.
+	var bad *EnvTag
+	var badValue string
 	ast.Inspect(f, func(n ast.Node) bool {
 		field, ok := n.(*ast.Field)
-		if !ok || field.Tag == nil {
+		if !ok || field.Tag == nil || bad != nil {
 			return true
 		}
-		raw := strings.Trim(field.Tag.Value, "`")
-		value, ok := reflect.StructTag(raw).Lookup("env")
+		raw := reflect.StructTag(strings.Trim(field.Tag.Value, "`"))
+		value, ok := raw.Lookup("env")
 		if !ok {
 			return true
 		}
@@ -554,13 +557,33 @@ func parseEnvTags(rel string, src []byte) ([]EnvTag, error) {
 		}
 		tag.File = rel
 		tag.Line = fset.Position(field.Pos()).Line
+		if secret, present := raw.Lookup(secretTag); present {
+			switch secret {
+			case secretTrue:
+				tag.Secret = true
+			case secretFalse:
+			default:
+				bad, badValue = &tag, secret
+			}
+		}
 		tags = append(tags, tag)
 
 		return true
 	})
+	if bad != nil {
+		return nil, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes %q or %q", rel, bad.Line, badValue, bad.Name, secretTrue, secretFalse)
+	}
 
 	return tags, nil
 }
+
+// secretTag is the struct tag beside the env tag that declares a secret; secretTrue
+// and secretFalse are its two values.
+const (
+	secretTag   = "secret"
+	secretTrue  = "true"
+	secretFalse = "false"
+)
 
 // parseEnvTag interprets an envconfig tag value: NAME[,required][,default=VALUE][,...].
 func parseEnvTag(value string) (EnvTag, bool) {
