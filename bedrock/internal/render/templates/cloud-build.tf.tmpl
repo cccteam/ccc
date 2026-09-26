@@ -43,6 +43,8 @@ locals {
     _REPO_CONNECTION_NAME = coalesce(try(local.env.connection_name, null), "CONNECTION_NOT_AUTHORIZED_IN_2-ENV")          # the pipeline mints a GitHub token from the connection for the tag check and the comment read; a null output is absent from remote state, hence try
     _REPO_NAME            = coalesce(local.env.applications[local.app].repository_name, "REPOSITORY_NOT_LINKED_IN_2-ENV") # null until 2-env holds the connection
     _RELEASE_ACTORS       = "{{.P.ReleaseActor}}"                                                                        # the logins whose GitHub Releases the tag check accepts, comma-separated: release-please runs as the release app
+    _PREVIOUS_ENV         = local.previous_environment                                                                     # the environment whose live deployment record a release needs first; empty in the first environment
+    _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                               # that environment's records bucket, which 2-env there lets this deploy identity read
   }
 }
 
@@ -62,7 +64,7 @@ resource "google_cloudbuild_trigger" "version" {
   substitutions = merge(local.substitutions, { _PR_NUMBER = "" })
 
   approval_config {
-    approval_required = !(var.environment == "{{.Integration}}")
+    approval_required = contains({{.ApprovalList}}, var.environment)
   }
 
   repository_event_config {

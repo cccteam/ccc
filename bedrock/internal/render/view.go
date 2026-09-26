@@ -8,6 +8,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -35,6 +36,12 @@ type view struct {
 	EnvsComma      string
 	EnvsBacktickOr string
 	EnvList        string
+	// ApprovalList is the HCL list of the environments a release waits for approval
+	// in; ApprovalsProse spells them ("stg and prd", or "no environment").
+	// PreviousEnvMap is the HCL map from each environment to the one before it.
+	ApprovalList   string
+	ApprovalsProse string
+	PreviousEnvMap string
 	// EnvCountWord is the number of environments as a word.
 	EnvCountWord string
 	// EmptyEnvStrings and EmptyEnvMaps are the per-environment default blocks, env = ""
@@ -225,6 +232,7 @@ func (v *view) environments() {
 	v.EnvsComma = strings.Join(envs, ", ")
 	v.EnvsBacktickOr = joinOr(ticked)
 	v.EnvList = "[" + strings.Join(quoted, ", ") + "]"
+	v.order(envs)
 	v.EnvCountWord = numberWords[len(envs)]
 	if v.EnvCountWord == "" {
 		v.EnvCountWord = fmt.Sprint(len(envs))
@@ -445,4 +453,23 @@ func firstSentence(doc string) string {
 	}
 
 	return text
+}
+
+// order fills the promotion-order fields: which environments wait for approval, and
+// the environment before each.
+func (v *view) order(envs []string) {
+	approvals := make([]string, 0, len(v.P.ApprovalEnvironments()))
+	for _, env := range v.P.ApprovalEnvironments() {
+		approvals = append(approvals, strconv.Quote(env))
+	}
+	v.ApprovalList = "[" + strings.Join(approvals, ", ") + "]"
+	v.ApprovalsProse = joinAnd(v.P.ApprovalEnvironments())
+	if v.ApprovalsProse == "" {
+		v.ApprovalsProse = "no environment"
+	}
+	previous := make([]string, 0, len(envs))
+	for _, env := range envs {
+		previous = append(previous, env+" = "+strconv.Quote(v.P.Previous(env)))
+	}
+	v.PreviousEnvMap = "{ " + strings.Join(previous, ", ") + " }"
 }

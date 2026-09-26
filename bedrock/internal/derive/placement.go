@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -44,6 +45,10 @@ type Placement struct {
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
 	Labels map[string]string `json:"labels"`
+	// Approvals lists the environments whose version trigger waits for a person's
+	// approval in Cloud Build before a release runs there. Absent, every environment
+	// but the first.
+	Approvals []string `json:"approvals,omitempty"`
 }
 
 // Region is one Cloud Run region with the code that names its regional resources.
@@ -103,6 +108,11 @@ func (p *Placement) Validate() error {
 			return errors.Newf("region %q with code %q: a region name and a code of two to four lowercase characters", r.Name, r.Code)
 		}
 	}
+	for _, env := range p.Approvals {
+		if !slices.Contains(p.Environments, env) {
+			return errors.Newf("approvals names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
+		}
+	}
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
 		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
@@ -114,6 +124,28 @@ func (p *Placement) Validate() error {
 	}
 
 	return nil
+}
+
+// ApprovalEnvironments are the environments a release waits for approval in: Approvals
+// as given, else every environment but the first.
+func (p *Placement) ApprovalEnvironments() []string {
+	if p.Approvals != nil {
+		return p.Approvals
+	}
+
+	return p.Environments[1:]
+}
+
+// Previous is the environment before env in the promotion order, whose live
+// deployment record a release needs before it runs in env; empty for the first.
+func (p *Placement) Previous(env string) string {
+	for i, e := range p.Environments {
+		if e == env && i > 0 {
+			return p.Environments[i-1]
+		}
+	}
+
+	return ""
 }
 
 // ReleaseActor is the login the release app's releases carry: <slug>[bot].

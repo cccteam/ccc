@@ -13,6 +13,12 @@ locals {
 
   is_prd = var.environment == "{{.Production}}"
 
+  # The environment before this one in the promotion order ({{.EnvsComma}}) and
+  # its deployment-records bucket: the pipeline runs a release here only after
+  # that environment holds a live record of it. The first environment has none.
+  previous_environment    = {{.PreviousEnvMap}}[var.environment]
+  previous_records_bucket = try(data.terraform_remote_state.previous_env[0].outputs.records_bucket, "")
+
   # The service runs in both lab regions; the migrate job in the primary only
   # (a job runs once, from one place). Keyed by region code because the code
   # is what names the regional resources.

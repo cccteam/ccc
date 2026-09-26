@@ -207,6 +207,9 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a long region code", mutate: func(p *Placement) { p.Regions[0].Code = "central" }, wantErr: "code"},
 		{name: "no apps domain", mutate: func(p *Placement) { p.AppsDomain = " " }, wantErr: "appsDomain is empty"},
 		{name: "no default branch", mutate: func(p *Placement) { p.DefaultBranch = "" }, wantErr: "defaultBranch is empty"},
+		{name: "approvals in an unknown environment", mutate: func(p *Placement) { p.Approvals = []string{"stg"} }, wantErr: `approvals names "stg", which is not one of the environments (tst, prd)`},
+		{name: "approvals in a known environment", mutate: func(p *Placement) { p.Approvals = []string{"prd"} }},
+		{name: "no approvals at all", mutate: func(p *Placement) { p.Approvals = []string{} }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,6 +227,38 @@ func TestPlacementValidate(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("Validate() error = %v, wantErr %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestPlacementOrder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		envs          []string
+		approvals     []string
+		wantApprovals []string
+		wantPrevious  map[string]string
+	}{
+		{name: "three environments, default approvals", envs: []string{"tst", "stg", "prd"}, wantApprovals: []string{"stg", "prd"}, wantPrevious: map[string]string{"tst": "", "stg": "tst", "prd": "stg"}},
+		{name: "approvals given", envs: []string{"tst", "prd"}, approvals: []string{"prd"}, wantApprovals: []string{"prd"}, wantPrevious: map[string]string{"tst": "", "prd": "tst"}},
+		{name: "no approvals anywhere", envs: []string{"tst", "prd"}, approvals: []string{}, wantApprovals: []string{}, wantPrevious: map[string]string{"tst": "", "prd": "tst"}},
+		{name: "one environment", envs: []string{"prd"}, wantApprovals: []string{}, wantPrevious: map[string]string{"prd": ""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := &Placement{Environments: tt.envs, Approvals: tt.approvals}
+			if got := p.ApprovalEnvironments(); strings.Join(got, ",") != strings.Join(tt.wantApprovals, ",") {
+				t.Errorf("ApprovalEnvironments() = %v, want %v", got, tt.wantApprovals)
+			}
+			for env, want := range tt.wantPrevious {
+				if got := p.Previous(env); got != want {
+					t.Errorf("Previous(%s) = %q, want %q", env, got, want)
+				}
 			}
 		})
 	}

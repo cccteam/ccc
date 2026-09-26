@@ -72,6 +72,19 @@ data "terraform_remote_state" "env" {
   }
 }
 
+# The environment before this one in the promotion order, whose deployment
+# records gate this one: a release runs here only after that environment holds
+# a live record of it. The first environment has none.
+data "terraform_remote_state" "previous_env" {
+  count = local.previous_environment == "" ? 0 : 1
+
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-env/${local.previous_environment}"
+  }
+}
+
 data "terraform_remote_state" "shr" {
   backend = "gcs"
   config = {

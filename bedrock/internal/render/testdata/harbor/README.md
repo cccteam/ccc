@@ -83,8 +83,11 @@ from `2-env`'s state.
 - **Cloud Build triggers** on the repository link `2-env` registered, running
   `cloudbuild.yaml` as the deploy identity: `imp-<env>-uc1-harbor-version` on a
   tag `^v\d+\.\d+\.\d+$` in every environment, with Cloud Build approval
-  required in stg and prd; `imp-tst-uc1-harbor-pr` in tst only, on a pull
+  required in stg and prd (the placement's `approvals`); `imp-tst-uc1-harbor-pr` in tst only, on a pull
   request against `master`, run only on a `/gcbrun` comment.
+  The environments chain by deployment records: a release runs in an
+  environment only after the previous one in the order (tst, stg, prd) holds
+  a live record of it, which the pipeline checks before it builds.
 
 ### Configuration the processes receive
 
@@ -130,8 +133,10 @@ substitutions and this stack's outputs:
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
   `_REPO_CONNECTION_NAME` and `_REPO_NAME` (placeholders until 2-env holds the
   connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
-  check accepts (the release app as `<slug>[bot]`). Output `substitutions` is
-  the same map, for a build submitted by hand before the triggers exist.
+  check accepts (the release app as `<slug>[bot]`); `_PREVIOUS_ENV` and
+  `_PREVIOUS_RECORDS_BUCKET`, the environment before this one and its records
+  bucket, empty in the first environment. Output `substitutions` is the same
+  map, for a build submitted by hand before the triggers exist.
 - The services and the job are deployed with `gcloud run services update
   --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
   --wait`, which leave the template's variables and secrets alone: the
