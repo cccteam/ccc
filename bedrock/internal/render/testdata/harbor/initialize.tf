@@ -1,0 +1,80 @@
+terraform {
+  # The application stack of harbor: one directory, applied once per
+  # environment with -var environment=<env>, as the application apply identity
+  # imp-<env>-gbl-harbor-tofu that 2-env created. No workspaces: the state of
+  # each environment lives at 3-app/harbor/<env>. A backend block cannot read a
+  # variable, so the prefix below is a placeholder that every init overrides:
+  #
+  #   TF_DATA_DIR=.terraform.tst tofu init -backend-config="prefix=3-app/harbor/tst"
+  #   tofu plan -var environment=tst
+  #
+  # The bucket name is substituted once, by hand, as in 1-org.
+  backend "gcs" {
+    bucket = "imp-boot-gbl-state-REPLACEME"
+    prefix = "3-app/harbor/ENVIRONMENT" # overridden at init; see the comment above and the README
+  }
+  required_version = ">= 1.11.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 7.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 7.0"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.13"
+    }
+  }
+}
+
+# Billed and quota-counted against the environment project itself, not the
+# boot project the foundation layers use: this stack creates nothing that
+# lacks an API, the environment project has every API it needs (1-org's app
+# set), and the application apply identity holds serviceUsageConsumer there
+# (2-env) while nothing can grant it that on the boot project. The provider
+# reads the project from 2-env's state, which is resolved before any Google
+# API call.
+provider "google" {
+  user_project_override = true
+  billing_project       = data.terraform_remote_state.env.outputs.project_id
+}
+
+provider "google-beta" {
+  user_project_override = true
+  billing_project       = data.terraform_remote_state.env.outputs.project_id
+}
+
+# ---------------------------------------------------------------------------
+# Upstream layers. 1-org for the projects and regions, 2-env/<environment>
+# for this application's identities, the Cloud Build connection and
+# repository link, the records bucket, and the Spanner instance; 2-shr for the
+# image registry. Reads from 2-shr are wrapped in try() and named in the
+# README for reconciliation.
+# ---------------------------------------------------------------------------
+
+data "terraform_remote_state" "org" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "1-org"
+  }
+}
+
+data "terraform_remote_state" "env" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-env/${var.environment}"
+  }
+}
+
+data "terraform_remote_state" "shr" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-shr"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "prefix": "imp",
+  "environments": ["tst", "stg", "prd"],
+  "regions": [
+    {"name": "us-central1", "code": "uc1"},
+    {"name": "us-west3", "code": "uw3"}
+  ],
+  "appsDomain": "impulseframework.dev",
+  "hostedDomain": "impulseframework.com",
+  "stateBucket": "imp-boot-gbl-state-REPLACEME",
+  "placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello",
+  "defaultBranch": "master",
+  "repository": "imp-impulse-infrastructure",
+  "labels": {"bedrock-lab": "true"}
+}

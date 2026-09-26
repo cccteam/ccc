@@ -1,0 +1,91 @@
+# What the pipeline reads, and what 2-net reads to route this environment's
+# hostnames. Readable by anything that can read the state bucket; no secrets.
+
+output "backend_service_id" {
+  description = "Backend service URI in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>."
+  value       = google_compute_backend_service.app.id
+}
+
+output "backend_service_self_link" {
+  description = "Full self link of the backend service the net project's URL map routes this environment's hostnames to (cross-project reference)."
+  value       = google_compute_backend_service.app.self_link
+}
+
+output "database" {
+  description = "The Spanner database: its project, instance, and name."
+  value = {
+    project  = local.instance.project
+    instance = local.instance.name
+    name     = google_spanner_database.{{.App}}.name
+  }
+}
+
+output "hostnames" {
+  description = "Hostnames this environment's site answers on; 2-net registers them with the load balancer and the certificate."
+  value       = local.hostnames
+}
+
+output "identities" {
+  description = "Runtime identities by process: app (the site) and migrate (the migration job)."
+  value = {
+    app     = google_service_account.app.email
+    migrate = google_service_account.migrate.email
+  }
+}
+
+output "net_hosts" {
+  description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI."
+  value       = { for host in local.hostnames : host => google_compute_backend_service.app.id }
+}
+
+output "migrate_job" {
+  description = "The migration job the pipeline runs before a release takes traffic: name and region."
+  value = {
+    name   = google_cloud_run_v2_job.migrate.name
+    region = google_cloud_run_v2_job.migrate.location
+  }
+}
+
+output "registry" {
+  description = "Image repository the pipeline pushes to, as <hostname>/<project>/<repository>; null until 2-shr registers the application."
+  value       = local.registry
+}
+
+output "secrets" {
+  description = "Secret container ID by the environment variable it feeds, and the version this environment runs (null when not pinned yet)."
+  value = {
+    for key, s in local.secrets : key => {
+      secret_id = google_secret_manager_secret.{{.App}}[key].secret_id
+      version   = lookup(local.secret_versions, key, null)
+    }
+  }
+}
+
+output "services" {
+  description = "Cloud Run service by region code: name, region, and the run.app URI (not the public one; that is the hostname through the load balancer)."
+  value = {
+    for code, svc in google_cloud_run_v2_service.app : code => {
+      name   = svc.name
+      region = svc.location
+      uri    = svc.uri
+    }
+  }
+}
+
+output "{{.AuthVar}}_redirect_url" {
+  description = "Redirect URI to register on the OAuth client in the environment project ({{.RedirectURL.Name}})."
+  value       = local.redirect_url
+}
+
+output "substitutions" {
+  description = "The substitutions the version trigger passes to cloudbuild.yaml, which a hand-submitted tag build passes too (_PR_NUMBER empty: no pull request). The pull-request trigger passes the same without _PR_NUMBER, which its event supplies."
+  value       = merge(local.substitutions, { _PR_NUMBER = "" })
+}
+
+output "triggers" {
+  description = "Cloud Build trigger IDs: version in every environment, pr in {{.Integration}}; null until 2-env holds the GitHub connection."
+  value = {
+    version = try(google_cloudbuild_trigger.version[0].id, null)
+    pr      = try(google_cloudbuild_trigger.pr[0].id, null)
+  }
+}

@@ -1,0 +1,28 @@
+# Committed on purpose: nothing here is a secret. The REPLACEME value is the
+# seeded state bucket, the same name as in every backend block.
+# environment is never set here: every run passes -var environment=<env>.
+
+state_bucket = "{{.P.StateBucket}}"
+
+# Placement per environment, filled as each environment is set up. Every map
+# is keyed by environment so one file serves all {{.EnvCountWord}} applies.
+
+# OAuth client IDs, from each environment project's console (README).
+{{.AuthVar}}_client_id = {
+{{.TfvarsEnvStrings}}
+}
+
+# The Workspace administrator the groups read impersonates.
+{{.AuthVar}}_admin_subject = {
+{{.TfvarsEnvStrings}}
+}
+
+# The version of each secret an environment runs. Empty means "not yet": the
+# container exists, nothing is mounted. Bump here after an operator adds a
+# version. "latest" only for a secret the placement marks as tracking it.
+secret_versions = {
+{{.TfvarsEnvMaps}}
+}
+
+# Defaults that are decisions, restated so they are visible here:
+{{.RestatedDefaults}}

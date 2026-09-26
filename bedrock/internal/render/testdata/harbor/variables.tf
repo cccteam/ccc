@@ -1,0 +1,130 @@
+variable "environment" {
+  description = "(Required) Environment this apply targets: tst, stg, or prd. Selects the 2-env state (2-env/<environment>) and this stack's own prefix (3-app/harbor/<environment>)."
+  type        = string
+
+  validation {
+    condition     = contains(["tst", "stg", "prd"], var.environment)
+    error_message = "environment must be one of tst, stg, prd."
+  }
+}
+
+variable "hostnames" {
+  description = <<-EOT
+    Hostnames the site answers on, per environment, in 2-net's convention:
+    app.domain for prd, app-stg.domain and app-tst.domain below it, all one
+    label under the apps domain because that is what its wildcard certificate
+    covers (harbor.tst.<domain> would not be). The first one is the canonical
+    host: the staff sign-in's redirect URL is built from it
+    (https://<host>/api/user/callback, the route pkg/router registers for
+    APP_STAFF_OIDC_REDIRECT_URL). Every hostname here is registered with the
+    load balancer by an entry in 2-net's hosts; output net_hosts is that entry.
+  EOT
+  type        = map(list(string))
+  default = {
+    tst = ["harbor-tst.impulseframework.dev"]
+    stg = ["harbor-stg.impulseframework.dev"]
+    prd = ["harbor.impulseframework.dev"]
+  }
+
+  validation {
+    condition     = alltrue([for env, hosts in var.hostnames : length(hosts) > 0])
+    error_message = "Every environment needs at least one hostname."
+  }
+}
+
+variable "placeholder_image" {
+  description = "Image every Cloud Run service and job is created with. The pipeline owns the image from the first deploy on (lifecycle ignore_changes), so this is only what runs before the first release."
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "secret_versions" {
+  description = <<-EOT
+    The version of each secret this environment runs, keyed by environment and
+    then by the environment variable the secret feeds (the struct tag in
+    pkg/config/data.go). A secret with no entry has its container created but
+    is not mounted: the process starts without the variable, which is "not
+    yet" for a value an operator has not added. A rotation is a new version
+    added by an operator plus a one-line bump here, released like any change.
+
+    A value is a version number. "latest" is allowed only where the map says
+    so, and means the environment tracks whatever version is added next; the
+    design brief reserves it for secrets whose placement marks them as
+    tracking, and the check that bedrock adds later names each one.
+
+      secret_versions = {
+        tst = { APP_COOKIE_KEY = "1", APP_STAFF_OIDC_CLIENT_SECRET = "1" }
+      }
+  EOT
+  type        = map(map(string))
+  default = {
+    tst = {}
+    stg = {}
+    prd = {}
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for env, versions in var.secret_versions : [
+        for name, version in versions : can(regex("^([1-9][0-9]*|latest)$", version))
+      ]
+    ]))
+    error_message = "Every secret version is a positive integer or the word latest."
+  }
+}
+
+variable "staff_oidc_admin_subject" {
+  description = <<-EOT
+    Per environment, the Workspace administrator the staff auth impersonates to
+    read role groups through the Admin SDK (APP_STAFF_OIDC_ADMIN_SUBJECT,
+    pkg/config/data.go dataConfig.StaffAdminSubject). Not a secret; the
+    credential it pairs with is (secret staff-oidc-admin-credentials). Empty
+    until the directory read is set up.
+  EOT
+  type        = map(string)
+  default = {
+    tst = ""
+    stg = ""
+    prd = ""
+  }
+}
+
+variable "staff_oidc_client_id" {
+  description = <<-EOT
+    Per environment, the OAuth client ID of the application's registration with
+    Google (APP_STAFF_OIDC_CLIENT_ID, pkg/config/data.go
+    dataConfig.StaffClientID). Created by hand in the environment project's
+    console (APIs & Services > Credentials > OAuth client ID, Web application)
+    with the redirect URI this stack outputs as staff_oidc_redirect_url. The
+    client ID is public; its secret goes into the staff-oidc-client-secret
+    container. Empty until registered.
+  EOT
+  type        = map(string)
+  default = {
+    tst = ""
+    stg = ""
+    prd = ""
+  }
+}
+
+variable "staff_oidc_group_prefix" {
+  description = "Local-part prefix of the Google Groups that carry staff roles: <prefix><role>@<domain> assigns <role> (APP_STAFF_OIDC_GROUP_PREFIX, dataConfig.StaffGroupPrefix). Required non-empty by the session library at construction, so the migrate job carries it too."
+  type        = string
+  default     = "staff-"
+
+  validation {
+    condition     = length(var.staff_oidc_group_prefix) > 0
+    error_message = "staff_oidc_group_prefix must not be empty: it is the only filter between role groups and the rest of the directory."
+  }
+}
+
+variable "staff_oidc_hosted_domain" {
+  description = "Google Workspace domain staff logins are restricted to (APP_STAFF_OIDC_HOSTED_DOMAIN, dataConfig.StaffHostedDomain). Required non-empty by the session library at construction, so the migrate job carries it too."
+  type        = string
+  default     = "impulseframework.com"
+}
+
+variable "state_bucket" {
+  description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."
+  type        = string
+}

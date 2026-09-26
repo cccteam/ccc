@@ -1,0 +1,239 @@
+# 3-app/{{.App}}
+
+The application stack of [{{.App}}]({{.Repository}}):
+everything the application needs in one environment that is not the
+environment itself. One directory, applied once per environment, as the
+application apply identity `{{.Prefix}}-<env>-gbl-{{.App}}-tofu` that `2-env` created.
+
+Every resource here is derived from something {{.App}} declares, and each one
+says in a comment which declaration (a struct field under `{{.ConfigDir}}`, a
+route, a command) it comes from. bedrock will later generate these files from
+the code; until then they are the hand-written statement of that derivation.
+
+## Applying
+
+Same shape as `2-env`: no workspaces, one state prefix per environment,
+supplied at init, with a backend cache per environment:
+
+```bash
+cd 3-app/{{.App}}
+export TF_DATA_DIR=.terraform.{{.Integration}}
+tofu init -backend-config="prefix=3-app/{{.App}}/{{.Integration}}"
+tofu plan -var environment={{.Integration}}
+tofu apply -var environment={{.Integration}}
+```
+
+`2-env` for the same environment must be applied first (identities,
+connection, repository link, records bucket, instance), `2-shr` before that
+(the registry, with the deploy identity in its `pushers`), for {{.SharedInstanceEnvs}}
+`2-spn` with the apply identity in its `database_admins`, and `2-net`
+afterwards with this stack's `net_hosts` output in its `hosts`. The stack uses
+the environment project as its quota project (`user_project_override`), read
+from `2-env`'s state.
+
+## What it creates
+
+- **Runtime identities**, one per process:
+  `{{.Prefix}}-<env>-gbl-{{.App}}-app` for the site (`{{.Site.Main}}`) with
+  `roles/logging.logWriter`, `roles/cloudtrace.agent`,
+  `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
+  on the database, and accessor on the secrets; `{{.Prefix}}-<env>-gbl-{{.App}}-migrate`
+  for the migration job (`{{.Migrate.Dir}}`) with
+  `roles/logging.logWriter` and `roles/spanner.databaseAdmin` on the database
+  only, for DDL. The deploy identity from `2-env` gets
+  `roles/iam.serviceAccountUser` on both.
+- **The database** `{{.Prefix}}-<env>-gbl-{{.App}}-db` on the environment's instance
+  (`2-env` output `spanner_instance`: {{.Integration}}'s own, the spn instance for {{.SharedInstanceEnvsWrapped}}), GoogleSQL, no schema (the migrations own it). {{.Production}}: deletion and drop
+  protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
+  incremental one (02:00 UTC), each kept 90 days.
+- **Secret containers**, no versions, one per secret the code declares in
+  `{{.SecretsFiles}}`, named `{{.Prefix}}-<env>-gbl-{{.App}}-<name>`:
+
+  | Variable | Field | Container |
+  |---|---|---|
+{{- range .Secrets}}
+  | `{{.Variable.Name}}` | `{{.Variable.Declaration}}` | `...-{{.Name}}` |
+{{- end}}
+
+  Only the site's identity holds accessor. The migrate step constructs the
+  same configuration level, but the session library reads these values only
+  when someone signs in (the cookie key falls back to an ephemeral one), which
+  a migration never does. The design brief's rule of thumb, accessor for every
+  process that constructs the level, would grant the migrate identity too;
+  this is the narrower reading, and a fork for bedrock's derivation to settle.
+- **Cloud Run**: the service `{{.Prefix}}-<env>-<{{.RegionCodes}}>-{{.App}}-app` in both regions
+  (ingress internal and load balancer, 0 to 2 instances, CPU only during
+  requests, `allUsers` invoker so the load balancer can forward) and the job
+  `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-migrate` (one task, no retries, 15-minute timeout),
+  both created with a placeholder image. From the first deploy on, the image
+  and the labels and annotations a deploy stamps are the pipeline's
+  (`ignore_changes`); identity, scaling, variables, and secret mounts stay
+  this stack's.
+- **Load balancer backend**: a serverless NEG per region and one global
+  backend service `{{.Prefix}}-<env>-gbl-{{.App}}-backend` over both, external managed,
+  outlier detection on (5 consecutive errors in a 1-second interval eject a
+  backend for 30 seconds, at most 50% ejected, enforced at 100), request
+  logging at full sample rate. No Cloud Armor. The URL map in the net project
+  routes this environment's hostnames to it across projects (below).
+- **Cloud Build triggers** on the repository link `2-env` registered, running
+  `cloudbuild.yaml` as the deploy identity: `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-version` on a
+  tag `^v\d+\.\d+\.\d+$` in every environment, with Cloud Build approval
+  required in {{.SharedInstanceEnvs}}; `{{.Prefix}}-{{.Integration}}-{{.PrimaryCode}}-{{.App}}-pr` in {{.Integration}} only, on a pull
+  request against `{{.P.DefaultBranch}}`, run only on a `/gcbrun` comment.
+
+### Configuration the processes receive
+
+By level (`{{.ConfigDir}}`): a process gets the levels it constructs and nothing
+above them.
+
+| Variable | Level | Value | Service | Job |
+|---|---|---|---|---|
+| `{{.ServiceName.Name}}` | {{.ServiceName.Level}} | `{{.App}}` / `{{.App}}-migrate` | yes | yes |
+| `{{.LoggingProject.Name}}` | {{.LoggingProject.Level}} | the environment project | yes | yes |
+| {{.DatabaseVariablesCell}} | {{.Database.Project.Level}} | the database | yes | yes |
+| `{{.HostedDomain.Name}}` | {{.HostedDomain.Level}} | `var.{{.AuthVar}}_hosted_domain` | yes | yes |
+| `{{.GroupPrefix.Name}}` | {{.GroupPrefix.Level}} | `var.{{.AuthVar}}_group_prefix` | yes | yes |
+| `{{.ClientID.Name}}` | {{.ClientID.Level}} | `var.{{.AuthVar}}_client_id[env]` | yes | |
+| `{{.RedirectURL.Name}}` | {{.RedirectURL.Level}} | `https://<first hostname>{{.Auth.Callback.Path}}` | yes | |
+| `{{.AdminSubject.Name}}` | {{.AdminSubject.Level}} | `var.{{.AuthVar}}_admin_subject[env]` | yes | |
+| {{.SecretsCell}} | {{.CookieKeySecret.Variable.Level}} | secret, at the pinned version | yes | |
+
+The job carries the hosted domain and group prefix because the session
+library refuses to construct without them. Not set: `{{.Version.Name}}` (the
+pipeline bakes it into the image, so a deploy never edits the template's
+variables), {{.CodeDefaultsCell}}, `{{.Port.Name}}` (Cloud Run
+sets it), `{{.SiteImageVars}}` (where the image put the bundle).
+
+### Secret versions
+
+`var.secret_versions` pins, per environment and per variable, the version the
+environment runs. A secret with no pin has its container but is not mounted:
+the process starts without the variable, which is "not yet". After an
+operator adds a value (`gcloud secrets versions add`, as a Secret Version
+Adder), the pin is bumped in `terraform.tfvars` in the same pull request as
+the rotation and rolled out by the next apply and deploy. `latest` is allowed
+only where the map says so, for a secret whose placement marks it as tracking;
+a pinned number is the default posture.
+
+## The pipeline's contract
+
+What `cloudbuild.yaml` in the {{.App}} repository can rely on, from the trigger
+substitutions and this stack's outputs:
+
+- `_ENV`, `_APP`, `_PROJECT`; `_SERVICES` as `<region>=<service>` per region,
+  comma-separated; `_MIGRATE_JOB` as `<region>=<job>`; `_REGISTRY` as
+  `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
+  `_REPO_CONNECTION_NAME` and `_REPO_NAME` (placeholders until 2-env holds the
+  connection). Output `substitutions` is the same map, for a build submitted
+  by hand before the triggers exist.
+- The services and the job are deployed with `gcloud run services update
+  --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
+  --wait`, which leave the template's variables and secrets alone: the
+  revision template is this stack's, a deploy changes the image and its labels.
+- Two images per release in the one repository, `{{.App}}:<tag>` for the site
+  and `{{.App}}-migrate:<tag>` for the job, with `{{.Version.Name}}` baked in at build.
+- `options.logging: CLOUD_LOGGING_ONLY`, required when a build runs as a
+  user-specified service account.
+- The deploy identity writes one object per run into `_RECORDS_BUCKET`, at
+  `<app>/<env>/<release>/<build>.json`, and can never overwrite one; a
+  release that runs again in an environment (a re-run activates a placement
+  change with the same image) adds a record, and the newest under the
+  release's prefix is its current one.
+
+## Hostnames and the net layer
+
+`var.hostnames` gives each environment its hostnames, in `2-net`'s
+convention of one label under the apps domain (its wildcard certificate
+covers exactly that): {{.HostnamesProse}}. The first is
+canonical and forms the {{.Auth.Name}} sign-in's redirect URL. `2-net` routes a
+hostname from an entry in its `hosts` variable, hostname to backend service
+URI, in its `terraform.tfvars`; this stack's `net_hosts` output is exactly
+those entries for the environment:
+
+```
+hosts = {
+  "{{.IntegrationHost}}" = "projects/<{{.Integration}} project>/global/backendServices/{{.Prefix}}-{{.Integration}}-gbl-{{.App}}-backend"
+}
+```
+
+DNS (the wildcard A record) and the certificate already cover the hostname;
+adding the entry and applying `2-net` is the whole registration.
+
+## Hand steps
+
+Per environment, after the first apply:
+
+1. In the Google Cloud console, in the environment project, APIs & Services >
+   Credentials > Create credentials > OAuth client ID, type Web application,
+   authorized redirect URI = output `{{.AuthVar}}_redirect_url`. Put the client
+   ID in `terraform.tfvars` (`{{.AuthVar}}_client_id`) and add the client secret
+   as version 1 of `{{.Prefix}}-<env>-gbl-{{.App}}-{{.ClientSecretSecret.Name}}`.
+2. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
+   of `{{.Prefix}}-<env>-gbl-{{.App}}-{{.CookieKeySecret.Name}}`.
+3. For the directory read: a service-account key with domain-wide delegation
+   for the Admin SDK groups scope as version 1 of
+   `{{.Prefix}}-<env>-gbl-{{.App}}-{{.AdminCredentialsSecret.Name}}`, and the administrator
+   it impersonates in `{{.AuthVar}}_admin_subject`. The lab's org policy forbids
+   creating service account keys under the environment folders, so where that
+   key comes from is an open question (below).
+4. Pin the versions in `secret_versions` and apply.
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|---|---|---|---|:---:|
+| `environment` | {{.EnvsBacktickOr}}; passed as `-var` on every run. | `string` | n/a | yes |
+| `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the {{.EnvCountWord}} above | no |
+| `placeholder_image` | Image the services and job are created with. | `string` | `{{.P.PlaceholderImage}}` | no |
+| `secret_versions` | Pinned secret version per environment per variable. | `map(map(string))` | all empty | no |
+| `{{.AuthVar}}_admin_subject` | Impersonated Workspace administrator, per environment. | `map(string)` | all empty | no |
+| `{{.AuthVar}}_client_id` | OAuth client ID, per environment. | `map(string)` | all empty | no |
+| `{{.AuthVar}}_group_prefix` | Prefix of the role groups. | `string` | `"{{.Auth.GroupPrefixDefault}}"` | no |
+| `{{.AuthVar}}_hosted_domain` | Workspace domain logins are restricted to. | `string` | `"{{.P.HostedDomain}}"` | no |
+| `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
+
+## Outputs
+
+| Name | Description |
+|---|---|
+| `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
+| `database` | `{ project, instance, name }`. |
+| `hostnames` | For `2-net`'s host rules, certificate, and DNS. |
+| `identities` | `{ app, migrate }` runtime identity emails. |
+| `migrate_job` | `{ name, region }` of the migration job. |
+| `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to the backend service URI. |
+| `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers {{.App}}. |
+| `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
+| `services` | Per region code: `name`, `region`, `uri`. |
+| `{{.AuthVar}}_redirect_url` | The redirect URI to register on the OAuth client. |
+| `substitutions` | What the triggers pass to `cloudbuild.yaml`. |
+| `triggers` | `{ version, pr }` trigger IDs (`pr` null outside {{.Integration}}). |
+
+## Upstream outputs assumed
+
+| Layer | Output | Used for |
+|---|---|---|
+| `1-org` | (read for completeness; nothing used directly yet) | |
+| `2-env` | `applications[{{.App}}]`, `spanner_instance`, `records_bucket`, `project_id`, `prefix`, `region`, `region_code`, `secondary_region`, `secondary_region_code` | everything; this repository defines them |
+| `2-shr` | `image_paths` | `_REGISTRY`: `<registry hostname>/<shr project>/<repository>` for {{.App}} |
+
+`2-shr` grants `roles/artifactregistry.reader` on every repository to each
+environment's Cloud Run service agent itself (`pull_environments`), so a
+revision here can pull its image with nothing further.
+
+## Open questions
+
+- The Admin SDK credential is a service-account key, and `1-org` enforces
+  `iam.managed.disableServiceAccountKeyCreation` on every environment folder.
+  Either the key is minted in a project outside those folders, the policy gets
+  a per-project exception, or the session library learns keyless domain-wide
+  delegation (`iamcredentials.signJwt` with a subject). Until decided, the
+  container exists and stays empty.
+- Outlier detection with serverless NEGs on an external managed backend
+  service validates against the provider schema; whether the API accepts this
+  exact parameter set is confirmed at the first apply.
+- The application apply identity's role set is a hypothesis (design brief):
+  creating a second-generation trigger, and building as a user-specified
+  service account from a second-generation repository, may want
+  `cloudbuild.repositories.get` or similar. The first apply and first build
+  read the denials.

@@ -1,0 +1,58 @@
+# Development environment for harbor. Copy to .envrc and run `direnv allow`.
+#
+# Variables are grouped by configuration level (pkg/config). A process reads the levels
+# it constructs and nothing above them: cmd/bootstrap and cmd/deployment/migrate read
+# core and data; the served site reads all three.
+
+# --- core: every process ---
+export APP_SERVICE_NAME=harbor
+export APP_VERSION=dev
+# GOOGLE_CLOUD_LOGGING_PROJECT ships request logs to Cloud Logging; unset logs to the console.
+# export GOOGLE_CLOUD_LOGGING_PROJECT=
+
+# --- data: every process that opens the database ---
+export GOOGLE_CLOUD_SPANNER_PROJECT=harbor-dev
+export GOOGLE_CLOUD_SPANNER_INSTANCE_ID=harbor
+export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=harbor
+# APP_DEFAULT_SESSION_TIMEOUT is the idle timeout of a browser session (default 10m).
+# export APP_DEFAULT_SESSION_TIMEOUT=10m
+# APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
+# generates an ephemeral key and sessions end when it restarts.
+# export APP_COOKIE_KEY=
+
+# --- site: the served site ---
+export PORT=8090
+# export APP_CONSOLE_DIST=web/dist/console
+
+# --- local development only: the Spanner emulator the Procfile starts ---
+export SPANNER_EMULATOR_PORT=9014
+export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}
+# overmind otherwise takes PORT as its base and hands every process its own (base, base+100,
+# ...), so the server would listen on PORT+100 and the console proxy would miss it.
+export OVERMIND_NO_PORT=1
+
+# --- staff auth: the directory its people sign in through (pkg/auth/staff) ---
+# The Procfile builds with the session library's skipAuth tag, which simulates the
+# directory: every login through it is APP_USERNAME, in the role groups APP_ROLES names
+# (comma-separated, as schema/roles/staff.json spells the roles), and only the redirect
+# URL, the hosted domain, and the group prefix below are read. Register the application in
+# a directory, fill the rest in, and drop the tag to use one.
+export APP_USERNAME=staff-dev
+export APP_ROLES=administrator_global
+# export APP_STAFF_OIDC_CLIENT_ID=
+# export APP_STAFF_OIDC_CLIENT_SECRET=
+# APP_STAFF_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to
+# the staff auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy;
+# a script following the callback (a curl walkthrough) uses the server's own host and port.
+export APP_STAFF_OIDC_REDIRECT_URL=http://127.0.0.1:4300/api/user/callback
+# APP_STAFF_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the
+# simulated directory presents it too, so it is set in development.
+export APP_STAFF_OIDC_HOSTED_DOMAIN=example.com
+# APP_STAFF_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>
+# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),
+# so it is set in development.
+export APP_STAFF_OIDC_GROUP_PREFIX=staff-
+# The Admin SDK service account that reads the groups: a key with domain-wide delegation for
+# the groups scope, and the admin it impersonates. Unread under the simulated directory.
+# export APP_STAFF_OIDC_ADMIN_CREDENTIALS=
+# export APP_STAFF_OIDC_ADMIN_SUBJECT=
