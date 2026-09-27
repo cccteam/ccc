@@ -152,6 +152,7 @@ func All() []Check {
 		eslintIgnore{},
 		resourceStyles{},
 		packageManager{},
+		registryPins{},
 		testRunner{},
 		paging{},
 		rpcExecute{},

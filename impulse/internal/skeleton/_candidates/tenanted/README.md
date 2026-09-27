@@ -92,9 +92,11 @@ roles, the `admin` and `member` logins with password `password`), and serves the
 
 ### Browser apps
 
-The console is an Angular workspace under `web/` that rides the local ccc-lib checkout
-through yalc until `@cccteam/resource` is published. Attach it once (the script publishes
-both packages to the local yalc store, links them, and runs `bun install`):
+The console is an Angular workspace under `web/` that installs the published
+`@cccteam/resource` and `@cccteam/resource-angular` (pinned in `package.json`). To develop
+against a local ccc-lib checkout, attach it through yalc, a local state that is never
+committed (the script publishes both packages to the local yalc store, links them, and runs
+`bun install`; `ccclib.sh restore` puts the pins back):
 
     (cd web && ./ccclib.sh local)
 

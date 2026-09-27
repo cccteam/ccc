@@ -9,3 +9,5 @@ peer = false
 # days, which keeps a compromised release from reaching this application before it is
 # noticed and pulled.
 minimumReleaseAge = 604800
+# CCC's own packages are exempt from the release-age guard: the guard is against the registry at large.
+minimumReleaseAgeExcludes = ["@cccteam/resource", "@cccteam/resource-angular"]
