@@ -262,7 +262,9 @@ is declared in files of its own:
   in the checkout, with the pipeline's facts sourced from
   `/workspace/environment.sh` (the environment, project, image, release,
   pull-request number, database mode) and every substitution of the build
-  exported. The stages: `before-build` (files written here are the
+  exported; a hook before the build may add build arguments by appending
+  `BUILD_ARGS+=(--build-arg NAME=value)` lines to `/workspace/build-args.sh`.
+  The stages: `before-build` (files written here are the
   Dockerfile's to copy: a fetched config, a frontend version file),
   `before-migrate` (the image is built; `IMAGE_DIGEST` names it),
   `after-traffic` (a smoke test, a cache warm; a failure here stops the build

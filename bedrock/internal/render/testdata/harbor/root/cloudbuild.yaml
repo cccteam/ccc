@@ -219,15 +219,19 @@ steps:
         # Every substitution of this build, exported for the hooks: the ones this file
         # knows and the ones the placement declares (var.substitutions in the stack, per
         # environment). The build reads itself through the API, so nothing is rendered per
-        # name. The declared ones also reach the image build as build arguments
-        # (BUILD_ARGS, one --build-arg _NAME=value each), for the Dockerfile's ARG _NAME.
+        # name. The declared ones also reach the image build as build arguments, one
+        # --build-arg _NAME=value each in /workspace/build-args.sh (a bash array, kept out
+        # of environment.sh, which the OpenTofu steps read with a plain sh), for the
+        # Dockerfile's ARG _NAME. Known and not declared: the stack's substitutions, the
+        # trigger's own (_PR_NUMBER and, on a pull request, _BASE_BRANCH, _HEAD_BRANCH,
+        # _HEAD_REPO_URL) and this file's default (_DEFAULT_BRANCH).
         gcloud builds describe "${BUILD_ID}" --project "${_PROJECT}" --region "${LOCATION}" --format=json > /workspace/build.json
         jq -r '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | "export \(.key)=\(.value | @sh)"' /workspace/build.json >> /workspace/environment.sh
-        echo 'BUILD_ARGS=()' >> /workspace/environment.sh
-        KNOWN=" _ENV _APP _PROJECT _SERVICES _MIGRATE_JOB _REGISTRY _RECORDS_BUCKET _REPO_CONNECTION_NAME _REPO_NAME _RELEASE_ACTORS _PREVIOUS_ENV _PREVIOUS_RECORDS_BUCKET _APPLY_IDENTITY _MIGRATIONS_DIR _REPO_FULL_NAME _HOSTNAME _SEED _DEPLOYER_APP_ID _DEPLOYER_KEY_SECRET _PR_NUMBER "
+        echo 'BUILD_ARGS=()' > /workspace/build-args.sh
+        KNOWN=" _ENV _APP _PROJECT _SERVICES _MIGRATE_JOB _REGISTRY _RECORDS_BUCKET _REPO_CONNECTION_NAME _REPO_NAME _RELEASE_ACTORS _PREVIOUS_ENV _PREVIOUS_RECORDS_BUCKET _APPLY_IDENTITY _MIGRATIONS_DIR _REPO_FULL_NAME _HOSTNAME _SEED _DEPLOYER_APP_ID _DEPLOYER_KEY_SECRET _PR_NUMBER _BASE_BRANCH _HEAD_BRANCH _HEAD_REPO_URL _DEFAULT_BRANCH "
         jq -r --arg known "$${KNOWN}" \
           '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | .key as $$k | select(($$known | contains(" " + $$k + " ")) | not) | "BUILD_ARGS+=(--build-arg \(.key + "=" + .value | @sh))"' \
-          /workspace/build.json >> /workspace/environment.sh
+          /workspace/build.json >> /workspace/build-args.sh
         DECLARED=$(jq -r --arg known "$${KNOWN}" '[.substitutions // {} | to_entries[] | select(.key | startswith("_")) | .key as $$k | select(($$known | contains(" " + $$k + " ")) | not) | $$k] | join(", ")' /workspace/build.json)
         echo "Declared substitutions for the hooks and the image build: $${DECLARED:-none}"
 
@@ -595,7 +599,9 @@ steps:
   # infrastructure/hooks/before-build.sh: run as the deploy identity in the checkout, with
   # the pipeline's facts (environment.sh) and every substitution of the build exported.
   # Files it writes are the Dockerfile's to copy (a fetched config, a frontend version
-  # file). No file, nothing runs; a failing hook stops the build here.
+  # file); build arguments it appends to /workspace/build-args.sh (BUILD_ARGS+=(--build-arg
+  # NAME=value)) reach the image build. No file, nothing runs; a failing hook stops the
+  # build here.
   - id: HookBeforeBuild
     waitFor: ["CheckRelease"]
     name: gcr.io/cloud-builders/gcloud
@@ -622,6 +628,9 @@ steps:
       - |
         set -euo pipefail
         source /workspace/environment.sh
+        # The declared substitutions as build arguments, and whatever a hook before the
+        # build appended (BUILD_ARGS+=(--build-arg NAME=value) lines).
+        source /workspace/build-args.sh
         if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
 
         # jq reads the build's metadata file.
