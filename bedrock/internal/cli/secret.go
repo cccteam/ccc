@@ -185,8 +185,19 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 	if err := secret.ValidateEnv(env); err != nil {
 		return nil, err
 	}
+	// A build-time secret (the placement's build_secrets for the environment) is pinned
+	// the same way, under its own map.
+	build, err := secret.BuildSecretNames(place.layerDir, env)
+	if err != nil {
+		return nil, err
+	}
 	variable, err := argument(args, 1, ask, "variable", "Which variable?", func() ([]prompt.Choice, error) {
-		return plain(where.Variables(place.appDir, place.layerDir))
+		variables, err := where.Variables(place.appDir, place.layerDir)
+		if err != nil {
+			return nil, err
+		}
+
+		return plain(append(variables, build...), nil)
 	})
 	if err != nil {
 		return nil, err
@@ -216,6 +227,7 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 		Layer:     place.layer,
 		Project:   project,
 		Container: container,
+		Build:     slices.Contains(build, variable),
 	}, nil
 }
 
@@ -292,8 +304,12 @@ func (d deps) completePin(ctx context.Context, args []string, f *pinFlags) []str
 		if err != nil {
 			return nil
 		}
+		build, err := secret.BuildSecretNames(place.layerDir, args[0])
+		if err != nil {
+			return nil
+		}
 
-		return variables
+		return append(variables, build...)
 	case 2:
 		return d.completeVersions(ctx, f, place.app, args[0], args[1])
 	default:
@@ -358,7 +374,10 @@ infrastructure root (--dir overrides), the application (--app), the environment 
 active project labeled environment=<env> and terraform_source_path=1-org; --project
 overrides) and the container's name, from the placement beside the layer (placement.json;
 without one, the container carrying the layer's label whose name ends with the variable's
-kebab case; --container overrides). The variable must be one the code declares as a secret;
+kebab case; --container overrides). The variable must be one the code declares as a secret, or
+a build-time secret the placement declares for the environment (build_secrets in
+terraform.tfvars; the stack grants the deploy identity accessor on its container and the
+pipeline passes it to the image build as a BuildKit secret);
 the choices are listed when it is left out.
 
 It is refused when an argument has the wrong shape (<env> is tst, stg or prd; <VARIABLE> is
@@ -425,8 +444,15 @@ func (d deps) resolveAdd(cmd *cobra.Command, args []string, f *addFlags) (*secre
 	if err != nil {
 		return nil, err
 	}
+	// A build-time secret the placement declares for the environment (build_secrets)
+	// gets its container and value the same way; the stack grants the deploy identity
+	// accessor on it and the pipeline passes it to the image build.
+	build, err := secret.BuildSecretNames(place.layerDir, env)
+	if err != nil {
+		return nil, err
+	}
 	variable, err := argument(args, 1, ask, "variable", "Which variable?", func() ([]prompt.Choice, error) {
-		return plain(declared, nil)
+		return plain(append(slices.Clone(declared), build...), nil)
 	})
 	if err != nil {
 		return nil, err
@@ -434,8 +460,13 @@ func (d deps) resolveAdd(cmd *cobra.Command, args []string, f *addFlags) (*secre
 	if err := secret.ValidateVariable(variable); err != nil {
 		return nil, err
 	}
-	if !slices.Contains(declared, variable) {
-		return nil, errors.Newf("the code declares no secret variable %s (it declares %s): a container is added only for a secret the application reads", variable, strings.Join(declared, ", "))
+	if !slices.Contains(declared, variable) && !slices.Contains(build, variable) {
+		declares := "none"
+		if len(build) > 0 {
+			declares = strings.Join(build, ", ")
+		}
+
+		return nil, errors.Newf("the code declares no secret variable %s (it declares %s): a container is added only for a secret the application reads, or for a build secret the placement declares for %s (it declares %s)", variable, strings.Join(declared, ", "), env, declares)
 	}
 	project, err := d.resolveProject(ctx, f.project, env)
 	if err != nil {

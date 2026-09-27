@@ -15,6 +15,14 @@
 #
 #     podman build --build-arg VERSION=dev --build-arg COMMIT=$(git rev-parse HEAD) -t harbor .
 #
+# Build secrets: a secret declared in infrastructure/terraform.tfvars (build_secrets; a
+# component license for the browser build) reaches the build as a BuildKit secret, never
+# as a build argument, which the image would keep. Mount it in the one step that needs it:
+#
+#     RUN --mount=type=secret,id=NAME,required=true NAME="$(cat /run/secrets/NAME)" bun run build
+#
+# A local build passes it the same way: podman build --secret id=NAME,src=<file> ...
+#
 # The pipeline's build is cloudbuild.yaml's BuildImage step.
 
 ARG VERSION=dev

@@ -294,7 +294,7 @@ func TestSubstitutionNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("substitutionNames() error = %v", err)
 	}
-	for _, want := range []string{"_ENV", "_APP", "_PROJECT", "_SERVICES", "_MIGRATE_JOB", "_SEED", "_DEPLOYER_KEY_SECRET"} {
+	for _, want := range []string{"_ENV", "_APP", "_PROJECT", "_SERVICES", "_MIGRATE_JOB", "_SEED", "_DEPLOYER_KEY_SECRET", "_BUILD_SECRETS"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("substitutionNames() = %v, want it to contain %s", names, want)
 		}

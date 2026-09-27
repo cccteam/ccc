@@ -663,6 +663,7 @@ func TestSecretAdd(t *testing.T) {
 		// fromFile is set, else standard input; hidden is what the terminal answers.
 		args        []string
 		placement   string
+		tfvars      string
 		fromFile    bool
 		value       string
 		interactive func() bool
@@ -675,6 +676,22 @@ func TestSecretAdd(t *testing.T) {
 		wantCreated map[string]string
 		wantValue   string
 	}{
+		{
+			name:     "a build secret the placement declares for the environment is accepted",
+			args:     []string{"tst", "APP_LICENSE", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-license"},
+			value:    "lic-2",
+			projects: noProjects,
+			secrets:  labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-license": {secret.Enabled}}},
+			wantOut:  []string{"Added version 2 of imp-tst-gbl-quill-license in project lab-tst-1, for APP_LICENSE of quill in tst.", "Pin it: bedrock secret pin tst APP_LICENSE 2"},
+		},
+		{
+			name:     "a build secret the placement declares for another environment is refused, naming what this one declares",
+			args:     []string{"tst", "APP_LICENSE", "--container", "x"},
+			tfvars:   "state_bucket = \"b\"\nsecret_versions = {\n  tst = {}\n  stg = {}\n  prd = {}\n}\nbuild_secrets = {\n  tst = {}\n  stg = {\n    APP_LICENSE = \"1\"\n  }\n  prd = {}\n}\n",
+			value:    "k-1",
+			projects: noProjects,
+			wantErr:  "the code declares no secret variable APP_LICENSE (it declares APP_COOKIE_KEY, APP_MAIL_API_KEY): a container is added only for a secret the application reads, or for a build secret the placement declares for tst (it declares none)",
+		},
 		{
 			name:      "everything typed, the value from a file",
 			args:      []string{"tst", "APP_MAIL_API_KEY", "--project", "lab-tst-1", "--container", mailKey},
@@ -773,6 +790,11 @@ func TestSecretAdd(t *testing.T) {
 			layer := filepath.Join(dir, "3-app", "quill")
 			if tt.placement != "" {
 				if err := os.WriteFile(filepath.Join(layer, "placement.json"), []byte(tt.placement), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.tfvars != "" {
+				if err := os.WriteFile(filepath.Join(layer, "terraform.tfvars"), []byte(tt.tfvars), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -883,6 +905,19 @@ func TestSecretPin(t *testing.T) {
 			projects: noProjects,
 			wantOut:  pinned3,
 			wantFile: file3,
+		},
+		{
+			name:     "a build secret is pinned under build_secrets",
+			args:     []string{"tst", "APP_LICENSE", "2", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-license"},
+			withDir:  true,
+			projects: noProjects,
+			secrets:  labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-license": {secret.Enabled, secret.Enabled}}},
+			wantOut: []string{
+				"Pinned APP_LICENSE to version 2 for quill in tst: build_secrets.tst in",
+				"Secret Manager confirms version 2 of imp-tst-gbl-quill-license in project lab-tst-1 is enabled.",
+				"the plan for tst shows the change to the triggers' substitutions (the image build reads the new version)",
+			},
+			wantFile: []string{`APP_LICENSE = "2"`, `APP_COOKIE_KEY = "2"`},
 		},
 		{
 			name:     "the project and the container are found by their labels",
@@ -1115,7 +1150,7 @@ func TestSecretPinCompletion(t *testing.T) {
 		want     []string
 	}{
 		{name: "the environments", args: []string{""}, want: []string{"tst", "stg", "prd"}},
-		{name: "the variables", args: []string{"tst", ""}, want: []string{"APP_COOKIE_KEY", "APP_MAIL_API_KEY"}},
+		{name: "the variables", args: []string{"tst", ""}, want: []string{"APP_COOKIE_KEY", "APP_MAIL_API_KEY", "APP_LICENSE"}},
 		{name: "the versions with their states", args: []string{"tst", "APP_COOKIE_KEY", ""}, want: []string{"3\tENABLED", "2\tDISABLED", "1\tENABLED"}},
 		{name: "the versions of the container named", args: []string{"tst", "APP_COOKIE_KEY", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-mail-api-key", ""}, projects: noProjects, want: []string{"2\tENABLED", "1\tDISABLED"}},
 		{name: "nothing after the third argument", args: []string{"tst", "APP_COOKIE_KEY", "3", ""}},

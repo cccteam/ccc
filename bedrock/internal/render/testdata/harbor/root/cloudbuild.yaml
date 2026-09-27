@@ -229,7 +229,7 @@ steps:
         gcloud builds describe "${BUILD_ID}" --project "${_PROJECT}" --region "${LOCATION}" --format=json > /workspace/build.json
         jq -r '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | "export \(.key)=\(.value | @sh)"' /workspace/build.json >> /workspace/environment.sh
         echo 'BUILD_ARGS=()' > /workspace/build-args.sh
-        KNOWN=" _ENV _APP _PROJECT _SERVICES _MIGRATE_JOB _REGISTRY _RECORDS_BUCKET _REPO_CONNECTION_NAME _REPO_NAME _RELEASE_ACTORS _PREVIOUS_ENV _PREVIOUS_RECORDS_BUCKET _APPLY_IDENTITY _MIGRATIONS_DIR _REPO_FULL_NAME _HOSTNAME _SEED _DEPLOYER_APP_ID _DEPLOYER_KEY_SECRET _PR_NUMBER _BASE_BRANCH _HEAD_BRANCH _HEAD_REPO_URL _DEFAULT_BRANCH "
+        KNOWN=" _ENV _APP _PROJECT _SERVICES _MIGRATE_JOB _REGISTRY _RECORDS_BUCKET _REPO_CONNECTION_NAME _REPO_NAME _RELEASE_ACTORS _PREVIOUS_ENV _PREVIOUS_RECORDS_BUCKET _APPLY_IDENTITY _MIGRATIONS_DIR _REPO_FULL_NAME _HOSTNAME _SEED _BUILD_SECRETS _DEPLOYER_APP_ID _DEPLOYER_KEY_SECRET _PR_NUMBER _BASE_BRANCH _HEAD_BRANCH _HEAD_REPO_URL _DEFAULT_BRANCH "
         jq -r --arg known "$${KNOWN}" \
           '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | .key as $$k | select(($$known | contains(" " + $$k + " ")) | not) | "BUILD_ARGS+=(--build-arg \(.key + "=" + .value | @sh))"' \
           /workspace/build.json >> /workspace/build-args.sh
@@ -746,10 +746,33 @@ steps:
           exit 0
         fi
 
+        # Declared build secrets (_BUILD_SECRETS: NAME=<secret version>, comma-separated):
+        # each is read as the deploy identity through the Secret Manager API and passed to
+        # the build as a BuildKit secret the Dockerfile mounts (RUN --mount=type=secret,id=NAME).
+        # The value lives in this step's memory-backed /dev/shm, gone with the step and
+        # never in /workspace, so no later step sees it; it is never a build argument,
+        # which the image would keep.
+        SECRET_ARGS=()
+        if [ -n "${_BUILD_SECRETS}" ]; then
+          TOKEN=$$(curl -sf -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" | jq -r '.access_token')
+          umask 077
+          IFS=',' read -ra ENTRIES <<< "${_BUILD_SECRETS}"
+          for ENTRY in "$${ENTRIES[@]}"; do
+            NAME="$${ENTRY%%=*}"; VERSION="$${ENTRY#*=}"
+            if ! curl -sf -H "Authorization: Bearer $${TOKEN}" "https://secretmanager.googleapis.com/v1/$${VERSION}:access" | jq -r '.payload.data' | base64 -d > "/dev/shm/$${NAME}"; then
+              echo "Build REJECTED: the build secret $${NAME} ($${VERSION}) could not be read as the deploy identity; the stack grants it accessor on the container, and the version must exist and be enabled."
+              exit 1
+            fi
+            SECRET_ARGS+=(--secret "id=$${NAME},src=/dev/shm/$${NAME}")
+            echo "Build secret $${NAME}: $${VERSION} ($$(wc -c < "/dev/shm/$${NAME}") bytes)"
+          done
+        fi
+
         docker buildx build \
           --build-arg VERSION="$${VERSION}" \
           --build-arg COMMIT="${COMMIT_SHA}" \
           $${BUILD_ARGS[@]+"$${BUILD_ARGS[@]}"} \
+          $${SECRET_ARGS[@]+"$${SECRET_ARGS[@]}"} \
           --tag "$${IMAGE}:$${COMMIT_TAG}" \
           --tag "$${IMAGE}:$${IMAGE_TAG}" \
           --metadata-file /workspace/image-metadata.json \

@@ -20,6 +20,7 @@ func TestSetVersion(t *testing.T) {
 	tests := []struct {
 		name     string
 		src      string
+		build    bool
 		env      string
 		variable string
 		version  string
@@ -27,6 +28,9 @@ func TestSetVersion(t *testing.T) {
 		wantErr  string
 	}{
 		{name: "an entry joins the environment's map", src: "pins.tfvars", env: "tst", variable: "APP_MAIL_API_KEY", version: "4", want: "pins.added.want.tfvars"},
+		{name: "a build secret's pin is replaced under build_secrets, the runtime map untouched", src: "build.tfvars", build: true, env: "tst", variable: "APP_LICENSE", version: "2", want: "build.replaced.want.tfvars"},
+		{name: "a build secret's pin joins an empty environment map under build_secrets", src: "build.tfvars", build: true, env: "stg", variable: "APP_LICENSE", version: "1", want: "build.added.want.tfvars"},
+		{name: "a build secret's pin needs the build_secrets map", src: "pins.tfvars", build: true, env: "tst", variable: "APP_LICENSE", version: "1", wantErr: "no build_secrets in pins.tfvars"},
 		{name: "an empty map takes the first entry", src: "pins.tfvars", env: "stg", variable: "APP_COOKIE_KEY", version: "1", want: "pins.empty.want.tfvars"},
 		{name: "a pinned value is replaced", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", want: "pins.replaced.want.tfvars"},
 		{name: "latest is pinned as written", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "latest", want: "pins.latest.want.tfvars"},
@@ -51,7 +55,11 @@ func TestSetVersion(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := SetVersion(src, tt.src, tt.env, tt.variable, tt.version)
+			set := SetVersion
+			if tt.build {
+				set = SetBuildVersion
+			}
+			got, err := set(src, tt.src, tt.env, tt.variable, tt.version)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("SetVersion() error = %v, wantErr %q", err, tt.wantErr)
@@ -84,6 +92,7 @@ func TestPinned(t *testing.T) {
 	tests := []struct {
 		name        string
 		src         string
+		key         string
 		env         string
 		variable    string
 		wantVersion string
@@ -91,6 +100,8 @@ func TestPinned(t *testing.T) {
 		wantErr     string
 	}{
 		{name: "a pinned variable", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantVersion: "2", wantPinned: true},
+		{name: "a build secret's pin, under build_secrets", src: "build.tfvars", key: buildKey, env: "tst", variable: "APP_LICENSE", wantVersion: "1", wantPinned: true},
+		{name: "a build secret's pin is not a runtime pin", src: "build.tfvars", env: "tst", variable: "APP_LICENSE"},
 		{name: "a variable the environment's map lacks", src: "pins.tfvars", env: "tst", variable: "APP_MAIL_API_KEY"},
 		{name: "an empty map", src: "pins.tfvars", env: "stg", variable: "APP_COOKIE_KEY"},
 		{name: "a quoted key", src: "quoted.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantVersion: "2", wantPinned: true},
@@ -112,7 +123,11 @@ func TestPinned(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parsePlacement() error = %v", err)
 			}
-			version, pinned, err := p.pinned(tt.env, tt.variable)
+			key := tt.key
+			if key == "" {
+				key = versionsKey
+			}
+			version, pinned, err := p.pinned(key, tt.env, tt.variable)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("pinned() error = %v, wantErr %q", err, tt.wantErr)
@@ -186,6 +201,52 @@ func TestContainerSuffix(t *testing.T) {
 
 			if got := ContainerSuffix(tt.variable); got != tt.want {
 				t.Errorf("ContainerSuffix(%q) = %q, want %q", tt.variable, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildSecretNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		env     string
+		want    []string
+		wantErr string
+	}{
+		{name: "the names for the environment, sorted", tfvars: "build_secrets = {\n  tst = {\n    APP_B = \"1\"\n    APP_A = \"2\"\n  }\n  stg = {}\n}\n", env: "tst", want: []string{"APP_A", "APP_B"}},
+		{name: "an environment with none", tfvars: "build_secrets = {\n  tst = {\n    APP_A = \"2\"\n  }\n  stg = {}\n}\n", env: "stg"},
+		{name: "an environment the map lacks declares none", tfvars: "build_secrets = {\n  tst = {\n    APP_A = \"2\"\n  }\n}\n", env: "prd"},
+		{name: "a placement without the map declares none", tfvars: "secret_versions = {\n  tst = {}\n}\n", env: "tst"},
+		{name: "no placement declares none", missing: true, env: "tst"},
+		{name: "a map that is not written out is refused", tfvars: "build_secrets = var.x\n", env: "tst", wantErr: "build_secrets in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := BuildSecretNames(dir, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("BuildSecretNames() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("BuildSecretNames() error = %v", err)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("BuildSecretNames() = %q, want %q", got, tt.want)
 			}
 		})
 	}

@@ -280,6 +280,18 @@ type Request struct {
 	Project string
 	// Container is the secret container's name in the project, needed with Project.
 	Container string
+	// Build is true for a build-time secret (the stack's var.build_secrets), whose pin
+	// lives under build_secrets rather than secret_versions.
+	Build bool
+}
+
+// key is the placement map the pin lives under.
+func (req *Request) key() string {
+	if req.Build {
+		return buildKey
+	}
+
+	return versionsKey
 }
 
 // validate checks the four arguments.
@@ -346,6 +358,18 @@ type Result struct {
 	// Resolved is the version number Secret Manager reported, which for latest is the
 	// version the alias resolved to when asked.
 	Resolved string
+	// Key is the placement map the pin went under: secret_versions, or build_secrets for
+	// a build-time secret. Empty reads as secret_versions.
+	Key string
+}
+
+// key is the placement map the pin went under.
+func (r *Result) key() string {
+	if r.Key == "" {
+		return versionsKey
+	}
+
+	return r.Key
 }
 
 // Pin writes the version into the layer's placement under secret_versions.<env>.<VARIABLE>,
@@ -376,11 +400,11 @@ func Pin(ctx context.Context, open ClientFunc, req *Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	current, pinned, err := p.pinned(req.Env, req.Variable)
+	current, pinned, err := p.pinned(req.key(), req.Env, req.Variable)
 	if err != nil {
 		return nil, err
 	}
-	r := &Result{App: req.App, Env: req.Env, Variable: req.Variable, Version: req.Version, File: file}
+	r := &Result{App: req.App, Env: req.Env, Variable: req.Variable, Version: req.Version, File: file, Key: req.key()}
 	if pinned && current == req.Version {
 		r.Unchanged = true
 
@@ -393,7 +417,7 @@ func Pin(ctx context.Context, open ClientFunc, req *Request) (*Result, error) {
 		}
 		r.Verified, r.Project, r.Container, r.Resolved = true, req.Project, container, resolved
 	}
-	out, err := SetVersion(src, file, req.Env, req.Variable, req.Version)
+	out, err := setVersion(src, file, req.key(), req.Env, req.Variable, req.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -453,7 +477,7 @@ func writeBack(layerDir string, data []byte) error {
 
 // Write prints what was done and what to do next, the way a person reads it.
 func (r *Result) Write(w io.Writer) {
-	where := fmt.Sprintf("%s.%s in %s", versionsKey, r.Env, r.File)
+	where := fmt.Sprintf("%s.%s in %s", r.key(), r.Env, r.File)
 	if r.Unchanged {
 		fmt.Fprintf(w, "%s is already pinned to %s for %s in %s (%s); nothing to change.\n", r.Variable, versionWord(r.Version), r.App, r.Env, where)
 
@@ -468,6 +492,11 @@ func (r *Result) Write(w io.Writer) {
 		fmt.Fprintln(w, ".")
 	} else {
 		fmt.Fprintln(w, "The version was not verified: without --project, Secret Manager is not asked whether it exists and is enabled.")
+	}
+	if r.key() == buildKey {
+		fmt.Fprintf(w, "Next: commit the change to the values file and open the pull request; the plan for %s shows the change to the triggers' substitutions (the image build reads the new version) and nothing in the other environments. After the merge, the run of that commit in %s applies it, builds the release with the new version, deploys it and moves traffic.\n", r.Env, r.Env)
+
+		return
 	}
 	fmt.Fprintf(w, "Next: commit the change to the values file and open the pull request; the plan for %s shows the change to the service's configuration (Cloud Run's revision template) and nothing in the other environments. After the merge, the run of that commit in %s applies it, builds the release, deploys it and moves traffic.\n", r.Env, r.Env)
 }

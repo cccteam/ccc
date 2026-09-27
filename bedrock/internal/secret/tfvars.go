@@ -7,6 +7,7 @@ package secret
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -18,8 +19,12 @@ import (
 )
 
 // versionsKey is the placement attribute holding the pins: a map from environment to a
-// map from variable to version.
-const versionsKey = "secret_versions"
+// map from variable to version. buildKey is its twin for the build-time secrets the image
+// build reads (bedrock's stack: var.build_secrets), the same shape.
+const (
+	versionsKey = "secret_versions"
+	buildKey    = "build_secrets"
+)
 
 // placement is a parsed terraform.tfvars.
 type placement struct {
@@ -62,7 +67,7 @@ func PlacementEnvironments(file string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	obj, err := p.versionsMap()
+	obj, err := p.versionsMap(versionsKey)
 	if err != nil {
 		return nil, err
 	}
@@ -78,72 +83,119 @@ func PlacementEnvironments(file string) ([]string, error) {
 	return keys, nil
 }
 
-// versionsMap is the secret_versions map as the placement writes it. A placement without
-// the map and one whose map is not written out are refused.
-func (p *placement) versionsMap() (*hclsyntax.ObjectConsExpr, error) {
-	attr, ok := p.body.Attributes[versionsKey]
+// BuildSecretNames lists the build-time secrets the layer's placement (terraform.tfvars
+// in layerDir) declares for the environment, the keys of build_secrets.<env>, sorted.
+// No file, no build_secrets map and no map for the environment all declare none; a map
+// that is not written out is refused.
+func BuildSecretNames(layerDir, env string) ([]string, error) {
+	file := filepath.Join(layerDir, tfvarsFile)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	p, err := parsePlacement(src, file)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := p.body.Attributes[buildKey]; !ok {
+		return nil, nil
+	}
+	inner, err := p.versions(buildKey, env)
+	if err != nil {
+		if errors.Is(err, errNoEnvironment) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+	names := make([]string, 0, len(inner.Items))
+	for _, item := range inner.Items {
+		name, err := ObjectKey(item.KeyExpr)
+		if err != nil {
+			return nil, errors.Wrap(err, p.at(buildKey+"."+env))
+		}
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	return names, nil
+}
+
+// errNoEnvironment marks a map that lacks the environment asked for.
+var errNoEnvironment = errors.New("no map for the environment")
+
+// versionsMap is the pins map (secret_versions, or build_secrets) as the placement
+// writes it. A placement without the map and one whose map is not written out are
+// refused.
+func (p *placement) versionsMap(key string) (*hclsyntax.ObjectConsExpr, error) {
+	attr, ok := p.body.Attributes[key]
 	if !ok {
-		return nil, errors.Newf("no %s: the application layer's placement pins the version of each secret per environment there", p.at(versionsKey))
+		return nil, errors.Newf("no %s: the application layer's placement pins the version of each secret per environment there", p.at(key))
 	}
 	obj, ok := attr.Expr.(*hclsyntax.ObjectConsExpr)
 	if !ok {
-		return nil, errors.Newf("%s is not a map written out ({ ... })", p.at(versionsKey))
+		return nil, errors.Newf("%s is not a map written out ({ ... })", p.at(key))
 	}
 
 	return obj, nil
 }
 
-// versions is the environment's map of pins as the placement writes it. A placement
-// without the secret_versions map, one whose map is not written out, and one whose map
-// lacks the environment are refused.
-func (p *placement) versions(env string) (*hclsyntax.ObjectConsExpr, error) {
-	obj, err := p.versionsMap()
+// versions is the environment's map of pins as the placement writes it, under key. A
+// placement without the map, one whose map is not written out, and one whose map lacks
+// the environment (errNoEnvironment) are refused.
+func (p *placement) versions(key, env string) (*hclsyntax.ObjectConsExpr, error) {
+	obj, err := p.versionsMap(key)
 	if err != nil {
 		return nil, err
 	}
 	keys := make([]string, 0, len(obj.Items))
 	for _, item := range obj.Items {
-		key, err := ObjectKey(item.KeyExpr)
+		k, err := ObjectKey(item.KeyExpr)
 		if err != nil {
-			return nil, errors.Wrap(err, p.at(versionsKey))
+			return nil, errors.Wrap(err, p.at(key))
 		}
-		if key != env {
-			keys = append(keys, key)
+		if k != env {
+			keys = append(keys, k)
 
 			continue
 		}
 		inner, ok := item.ValueExpr.(*hclsyntax.ObjectConsExpr)
 		if !ok {
-			return nil, errors.Newf("%s is not a map written out ({ ... })", p.at(versionsKey+"."+env))
+			return nil, errors.Newf("%s is not a map written out ({ ... })", p.at(key+"."+env))
 		}
 
 		return inner, nil
 	}
 	if len(keys) == 0 {
-		return nil, errors.Newf("%s has no %s map: it is empty", p.at(versionsKey), env)
+		return nil, errors.Wrapf(errNoEnvironment, "%s has no %s map: it is empty", p.at(key), env)
 	}
 
-	return nil, errors.Newf("%s has no %s map: its keys are %s", p.at(versionsKey), env, strings.Join(keys, ", "))
+	return nil, errors.Wrapf(errNoEnvironment, "%s has no %s map: its keys are %s", p.at(key), env, strings.Join(keys, ", "))
 }
 
-// pinned is the version the placement pins for the variable in the environment, and
-// whether it pins one. A value that is not a string counts as a pin to something else.
-func (p *placement) pinned(env, variable string) (version string, ok bool, err error) {
-	inner, err := p.versions(env)
+// pinned is the version the placement pins for the variable in the environment under
+// key, and whether it pins one. A value that is not a string counts as a pin to
+// something else.
+func (p *placement) pinned(key, env, variable string) (version string, ok bool, err error) {
+	inner, err := p.versions(key, env)
 	if err != nil {
 		return "", false, err
 	}
 	for _, item := range inner.Items {
-		key, err := ObjectKey(item.KeyExpr)
+		k, err := ObjectKey(item.KeyExpr)
 		if err != nil {
-			return "", false, errors.Wrap(err, p.at(versionsKey+"."+env))
+			return "", false, errors.Wrap(err, p.at(key+"."+env))
 		}
-		if key != variable {
+		if k != variable {
 			continue
 		}
 		v, diags := item.ValueExpr.Value(nil)
 		if diags.HasErrors() {
-			return "", false, errors.Wrap(diags, p.at(versionsKey+"."+env+"."+variable))
+			return "", false, errors.Wrap(diags, p.at(key+"."+env+"."+variable))
 		}
 		if v.IsNull() || v.Type() != cty.String {
 			return "", true, nil
@@ -172,14 +224,25 @@ func ObjectKey(expr hclsyntax.Expression) (string, error) {
 }
 
 // SetVersion pins the variable to the version in the environment's map of the placement
-// source, adding the entry when absent and replacing its value when present, and returns
-// the file formatted. Every other byte, comments included, is kept.
+// source (secret_versions), adding the entry when absent and replacing its value when
+// present, and returns the file formatted. Every other byte, comments included, is kept.
 func SetVersion(src []byte, file, env, variable, version string) ([]byte, error) {
+	return setVersion(src, file, versionsKey, env, variable, version)
+}
+
+// SetBuildVersion is SetVersion for a build-time secret, whose pin lives under
+// build_secrets.
+func SetBuildVersion(src []byte, file, env, variable, version string) ([]byte, error) {
+	return setVersion(src, file, buildKey, env, variable, version)
+}
+
+// setVersion pins under the map key names.
+func setVersion(src []byte, file, key, env, variable, version string) ([]byte, error) {
 	p, err := parsePlacement(src, file)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := p.versions(env); err != nil {
+	if _, err := p.versions(key, env); err != nil {
 		return nil, err
 	}
 	f, diags := hclwrite.ParseConfig(src, file, hcl.InitialPos)
@@ -187,16 +250,16 @@ func SetVersion(src []byte, file, env, variable, version string) ([]byte, error)
 		return nil, errors.Wrap(diags, "hclwrite.ParseConfig()")
 	}
 	body := f.Body()
-	tokens := body.GetAttribute(versionsKey).Expr().BuildTokens(nil)
+	tokens := body.GetAttribute(key).Expr().BuildTokens(nil)
 	start, end, err := envObject(tokens, env)
 	if err != nil {
-		return nil, errors.Newf("%s: %s", p.at(versionsKey), err)
+		return nil, errors.Newf("%s: %s", p.at(key), err)
 	}
 	inner, err := withPin(tokens[start:end+1], variable, version)
 	if err != nil {
-		return nil, errors.Newf("%s: %s", p.at(versionsKey+"."+env), err)
+		return nil, errors.Newf("%s: %s", p.at(key+"."+env), err)
 	}
-	body.SetAttributeRaw(versionsKey, splice(tokens, start, end+1, inner))
+	body.SetAttributeRaw(key, splice(tokens, start, end+1, inner))
 
 	return hclwrite.Format(f.Bytes()), nil
 }

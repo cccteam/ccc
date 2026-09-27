@@ -57,6 +57,9 @@ locals {
     _REPO_FULL_NAME = "{{.RepoFullName}}"
     _HOSTNAME       = local.hostnames[0]
     _SEED           = contains({{.SeedList}}, var.environment) ? "true" : "false"
+    # The build-time secrets the image build reads (var.build_secrets), as
+    # NAME=<secret version resource name>, comma-separated; empty when none.
+    _BUILD_SECRETS = join(",", [for name, v in local.build_secrets : "${name}=projects/${local.project_id}/secrets/${local.build_secret_ids[name]}/versions/${v}"])
     # The deployer GitHub App the pipeline talks back on a pull request as (a
     # deployment carrying the environment's URL, a comment, the guard's
     # refusals): its App ID and the pinned secret version of its private key,

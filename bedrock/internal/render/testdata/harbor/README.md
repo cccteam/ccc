@@ -141,6 +141,28 @@ stack reads tst's containers and adopts none. Creating a
 container and adding a version is the `secretOperator` role 1-org defines,
 granted on the environment project to 2-env's `secret_operators`.
 
+### Build secrets
+
+A secret the image build needs (a component license for the browser build)
+is not a runtime secret: no process reads it, so no runtime identity may.
+`var.build_secrets` declares them per environment, `NAME = version`. The stack
+creates the container `imp-<env>-gbl-harbor-<kebab name>` (an operator adds
+the value with `bedrock secret add <env> NAME`, and `bedrock secret pin <env>
+NAME <version>` moves the pin here) and grants the deploy identity, and only
+it, accessor on it. The triggers carry the pins as `_BUILD_SECRETS`
+(`NAME=<version resource>`, comma-separated); the pipeline's BuildImage step
+reads each as the deploy identity and passes it to the build as a BuildKit
+secret, never a build argument, which would land in the image's history. The
+Dockerfile mounts it in the one step that needs it:
+
+    RUN --mount=type=secret,id=NAME,required=true \
+        NAME="$(cat /run/secrets/NAME)" bun run build
+
+A pull-request build reads tst's build secrets at tst's pins. A
+secret the deploy identity must read that is not the application's own (a
+hook fetching a shared configuration) is granted in 2-env
+(`build_time_secrets`) instead.
+
 ## The pipeline's contract
 
 What `cloudbuild.yaml` in the harbor repository can rely on, from the trigger
@@ -284,6 +306,10 @@ is declared in files of its own:
   before the deployment record, so the record gate never sees a release the
   hook refused) and `after-down` (after a pull-request environment is torn
   down, by `/gcbrun down` or the sweep). No file, nothing runs.
+- **Build secrets.** A secret the image build needs is declared in
+  `terraform.tfvars` (`build_secrets`, NAME = pinned version per environment)
+  and reaches the build as a BuildKit secret the Dockerfile mounts ("Build
+  secrets" above); never a build argument.
 - **Declared substitutions.** `substitutions` in `terraform.tfvars`, per
   environment, `_NAME = value`: the triggers carry them, the pipeline exports
   them to the hooks and passes them to the image build as build arguments
@@ -320,6 +346,7 @@ Per environment, after the first apply:
 
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
+| `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the three above | no |
 | `placeholder_image` | Image the services and job are created with. | `string` | `us-docker.pkg.dev/cloudrun/container/hello` | no |

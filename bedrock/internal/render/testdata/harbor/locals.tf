@@ -121,6 +121,13 @@ locals {
     if contains(keys(local.secret_versions), key)
   }
 
+  # Build-time secrets (var.build_secrets): what the image build reads in this
+  # environment, NAME = pinned version, their containers named like the runtime
+  # secrets' (the variable without its APP_ prefix, in kebab case). A
+  # pull-request stack reads tst's and creates none.
+  build_secrets    = lookup(var.build_secrets, var.environment, {})
+  build_secret_ids = { for name in keys(local.build_secrets) : name => "${local.name}-gbl-${local.app}-${lower(replace(trimprefix(name, "APP_"), "_", "-"))}" }
+
   # Environment variables the infrastructure knows, by configuration level
   # (pkg/config/config.go: core, every process; data.go: every process that
   # opens the database; site.go: the served site). A process receives the

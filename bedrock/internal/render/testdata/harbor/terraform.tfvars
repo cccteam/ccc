@@ -39,6 +39,15 @@ substitutions = {
   prd = {}
 }
 
+# Secrets the image build reads, per environment (NAME = pinned version of the
+# container imp-<env>-gbl-harbor-<kebab name>, which the stack creates and only
+# the deploy identity may read); none by default (README, "Build secrets").
+build_secrets = {
+  tst = {}
+  stg = {}
+  prd = {}
+}
+
 # Defaults that are decisions, restated so they are visible here:
 #   hostnames                = harbor-tst. / harbor-stg. / harbor.impulseframework.dev
 #   placeholder_image        = us-docker.pkg.dev/cloudrun/container/hello

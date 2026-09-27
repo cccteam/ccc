@@ -746,10 +746,33 @@ steps:
           exit 0
         fi
 
+        # Declared build secrets (_BUILD_SECRETS: NAME=<secret version>, comma-separated):
+        # each is read as the deploy identity through the Secret Manager API and passed to
+        # the build as a BuildKit secret the Dockerfile mounts (RUN --mount=type=secret,id=NAME).
+        # The value lives in this step's memory-backed /dev/shm, gone with the step and
+        # never in /workspace, so no later step sees it; it is never a build argument,
+        # which the image would keep.
+        SECRET_ARGS=()
+        if [ -n "${_BUILD_SECRETS}" ]; then
+          TOKEN=$$(curl -sf -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" | jq -r '.access_token')
+          umask 077
+          IFS=',' read -ra ENTRIES <<< "${_BUILD_SECRETS}"
+          for ENTRY in "$${ENTRIES[@]}"; do
+            NAME="$${ENTRY%%=*}"; VERSION="$${ENTRY#*=}"
+            if ! curl -sf -H "Authorization: Bearer $${TOKEN}" "https://secretmanager.googleapis.com/v1/$${VERSION}:access" | jq -r '.payload.data' | base64 -d > "/dev/shm/$${NAME}"; then
+              echo "Build REJECTED: the build secret $${NAME} ($${VERSION}) could not be read as the deploy identity; the stack grants it accessor on the container, and the version must exist and be enabled."
+              exit 1
+            fi
+            SECRET_ARGS+=(--secret "id=$${NAME},src=/dev/shm/$${NAME}")
+            echo "Build secret $${NAME}: $${VERSION} ($$(wc -c < "/dev/shm/$${NAME}") bytes)"
+          done
+        fi
+
         docker buildx build \
           --build-arg VERSION="$${VERSION}" \
           --build-arg COMMIT="${COMMIT_SHA}" \
           $${BUILD_ARGS[@]+"$${BUILD_ARGS[@]}"} \
+          $${SECRET_ARGS[@]+"$${SECRET_ARGS[@]}"} \
           --tag "$${IMAGE}:$${COMMIT_TAG}" \
           --tag "$${IMAGE}:$${IMAGE_TAG}" \
           --metadata-file /workspace/image-metadata.json \

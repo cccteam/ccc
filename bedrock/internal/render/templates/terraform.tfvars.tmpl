@@ -31,5 +31,12 @@ substitutions = {
 {{.TfvarsEnvMaps}}
 }
 
+# Secrets the image build reads, per environment (NAME = pinned version of the
+# container {{.Prefix}}-<env>-gbl-{{.App}}-<kebab name>, which the stack creates and only
+# the deploy identity may read); none by default (README, "Build secrets").
+build_secrets = {
+{{.TfvarsEnvMaps}}
+}
+
 # Defaults that are decisions, restated so they are visible here:
 {{.RestatedDefaults}}

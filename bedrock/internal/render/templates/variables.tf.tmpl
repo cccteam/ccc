@@ -103,6 +103,29 @@ variable "substitutions" {
   }
 }
 
+variable "build_secrets" {
+  description = <<-EOT
+    Secrets the image build reads, per environment: NAME = the pinned version
+    of the container {{.Prefix}}-<env>-gbl-{{.App}}-<kebab name>, which this stack creates
+    (an operator adds the value with bedrock secret add, and bedrock secret pin
+    moves the pin here) and grants the deploy identity accessor on, never a
+    runtime identity. The pipeline reads each as the deploy identity and passes
+    it to the image build as a BuildKit secret the Dockerfile mounts
+    (RUN --mount=type=secret,id=NAME), never as a build argument, which would
+    land in the image's history. A pull-request build reads {{.Integration}}'s. None by
+    default. Example:
+
+      build_secrets = { tst = { KENDO_UI_LICENSE = "1" }, stg = {}, prd = {} }
+  EOT
+  type        = map(map(string))
+  default     = {}
+
+  validation {
+    condition     = alltrue([for env, secrets in var.build_secrets : alltrue([for name, v in secrets : can(regex("^[A-Z][A-Z0-9_]*$", name)) && can(regex("^[0-9]+$", v))])])
+    error_message = "build_secrets names are UPPER_CASE and each pins a version number: a build reads one version, never latest."
+  }
+}
+
 variable "secret_versions" {
   description = <<-EOT
     The version of each secret this environment runs, keyed by environment and
