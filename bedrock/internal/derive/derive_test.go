@@ -192,7 +192,7 @@ func TestPlacementValidate(t *testing.T) {
 		return Placement{
 			Prefix: "imp", Environments: []string{"tst", "prd"}, Regions: []Region{{Name: "us-central1", Code: "uc1"}},
 			AppsDomain: "lab.example.com", HostedDomain: "example.com", StateBucket: "b", PlaceholderImage: "i",
-			DefaultBranch: "main", Repository: "harbor", ReleaseApp: "acme-release",
+			DefaultBranch: "main", Repository: "harbor", ReleaseApp: "acme-release", BedrockImage: "us-central1-docker.pkg.dev/acme-shr/acme-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		}
 	}
 	tests := []struct {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 	"github.com/cccteam/ccc/bedrock/internal/where"
@@ -651,7 +652,8 @@ func TestSecretAdd(t *testing.T) {
 	placement := `{"prefix": "imp", "environments": ["tst", "stg", "prd"], "regions": [{"name": "us-central1", "code": "uc1"}],
 		"appsDomain": "impulseframework.dev", "hostedDomain": "impulseframework.com", "stateBucket": "imp-boot-gbl-state-0000",
 		"placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello", "defaultBranch": "master", "repository": "quill",
-		"releaseApp": "impulseframework-release", "labels": {"bedrock-lab": "true"}}`
+		"releaseApp": "impulseframework-release", "bedrockImage": "us-central1-docker.pkg.dev/lab-shr-1/lab-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		"labels": {"bedrock-lab": "true"}}`
 	added3 := []string{
 		"Added version 3 of imp-tst-gbl-quill-mail-api-key in project lab-tst-1, for APP_MAIL_API_KEY of quill in tst.",
 		"Pin it: bedrock secret pin tst APP_MAIL_API_KEY 3",
@@ -1225,6 +1227,94 @@ func TestCompletionCommand(t *testing.T) {
 			code, out := run(t, "completion", tt.shell)
 			if code != 0 || !strings.Contains(out, tt.want) {
 				t.Errorf("completion %s exit = %d, output lacks %q:\n%.200s", tt.shell, code, tt.want, out)
+			}
+		})
+	}
+}
+
+// memoryStore is the deploy steps' Store in tests: what was written, by gs:// path.
+type memoryStore struct {
+	objects map[string]string
+}
+
+func (m *memoryStore) open(context.Context) (deploy.Store, error) {
+	return m, nil
+}
+
+func (m *memoryStore) Write(_ context.Context, bucket, object string, data []byte) error {
+	m.objects["gs://"+bucket+"/"+object] = string(data)
+
+	return nil
+}
+
+func (*memoryStore) Close() error {
+	return nil
+}
+
+func TestDeployRecord(t *testing.T) {
+	t.Parallel()
+
+	environment := "export SERVICES=\"us-central1=harbor-app\"\nexport SHIFT_TRAFFIC=\"true\"\nexport VERSION=\"v1.2.3\"\nexport RELEASE=\"v1.2.3\"\nexport IMAGE=\"reg/harbor\"\nexport SKIP_DEPLOY=\"\"\nexport IMAGE_DIGEST=\"sha256:abc\"\n"
+	build := `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef"}}`
+	tests := []struct {
+		name       string
+		files      map[string]string
+		wantOut    []string
+		wantStored string
+		wantErr    string
+	}{
+		{
+			name:       "the record is written from the workspace",
+			files:      map[string]string{"environment.sh": environment, "build.json": build, "revisions.txt": "us-central1,harbor-app,harbor-app-00007-abc\n"},
+			wantOut:    []string{`"status": "live"`, `"commit": "deadbeef"`, "Recorded live deployment of v1.2.3 in tst: gs://records/harbor/tst/v1.2.3/b-1.json"},
+			wantStored: "gs://records/harbor/tst/v1.2.3/b-1.json",
+		},
+		{
+			name:    "a torn-down environment records nothing",
+			files:   map[string]string{"environment.sh": "export SKIP_DEPLOY=\"true\"\n"},
+			wantOut: []string{"The pull request's environment was torn down: nothing to record."},
+		},
+		{
+			name:    "a workspace without the facts is refused",
+			files:   map[string]string{"build.json": build},
+			wantErr: "environment.sh",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			workspace := t.TempDir()
+			for name, content := range tt.files {
+				if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			store := &memoryStore{objects: map[string]string{}}
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, storage: store.open, interactive: never}
+			out, err := execute(d, "", "deploy", "record", "--workspace", workspace)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			if tt.wantStored == "" && len(store.objects) != 0 {
+				t.Errorf("stored %v, want nothing", store.objects)
+			}
+			if tt.wantStored != "" {
+				if _, ok := store.objects[tt.wantStored]; !ok {
+					t.Errorf("stored %v, want %s", store.objects, tt.wantStored)
+				}
 			}
 		})
 	}

@@ -67,6 +67,8 @@ linters:
             # domain add asks Cloud Domains (the client, with its option package for the
             # quota project) and edits the placement with the HCL library and its value type.
             - cloud.google.com/go/domains
+            # deploy record writes the deployment record to the records bucket.
+            - cloud.google.com/go/storage
             - google.golang.org/api/option
             - github.com/hashicorp/hcl/v2
             - github.com/zclconf/go-cty

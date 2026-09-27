@@ -12,5 +12,6 @@
   "defaultBranch": "master",
   "repository": "harbor",
   "releaseApp": "impulseframework-release",
+  "bedrockImage": "us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "labels": {"bedrock-lab": "true"}
 }

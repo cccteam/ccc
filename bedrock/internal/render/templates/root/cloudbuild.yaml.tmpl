@@ -11,7 +11,7 @@
 #   RunMigrations             the migrate command as a Cloud Run job, run to completion
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet
 #   ShiftTraffic              every region to 100 percent on its new revision
-#   WriteDeploymentRecord     the record of what is now running, in the records bucket
+#   WriteDeploymentRecord     the record of what is now running, in the records bucket (bedrock deploy record, from the pinned bedrock image)
 #
 # The revision template (variables, secret mounts, identity, scaling) belongs to the
 # application's infrastructure layer (3-app/<app> in the infrastructure repository); a
@@ -1005,52 +1005,15 @@ steps:
         echo "=== Hook after-traffic: $${HOOK} ==="
         bash "$${HOOK}"
 
-  # The record of what this build put where: one JSON object per application, environment,
-  # release and run in the records bucket, named by the build, because a release can run
-  # more than once in an environment (a re-run after a placement change activates it with
-  # the same image) and the bucket refuses overwrites. The newest object under
-  # <app>/<env>/<release>/ is the release's current record. status is "live" after a
-  # traffic shift and "preview" for a pull-request revision served under its tag.
+  # The record of what is now running, written by bedrock deploy record from the bedrock
+  # image the placement pins (bedrockImage): the version, commit, image and digest, the
+  # regions and the revision each runs, the time, and live or preview. The next
+  # environment's gate reads it. It reads environment.sh, build.json and revisions.txt.
   - id: WriteDeploymentRecord
     waitFor: ["HookAfterTraffic"]
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: bash
+    name: {{.P.BedrockImage}}
+    args: [deploy, record]
     timeout: 300s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-
-        # jq writes the record.
-        apt-get -qq update && apt-get -qq install -y jq
-
-        STATUS="live"
-        if [[ "$${SHIFT_TRAFFIC}" != "true" ]]; then STATUS="preview"; fi
-
-        # The regions, from the services list; the revision each now runs, from the deploy step's file.
-        REGIONS=$(tr ',' '\n' <<< "$${SERVICES}" | cut -d= -f1 | paste -sd, -)
-        REVISIONS=$(jq -R -s 'split("\n") | map(select(length > 0) | split(",") | {region: .[0], service: .[1], revision: .[2]})' /workspace/revisions.txt)
-
-        jq -n \
-          --arg app "${_APP}" \
-          --arg env "${_ENV}" \
-          --arg version "$${VERSION}" \
-          --arg commit "${COMMIT_SHA}" \
-          --arg image "$${IMAGE}@$${IMAGE_DIGEST}" \
-          --arg digest "$${IMAGE_DIGEST}" \
-          --arg regions "$${REGIONS}" \
-          --argjson revisions "$${REVISIONS}" \
-          --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-          --arg status "$${STATUS}" \
-          --arg build "${BUILD_ID}" \
-          '{app: $$app, env: $$env, version: $$version, commit: $$commit, image: $$image, digest: $$digest,
-            regions: ($$regions | split(",")), revisions: $$revisions, timestamp: $$timestamp, status: $$status, build: $$build}' \
-          > /workspace/record.json
-        cat /workspace/record.json
-
-        gcloud storage cp /workspace/record.json "gs://${_RECORDS_BUCKET}/${_APP}/${_ENV}/$${RELEASE}/${BUILD_ID}.json"
 
   # Talk back on the pull request as the deployer app: a GitHub deployment named
   # after the environment, carrying its URL (the pull request's sidebar shows it, and

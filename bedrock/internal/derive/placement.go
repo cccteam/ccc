@@ -42,6 +42,10 @@ type Placement struct {
 	// runs as it): the pipeline accepts a release tag only from a GitHub Release it
 	// authored, and the repository's rules let it alone, with the admins, create one.
 	ReleaseApp string `json:"releaseApp"`
+	// BedrockImage is the bedrock image the pipeline runs its deploy steps from, pinned by
+	// digest (<registry>/<project>/<repository>/bedrock@sha256:...): the tool's version in
+	// the rendered pipeline, moved by upgrade, never by hand in the rendered file.
+	BedrockImage string `json:"bedrockImage"`
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
 	Labels map[string]string `json:"labels"`
@@ -130,7 +134,7 @@ func (p *Placement) Validate() error {
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
 		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
-		"releaseApp": p.ReleaseApp,
+		"releaseApp": p.ReleaseApp, "bedrockImage": p.BedrockImage,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return errors.Newf("%s is empty", name)

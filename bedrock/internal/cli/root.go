@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
 	"github.com/cccteam/ccc/bedrock/internal/github"
@@ -63,6 +64,8 @@ type deps struct {
 	// readSecret asks at the terminal for a value nobody should see and reads it
 	// without echo, after printing the question on the writer.
 	readSecret func(w io.Writer, question string) ([]byte, error)
+	// storage opens Cloud Storage, for the deployment records.
+	storage deploy.StoreFunc
 }
 
 func newRoot() *cobra.Command {
@@ -73,6 +76,7 @@ func newRoot() *cobra.Command {
 		github:      github.Open,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,
+		storage:     deploy.NewStorage,
 	})
 }
 
@@ -97,6 +101,7 @@ its own: the code and a placement are the inputs, the stack is the output.`,
 	root.AddCommand(newSecret(d))
 	root.AddCommand(newRepository(d))
 	root.AddCommand(newHotfix(d))
+	root.AddCommand(newDeploy(d))
 
 	return root
 }
