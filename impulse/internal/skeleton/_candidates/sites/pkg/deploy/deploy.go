@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
@@ -21,8 +22,11 @@ import (
 // MigrationsSource is where the schema migrations live, relative to the module root.
 const MigrationsSource = "file://schema/migrations"
 
-// DevSeedSource is the development data (the tenants a developer signs in to), applied
-// by cmd/bootstrap only, relative to the module root.
+// DevSeedSource is the development data (the tenants a developer signs in to), relative
+// to the module root: applied by cmd/bootstrap in development and by the migrate
+// command with -seed in test environments (the pipeline passes it there and never in
+// production), as data migrations tracked apart from the schema, so a seeded database
+// takes nothing twice and a new seed file reaches it.
 const DevSeedSource = "file://schema/devseed"
 
 // MigrateSchema connects to the existing database and applies every pending schema
@@ -44,9 +48,12 @@ func MigrateSchema(ctx context.Context, settings config.SpannerSettings) error {
 	return nil
 }
 
-// SeedDevelopmentData applies the development seed to the database as a data
-// migration.
+// SeedDevelopmentData applies the development seed to the database as data migrations.
+// An application without a seed directory has nothing to apply.
 func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) error {
+	if _, err := os.Stat(strings.TrimPrefix(DevSeedSource, "file://")); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
 	if err != nil {
 		return errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())

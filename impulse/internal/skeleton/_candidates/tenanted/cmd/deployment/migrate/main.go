@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -16,12 +17,14 @@ import (
 )
 
 func main() {
-	if err := run(context.Background()); err != nil {
+	seed := flag.Bool("seed", false, "apply the development seed (schema/devseed) after the schema migrations, as data migrations; the pipeline passes it in test environments and never in production")
+	flag.Parse()
+	if err := run(context.Background(), *seed); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, seed bool) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
@@ -33,6 +36,15 @@ func run(ctx context.Context) error {
 	}
 	if err := deploy.MigrateSchema(ctx, settings); err != nil {
 		return errors.Wrap(err, "deploy.MigrateSchema()")
+	}
+
+	// The seed, when this deployment asks for it: the development data as data
+	// migrations, tracked apart from the schema, so a seeded database takes nothing
+	// twice and a new seed file reaches it. Before the roles, as cmd/bootstrap does.
+	if seed {
+		if err := deploy.SeedDevelopmentData(ctx, settings); err != nil {
+			return errors.Wrap(err, "deploy.SeedDevelopmentData()")
+		}
 	}
 
 	data, err := config.NewDataConfiguration(ctx)

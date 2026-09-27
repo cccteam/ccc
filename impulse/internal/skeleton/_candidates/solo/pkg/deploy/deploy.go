@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
@@ -19,6 +20,13 @@ import (
 
 // MigrationsSource is where the schema migrations live, relative to the module root.
 const MigrationsSource = "file://schema/migrations"
+
+// DevSeedSource is the development data, relative to the module root: applied by
+// cmd/bootstrap in development and by the migrate command with -seed in test
+// environments (the pipeline passes it there and never in production), as data
+// migrations tracked apart from the schema, so a seeded database takes nothing twice
+// and a new seed file reaches it. This application has none yet.
+const DevSeedSource = "file://schema/devseed"
 
 // MigrateSchema connects to the existing database and applies every pending schema
 // migration. Creating the database is not its business: a deployment's database exists
@@ -34,6 +42,25 @@ func MigrateSchema(ctx context.Context, settings config.SpannerSettings) error {
 	// reports it as migrate.ErrNoChange.
 	if err := migrator.MigrateUpSchema(ctx, MigrationsSource); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return errors.Wrap(err, "initiator.SpannerMigrator.MigrateUpSchema()")
+	}
+
+	return nil
+}
+
+// SeedDevelopmentData applies the development seed to the database as data migrations.
+// An application without a seed directory has nothing to apply.
+func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) error {
+	if _, err := os.Stat(strings.TrimPrefix(DevSeedSource, "file://")); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
+	if err != nil {
+		return errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())
+	}
+	defer migrator.Close()
+
+	if err := migrator.MigrateUpData(ctx, DevSeedSource); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return errors.Wrap(err, "initiator.SpannerMigrator.MigrateUpData()")
 	}
 
 	return nil
