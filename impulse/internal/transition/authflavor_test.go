@@ -304,7 +304,7 @@ func TestAuthFlavorApply(t *testing.T) {
 					t.Errorf("staff.go does not parse: %v", err)
 				}
 				config := read(t, a, "pkg/config/data.go")
-				for _, want := range []string{"\t\t\tGroupPrefix:      env.StaffGroupPrefix,\n\t\t\tAdminCredentials: env.StaffAdminCredentials,\n", "\tStaffAdminCredentials []byte `env:\"APP_STAFF_OIDC_ADMIN_CREDENTIALS\"`\n"} {
+				for _, want := range []string{"\t\t\tGroupPrefix:      env.StaffGroupPrefix,\n\t\t\tAdminCredentials: env.StaffAdminCredentials,\n", "\tStaffAdminCredentials []byte `env:\"APP_STAFF_OIDC_ADMIN_CREDENTIALS\" secret:\"true\"`\n"} {
 					if !strings.Contains(config, want) {
 						t.Errorf("data.go lacks %q:\n%s", want, config)
 					}

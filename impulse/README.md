@@ -339,7 +339,9 @@ every request in a session group bound to its auth (`pkg/auth.Bind`) so permissi
 and tenant visibility answer from that auth's store. The copy owns `<Name>Sessions` and
 `<Name>OIDCUsers` (the user anchor keyed by the directory's immutable identifiers), the
 data level reads its directory registration from `APP_<NAME>_OIDC_ISSUER_URL`,
-`_CLIENT_ID`, `_CLIENT_SECRET`, and `_REDIRECT_URL`, and the Procfile builds with the
+`_CLIENT_ID`, `_CLIENT_SECRET`, and `_REDIRECT_URL` (the secret's field carries
+`secret:"true"` beside its env tag, as the skeleton's cookie key does: the marker bedrock
+reads to serve a variable from Secret Manager), and the Procfile builds with the
 session library's `skipAuth` tag, which simulates the directory from `APP_USERNAME` until
 the application is registered with one; the tests run under the same tag. `--authority`
 says who owns role membership and is asked when not given, never defaulted, because the

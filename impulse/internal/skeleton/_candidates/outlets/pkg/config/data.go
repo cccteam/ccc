@@ -272,7 +272,7 @@ type dataConfig struct {
 	// CookieKey signs session cookies: a Base64-encoded string of at least 32 bytes of
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
-	CookieKey string `env:"APP_COOKIE_KEY"`
+	CookieKey string `env:"APP_COOKIE_KEY" secret:"true"`
 
 	// The members auth's directory registration (pkg/auth/members): the OpenID Connect
 	// issuer, the application's client credentials, and the callback the directory
@@ -280,6 +280,6 @@ type dataConfig struct {
 	// directory is simulated and only the redirect URL is read.
 	MembersIssuerURL    string `env:"APP_MEMBERS_OIDC_ISSUER_URL"`
 	MembersClientID     string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
-	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
+	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET" secret:"true"`
 	MembersRedirectURL  string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
 }

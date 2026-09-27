@@ -97,9 +97,15 @@ const (
 )
 
 // registrationVar is one variable of an OIDC auth's directory registration: the Settings
-// field it fills, the suffix of its environment variable, APP_<NAME>_OIDC_<suffix>, and
-// the field's Go type when it is not a string.
-type registrationVar struct{ field, suffix, goType string }
+// field it fills, the suffix of its environment variable, APP_<NAME>_OIDC_<suffix>, the
+// field's Go type when it is not a string, and whether the value is a credential: the
+// client secret and the Admin SDK key carry secret:"true" beside the env tag, the marker
+// bedrock reads to serve the variable from Secret Manager (a plain name that sounds like
+// a credential is refused there until the author says which it is).
+type registrationVar struct {
+	field, suffix, goType string
+	secret                bool
+}
 
 // registration lists the directory registration an OIDC flavor reads from the
 // environment: Azure names its issuer, Google (one issuer) the Workspace domain logins
@@ -107,15 +113,25 @@ type registrationVar struct{ field, suffix, goType string }
 // carry and the Admin SDK service account that reads them.
 func (au Auth) registration() []registrationVar {
 	if au.Flavor == FlavorOIDCGoogle {
-		vars := []registrationVar{{"ClientID", "CLIENT_ID", ""}, {"ClientSecret", "CLIENT_SECRET", ""}, {"RedirectURL", "REDIRECT_URL", ""}, {"HostedDomain", "HOSTED_DOMAIN", ""}}
+		vars := []registrationVar{{"ClientID", "CLIENT_ID", "", false}, {"ClientSecret", "CLIENT_SECRET", "", true}, {"RedirectURL", "REDIRECT_URL", "", false}, {"HostedDomain", "HOSTED_DOMAIN", "", false}}
 		if au.Authority == AuthorityDirectory {
-			vars = append(vars, registrationVar{"GroupPrefix", "GROUP_PREFIX", ""}, registrationVar{"AdminCredentials", "ADMIN_CREDENTIALS", "[]byte"}, registrationVar{"AdminSubject", "ADMIN_SUBJECT", ""})
+			vars = append(vars, registrationVar{"GroupPrefix", "GROUP_PREFIX", "", false}, registrationVar{"AdminCredentials", "ADMIN_CREDENTIALS", "[]byte", true}, registrationVar{"AdminSubject", "ADMIN_SUBJECT", "", false})
 		}
 
 		return vars
 	}
 
-	return []registrationVar{{issuerURLField, "ISSUER_URL", ""}, {"ClientID", "CLIENT_ID", ""}, {"ClientSecret", "CLIENT_SECRET", ""}, {"RedirectURL", "REDIRECT_URL", ""}}
+	return []registrationVar{{issuerURLField, "ISSUER_URL", "", false}, {"ClientID", "CLIENT_ID", "", false}, {"ClientSecret", "CLIENT_SECRET", "", true}, {"RedirectURL", "REDIRECT_URL", "", false}}
+}
+
+// marker is the secret tag a credential carries beside its env tag, empty for a plain
+// value.
+func (v registrationVar) marker() string {
+	if v.secret {
+		return ` secret:"true"`
+	}
+
+	return ""
 }
 
 // typeOf is the registration variable's Go type in the environment struct.
@@ -875,7 +891,7 @@ func (au Auth) oidcConstruction(rel string, edited []byte, statements string, ch
 		var directory strings.Builder
 		fmt.Fprintf(&directory, "Directory: %s.Directory{\n", au.Name)
 		for i, v := range au.registration() {
-			field := fmt.Sprintf("%s%s %s `env:\"APP_%s_OIDC_%s\"`", au.Pascal(), v.field, v.typeOf(), upper, v.suffix)
+			field := fmt.Sprintf("%s%s %s `env:\"APP_%s_OIDC_%s\"%s`", au.Pascal(), v.field, v.typeOf(), upper, v.suffix, v.marker())
 			if i == 0 {
 				field = comment + field
 			}

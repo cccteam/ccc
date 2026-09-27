@@ -224,5 +224,5 @@ type dataConfig struct {
 	// CookieKey signs session cookies: a Base64-encoded string of at least 32 bytes of
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
-	CookieKey string `env:"APP_COOKIE_KEY"`
+	CookieKey string `env:"APP_COOKIE_KEY" secret:"true"`
 }

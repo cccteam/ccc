@@ -180,7 +180,7 @@ type dataConfig struct {
 	// Under the session library's skipAuth build tag only the redirect URL is read.
 	PartnersIssuerURL    string ` + "`" + `env:"APP_PARTNERS_OIDC_ISSUER_URL"` + "`" + `
 	PartnersClientID     string ` + "`" + `env:"APP_PARTNERS_OIDC_CLIENT_ID"` + "`" + `
-	PartnersClientSecret string ` + "`" + `env:"APP_PARTNERS_OIDC_CLIENT_SECRET"` + "`" + `
+	PartnersClientSecret string ` + "`" + `env:"APP_PARTNERS_OIDC_CLIENT_SECRET" secret:"true"` + "`" + `
 	PartnersRedirectURL  string ` + "`" + `env:"APP_PARTNERS_OIDC_REDIRECT_URL"` + "`" + `
 }
 `
@@ -512,7 +512,7 @@ func TestAuthApply(t *testing.T) {
 				config := read(t, a, "pkg/config/data.go")
 				for _, want := range []string{
 					"\t\t\tHostedDomain:     env.PartnersHostedDomain,\n\t\t\tGroupPrefix:      env.PartnersGroupPrefix,\n\t\t\tAdminCredentials: env.PartnersAdminCredentials,\n\t\t\tAdminSubject:     env.PartnersAdminSubject,\n\t\t},",
-					"\tPartnersAdminCredentials []byte `env:\"APP_PARTNERS_OIDC_ADMIN_CREDENTIALS\"`\n",
+					"\tPartnersAdminCredentials []byte `env:\"APP_PARTNERS_OIDC_ADMIN_CREDENTIALS\" secret:\"true\"`\n",
 					"\tPartnersGroupPrefix      string `env:\"APP_PARTNERS_OIDC_GROUP_PREFIX\"`\n",
 					"// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.\n",
 				} {
