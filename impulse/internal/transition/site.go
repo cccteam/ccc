@@ -866,19 +866,16 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		ctx,
 		%[1]q,
 		[]string{%[2]q},
-		[]string{
-			%[3]q,
-		},
-%[4]s		// One TypeScript target per site: adding a site means adding its target here, and
+%[3]s		// One TypeScript target per site: adding a site means adding its target here, and
 		// impulse check fails the build if a site is missed.
-%[5]s	)
+%[4]s	)
 	if err != nil {
 		return nil, errors.Wrap(err, "generation.NewResourceGenerator()")
 	}
 
 	return generator, nil
 }
-`, sharedPackage, migrations, modulePath+"/"+sharedPackage, emulator, targets.String())
+`, sharedPackage, migrations, emulator, targets.String())
 	dir := path.Join(generateDir, sharedGenName)
 	if err := writeNew(a, path.Join(dir, "generator.go"), declaration); err != nil {
 		return err

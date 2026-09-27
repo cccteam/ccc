@@ -35,10 +35,6 @@ func run(ctx context.Context) error {
 		ctx,
 		"pkg/resources",
 		[]string{"file://schema/migrations"},
-		[]string{
-			"example.com/acme/beacon/pkg/resources",
-			"example.com/acme/beacon/pkg/router",
-		},
 		generation.GenerateHandlers("app"),
 		generation.GenerateRoutes("pkg/router", "api"),
 		generation.GenerateHandlerTests("test/authz"),

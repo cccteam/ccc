@@ -23,7 +23,7 @@ import (
 )
 
 func newGenerator(ctx context.Context) (generation.Generator, error) {
-	return generation.NewResourceGenerator(ctx, "pkg/resources", []string{"file://schema/migrations"}, []string{"example.com/harbor/pkg/resources"},
+	return generation.NewResourceGenerator(ctx, "pkg/resources", []string{"file://schema/migrations"},
 		generation.GenerateHandlers("app"),
 		generation.GenerateRoutes("pkg/router", "api"),
 	)

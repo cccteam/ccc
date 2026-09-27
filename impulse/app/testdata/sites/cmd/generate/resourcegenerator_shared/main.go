@@ -12,7 +12,6 @@ func main() {
 		context.Background(),
 		"./pkg/sharedresources",
 		[]string{"file://schema/migrations"},
-		[]string{"example.com/harbor/pkg/sharedresources"},
 		generation.WithSpannerEmulatorVersion("1.5.44"),
 		generation.GenerateTypescript("apps/pilots/gui/src/app/core/service/shared-resources",
 			generation.GenerateEnums(),

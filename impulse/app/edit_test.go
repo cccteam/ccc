@@ -12,7 +12,7 @@ const editProgram = `package main
 import "github.com/cccteam/ccc/resource/generation"
 
 func run() error {
-	g, err := generation.NewResourceGenerator(nil, "pkg/resources", []string{"file://schema/migrations"}, []string{"example.com/beacon/pkg/resources"},
+	g, err := generation.NewResourceGenerator(nil, "pkg/resources", []string{"file://schema/migrations"},
 		generation.GenerateHandlers("app"),
 		// Routes under /api.
 		generation.GenerateRoutes("pkg/router", "api"),
@@ -63,7 +63,7 @@ func TestInsertOptions(t *testing.T) {
 import gen "github.com/cccteam/ccc/resource/generation"
 
 func run() {
-	gen.NewResourceGenerator(nil, "pkg/resources", nil, nil, gen.GenerateHandlers("app"))
+	gen.NewResourceGenerator(nil, "pkg/resources", nil, gen.GenerateHandlers("app"))
 }
 `,
 			after:   "GenerateHandlers",
@@ -73,7 +73,7 @@ func run() {
 import gen "github.com/cccteam/ccc/resource/generation"
 
 func run() {
-	gen.NewResourceGenerator(nil, "pkg/resources", nil, nil, gen.GenerateHandlers("app"),
+	gen.NewResourceGenerator(nil, "pkg/resources", nil, gen.GenerateHandlers("app"),
 		gen.GenerateRoutes("pkg/router", "api"))
 }
 `,
@@ -191,7 +191,7 @@ func TestRewriteAuthFlavor(t *testing.T) {
 import gen "github.com/cccteam/ccc/resource/generation"
 
 func run() {
-	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil, nil,
+	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil,
 		gen.GenerateRouter(),
 		gen.GenerateRoutes("pkg/router", "api", gen.Auth("example.com/acme/pkg/auth/staff", gen.Password), gen.WebApp("/")),
 		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle)),

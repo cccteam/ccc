@@ -105,6 +105,7 @@ func (k paramKind) optionKind() optionKind {
 const (
 	optServesSessions     = "ServesSessions"
 	optGenerateHandlers   = "GenerateHandlers"
+	optWithImports        = "WithImports"
 	optGenerateRoutes     = "GenerateRoutes"
 	optGenerateRouter     = "GenerateRouter"
 	optGenerateTypescript = "GenerateTypescript"
@@ -172,6 +173,7 @@ var knownOptions = map[string]optionSpec{
 	"WithComputedResources":      {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithRPC":                    {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithTypes":                  {kind: kindResourceOption, params: []paramKind{paramString}},
+	optWithImports:               {kind: kindResourceOption, variadic: paramString},
 
 	optServesSessions: {kind: kindOutletOption},
 	optAuth:           {kind: kindOutletOption, params: []paramKind{paramString, paramFlavor}},

@@ -14,7 +14,6 @@ func main() {
 		context.Background(),
 		"./apps/tugs/pkg/resources",
 		[]string{"file://apps/tugs/schema/migrations"},
-		[]string{"example.com/harbor/apps/tugs/pkg/resources"},
 		generation.GenerateHandlers("apps/tugs/app"),
 		generation.GenerateRoutes("apps/tugs/pkg/router", "api"),
 		generation.WithSpannerEmulatorVersion("1.5.44"),

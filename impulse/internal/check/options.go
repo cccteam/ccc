@@ -103,7 +103,7 @@ func (options) programFindings(a *app.App, g *app.Generator) []string {
 			dir = "."
 		}
 		if info, err := os.Stat(a.Abs(dir)); err != nil || !info.IsDir() {
-			details = append(details, fmt.Sprintf("%s: local package %s has no directory %s in the module", g.File, pkg, dir))
+			details = append(details, fmt.Sprintf("%s: WithImports names %s, which has no directory %s in the module", g.File, pkg, dir))
 		}
 	}
 

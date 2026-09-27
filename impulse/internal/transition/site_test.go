@@ -194,7 +194,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 
 	// The generator program is the console site's.
 	gen := read(t, a, "cmd/generate/consolegenerator/main.go")
-	for _, want := range []string{`"apps/console/pkg/resources"`, `"example.com/acme/beacon/apps/console/pkg/resources"`, `GenerateHandlers("apps/console/app")`, `GenerateRoutes("apps/console/pkg/router", "api")`, `GenerateHandlerTests("apps/console/test/authz")`, `GenerateTypescript("apps/console/web/console/src/app/core/service"`} {
+	for _, want := range []string{`"apps/console/pkg/resources"`, `GenerateHandlers("apps/console/app")`, `GenerateRoutes("apps/console/pkg/router", "api")`, `GenerateHandlerTests("apps/console/test/authz")`, `GenerateTypescript("apps/console/web/console/src/app/core/service"`} {
 		if !strings.Contains(gen, want) {
 			t.Errorf("consolegenerator lacks %q:\n%s", want, gen)
 		}
@@ -222,7 +222,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 		}
 	}
 	shared := read(t, a, "cmd/generate/sharedgenerator/generator.go")
-	for _, want := range []string{`"pkg/sharedresources"`, `"example.com/acme/beacon/pkg/sharedresources"`, `GenerateTypescript("apps/console/web/console/src/app/core/service/shared"`, `GenerateTypescript("apps/portal/web/portal/src/app/core/service/shared"`, `WithSpannerEmulatorVersion("1.5.56")`} {
+	for _, want := range []string{`"pkg/sharedresources"`, `GenerateTypescript("apps/console/web/console/src/app/core/service/shared"`, `GenerateTypescript("apps/portal/web/portal/src/app/core/service/shared"`, `WithSpannerEmulatorVersion("1.5.56")`} {
 		if !strings.Contains(shared, want) {
 			t.Errorf("sharedgenerator lacks %q:\n%s", want, shared)
 		}
@@ -247,7 +247,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 		t.Errorf("portal resources.go = %q", got)
 	}
 	portalGen := read(t, a, "cmd/generate/portalgenerator/main.go")
-	for _, want := range []string{`"apps/portal/pkg/resources"`, `"example.com/acme/beacon/apps/portal/pkg/router"`, `GenerateHandlers("apps/portal/app")`, `GenerateTypescript("apps/portal/web/portal/src/app/core/service"`} {
+	for _, want := range []string{`"apps/portal/pkg/resources"`, `GenerateHandlers("apps/portal/app")`, `GenerateTypescript("apps/portal/web/portal/src/app/core/service"`} {
 		if !strings.Contains(portalGen, want) {
 			t.Errorf("portalgenerator lacks %q:\n%s", want, portalGen)
 		}

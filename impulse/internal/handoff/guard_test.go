@@ -27,8 +27,8 @@ const flatProgram = "cmd/generate/resourcegenerator/main.go"
 var flatLines = []string{
 	`resources "pkg/resources"`,
 	`migrations ["file://schema/migrations"]`,
-	`packages ["example.com/lighthouse/pkg/resources", "example.com/lighthouse/pkg/rpc"]`,
 	`GenerateHandlers("app")`,
+	`WithImports("github.com/shopspring/decimal")`,
 	`GenerateRouter()`,
 	`GenerateRoutes("pkg/router", "api", Auth("example.com/lighthouse/pkg/config", Password), WebApp("/"))`,
 	`WithRouterOutlet("portal", "portal", Auth("example.com/lighthouse/pkg/config", Password), WebApp("/portal"))`,
@@ -85,7 +85,7 @@ func TestTake(t *testing.T) {
 import "github.com/cccteam/ccc/resource/generation"
 
 func run() {
-	generation.NewResourceGenerator(nil, "pkg/resources", []string{"file://schema/migrations"}, []string{},
+	generation.NewResourceGenerator(nil, "pkg/resources", []string{"file://schema/migrations"},
 		generation.GenerateHandlers("app"),
 	)
 }
@@ -93,7 +93,7 @@ func run() {
 			},
 			want: Snapshot{
 				Programs: map[string][]string{flatProgram: {
-					`resources "pkg/resources"`, `migrations ["file://schema/migrations"]`, `packages []`, `GenerateHandlers("app")`,
+					`resources "pkg/resources"`, `migrations ["file://schema/migrations"]`, `GenerateHandlers("app")`,
 				}},
 				Configs: map[string]string{},
 			},

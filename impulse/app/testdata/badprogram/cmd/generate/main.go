@@ -14,7 +14,6 @@ func main() {
 		context.Background(),
 		"pkg/resources",
 		[]string{"file://schema/migrations"},
-		[]string{"example.com/badprogram/pkg/resources"},
 		generation.GenerateHandlers(handlersDir),
 		generation.GenerateRoutes("pkg/router"),
 		generation.WithFrobnicator("x"),

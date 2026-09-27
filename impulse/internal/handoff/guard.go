@@ -188,11 +188,10 @@ func sortedKeys[V any](m map[string]V) []string {
 // renderProgram renders a program as one line per positional argument and option call,
 // with literal arguments spelled out, so two programs compare by what they configure.
 func renderProgram(g *app.Generator) []string {
-	lines := make([]string, 0, 3+len(g.Options))
+	lines := make([]string, 0, 2+len(g.Options))
 	lines = append(lines,
 		"resources "+strconv.Quote(g.ResourcePackageDir),
 		"migrations "+renderList(g.MigrationSources),
-		"packages "+renderList(g.LocalPackages),
 	)
 	for i := range g.Options {
 		lines = append(lines, renderCall(&g.Options[i]))

@@ -25,7 +25,7 @@ func program(resourceDir string, options ...string) string {
 )
 
 func main() {
-	_, _ = generation.NewResourceGenerator(context.Background(), "` + resourceDir + `", []string{"file://schema/migrations"}, []string{"example.com/harbor/` + resourceDir + `"},
+	_, _ = generation.NewResourceGenerator(context.Background(), "` + resourceDir + `", []string{"file://schema/migrations"},
 		` + strings.Join(options, "\n\t\t") + `
 	)
 }
@@ -45,7 +45,7 @@ import (
 )
 
 func NewGenerator(ctx context.Context) (generation.Generator, error) {
-	return generation.NewResourceGenerator(ctx, "` + resourceDir + `", []string{"file://schema/migrations"}, []string{"example.com/harbor/` + resourceDir + `"},
+	return generation.NewResourceGenerator(ctx, "` + resourceDir + `", []string{"file://schema/migrations"},
 		` + strings.Join(options, "\n\t\t") + `
 	)
 }
@@ -142,6 +142,7 @@ func TestOptionsCoherence(t *testing.T) {
 					`generation.WithRPC("pkg/rpc"),`,
 					`generation.WithTypes("pkg/telemetry"),`,
 					`generation.WithTypes("pkg/cms"),`,
+					`generation.WithImports("example.com/harbor/pkg/resources", "github.com/shopspring/decimal"),`,
 					`generation.GenerateTypescript("web/portal/src", generation.ForOutlet("portal")),`,
 				),
 				"app":     "",
@@ -154,8 +155,8 @@ func TestOptionsCoherence(t *testing.T) {
 				"cmd/generate/main.go: GenerateRoutes names pkg/router, which is not a directory in the tree",
 				"cmd/generate/main.go: WithRPC names pkg/rpc, which is not a directory in the tree",
 				"cmd/generate/main.go: WithTypes names pkg/telemetry, which is not a directory in the tree",
-				"cmd/generate/main.go: local package example.com/harbor/pkg/resources has no directory pkg/resources in the module",
-				`cmd/generate/main.go:18: ForOutlet("portal") names an outlet the program does not declare`,
+				"cmd/generate/main.go: WithImports names example.com/harbor/pkg/resources, which has no directory pkg/resources in the module",
+				`cmd/generate/main.go:19: ForOutlet("portal") names an outlet the program does not declare`,
 			},
 		},
 		{

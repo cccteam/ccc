@@ -16,9 +16,6 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		ctx,
 		"pkg/sharedresources",
 		[]string{"file://schema/migrations"},
-		[]string{
-			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/sharedresources",
-		},
 		generation.WithSpannerEmulatorVersion("1.5.56"),
 		// One TypeScript target per site: adding a site means adding its target here,
 		// and `impulse check` fails the build if a site is missed.

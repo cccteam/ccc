@@ -39,12 +39,12 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			name: "generator-program bad program", fixture: "badprogram", check: generatorProgram{},
 			wantStatus: Fail, wantSummary: "6 generator program problem(s)",
 			wantDetails: []string{
-				"cmd/generate/main.go:18: GenerateHandlers argument handlersDir is not a literal",
-				"cmd/generate/main.go:19: GenerateRoutes takes 2 argument(s), found 1",
-				"cmd/generate/main.go:20: unknown option generation.WithFrobnicator: this impulse release does not know it",
-				"cmd/generate/main.go:21: GenerateEnums is a TSOption, but a ResourceOption is expected here",
-				`cmd/generate/main.go:22: WithConsolidatedHandlers argument "yes" should be a bool literal`,
-				"cmd/generate/main.go:23: WithRPC is a ResourceOption, but a TSOption is expected here",
+				"cmd/generate/main.go:17: GenerateHandlers argument handlersDir is not a literal",
+				"cmd/generate/main.go:18: GenerateRoutes takes 2 argument(s), found 1",
+				"cmd/generate/main.go:19: unknown option generation.WithFrobnicator: this impulse release does not know it",
+				"cmd/generate/main.go:20: GenerateEnums is a TSOption, but a ResourceOption is expected here",
+				`cmd/generate/main.go:21: WithConsolidatedHandlers argument "yes" should be a bool literal`,
+				"cmd/generate/main.go:22: WithRPC is a ResourceOption, but a TSOption is expected here",
 				"cmd/generate/main.go: the program never reads Warnings(): the schema warnings a generation raises go unseen; print them after Generate() as the skeletons' runner does, and pin the accepted set in its warnings test",
 			},
 		},
@@ -177,7 +177,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			name: "prettier-ignore target outside a browser app", fixture: "badprogram", check: prettierIgnore{},
 			wantStatus: Fail, wantSummary: "1 TypeScript target(s) not excluded from prettier (--fix adds the entries)",
 			wantDetails: []string{
-				"cmd/generate/main.go:23: TypeScript target gui/src/app/core/service is not inside a browser app (no angular.json above it)",
+				"cmd/generate/main.go:22: TypeScript target gui/src/app/core/service is not inside a browser app (no angular.json above it)",
 			},
 		},
 		{
@@ -338,7 +338,7 @@ import (
 )
 
 func main() {
-	_, _ = generation.NewResourceGenerator(context.Background(), "pkg/resources", []string{"file://schema"}, []string{"example.com/rpcforms/pkg/resources"},
+	_, _ = generation.NewResourceGenerator(context.Background(), "pkg/resources", []string{"file://schema"},
 		generation.GenerateHandlers("app"),
 		generation.WithRPC("pkg/rpc"),
 	)
@@ -462,7 +462,7 @@ import (
 )
 
 func main() {
-	_, _ = generation.NewResourceGenerator(context.Background(), "pkg/resources", []string{"file://schema"}, []string{"example.com/headerless/pkg/resources"},
+	_, _ = generation.NewResourceGenerator(context.Background(), "pkg/resources", []string{"file://schema"},
 		generation.GenerateHandlers("app"),
 		generation.WithRPC("pkg/rpc"),
 	)

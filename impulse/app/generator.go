@@ -24,7 +24,10 @@ type Generator struct {
 	ResourcePackageDir string
 	// MigrationSources is the second positional argument: the migration source URLs.
 	MigrationSources []string
-	// LocalPackages is the third positional argument: the packages the generator loads.
+	// LocalPackages are the import paths the WithImports calls name, in order: paths the
+	// generated code may reference beyond what the generator derives from the packages it
+	// loads and writes (each one a generator gap the application carries until it is
+	// fixed).
 	LocalPackages []string
 	// Options are the option calls passed after the positional arguments, in order.
 	Options []Call
@@ -263,8 +266,8 @@ func (r *reader) problemf(n ast.Node, format string, args ...any) {
 }
 
 // positionalArgs is the number of arguments NewResourceGenerator takes before the options:
-// ctx, resourcePackageDir, migrationSourceURL, localPackages.
-const positionalArgs = 4
+// ctx, resourcePackageDir, migrationSourceURL.
+const positionalArgs = 3
 
 func (r *reader) readProgram(call *ast.CallExpr) {
 	if len(call.Args) < positionalArgs {
@@ -283,18 +286,19 @@ func (r *reader) readProgram(call *ast.CallExpr) {
 	} else {
 		r.problemf(call.Args[2], "migration sources are not a []string literal")
 	}
-	if l, ok := stringList(call.Args[3]); ok {
-		r.g.LocalPackages = l
-	} else {
-		r.problemf(call.Args[3], "local packages are not a []string literal")
-	}
-
 	for _, arg := range call.Args[positionalArgs:] {
 		c, ok := r.readCall(arg, kindResourceOption)
 		if !ok {
 			continue
 		}
 		r.g.Options = append(r.g.Options, c)
+	}
+	for _, c := range r.g.OptionsNamed(optWithImports) {
+		for _, a := range c.Args {
+			if a.Kind == ArgString {
+				r.g.LocalPackages = append(r.g.LocalPackages, a.Str)
+			}
+		}
 	}
 }
 

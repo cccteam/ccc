@@ -19,11 +19,8 @@ func run(ctx context.Context) error {
 		ctx,
 		"pkg/resources",
 		[]string{"file://schema/migrations"},
-		[]string{
-			"example.com/lighthouse/pkg/resources",
-			"example.com/lighthouse/pkg/rpc",
-		},
 		generation.GenerateHandlers("app"),
+		generation.WithImports("github.com/shopspring/decimal"),
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/lighthouse/pkg/config", generation.Password), generation.WebApp("/")),
 		generation.WithRouterOutlet("portal", "portal", generation.Auth("example.com/lighthouse/pkg/config", generation.Password), generation.WebApp("/portal")),

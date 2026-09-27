@@ -44,8 +44,8 @@ func TestDiscover(t *testing.T) {
 			wantSiteFiles:   []string{"cmd/generate/resourcegenerator/main.go"},
 			wantHandlersDir: "app",
 			wantTSTargets: []TSTarget{
-				{Dir: "web/console/src/app/core/service", Pos: "cmd/generate/resourcegenerator/main.go:36"},
-				{Dir: "web/portal/src/app/core/service", Outlet: "portal", Pos: "cmd/generate/resourcegenerator/main.go:41"},
+				{Dir: "web/console/src/app/core/service", Pos: "cmd/generate/resourcegenerator/main.go:33"},
+				{Dir: "web/portal/src/app/core/service", Outlet: "portal", Pos: "cmd/generate/resourcegenerator/main.go:38"},
 			},
 			wantEmulatorInGen: "1.5.56",
 		},
@@ -63,7 +63,7 @@ func TestDiscover(t *testing.T) {
 			wantSharedFiles: []string{"cmd/generate/resourcegenerator_shared/main.go"},
 			wantHandlersDir: "apps/pilots/app",
 			wantTSTargets: []TSTarget{
-				{Dir: "apps/pilots/gui/src/app/core/service", Pos: "cmd/generate/resourcegenerator_pilots/main.go:19"},
+				{Dir: "apps/pilots/gui/src/app/core/service", Pos: "cmd/generate/resourcegenerator_pilots/main.go:18"},
 			},
 			wantEmulatorInGen: "1.5.44",
 		},
@@ -166,11 +166,11 @@ func TestFlatGeneratorDetails(t *testing.T) {
 	}{
 		{name: "resource package dir", got: g.ResourcePackageDir, want: "pkg/resources"},
 		{name: "migration sources", got: g.MigrationSources, want: []string{"file://schema/migrations"}},
-		{name: "local packages", got: g.LocalPackages, want: []string{"example.com/lighthouse/pkg/resources", "example.com/lighthouse/pkg/rpc"}},
+		{name: "WithImports paths", got: g.LocalPackages, want: []string{"github.com/shopspring/decimal"}},
 		{name: "routes dir", got: g.RoutesDir(), want: "pkg/router"},
 		{name: "handler tests dir", got: g.HandlerTestsDir(), want: "test/authz"},
 		{name: "rpc dir", got: g.RPCDir(), want: "pkg/rpc"},
-		{name: "option count", got: len(g.Options), want: 12},
+		{name: "option count", got: len(g.Options), want: 13},
 		{name: "plural overrides", got: mustOption(t, g, "WithPluralOverrides").Args[0].Map, want: map[string]string{"Lens": "Lenses"}},
 		{name: "initialism overrides", got: mustOption(t, g, "CaserInitialismOverrides").Args[0].Map, want: map[string]string{"GPS": "true"}},
 		{name: "consolidated bool", got: mustOption(t, g, "WithConsolidatedHandlers").Args[1].Bool, want: true},

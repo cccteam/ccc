@@ -16,10 +16,6 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		ctx,
 		"apps/console/pkg/resources",
 		[]string{"file://schema/migrations"},
-		[]string{
-			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/console/pkg/resources",
-			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/console/pkg/router",
-		},
 		generation.GenerateHandlers("apps/console/app"),
 		// The router is generated from the outlet declarations: the console is the default
 		// outlet, the staff auth's password sessions under /api with its browser application

@@ -19,7 +19,6 @@ func main() {
 		context.Background(),
 		"pkg/resources",
 		[]string{"file://schema/migrations"},
-		[]string{"example.com/x/pkg/resources"},
 `
 
 const programTail = `
