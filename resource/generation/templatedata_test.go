@@ -88,8 +88,9 @@ type Widget struct {
 
 // Test_formatGoBytes_usesPayloadScope verifies formatGoBytes resolves imports
 // from the payload's typeImports: the import path below is not resolvable any
-// other way (not declared, not stdlib, not a local package), so its presence in
-// the output proves the payload scope was used.
+// other way (not declared, not stdlib, not a derived package), so its presence in
+// the output proves the payload scope was used, and its absence from the scope is
+// the unresolved-qualifier error (the goimports fall-back is gone).
 func Test_formatGoBytes_usesPayloadScope(t *testing.T) {
 	t.Parallel()
 
@@ -101,10 +102,10 @@ type Widget struct {
 `
 
 	tests := []struct {
-		name         string
-		data         any
-		wantImport   string
-		wantNoImport string
+		name       string
+		data       any
+		wantImport string
+		wantErr    string
 	}{
 		{
 			name:       "payload scope resolves the import",
@@ -112,9 +113,9 @@ type Widget struct {
 			wantImport: `import fakepkg "example.com/fake/v2"`,
 		},
 		{
-			name:         "payload without the qualifier in scope falls back to goimports",
-			data:         scopedPayload{},
-			wantNoImport: "example.com/fake",
+			name:    "payload without the qualifier in scope is the unresolved-qualifier error",
+			data:    scopedPayload{},
+			wantErr: "import resolution for widget.go (template test) cannot resolve qualifier(s) [fakepkg]",
 		},
 	}
 
@@ -124,16 +125,22 @@ type Widget struct {
 
 			c := &client{}
 			got, err := c.formatGoBytes("widget.go", "test", []byte(src), tt.data)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("formatGoBytes() error = nil, want one containing %q", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("formatGoBytes() error = %v, want one containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
 			if err != nil {
 				t.Fatalf("formatGoBytes() error = %v", err)
 			}
 
-			if tt.wantImport != "" && !strings.Contains(string(got), tt.wantImport) {
+			if !strings.Contains(string(got), tt.wantImport) {
 				t.Errorf("formatGoBytes() should add the payload-scoped import; got:\n%s", got)
-			}
-
-			if tt.wantNoImport != "" && strings.Contains(string(got), tt.wantNoImport) {
-				t.Errorf("formatGoBytes() should not resolve %s without it in scope; got:\n%s", tt.wantNoImport, got)
 			}
 		})
 	}

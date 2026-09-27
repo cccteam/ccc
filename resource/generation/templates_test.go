@@ -163,7 +163,7 @@ func Test_computedResourceHandlerTemplate_decoder(t *testing.T) {
 	}
 	// The declared order renders as resource.Paging and resource.SortField through a
 	// template function, so the qualifier is not in the template text; the import
-	// block must still declare it, or every computed handler falls back to goimports.
+	// block must still declare it, or every computed handler is an unresolved-qualifier error.
 	if want := `"github.com/cccteam/ccc/resource"`; !strings.Contains(computedResourceHandlerTemplate, want) {
 		t.Errorf("computedResourceHandlerTemplate missing the import %s", want)
 	}

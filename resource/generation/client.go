@@ -599,15 +599,16 @@ func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplat
 	return nil
 }
 
-// formatGoBytes formats rendered Go source. The fast path resolves the file's import
-// block locally, skipping goimports' import resolution (which shells out to the go
-// command and can scan the module cache, costing upwards of a second per file). Type
-// imports come from the template payload when it implements typeImporter, scoping
-// resolution to exactly the parsed types the file renders — two resources may use
-// same-named packages from different paths without affecting each other's files. When
-// a referenced qualifier cannot be resolved locally it falls back to goimports so
-// output stays correct, and logs a warning naming the template and qualifiers so the
-// gap can be reproduced in a resource/generation test and closed.
+// formatGoBytes formats rendered Go source. The file's import block is resolved
+// locally, never through goimports' import resolution (which shells out to the go
+// command and can scan the module cache, costing upwards of a second per file): the
+// fixer knows the derived packages (loaded and written), the WithImports paths and the
+// type imports the template payload declares when it implements typeImporter, which
+// scopes resolution to exactly the parsed types the file renders — two resources may
+// use same-named packages from different paths without affecting each other's files.
+// A referenced qualifier none of those resolve is a generation error naming the file,
+// the template and the qualifier: the gap is reproduced in a resource/generation test
+// and closed, and WithImports names the path until it is.
 func (c *client) formatGoBytes(destinationPath, templateName string, output []byte, data any) ([]byte, error) {
 	var typeImports []fixerImport
 	if importer, ok := data.(typeImporter); ok {
