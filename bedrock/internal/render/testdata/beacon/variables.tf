@@ -1,22 +1,22 @@
 variable "environment" {
-  description = "(Required) Environment this apply targets: {{.EnvsOr}}. Selects the 2-env state (2-env/<environment>) and this stack's own prefix (3-app/{{.App}}/<environment>)."
+  description = "(Required) Environment this apply targets: tst, stg, or prd. Selects the 2-env state (2-env/<environment>) and this stack's own prefix (3-app/beacon/<environment>)."
   type        = string
 
   validation {
-    condition     = contains({{.EnvList}}, var.environment)
-    error_message = "environment must be one of {{.EnvsComma}}."
+    condition     = contains(["tst", "stg", "prd"], var.environment)
+    error_message = "environment must be one of tst, stg, prd."
   }
 }
 
 variable "pull_request" {
   description = <<-EOT
-    (Optional) The pull request this stack is an environment for, in {{.Integration}} only;
+    (Optional) The pull request this stack is an environment for, in tst only;
     0 for the environment itself. A pull-request stack is applied by the
-    pull-request build into its own prefix (3-app/{{.App}}/{{.Integration}}/pr<N>). Its
-    resources carry the short name {{.App}}-pr<N>, which is how the wildcard backend
-    2-env creates once in {{.Integration}} picks the Cloud Run service from the hostname
-    {{.App}}-pr<N>.{{.P.AppsDomain}}; it has a database and identities of its own, reads
-    {{.Integration}}'s secret containers, and creates no triggers, no containers and no
+    pull-request build into its own prefix (3-app/beacon/tst/pr<N>). Its
+    resources carry the short name beacon-pr<N>, which is how the wildcard backend
+    2-env creates once in tst picks the Cloud Run service from the hostname
+    beacon-pr<N>.impulseframework.dev; it has a database and identities of its own, reads
+    tst's secret containers, and creates no triggers, no containers and no
     backend of its own.
   EOT
   type        = number
@@ -28,20 +28,20 @@ variable "pull_request" {
   }
 
   validation {
-    condition     = var.pull_request == 0 || var.environment == "{{.Integration}}"
-    error_message = "A pull-request stack lives in {{.Integration}} only."
+    condition     = var.pull_request == 0 || var.environment == "tst"
+    error_message = "A pull-request stack lives in tst only."
   }
 }
 
 variable "shared_database" {
   description = <<-EOT
-    (Optional) For a pull-request stack only: the site runs against {{.Integration}}'s
+    (Optional) For a pull-request stack only: the site runs against tst's
     database instead of one of its own (/gcbrun shared-db). The stack then
     creates no database and grants no DDL: the pull request's app identity gets
-    database user on {{.Integration}}'s database, and the migrate job exists but the
+    database user on tst's database, and the migrate job exists but the
     pipeline never runs it, and refuses shared-db when the pull request changes
-    anything under {{.Schema.MigrationsDir}} against its base, because a migration
-    on the shared database would change {{.Integration}} before any release.
+    anything under schema/migrations against its base, because a migration
+    on the shared database would change tst before any release.
   EOT
   type        = bool
   default     = false
@@ -55,21 +55,17 @@ variable "shared_database" {
 variable "hostnames" {
   description = <<-EOT
     Hostnames the site answers on, per environment, in 2-net's convention:
-    app.domain for {{.Production}}, {{.BelowProduction}} below it, all one
+    app.domain for prd, app-stg.domain and app-tst.domain below it, all one
     label under the apps domain because that is what its wildcard certificate
-    covers ({{.App}}.{{.Integration}}.<domain> would not be). The first one is the canonical
-{{- if .Directory}}
-    host: the {{.Auth.Name}} sign-in's redirect URL is built from it
-    (https://<host>{{.Auth.Callback.Path}}, the route {{.RoutesDir}} registers for
-    {{.RedirectURL.Name}}). Every hostname here is registered with the
-{{- else}}
+    covers (beacon.tst.<domain> would not be). The first one is the canonical
     host. Every hostname here is registered with the
-{{- end}}
     load balancer by an entry in 2-net's hosts; output net_hosts is that entry.
   EOT
   type        = map(list(string))
   default = {
-{{.HostnameDefaults}}
+    tst = ["beacon-tst.impulseframework.dev"]
+    stg = ["beacon-stg.impulseframework.dev"]
+    prd = ["beacon.impulseframework.dev"]
   }
 
   validation {
@@ -81,7 +77,7 @@ variable "hostnames" {
 variable "placeholder_image" {
   description = "Image every Cloud Run service and job is created with. The pipeline owns the image from the first deploy on (lifecycle ignore_changes), so this is only what runs before the first release."
   type        = string
-  default     = "{{.P.PlaceholderImage}}"
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
 variable "substitutions" {
@@ -95,7 +91,7 @@ variable "substitutions" {
     contract already carries (the triggers refuse that).
 
       substitutions = {
-        {{.Integration}} = { _FIREBASE_PROJECT = "acme-{{.Integration}}" }
+        tst = { _FIREBASE_PROJECT = "acme-tst" }
       }
   EOT
   type        = map(map(string))
@@ -110,13 +106,13 @@ variable "substitutions" {
 variable "build_secrets" {
   description = <<-EOT
     Secrets the image build reads, per environment: NAME = the pinned version
-    of the container {{.Prefix}}-<env>-gbl-{{.App}}-<kebab name>, which this stack creates
+    of the container imp-<env>-gbl-beacon-<kebab name>, which this stack creates
     (an operator adds the value with bedrock secret add, and bedrock secret pin
     moves the pin here) and grants the deploy identity accessor on, never a
     runtime identity. The pipeline reads each as the deploy identity and passes
     it to the image build as a BuildKit secret the Dockerfile mounts
     (RUN --mount=type=secret,id=NAME), never as a build argument, which would
-    land in the image's history. A pull-request build reads {{.Integration}}'s. None by
+    land in the image's history. A pull-request build reads tst's. None by
     default. Example:
 
       build_secrets = { tst = { KENDO_UI_LICENSE = "1" }, stg = {}, prd = {} }
@@ -134,7 +130,7 @@ variable "secret_versions" {
   description = <<-EOT
     The version of each secret this environment runs, keyed by environment and
     then by the environment variable the secret feeds (the struct tag in
-    {{.SecretsFiles}}). A secret with no entry has its container created but
+    pkg/config/data.go). A secret with no entry has its container created but
     is not mounted: the process starts without the variable, which is "not
     yet" for a value an operator has not added. A rotation is a new version
     added by an operator plus a one-line bump here, released like any change.
@@ -145,12 +141,14 @@ variable "secret_versions" {
     tracking, and the check that bedrock adds later names each one.
 
       secret_versions = {
-        {{.Integration}} = { {{.SecretExample}} }
+        tst = { APP_COOKIE_KEY = "1" }
       }
   EOT
   type        = map(map(string))
   default = {
-{{.EmptyEnvMaps}}
+    tst = {}
+    stg = {}
+    prd = {}
   }
 
   validation {
@@ -163,55 +161,6 @@ variable "secret_versions" {
   }
 }
 
-{{if .Directory -}}
-variable "{{.AuthVar}}_admin_subject" {
-  description = <<-EOT
-    Per environment, the Workspace administrator the {{.Auth.Name}} auth impersonates to
-    read role groups through the Admin SDK ({{.AdminSubject.Name}},
-    {{.AdminSubject.File}} {{.AdminSubject.Declaration}}). Not a secret; the
-    credential it pairs with is (secret {{.AdminCredentialsSecret.Name}}). Empty
-    until the directory read is set up.
-  EOT
-  type        = map(string)
-  default = {
-{{.EmptyEnvStrings}}
-  }
-}
-
-variable "{{.AuthVar}}_client_id" {
-  description = <<-EOT
-    Per environment, the OAuth client ID of the application's registration with
-    Google ({{.ClientID.Name}}, {{.ClientID.File}}
-    {{.ClientID.Declaration}}). Created by hand in the environment project's
-    console (APIs & Services > Credentials > OAuth client ID, Web application)
-    with the redirect URI this stack outputs as {{.AuthVar}}_redirect_url. The
-    client ID is public; its secret goes into the {{.ClientSecretSecret.Name}}
-    container. Empty until registered.
-  EOT
-  type        = map(string)
-  default = {
-{{.EmptyEnvStrings}}
-  }
-}
-
-variable "{{.AuthVar}}_group_prefix" {
-  description = "Local-part prefix of the Google Groups that carry {{.Auth.Name}} roles: <prefix><role>@<domain> assigns <role> ({{.GroupPrefix.Name}}, {{.GroupPrefix.Declaration}}). Required non-empty by the session library at construction, so the migrate job carries it too."
-  type        = string
-  default     = "{{.Auth.GroupPrefixDefault}}"
-
-  validation {
-    condition     = length(var.{{.AuthVar}}_group_prefix) > 0
-    error_message = "{{.AuthVar}}_group_prefix must not be empty: it is the only filter between role groups and the rest of the directory."
-  }
-}
-
-variable "{{.AuthVar}}_hosted_domain" {
-  description = "Google Workspace domain {{.Auth.Name}} logins are restricted to ({{.HostedDomain.Name}}, {{.HostedDomain.Declaration}}). Required non-empty by the session library at construction, so the migrate job carries it too."
-  type        = string
-  default     = "{{.P.HostedDomain}}"
-}
-
-{{end -}}
 variable "state_bucket" {
   description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."
   type        = string

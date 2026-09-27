@@ -310,7 +310,8 @@ func (p *Process) Reads(level string) bool {
 	return slices.Contains(p.Levels, level)
 }
 
-// Auth is one auth with its directory registration and its login callback.
+// Auth is one auth: its login flavor and, for a directory sign-in, its registration and
+// its login callback. A password or preauth auth has neither.
 type Auth struct {
 	// Name is the auth's name.
 	Name string
@@ -326,6 +327,13 @@ type Auth struct {
 	// GroupPrefixDefault is the group prefix the development environment template sets,
 	// or empty.
 	GroupPrefixDefault string
+}
+
+// OIDC reports whether the auth signs in through a directory (an OpenID Connect
+// flavor): it then has a registration and a callback route, and the stack carries the
+// variables and the hand steps for them.
+func (a *Auth) OIDC() bool {
+	return a.Flavor == app.FlavorOIDCAzure || a.Flavor == app.FlavorOIDCGoogle
 }
 
 // Variable returns the registration variable in the role, or nil.

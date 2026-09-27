@@ -1,5 +1,6 @@
-// auths.go reads the auths: each auth package's login flavor, its directory
-// registration by role, and the callback route the generated router registers for it.
+// auths.go reads the auths: each auth package's login flavor and, for a directory
+// sign-in, its registration by role and the callback route the generated router
+// registers for it.
 
 package derive
 
@@ -18,7 +19,7 @@ import (
 // r.Get("/api/user/callback", h.CallbackOIDC()).
 var callbackRE = regexp.MustCompile(`r\.(Get|Post)\("([^"]+)",\s*h\.CallbackOIDC\(\)\)`)
 
-// auths settles the auths and their callbacks.
+// auths settles the auths and, for the directory-flavored ones, their callbacks.
 func (m *Model) auths(a *app.App, cfg *config) error {
 	if len(a.AuthPackages) == 0 {
 		return errors.New("the application constructs no auth")
@@ -32,19 +33,21 @@ func (m *Model) auths(a *app.App, cfg *config) error {
 				auth.Flavor = a.Auths[j].Flavor
 			}
 		}
-		for _, role := range directoryRoles {
-			if v := m.byRole(role); v != nil {
-				auth.Directory[role] = v
+		if auth.OIDC() {
+			for _, role := range directoryRoles {
+				if v := m.byRole(role); v != nil {
+					auth.Directory[role] = v
+				}
 			}
+			if prefix := auth.Variable(RoleGroupPrefix); prefix != nil {
+				auth.GroupPrefixDefault = cfg.envTemplate[prefix.Name]
+			}
+			route, err := callbackRoute(a, routesDir)
+			if err != nil {
+				return err
+			}
+			auth.Callback = route
 		}
-		if prefix := auth.Variable(RoleGroupPrefix); prefix != nil {
-			auth.GroupPrefixDefault = cfg.envTemplate[prefix.Name]
-		}
-		route, err := callbackRoute(a, routesDir)
-		if err != nil {
-			return err
-		}
-		auth.Callback = route
 		m.Auths = append(m.Auths, auth)
 	}
 	sort.Slice(m.Auths, func(i, j int) bool {

@@ -77,9 +77,13 @@ type view struct {
 
 	// Auth is the auth the site binds to.
 	Auth *derive.Auth
+	// Directory reports a directory sign-in: the auth has a registration and a callback,
+	// and the stack the variables, the outputs and the hand steps for them. A password
+	// auth has none of that, and its stack carries the cookie key alone.
+	Directory bool
 	// AuthVar is the stem of the auth's placement variables: <auth>_oidc.
 	AuthVar string
-	// RoutesDir is the directory of the file registering the callback.
+	// RoutesDir is the directory of the file registering the callback, empty without one.
 	RoutesDir string
 	// The variables by role, for the templates that name them.
 	ServiceName      *derive.Variable
@@ -221,8 +225,11 @@ func newView(m *derive.Model) (*view, error) {
 	v.RepoFullName = repoFullName(m.Repository)
 	v.SweepMinute = sweepMinute(m.App)
 	v.Auth = &m.Auths[0]
+	v.Directory = v.Auth.OIDC()
 	v.AuthVar = v.Auth.VariablePrefix()
-	v.RoutesDir = path.Dir(v.Auth.Callback.File)
+	if v.Directory {
+		v.RoutesDir = path.Dir(v.Auth.Callback.File)
+	}
 	if err := v.roles(); err != nil {
 		return nil, err
 	}
@@ -240,7 +247,8 @@ func newView(m *derive.Model) (*view, error) {
 	return v, nil
 }
 
-// roles finds the variables and levels the templates name.
+// roles finds the variables and levels the templates name: the well-known ones always,
+// the directory registration's only for a directory sign-in.
 func (v *view) roles() error {
 	roles := []struct {
 		role derive.Role
@@ -250,13 +258,20 @@ func (v *view) roles() error {
 		{derive.RoleLoggingProject, &v.LoggingProject},
 		{derive.RoleVersion, &v.Version},
 		{derive.RolePort, &v.Port},
-		{derive.RoleClientID, &v.ClientID},
-		{derive.RoleClientSecret, &v.ClientSecret},
-		{derive.RoleRedirectURL, &v.RedirectURL},
-		{derive.RoleHostedDomain, &v.HostedDomain},
-		{derive.RoleGroupPrefix, &v.GroupPrefix},
-		{derive.RoleAdminCredentials, &v.AdminCredentials},
-		{derive.RoleAdminSubject, &v.AdminSubject},
+	}
+	if v.Directory {
+		roles = append(roles, []struct {
+			role derive.Role
+			dst  **derive.Variable
+		}{
+			{derive.RoleClientID, &v.ClientID},
+			{derive.RoleClientSecret, &v.ClientSecret},
+			{derive.RoleRedirectURL, &v.RedirectURL},
+			{derive.RoleHostedDomain, &v.HostedDomain},
+			{derive.RoleGroupPrefix, &v.GroupPrefix},
+			{derive.RoleAdminCredentials, &v.AdminCredentials},
+			{derive.RoleAdminSubject, &v.AdminSubject},
+		}...)
 	}
 	for _, r := range roles {
 		*r.dst = v.byRole(r.role)
@@ -275,8 +290,11 @@ func (v *view) roles() error {
 		default:
 		}
 	}
-	if v.CookieKeySecret == nil || v.ClientSecretSecret == nil || v.AdminCredentialsSecret == nil {
-		return errors.New("the stack needs the cookie key, the client secret, and the admin credentials among the secrets")
+	if v.CookieKeySecret == nil {
+		return errors.New("the stack needs the cookie key among the secrets")
+	}
+	if v.Directory && (v.ClientSecretSecret == nil || v.AdminCredentialsSecret == nil) {
+		return errors.New("the stack needs the client secret and the admin credentials among the secrets of a directory sign-in")
 	}
 	levels := []struct {
 		name string
@@ -405,10 +423,12 @@ func (v *view) blocks() {
 		{db.Instance.Name, "local.instance.name"},
 		{db.Name.Name, "local.database_name"},
 	})
-	v.DirectoryEnv = aligned("    ", [][2]string{
-		{v.HostedDomain.Name, "var." + v.AuthVar + "_hosted_domain"},
-		{v.GroupPrefix.Name, "var." + v.AuthVar + "_group_prefix"},
-	})
+	if v.Directory {
+		v.DirectoryEnv = aligned("    ", [][2]string{
+			{v.HostedDomain.Name, "var." + v.AuthVar + "_hosted_domain"},
+			{v.GroupPrefix.Name, "var." + v.AuthVar + "_group_prefix"},
+		})
+	}
 	prefix := commonPrefix(db.Project.Name, db.Instance.Name, db.Name.Name)
 	v.DatabaseVariablesCell = "`" + db.Project.Name + "`, `" + strings.TrimPrefix(db.Instance.Name, prefix) + "`, `" + strings.TrimPrefix(db.Name.Name, prefix) + "`"
 
@@ -448,12 +468,17 @@ func (v *view) blocks() {
 	}
 	v.LabelLines = strings.Join(labels, "\n")
 
-	v.RestatedDefaults = aligned("#   ", [][2]string{
+	restated := [][2]string{
 		{"hostnames", v.HostnamesSummary},
 		{"placeholder_image", v.P.PlaceholderImage},
-		{v.AuthVar + "_group_prefix", `"` + v.Auth.GroupPrefixDefault + `"`},
-		{v.AuthVar + "_hosted_domain", `"` + v.P.HostedDomain + `"`},
-	}, " = ")
+	}
+	if v.Directory {
+		restated = append(restated,
+			[2]string{v.AuthVar + "_group_prefix", `"` + v.Auth.GroupPrefixDefault + `"`},
+			[2]string{v.AuthVar + "_hosted_domain", `"` + v.P.HostedDomain + `"`},
+		)
+	}
+	v.RestatedDefaults = aligned("#   ", restated, " = ")
 }
 
 // Purpose says what a secret is for: the framework's words for the roles it knows,

@@ -2,43 +2,38 @@
 # seeded state bucket, the same name as in every backend block.
 # environment is never set here: every run passes -var environment=<env>.
 
-state_bucket = "{{.P.StateBucket}}"
+state_bucket = "imp-boot-gbl-state-REPLACEME"
 
 # Placement per environment, filled as each environment is set up. Every map
-# is keyed by environment so one file serves all {{.EnvCountWord}} applies.
+# is keyed by environment so one file serves all three applies.
 
-{{if .Directory -}}
-# OAuth client IDs, from each environment project's console (README).
-{{.AuthVar}}_client_id = {
-{{.TfvarsEnvStrings}}
-}
-
-# The Workspace administrator the groups read impersonates.
-{{.AuthVar}}_admin_subject = {
-{{.TfvarsEnvStrings}}
-}
-
-{{end -}}
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted. Bump here after an operator adds a
 # version. "latest" only for a secret the placement marks as tracking it.
 secret_versions = {
-{{.TfvarsEnvMaps}}
+  tst = {}
+  stg = {}
+  prd = {}
 }
 
 # Extra trigger substitutions for the application's hooks and its image build,
 # per environment (_NAME = value); none by default (README, "Customizing the
 # pipeline").
 substitutions = {
-{{.TfvarsEnvMaps}}
+  tst = {}
+  stg = {}
+  prd = {}
 }
 
 # Secrets the image build reads, per environment (NAME = pinned version of the
-# container {{.Prefix}}-<env>-gbl-{{.App}}-<kebab name>, which the stack creates and only
+# container imp-<env>-gbl-beacon-<kebab name>, which the stack creates and only
 # the deploy identity may read); none by default (README, "Build secrets").
 build_secrets = {
-{{.TfvarsEnvMaps}}
+  tst = {}
+  stg = {}
+  prd = {}
 }
 
 # Defaults that are decisions, restated so they are visible here:
-{{.RestatedDefaults}}
+#   hostnames         = beacon-tst. / beacon-stg. / beacon.impulseframework.dev
+#   placeholder_image = us-docker.pkg.dev/cloudrun/container/hello

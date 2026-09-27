@@ -16,11 +16,11 @@ import (
 // fixtures is where the fixture applications and the placement live.
 const fixtures = "../derive/testdata"
 
-// deriveFixture derives the named fixture application under the test placement.
-func deriveFixture(t *testing.T, name string) *derive.Model {
+// deriveFixture derives the named fixture application under the named placement.
+func deriveFixture(t *testing.T, name, placement string) *derive.Model {
 	t.Helper()
 
-	p, err := derive.ReadPlacement(filepath.Join(fixtures, "placement.json"))
+	p, err := derive.ReadPlacement(filepath.Join(fixtures, placement))
 	if err != nil {
 		t.Fatalf("derive.ReadPlacement() error = %v", err)
 	}
@@ -43,17 +43,19 @@ func TestRenderGolden(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		fixture string
-		golden  string
+		name      string
+		fixture   string
+		placement string
+		golden    string
 	}{
-		{name: "harbor", fixture: "harbor", golden: "harbor"},
+		{name: "harbor, a Google directory auth", fixture: "harbor", placement: "placement.json", golden: "harbor"},
+		{name: "beacon, a password auth", fixture: "beacon", placement: "placement-beacon.json", golden: "beacon"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			files, err := Render(deriveFixture(t, tt.fixture))
+			files, err := Render(deriveFixture(t, tt.fixture, tt.placement))
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}

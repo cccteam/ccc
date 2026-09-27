@@ -12,7 +12,7 @@ output "backend_service_self_link" {
 }
 
 output "database" {
-  description = "The Spanner database the site opens: its project, instance, and name; for a pull-request stack in shared mode, {{.Integration}}'s."
+  description = "The Spanner database the site opens: its project, instance, and name; for a pull-request stack in shared mode, tst's."
   value = {
     project  = local.instance.project
     instance = local.instance.name
@@ -72,20 +72,13 @@ output "services" {
   }
 }
 
-{{if .Directory -}}
-output "{{.AuthVar}}_redirect_url" {
-  description = "Redirect URI to register on the OAuth client in the environment project ({{.RedirectURL.Name}})."
-  value       = local.redirect_url
-}
-
-{{end -}}
 output "substitutions" {
   description = "The substitutions the version trigger passes to cloudbuild.yaml, which a hand-submitted tag build passes too (_PR_NUMBER empty: no pull request). The pull-request trigger passes the same without _PR_NUMBER, which its event supplies."
   value       = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })
 }
 
 output "triggers" {
-  description = "Cloud Build trigger IDs: version in every environment, pr in {{.Integration}}; null until 2-env holds the GitHub connection."
+  description = "Cloud Build trigger IDs: version in every environment, pr in tst; null until 2-env holds the GitHub connection."
   value = {
     version = try(google_cloudbuild_trigger.version[0].id, null)
     pr      = try(google_cloudbuild_trigger.pr[0].id, null)

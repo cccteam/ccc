@@ -40,6 +40,7 @@ func TestDerive(t *testing.T) {
 		wantSite      []string
 		wantSiteLvls  []string
 		wantMigrate   []string
+		wantOIDC      bool
 		wantCallback  Route
 		wantRedirect  string
 		wantSchema    Schema
@@ -66,6 +67,7 @@ func TestDerive(t *testing.T) {
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST"},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
 			wantMigrate:  []string{LevelCore, LevelData},
+			wantOIDC:     true,
 			wantCallback: Route{Method: "GET", Path: "/api/user/callback", File: "pkg/router/zz_gen_router.go"},
 			wantRedirect: "APP_STAFF_OIDC_REDIRECT_URL",
 			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema"},
@@ -87,6 +89,37 @@ func TestDerive(t *testing.T) {
 				"APP_CONSOLE_DIST":             SupplyImage,
 			},
 			wantGroupPfx: "staff-",
+		},
+		{
+			name:    "beacon, a password auth: no registration, no callback",
+			fixture: "beacon",
+			wantApp: "beacon",
+			wantSecrets: []string{
+				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
+			},
+			wantCore: []string{varVersion, varServiceName, varLoggingProject},
+			wantData: []string{
+				varDatabaseProject, varDatabaseInstance, varDatabaseName,
+				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
+			},
+			wantSite:     []string{varPort, "APP_CONSOLE_DIST"},
+			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
+			wantMigrate:  []string{LevelCore, LevelData},
+			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema"},
+			wantHostnames: map[string]string{
+				"tst": "beacon-tst.impulseframework.dev",
+				"stg": "beacon-stg.impulseframework.dev",
+				"prd": "beacon.impulseframework.dev",
+			},
+			wantSupplies: map[string]Supply{
+				varVersion:                    SupplyImage,
+				varServiceName:                SupplyDerived,
+				varDatabaseProject:            SupplyDerived,
+				"APP_DEFAULT_SESSION_TIMEOUT": SupplyDefault,
+				"APP_COOKIE_KEY":              SupplySecret,
+				varPort:                       SupplyPlatform,
+				"APP_CONSOLE_DIST":            SupplyImage,
+			},
 		},
 		{
 			name:    "no go.mod",
@@ -142,11 +175,11 @@ func TestDerive(t *testing.T) {
 			if m.Migrate == nil || strings.Join(m.Migrate.Levels, ",") != strings.Join(tt.wantMigrate, ",") {
 				t.Errorf("Migrate = %+v, want levels %v", m.Migrate, tt.wantMigrate)
 			}
-			if len(m.Auths) != 1 || m.Auths[0].Callback != tt.wantCallback {
-				t.Errorf("Auths = %+v, want one with callback %+v", m.Auths, tt.wantCallback)
+			if len(m.Auths) != 1 || m.Auths[0].OIDC() != tt.wantOIDC || m.Auths[0].Callback != tt.wantCallback {
+				t.Errorf("Auths = %+v, want one with OIDC %t and callback %+v", m.Auths, tt.wantOIDC, tt.wantCallback)
 			}
-			if v := m.Auths[0].Variable(RoleRedirectURL); v == nil || v.Name != tt.wantRedirect {
-				t.Errorf("redirect URL variable = %+v, want %s", v, tt.wantRedirect)
+			if v := m.Auths[0].Variable(RoleRedirectURL); (v == nil) != (tt.wantRedirect == "") || (v != nil && v.Name != tt.wantRedirect) {
+				t.Errorf("redirect URL variable = %+v, want %q", v, tt.wantRedirect)
 			}
 			if m.Auths[0].GroupPrefixDefault != tt.wantGroupPfx {
 				t.Errorf("GroupPrefixDefault = %q, want %q", m.Auths[0].GroupPrefixDefault, tt.wantGroupPfx)

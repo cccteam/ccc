@@ -2,7 +2,7 @@ locals {
   # The application code, fixed for this stack. It is the key 2-env registered
   # the identities and the repository link under, and the segment every name
   # below carries.
-  app = "{{.App}}"
+  app = "beacon"
 
   org = data.terraform_remote_state.org.outputs
   env = data.terraform_remote_state.env.outputs
@@ -11,12 +11,12 @@ locals {
   project_id = local.env.project_id
   name       = "${local.prefix}-${var.environment}"
 
-  is_prd = var.environment == "{{.Production}}"
+  is_prd = var.environment == "prd"
 
-  # A pull-request stack: this code in {{.Integration}} with var.pull_request set, into
-  # its own state. Its resources carry the short name {{.App}}-pr<N> (2-env's wildcard
+  # A pull-request stack: this code in tst with var.pull_request set, into
+  # its own state. Its resources carry the short name beacon-pr<N> (2-env's wildcard
   # backend picks the Cloud Run service by that name from the hostname), and it
-  # shares {{.Integration}}'s secret containers, identity registration and registry.
+  # shares tst's secret containers, identity registration and registry.
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
 
@@ -36,10 +36,10 @@ locals {
   app_account_name     = "projects/${local.project_id}/serviceAccounts/${local.app_email}"
   migrate_account_name = "projects/${local.project_id}/serviceAccounts/${local.migrate_email}"
 
-  # The environment before this one in the promotion order ({{.EnvsComma}}) and
+  # The environment before this one in the promotion order (tst, stg, prd) and
   # its deployment-records bucket: the pipeline runs a release here only after
   # that environment holds a live record of it. The first environment has none.
-  previous_environment    = {{.PreviousEnvMap}}[var.environment]
+  previous_environment    = { tst = "", stg = "tst", prd = "stg" }[var.environment]
   previous_records_bucket = try(data.terraform_remote_state.previous_env[0].outputs.records_bucket, "")
 
   # The service runs in both lab regions; the migrate job in the primary only
@@ -61,28 +61,21 @@ locals {
   # pipeline appends /<image>:<tag>. Null until 2-shr knows the application.
   registry = try(data.terraform_remote_state.shr.outputs.image_paths[local.app], null)
 
-  hostnames = local.is_pr ? ["${local.pr_name}.{{.P.AppsDomain}}"] : var.hostnames[var.environment]
-{{- if .Directory}}
-
-  # From {{.EnvTemplate}}: {{.RedirectURL.Name}} is the browser-facing
-  # callback, the route {{.Auth.Callback.File}} registers as
-  # {{.Auth.Callback.Method}} {{.Auth.Callback.Path}}, on the environment's canonical host.
-  redirect_url = "https://${local.hostnames[0]}{{.Auth.Callback.Path}}"
-{{- end}}
+  hostnames = local.is_pr ? ["${local.pr_name}.impulseframework.dev"] : var.hostnames[var.environment]
 
   # The database the site opens: the environment's own, a pull request's own,
-  # or in shared mode (var.shared_database) {{.Integration}}'s, which the pull-request
+  # or in shared mode (var.shared_database) tst's, which the pull-request
   # stack then only reads by name and grants its app identity on.
   own_database  = !(local.is_pr && var.shared_database)
   database_name = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
 
   # ---------------------------------------------------------------------------
-  # What the code declares, read from {{.ConfigDir}} by bedrock render; each entry
+  # What the code declares, read from pkg/config by bedrock render; each entry
   # names the field it comes from.
   # ---------------------------------------------------------------------------
 
-  # Secrets: the fields of {{.ConfigDir}} tagged secret:"true". One container per
-  # variable per environment, named {{.Prefix}}-<env>-gbl-{{.App}}-<kebab of the
+  # Secrets: the fields of pkg/config tagged secret:"true". One container per
+  # variable per environment, named imp-<env>-gbl-beacon-<kebab of the
   # variable without its APP_ prefix>. No versions: an operator adds the value
   # (Secret Version Adder), and var.secret_versions pins which one runs.
   #
@@ -94,17 +87,15 @@ locals {
   # rule of thumb ("every process that constructs the level") would grant it;
   # this is the narrower reading, and a fork for the derivation to settle.
   secrets = {
-{{- range .Secrets}}
-    {{.Variable.Name}} = {
-      name    = "{{.Name}}"
-      source  = "{{.Variable.File}} {{.Variable.Declaration}}"
-      purpose = "{{$.Purpose .}}"
+    APP_COOKIE_KEY = {
+      name    = "cookie-key"
+      source  = "pkg/config/data.go dataConfig.CookieKey"
+      purpose = "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
     }
-{{- end}}
   }
 
   # The container each secret lives in, by the naming convention: this
-  # environment's, which a pull-request stack shares with {{.Integration}} and never creates.
+  # environment's, which a pull-request stack shares with tst and never creates.
   secret_ids = { for key, s in local.secrets : key => "${local.name}-gbl-${local.app}-${s.name}" }
 
   secret_versions = lookup(var.secret_versions, var.environment, {})
@@ -118,72 +109,53 @@ locals {
   # Build-time secrets (var.build_secrets): what the image build reads in this
   # environment, NAME = pinned version, their containers named like the runtime
   # secrets' (the variable without its APP_ prefix, in kebab case). A
-  # pull-request stack reads {{.Integration}}'s and creates none.
+  # pull-request stack reads tst's and creates none.
   build_secrets    = lookup(var.build_secrets, var.environment, {})
   build_secret_ids = { for name in keys(local.build_secrets) : name => "${local.name}-gbl-${local.app}-${lower(replace(trimprefix(name, "APP_"), "_", "-"))}" }
 
   # Environment variables the infrastructure knows, by configuration level
-  # ({{.CoreLevel.File}}: {{.CoreLevel.Name}}, {{.CoreLevel.Description}}; {{.DataLevel.FileBase}}: every process that
-  # opens the database; {{.SiteLevel.FileBase}}: {{.SiteLevel.Description}}). A process receives the
+  # (pkg/config/config.go: core, every process; data.go: every process that
+  # opens the database; site.go: the served site). A process receives the
   # levels it constructs and nothing above them.
   core_env = {
-    # {{.ServiceName.Declaration}}{{if .ServiceName.Required}} (required){{end}}: the name the process reports in logs.
-    {{.ServiceName.Name}} = local.app
-    # {{.LoggingProject.Declaration}}: request logs ship to Cloud Logging here.
-    {{.LoggingProject.Name}} = local.project_id
-    # {{.Version.Declaration}} is not set here: the pipeline bakes {{.Version.Name}}
+    # coreConfig.ServiceName (required): the name the process reports in logs.
+    APP_SERVICE_NAME = local.app
+    # coreConfig.LoggingProjectID: request logs ship to Cloud Logging here.
+    GOOGLE_CLOUD_LOGGING_PROJECT = local.project_id
+    # coreConfig.AppVersion is not set here: the pipeline bakes APP_VERSION
     # into the image at build (a Dockerfile ENV from the tag), so a deploy
     # never edits the template's variables and this stack stays their owner.
   }
 
   data_env = {
-    # {{.Database.Struct}}, all required: the database identity.
-{{.DatabaseEnv}}
-{{- if .Directory}}
-    # {{.HostedDomain.Declaration}} and {{.GroupPrefix.Field}}: the session library
-    # refuses to construct without them, so every data-level process gets both.
-{{.DirectoryEnv}}
-{{- end}}
-{{- range .CodeDefaults}}
-    # {{.Declaration}} is left to its code default ({{.Default}}).
-{{- end}}
+    # SpannerSettings, all required: the database identity.
+    GOOGLE_CLOUD_SPANNER_PROJECT       = local.instance.project
+    GOOGLE_CLOUD_SPANNER_INSTANCE_ID   = local.instance.name
+    GOOGLE_CLOUD_SPANNER_DATABASE_NAME = local.database_name
+    # dataConfig.SessionTimeout is left to its code default (10m).
   }
-{{- if .Directory}}
 
-  # The directory registration the served site needs and a migration does not.
-  # They live at the data level in the code, but a process that never signs
-  # anyone in has no use for them, so the job goes without.
-  site_directory_env = {
-    # {{.ClientID.Declaration}}: public half of the OAuth client.
-    {{.ClientID.Name}} = var.{{.AuthVar}}_client_id[var.environment]
-    # {{.RedirectURL.Declaration}}: built from the canonical hostname.
-    {{.RedirectURL.Name}} = local.redirect_url
-    # {{.AdminSubject.Declaration}}: the administrator the groups read impersonates.
-    {{.AdminSubject.Name}} = var.{{.AuthVar}}_admin_subject[var.environment]
-  }
-{{- end}}
-
-  # {{.SiteLevel.FileBase}}: {{.Port.Name}} is set by Cloud Run itself (reserved; setting it is an
-  # error) and {{.SiteImageVars}} is where the image put the bundle, a build
+  # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
+  # error) and APP_CONSOLE_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}})
+  service_env = merge(local.core_env, local.data_env)
 
-  # {{.Migrate.Dir}} reads {{.MigrateLevels}} and nothing above them.
+  # cmd/deployment/migrate reads core and data and nothing above them.
   job_env = merge(local.core_env, local.data_env, {
-    {{.ServiceName.Name}} = "${local.app}-migrate"
+    APP_SERVICE_NAME = "${local.app}-migrate"
   })
 
   # Every resource carries these. terraform_source_path is the stack's state slot
-  # in the organization's bucket (3-app/{{.App}}) written as a label value, which
+  # in the organization's bucket (3-app/beacon) written as a label value, which
   # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the
   # application repository's name, from the placement.
   base_labels = {
     terraform             = "true"
-    terraform_source_path = "3-app-{{.App}}"
-    source_repo           = "{{.P.Repository}}"
+    terraform_source_path = "3-app-beacon"
+    source_repo           = "beacon"
     environment           = var.environment
     application           = local.app
-{{.LabelLines}}
+    bedrock-lab           = "true"
   }
   # A pull-request stack also carries its number, for the sweep and the bill.
   labels = merge(local.base_labels, local.is_pr ? { pull_request = tostring(var.pull_request) } : {})
