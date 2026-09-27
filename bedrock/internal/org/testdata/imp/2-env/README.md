@@ -1,0 +1,216 @@
+# 2-env
+
+What every application in an environment shares: the environment's Spanner
+instance (tst only), the Cloud Build connection to GitHub, the
+deployment-record bucket, and, per application, the apply and deploy
+identities with their grants and the repository link. One directory, applied
+once per environment, as that environment's layer identity
+(`imp-<env>-gbl-tofu` from `1-org`).
+
+## Applying
+
+No workspaces. The state of each environment lives at its own prefix,
+`2-env/<env>`, in the state bucket, and a backend block cannot read a
+variable, so the prefix is supplied at init. `TF_DATA_DIR` keeps one backend
+cache per environment in the same checkout, so an init for one environment
+can never be paired with a plan for another:
+
+```bash
+cd 2-env
+export TF_DATA_DIR=.terraform.tst
+tofu init -backend-config="prefix=2-env/tst"
+tofu plan -var environment=tst
+tofu apply -var environment=tst
+```
+
+Then the same with `stg` and `prd`. Apply `tst` first: it holds the GitHub
+token secret and makes the grants the other two connections need. Then `tst`
+and `stg` once more whenever an application was added: each environment
+grants the next environment's deploy identities read on its records bucket
+(the release gate reads the previous environment's records) and reads those
+identities from the next environment's state, which the first pass did not
+have yet. The first
+`init` writes `.terraform.lock.hcl`; commit it. `terraform.tfvars` is
+committed and holds the boot project, the bucket, and the two GitHub values;
+`environment` is never in it.
+
+Order among the project layers: `2-shr` and `2-spn` before this layer (it
+reads their outputs: the instance for stg and prd, the repository names for a
+warning). After this layer, two of its outputs go back into the shared
+layers' variables, because the grants sit in projects where this layer's
+identity holds nothing: each application's `deploy_identity_member` into
+`2-shr`'s `pushers` (writer on its repository), and for stg and prd each
+`apply_identity_member` into `2-spn`'s `database_admins` (database admin on
+the shared instance). Then the application stacks, then `2-net` with their
+backends in its `hosts`. The `2-net` read here is optional: it publishes the
+two load balancer principals, which are derived from `1-org` until it exists,
+and a `shared_vpc_id` that is null.
+
+## What it creates
+
+- **tst only**: the Spanner instance `imp-tst-gbl-spanner`, multi-region
+  `nam10`, 100 processing units (`var.spanner_processing_units`,
+  validated at or below 200), Standard edition, no autoscaler, default backup
+  schedule `NONE`. stg and prd share the instance `2-spn` creates.
+- The Cloud Build (2nd generation) GitHub connection
+  `imp-<env>-uc1-github` for the environment project, from the Cloud Build
+  GitHub App installation on the impulseframework organization and the OAuth
+  token secret version (below). Plus the Cloud Build service agent's identity,
+  forced into existence.
+- Per application in `var.applications` (default `["harbor", "beacon"]`), a repository
+  link `imp-<env>-uc1-<app>-repo` under the connection, pointing at
+  `https://github.com/impulseframework/<app>.git`. The application stack's
+  triggers reference it. It lives here because creating one takes
+  `cloudbuild.repositories.create`, a connection administrator's permission,
+  and the design brief puts the repository registration with the environment
+  layer.
+- The deployment-record bucket `imp-<env>-gbl-records-<hex4>`, US
+  multi-region, versioned, uniform access, public access prevented. Deploy
+  identities may only create objects in it.
+- The cross-project load balancer grants: `roles/compute.loadBalancerServiceUser`
+  on the environment project for the net layer identity and the net
+  project's Compute Engine service agent, so `2-net`'s URL map can reference
+  backend services created here. Addressed from `1-org`'s outputs.
+- Per application, two service accounts in the environment project and their
+  grants. Application codes are validated at 6 characters or fewer so every
+  ID stays within 30.
+
+### Application apply identity `imp-<env>-gbl-<app>-tofu`
+
+Applies the application's stack (its repository's `infrastructure/`, state slot `3-app/<app>`) for this environment. On the environment project:
+`roles/serviceusage.serviceUsageConsumer` (it uses the environment project
+as its quota project), `roles/run.admin`, `roles/iam.serviceAccountAdmin`,
+`roles/iam.serviceAccountUser`, `roles/storage.admin`,
+`roles/cloudscheduler.admin`, `roles/cloudtasks.queueAdmin`,
+`roles/cloudbuild.builds.editor`, `roles/logging.admin`,
+`roles/monitoring.admin`, `roles/resourcemanager.projectIamAdmin`, and the
+custom organization role `secretContainerAdmin` from `1-org` (secrets as
+containers, never payloads). `roles/compute.networkUser` on the environment
+project only when `2-net` publishes a shared VPC (it publishes null). In tst,
+`roles/spanner.databaseAdmin` on the tst instance, enough to create the
+application's database and set its policy; in stg and prd the same grant on
+the shared instance is `2-spn`'s, from its `database_admins`. On the state
+bucket (the boot project's): `roles/storage.legacyBucketReader` unconditionally
+(a list is a request on the bucket and cannot be conditioned by object name),
+`roles/storage.objectUser` on `3-app/<app>/<env>/` (the pull-request stacks
+sit below it), and `roles/storage.objectViewer` on the upstream states its
+stack reads: `1-org/`, `2-env/<env>/`, `2-env/<previous env>/`, `2-shr/`.
+
+### Application deploy identity `imp-<env>-gbl-<app>-deploy`
+
+Runs every build and deploy; never writes infrastructure. On the environment
+project: `roles/serviceusage.serviceUsageConsumer`, `roles/run.developer`,
+`roles/logging.logWriter`, `roles/cloudbuild.builds.builder`. Bounded grants:
+`roles/storage.objectCreator` on the records bucket;
+`roles/secretmanager.secretAccessor` on the build-time secrets named in
+`var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; in tst
+only, `roles/spanner.databaseAdmin` on the tst instance for pull-request
+databases. Two grants are made elsewhere from this identity's member:
+`roles/artifactregistry.writer` on the application's own repository by
+`2-shr` (`pushers`), and `roles/iam.serviceAccountUser` on the application's
+runtime identities by the application stack, where those identities are
+created, so a deploy identity may act as its own application's processes and
+no other's. The `repositories_registered` check warns while `2-shr` does not
+list the application at all.
+
+### Secret operators
+
+The people who own the secret values, `var.secret_operators` (an operator
+group, normally; empty by default): each holds the custom organization role
+`secretOperator` from `1-org` on the environment project, which creates
+secrets and adds versions to them and can neither read a version nor touch a
+secret's IAM or lifecycle. An operator creates a container ahead of the
+release that first reads it (`bedrock secret add <env> <VARIABLE>`, which
+names and labels it as the application stack does) and adds the value; the
+application stack adopts the container at its next apply and the pull
+request that pins the version (`bedrock secret pin`) rolls it out.
+
+## The GitHub token, once
+
+The connection authorizes with a GitHub OAuth token that only a browser can
+produce. Once per organization:
+
+1. In the Google Cloud console, in the **tst** project, open Cloud Build >
+   Repositories (2nd gen) > Create host connection > GitHub. Sign in to GitHub
+   as the machine account `bedrockbot-ccc`, install or select the Google Cloud
+   Build GitHub App on the `impulseframework` organization with access to all
+   repositories, and finish. The console stores the token as a secret in the
+   tst project.
+2. Read the installation ID from the app's settings page on GitHub
+   (`https://github.com/organizations/impulseframework/settings/installations/<id>`)
+   and the token secret's version name from Secret Manager in the tst project
+   (`projects/<tst project>/secrets/<name>/versions/<n>`). Put both in
+   `terraform.tfvars` as `github_app_installation_id` and
+   `github_oauth_token_secret_version`.
+3. Apply tst. Besides its own connection it grants
+   `roles/secretmanager.secretAccessor` on that secret to the Cloud Build
+   service agent of each of the three environment projects, so stg and prd
+   reuse the same version rather than repeating the browser step.
+
+If the console's connection is left in place, delete it after the apply, or
+import it: this layer's connection is the one that lives on. An alternative
+that skips the console is a fine-grained personal access token of
+`bedrockbot-ccc` (contents, metadata, pull requests) added by hand as a version
+of a container created here, with the same variable pointing at it.
+
+## Prerequisites this layer does not create
+
+- On the state bucket, for each environment layer identity: object read on
+  the `1-org/`, `2-shr/`, `2-spn/`, and `2-net/` objects and object admin on
+  `2-env/<env>/`, plus bucket IAM authority so this layer can grant the
+  application apply identities their slots (below). Bucket IAM for the layer
+  identities belongs to the seed or `0-bootstrap`.
+- Nothing grants the application apply identity anything on the boot
+  project, so the application stacks use their environment project as quota
+  project; this layer grants `serviceUsageConsumer` there for that.
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|---|---|---|---|:---:|
+| `applications` | Application codes registered in this environment, 6 characters or fewer. | `list(string)` | `["harbor", "beacon"]` | no |
+| `boot_project_id` | Boot project; quota and billing project for API calls. | `string` | n/a | yes |
+| `build_time_secrets` | Secret IDs the deploy identity may read during a build, by application. | `map(list(string))` | `{}` | no |
+| `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
+| `github_app_installation_id` | Cloud Build GitHub App installation on the organization. | `number` | n/a | yes |
+| `github_oauth_token_secret_version` | `projects/<tst project>/secrets/<name>/versions/<n>`. | `string` | n/a | yes |
+| `github_deployer_app_id` | App ID of the deployer GitHub App the pipeline talks back as. | `number` | `null` | no |
+| `github_deployer_key_secret_versions` | Per environment, the pinned Secret Manager version of the deployer app's private key, in the container this layer creates. | `map(string)` | `{}` | no |
+| `github_organization` | GitHub organization of the application repositories. | `string` | `"impulseframework"` | no |
+| `secret_operators` | IAM members who create secret containers and add versions on the environment project (the `secretOperator` role). | `list(string)` | `[]` | no |
+| `spanner_config` | tst instance configuration. | `string` | `"nam10"` | no |
+| `spanner_processing_units` | tst instance size; 100 or 200. | `number` | `100` | no |
+| `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
+
+## Outputs
+
+Read by the application's stack through `data "terraform_remote_state"`, prefix
+`2-env/<env>`.
+
+| Name | Description |
+|---|---|
+| `applications` | Per application: `apply_identity_email`, `apply_identity_member`, `deploy_identity_email`, `deploy_identity_member`, `deploy_identity_id` (full resource name, for triggers), `repository_id`, `repository_name`. |
+| `connection_id`, `connection_name` | The Cloud Build GitHub connection. |
+| `environment` | Environment code. |
+| `prefix` | Naming prefix, from `1-org`. |
+| `project_id`, `project_number` | The environment project. |
+| `records_bucket` | The deployment-record bucket. |
+| `region`, `region_code`, `secondary_region`, `secondary_region_code` | The two regions and their codes. |
+| `spanner_instance` | `{ project, name }` of the instance applications use. |
+
+## Upstream outputs assumed
+
+Read with `try()`, so a missing one reads as absent. Names to reconcile with
+the layers that publish them:
+
+| Layer | Output | Used for |
+|---|---|---|
+| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role` | everything |
+| `2-shr` | `repository_names` | map of application code to repository ID; the `repositories_registered` warning |
+| `2-spn` | `project_id`, `instance_name` | the shared instance for stg and prd (project falls back to `1-org`'s) |
+| `2-net` | `shared_vpc_id` | null today; gates `compute.networkUser` |
+| `2-net` | `load_balancer_service_user`, `compute_service_agent` | the two `loadBalancerServiceUser` grants (derived from `1-org` until `2-net` exists) |
+
+And the reverse direction, this layer's `applications` output into the
+shared layers' variables: `deploy_identity_member` into `2-shr`'s `pushers`,
+`apply_identity_member` (stg and prd) into `2-spn`'s `database_admins`.

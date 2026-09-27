@@ -1,0 +1,24 @@
+# Committed on purpose: nothing here is a secret. Project IDs come from
+# 1-org's state, so nothing here needs a REPLACEME.
+
+applications = ["harbor", "beacon"]
+
+# One entry per application, listing its deploy identity in each environment
+# whose layer has created it (2-env output applications); a service account
+# must exist before it can be bound, so an application's entry is added after
+# the environment layers have run for it. Shape:
+#   pushers = { <app> = ["serviceAccount:<deploy identity email>", ...] }
+pushers = {}
+
+# The apply identities read the repository: a revision an apply creates (a
+# placement change, a pull request switching databases) carries the image
+# the last deploy left, and Cloud Run checks the creator can read it. Shape
+# as pushers, with the apply identity emails.
+pullers = {}
+
+# Defaults that are decisions, restated so they are visible here:
+#   pull_environments       = ["tst", "stg", "prd"]
+#   keep_tagged_versions    = 10
+#   untagged_retention_days = 7
+#   tagged_retention_days   = null   (tagged versions are never deleted)
+#   cleanup_dry_run         = false

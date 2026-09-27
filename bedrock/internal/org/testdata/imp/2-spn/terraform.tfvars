@@ -1,0 +1,14 @@
+# Committed on purpose: nothing here is a secret. Project IDs come from
+# 1-org's state, so nothing here needs a REPLACEME.
+
+processing_units = 100 # never above 200 without explicit agreement; variables.tf enforces it
+
+# Filled once the environment layers have created the application apply
+# identities for stg and prd (2-env output applications); a service account
+# must exist before it can be bound. Shape:
+#   database_admins = ["serviceAccount:<apply identity email>", ...]
+database_admins = []
+
+# Defaults that are decisions, restated so they are visible here:
+#   spanner_config = "nam10"
+#   edition        = (unset: ENTERPRISE_PLUS for a multi-region configuration, STANDARD for a regional one)

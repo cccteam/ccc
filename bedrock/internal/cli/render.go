@@ -11,6 +11,9 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
+// renderCommand is the name of the render commands, the application's and the organization's.
+const renderCommand = "render"
+
 func newRender(d deps) *cobra.Command {
 	var (
 		appFlag   string
@@ -19,7 +22,7 @@ func newRender(d deps) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "render [--app <dir>] [--out <dir>]",
+		Use:   renderCommand + " [--app <dir>] [--out <dir>]",
 		Short: "Write the application stack from the code",
 		Long: `render reads the application (its config struct tags, its main packages, its auths, its
 generated router) and the placement, and writes the stack into the stack directory.

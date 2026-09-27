@@ -1,0 +1,68 @@
+variable "billing_account_id" {
+  description = "(Required) Billing account ID to link projects to, in the form {billing_account_id} or billingAccounts/{billing_account_id}."
+  type        = string
+}
+
+variable "boot_layer_roles" {
+  description = "Organization-level roles granted to the boot layer identity. The gcloud seed in this layer's README grants the same list; change both together."
+  type        = list(string)
+  default = [
+    "roles/iam.organizationRoleAdmin",         # the custom project-updater role granted to the org layer identity
+    "roles/iam.serviceAccountAdmin",           # the org layer identity's service account
+    "roles/resourcemanager.folderAdmin",       # the terraform folder
+    "roles/resourcemanager.organizationAdmin", # org-level IAM bindings for the org layer identity
+    "roles/resourcemanager.projectCreator",    # the boot project
+    "roles/resourcemanager.projectDeleter",    # project lifecycle
+    "roles/resourcemanager.projectIamAdmin",   # IAM bindings inside the boot project
+    "roles/serviceusage.serviceUsageAdmin",    # API enablement in the boot project
+  ]
+}
+
+variable "boot_project_id" {
+  description = "(Required) Project ID of the boot project created during the gcloud seed, including the random suffix chosen for it (e.g. \"{{.Prefix}}-boot-gbl-core-a1b2\"). This layer adopts the project rather than creating it, so the ID has to be supplied rather than derived."
+  type        = string
+}
+
+variable "terraform_folder_id" {
+  description = "(Required) Numeric ID of the terraform folder created during the gcloud seed, without the \"folders/\" prefix. Adopted by this layer on its first run."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.terraform_folder_id))
+    error_message = "terraform_folder_id must be the bare numeric ID, not the folders/{id} resource name."
+  }
+}
+
+variable "manage_billing_iam" {
+  description = "Whether this layer manages the roles/billing.user grants for the two layer identities on the billing account. Changing a billing account's IAM policy needs Billing Account Administrator, which the bootstrap administrator does not hold on the CCC account. While this is false the grants are made by hand by a billing administrator (README, step 2) and stay outside OpenTofu."
+  type        = bool
+  default     = true
+}
+
+variable "org_layer_roles" {
+  description = "Organization-level roles granted to the org layer identity. Turning on central_logging in 1-org needs roles/logging.configWriter and roles/storage.admin added here."
+  type        = list(string)
+  default = [
+    "roles/essentialcontacts.admin",         # Essential Contacts per folder
+    "roles/iam.organizationRoleAdmin",       # the secretContainerAdmin custom role created by 1-org
+    "roles/iam.serviceAccountAdmin",         # per-layer OpenTofu and plan service accounts
+    "roles/iam.serviceAccountUser",          # act as those service accounts
+    "roles/orgpolicy.policyAdmin",           # folder-scoped org policy constraints
+    "roles/resourcemanager.folderAdmin",     # environment folders
+    "roles/resourcemanager.projectCreator",  # environment projects
+    "roles/resourcemanager.projectDeleter",  # project lifecycle
+    "roles/resourcemanager.projectIamAdmin", # IAM bindings inside those projects
+    "roles/serviceusage.serviceUsageAdmin",  # API enablement
+  ]
+}
+
+variable "organization_domain" {
+  description = "(Required) Domain name of the GCP Organization (e.g. \"{{.OrganizationDomain}}\")."
+  type        = string
+}
+
+variable "prefix" {
+  description = "Short org-wide prefix used in resource names (e.g. \"{{.Prefix}}\")."
+  type        = string
+  default     = "{{.Prefix}}"
+}

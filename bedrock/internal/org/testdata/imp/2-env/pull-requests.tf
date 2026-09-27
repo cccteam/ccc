@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------------------
+# The pull-request backend, tst only
+#
+# Every pull-request environment of every application answers on
+# <app>-pr<N>.<apps domain>. Rather than a backend per pull request, one
+# serverless network endpoint group per region carries a URL mask,
+# <service>.<apps domain>, that picks the Cloud Run service named by the
+# hostname's first label at request time, and one backend service over the
+# two takes 2-net's wildcard host rule (*.<apps domain>, hosts in its
+# variables). An application's pull-request stack then names its service
+# <app>-pr<N> and is reachable with nothing added here or in 2-net; the
+# environment's own hostnames keep their exact host rules, which win over
+# the wildcard. Same outlier detection and logging as an application's
+# backend (3-app).
+# ---------------------------------------------------------------------------
+
+locals {
+  # Both regions, keyed by their codes, as an application's stack keys them.
+  pull_request_regions = local.is_tst ? {
+    (local.region_code)           = local.region
+    (local.secondary_region_code) = local.secondary_region
+  } : {}
+  apps_domain = data.terraform_remote_state.net.outputs.apps_domain
+}
+
+resource "google_compute_region_network_endpoint_group" "pull_requests" {
+  for_each = local.pull_request_regions
+
+  project               = local.project_id
+  region                = each.value
+  name                  = "${local.name}-${each.key}-pr-neg"
+  network_endpoint_type = "SERVERLESS"
+
+  cloud_run {
+    url_mask = "<service>.${local.apps_domain}"
+  }
+}
+
+resource "google_compute_backend_service" "pull_requests" {
+  count = local.is_tst ? 1 : 0
+
+  project     = local.project_id
+  name        = "${local.name}-gbl-pr-backend"
+  description = "Pull-request environments in ${var.environment}: *.${local.apps_domain}, the service named by the hostname"
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  protocol              = "HTTPS"
+
+  dynamic "backend" {
+    for_each = google_compute_region_network_endpoint_group.pull_requests
+    content {
+      group = backend.value.id
+    }
+  }
+
+  outlier_detection {
+    consecutive_errors           = 5
+    enforcing_consecutive_errors = 100
+    max_ejection_percent         = 50
+
+    interval {
+      seconds = 1
+    }
+
+    base_ejection_time {
+      seconds = 30
+    }
+  }
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+}

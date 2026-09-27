@@ -103,6 +103,7 @@ its own: the code and a placement are the inputs, the stack is the output.`,
 	root.AddCommand(newRepository(d))
 	root.AddCommand(newHotfix(d))
 	root.AddCommand(newDeploy(d))
+	root.AddCommand(newOrg(d))
 
 	return root
 }

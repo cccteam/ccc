@@ -1,0 +1,72 @@
+locals {
+  org_id   = trimprefix(data.google_organization.this.name, "organizations/")
+  org_name = data.google_organization.this.name
+
+  # Naming convention: {prefix}-{environment}-{region}-{purpose}
+  # Use "gbl" only for truly global resources: projects, folders, service
+  # accounts, IAM. Regional resources (GCS, Spanner, subnets) carry the region
+  # code.
+  region_short = {
+    "us-central1" = "uc1"
+    "us-east1"    = "ue1"
+    "us-east4"    = "ue4"
+    "us-west1"    = "uw1"
+    "us-west2"    = "uw2"
+    "us-west3"    = "uw3"
+  }
+  region_code           = local.region_short[var.gcp_region]
+  secondary_region_code = local.region_short[var.gcp_secondary_region]
+
+  labels = {
+    terraform             = "true"
+    terraform_source_path = "1-org"
+    source_repo           = "imp-impulse-infrastructure"
+    environment           = "org"
+    bedrock-lab           = "true"
+  }
+
+  # Folder hierarchy created beneath the org root, alongside the terraform
+  # folder from 0-bootstrap. The folders exist ahead of the projects that will
+  # fill them: they are where org policy and Essential Contacts attach, so a
+  # project inherits the guardrails the moment it is created rather than after
+  # a follow-up run.
+  folders = {
+    shared = "shared"
+    tst    = "tst"
+    stg    = "stg"
+    prd    = "prd"
+  }
+
+  # The log project exists only with central logging on. It is added here
+  # rather than in var.projects so the flag is the single switch, and it has
+  # no layer identity: it is managed end to end from this layer so the audit
+  # trail has one owner. A for-expression with a filter rather than a
+  # conditional, because the two arms of a conditional would have different
+  # object types.
+  log_project = {
+    for key, cfg in {
+      log = {
+        folder      = "shared"
+        description = "Central audit log sink destination"
+        api_set     = "log"
+        role_set    = "app"
+        layer       = false
+      }
+    } : key => cfg if var.central_logging
+  }
+
+  projects = merge(var.projects, local.log_project)
+
+  # Projects that get their own layer identity and plan identity.
+  layers = { for k, v in local.projects : k => v if v.layer }
+
+  layer_names = { for k, v in local.layers : k => "${var.prefix}-${k}-gbl" }
+
+  # Custom organization roles a role set may name by bare ID. A variable
+  # default cannot reference a resource, so var.layer_roles carries the ID and
+  # service-accounts.tf resolves it through this map.
+  custom_roles = {
+    secretContainerAdmin = google_organization_iam_custom_role.secret_container_admin.id
+    secretOperator       = google_organization_iam_custom_role.secret_operator.id
+  }
+}

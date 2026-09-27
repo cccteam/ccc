@@ -1,0 +1,65 @@
+variable "database_admins" {
+  description = <<-EOT
+    IAM members granted roles/spanner.databaseAdmin on the instance. Creating a
+    database needs spanner.databases.create on the instance, so every identity
+    that creates databases here belongs in this list: the application apply
+    identity of each application in stg and prd, which the environment layers
+    create. A member has to exist before it can be bound, so an application's
+    identities are added here after the environment layers have run for it.
+
+    Everything below the instance is the application layer's: the database
+    user grants for runtime identities and the migrate identity's admin grant
+    are made on each database by the layer that creates it.
+
+    Example:
+      [
+        "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-a1b2.iam.gserviceaccount.com",
+        "serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-a1b2.iam.gserviceaccount.com",
+      ]
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for m in var.database_admins : can(regex("^(serviceAccount|user|group|principal|principalSet):", m))])
+    error_message = "Every database admin must be a full IAM member, such as serviceAccount:name@project.iam.gserviceaccount.com."
+  }
+}
+
+variable "edition" {
+  description = <<-EOT
+    Spanner edition. Left unset, it follows the configuration: a regional
+    configuration (regional-*) gets STANDARD and a multi-region configuration
+    gets ENTERPRISE_PLUS, because Google admits multi-region instances to that
+    edition only (the first apply of this layer, 2026-09-25, was refused with
+    "Feature MULTI_REGION is not available ... in Edition STANDARD"). Set it
+    only to run a regional instance on a higher edition. Catalog prices on
+    2026-09-25 for 100 processing units: nam10 on ENTERPRISE_PLUS is about
+    $225 a month, regional-us-central1 on STANDARD about $66.
+  EOT
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.edition == null || contains(["STANDARD", "ENTERPRISE", "ENTERPRISE_PLUS"], var.edition)
+    error_message = "edition must be unset, STANDARD, ENTERPRISE, or ENTERPRISE_PLUS."
+  }
+}
+
+variable "processing_units" {
+  description = "Compute capacity of the instance in processing units (100 = a tenth of a node). 100 is the smallest a multi-region instance can be and is the organization's size. The cap of 200 is a decision (2026-09-25): never more without explicit agreement, and the validation is what enforces it, so raising the cap is a visible code change rather than a number in terraform.tfvars."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.processing_units >= 100 && var.processing_units <= 200 && var.processing_units % 100 == 0
+    error_message = "processing_units must be 100 or 200: at least 100, a multiple of 100 below 1000, and never above 200 without explicit agreement."
+  }
+}
+
+variable "spanner_config" {
+  description = "Instance configuration. nam10 is the multi-region configuration whose read-write replicas are in us-central1 and us-west3, the organization's two regions, with a witness in us-central2."
+  type        = string
+  default     = "nam10"
+}
