@@ -24,6 +24,14 @@ ones at the application root. It exits 1 when any differs or is missing, listing
 the first line that differs: the drift between the code and the committed infrastructure.
 Seeded files (terraform.tfvars, the Dockerfile) are a person's and are not compared.
 
+It also refuses a schema migrations directory, or the seed directory beside it
+(schema/devseed), whose files do not form the sequence the migrate command applies:
+six-digit indexes, one up file per index, at most one down, contiguous from the lowest
+present (a history consolidated above 000001 passes; a skipped number does not). The
+pipeline repeats that rule on every build and, in a pull-request build, also refuses a
+migration modified, renamed or removed against the default branch, and an index the
+default branch has taken since the branch was cut.
+
 Run from anywhere inside the repository, it finds both directories: the stack is the
 application repository's infrastructure directory, or the one application layer under
 3-app of an infrastructure root (the repository root, or its infrastructure directory);

@@ -236,6 +236,19 @@ and is posted on the pull request. Before that, `bedrock check` refuses an
 authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the
 stack: one apply would remove another's members.
 
+The migration guard. The schema migrations under `{{.Schema.MigrationsDir}}` and the seed
+migrations beside them (`devseed`) are applied once each in the order of their
+indexes, so every build first checks that each directory is one sequence
+(six-digit indexes, one up file per index, at most one down, contiguous from
+the lowest present), and a pull-request build also checks that every migration
+the branch started with is still there unchanged, and reads the sequence
+together with the default branch's, so an index taken there since the branch
+was cut is refused now, with the pull request's own migration renumbered to the
+next free index, not found after the merge. The refusal is posted on the pull
+request. `bedrock check` applies the sequence rule locally; the
+schema-protection workflow in the application's CI is the merge gate for the
+unchanged rule.
+
 The sweep. Closing or merging a pull request starts no build, so every hour
 Cloud Scheduler runs the sweep trigger (`cloudbuild-sweep.yaml`) in {{.Integration}} as
 the deploy identity: it lists the pull-request services by their

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -64,15 +65,20 @@ type Report struct {
 	// Authoritative lists the authoritative IAM resources declared anywhere in the
 	// stack, owned files and a person's alike, in path then line order.
 	Authoritative []Authoritative
+	// Migrations are the problems with the schema migrations directory: a file that
+	// is not a migration, an index with two up files, a gap in the sequence.
+	Migrations []MigrationFinding
 }
 
-// Clean reports no drift and no refused resource.
+// Clean reports no drift, no refused resource and a sound migration sequence.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
-// owned files at the application root with appDir's.
+// owned files at the application root with appDir's. It also reads the schema migrations
+// directory and the seed directory beside it for a sequence the migrate command could not
+// apply in order.
 func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 	files, err := render.Render(m)
 	if err != nil {
@@ -110,8 +116,26 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 		return nil, err
 	}
 	r.Authoritative = authoritative
+	for _, d := range migrationDirs(m) {
+		migrations, err := scanMigrations(filepath.Join(appDir, filepath.FromSlash(d)), d)
+		if err != nil {
+			return nil, err
+		}
+		r.Migrations = append(r.Migrations, migrations...)
+	}
 
 	return r, nil
+}
+
+// migrationDirs is the schema migrations directory and the seed directory beside it
+// (schema/devseed, the data migrations the migrate command applies with -seed), both
+// root-relative; none when the application has no schema.
+func migrationDirs(m *derive.Model) []string {
+	if m.Schema.MigrationsDir == "" {
+		return nil
+	}
+
+	return []string{m.Schema.MigrationsDir, path.Join(path.Dir(m.Schema.MigrationsDir), seedDir)}
 }
 
 // authoritativeResource matches the opening line of an authoritative IAM resource
@@ -194,5 +218,8 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, a := range r.Authoritative {
 		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead\n", a.Path, a.Line, a.Address)
+	}
+	for _, mf := range r.Migrations {
+		fmt.Fprintf(w, "  refused  %s: %s\n", mf.Path, mf.Problem)
 	}
 }
