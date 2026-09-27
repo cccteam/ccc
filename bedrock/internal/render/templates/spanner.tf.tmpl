@@ -50,6 +50,13 @@ resource "google_spanner_database_iam_member" "app_user" {
   member   = local.app_member
 
   depends_on = [google_spanner_database.{{.App}}, google_service_account.app]
+
+  # A recreated database (/gcbrun reload-db replaces it) starts with no
+  # members; the membership is recreated with it rather than believed to
+  # exist.
+  lifecycle {
+    replace_triggered_by = [google_spanner_database.{{.App}}]
+  }
 }
 
 # DDL, for the migrations ({{.Schema.MigrateCall}}), on this database only, and
@@ -64,6 +71,10 @@ resource "google_spanner_database_iam_member" "migrate_admin" {
   member   = local.migrate_member
 
   depends_on = [google_service_account.migrate]
+
+  lifecycle {
+    replace_triggered_by = [google_spanner_database.{{.App}}[0]]
+  }
 }
 
 moved {
