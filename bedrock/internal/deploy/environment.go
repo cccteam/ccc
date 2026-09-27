@@ -7,8 +7,10 @@ package deploy
 import (
 	"bufio"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -64,6 +66,23 @@ func (w Workspace) Environment() (map[string]string, error) {
 	}
 
 	return env, nil
+}
+
+// Append adds facts to the environment file, one export line each, sorted by name: a
+// later step's findings (the image digest, the reuse flag) for the steps after it.
+func (w Workspace) Append(facts map[string]string) error {
+	f, err := os.OpenFile(filepath.Join(string(w), EnvironmentFile), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return errors.Wrap(err, "os.OpenFile()")
+	}
+	defer f.Close()
+	for _, name := range slices.Sorted(maps.Keys(facts)) {
+		if _, err := f.WriteString("export " + name + "=" + doubleQuote(facts[name]) + "\n"); err != nil {
+			return errors.Wrapf(err, "os.File.WriteString(): %s", EnvironmentFile)
+		}
+	}
+
+	return nil
 }
 
 // unquote reads a shell word: single-quoted (a quote inside written as '\”),

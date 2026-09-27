@@ -80,11 +80,13 @@ type Clients struct {
 	Comments CommentsFunc
 	// GitHub opens the GitHub client with that token, for the release checks.
 	GitHub GitHubFunc
+	// Registry opens Artifact Registry, for the release check on the image.
+	Registry RegistryFunc
 }
 
 // DefaultClients opens the real services.
 func DefaultClients() *Clients {
-	return &Clients{Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub}
+	return &Clients{Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub, Registry: NewArtifactRegistry}
 }
 
 // Builds reads a build and mints the GitHub token of the repository it came from,

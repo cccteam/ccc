@@ -22,10 +22,10 @@ func newDeploy(d deps) *cobra.Command {
 facts the resolve step exports to the workspace (environment.sh), the build as Cloud Build
 describes it (build.json) and what the earlier steps left there. A pipeline lists the steps it
 wants, and the rendered cloudbuild.yaml runs them from the bedrock image the placement pins
-(bedrockImage). Today: resolve, validate-release and record. The rest of the sequence follows,
-one step at a time.`,
+(bedrockImage). Today: resolve, validate-release, check-release and record. The rest of the
+sequence follows, one step at a time.`,
 	}
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployRecord(d))
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployRecord(d))
 
 	return cmd
 }
@@ -86,6 +86,30 @@ build.json from the workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// newDeployCheckRelease is deploy check-release.
+func newDeployCheckRelease(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "check-release",
+		Short: "Decide whether the image build runs",
+		Long: `check-release reads the registry before the image build. One registry serves every environment
+and the image tags carry the environment (<release>-<env>, <commit>-<env>), so two digests tell
+the story: neither tag exists, the build runs; the commit is built and the release tag is not,
+the release name is added to that build and nothing is rebuilt (a tag moved, or a pull-request
+release whose commit was fast-forwarded to the default branch); both exist and agree, the build
+is reused; the release tag names another build, the run is refused, since a release names one
+build per environment. It appends IMAGE_DIGEST and REUSE_IMAGE to environment.sh for the steps
+after it.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.CheckRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")

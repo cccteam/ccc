@@ -7,7 +7,7 @@
 #   ValidateRelease           whether this release may deploy here: the release, its commit, the record gate (bedrock deploy validate-release)
 #   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops
 #   Hook*                     the application's own scripts at four stages, when it commits them
-#   CheckRelease              a release already in the registry is reused (same commit) or refused
+#   CheckRelease              a release already in the registry is reused (same commit) or refused (bedrock deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit, pushed
 #   RunMigrations             the migrate command as a Cloud Run job, run to completion
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet
@@ -373,52 +373,18 @@ steps:
         echo "=== Hook after-down: $${HOOK} ==="
         bash "$${HOOK}"
 
-  # One image per environment, built fresh from this commit (no cache, nothing promoted from
-  # another environment) and pushed under the commit and the release. Its digest is what
-  # every later step deploys, so a revision is pinned to exactly this build.
-  # A release names one build, and the registry's tags are immutable. When this
-  # release's tag already exists the run is a retry: the tag must point at the image
-  # this same commit produced, which BuildImage then reuses; a tag from another commit
-  # stops the build instead of being overwritten. When only the commit's tag exists,
-  # the commit was built here under another name and the release name is added to it.
+  # Whether the image build runs: bedrock deploy check-release, from the bedrock image the
+  # placement pins. One registry serves every environment and the image tags carry the
+  # environment, so the release tag's digest and the commit tag's digest decide: neither
+  # exists, BuildImage builds; the commit is built under another release name, that
+  # name is added and the build reused; both agree, reused; the release tag names another
+  # build, the run is refused (a release names one build per environment). It appends
+  # IMAGE_DIGEST and REUSE_IMAGE to environment.sh.
   - id: CheckRelease
     waitFor: ["HookAfterDown"]
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: bash
+    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    args: [deploy, check-release]
     timeout: 300s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-
-        EXISTING=$(gcloud artifacts docker images describe "$${IMAGE}:$${IMAGE_TAG}" --format='value(image_summary.digest)' 2>/dev/null || true)
-        BY_COMMIT=$(gcloud artifacts docker images describe "$${IMAGE}:$${COMMIT_TAG}" --format='value(image_summary.digest)' 2>/dev/null || true)
-        if [ -z "$${EXISTING}" ]; then
-          if [ -n "$${BY_COMMIT}" ]; then
-            # The commit is the identity of a build: this environment already built this
-            # commit under another release name (a tag moved, or a pull-request release
-            # whose commit was fast-forwarded to master). The release name is added to
-            # that build; nothing is rebuilt.
-            echo "Commit ${COMMIT_SHA} is already built for ${_ENV} as $${IMAGE}@$${BY_COMMIT}; naming it $${IMAGE_TAG} and reusing it."
-            gcloud artifacts docker tags add "$${IMAGE}:$${COMMIT_TAG}" "$${IMAGE}:$${IMAGE_TAG}"
-            echo "export IMAGE_DIGEST=\"$${BY_COMMIT}\"" >> /workspace/environment.sh
-            echo "export REUSE_IMAGE=\"true\"" >> /workspace/environment.sh
-            exit 0
-          fi
-          echo "Release $${RELEASE} is not in the registry for ${_ENV} yet; BuildImage builds it."
-          echo "export REUSE_IMAGE=\"\"" >> /workspace/environment.sh
-          exit 0
-        fi
-        echo "Release tag digest: $${EXISTING}; commit tag digest: $${BY_COMMIT:-none}"
-        if [[ "$${EXISTING}" != "$${BY_COMMIT}" ]]; then
-          echo "Build REJECTED: $${IMAGE}:$${IMAGE_TAG} already exists and was not built from commit ${COMMIT_SHA}; a release names one build per environment."
-          exit 1
-        fi
-        echo "Reusing $${IMAGE}:$${IMAGE_TAG}@$${EXISTING}, built from this commit by an earlier run."
-        echo "export IMAGE_DIGEST=\"$${EXISTING}\"" >> /workspace/environment.sh
-        echo "export REUSE_IMAGE=\"true\"" >> /workspace/environment.sh
 
   # The application's hook before the image build, when it commits one at
   # infrastructure/hooks/before-build.sh: run as the deploy identity in the checkout, with
