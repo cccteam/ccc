@@ -64,7 +64,19 @@ func TestRun(t *testing.T) {
 			name:       "the committed stack matches",
 			mutate:     func(*testing.T, string) {},
 			wantClean:  true,
-			wantOutput: []string{"11 owned file(s) match the code"},
+			wantOutput: []string{"13 owned file(s) match the code"},
+		},
+		{
+			name: "an edited pipeline file at the application root differs",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				if err := os.WriteFile(filepath.Join(dir, "root", "cloudbuild.yaml"), []byte("# edited\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantFindings: []Finding{{Path: "cloudbuild.yaml", Root: true, Line: 1, Want: "# harbor's deploy pipeline: Cloud Build steps, in the sequence CCC's deployments use, that take one", Got: "# edited"}},
+			wantOutput:   []string{"1 of 13 owned file(s) differ from the code", "differs  cloudbuild.yaml:1 (at the application root)"},
 		},
 		{
 			name: "an edited owned file differs at its first changed line",
@@ -82,7 +94,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantFindings: []Finding{{Path: "locals.tf", Line: 5, Want: `  app = "harbor"`, Got: `  app = "haven"`}},
-			wantOutput:   []string{"1 of 11 owned file(s) differ", "differs  locals.tf:5", "code:        app = \"harbor\"", "committed:   app = \"haven\""},
+			wantOutput:   []string{"1 of 13 owned file(s) differ", "differs  locals.tf:5", "code:        app = \"harbor\"", "committed:   app = \"haven\""},
 		},
 		{
 			name: "a missing owned file",
@@ -120,7 +132,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantRefused: []Authoritative{{Path: "custom.tf", Line: 2, Address: "google_project_iam_binding.owners"}},
-			wantOutput:  []string{"11 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners"},
+			wantOutput:  []string{"13 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners"},
 		},
 		{
 			name: "an edited seeded file is a person's",
@@ -140,7 +152,7 @@ func TestRun(t *testing.T) {
 
 			dir := copyGolden(t)
 			tt.mutate(t, dir)
-			report, err := Run(harborModel(t), dir)
+			report, err := Run(harborModel(t), dir, filepath.Join(dir, "root"))
 			if err != nil {
 				t.Fatalf("Run() error = %v", err)
 			}

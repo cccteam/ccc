@@ -19,9 +19,10 @@ func newCheck(d deps) *cobra.Command {
 		Use:   "check [--app <dir>] [--dir <dir>]",
 		Short: "Compare a committed stack with what the code declares",
 		Long: `check renders the application stack afresh and compares every owned file with the one in
-the stack directory. It exits 1 when any differs or is missing, listing each with the first
-line that differs: the drift between the code and the committed infrastructure. Seeded
-files (terraform.tfvars) are a person's and are not compared.
+the stack directory, and the pipeline files (cloudbuild.yaml, cloudbuild-sweep.yaml) with the
+ones at the application root. It exits 1 when any differs or is missing, listing each with
+the first line that differs: the drift between the code and the committed infrastructure.
+Seeded files (terraform.tfvars, the Dockerfile) are a person's and are not compared.
 
 Run from anywhere inside the repository, it finds both directories: the stack is the
 application repository's infrastructure directory, or the one application layer under
@@ -39,7 +40,7 @@ is read from --placement, or from placement.json in the stack directory.`,
 			if err != nil {
 				return err
 			}
-			report, err := check.Run(m, dir)
+			report, err := check.Run(m, dir, appDir)
 			if err != nil {
 				return err
 			}

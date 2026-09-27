@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,27 +57,35 @@ func TestRenderGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
+			// The stack's files are the golden directory's; the files for the application
+			// root are under its root subdirectory.
 			goldenDir := filepath.Join("testdata", tt.golden)
 			rendered := map[string]bool{}
 			for _, f := range files {
-				rendered[f.Path] = true
-				want, err := os.ReadFile(filepath.Join(goldenDir, f.Path))
+				golden := goldenDir
+				if f.Root {
+					golden = filepath.Join(goldenDir, "root")
+				}
+				rendered[filepath.Join(golden, f.Path)] = true
+				want, err := os.ReadFile(filepath.Join(golden, f.Path))
 				if err != nil {
-					t.Errorf("%s: rendered but not in %s: %v", f.Path, goldenDir, err)
+					t.Errorf("%s: rendered but not in %s: %v", f.Path, golden, err)
 
 					continue
 				}
 				if !bytes.Equal(f.Content, want) {
-					t.Errorf("%s differs from %s:\n%s", f.Path, goldenDir, firstDiff(want, f.Content))
+					t.Errorf("%s differs from %s:\n%s", f.Path, golden, firstDiff(want, f.Content))
 				}
 			}
-			entries, err := os.ReadDir(goldenDir)
-			if err != nil {
-				t.Fatalf("os.ReadDir() error = %v", err)
-			}
-			for _, e := range entries {
-				if !e.IsDir() && !rendered[e.Name()] {
-					t.Errorf("%s is in %s but not rendered", e.Name(), goldenDir)
+			for _, golden := range []string{goldenDir, filepath.Join(goldenDir, "root")} {
+				entries, err := os.ReadDir(golden)
+				if err != nil {
+					t.Fatalf("os.ReadDir() error = %v", err)
+				}
+				for _, e := range entries {
+					if !e.IsDir() && !rendered[filepath.Join(golden, e.Name())] {
+						t.Errorf("%s is in %s but not rendered", e.Name(), golden)
+					}
 				}
 			}
 		})
@@ -107,25 +116,33 @@ func TestWrite(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		existing   map[string]string
-		wantOwned  int
-		wantSeeded []string
-		wantKept   []string
-		wantTfvars string
+		name         string
+		existing     map[string]string
+		existingRoot map[string]string
+		wantOwned    int
+		wantPipeline []string
+		wantSeeded   []string
+		wantKept     []string
+		wantTfvars   string
+		wantDocker   string
 	}{
 		{
-			name:       "an empty directory gets everything",
-			wantOwned:  2,
-			wantSeeded: []string{"terraform.tfvars"},
-			wantTfvars: "seeded\n",
+			name:         "empty directories get everything",
+			wantOwned:    2,
+			wantPipeline: []string{"cloudbuild.yaml"},
+			wantSeeded:   []string{"terraform.tfvars", "Dockerfile"},
+			wantTfvars:   "seeded\n",
+			wantDocker:   "image\n",
 		},
 		{
-			name:       "an owned file is rewritten, a seeded file is kept",
-			existing:   map[string]string{"locals.tf": "old\n", "terraform.tfvars": "mine\n"},
-			wantOwned:  2,
-			wantKept:   []string{"terraform.tfvars"},
-			wantTfvars: "mine\n",
+			name:         "owned files are rewritten, seeded files kept, in both places",
+			existing:     map[string]string{"locals.tf": "old\n", "terraform.tfvars": "mine\n"},
+			existingRoot: map[string]string{"cloudbuild.yaml": "old pipeline\n", "Dockerfile": "my image\n"},
+			wantOwned:    2,
+			wantPipeline: []string{"cloudbuild.yaml"},
+			wantKept:     []string{"terraform.tfvars", "Dockerfile"},
+			wantTfvars:   "mine\n",
+			wantDocker:   "my image\n",
 		},
 	}
 	for _, tt := range tests {
@@ -133,27 +150,36 @@ func TestWrite(t *testing.T) {
 			t.Parallel()
 
 			dir := filepath.Join(t.TempDir(), "stack")
-			if len(tt.existing) > 0 {
-				if err := os.MkdirAll(dir, 0o700); err != nil {
+			appDir := t.TempDir()
+			for name, content := range tt.existing {
+				if err := os.MkdirAll(dir, 0o750); err != nil {
 					t.Fatal(err)
 				}
-				for name, content := range tt.existing {
-					if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
-						t.Fatal(err)
-					}
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for name, content := range tt.existingRoot {
+				if err := os.WriteFile(filepath.Join(appDir, name), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
 				}
 			}
 			files := []File{
 				{Path: "locals.tf", Tier: Owned, Content: []byte("new\n")},
 				{Path: "README.md", Tier: Owned, Content: []byte("readme\n")},
 				{Path: "terraform.tfvars", Tier: Seeded, Content: []byte("seeded\n")},
+				{Path: "cloudbuild.yaml", Tier: Owned, Root: true, Content: []byte("pipeline\n")},
+				{Path: "Dockerfile", Tier: Seeded, Root: true, Content: []byte("image\n")},
 			}
-			written, err := Write(files, dir)
+			written, err := Write(files, dir, appDir)
 			if err != nil {
 				t.Fatalf("Write() error = %v", err)
 			}
 			if written.Owned != tt.wantOwned {
 				t.Errorf("Write() owned = %d, want %d", written.Owned, tt.wantOwned)
+			}
+			if strings.Join(written.Pipeline, ",") != strings.Join(tt.wantPipeline, ",") {
+				t.Errorf("Write() pipeline = %v, want %v", written.Pipeline, tt.wantPipeline)
 			}
 			if strings.Join(written.Seeded, ",") != strings.Join(tt.wantSeeded, ",") {
 				t.Errorf("Write() seeded = %v, want %v", written.Seeded, tt.wantSeeded)
@@ -161,19 +187,19 @@ func TestWrite(t *testing.T) {
 			if strings.Join(written.Kept, ",") != strings.Join(tt.wantKept, ",") {
 				t.Errorf("Write() kept = %v, want %v", written.Kept, tt.wantKept)
 			}
-			got, err := os.ReadFile(filepath.Join(dir, "terraform.tfvars"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(got) != tt.wantTfvars {
-				t.Errorf("terraform.tfvars = %q, want %q", got, tt.wantTfvars)
-			}
-			locals, err := os.ReadFile(filepath.Join(dir, "locals.tf"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(locals) != "new\n" {
-				t.Errorf("locals.tf = %q, want the rewritten content", locals)
+			for path, want := range map[string]string{
+				filepath.Join(dir, "locals.tf"):          "new\n",
+				filepath.Join(dir, "terraform.tfvars"):   tt.wantTfvars,
+				filepath.Join(appDir, "cloudbuild.yaml"): "pipeline\n",
+				filepath.Join(appDir, "Dockerfile"):      tt.wantDocker,
+			} {
+				got, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatalf("os.ReadFile(%s) error = %v", path, err)
+				}
+				if string(got) != want {
+					t.Errorf("%s = %q, want %q", path, got, want)
+				}
 			}
 		})
 	}
@@ -258,5 +284,22 @@ func TestCommonPrefix(t *testing.T) {
 				t.Errorf("commonPrefix() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSubstitutionNames(t *testing.T) {
+	t.Parallel()
+
+	names, err := substitutionNames()
+	if err != nil {
+		t.Fatalf("substitutionNames() error = %v", err)
+	}
+	for _, want := range []string{"_ENV", "_APP", "_PROJECT", "_SERVICES", "_MIGRATE_JOB", "_SEED", "_DEPLOYER_KEY_SECRET"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("substitutionNames() = %v, want it to contain %s", names, want)
+		}
+	}
+	if slices.Contains(names, "_PR_NUMBER") {
+		t.Errorf("substitutionNames() = %v: _PR_NUMBER is the trigger's, not the map's", names)
 	}
 }

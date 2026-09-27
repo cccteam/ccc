@@ -31,9 +31,14 @@ application repository's infrastructure directory, or the one application layer 
 infrastructure directory, else from the working directory; --app overrides.
 
 The stack's .tf files and its README are owned: render rewrites them every time, and each
-says in a comment which declaration it comes from. terraform.tfvars is seeded: written when
-absent, then a person's, holding the placement values filled in per environment. The
-placement is read from --placement, or from placement.json in the stack directory.`,
+says in a comment which declaration it comes from. So are the pipeline files at the
+application root, cloudbuild.yaml and cloudbuild-sweep.yaml, which Cloud Build reads there:
+the deploy sequence is bedrock's, and an application customizes it through hooks
+(infrastructure/hooks/<stage>.sh) and the substitutions declared in its placement values,
+never by editing the file. terraform.tfvars is seeded: written when absent, then a person's,
+holding the placement values filled in per environment; so is the Dockerfile at the
+application root, the image build in its first shape. The placement is read from
+--placement, or from placement.json in the stack directory.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appDir, outDir, err := d.stack(appFlag, outFlag)
@@ -48,13 +53,21 @@ placement is read from --placement, or from placement.json in the stack director
 			if err != nil {
 				return err
 			}
-			written, err := render.Write(files, outDir)
+			written, err := render.Write(files, outDir, appDir)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Rendered the %s stack into %s: %d owned file(s) written.\n", m.App, outDir, written.Owned)
-			if len(written.Seeded) > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s; fill in the placement per environment there.\n", strings.Join(written.Seeded, ", "))
+			if len(written.Pipeline) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Rendered the pipeline into %s: %s.\n", appDir, strings.Join(written.Pipeline, ", "))
+			}
+			for _, name := range written.Seeded {
+				switch name {
+				case "Dockerfile":
+					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s into %s; the image build is yours from here.\n", name, appDir)
+				default:
+					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s; fill in the placement per environment there.\n", name)
+				}
 			}
 			if len(written.Kept) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Kept %s as it was.\n", strings.Join(written.Kept, ", "))

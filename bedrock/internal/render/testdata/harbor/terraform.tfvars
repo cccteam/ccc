@@ -30,6 +30,15 @@ secret_versions = {
   prd = {}
 }
 
+# Extra trigger substitutions for the application's hooks and its image build,
+# per environment (_NAME = value); none by default (README, "Customizing the
+# pipeline").
+substitutions = {
+  tst = {}
+  stg = {}
+  prd = {}
+}
+
 # Defaults that are decisions, restated so they are visible here:
 #   hostnames                = harbor-tst. / harbor-stg. / harbor.impulseframework.dev
 #   placeholder_image        = us-docker.pkg.dev/cloudrun/container/hello

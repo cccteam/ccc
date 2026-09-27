@@ -1,0 +1,89 @@
+# {{.App}}'s sweep, rendered by bedrock from its template and owned by it (bedrock render
+# rewrites this file, bedrock check compares it): the environments of closed pull
+# requests are destroyed. Cloud Scheduler
+# runs the sweep trigger (infrastructure/cloud-build.tf) every hour as the deploy
+# identity with the pipeline's substitutions; nothing else runs this file. Closing or
+# merging a pull request starts no build, so this is how an environment nobody took
+# down with /gcbrun down goes away.
+steps:
+  # Which pull requests have an environment (the pull_request label on this
+  # application's Cloud Run services, in every region), and which of those GitHub says
+  # are closed. The GitHub token is minted from the Cloud Build connection the way the
+  # pipeline mints it.
+  - id: FindClosedPullRequests
+    waitFor: ["-"]
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    timeout: 300s
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        apt-get -qq update && apt-get -qq install -y jq
+
+        : > /workspace/closed.txt
+        for pair in $(echo "${_SERVICES}" | tr ',' ' '); do
+          region=$${pair%%=*}
+          gcloud run services list --project "${_PROJECT}" --region "$${region}" \
+            --filter="metadata.labels.application=${_APP} AND metadata.labels.pull_request:*" \
+            --format="value(metadata.labels.pull_request)"
+        done | sort -un > /workspace/open.txt
+        if [ ! -s /workspace/open.txt ]; then
+          echo "No pull-request environment in ${_ENV}."
+          exit 0
+        fi
+        echo "Pull requests with an environment: $(paste -sd' ' /workspace/open.txt)"
+
+        MINT=$(curl -s -X POST -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $(gcloud auth print-access-token)" -w '\n%{http_code}' \
+          "https://cloudbuild.googleapis.com/v2/projects/${PROJECT_ID}/locations/${LOCATION}/connections/${_REPO_CONNECTION_NAME}/repositories/${_REPO_NAME}:accessReadToken")
+        MINT_STATUS=$${MINT##*$$'\n'}
+        MINT_BODY=$${MINT%$$'\n'*}
+        if [[ "$${MINT_STATUS}" != "200" ]]; then
+          echo "Error: could not mint a GitHub token from connection ${_REPO_CONNECTION_NAME} (HTTP $${MINT_STATUS}): $$(echo "$${MINT_BODY}" | jq -r '.error.message // .' 2>/dev/null)"
+          exit 1
+        fi
+        GITHUB_TOKEN=$(echo "$${MINT_BODY}" | jq -r '.token')
+
+        while read -r number; do
+          STATE=$(curl -s -H "Authorization: Bearer $${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${_REPO_FULL_NAME}/pulls/$${number}" | jq -r '.state // "unknown"')
+          case "$${STATE}" in
+            closed) echo "Pull request $${number} is closed: its environment goes."; echo "$${number}" >> /workspace/closed.txt ;;
+            open)   echo "Pull request $${number} is open: its environment stays." ;;
+            *)      echo "Notice: pull request $${number} answered '$${STATE}'; its environment stays." ;;
+          esac
+        done < /workspace/open.txt
+
+  # Destroy each closed pull request's stack as the apply identity, the way /gcbrun
+  # down does: its own prefix, its own number.
+  - id: DestroyClosedPullRequests
+    waitFor: ["FindClosedPullRequests"]
+    name: ghcr.io/opentofu/opentofu:1.12.6
+    entrypoint: sh
+    timeout: 3600s
+    args:
+      - -c
+      - |
+        set -eu
+        if [ ! -s /workspace/closed.txt ]; then
+          echo "Nothing to destroy."
+          exit 0
+        fi
+        cd infrastructure
+        export GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="${_APPLY_IDENTITY}"
+        while read -r number; do
+          PREFIX="3-app/${_APP}/${_ENV}/pr$${number}"
+          echo "=== Pull request $${number}: destroying the stack at $${PREFIX} as ${_APPLY_IDENTITY} ==="
+          rm -rf .terraform
+          tofu init -input=false -no-color \
+            -backend-config="prefix=$${PREFIX}" \
+            -backend-config="impersonate_service_account=${_APPLY_IDENTITY}"
+          tofu destroy -auto-approve -input=false -no-color \
+            -var "environment=${_ENV}" -var "pull_request=$${number}"
+        done < /workspace/closed.txt
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 4200s

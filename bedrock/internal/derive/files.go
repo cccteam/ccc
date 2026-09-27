@@ -23,13 +23,13 @@ var (
 	exportRE = regexp.MustCompile(`(?m)^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
 )
 
-// dockerfileEnv lists the variables the Dockerfile's ENV instructions set, or nothing
+// dockerfileEnv lists the variables the Dockerfile's ENV instructions set, or nil
 // without a Dockerfile.
 func dockerfileEnv(a *app.App) (map[string]bool, error) {
 	data, err := os.ReadFile(a.Abs(dockerfile))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return map[string]bool{}, nil
+			return nil, nil
 		}
 
 		return nil, errors.Wrap(err, "os.ReadFile()")

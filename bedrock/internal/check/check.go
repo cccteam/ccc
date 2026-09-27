@@ -20,8 +20,11 @@ import (
 
 // Finding is one file that is not as the render says it should be.
 type Finding struct {
-	// Path is the file's path relative to the stack directory.
+	// Path is the file's path relative to the stack directory, or to the application
+	// root when Root is set.
 	Path string
+	// Root is true for a file at the application root (the pipeline files).
+	Root bool
 	// Missing reports a file the render produces that the directory lacks.
 	Missing bool
 	// Line is the first differing line (1-based), 0 when Missing.
@@ -47,8 +50,10 @@ type Authoritative struct {
 
 // Report is the outcome of one check.
 type Report struct {
-	// Dir is the directory checked.
-	Dir string
+	// Dir is the stack directory checked, and AppDir the application root its pipeline
+	// files were checked at.
+	Dir    string
+	AppDir string
 	// Checked counts the owned files compared.
 	Checked int
 	// Findings are the owned files that differ or are missing, in path order.
@@ -66,15 +71,20 @@ func (r *Report) Clean() bool {
 	return len(r.Findings) == 0 && len(r.Authoritative) == 0
 }
 
-// Run renders the model and compares the owned files with the directory's.
-func Run(m *derive.Model, dir string) (*Report, error) {
+// Run renders the model and compares the owned files with the directory's, and the
+// owned files at the application root with appDir's.
+func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 	files, err := render.Render(m)
 	if err != nil {
 		return nil, err
 	}
-	r := &Report{Dir: dir}
+	r := &Report{Dir: dir, AppDir: appDir}
 	for _, f := range files {
-		committed, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(f.Path)))
+		in := dir
+		if f.Root {
+			in = appDir
+		}
+		committed, err := os.ReadFile(filepath.Join(in, filepath.FromSlash(f.Path)))
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, errors.Wrapf(err, "os.ReadFile(): %s", f.Path)
 		}
@@ -87,12 +97,12 @@ func Run(m *derive.Model, dir string) (*Report, error) {
 		}
 		r.Checked++
 		if err != nil {
-			r.Findings = append(r.Findings, Finding{Path: f.Path, Missing: true})
+			r.Findings = append(r.Findings, Finding{Path: f.Path, Root: f.Root, Missing: true})
 
 			continue
 		}
 		if line, want, got, same := firstDifference(f.Content, committed); !same {
-			r.Findings = append(r.Findings, Finding{Path: f.Path, Line: line, Want: want, Got: got})
+			r.Findings = append(r.Findings, Finding{Path: f.Path, Root: f.Root, Line: line, Want: want, Got: got})
 		}
 	}
 	authoritative, err := scanAuthoritative(dir)
@@ -161,17 +171,21 @@ func firstDifference(want, got []byte) (line int, wantLine, gotLine string, same
 // differing line under each.
 func (r *Report) Write(w io.Writer) {
 	if len(r.Findings) == 0 {
-		fmt.Fprintf(w, "%s: %d owned file(s) match the code\n", r.Dir, r.Checked)
+		fmt.Fprintf(w, "%s (and the pipeline at %s): %d owned file(s) match the code\n", r.Dir, r.AppDir, r.Checked)
 	} else {
-		fmt.Fprintf(w, "%s: %d of %d owned file(s) differ from the code\n", r.Dir, len(r.Findings), r.Checked)
+		fmt.Fprintf(w, "%s (and the pipeline at %s): %d of %d owned file(s) differ from the code\n", r.Dir, r.AppDir, len(r.Findings), r.Checked)
 	}
 	for _, f := range r.Findings {
+		where := ""
+		if f.Root {
+			where = " (at the application root)"
+		}
 		if f.Missing {
-			fmt.Fprintf(w, "  missing  %s\n", f.Path)
+			fmt.Fprintf(w, "  missing  %s%s\n", f.Path, where)
 
 			continue
 		}
-		fmt.Fprintf(w, "  differs  %s:%d\n", f.Path, f.Line)
+		fmt.Fprintf(w, "  differs  %s:%d%s\n", f.Path, f.Line, where)
 		fmt.Fprintf(w, "           code:      %s\n", f.Want)
 		fmt.Fprintf(w, "           committed: %s\n", f.Got)
 	}

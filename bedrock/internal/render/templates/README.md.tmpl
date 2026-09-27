@@ -10,8 +10,13 @@ the layer's slot there.
 
 Every resource here is derived from something {{.App}} declares, and each one
 says in a comment which declaration (a struct field under `{{.ConfigDir}}`, a
-route, a command) it comes from. bedrock will later generate these files from
-the code; until then they are the hand-written statement of that derivation.
+route, a command) it comes from. bedrock renders these files from the code
+(`bedrock render`) and owns them: `bedrock check` compares them with the code
+and fails on drift. It renders the pipeline the same way, `cloudbuild.yaml` and
+`cloudbuild-sweep.yaml` at the repository root where Cloud Build reads them.
+Two files are seeded once and then yours: `terraform.tfvars` here, the
+placement values per environment, and the `Dockerfile` at the root, the image
+build in its first shape ("Customizing the pipeline").
 
 ## Applying
 
@@ -244,6 +249,37 @@ named `{{.App}}-pr<N>` carrying the environment's URL, which the pull request's
 sidebar shows, a comment with the release and the database mode, the guard's
 refusals, and on `/gcbrun down` the deployment marked inactive.
 
+## Customizing the pipeline
+
+The deploy sequence in `cloudbuild.yaml` is bedrock's and is rewritten on every
+render, so a lost step is caught rather than copied. What an application adds
+is declared in files of its own:
+
+- **Hooks.** A script the application commits at
+  `infrastructure/hooks/<stage>.sh` runs at that stage, as the deploy identity,
+  in the checkout, with the pipeline's facts sourced from
+  `/workspace/environment.sh` (the environment, project, image, release,
+  pull-request number, database mode) and every substitution of the build
+  exported. The stages: `before-build` (files written here are the
+  Dockerfile's to copy: a fetched config, a frontend version file),
+  `before-migrate` (the image is built; `IMAGE_DIGEST` names it),
+  `after-traffic` (a smoke test, a cache warm; a failure here stops the build
+  before the deployment record, so the record gate never sees a release the
+  hook refused) and `after-down` (after a pull-request environment is torn
+  down, by `/gcbrun down` or the sweep). No file, nothing runs.
+- **Declared substitutions.** `substitutions` in `terraform.tfvars`, per
+  environment, `_NAME = value`: the triggers carry them, the pipeline exports
+  them to the hooks and passes them to the image build as build arguments
+  (`ARG _NAME` in the Dockerfile). A name the pipeline's contract already
+  carries is refused by the triggers' plan.
+- **The Dockerfile.** Seeded from the code's shape (the site and the migrate
+  command, the browser workspace and its bundles, the schema directory) and
+  then yours: extra stages, build arguments, private assets.
+
+Anything beyond that is a new hook point or, once the steps are `bedrock
+deploy` commands, a pipeline the application composes from them; never an edit
+to the rendered file.
+
 ## Hand steps
 
 Per environment, after the first apply:
@@ -271,6 +307,7 @@ Per environment, after the first apply:
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the {{.EnvCountWord}} above | no |
 | `placeholder_image` | Image the services and job are created with. | `string` | `{{.P.PlaceholderImage}}` | no |
 | `secret_versions` | Pinned secret version per environment per variable. | `map(map(string))` | all empty | no |
+| `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
 | `{{.AuthVar}}_admin_subject` | Impersonated Workspace administrator, per environment. | `map(string)` | all empty | no |
 | `{{.AuthVar}}_client_id` | OAuth client ID, per environment. | `map(string)` | all empty | no |
 | `{{.AuthVar}}_group_prefix` | Prefix of the role groups. | `string` | `"{{.Auth.GroupPrefixDefault}}"` | no |

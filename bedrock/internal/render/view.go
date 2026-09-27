@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"path"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -51,8 +52,14 @@ type view struct {
 	ApprovalsProse string
 	// SeedList is the HCL list of the environments whose migrate job applies the
 	// development seed.
-	SeedList       string
-	PreviousEnvMap string
+	SeedList string
+	// Image is what the seeded Dockerfile derives from the code.
+	Image imageView
+	// SubstitutionNames are the pipeline's own substitutions, space separated: the keys
+	// of cloud-build.tf's substitutions map, read off its template so the pipeline
+	// tells the declared ones (var.substitutions) from the contract's by one list.
+	SubstitutionNames string
+	PreviousEnvMap    string
 	// EnvCountWord is the number of environments as a word.
 	EnvCountWord string
 	// EmptyEnvStrings and EmptyEnvMaps are the per-environment default blocks, env = ""
@@ -141,6 +148,70 @@ const labelsWidth = len("terraform_source_path")
 var numberWords = map[int]string{1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
 
 // newView prepares the view, refusing a model the templates cannot render.
+// imageView is what the Dockerfile template needs: the packages the image builds, the
+// schema directory the migrate command reads, the browser workspace and its bundles,
+// and the variable the image sets to the release.
+type imageView struct {
+	// SitePkg and MigratePkg are the packages go build compiles, as go names them from
+	// the root: "." for the site at the root, "./cmd/deployment/migrate".
+	SitePkg    string
+	MigratePkg string
+	// SchemaDir is the directory the migrate command reads relative to its working
+	// directory (schema: the migrations, the seed, the roles), copied whole.
+	SchemaDir string
+	// WebDir is the browser workspace (web), empty for an application without one;
+	// Bundles are the bundles built there, one per browser app.
+	WebDir  string
+	Bundles []bundle
+	// VersionVar is the variable the image sets to the release, empty when the code
+	// declares none.
+	VersionVar string
+}
+
+// bundle is one built browser bundle: the variable naming its directory to the server
+// (APP_CONSOLE_DIST) and its path under the workspace (dist/console).
+type bundle struct {
+	Var  string
+	Path string
+}
+
+// pkgPath is a root-relative directory as go build names the package: "." at the root.
+func pkgPath(dir string) string {
+	if dir == "" || dir == "." {
+		return "."
+	}
+
+	return "./" + strings.TrimPrefix(dir, "./")
+}
+
+// newImageView reads the image facts off the model.
+func newImageView(m *derive.Model, siteLevel string) imageView {
+	iv := imageView{SitePkg: pkgPath(m.Site.Dir), SchemaDir: path.Dir(m.Schema.MigrationsDir)}
+	if m.Migrate != nil {
+		iv.MigratePkg = pkgPath(m.Migrate.Dir)
+	}
+	if iv.SchemaDir == "." || iv.SchemaDir == "" {
+		iv.SchemaDir = m.Schema.MigrationsDir
+	}
+	for i := range m.Variables {
+		v := &m.Variables[i]
+		if v.Role == derive.RoleVersion {
+			iv.VersionVar = v.Name
+		}
+		if v.Level != siteLevel || !v.HasDefault {
+			continue
+		}
+		if parts := derive.BundleRE.FindStringSubmatch(v.Default); parts != nil {
+			if iv.WebDir == "" {
+				iv.WebDir = parts[1]
+			}
+			iv.Bundles = append(iv.Bundles, bundle{Var: v.Name, Path: "dist/" + parts[2]})
+		}
+	}
+
+	return iv
+}
+
 func newView(m *derive.Model) (*view, error) {
 	if len(m.Auths) != 1 {
 		return nil, errors.Newf("the stack binds one auth; %s has %d", m.App, len(m.Auths))
@@ -159,6 +230,12 @@ func newView(m *derive.Model) (*view, error) {
 	v.regions()
 	v.secrets()
 	v.blocks()
+
+	names, err := substitutionNames()
+	if err != nil {
+		return nil, err
+	}
+	v.SubstitutionNames = strings.Join(names, " ")
 
 	return v, nil
 }
@@ -481,6 +558,7 @@ func (v *view) order(envs []string) {
 		seeds = append(seeds, strconv.Quote(env))
 	}
 	v.SeedList = "[" + strings.Join(seeds, ", ") + "]"
+	v.Image = newImageView(v.Model, v.SiteLevel.Name)
 	v.ApprovalsProse = joinAnd(v.P.ApprovalEnvironments())
 	if v.ApprovalsProse == "" {
 		v.ApprovalsProse = "no environment"
@@ -510,4 +588,32 @@ func sweepMinute(app string) int {
 	_, _ = h.Write([]byte(app))
 
 	return int(h.Sum32() % 60)
+}
+
+// substitutionKeyRE matches a key of the substitutions map in cloud-build.tf's template:
+// four spaces, the underscored name, spaces, an equals sign.
+var substitutionKeyRE = regexp.MustCompile(`(?m)^ {4}(_[A-Z0-9_]+) += `)
+
+// substitutionNames reads the pipeline's contract off cloud-build.tf's template: the keys
+// of local.substitutions, in the template's order.
+func substitutionNames() ([]string, error) {
+	src, err := templates.ReadFile(templateDir + "/cloud-build.tf.tmpl")
+	if err != nil {
+		return nil, errors.Wrap(err, "embed.FS.ReadFile(): cloud-build.tf.tmpl")
+	}
+	block := string(src)
+	start := strings.Index(block, "  substitutions = {")
+	if start < 0 {
+		return nil, errors.New("cloud-build.tf.tmpl: no substitutions map to read the contract from")
+	}
+	end := strings.Index(block[start:], "\n  }\n")
+	if end < 0 {
+		return nil, errors.New("cloud-build.tf.tmpl: the substitutions map does not close")
+	}
+	var names []string
+	for _, m := range substitutionKeyRE.FindAllStringSubmatch(block[start:start+end], -1) {
+		names = append(names, m[1])
+	}
+
+	return names, nil
 }

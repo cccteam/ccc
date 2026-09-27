@@ -79,7 +79,7 @@ output "staff_oidc_redirect_url" {
 
 output "substitutions" {
   description = "The substitutions the version trigger passes to cloudbuild.yaml, which a hand-submitted tag build passes too (_PR_NUMBER empty: no pull request). The pull-request trigger passes the same without _PR_NUMBER, which its event supplies."
-  value       = merge(local.substitutions, { _PR_NUMBER = "" })
+  value       = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })
 }
 
 output "triggers" {

@@ -24,5 +24,12 @@ secret_versions = {
 {{.TfvarsEnvMaps}}
 }
 
+# Extra trigger substitutions for the application's hooks and its image build,
+# per environment (_NAME = value); none by default (README, "Customizing the
+# pipeline").
+substitutions = {
+{{.TfvarsEnvMaps}}
+}
+
 # Defaults that are decisions, restated so they are visible here:
 {{.RestatedDefaults}}

@@ -82,6 +82,29 @@ variable "placeholder_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+variable "substitutions" {
+  description = <<-EOT
+    Extra trigger substitutions per environment, for the application's hooks
+    and its image build: _NAME = value. The pipeline exports every substitution
+    of the build to its hooks (infrastructure/hooks/<stage>.sh, when the
+    application commits them) and passes the ones declared here to the image
+    build as build arguments (ARG _NAME in the Dockerfile). A name starts with
+    an underscore and is upper snake case, and may not be one the pipeline's
+    contract already carries (the triggers refuse that).
+
+      substitutions = {
+        tst = { _FIREBASE_PROJECT = "acme-tst" }
+      }
+  EOT
+  type        = map(map(string))
+  default     = {}
+
+  validation {
+    condition     = alltrue([for env, subs in var.substitutions : alltrue([for k in keys(subs) : can(regex("^_[A-Z][A-Z0-9_]*$", k))])])
+    error_message = "Every substitution name starts with an underscore and is upper snake case: _NAME."
+  }
+}
+
 variable "secret_versions" {
   description = <<-EOT
     The version of each secret this environment runs, keyed by environment and

@@ -68,7 +68,7 @@ func TestRenderThenCheck(t *testing.T) {
 			name:      "a fresh render checks clean",
 			afterFunc: func(*testing.T, string) {},
 			wantCode:  0,
-			wantOut:   []string{"11 owned file(s) match the code"},
+			wantOut:   []string{"13 owned file(s) match the code"},
 		},
 		{
 			name: "an edited owned file fails the check",
@@ -99,12 +99,13 @@ func TestRenderThenCheck(t *testing.T) {
 			t.Parallel()
 
 			dir := filepath.Join(t.TempDir(), "stack")
-			code, out := run(t, "render", "--app", fixtureApp, "--out", dir, "--placement", placement)
-			if code != 0 || !strings.Contains(out, "Rendered the harbor stack") || !strings.Contains(out, "Seeded terraform.tfvars") {
+			app := copyRepo(t, fixtureApp)
+			code, out := run(t, "render", "--app", app, "--out", dir, "--placement", placement)
+			if code != 0 || !strings.Contains(out, "Rendered the harbor stack") || !strings.Contains(out, "Seeded terraform.tfvars") || !strings.Contains(out, "Rendered the pipeline into "+app+": cloudbuild-sweep.yaml, cloudbuild.yaml.") {
 				t.Fatalf("render exit = %d, output:\n%s", code, out)
 			}
 			tt.afterFunc(t, dir)
-			code, out = run(t, "check", "--app", fixtureApp, "--dir", dir, "--placement", placement)
+			code, out = run(t, "check", "--app", app, "--dir", dir, "--placement", placement)
 			if code != tt.wantCode {
 				t.Errorf("check exit = %d, want %d; output:\n%s", code, tt.wantCode, out)
 			}
@@ -202,8 +203,9 @@ func TestStackFromLayout(t *testing.T) {
 			stack := filepath.Join(repo, tt.wantStack)
 			renderArgs, checkArgs := []string{"render"}, []string{"check"}
 			if tt.withApp {
-				renderArgs = append(renderArgs, "--app", fixtureApp, "--placement", placement)
-				checkArgs = append(checkArgs, "--app", fixtureApp, "--placement", placement)
+				app := copyRepo(t, fixtureApp)
+				renderArgs = append(renderArgs, "--app", app, "--placement", placement)
+				checkArgs = append(checkArgs, "--app", app, "--placement", placement)
 			}
 			if tt.outside {
 				stack = filepath.Join(t.TempDir(), "stack")
@@ -231,7 +233,7 @@ func TestStackFromLayout(t *testing.T) {
 			if err != nil {
 				t.Fatalf("check error = %v; output:\n%s", err, out)
 			}
-			if want := "11 owned file(s) match the code"; !strings.Contains(out, want) {
+			if want := "13 owned file(s) match the code"; !strings.Contains(out, want) {
 				t.Errorf("check output lacks %q:\n%s", want, out)
 			}
 		})
@@ -269,7 +271,7 @@ func TestPlacementDefault(t *testing.T) {
 			}
 			root := newRoot()
 			root.SetOut(&bytes.Buffer{})
-			root.SetArgs([]string{"render", "--app", fixtureApp, "--out", dir})
+			root.SetArgs([]string{"render", "--app", copyRepo(t, fixtureApp), "--out", dir})
 			err := root.Execute()
 			if tt.wantErr == "" {
 				if err != nil {

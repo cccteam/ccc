@@ -98,6 +98,9 @@ func readConfig(a *app.App) (*config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if image == nil {
+		image = cfg.seededImage()
+	}
 	cfg.image = image
 	cfg.envTemplate, err = envTemplateValues(a)
 	if err != nil {
@@ -338,4 +341,19 @@ func tagDefault(tag string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// seededImage is what the Dockerfile bedrock seeds sets, for an application that has
+// none yet, so the first render and the next agree: the version variable, and every
+// variable whose default names a bundle of the browser workspace (<web>/dist/<name>).
+func (c *config) seededImage() map[string]bool {
+	image := map[string]bool{}
+	for i := range c.variables {
+		v := &c.variables[i]
+		if v.Name == varVersion || (v.HasDefault && BundleRE.MatchString(v.Default)) {
+			image[v.Name] = true
+		}
+	}
+
+	return image
 }

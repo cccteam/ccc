@@ -371,6 +371,10 @@ const (
 	appPrefix = "APP_"
 )
 
+// BundleRE matches the default of a variable naming a built browser bundle, as the
+// skeleton declares them: the browser workspace, dist, the bundle (web/dist/console).
+var BundleRE = regexp.MustCompile(`^([^/]+)/dist/([^/]+)$`)
+
 // appCodeRE is the shape of an application code: one to six lowercase letters, the
 // segment every resource name carries.
 var appCodeRE = regexp.MustCompile(`^[a-z]{1,6}$`)

@@ -2,10 +2,13 @@
 // stack is made of, rendered from an embedded template, and which of them the tool owns.
 //
 // A file has a tier. An owned file is rewritten on every render: the stack's .tf files
-// and its README say what the code declares and nothing a person keeps by hand. A
-// seeded file is written once, when absent, and never again: terraform.tfvars holds the
-// placement values a person fills in per environment. Files the tool never writes (the
-// lock file, the placement) have no tier here.
+// and its README say what the code declares and nothing a person keeps by hand, and so
+// do the pipeline files Cloud Build reads at the application root (cloudbuild.yaml,
+// cloudbuild-sweep.yaml). A seeded file is written once, when absent, and never again:
+// terraform.tfvars holds the placement values a person fills in per environment, and
+// the Dockerfile at the application root is the image build a person takes over from
+// its first shape. Files the tool never writes (the lock file, the placement) have no
+// tier here.
 package render
 
 import (
@@ -47,26 +50,40 @@ func (t Tier) String() string {
 
 // File is one rendered file of the stack.
 type File struct {
-	// Path is the file's path relative to the stack directory.
+	// Path is the file's path relative to the stack directory, or to the application
+	// root when Root is set.
 	Path string
 	Tier Tier
+	// Root is true for a file that lives at the application root (the directory
+	// holding go.mod, the repository's root), where Cloud Build and the image build
+	// read it, rather than in the stack directory.
+	Root bool
 	// Content is the rendered text.
 	Content []byte
 }
 
 // templates are the stack's files, one template per file, embedded so the tool renders
-// offline and ships exactly what it was tested with.
+// offline and ships exactly what it was tested with. The root directory holds the files
+// that go to the application root.
 //
-//go:embed templates/*.tmpl
+//go:embed templates/*.tmpl templates/root/*.tmpl
 var templates embed.FS
 
 const (
-	templateDir = "templates"
-	templateExt = ".tmpl"
-	// seededFile is the one file the tool writes once: the placement values per
-	// environment.
-	seededFile = "terraform.tfvars"
+	templateDir     = "templates"
+	rootTemplateDir = "templates/root"
+	templateExt     = ".tmpl"
+	// The files the tool writes once: the placement values per environment, and the
+	// image build.
+	tfvarsFile     = "terraform.tfvars"
+	dockerfileFile = "Dockerfile"
 )
+
+// seeded are the files the tool writes once.
+var seeded = map[string]bool{
+	tfvarsFile:     true,
+	dockerfileFile: true,
+}
 
 // Render renders every file of the application's stack.
 func Render(m *derive.Model) ([]File, error) {
@@ -77,34 +94,58 @@ func Render(m *derive.Model) ([]File, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries, err := fs.ReadDir(templates, templateDir)
+	stack, err := renderDir(templateDir, false, v)
 	if err != nil {
-		return nil, errors.Wrap(err, "fs.ReadDir()")
+		return nil, err
 	}
-
-	files := make([]File, 0, len(entries))
-	for _, entry := range entries {
-		name := strings.TrimSuffix(entry.Name(), templateExt)
-		content, err := renderOne(entry.Name(), v)
-		if err != nil {
-			return nil, err
-		}
-		tier := Owned
-		if name == seededFile {
-			tier = Seeded
-		}
-		files = append(files, File{Path: name, Tier: tier, Content: content})
+	root, err := renderDir(rootTemplateDir, true, v)
+	if err != nil {
+		return nil, err
 	}
+	files := make([]File, 0, len(stack)+len(root))
+	files = append(files, stack...)
+	files = append(files, root...)
 	sort.Slice(files, func(i, j int) bool {
+		if files[i].Root != files[j].Root {
+			return !files[i].Root
+		}
+
 		return files[i].Path < files[j].Path
 	})
 
 	return files, nil
 }
 
+// renderDir renders every template of one embedded directory; root says where the
+// files go.
+func renderDir(dir string, root bool, v *view) ([]File, error) {
+	entries, err := fs.ReadDir(templates, dir)
+	if err != nil {
+		return nil, errors.Wrapf(err, "fs.ReadDir(): %s", dir)
+	}
+	files := make([]File, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), templateExt)
+		content, err := renderOne(dir, entry.Name(), v)
+		if err != nil {
+			return nil, err
+		}
+		tier := Owned
+		if seeded[name] {
+			tier = Seeded
+		}
+		files = append(files, File{Path: name, Tier: tier, Root: root, Content: content})
+	}
+
+	return files, nil
+}
+
 // renderOne executes one embedded template.
-func renderOne(name string, v *view) ([]byte, error) {
-	src, err := templates.ReadFile(templateDir + "/" + name)
+func renderOne(dir, name string, v *view) ([]byte, error) {
+	src, err := templates.ReadFile(dir + "/" + name)
 	if err != nil {
 		return nil, errors.Wrapf(err, "embed.FS.ReadFile(): %s", name)
 	}
@@ -122,36 +163,50 @@ func renderOne(name string, v *view) ([]byte, error) {
 
 // Written reports what a write did.
 type Written struct {
-	// Owned counts the owned files written.
+	// Owned counts the owned files written into the stack directory.
 	Owned int
+	// Pipeline lists the owned files written at the application root.
+	Pipeline []string
 	// Seeded lists the seeded files created, and Kept the ones left as they were.
 	Seeded []string
 	Kept   []string
 }
 
-// Write puts the files into dir, creating it when absent: owned files always, seeded
-// files only when absent.
-func Write(files []File, dir string) (*Written, error) {
+// Write puts the files into dir, creating it when absent, and the root files into
+// appDir, which exists: owned files always, seeded files only when absent.
+func Write(files []File, dir, appDir string) (*Written, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, errors.Wrap(err, "os.MkdirAll()")
 	}
-	root, err := os.OpenRoot(dir)
+	stack, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, errors.Wrap(err, "os.OpenRoot()")
 	}
-	defer root.Close()
+	defer stack.Close()
+	app, err := os.OpenRoot(appDir)
+	if err != nil {
+		return nil, errors.Wrap(err, "os.OpenRoot()")
+	}
+	defer app.Close()
 
 	w := &Written{}
 	for _, f := range files {
+		root := stack
+		if f.Root {
+			root = app
+		}
 		dst := filepath.FromSlash(f.Path)
-		if f.Tier == Seeded {
+		switch {
+		case f.Tier == Seeded:
 			if _, err := root.Stat(dst); err == nil {
 				w.Kept = append(w.Kept, f.Path)
 
 				continue
 			}
 			w.Seeded = append(w.Seeded, f.Path)
-		} else {
+		case f.Root:
+			w.Pipeline = append(w.Pipeline, f.Path)
+		default:
 			w.Owned++
 		}
 		if err := root.WriteFile(dst, f.Content, 0o644); err != nil {

@@ -66,6 +66,12 @@ locals {
     _DEPLOYER_APP_ID     = try(coalesce(tostring(local.env.github_deployer_app_id)), "")
     _DEPLOYER_KEY_SECRET = try(coalesce(local.env.github_deployer_key_secret_version), "")
   }
+
+  # What the placement adds for this environment (var.substitutions): the
+  # application's own, for its hooks and its image build.
+  custom_substitutions = lookup(var.substitutions, var.environment, {})
+  # A name the contract carries may not be redefined; the triggers refuse it.
+  redefined_substitutions = setintersection(keys(local.custom_substitutions), keys(local.substitutions))
 }
 
 resource "google_cloudbuild_trigger" "version" {
@@ -81,7 +87,7 @@ resource "google_cloudbuild_trigger" "version" {
   # A tag build has no pull request; the empty value says so explicitly, since
   # the pipeline reads _PR_NUMBER and Cloud Build refuses an unset substitution.
   # The pull-request trigger passes nothing: its event supplies the number.
-  substitutions = merge(local.substitutions, { _PR_NUMBER = "" })
+  substitutions = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })
 
   approval_config {
     approval_required = contains(["stg", "prd"], var.environment)
@@ -92,6 +98,13 @@ resource "google_cloudbuild_trigger" "version" {
 
     push {
       tag = "^v\\d+\\.\\d+\\.\\d+$"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.redefined_substitutions) == 0
+      error_message = "var.substitutions redefines a substitution the pipeline's contract carries; rename it: ${join(", ", local.redefined_substitutions)}."
     }
   }
 }
@@ -106,7 +119,7 @@ resource "google_cloudbuild_trigger" "pr" {
   service_account    = local.identities.deploy_identity_id
   filename           = "cloudbuild.yaml"
   include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
-  substitutions      = merge(local.substitutions, { _SEED = "true" })
+  substitutions      = merge(local.substitutions, local.custom_substitutions, { _SEED = "true" })
 
   approval_config {
     approval_required = false
@@ -143,7 +156,7 @@ resource "google_cloudbuild_trigger" "sweep" {
   name     = "${local.name}-${local.primary_region_code}-${local.app}-sweep"
 
   service_account = local.identities.deploy_identity_id
-  substitutions   = merge(local.substitutions, { _PR_NUMBER = "" })
+  substitutions   = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })
   # No include_build_logs: Cloud Build accepts the log link on a GitHub-event
   # trigger only, and this one is run by the scheduler.
 
