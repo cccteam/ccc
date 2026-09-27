@@ -126,6 +126,7 @@ func TestRenderTiers(t *testing.T) {
 		{name: "the root README is owned", path: "README.md", want: render.Owned},
 		{name: "the OpenTofu version is owned", path: ".opentofu-version", want: render.Owned},
 		{name: "a layer's values are seeded", path: "2-net/terraform.tfvars", want: render.Seeded},
+		{name: "a layer's application values are owned", path: "2-shr/applications.auto.tfvars", want: render.Owned},
 		{name: "the journal is seeded", path: "JOURNAL.md", want: render.Seeded},
 		{name: "the ignore rules are seeded", path: ".gitignore", want: render.Seeded},
 	}
@@ -195,6 +196,14 @@ func TestViewPhrases(t *testing.T) {
 		{name: "label prose", placement: Placement{Labels: map[string]string{"team": "core", "cost": "a"}}, check: func(v *view) string { return v.ExtraLabelsProse() + " / " + v.ExtraLabelKeys() }, want: "`cost = \"a\"`, `team = \"core\"` / `cost`, `team`"},
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
+		{
+			name:      "identities, backends and hosts under the recorded projects, REPLACEME for the rest",
+			placement: Placement{Prefix: "acme", AppsDomain: "acme.dev", Projects: map[string]string{"tst": "acme-tst-gbl-core-1a2b"}},
+			check: func(v *view) string {
+				return v.DeployIdentity("tst", "quill") + " " + v.ApplyIdentity("stg", "quill") + " " + v.Backend("tst", "quill") + " " + v.Host("tst", "quill") + " " + v.Host("prd", "quill") + " " + v.PullRequestBackend()
+			},
+			want: "serviceAccount:acme-tst-gbl-quill-deploy@acme-tst-gbl-core-1a2b.iam.gserviceaccount.com serviceAccount:acme-stg-gbl-quill-tofu@acme-stg-gbl-core-REPLACEME.iam.gserviceaccount.com projects/acme-tst-gbl-core-1a2b/global/backendServices/acme-tst-gbl-quill-backend quill-tst.acme.dev quill.acme.dev projects/acme-tst-gbl-core-1a2b/global/backendServices/acme-tst-gbl-pr-backend",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -310,5 +319,84 @@ func TestWriteKeepsSeeded(t *testing.T) {
 	}
 	if string(data) != "processing_units = 200\n" {
 		t.Errorf("the seeded values were rewritten: %q", data)
+	}
+}
+
+func TestPlacementRegister(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		existing []string
+		app      string
+		want     []string
+		wantErr  string
+	}{
+		{name: "a new application is appended", existing: []string{"harbor"}, app: "beacon", want: []string{"harbor", "beacon"}},
+		{name: "the first application", app: "quill", want: []string{"quill"}},
+		{name: "a registered application is refused", existing: []string{"harbor"}, app: "harbor", wantErr: `application "harbor" is registered already`},
+		{name: "a code of the wrong shape is refused", app: "Harbor-1", wantErr: `application "Harbor-1" is not 1 to 6 lowercase alphanumeric characters`},
+		{name: "a code too long is refused", app: "sevench", wantErr: "is not 1 to 6"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := Placement{Applications: tt.existing}
+			err := p.Register(tt.app)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Register() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Register() error = %v", err)
+			}
+			if strings.Join(p.Applications, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("Applications = %v, want %v", p.Applications, tt.want)
+			}
+		})
+	}
+}
+
+func TestPlacementProjects(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		projects map[string]string
+		wantErr  string
+		// wantMissing are the environments ProjectsMissing names.
+		wantMissing string
+	}{
+		{name: "none recorded yet", wantMissing: "tst,stg,prd"},
+		{name: "all three recorded", projects: map[string]string{"tst": "imp-tst-gbl-core-1a2b", "stg": "imp-stg-gbl-core-3c4d", "prd": "imp-prd-gbl-core-5e6f"}},
+		{name: "one recorded", projects: map[string]string{"tst": "imp-tst-gbl-core-1a2b"}, wantMissing: "stg,prd"},
+		{name: "an environment the model lacks is refused", projects: map[string]string{"qa": "imp-qa-gbl-core-1a2b"}, wantErr: `projects names "qa", which is not one of tst, stg, prd`},
+		{name: "an empty project is refused", projects: map[string]string{"tst": " "}, wantErr: "projects.tst is empty"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.Projects = tt.projects
+			err := p.Validate()
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Validate() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if got := strings.Join(p.ProjectsMissing(), ","); got != tt.wantMissing {
+				t.Errorf("ProjectsMissing() = %q, want %q", got, tt.wantMissing)
+			}
+		})
 	}
 }

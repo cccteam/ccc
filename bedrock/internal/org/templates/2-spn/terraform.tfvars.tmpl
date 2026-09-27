@@ -3,11 +3,10 @@
 
 processing_units = 100 # never above 200 without explicit agreement; variables.tf enforces it
 
-# Filled once the environment layers have created the application apply
-# identities for stg and prd (2-env output applications); a service account
-# must exist before it can be bound. Shape:
-#   database_admins = ["serviceAccount:<apply identity email>", ...]
-database_admins = []
+# The database admins (each application's apply identity in stg and prd) are in
+# applications.auto.tfvars, rendered from placement.json; a service account must
+# exist before it can be bound, so this layer is applied after the environment
+# layers have run for a new application.
 
 # Defaults that are decisions, restated so they are visible here:
 #   spanner_config = "{{.Spanner.Config}}"

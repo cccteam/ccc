@@ -16,9 +16,8 @@ state_bucket    = "imp-boot-gbl-state-a1b2" # the bucket in every backend block
 # github_deployer_key_secret_versions = { tst = "projects/<number>/secrets/imp-tst-gbl-github-deployer-key/versions/1" }
 # github_oauth_token_secret_version = "projects/<tst project>/locations/us-central1/secrets/<connection token secret>/versions/1"
 
-# The applications deployed into every environment, beside each other in the
-# same projects, each with its own identities, repository link and stack.
-applications = ["harbor", "beacon"]
+# The applications are in applications.auto.tfvars, rendered from placement.json
+# (bedrock org register <app> adds one).
 
 # The promotion order, as the environment after each: a release runs in the next
 # environment only after this one holds a live deployment record of it, so the next

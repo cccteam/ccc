@@ -29,20 +29,22 @@ and `stg` once more whenever an application was added: each environment
 grants the next environment's deploy identities read on its records bucket
 (the release gate reads the previous environment's records) and reads those
 identities from the next environment's state, which the first pass did not
-have yet. The first
+have yet; `bedrock org register <app>` prints that sequence. The first
 `init` writes `.terraform.lock.hcl`; commit it. `terraform.tfvars` is
 committed and holds the boot project, the bucket, and the two GitHub values;
-`environment` is never in it.
+`environment` is never in it; the applications are in
+`applications.auto.tfvars`, rendered from `placement.json`.
 
 Order among the project layers: `2-shr` and `2-spn` before this layer (it
 reads their outputs: the instance for stg and prd, the repository names for a
-warning). After this layer, two of its outputs go back into the shared
-layers' variables, because the grants sit in projects where this layer's
-identity holds nothing: each application's `deploy_identity_member` into
-`2-shr`'s `pushers` (writer on its repository), and for stg and prd each
-`apply_identity_member` into `2-spn`'s `database_admins` (database admin on
-the shared instance). Then the application stacks, then `2-net` with their
-backends in its `hosts`. The `2-net` read here is optional: it publishes the
+warning). After this layer, the shared layers are applied with the identities
+it created, because the grants sit in projects where this layer's identity
+holds nothing: each application's deploy identity is a pusher in `2-shr`
+(writer on its repository), and its stg and prd apply identities are database
+admins in `2-spn` (on the shared instance); both are rendered into those
+layers' `applications.auto.tfvars` from `placement.json`, never copied by
+hand. Then the application stacks, then `2-net` with their backends in its
+rendered `hosts`. The `2-net` read here is optional: it publishes the
 two load balancer principals, which are derived from `1-org` until it exists,
 and a `shared_vpc_id` that is null.
 
@@ -211,6 +213,8 @@ the layers that publish them:
 | `2-net` | `shared_vpc_id` | null today; gates `compute.networkUser` |
 | `2-net` | `load_balancer_service_user`, `compute_service_agent` | the two `loadBalancerServiceUser` grants (derived from `1-org` until `2-net` exists) |
 
-And the reverse direction, this layer's `applications` output into the
-shared layers' variables: `deploy_identity_member` into `2-shr`'s `pushers`,
-`apply_identity_member` (stg and prd) into `2-spn`'s `database_admins`.
+And the reverse direction: this layer's `applications` output names the
+identities the shared layers bind (`2-shr`'s `pushers` and `pullers`,
+`2-spn`'s `database_admins`); their values are rendered from `placement.json`
+into each layer's `applications.auto.tfvars`, and the identities must exist
+before those layers apply.

@@ -51,6 +51,47 @@ type view struct {
 	*Placement
 }
 
+// Environments is the model's environments in promotion order, for the templates.
+func (*view) Environments() []string {
+	return Environments
+}
+
+// DeployIdentity is the application's deploy identity in the environment, as an IAM
+// member; ApplyIdentity its apply identity. Both are 2-env's, named under the
+// environment's project.
+func (v *view) DeployIdentity(env, app string) string {
+	return "serviceAccount:" + v.Prefix + "-" + env + "-gbl-" + app + "-deploy@" + v.Project(env) + ".iam.gserviceaccount.com"
+}
+
+func (v *view) ApplyIdentity(env, app string) string {
+	return "serviceAccount:" + v.Prefix + "-" + env + "-gbl-" + app + "-tofu@" + v.Project(env) + ".iam.gserviceaccount.com"
+}
+
+// Backend is the application's backend service in the environment, as the load
+// balancer names it; PullRequestBackend the wildcard one in the first environment.
+func (v *view) Backend(env, app string) string {
+	return "projects/" + v.Project(env) + "/global/backendServices/" + v.Prefix + "-" + env + "-gbl-" + app + "-backend"
+}
+
+func (v *view) PullRequestBackend() string {
+	return "projects/" + v.Project(Environments[0]) + "/global/backendServices/" + v.Prefix + "-" + Environments[0] + "-gbl-pr-backend"
+}
+
+// Host is the application's hostname in the environment: <app>-<env> under the apps
+// domain, and the bare <app> in production.
+func (v *view) Host(env, app string) string {
+	if env == Environments[len(Environments)-1] {
+		return app + "." + v.AppsDomain
+	}
+
+	return app + "-" + env + "." + v.AppsDomain
+}
+
+// Prd is the production environment, the last.
+func (*view) Prd() string {
+	return Environments[len(Environments)-1]
+}
+
 // ApplicationsList is the applications as an HCL list.
 func (v *view) ApplicationsList() string {
 	if len(v.Applications) == 0 {

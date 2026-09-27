@@ -12,15 +12,9 @@ apps_domain = "{{.AppsDomain}}"
 # details (variables.tf), which are not committed until a domain is registered.
 registrations = {}
 
-# One entry per hostname the load balancer serves, added as the application
-# layers create their backend services (their net_hosts output). The wildcard
-# routes every pull-request environment, <app>-pr<N>.{{.AppsDomain}}, to the
-# tst environment's pull-request backend (2-env output pull_request_backend_id),
-# which picks the Cloud Run service by the hostname's first label; exact
-# hostnames win over it.
-hosts = {
-  "*.{{.AppsDomain}}" = "projects/{{.Prefix}}-tst-gbl-core-REPLACEME/global/backendServices/{{.Prefix}}-tst-gbl-pr-backend"
-}
+# The hostnames the load balancer serves (each application's per environment, and
+# the wildcard for pull-request environments) are in applications.auto.tfvars,
+# rendered from placement.json.
 
 # Records the apps domain needs beyond the load balancer's, such as mail or
 # verification records if the domain ever carries them.

@@ -41,7 +41,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return run(t, "org", "new", dir)
 			},
-			wantOut: []string{"Rendered the imp foundation", "53 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars", "By hand, before the first apply", "Seed, as bedrock@impulseframework.com", "imp-boot-gbl-tofu"},
+			wantOut: []string{"Rendered the imp foundation", "57 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars", "By hand, before the first apply", "Seed, as bedrock@impulseframework.com", "imp-boot-gbl-tofu"},
 		},
 		{
 			name: "check is clean after new",
@@ -53,7 +53,37 @@ func TestOrgCommands(t *testing.T) {
 
 				return run(t, "org", "check", "--dir", dir)
 			},
-			wantOut: []string{"53 owned file(s) match the placement"},
+			wantOut: []string{"57 owned file(s) match the placement"},
+		},
+		{
+			name: "register adds an application, renders the values and prints the sequence",
+			steps: func(t *testing.T, dir string) (int, string) {
+				t.Helper()
+				if code, out := run(t, "org", "new", dir); code != 0 {
+					t.Fatalf("org new: %d %s", code, out)
+				}
+				code, out := run(t, "org", "register", "quill", "--dir", dir)
+				placement, err := os.ReadFile(filepath.Join(dir, "placement.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(placement), `"quill"`) {
+					t.Errorf("placement.json lacks quill:\n%s", placement)
+				}
+				hosts, err := os.ReadFile(filepath.Join(dir, "2-net", "applications.auto.tfvars"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(hosts), `"quill-tst.impulseframework.dev" = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-quill-backend"`) {
+					t.Errorf("2-net/applications.auto.tfvars lacks quill's host:\n%s", hosts)
+				}
+				if code, out := run(t, "org", "check", "--dir", dir); code != 0 {
+					t.Errorf("org check after register: %d %s", code, out)
+				}
+
+				return code, out
+			},
+			wantOut: []string{"Registered quill in", "Apply, in order", "2-env for tst and stg again", "5. 2-net: the hostnames"},
 		},
 		{
 			name: "check reports a hand edit",
@@ -74,7 +104,7 @@ func TestOrgCommands(t *testing.T) {
 				return run(t, "org", "check", "--dir", dir)
 			},
 			wantCode: 1,
-			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 of 53 owned file(s) differ"},
+			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 of 57 owned file(s) differ"},
 		},
 		{
 			name: "render keeps the seeded values",
@@ -98,7 +128,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return code, out
 			},
-			wantOut: []string{"53 owned file(s) written"},
+			wantOut: []string{"57 owned file(s) written"},
 		},
 	}
 	for _, tt := range tests {
@@ -132,5 +162,36 @@ func TestOrgNewRefusal(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "1-org")); !os.IsNotExist(err) {
 		t.Errorf("org new wrote layers from a refused placement: %v", err)
+	}
+}
+
+func TestOrgRegisterRefusal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		app     string
+		wantErr string
+	}{
+		{name: "an application registered already", app: "harbor", wantErr: `application "harbor" is registered already`},
+		{name: "a code of the wrong shape", app: "Harbor", wantErr: `application "Harbor" is not 1 to 6 lowercase alphanumeric characters`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: dir, interactive: never}
+			if _, err := execute(d, "", "org", "register", tt.app, "--dir", dir); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Execute() error = %v, wantErr %q", err, tt.wantErr)
+			}
+			placement, err := os.ReadFile(filepath.Join(dir, "placement.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(string(placement), `"harbor"`) != 1 || strings.Contains(string(placement), "Harbor") {
+				t.Errorf("placement.json changed on a refusal:\n%s", placement)
+			}
+		})
 	}
 }

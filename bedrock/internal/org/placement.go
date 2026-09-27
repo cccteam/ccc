@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -67,11 +68,28 @@ type Placement struct {
 	// leading @.
 	ContactDomains []string `json:"contactDomains"`
 	// Applications are the application codes registered in every environment, in the
-	// order they were added; empty for an organization with none yet.
+	// order they were added; empty for an organization with none yet. bedrock org
+	// register adds one; the layers' applications.auto.tfvars are rendered from it.
 	Applications []string `json:"applications"`
+	// Projects are the environment projects by environment (tst, stg, prd), the ids
+	// 1-org's apply chose (its project_ids output): what the applications' identities
+	// and backends are named under. Absent until 1-org has run; REPLACEME is rendered
+	// in their place.
+	Projects map[string]string `json:"projects,omitempty"`
 	// Labels are the labels every project and bucket carries beyond the model's own.
 	Labels map[string]string `json:"labels"`
 }
+
+// The model's environments, by name.
+const (
+	tstEnvironment = "tst"
+	stgEnvironment = "stg"
+	prdEnvironment = "prd"
+)
+
+// Environments are the model's environments in promotion order; pull requests deploy
+// to the first, production is the last.
+var Environments = []string{tstEnvironment, stgEnvironment, prdEnvironment}
 
 // Region is one region: its name and the three-letter code resource names carry.
 type Region struct {
@@ -125,6 +143,14 @@ func (p *Placement) Validate() error {
 			return errors.Newf("region %q needs a name and a three-character code", r.Name)
 		}
 	}
+	for env, id := range p.Projects {
+		if !slices.Contains(Environments, env) {
+			return errors.Newf("projects names %q, which is not one of %s", env, strings.Join(Environments, ", "))
+		}
+		if strings.TrimSpace(id) == "" {
+			return errors.Newf("projects.%s is empty", env)
+		}
+	}
 	for _, d := range p.ContactDomains {
 		if !strings.HasPrefix(d, "@") || len(d) < 3 {
 			return errors.Newf("contact domain %q is not @<domain>", d)
@@ -173,4 +199,53 @@ func (p *Placement) labelKeys() []string {
 	sort.Strings(keys)
 
 	return keys
+}
+
+// Project is the environment's project id, or the REPLACEME form until 1-org has run
+// and the placement records it.
+func (p *Placement) Project(env string) string {
+	if id, ok := p.Projects[env]; ok {
+		return id
+	}
+
+	return p.Prefix + "-" + env + "-gbl-core-" + replaceMe
+}
+
+// ProjectsMissing names the environments whose project the placement does not record.
+func (p *Placement) ProjectsMissing() []string {
+	var missing []string
+	for _, env := range Environments {
+		if _, ok := p.Projects[env]; !ok {
+			missing = append(missing, env)
+		}
+	}
+
+	return missing
+}
+
+// Register adds an application to the placement: a code of one to six lowercase
+// alphanumeric characters starting with a letter, not registered yet.
+func (p *Placement) Register(app string) error {
+	if !applicationRE.MatchString(app) {
+		return errors.Newf("application %q is not 1 to 6 lowercase alphanumeric characters starting with a letter", app)
+	}
+	if slices.Contains(p.Applications, app) {
+		return errors.Newf("application %q is registered already", app)
+	}
+	p.Applications = append(p.Applications, app)
+
+	return nil
+}
+
+// Write puts the placement back in its file, indented the way a person reads it.
+func (p *Placement) Write(path string) error {
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "json.MarshalIndent()")
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		return errors.Wrapf(err, "os.WriteFile(): %s", path)
+	}
+
+	return nil
 }

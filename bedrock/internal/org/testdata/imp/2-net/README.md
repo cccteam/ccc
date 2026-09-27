@@ -102,14 +102,16 @@ How a host is added, in order:
    backend service's full URI.
 2. The environment layer has already granted `load_balancer_service_user`
    in that project.
-3. `hosts` in this layer's `terraform.tfvars` gains
+3. `hosts` in this layer's `applications.auto.tfvars` carries
    `"harbor-tst.impulseframework.dev" = "projects/.../global/backendServices/..."`,
-   and this layer is applied. DNS and the certificate already cover the
-   hostname; nothing else changes.
+   rendered from `placement.json` when the application was registered
+   (`bedrock org register`), and this layer is applied. DNS and the
+   certificate already cover the hostname; nothing else changes.
 
-The apply order on a fresh organization is therefore this layer first with `hosts`
-empty, then the environment and application layers, then this layer again
-with the hosts. A host whose backend service does not exist, or whose project
+The apply order on a fresh organization is therefore this layer first with no
+application registered yet (the wildcard host alone), then the environment
+and application layers, then this layer again with the hosts. A host whose
+backend service does not exist, or whose project
 has not made the grant, fails the apply here with a permission or not-found
 error on the URL map.
 

@@ -24,7 +24,7 @@ the six layers of the CCC provisioning model (0-bootstrap, 1-org, 2-shr, 2-spn, 
 rendered from the organization placement, placement.json at the repository root, the way an
 application's stack is rendered from its code.`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgRender(d), newOrgCheck(d))
+	cmd.AddCommand(newOrgNew(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d))
 
 	return cmd
 }
@@ -185,6 +185,79 @@ not compared.`,
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+func newOrgRegister(_ deps) *cobra.Command {
+	var (
+		dir       string
+		placement string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "register <app>",
+		Short: "Register an application in the foundation",
+		Long: `register adds an application to the organization: its code goes into placement.json's
+applications, the layers' applications.auto.tfvars are rendered from it (2-env's list, 2-shr's
+pushers and pullers, 2-spn's database admins, 2-net's hostnames), and the apply sequence is
+printed: 2-env for every environment, then for every environment but the last again (each
+grants the next environment's deploy identity read on its records bucket, from state the first
+pass did not have), then 2-shr and 2-spn (the grants, on identities that exist now), then the
+application's own stack per environment, then 2-net (the hostnames, onto backends that exist
+now). An application code is 1 to 6 lowercase alphanumeric characters starting with a letter,
+registered once. Run from the repository root, or name it with --dir. Before 1-org has run, the
+placement records no environment projects and the rendered values carry REPLACEME; record
+1-org's project_ids in placement.json (projects) and run org render.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app := args[0]
+			if placement == "" {
+				placement = filepath.Join(dir, orgPlacementFile)
+			}
+			p, err := org.ReadPlacement(placement)
+			if err != nil {
+				return err
+			}
+			if err := p.Register(app); err != nil {
+				return err
+			}
+			if err := p.Write(placement); err != nil {
+				return err
+			}
+			files, err := org.Render(p)
+			if err != nil {
+				return err
+			}
+			written, err := org.Write(files, dir)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the four applications.auto.tfvars among them.\n", app, placement, written.Owned)
+			if missing := p.ProjectsMissing(); len(missing) > 0 {
+				fmt.Fprintf(out, "The placement records no project for %s: the rendered values carry REPLACEME there until 1-org's project_ids are recorded in placement.json (projects) and org render runs.\n", strings.Join(missing, ", "))
+			}
+			fmt.Fprint(out, applySequence(app))
+
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
+	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
+
+	return cmd
+}
+
+// applySequence says what to apply after an application was registered, in order.
+func applySequence(app string) string {
+	return fmt.Sprintf(`
+Apply, in order (each layer from its directory; 2-env per environment, -var environment=<env>):
+  1. 2-env for tst, stg and prd: %s's identities, database, repository link and triggers.
+  2. 2-env for tst and stg again: each environment grants the next environment's deploy
+     identity read on its records bucket, from state the first pass did not have.
+  3. 2-shr and 2-spn: the registry grants and the database admins, on identities that exist now.
+  4. %s's own stack, rendered in its repository (bedrock render), applied per environment.
+  5. 2-net: the hostnames, onto the backends the stack created.
+`, app, app)
 }
 
 // orgPlacement reads the placement named, or the one at the repository root.

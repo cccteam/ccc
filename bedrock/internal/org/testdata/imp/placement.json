@@ -15,5 +15,6 @@
   "spanner": {"config": "nam10"},
   "contactDomains": ["@impulseframework.com", "@cloud-team.com"],
   "applications": ["harbor", "beacon"],
+  "projects": {"tst": "imp-tst-gbl-core-1a2b", "stg": "imp-stg-gbl-core-3c4d", "prd": "imp-prd-gbl-core-5e6f"},
   "labels": {"bedrock-lab": "true"}
 }

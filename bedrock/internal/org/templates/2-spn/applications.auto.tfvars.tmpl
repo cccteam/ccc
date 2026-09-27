@@ -1,0 +1,17 @@
+# Rendered by bedrock from placement.json (applications, projects) and owned by it: bedrock org
+# render rewrites this file and bedrock org check compares it, so an application is registered
+# in placement.json (bedrock org register <app>), never here. OpenTofu reads *.auto.tfvars after
+# terraform.tfvars, which keeps the values a person decides.
+
+# Each application's apply identity in the environments whose databases live on the
+# shared instance (every one but the first, whose instance is its own): database admin
+# on the instance, since creating a database is checked there.
+database_admins = [
+{{- range $app := .Applications}}
+{{- range $env := $.Environments}}
+{{- if ne $env (index $.Environments 0)}}
+  "{{$.ApplyIdentity $env $app}}", # {{$app}}'s {{$env}} apply identity (2-env {{$env}})
+{{- end}}
+{{- end}}
+{{- end}}
+]
