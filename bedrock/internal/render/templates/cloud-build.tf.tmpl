@@ -59,10 +59,11 @@ locals {
     # The deployer GitHub App the pipeline talks back on a pull request as (a
     # deployment carrying the environment's URL, a comment, the guard's
     # refusals): its App ID and the pinned secret version of its private key,
-    # both from 2-env; empty until set there, and then the pipeline talks back
+    # both from 2-env; empty until set there (the output absent or null, as in
+    # an environment the key is not kept in), and then the pipeline talks back
     # through nothing.
-    _DEPLOYER_APP_ID     = coalesce(try(tostring(local.env.github_deployer_app_id), null), "")
-    _DEPLOYER_KEY_SECRET = coalesce(try(local.env.github_deployer_key_secret_version, null), "")
+    _DEPLOYER_APP_ID     = try(coalesce(tostring(local.env.github_deployer_app_id)), "")
+    _DEPLOYER_KEY_SECRET = try(coalesce(local.env.github_deployer_key_secret_version), "")
   }
 }
 
