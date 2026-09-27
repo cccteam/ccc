@@ -129,9 +129,10 @@ resource "google_cloudbuild_trigger" "sweep" {
   location = local.primary_region
   name     = "${local.name}-${local.primary_region_code}-${local.app}-sweep"
 
-  service_account    = local.identities.deploy_identity_id
-  include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
-  substitutions      = merge(local.substitutions, { _PR_NUMBER = "" })
+  service_account = local.identities.deploy_identity_id
+  substitutions   = merge(local.substitutions, { _PR_NUMBER = "" })
+  # No include_build_logs: Cloud Build accepts the log link on a GitHub-event
+  # trigger only, and this one is run by the scheduler.
 
   source_to_build {
     repository = local.identities.repository_id
