@@ -135,7 +135,10 @@ A generate program is three files in its directory: `generator.go` declares the 
 listed tenant-scoped resource wants, a tenant resolved through a join path, an enumeration
 table too large to bake), and `warnings_test.go` pins the accepted set as typed values, none
 to start: a new warning fails `go test` until the schema is fixed or the warning's value is
-added to the test, which records the acceptance in code. Run with `-audit`, the program also
+added to the test, which records the acceptance in code. The two tests that regenerate
+(`cmd/generate`'s and each program's) take the module's generation lock first
+(`cmd/generate/internal/regen`): `go test` runs packages in parallel processes, and one
+module is regenerated once at a time. Run with `-audit`, the program also
 prints the audit pass's findings (`Audit:` lines, advisory and never printed by a plain
 generation); `impulse audit` runs every program that way, and `impulse check` lists the
 warning lines under its regen result.

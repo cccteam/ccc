@@ -886,7 +886,7 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 	if err := writeNew(a, path.Join(dir, "main.go"), fmt.Sprintf(runnerProgram, "the shared vocabulary")); err != nil {
 		return err
 	}
-	if err := writeNew(a, path.Join(dir, "warnings_test.go"), warningsTest); err != nil {
+	if err := writeNew(a, path.Join(dir, "warnings_test.go"), fmt.Sprintf(warningsTest, modulePath)); err != nil {
 		return err
 	}
 	file := path.Join(dir, "generator.go")
@@ -1462,7 +1462,8 @@ func run(ctx context.Context, audit bool) error {
 `
 
 // warningsTest pins the schema warnings a program raises, none to start, in the
-// skeletons' shape.
+// skeletons' shape; %[1]s is the application's module path (the test takes the module's
+// generation lock, cmd/generate/internal/regen, before it regenerates).
 const warningsTest = `package main
 
 import (
@@ -1470,6 +1471,8 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/resource/generation"
+
+	"%[1]s/cmd/generate/internal/regen"
 )
 
 // TestSchemaWarnings pins the schema warnings the generator raises over this
@@ -1487,15 +1490,18 @@ func TestSchemaWarnings(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generation requires the Spanner emulator")
 	}
+	// The generator rewrites the tree, as cmd/generate's test does from another test
+	// process: one generation at a time.
+	regen.Exclusive(t)
 
 	generator, err := newGenerator(t.Context())
 	if err != nil {
-		t.Fatalf("newGenerator() error = %v", err)
+		t.Fatalf("newGenerator() error = %%v", err)
 	}
 	defer generator.Close()
 
 	if err := generator.Generate(); err != nil {
-		t.Fatalf("Generate() error = %v", err)
+		t.Fatalf("Generate() error = %%v", err)
 	}
 
 	var want []generation.Warning
@@ -1504,13 +1510,13 @@ func TestSchemaWarnings(t *testing.T) {
 		return
 	}
 	if !reflect.DeepEqual(want, got) {
-		t.Errorf("Warnings() = %d, want %d:", len(got), len(want))
+		t.Errorf("Warnings() = %%d, want %%d:", len(got), len(want))
 		for _, w := range got {
 			// The line, and the value to pin it with: the typed value carries fields the
 			// line leaves out.
-			t.Logf("got:  %s\n      %#v", w, w)
+			t.Logf("got:  %%s\n      %%#v", w, w)
 		}
-		t.Logf("want: %v", want)
+		t.Logf("want: %%v", want)
 	}
 }
 `

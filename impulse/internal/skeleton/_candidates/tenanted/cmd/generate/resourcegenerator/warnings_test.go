@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/resource/generation"
+
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/cmd/generate/internal/regen"
 )
 
 // TestSchemaWarnings pins the schema warnings the generator raises over this
@@ -22,6 +24,9 @@ func TestSchemaWarnings(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generation requires the Spanner emulator")
 	}
+	// The generator rewrites the tree, as cmd/generate's test does from another test
+	// process: one generation at a time.
+	regen.Exclusive(t)
 
 	generator, err := newGenerator(t.Context())
 	if err != nil {

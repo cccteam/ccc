@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/cmd/generate/internal/regen"
 )
 
 // TestGeneratedCodeIsCommitted re-runs the full generation pipeline and fails if any
@@ -22,6 +24,9 @@ func TestGeneratedCodeIsCommitted(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generation requires the Spanner emulator")
 	}
+	// go generate rewrites the tree and this test hashes it, while a program's warnings
+	// test regenerates in-process from another test process: one generation at a time.
+	regen.Exclusive(t)
 
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
