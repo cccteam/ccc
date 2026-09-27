@@ -5,6 +5,7 @@ package render
 
 import (
 	"fmt"
+	"hash/fnv"
 	"path"
 	"slices"
 	"sort"
@@ -23,6 +24,10 @@ type view struct {
 	// RepoFullName is the repository as GitHub names it, owner/name, from the module
 	// path; a placeholder when the module path names no GitHub repository.
 	RepoFullName string
+	// SweepMinute is the minute of the hour the application's sweep runs at, derived
+	// from the application code, so that many applications' sweeps in one
+	// environment do not all queue at the top of the hour.
+	SweepMinute int
 
 	// Prefix is the placement's naming prefix.
 	Prefix string
@@ -140,6 +145,7 @@ func newView(m *derive.Model) (*view, error) {
 	p := m.Placement
 	v := &view{Model: m, P: p, Prefix: p.Prefix, Integration: p.Integration(), Production: p.Production()}
 	v.RepoFullName = repoFullName(m.Repository)
+	v.SweepMinute = sweepMinute(m.App)
 	v.Auth = &m.Auths[0]
 	v.AuthVar = v.Auth.VariablePrefix()
 	v.RoutesDir = path.Dir(v.Auth.Callback.File)
@@ -487,4 +493,13 @@ func repoFullName(repository string) string {
 	}
 
 	return strings.TrimSuffix(strings.TrimPrefix(repository, host), "/")
+}
+
+// sweepMinute spreads the applications' hourly sweeps over the hour: the minute is a
+// hash of the application code, stable across renders.
+func sweepMinute(app string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(app))
+
+	return int(h.Sum32() % 60)
 }

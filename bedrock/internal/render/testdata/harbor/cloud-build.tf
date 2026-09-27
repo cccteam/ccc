@@ -155,7 +155,7 @@ resource "google_cloud_scheduler_job" "sweep" {
   region      = local.primary_region
   name        = "${local.name}-${local.primary_region_code}-${local.app}-sweep"
   description = "Hourly: destroy the environments of harbor's closed pull requests (the sweep trigger)."
-  schedule    = "0 * * * *"
+  schedule    = "19 * * * *" # the minute is a hash of the application code: many applications' sweeps spread over the hour
   time_zone   = "Etc/UTC"
 
   http_target {
