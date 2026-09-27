@@ -9,3 +9,7 @@
 internal/render/render.go
 internal/org/render.go
 internal/github/githubtest/server.go
+# The migration renumber runs git with the repository's own paths (the default branch's
+# tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
+# not apply to it.
+internal/migration/git.go

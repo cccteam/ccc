@@ -13,7 +13,9 @@ says in a comment which declaration (a struct field under `pkg/config`, a
 route, a command) it comes from. bedrock renders these files from the code
 (`bedrock render`) and owns them: `bedrock check` compares them with the code
 and fails on drift. It renders the pipeline the same way, `cloudbuild.yaml` and
-`cloudbuild-sweep.yaml` at the repository root where Cloud Build reads them.
+`cloudbuild-sweep.yaml` at the repository root where Cloud Build reads them, and
+its generate-time step, `cmd/generate/bedrock.go`, beside the
+directive that runs the application's generators.
 Three files are seeded once and then yours: `terraform.tfvars` here, the
 placement values per environment; `.gitignore` here, keeping the
 per-environment backend caches and saved plans out of the repository; and the
@@ -243,7 +245,13 @@ base, because a migration on the shared database would change tst before
 any release. A later plain `/gcbrun` switches back: the pull request's own
 database is created, the membership on tst's is removed, and the migrations
 run. `/gcbrun reload-db` recreates the pull request's own database and cannot
-be combined with `shared-db`.
+be combined with `shared-db`. The build also recreates it without being asked
+when a migration the last build applied is no longer in the tree by name and
+content (renumbered past an index master took, or changed before it
+reached master): the database is disposable, so it is replaced, the
+migrations apply afresh, and the pull request is told why. A build that failed
+between its migrations and its record leaves the older record behind, so
+`/gcbrun reload-db` stays the hand fix for that.
 
 The guard. A pull request may have edited this stack any way at all, so the
 pull-request build plans first and applies only when every resource the plan
@@ -261,10 +269,16 @@ indexes, so every build first checks that each directory is one sequence
 the lowest present), and a pull-request build also checks that every migration
 the branch started with is still there unchanged, and reads the sequence
 together with the default branch's, so an index taken there since the branch
-was cut is refused now, with the pull request's own migration renumbered to the
-next free index, not found after the merge. The refusal is posted on the pull
-request. `bedrock check` applies the sequence rule locally; the
-schema-protection workflow in the application's CI is the merge gate for the
+was cut is refused now, not found after the merge. The refusal is posted on the
+pull request and names the fix: `bedrock migration renumber` moves the pull
+request's own migrations, up and down together, to follow master's
+highest index with no gap, keeping their order, and `go generate ./...` runs it
+first through the rendered `cmd/generate/bedrock.go`, so the
+generators read the migrations as the pipeline will; a committed migration is
+never renumbered. A committed seed file is never modified either: a new one
+follows it, and `/gcbrun reload-db` recreates the pull request's database so the
+seed applies from the start. `bedrock check` applies the sequence rule locally;
+the schema-protection workflow in the application's CI is the merge gate for the
 unchanged rule.
 
 The sweep. Closing or merging a pull request starts no build, so every hour

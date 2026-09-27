@@ -3,6 +3,8 @@ package deploy
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-playground/errors/v5"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestEnvironment(t *testing.T) {
@@ -65,7 +68,10 @@ func workspaceFiles(t *testing.T, files map[string]string) Workspace {
 
 	dir := t.TempDir()
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, filepath.FromSlash(name))), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -90,8 +96,33 @@ func TestNewRecordRequest(t *testing.T) {
 		wantObject  string
 		wantStatus  string
 		wantRegions string
-		wantErr     string
+		// wantMigrations is the applied listing a build that ran migrations leaves.
+		wantMigrations []Migration
+		wantErr        string
 	}{
+		{
+			name: "a build that ran migrations lists what it applied, the seed included when it ran",
+			files: map[string]string{
+				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "true"}}`, RevisionsFile: revisionsLines,
+				"schema/migrations/000001_Init.up.sql": "create table a", "schema/migrations/000001_Init.down.sql": "drop table a", "schema/migrations/notes.txt": "not a migration", "schema/devseed/000001_Marker.up.sql": "insert marker",
+			},
+			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:  Live,
+			wantRegions: "us-central1,us-west3",
+			wantMigrations: []Migration{
+				{Dir: "schema/migrations", Name: "000001_Init.down.sql", Hash: hashOf("drop table a")},
+				{Dir: "schema/migrations", Name: "000001_Init.up.sql", Hash: hashOf("create table a")},
+				{Dir: "schema/devseed", Name: "000001_Marker.up.sql", Hash: hashOf("insert marker")},
+			},
+		},
+		{
+			name:           "a build that ran the schema migrations alone leaves the seed out",
+			files:          map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "false"}}`, RevisionsFile: revisionsLines, "schema/migrations/000001_Init.up.sql": "create table a", "schema/devseed/000001_Marker.up.sql": "insert marker"},
+			wantObject:     "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:     Live,
+			wantRegions:    "us-central1,us-west3",
+			wantMigrations: []Migration{{Dir: "schema/migrations", Name: "000001_Init.up.sql", Hash: hashOf("create table a")}},
+		},
 		{
 			name:        "a live deployment in two regions",
 			files:       map[string]string{EnvironmentFile: liveEnvironment, BuildFile: buildJSON, RevisionsFile: revisionsLines},
@@ -160,8 +191,18 @@ func TestNewRecordRequest(t *testing.T) {
 			if r.Status != tt.wantStatus || strings.Join(r.Regions, ",") != tt.wantRegions || r.Image != "us-central1-docker.pkg.dev/shr/repo/harbor@sha256:abc" || r.Digest != "sha256:abc" || r.Commit != "deadbeef" || r.Build != "b-1" || r.Timestamp != "2026-09-27T05:30:00Z" || len(r.Revisions) != 2 || r.Revisions[1].Revision != "harbor-app-00007-def" {
 				t.Errorf("Record = %+v", r)
 			}
+			if diff := cmp.Diff(tt.wantMigrations, r.Migrations); diff != "" {
+				t.Errorf("Migrations mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
+}
+
+// hashOf is a migration's hash as the record carries it.
+func hashOf(content string) string {
+	sum := sha256.Sum256([]byte(content))
+
+	return hex.EncodeToString(sum[:8])
 }
 
 // memoryStore is a Store holding what was written, by gs:// path.

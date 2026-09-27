@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"regexp"
 	"sort"
 	"strconv"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/migration"
 )
 
 // MigrationFinding is one problem with the migrations directory.
@@ -22,13 +23,6 @@ type MigrationFinding struct {
 	// Problem says what is wrong, the way a person reads it.
 	Problem string
 }
-
-// migrationNameRE is a migration file name: a six-digit index, an underscore, a name,
-// and .up.sql or .down.sql.
-var migrationNameRE = regexp.MustCompile(`^(\d{6})_[A-Za-z0-9_-]+\.(up|down)\.sql$`)
-
-// seedDir is the seed directory's name beside the schema migrations directory.
-const seedDir = "devseed"
 
 // scanMigrations reads the migrations directory and reports every file that is not a
 // migration file, every index with two up files or a down file without an up, and every
@@ -52,14 +46,14 @@ func scanMigrations(dir, rel string) ([]MigrationFinding, error) {
 		if e.IsDir() || path.Ext(e.Name()) != ".sql" {
 			continue
 		}
-		m := migrationNameRE.FindStringSubmatch(e.Name())
+		m := migration.NameRE.FindStringSubmatch(e.Name())
 		if m == nil {
 			findings = append(findings, MigrationFinding{Path: path.Join(rel, e.Name()), Problem: "not a migration file name (NNNNNN_name.up.sql or NNNNNN_name.down.sql)"})
 
 			continue
 		}
 		idx, _ := strconv.Atoi(m[1])
-		if m[2] == "up" {
+		if m[3] == "up" {
 			ups[idx] = append(ups[idx], e.Name())
 		} else {
 			downs[idx] = append(downs[idx], e.Name())

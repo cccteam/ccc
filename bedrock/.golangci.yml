@@ -175,11 +175,19 @@ linters:
           - gosec
         path: internal/derive/derive\.go
         text: G101
-      # Tests edit copies of the committed stack under their own temporary directory.
+      # Tests edit copies of the committed stack under their own temporary directory,
+      # and build git repositories there for the migration renumber.
       - linters:
           - gosec
         path: _test\.go
-        text: G703
+        text: G(703|204)
+      # The migration renumber asks git about the repository it runs in (the default
+      # branch's tree, the tracked files) and moves tracked files with git mv: running
+      # git with the repository's own paths is the command's purpose.
+      - linters:
+          - gosec
+        path: internal/migration/git\.go
+        text: G204
       # deploy resolve reads the build's id, project and location from the process
       # environment, as the pipeline sets them; its command test sets them with
       # t.Setenv, which forbids t.Parallel.

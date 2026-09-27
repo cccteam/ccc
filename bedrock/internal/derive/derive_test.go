@@ -70,7 +70,7 @@ func TestDerive(t *testing.T) {
 			wantOIDC:     true,
 			wantCallback: Route{Method: "GET", Path: "/api/user/callback", File: "pkg/router/zz_gen_router.go"},
 			wantRedirect: "APP_STAFF_OIDC_REDIRECT_URL",
-			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema"},
+			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema", GenerateDir: "cmd/generate", GeneratePackage: "generate"},
 			wantHostnames: map[string]string{
 				"tst": "harbor-tst.impulseframework.dev",
 				"stg": "harbor-stg.impulseframework.dev",
@@ -105,7 +105,7 @@ func TestDerive(t *testing.T) {
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST"},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
 			wantMigrate:  []string{LevelCore, LevelData},
-			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema"},
+			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema", GenerateDir: "cmd/generate", GeneratePackage: "generate"},
 			wantHostnames: map[string]string{
 				"tst": "beacon-tst.impulseframework.dev",
 				"stg": "beacon-stg.impulseframework.dev",

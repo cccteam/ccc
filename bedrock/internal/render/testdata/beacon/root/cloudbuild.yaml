@@ -5,7 +5,7 @@
 #
 #   ResolveDeploymentTarget   what is deployed and where (bedrock deploy resolve, from the pinned bedrock image)
 #   ValidateRelease           whether this release may deploy here: the release, its commit, the record gate (bedrock deploy validate-release)
-#   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops
+#   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops and names the fix
 #   Hook*                     the application's own scripts at four stages, when it commits them
 #   CheckRelease              a release already in the registry is reused (same commit) or refused (bedrock deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit, pushed
@@ -22,9 +22,10 @@
 # Two kinds of trigger run it (README.md, "Deploying"):
 #   - a version trigger per environment, on a tag push: the tagged commit must be on the
 #     default branch, the migrate job runs, traffic shifts.
-#   - the pull-request trigger for tst, started by a "/gcbrun" comment: the revision is
-#     deployed under the tag pr<N> with no traffic, and the migrate job runs only when the
-#     comment says "reload-db".
+#   - the pull-request trigger for tst, started by a "/gcbrun" comment: the pull request's
+#     own stack is applied, the migrate job runs against its own database (recreated on
+#     "reload-db", or on its own when the migrations the last build applied are no longer
+#     in the tree), and the revision takes the environment's traffic.
 #
 # Every shell variable is written $$NAME: Cloud Build reads $NAME and ${NAME} as its own
 # substitutions and hands the shell one dollar sign for $$. The substitutions are listed
@@ -139,10 +140,12 @@ steps:
           if [ -n "$${BASE}" ]; then
             while IFS=$$'\t' read -r NAME SHA; do
               [ -n "$${NAME}" ] || continue
+              FIX="a new one follows it"
+              if [ "$${DIR}" != "${_MIGRATIONS_DIR}" ]; then FIX="a new one follows it, and /gcbrun reload-db recreates the pull request's database so the seed applies from the start"; fi
               if [ ! -f "$${DIR}/$${NAME}" ]; then
                 PROBLEMS+="  $${DIR}/$${NAME}: removed or renamed; a committed migration never changes"$$'\n'
               elif [ "$$(git hash-object "$${DIR}/$${NAME}")" != "$${SHA}" ]; then
-                PROBLEMS+="  $${DIR}/$${NAME}: modified; a committed migration never changes, a new one follows it"$$'\n'
+                PROBLEMS+="  $${DIR}/$${NAME}: modified; a committed migration never changes, $${FIX}"$$'\n'
               fi
             done <<< "$$(listing "$${DIR}" "$${BASE}")"
           fi
@@ -190,9 +193,9 @@ steps:
           echo "Build REJECTED: the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous, never changed once committed):"
           printf '%s' "$${PROBLEMS}"
           if [ -n "${_PR_NUMBER}" ]; then
-            echo "A migration this pull request adds on an index ${_DEFAULT_BRANCH} has taken is renamed, up and down, to the next free index; a committed one is never renumbered."
-            BODY=$$(jq -n --arg list "$${PROBLEMS}" --arg build "${BUILD_ID}" \
-              '{body: ("The pull-request build stopped: the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous, never changed once committed). Build " + $$build + ":\n\n```\n" + $$list + "```")}')
+            echo "The fix for an index ${_DEFAULT_BRANCH} has taken, or a gap: bedrock migration renumber on the branch (go generate ./... runs it) moves the pull request's own migrations, up and down together, to follow ${_DEFAULT_BRANCH}'s highest index with no gap; a committed migration is never renumbered."
+            BODY=$$(jq -n --arg list "$${PROBLEMS}" --arg build "${BUILD_ID}" --arg branch "${_DEFAULT_BRANCH}" \
+              '{body: ("The pull-request build stopped: the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous, never changed once committed). Build " + $$build + ":\n\n```\n" + $$list + "```\nThe fix for an index " + $$branch + " has taken, or a gap: `bedrock migration renumber` on the branch (`go generate ./...` runs it) moves the pull request'"'"'s own migrations, up and down together, to follow " + $$branch + "'"'"'s highest index with no gap; a committed migration is never renumbered.")}')
             curl -s -o /dev/null -w "Posted on the pull request: HTTP %{http_code}\n" -X POST \
               -H "Authorization: Bearer $${DEPLOYER_TOKEN:-$${GITHUB_TOKEN}}" -H "Accept: application/vnd.github.v3+json" \
               "$${API}/issues/${_PR_NUMBER}/comments" -d "$${BODY}"
@@ -200,13 +203,23 @@ steps:
           exit 1
         fi
         echo "Guard passed: the migrations form one sequence$${BASE:+, unchanged against ${_DEFAULT_BRANCH}}."
+        # The pull request is told when its database is recreated without being asked
+        # (resolve found the migrations the last build applied no longer in the tree);
+        # this is the first step with the deployer token, so the note is posted here.
+        if [ -n "${_PR_NUMBER}" ] && [ "$${RELOAD_DB}" = "true" ] && [ "$${RELOAD_DB_REASON}" != "/gcbrun reload-db" ]; then
+          BODY=$$(jq -n --arg reason "$${RELOAD_DB_REASON}" --arg build "${BUILD_ID}" '{body: ("The pull request'"'"'s database is recreated this build: " + $$reason + " (build " + $$build + ").")}')
+          curl -s -o /dev/null -w "Posted the recreate note on the pull request: HTTP %{http_code}\n" -X POST \
+            -H "Authorization: Bearer $${DEPLOYER_TOKEN:-$${GITHUB_TOKEN}}" -H "Accept: application/vnd.github.v3+json" \
+            "$${API}/issues/${_PR_NUMBER}/comments" -d "$${BODY}"
+        fi
 
   # A pull request's environment is the same stack applied into the pull request's own
   # prefix as the tst apply identity (impersonated by the deploy identity; 2-env grants
   # it in tst only). Plan, guard, apply: the plan is saved, the guard reads it as JSON
   # and lets only the pull request's own resources through, and the apply applies
   # exactly that plan. /gcbrun shared-db plans without a database of its own, /gcbrun
-  # reload-db replaces the pull request's database, /gcbrun down plans the destroy.
+  # reload-db, from the comment or decided by resolve, replaces the pull request's database
+  # when it exists; /gcbrun down plans the destroy.
   - id: PlanPullRequestStack
     waitFor: ["GuardMigrations"]
     name: ghcr.io/opentofu/opentofu:1.12.6
@@ -241,8 +254,12 @@ steps:
             VARS="$${VARS} -var shared_database=true"
           fi
           if [ "$${RELOAD_DB}" = "true" ]; then
-            echo "=== /gcbrun reload-db: the pull request's database is recreated ==="
-            VARS="$${VARS} -replace=google_spanner_database.${_APP}[0]"
+            if tofu state list 2>/dev/null | grep -qx "google_spanner_database.${_APP}\[0\]"; then
+              echo "=== The pull request's database is recreated: $${RELOAD_DB_REASON} ==="
+              VARS="$${VARS} -replace=google_spanner_database.${_APP}[0]"
+            else
+              echo "=== The pull request has no database yet to recreate ($${RELOAD_DB_REASON}); it is created ==="
+            fi
           fi
           tofu plan -input=false -no-color -out=/workspace/pr.plan $${VARS}
         fi
@@ -593,6 +610,7 @@ steps:
             -d "{\"state\":\"success\",\"environment_url\":\"$${URL}\",\"log_url\":\"$${LOG_URL}\",\"auto_inactive\":true,\"description\":\"Deployed $${RELEASE}\"}"
           MODE="its own database"
           if [ "$${SHARED_DB}" = "true" ]; then MODE="${_ENV}'s database (shared-db)"; fi
+          if [ "$${RELOAD_DB}" = "true" ]; then MODE="its own database, recreated this build ($${RELOAD_DB_REASON})"; fi
           BODY="Deployed $${RELEASE} to $${URL} with $${MODE} (build ${BUILD_ID})."
         fi
         curl "$${AUTH[@]}" -o /dev/null -X POST "$${API}/issues/${_PR_NUMBER}/comments" -d "$(jq -n --arg body "$${BODY}" '{body: $$body}')"

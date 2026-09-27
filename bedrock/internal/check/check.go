@@ -135,7 +135,7 @@ func migrationDirs(m *derive.Model) []string {
 		return nil
 	}
 
-	return []string{m.Schema.MigrationsDir, path.Join(path.Dir(m.Schema.MigrationsDir), seedDir)}
+	return []string{m.Schema.MigrationsDir, path.Join(path.Dir(m.Schema.MigrationsDir), derive.SeedDir)}
 }
 
 // authoritativeResource matches the opening line of an authoritative IAM resource

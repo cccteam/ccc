@@ -1,0 +1,87 @@
+// git.go is what the renumber asks git: where the default branch is, what it holds under
+// a directory, which files are tracked, and the renames of the tracked ones.
+
+package migration
+
+import (
+	"context"
+	"os/exec"
+	"path"
+	"strings"
+
+	"github.com/go-playground/errors/v5"
+)
+
+// git runs one git command in the repository and returns its output; a failure carries
+// what git said.
+func git(ctx context.Context, root string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
+	out, err := cmd.Output()
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && len(exit.Stderr) > 0 {
+			return "", errors.Newf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(exit.Stderr)))
+		}
+
+		return "", errors.Wrapf(err, "git %s", strings.Join(args, " "))
+	}
+
+	return string(out), nil
+}
+
+// defaultRef is the ref holding the default branch's tree: origin's copy of the branch
+// when the repository has one (what a pull-request build compares against), else the
+// local branch. Neither is an error: the committed sequence has to come from somewhere.
+func defaultRef(ctx context.Context, root, branch string) (ref, commit string, err error) {
+	for _, ref := range []string{"refs/remotes/origin/" + branch, "refs/heads/" + branch} {
+		out, err := git(ctx, root, "rev-parse", "--verify", "--quiet", "--short", ref)
+		if err == nil {
+			return ref, strings.TrimSpace(out), nil
+		}
+	}
+
+	return "", "", errors.Newf("no %s branch to read the committed migrations from: neither origin/%s nor a local %s exists here (fetch first, or the placement names the wrong default branch)", branch, branch, branch)
+}
+
+// treeFiles names the files directly under the directory in the ref's tree; none when
+// the tree has no such directory.
+func treeFiles(ctx context.Context, root, ref, dir string) (map[string]bool, error) {
+	out, err := git(ctx, root, "ls-tree", "-r", "--name-only", ref, "--", dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return under(out, dir), nil
+}
+
+// trackedFiles names the files directly under the directory that the index tracks:
+// those are moved with git mv, so the index follows; an untracked file is renamed on
+// disk alone.
+func trackedFiles(ctx context.Context, root, dir string) (map[string]bool, error) {
+	out, err := git(ctx, root, "ls-files", "--", dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return under(out, dir), nil
+}
+
+// under reads a listing of root-relative paths and keeps the base names of the ones
+// directly under the directory.
+func under(listing, dir string) map[string]bool {
+	names := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
+		if line != "" && path.Dir(line) == dir {
+			names[path.Base(line)] = true
+		}
+	}
+
+	return names
+}
+
+// gitMove renames a tracked file, staging the rename.
+func gitMove(ctx context.Context, root, from, to string) error {
+	_, err := git(ctx, root, "mv", "--", from, to)
+
+	return err
+}

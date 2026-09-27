@@ -105,7 +105,7 @@ func prBuild(overrides map[string]string) map[string]string {
 }
 
 // known is the stack's contract in these tests.
-var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME"}
+var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR"}
 
 func buildFor(t *testing.T, subs map[string]string) string {
 	t.Helper()
@@ -122,6 +122,7 @@ func buildFor(t *testing.T, subs map[string]string) string {
 type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token  string
 	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Notice bool
+	ReloadReason                                                  string
 	Declared                                                      []string
 }
 
@@ -129,8 +130,24 @@ func summarize(f *Facts) outcome {
 	return outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Notice: f.Notice != "",
-		Declared: f.Declared,
+		ReloadReason: f.ReloadReason, Declared: f.Declared,
 	}
+}
+
+// The records and trees the stale-database cases use: pull request 7's last build
+// applied 000003_Sites, and the tree either still carries it or has renumbered it.
+const (
+	sitesUp      = "schema/migrations/000003_Sites.up.sql"
+	sitesContent = "create table Sites"
+)
+
+func recordWith(build, timestamp string, applied ...Migration) string {
+	data, err := json.Marshal(Record{App: "harbor", Env: "tst", Build: build, Timestamp: timestamp, Status: Preview, Migrations: applied})
+	if err != nil {
+		panic(err)
+	}
+
+	return string(data)
 }
 
 func TestResolve(t *testing.T) {
@@ -149,6 +166,10 @@ func TestResolve(t *testing.T) {
 		name     string
 		subs     map[string]string
 		comments []string
+		// records are the records bucket's objects by gs:// path; tree the migration
+		// files in the checkout.
+		records map[string]string
+		tree    map[string]string
 		// commentsErr fails the comment read; mintErr fails the token.
 		commentsErr error
 		mintErr     error
@@ -183,7 +204,7 @@ func TestResolve(t *testing.T) {
 			name:       "a pull request's build reads its instruction",
 			subs:       prBuild(nil),
 			comments:   []string{"/gcbrun reload-db"},
-			want:       withComment(pr, "/gcbrun reload-db", func(o *outcome) { o.ReloadDB = true }),
+			want:       withComment(pr, "/gcbrun reload-db", func(o *outcome) { o.ReloadDB = true; o.ReloadReason = "/gcbrun reload-db" }),
 			wantOut:    []string{"Triggered by pull request 7", "COMMENT_BODY=/gcbrun reload-db", "IMAGE=" + image + " IMAGE_TAG=pr7-deadbee-tst VERSION=pr7@deadbee RELEASE=pr7-deadbee"},
 			wantCalled: "tok impulseframework/harbor 7",
 		},
@@ -193,6 +214,64 @@ func TestResolve(t *testing.T) {
 			comments: []string{"/gcbrun shared-db"},
 			want:     withComment(pr, "/gcbrun shared-db", func(o *outcome) { o.SharedDB = true; o.RunMigrations = false }),
 			wantOut:  []string{"RUN_MIGRATIONS=false SHIFT_TRAFFIC=true REVISION_TAG="},
+		},
+		{
+			name:     "a migration the last build applied is no longer in the tree: the database is recreated",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun"},
+			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
+			tree:     map[string]string{"schema/migrations/000004_Sites.up.sql": sitesContent},
+			want: withComment(pr, "/gcbrun", func(o *outcome) {
+				o.ReloadDB = true
+				o.ReloadReason = "the database applied schema/migrations/000003_Sites.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
+			}),
+			wantOut: []string{"Reload: the database applied schema/migrations/000003_Sites.up.sql (build b-0)"},
+		},
+		{
+			name:     "a migration changed since the last build applied it is the same case",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun"},
+			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
+			tree:     map[string]string{sitesUp: sitesContent + ", edited"},
+			want: withComment(pr, "/gcbrun", func(o *outcome) {
+				o.ReloadDB = true
+				o.ReloadReason = "the database applied schema/migrations/000003_Sites.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
+			}),
+		},
+		{
+			name:     "the tree still carries what the last build applied: nothing is recreated",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun"},
+			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
+			tree:     map[string]string{sitesUp: sitesContent, "schema/migrations/000004_Audit.up.sql": "create table Audit"},
+			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
+		},
+		{
+			name:     "the newest record decides, an older one is history",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun"},
+			records: map[string]string{
+				"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}),
+				"gs://records/harbor/tst/pr7-0000def/b-1.json": recordWith("b-1", "2026-09-27T06:00:00Z", Migration{Dir: "schema/migrations", Name: "000004_Sites.up.sql", Hash: hashOf(sitesContent)}),
+				"gs://records/harbor/tst/pr7-0000fff/b-2.json": recordWith("b-2", "2026-09-27T06:30:00Z"),
+			},
+			tree: map[string]string{"schema/migrations/000004_Sites.up.sql": sitesContent},
+			want: withComment(pr, "/gcbrun", func(*outcome) {}),
+		},
+		{
+			name:     "shared-db never recreates: there is no database of the pull request's own",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun shared-db"},
+			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
+			tree:     map[string]string{"schema/migrations/000004_Sites.up.sql": sitesContent},
+			want:     withComment(pr, "/gcbrun shared-db", func(o *outcome) { o.SharedDB = true; o.RunMigrations = false }),
+		},
+		{
+			name:     "the first build has no record and decides nothing",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun"},
+			tree:     map[string]string{sitesUp: sitesContent},
+			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
 		},
 		{
 			name:     "down tears the environment down",
@@ -278,8 +357,9 @@ func TestResolve(t *testing.T) {
 
 			builds := &fakeBuilds{build: buildFor(t, tt.subs), token: "tok", mintErr: tt.mintErr}
 			comments := &fakeComments{bodies: tt.comments, err: tt.commentsErr}
-			clients := &Clients{Builds: builds.open, Comments: comments.read}
-			req := &ResolveRequest{BuildID: "b-1", Project: "tst-project", Location: "us-central1", Known: known}
+			store := &memoryStore{objects: tt.records}
+			clients := &Clients{Builds: builds.open, Comments: comments.read, Storage: store.open}
+			req := &ResolveRequest{BuildID: "b-1", Project: "tst-project", Location: "us-central1", Known: known, Source: string(workspaceFiles(t, tt.tree))}
 			var out strings.Builder
 			facts, err := Resolve(t.Context(), clients, req, &out)
 			if tt.wantErr != "" {

@@ -17,6 +17,7 @@ import (
 	"embed"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -76,8 +77,11 @@ const (
 	templateExt     = ".tmpl"
 	// The files the tool writes once: the placement values per environment, the
 	// stack's ignore rules, and the image build.
-	tfvarsFile     = "terraform.tfvars"
-	ignoreFile     = ".gitignore"
+	tfvarsFile = "terraform.tfvars"
+	ignoreFile = ".gitignore"
+	// generateFile is bedrock's generate-time step, rendered beside the application's
+	// //go:generate directive.
+	generateFile   = "bedrock.go"
 	dockerfileFile = "Dockerfile"
 )
 
@@ -86,6 +90,19 @@ var seeded = map[string]bool{
 	tfvarsFile:     true,
 	ignoreFile:     true,
 	dockerfileFile: true,
+}
+
+// placed are the root files whose place depends on the application: the generate-time
+// step goes beside the directive that runs the site generator, in a file that sorts
+// before the application's own; an application with no such directive gets none.
+var placed = map[string]func(v *view) string{
+	generateFile: func(v *view) string {
+		if v.Schema.GenerateDir == "" {
+			return ""
+		}
+
+		return path.Join(v.Schema.GenerateDir, generateFile)
+	},
 }
 
 // Render renders every file of the application's stack.
@@ -132,6 +149,11 @@ func renderDir(dir string, root bool, v *view) ([]File, error) {
 			continue
 		}
 		name := strings.TrimSuffix(entry.Name(), templateExt)
+		if place, ok := placed[name]; ok {
+			if name = place(v); name == "" {
+				continue
+			}
+		}
 		content, err := renderOne(dir, entry.Name(), v)
 		if err != nil {
 			return nil, err
@@ -199,6 +221,11 @@ func Write(files []File, dir, appDir string) (*Written, error) {
 			root = app
 		}
 		dst := filepath.FromSlash(f.Path)
+		if parent := filepath.Dir(dst); parent != "." {
+			if err := root.MkdirAll(parent, 0o755); err != nil {
+				return nil, errors.Wrapf(err, "os.Root.MkdirAll(): %s", parent)
+			}
+		}
 		switch {
 		case f.Tier == Seeded:
 			if _, err := root.Stat(dst); err == nil {

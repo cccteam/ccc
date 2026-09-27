@@ -105,22 +105,45 @@ func (m *Model) process(a *app.App, cfg *config, name, dir string) (Process, err
 	return p, nil
 }
 
-// schema settles the migrations directory and the call that applies them.
-func (m *Model) schema(a *app.App) error {
+// SeedDir is the seed directory's name beside the schema migrations directory: the
+// data migrations the migrate command applies with -seed, tracked apart from the schema.
+const SeedDir = "devseed"
+
+// MigrationsDir is the root-relative directory of the schema migrations: the file://
+// source the site generator declares.
+func MigrationsDir(a *app.App) (string, error) {
 	sites := a.SiteGenerators()
 	if len(sites) == 0 {
-		return errors.New("no site generator declares the migration sources")
+		return "", errors.New("no site generator declares the migration sources")
 	}
 	for _, source := range sites[0].MigrationSources {
 		if dir, ok := strings.CutPrefix(source, fileScheme); ok {
-			m.Schema.MigrationsDir = path.Clean(dir)
-
-			break
+			return path.Clean(dir), nil
 		}
 	}
-	if m.Schema.MigrationsDir == "" {
-		return errors.Newf("the generator in %s names no file:// migration source", sites[0].File)
+
+	return "", errors.Newf("the generator in %s names no file:// migration source", sites[0].File)
+}
+
+// MigrationDirs is the schema migrations directory and the seed directory beside it,
+// root-relative: the two directories the migrate command reads, the guard checks and
+// the renumber moves files in.
+func MigrationDirs(a *app.App) ([]string, error) {
+	dir, err := MigrationsDir(a)
+	if err != nil {
+		return nil, err
 	}
+
+	return []string{dir, path.Join(path.Dir(dir), SeedDir)}, nil
+}
+
+// schema settles the migrations directory and the call that applies them.
+func (m *Model) schema(a *app.App) error {
+	dir, err := MigrationsDir(a)
+	if err != nil {
+		return err
+	}
+	m.Schema.MigrationsDir = dir
 	if m.Migrate == nil {
 		return nil
 	}

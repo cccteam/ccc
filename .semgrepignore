@@ -27,3 +27,7 @@ resource/semantic_differential_test.go
 bedrock/internal/render/render.go
 bedrock/internal/org/render.go
 bedrock/internal/github/githubtest/server.go
+# The migration renumber runs git with the repository's own paths (the default branch's
+# tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
+# not apply to it.
+bedrock/internal/migration/git.go

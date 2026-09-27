@@ -34,8 +34,10 @@ application repository's infrastructure directory, or the one application layer 
 infrastructure directory, else from the working directory; --app overrides.
 
 The stack's .tf files and its README are owned: render rewrites them every time, and each
-says in a comment which declaration it comes from. So are the pipeline files at the
-application root, cloudbuild.yaml and cloudbuild-sweep.yaml, which Cloud Build reads there:
+says in a comment which declaration it comes from. So are the files at the application
+root: the pipeline, cloudbuild.yaml and cloudbuild-sweep.yaml, which Cloud Build reads there,
+and the generate-time step, cmd/generate/bedrock.go, which runs the migration renumber before
+the application's generators. The pipeline is where
 the deploy sequence is bedrock's, and an application customizes it through hooks
 (infrastructure/hooks/<stage>.sh) and the substitutions declared in its placement values,
 never by editing the file. terraform.tfvars is seeded: written when absent, then a person's,

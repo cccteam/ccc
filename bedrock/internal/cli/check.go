@@ -19,8 +19,8 @@ func newCheck(d deps) *cobra.Command {
 		Use:   "check [--app <dir>] [--dir <dir>]",
 		Short: "Compare a committed stack with what the code declares",
 		Long: `check renders the application stack afresh and compares every owned file with the one in
-the stack directory, and the pipeline files (cloudbuild.yaml, cloudbuild-sweep.yaml) with the
-ones at the application root. It exits 1 when any differs or is missing, listing each with
+the stack directory, and the files it owns at the application root (cloudbuild.yaml,
+cloudbuild-sweep.yaml, and the generate-time step cmd/generate/bedrock.go) with the ones there. It exits 1 when any differs or is missing, listing each with
 the first line that differs: the drift between the code and the committed infrastructure.
 Seeded files (terraform.tfvars, .gitignore, the Dockerfile) are a person's and are not compared.
 

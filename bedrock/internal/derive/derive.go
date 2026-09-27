@@ -361,6 +361,13 @@ type Schema struct {
 	// MigrateCall names the function the migration calls to apply them, as a reader
 	// would: <package dir> <function>.
 	MigrateCall string
+	// GenerateDir is the root-relative directory holding the //go:generate directive
+	// that runs the site generator, and GeneratePackage that file's package: where
+	// bedrock's generate-time step (the migration renumber) goes, in a file that sorts
+	// before the application's so it runs first. Both empty when no directive runs
+	// the generator (impulse check reports that).
+	GenerateDir     string
+	GeneratePackage string
 }
 
 // Environment is one environment of the placement with the hostnames it serves.
@@ -429,6 +436,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, err
 	}
 	if err := m.schema(a); err != nil {
+		return nil, err
+	}
+	if err := m.generateStep(a); err != nil {
 		return nil, err
 	}
 	m.Environments = p.environments(code)

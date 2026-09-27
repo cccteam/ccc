@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -51,6 +52,7 @@ const (
 	migrateJobFact    = "MIGRATE_JOB"
 	sharedDBFact      = "SHARED_DB"
 	reloadDBFact      = "RELOAD_DB"
+	reloadReasonFact  = "RELOAD_DB_REASON"
 	downFact          = "DOWN"
 	imageTagFact      = "IMAGE_TAG"
 	commitTagFact     = "COMMIT_TAG"
@@ -145,8 +147,8 @@ func (c *cloudBuild) ReadToken(ctx context.Context, repository string) (string, 
 
 // call sends one request and returns the answer's body; a status outside 2xx is an
 // error carrying the API's message.
-func (c *cloudBuild) call(ctx context.Context, method, path string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, http.NoBody)
+func (c *cloudBuild) call(ctx context.Context, method, endpoint string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.base+endpoint, http.NoBody)
 	if err != nil {
 		return nil, errors.Wrap(err, "http.NewRequestWithContext()")
 	}
@@ -174,7 +176,7 @@ func (c *cloudBuild) call(ctx context.Context, method, path string) ([]byte, err
 			msg = strings.TrimSpace(string(data))
 		}
 
-		return nil, errors.Newf("Cloud Build answered HTTP %d to %s %s: %s", resp.StatusCode, method, path, msg)
+		return nil, errors.Newf("Cloud Build answered HTTP %d to %s %s: %s", resp.StatusCode, method, endpoint, msg)
 	}
 
 	return data, nil
@@ -202,6 +204,9 @@ type ResolveRequest struct {
 	Project  string
 	Location string
 	Known    []string
+	// Source is the checkout the build runs in (the workspace): where the migration
+	// files are read when a pull request's records are compared with the tree.
+	Source string
 }
 
 // check refuses a request that does not name the build.
@@ -230,10 +235,14 @@ type Facts struct {
 	Token  string
 	Notice string
 	// The facts the environment file exports, as the later steps read them.
-	Services      string
-	MigrateJob    string
-	SharedDB      bool
-	ReloadDB      bool
+	Services   string
+	MigrateJob string
+	SharedDB   bool
+	ReloadDB   bool
+	// ReloadReason says why the pull request's database is recreated: the comment
+	// asked (/gcbrun reload-db), or the migrations the last build applied are no longer
+	// in the tree.
+	ReloadReason  string
 	Down          bool
 	Image         string
 	ImageTag      string
@@ -277,6 +286,9 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 		return nil, err
 	}
 	if err := f.trigger(ctx, clients.Comments, out); err != nil {
+		return nil, err
+	}
+	if err := f.staleDatabase(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
 	f.tags(req.Known)
@@ -385,6 +397,83 @@ func (f *Facts) trigger(ctx context.Context, comments CommentsFunc, out io.Write
 	return nil
 }
 
+// staleDatabase decides whether a pull request's own database is recreated without
+// being asked. The newest record of the pull request lists the migrations its build
+// applied, by name and content; when one of them is no longer in the tree as it was
+// (renumbered past an index the default branch took, or changed before it reached the
+// default branch), the database holds a history the files no longer describe, so it is
+// replaced and the migrations apply afresh: a pull request's database is disposable.
+// The first build has no record and decides nothing; a record left by a build whose
+// environment was torn down since is harmless, since the plan step replaces only a
+// database that exists.
+func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
+	if f.PullRequest == "" || f.Down || f.SharedDB || f.ReloadDB || !f.RunMigrations {
+		return nil
+	}
+	bucket, app := f.Substitutions[recordsBucket], f.Substitutions[appSub]
+	if bucket == "" || app == "" {
+		return nil
+	}
+	store, err := open(ctx)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	newest, err := newestRecord(ctx, store, bucket, app+"/"+f.Environment+"/pr"+f.PullRequest+"-")
+	if err != nil {
+		return err
+	}
+	if newest == nil {
+		return nil
+	}
+	var gone []string
+	for _, m := range newest.Migrations {
+		hash, err := hashFile(filepath.Join(source, filepath.FromSlash(m.Dir), m.Name))
+		if err != nil {
+			return err
+		}
+		if hash != m.Hash {
+			gone = append(gone, path.Join(m.Dir, m.Name))
+		}
+	}
+	if len(gone) == 0 {
+		return nil
+	}
+	f.ReloadDB = true
+	f.ReloadReason = fmt.Sprintf("the database applied %s (build %s), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh", strings.Join(gone, ", "), newest.Build)
+	fmt.Fprintf(out, "Reload: %s\n", f.ReloadReason)
+
+	return nil
+}
+
+// newestRecord reads the records under the prefix and returns the newest that lists
+// migrations, or nil.
+func newestRecord(ctx context.Context, store Store, bucket, prefix string) (*Record, error) {
+	names, err := store.List(ctx, bucket, prefix)
+	if err != nil {
+		return nil, err
+	}
+	var newest *Record
+	for _, name := range names {
+		data, err := store.Read(ctx, bucket, name)
+		if err != nil {
+			return nil, err
+		}
+		var r Record
+		if err := json.Unmarshal(data, &r); err != nil {
+			return nil, errors.Wrapf(err, "json.Unmarshal(): gs://%s/%s", bucket, name)
+		}
+		if len(r.Migrations) == 0 {
+			continue
+		}
+		if newest == nil || r.Timestamp > newest.Timestamp {
+			newest = &r
+		}
+	}
+
+	return newest, nil
+}
+
 // instruction reads the latest /gcbrun comment: the words after it are its options
 // (shared-db: the site runs against tst's database and the migrate job does not run;
 // reload-db: the pull request's own database is recreated; down: the pull request's
@@ -406,7 +495,7 @@ func (f *Facts) instruction(all []github.Comment) error {
 		case "shared-db":
 			f.SharedDB = true
 		case "reload-db":
-			f.ReloadDB = true
+			f.ReloadDB, f.ReloadReason = true, gcbrun+" reload-db"
 		case "down":
 			f.Down = true
 		default:
@@ -490,6 +579,7 @@ func (f *Facts) environment() string {
 		{migrateJobFact, f.MigrateJob},
 		{sharedDBFact, flag(f.SharedDB)},
 		{reloadDBFact, flag(f.ReloadDB)},
+		{reloadReasonFact, f.ReloadReason},
 		{downFact, flag(f.Down)},
 		{skipDeploy, ""},
 		{imageFact, f.Image},
