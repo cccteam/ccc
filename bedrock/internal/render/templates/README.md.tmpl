@@ -139,9 +139,13 @@ substitutions and this stack's outputs:
   bucket, empty in the first environment; `_APPLY_IDENTITY`, the identity the
   pull-request build applies a pull request's stack as; `_MIGRATIONS_DIR`, the
   schema migrations directory, which decides whether `/gcbrun shared-db` is
-  allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep.
-  Output `substitutions` is the same map, for a build submitted by hand before
-  the triggers exist.
+  allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep;
+  `_HOSTNAME`, the environment's canonical hostname (a pull-request stack's
+  own, which the pipeline talks back with); `_DEPLOYER_APP_ID` and
+  `_DEPLOYER_KEY_SECRET`, the deployer GitHub App the pipeline talks back on a
+  pull request as and the pinned secret version of its key, empty until 2-env
+  holds them. Output `substitutions` is the same map, for a build submitted by
+  hand before the triggers exist.
 - The services and the job are deployed with `gcloud run services update
   --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
   --wait`, which leave the template's variables and secrets alone: the
@@ -215,6 +219,13 @@ Cloud Scheduler runs the sweep trigger (`cloudbuild-sweep.yaml`) in {{.Integrati
 the deploy identity: it lists the pull-request services by their
 `pull_request` label, asks GitHub whether each pull request is closed, and
 destroys the stacks of the closed ones as the apply identity.
+
+Talk-back. When 2-env holds the deployer GitHub App (its App ID and the pinned
+version of its key), the pull-request build mints an installation token from
+the key and talks back on the pull request as the app: a GitHub deployment
+named `{{.App}}-pr<N>` carrying the environment's URL, which the pull request's
+sidebar shows, a comment with the release and the database mode, the guard's
+refusals, and on `/gcbrun down` the deployment marked inactive.
 
 ## Hand steps
 
