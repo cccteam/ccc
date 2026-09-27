@@ -171,13 +171,25 @@ func pinnedTraffic(doc map[string]any, tag string) []any {
 	if len(serving) == 0 {
 		return nil
 	}
+	ready := shortName(text(doc, "latestReadyRevision"))
 	pinned := make([]any, 0, len(serving)+1)
 	for _, entry := range serving {
 		status, _ := entry.(map[string]any)
 		if tag != "" && text(status, keyTag) == tag {
 			continue
 		}
-		target := map[string]any{keyType: targetRevision, keyRevision: text(status, keyRevision), keyPercent: status[keyPercent]}
+		// A status names the revision it serves; a service whose latest allocation has
+		// never moved (a fresh one on its placeholder image) reports no name, and the
+		// pin then takes the latest ready revision. With none ready, nothing can be
+		// pinned, and the allocation stays as it was.
+		revision := text(status, keyRevision)
+		if revision == "" {
+			revision = ready
+		}
+		target := map[string]any{keyType: targetRevision, keyRevision: revision, keyPercent: status[keyPercent]}
+		if revision == "" {
+			target = map[string]any{keyType: targetLatest, keyPercent: status[keyPercent]}
+		}
 		if t := text(status, keyTag); t != "" {
 			target[keyTag] = t
 		}

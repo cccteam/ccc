@@ -255,3 +255,64 @@ func TestShiftTraffic(t *testing.T) {
 		})
 	}
 }
+
+func TestPinnedTraffic(t *testing.T) {
+	t.Parallel()
+
+	const service = "projects/p/locations/us-central1/services/harbor-app"
+	tests := []struct {
+		name     string
+		statuses []any
+		ready    string
+		tag      string
+		want     []any
+	}{
+		{
+			name:     "a named status is pinned by name",
+			statuses: []any{map[string]any{keyType: targetLatest, keyRevision: "harbor-app-00007-prev", keyPercent: fullTraffic}},
+			ready:    service + "/revisions/harbor-app-00007-prev",
+			want:     []any{map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00007-prev", keyPercent: fullTraffic}},
+		},
+		{
+			name:     "a status without a name pins the latest ready revision",
+			statuses: []any{map[string]any{keyType: targetLatest, keyPercent: fullTraffic}},
+			ready:    service + "/revisions/harbor-app-00001-fresh",
+			want:     []any{map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00001-fresh", keyPercent: fullTraffic}},
+		},
+		{
+			name:     "no ready revision keeps the latest allocation",
+			statuses: []any{map[string]any{keyType: targetLatest, keyPercent: fullTraffic}},
+			want:     []any{map[string]any{keyType: targetLatest, keyPercent: fullTraffic}},
+		},
+		{
+			name: "a revision tag leaves its own entry out and adds the latest under it",
+			statuses: []any{
+				map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00007-prev", keyPercent: fullTraffic},
+				map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00006-old", keyPercent: float64(0), keyTag: "pr12"},
+			},
+			ready: service + "/revisions/harbor-app-00007-prev",
+			tag:   "pr12",
+			want: []any{
+				map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00007-prev", keyPercent: fullTraffic},
+				map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "pr12"},
+			},
+		},
+		{name: "no statuses pin nothing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			doc := map[string]any{keyName: service}
+			if tt.statuses != nil {
+				doc["trafficStatuses"] = tt.statuses
+			}
+			if tt.ready != "" {
+				doc["latestReadyRevision"] = tt.ready
+			}
+			if diff := cmp.Diff(tt.want, pinnedTraffic(doc, tt.tag)); diff != "" {
+				t.Errorf("pinnedTraffic() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
