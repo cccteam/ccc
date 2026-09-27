@@ -269,6 +269,17 @@ func LayerEnvironments(layerDir string) ([]string, error) {
 	return secret.PlacementEnvironments(filepath.Join(layerDir, tfvarsFile))
 }
 
+// Placement is the placement beside the layer (placement.json in the layer's directory),
+// the one render derived the stack from: nil, without an error, when the layer has none.
+func Placement(layerDir string) (*derive.Placement, error) {
+	file := filepath.Join(layerDir, placementFile)
+	if !isFile(file) {
+		return nil, nil
+	}
+
+	return derive.ReadPlacement(file)
+}
+
 // Variables lists the secret variables the application declares. With the application's
 // source directory known, they are read from the code the way render reads it: the model
 // derived from the code and the placement beside the layer, and its secrets in

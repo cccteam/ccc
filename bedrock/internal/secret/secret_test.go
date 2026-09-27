@@ -184,6 +184,18 @@ func (f *fake) ListSecretVersions(context.Context, string, string) ([]Version, e
 	return nil, errors.New("pinning lists no versions")
 }
 
+func (f *fake) GetSecret(context.Context, string) (labels map[string]string, exists bool, err error) {
+	return nil, false, errors.New("pinning asks about no container")
+}
+
+func (f *fake) CreateSecret(context.Context, string, string, map[string]string) error {
+	return errors.New("pinning creates no container")
+}
+
+func (f *fake) AddSecretVersion(context.Context, string, []byte) (string, error) {
+	return "", errors.New("pinning adds no version")
+}
+
 // enabled holds each named version, enabled.
 func enabled(names ...string) map[string]Version {
 	versions := make(map[string]Version, len(names))

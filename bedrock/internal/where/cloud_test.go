@@ -257,3 +257,15 @@ func TestLabelQuery(t *testing.T) {
 		})
 	}
 }
+
+func (f *fakeSecrets) GetSecret(context.Context, string) (labels map[string]string, exists bool, err error) {
+	return nil, false, errors.New("finding asks about no container")
+}
+
+func (f *fakeSecrets) CreateSecret(context.Context, string, string, map[string]string) error {
+	return errors.New("finding creates no container")
+}
+
+func (f *fakeSecrets) AddSecretVersion(context.Context, string, []byte) (string, error) {
+	return "", errors.New("finding adds no version")
+}

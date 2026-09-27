@@ -82,6 +82,12 @@ linters:
             # repository root, read from its go.mod with the same parser impulse's
             # reader uses.
             - golang.org/x/mod/modfile
+            # secret add tells a container Secret Manager does not know (NotFound, the
+            # gRPC status of the client's error) from a refusal, and asks for the value at
+            # the terminal without echo.
+            - google.golang.org/grpc/codes
+            - google.golang.org/grpc/status
+            - golang.org/x/term
     exhaustive:
       default-signifies-exhaustive: true
     funlen:

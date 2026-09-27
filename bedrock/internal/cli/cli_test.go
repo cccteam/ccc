@@ -3,6 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -545,6 +548,10 @@ func lab(id, env string) where.Project {
 type labSecrets struct {
 	layer      string
 	containers map[string][]string
+	// created records the labels each container created through the fake was given,
+	// and added the last value added to each container, when the test made the maps.
+	created map[string]map[string]string
+	added   map[string]string
 }
 
 // open is the fake's secret.ClientFunc.
@@ -595,9 +602,240 @@ func (l labSecrets) ListSecretVersions(_ context.Context, project, container str
 	return versions, nil
 }
 
+func (l labSecrets) GetSecret(_ context.Context, name string) (labels map[string]string, exists bool, err error) {
+	_, ok := l.containers[path.Base(name)]
+
+	return nil, ok, nil
+}
+
+func (l labSecrets) CreateSecret(_ context.Context, _, id string, labels map[string]string) error {
+	l.containers[id] = []string{}
+	if l.created != nil {
+		l.created[id] = labels
+	}
+
+	return nil
+}
+
+func (l labSecrets) AddSecretVersion(_ context.Context, name string, payload []byte) (string, error) {
+	id := path.Base(name)
+	states, ok := l.containers[id]
+	if !ok {
+		return "", errors.Newf("rpc error: code = NotFound desc = Secret [%s] not found", id)
+	}
+	l.containers[id] = append(states, secret.Enabled)
+	if l.added != nil {
+		l.added[id] = string(payload)
+	}
+
+	return strconv.Itoa(len(states) + 1), nil
+}
+
 // pinArgs is the secret pin command line with the arguments.
 func pinArgs(args ...string) []string {
-	return append([]string{"secret", "pin"}, args...)
+	return append([]string{secretCommand, "pin"}, args...)
+}
+
+// addArgs is the secret add command line with the arguments.
+func addArgs(args ...string) []string {
+	return append([]string{secretCommand, "add"}, args...)
+}
+
+func TestSecretAdd(t *testing.T) {
+	t.Parallel()
+
+	labs := projectsOf(lab("lab-tst-1", "tst"), lab("lab-stg-1", "stg"), lab("lab-prd-1", "prd"))
+	const mailKey = "imp-tst-gbl-quill-mail-api-key"
+	placement := `{"prefix": "imp", "environments": ["tst", "stg", "prd"], "regions": [{"name": "us-central1", "code": "uc1"}],
+		"appsDomain": "impulseframework.dev", "hostedDomain": "impulseframework.com", "stateBucket": "imp-boot-gbl-state-0000",
+		"placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello", "defaultBranch": "master", "repository": "quill",
+		"releaseApp": "impulseframework-release", "labels": {"bedrock-lab": "true"}}`
+	added3 := []string{
+		"Added version 3 of imp-tst-gbl-quill-mail-api-key in project lab-tst-1, for APP_MAIL_API_KEY of quill in tst.",
+		"Pin it: bedrock secret pin tst APP_MAIL_API_KEY 3",
+	}
+	tests := []struct {
+		name string
+		// args are the arguments after "secret add"; --dir is added. placement, when
+		// set, is written beside the layer. value is the file --from-file names when
+		// fromFile is set, else standard input; hidden is what the terminal answers.
+		args        []string
+		placement   string
+		fromFile    bool
+		value       string
+		interactive func() bool
+		hidden      string
+		projects    where.ProjectClientFunc
+		secrets     labSecrets
+		wantErr     string
+		wantOut     []string
+		wantAbsent  []string
+		wantCreated map[string]string
+		wantValue   string
+	}{
+		{
+			name:      "everything typed, the value from a file",
+			args:      []string{"tst", "APP_MAIL_API_KEY", "--project", "lab-tst-1", "--container", mailKey},
+			fromFile:  true,
+			value:     "k-3\n",
+			projects:  noProjects,
+			wantOut:   added3,
+			wantValue: "k-3\n",
+		},
+		{
+			name:      "the project is found by its labels and the container named from the placement; the value from standard input",
+			args:      []string{"tst", "APP_MAIL_API_KEY"},
+			placement: placement,
+			value:     "k-3",
+			wantOut:   added3,
+			wantValue: "k-3",
+		},
+		{
+			name:      "a container the project lacks is created with the stack's labels",
+			args:      []string{"tst", "APP_MAIL_API_KEY"},
+			placement: placement,
+			value:     "k-1",
+			secrets:   labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-cookie-key": {secret.Enabled}}},
+			wantOut: []string{
+				"Created the container imp-tst-gbl-quill-mail-api-key in project lab-tst-1; the next apply of the quill stack in tst adopts it.",
+				"Added version 1 of imp-tst-gbl-quill-mail-api-key in project lab-tst-1, for APP_MAIL_API_KEY of quill in tst.",
+				"Pin it: bedrock secret pin tst APP_MAIL_API_KEY 1",
+			},
+			wantCreated: map[string]string{
+				"terraform": "true", "terraform_source_path": "3-app-quill", "source_repo": "quill",
+				"environment": "tst", "application": "quill", "variable": "app_mail_api_key", "bedrock-lab": "true",
+			},
+			wantValue: "k-1",
+		},
+		{
+			name:      "without a placement, the container is found by its labels",
+			args:      []string{"tst", "APP_MAIL_API_KEY"},
+			value:     "k-3",
+			wantOut:   added3,
+			wantValue: "k-3",
+		},
+		{
+			name:    "without a placement and without the container, refused",
+			args:    []string{"tst", "APP_MAIL_API_KEY"},
+			value:   "k-1",
+			secrets: labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-cookie-key": {secret.Enabled}}},
+			wantErr: "no secret container in project lab-tst-1 carrying the labels terraform_source_path=3-app-quill ends with -mail-api-key (found imp-tst-gbl-quill-cookie-key): pass --container",
+		},
+		{
+			name:        "asked at the terminal without echo",
+			args:        []string{"tst", "APP_MAIL_API_KEY", "--container", mailKey},
+			interactive: always,
+			hidden:      "k-3",
+			wantOut:     added3,
+			wantAbsent:  []string{"k-3"},
+			wantValue:   "k-3",
+		},
+		{
+			name:     "a variable the code does not declare is refused before anything is looked up",
+			args:     []string{"tst", "APP_OTHER_KEY", "--container", "x"},
+			value:    "k-1",
+			projects: noProjects,
+			wantErr:  "the code declares no secret variable APP_OTHER_KEY (it declares APP_COOKIE_KEY, APP_MAIL_API_KEY): a container is added only for a secret the application reads",
+		},
+		{
+			name:    "an empty value is refused",
+			args:    []string{"tst", "APP_MAIL_API_KEY", "--container", mailKey},
+			value:   "",
+			wantErr: "the value of APP_MAIL_API_KEY is empty: nothing to add",
+		},
+		{
+			name:     "an environment of the wrong shape is refused before anything is looked up",
+			args:     []string{"dev", "APP_MAIL_API_KEY"},
+			value:    "k-1",
+			projects: noProjects,
+			wantErr:  `environment "dev": one of tst, stg, prd`,
+		},
+		{
+			name:    "the variable left out is refused with the declared ones listed",
+			args:    []string{"tst"},
+			value:   "k-1",
+			wantErr: "no variable given and no terminal to ask on: pass one of APP_COOKIE_KEY, APP_MAIL_API_KEY",
+		},
+		{
+			name:    "three arguments are refused",
+			args:    []string{"tst", "APP_MAIL_API_KEY", "3"},
+			value:   "k-1",
+			wantErr: "accepts at most 2 arg(s), received 3",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := copyRepo(t, fixtureFlat)
+			layer := filepath.Join(dir, "3-app", "quill")
+			if tt.placement != "" {
+				if err := os.WriteFile(filepath.Join(layer, "placement.json"), []byte(tt.placement), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			secrets := tt.secrets
+			if secrets.containers == nil {
+				secrets = quillSecrets()
+			}
+			secrets.created, secrets.added = map[string]map[string]string{}, map[string]string{}
+			d := deps{domains: noCloudDomains, secrets: secrets.open, projects: labs, cwd: dir, interactive: never}
+			if tt.projects != nil {
+				d.projects = tt.projects
+			}
+			if tt.interactive != nil {
+				d.interactive = tt.interactive
+			}
+			d.readSecret = func(w io.Writer, question string) ([]byte, error) {
+				fmt.Fprintln(w, question)
+
+				return []byte(tt.hidden), nil
+			}
+			args := append(addArgs(tt.args...), "--dir", dir)
+			in := tt.value
+			if tt.fromFile {
+				file := filepath.Join(t.TempDir(), "value")
+				if err := os.WriteFile(file, []byte(tt.value), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, "--from-file", file)
+				in = ""
+			}
+			out, err := execute(d, in, args...)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+				if len(secrets.added) != 0 {
+					t.Errorf("Execute() added %v, want nothing", secrets.added)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(out, absent) {
+					t.Errorf("output shows %q:\n%s", absent, out)
+				}
+			}
+			if tt.wantCreated != nil && !maps.Equal(secrets.created[mailKey], tt.wantCreated) {
+				t.Errorf("created with labels %v, want %v", secrets.created[mailKey], tt.wantCreated)
+			}
+			if tt.wantCreated == nil && len(secrets.created) != 0 {
+				t.Errorf("created %v, want nothing created", secrets.created)
+			}
+			if got := secrets.added[mailKey]; got != tt.wantValue {
+				t.Errorf("stored %q, want %q", got, tt.wantValue)
+			}
+		})
+	}
 }
 
 // quillSecrets are the lab's containers for quill: the cookie key at three versions,

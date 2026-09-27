@@ -24,6 +24,8 @@ import (
 	"github.com/go-playground/errors/v5"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -128,6 +130,16 @@ type Client interface {
 	// ListSecretVersions lists every version of the container in the project, with its
 	// state, in the API's order.
 	ListSecretVersions(ctx context.Context, project, container string) ([]Version, error)
+	// GetSecret asks whether the container named projects/<project>/secrets/<secret>
+	// exists: its labels and true when it does, nil and false when Secret Manager knows
+	// no such container.
+	GetSecret(ctx context.Context, name string) (labels map[string]string, exists bool, err error)
+	// CreateSecret creates the container in the project, with automatic replication and
+	// the labels.
+	CreateSecret(ctx context.Context, project, id string, labels map[string]string) error
+	// AddSecretVersion adds the payload as a new version of the container named
+	// projects/<project>/secrets/<secret> and returns the version's number.
+	AddSecretVersion(ctx context.Context, name string, payload []byte) (string, error)
 }
 
 // ClientFunc opens a Client whose calls are billed to the project. NewSecretManager is
@@ -191,6 +203,53 @@ func (c *secretManager) ListSecretVersions(ctx context.Context, project, contain
 		}
 		versions = append(versions, Version{Name: v.GetName(), State: v.GetState().String()})
 	}
+}
+
+// GetSecret asks the API about the named container; a container it does not know is
+// reported as absent, not as an error.
+func (c *secretManager) GetSecret(ctx context.Context, name string) (labels map[string]string, exists bool, err error) {
+	s, err := c.client.GetSecret(ctx, &secretmanagerpb.GetSecretRequest{Name: name})
+	if status.Code(err) == codes.NotFound {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.Wrapf(err, "secretmanager.Client.GetSecret(): %s", name)
+	}
+
+	return s.GetLabels(), true, nil
+}
+
+// CreateSecret creates the container in the project with automatic replication, as the
+// stack's secret-manager.tf creates one.
+func (c *secretManager) CreateSecret(ctx context.Context, project, id string, labels map[string]string) error {
+	_, err := c.client.CreateSecret(ctx, &secretmanagerpb.CreateSecretRequest{
+		Parent:   "projects/" + project,
+		SecretId: id,
+		Secret: &secretmanagerpb.Secret{
+			Replication: &secretmanagerpb.Replication{
+				Replication: &secretmanagerpb.Replication_Automatic_{Automatic: &secretmanagerpb.Replication_Automatic{}},
+			},
+			Labels: labels,
+		},
+	})
+	if err != nil {
+		return errors.Wrapf(err, "secretmanager.Client.CreateSecret(): projects/%s/secrets/%s", project, id)
+	}
+
+	return nil
+}
+
+// AddSecretVersion adds the payload as a new version of the named container.
+func (c *secretManager) AddSecretVersion(ctx context.Context, name string, payload []byte) (string, error) {
+	v, err := c.client.AddSecretVersion(ctx, &secretmanagerpb.AddSecretVersionRequest{
+		Parent:  name,
+		Payload: &secretmanagerpb.SecretPayload{Data: payload},
+	})
+	if err != nil {
+		return "", errors.Wrapf(err, "secretmanager.Client.AddSecretVersion(): %s", name)
+	}
+
+	return path.Base(v.GetName()), nil
 }
 
 // Close releases the API connection.

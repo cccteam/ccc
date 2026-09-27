@@ -3,6 +3,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -59,6 +60,9 @@ type deps struct {
 	// interactive reports whether standard input is a terminal a person can be asked
 	// on.
 	interactive func() bool
+	// readSecret asks at the terminal for a value nobody should see and reads it
+	// without echo, after printing the question on the writer.
+	readSecret func(w io.Writer, question string) ([]byte, error)
 }
 
 func newRoot() *cobra.Command {
@@ -68,6 +72,7 @@ func newRoot() *cobra.Command {
 		projects:    where.NewProjects,
 		github:      github.Open,
 		interactive: stdinIsTerminal,
+		readSecret:  readHidden,
 	})
 }
 
