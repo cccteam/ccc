@@ -50,12 +50,13 @@ locals {
     # pull request changes anything under it. The repository as GitHub names it
     # (owner/name, from the module path): the sweep asks GitHub about each pull
     # request by it. _SEED says whether the migrate job applies the development
-    # seed here (the placement's seed environments; a pull-request environment
-    # seeds when its environment does; never production).
+    # seed to this environment's database at a release build: the placement's
+    # seed environments, none by default, never production. The pull-request
+    # trigger overrides it: a pull request's database is new and always seeded.
     _MIGRATIONS_DIR = "schema/migrations"
     _REPO_FULL_NAME = "impulseframework/harbor"
     _HOSTNAME       = local.hostnames[0]
-    _SEED           = contains(["tst"], var.environment) ? "true" : "false"
+    _SEED           = contains([], var.environment) ? "true" : "false"
     # The deployer GitHub App the pipeline talks back on a pull request as (a
     # deployment carrying the environment's URL, a comment, the guard's
     # refusals): its App ID and the pinned secret version of its private key,
@@ -105,7 +106,7 @@ resource "google_cloudbuild_trigger" "pr" {
   service_account    = local.identities.deploy_identity_id
   filename           = "cloudbuild.yaml"
   include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
-  substitutions      = local.substitutions
+  substitutions      = merge(local.substitutions, { _SEED = "true" })
 
   approval_config {
     approval_required = false

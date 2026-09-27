@@ -158,10 +158,12 @@ substitutions and this stack's outputs:
   pull request as and the pinned secret version of its key, empty until 2-env
   holds them; `_SEED`, true where the migrate job applies the development seed
   (`schema/devseed`, as data migrations tracked apart from the schema, so a
-  seeded database takes nothing twice): the placement's `seed` environments,
-  the first environment by default, a pull-request environment with its
-  environment, never production. Output `substitutions` is the same map, for a
-  build submitted by hand before the triggers exist.
+  seeded database takes nothing twice): always on the pull-request trigger, a
+  pull request's database being new; on a release build only in the
+  placement's `seed` environments, none by default and never production, so a
+  database holding data is seeded only where the placement says so. Output
+  `substitutions` is the same map, for a build submitted by hand before the
+  triggers exist.
 - The services and the job are deployed with `gcloud run services update
   --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
   --wait`, which leave the template's variables and secrets alone: the

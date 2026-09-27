@@ -45,10 +45,11 @@ type Placement struct {
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
 	Labels map[string]string `json:"labels"`
-	// Seed lists the environments whose migrate job applies the application's
-	// development seed (schema/devseed, as data migrations tracked apart from the
-	// schema) after the schema migrations; a pull-request environment seeds when its
-	// environment does. Absent, the first environment only; never production.
+	// Seed lists the environments whose database takes the development seed
+	// (schema/devseed, as data migrations tracked apart from the schema) at a release
+	// build, after the schema migrations. Absent, none: a database holding data is
+	// never seeded unless the placement says so. A pull-request environment is always
+	// seeded, its database being new; production never.
 	Seed []string `json:"seed,omitempty"`
 	// Approvals lists the environments whose version trigger waits for a person's
 	// approval in Cloud Build before a release runs there. Absent, every environment
@@ -139,14 +140,10 @@ func (p *Placement) Validate() error {
 	return nil
 }
 
-// SeedEnvironments are the environments whose migrate job applies the development
-// seed: the placement's list, or the first environment alone.
+// SeedEnvironments are the environments whose database is seeded at a release build:
+// the placement's seed list, none by default.
 func (p *Placement) SeedEnvironments() []string {
-	if len(p.Seed) > 0 {
-		return p.Seed
-	}
-
-	return []string{p.Integration()}
+	return p.Seed
 }
 
 // ApprovalEnvironments are the environments a release waits for approval in: Approvals

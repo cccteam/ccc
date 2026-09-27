@@ -421,9 +421,9 @@ func TestPlacementSeedEnvironments(t *testing.T) {
 		seed []string
 		want []string
 	}{
-		{name: "default: the first environment", envs: []string{"tst", "stg", "prd"}, want: []string{"tst"}},
+		{name: "default: none", envs: []string{"tst", "stg", "prd"}},
 		{name: "given", envs: []string{"tst", "stg", "prd"}, seed: []string{"tst", "stg"}, want: []string{"tst", "stg"}},
-		{name: "one environment", envs: []string{"prd"}, want: []string{"prd"}},
+		{name: "one environment, none by default", envs: []string{"prd"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
