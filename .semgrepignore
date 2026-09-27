@@ -20,8 +20,10 @@ resource/differential_property_test.go
 resource/semantic_differential_test.go
 
 # bedrock renders Terraform, YAML and Markdown from text/template: html/template's contextual
-# escaping would corrupt that output, so the renderer is excluded from the text-template
-# audit rather than marked inline. The GitHub test fake answers JSON to the client under
+# escaping would corrupt that output, so both renderers (the application's stack and the
+# organization's foundation) are excluded from the text-template audit rather than marked
+# inline. The GitHub test fake answers JSON to the client under
 # test, so the direct-write audit (an HTML page writing user data) does not apply to it.
 bedrock/internal/render/render.go
+bedrock/internal/org/render.go
 bedrock/internal/github/githubtest/server.go
