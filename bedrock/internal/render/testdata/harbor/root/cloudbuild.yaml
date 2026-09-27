@@ -3,7 +3,7 @@
 # bedrock render rewrites this file and bedrock check compares it with the code, so a change
 # belongs in bedrock, never here.
 #
-#   ResolveDeploymentTarget   what is deployed, where, and whether this build may deploy it
+#   ResolveDeploymentTarget   what is deployed, where, and whether this build may deploy it (bedrock deploy resolve, from the pinned bedrock image)
 #   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops
 #   Hook*                     the application's own scripts at four stages, when it commits them
 #   CheckRelease              a release already in the registry is reused (same commit) or refused
@@ -31,210 +31,20 @@
 
 steps:
   # What is deployed and where: the trigger's kind, the environment, the tag or the pull
-  # request's comment. Whether a tag may deploy is the next step's question. Everything
-  # the later steps share is written to /workspace/environment.sh, which each sources. This
-  # step also refuses, before the image build, a run that does not name what it updates.
+  # request's comment, worked out by bedrock deploy resolve from the bedrock image the
+  # placement pins (bedrockImage). It reads this build through the Cloud Build API, mints
+  # the repository's GitHub token from the connection the trigger reads it through, and
+  # writes what the later steps share to /workspace/environment.sh (each sources it),
+  # the build to /workspace/build.json and the declared substitutions, as build
+  # arguments, to /workspace/build-args.sh. It also refuses, before the image build, a
+  # run that does not name what it updates. Whether a tag may deploy is the next step's
+  # question.
   - id: ResolveDeploymentTarget
     waitFor: ["-"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    args: [deploy, resolve]
+    env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
     timeout: 300s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-
-        # A build is a tag build or a pull-request build, never neither.
-        if [ -z "${TAG_NAME}" ] && [ -z "${_PR_NUMBER}" ]; then
-          echo "Error: neither TAG_NAME nor _PR_NUMBER is set; a run needs one of them."
-          exit 1
-        fi
-
-        case "${_ENV}" in
-          tst|stg|prd) ;;
-          *) echo "Error: _ENV must be tst, stg, or prd (got '${_ENV}')."; exit 1 ;;
-        esac
-
-        # What this build updates, named by the application layer's substitutions output:
-        # the services (region=name, comma-separated) and the migrate job (region=name).
-        if [ -z "${_SERVICES}" ] || [ -z "${_MIGRATE_JOB}" ]; then
-          echo "Error: _SERVICES and _MIGRATE_JOB name the Cloud Run services and the migrate job this build updates; both are empty."
-          exit 1
-        fi
-
-        # jq parses the GitHub API's answers.
-        apt-get -qq update && apt-get -qq install -y jq
-
-        # A GitHub token for the repository, minted from the Cloud Build connection the
-        # trigger reads the repository through. Before the environment holds a
-        # connection (3-app passes CONNECTION_NOT_AUTHORIZED_IN_2-ENV), only a build
-        # submitted by hand reaches here, and the GitHub checks below are skipped
-        # with a notice; a triggered build always has a connection.
-        if [[ "${_REPO_CONNECTION_NAME}" == CONNECTION_NOT_AUTHORIZED* ]]; then
-          echo "Notice: no Cloud Build connection in ${_ENV} yet; the branch check and the pull-request comment are skipped (hand-submitted build)."
-          GITHUB_TOKEN=''
-        else
-          # A failed mint says why (the status and the API's message) instead of
-          # exiting silently under curl -f, as the first triggered build did. The
-          # deploy identity needs Read Token Accessor on the connection for it.
-          MINT=$(curl -s -X POST -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-            -w '\n%{http_code}' \
-            "https://cloudbuild.googleapis.com/v2/projects/${PROJECT_ID}/locations/${LOCATION}/connections/${_REPO_CONNECTION_NAME}/repositories/${_REPO_NAME}:accessReadToken")
-          MINT_STATUS=$${MINT##*$$'\n'}
-          MINT_BODY=$${MINT%$$'\n'*}
-          if [[ "$${MINT_STATUS}" != "200" ]]; then
-            echo "Error: could not mint a GitHub token from connection ${_REPO_CONNECTION_NAME} (HTTP $${MINT_STATUS}): $$(echo "$${MINT_BODY}" | jq -r '.error.message // .' 2>/dev/null)"
-            exit 1
-          fi
-          GITHUB_TOKEN=$(echo "$${MINT_BODY}" | jq -r '.token')
-        fi
-
-        RUN_MIGRATIONS='true'
-        SHIFT_TRAFFIC='true'
-        REVISION_TAG=''
-        # Pull-request options (/gcbrun shared-db: the site runs against tst's database
-        # and the migrate job does not run; /gcbrun reload-db: the pull request's own
-        # database is recreated; /gcbrun down: the pull request's environment is
-        # destroyed and nothing deploys).
-        SHARED_DB=''
-        RELOAD_DB=''
-        DOWN=''
-
-        # The branch check and the comment read address the repository by its full name,
-        # a trigger built-in; a hand-submitted build passes it (the hand submission in the
-        # stack's README), or the compare answers 404 for an empty name.
-        if [ -n "$${GITHUB_TOKEN:-}" ] && [ -z "${REPO_FULL_NAME}" ]; then
-          echo "Error: REPO_FULL_NAME is not set; a hand-submitted build passes it as <organization>/<repository>."
-          exit 1
-        fi
-        if [ -n "${TAG_NAME}" ]; then
-          echo "Triggered by tag ${TAG_NAME}"
-          VERSION="${TAG_NAME}"
-          RELEASE="${TAG_NAME}"
-
-          # The release checks (a GitHub Release by an accepted actor; on the default
-          # branch or at the tip of its hotfix branch; the record gate) are the next
-          # step's, ValidateRelease, which sources what this one writes.
-        else
-          echo "Triggered by pull request ${_PR_NUMBER}"
-          if [[ "${_ENV}" != "tst" ]]; then
-            echo "Error: a pull-request build deploys only to tst (this trigger's _ENV is ${_ENV})."
-            exit 1
-          fi
-          VERSION="pr${_PR_NUMBER}@${SHORT_SHA}"
-          # The registry's tags are immutable and the records bucket refuses overwrites,
-          # so a pull request's release carries the commit: each build of the pull request
-          # is its own image tag and record, while the revision tag stays pr<N>.
-          RELEASE="pr${_PR_NUMBER}-${SHORT_SHA}"
-          # A pull request has an environment of its own (its stack, applied by the
-          # ApplyPullRequestStack step): the service is its own, so the revision takes
-          # traffic, and the database is its own, so the migrations run every build.
-          REVISION_TAG=''
-          SHIFT_TRAFFIC='true'
-          RUN_MIGRATIONS='true'
-
-          if [ -z "$${GITHUB_TOKEN}" ]; then
-            echo "Error: a pull-request build needs the Cloud Build connection to read its /gcbrun comment."
-            exit 1
-          fi
-
-          # The comment that started the build carries its options. Only the last few
-          # comments are fetched: the total decides the page size and the page.
-          TOTAL_COMMENTS=$(curl -s -f -H "Authorization: Bearer $${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${REPO_FULL_NAME}/issues/${_PR_NUMBER}" | jq '.comments')
-          if [ "$${TOTAL_COMMENTS}" -le $((5 * 2)) ]; then
-            PAGE_SIZE=$${TOTAL_COMMENTS}
-            PAGE=1
-          else
-            PAGES_TO_SKIP=$(( (TOTAL_COMMENTS - 5 - 1) / 100 + 1 ))
-            PAGE_SIZE=$(( (TOTAL_COMMENTS - 5) / PAGES_TO_SKIP ))
-            PAGE=$(( PAGES_TO_SKIP + 1 ))
-          fi
-          echo "TOTAL_COMMENTS=$${TOTAL_COMMENTS}, PAGE_SIZE=$${PAGE_SIZE}, PAGE=$${PAGE}"
-
-          curl -s -f -H "Authorization: Bearer $${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${REPO_FULL_NAME}/issues/${_PR_NUMBER}/comments?per_page=$${PAGE_SIZE}&page=$${PAGE}" \
-            > /workspace/comments.json
-
-          # The latest comment that starts with /gcbrun is the instruction.
-          LATEST=$(jq -c '.[] | select(.body | startswith("/gcbrun")) | [.id, .body]' /workspace/comments.json | tail -1)
-          if [[ -z "$${LATEST}" ]]; then
-            echo "Error: no /gcbrun comment found on pull request ${_PR_NUMBER}."
-            exit 1
-          fi
-          COMMENT_BODY=$(echo "$${LATEST}" | jq -r '.[1]')
-          echo "COMMENT_BODY=$${COMMENT_BODY}"
-
-          # The words after /gcbrun are its options; anything else is a typo and stops
-          # the build rather than being ignored.
-          read -r -a COMMENT_WORDS <<< "$${COMMENT_BODY}"
-          for ((i=1; i<$${#COMMENT_WORDS[@]}; i++)); do
-            case "$${COMMENT_WORDS[i]}" in
-              shared-db) SHARED_DB='true' ;;
-              reload-db) RELOAD_DB='true' ;;
-              down) DOWN='true' ;;
-              *) echo "Error: unknown /gcbrun option '$${COMMENT_WORDS[i]}' (the options are shared-db, reload-db and down)."; exit 1 ;;
-            esac
-          done
-          if [ "$${SHARED_DB}" = "true" ] && [ "$${RELOAD_DB}" = "true" ]; then
-            echo "Error: /gcbrun shared-db with reload-db: reload-db recreates the pull request's own database, and in shared mode there is none."
-            exit 1
-          fi
-          if [ "$${SHARED_DB}" = "true" ]; then
-            # tst's schema is tst's: the migrate job never runs against the shared database
-            # (the guard refuses shared-db when the migrations changed at all).
-            RUN_MIGRATIONS='false'
-          fi
-        fi
-
-        IMAGE="${_REGISTRY}/${_APP}"
-        # One registry serves every environment and each environment is a fresh build of
-        # the tag (nothing is promoted), so the image tags carry the environment:
-        # <release>-<env> and <commit>-<env>. The release check compares those.
-        IMAGE_TAG="$${RELEASE}-${_ENV}"
-        COMMIT_TAG="${COMMIT_SHA}-${_ENV}"
-        echo "IMAGE=$${IMAGE} IMAGE_TAG=$${IMAGE_TAG} VERSION=$${VERSION} RELEASE=$${RELEASE}"
-        echo "RUN_MIGRATIONS=$${RUN_MIGRATIONS} SHIFT_TRAFFIC=$${SHIFT_TRAFFIC} REVISION_TAG=$${REVISION_TAG}"
-
-        # The services and the migrate job this build updates: the environment's, from the
-        # trigger; a pull-request build replaces them with its own stack's (ApplyPullRequestStack).
-        cat << EOF > /workspace/environment.sh
-        export GITHUB_TOKEN="$${GITHUB_TOKEN}"
-        export SERVICES="${_SERVICES}"
-        export MIGRATE_JOB="${_MIGRATE_JOB}"
-        export SHARED_DB="$${SHARED_DB}"
-        export RELOAD_DB="$${RELOAD_DB}"
-        export DOWN="$${DOWN}"
-        export SKIP_DEPLOY=""
-        export IMAGE="$${IMAGE}"
-        export IMAGE_TAG="$${IMAGE_TAG}"
-        export COMMIT_TAG="$${COMMIT_TAG}"
-        export VERSION="$${VERSION}"
-        export RELEASE="$${RELEASE}"
-        export REVISION_TAG="$${REVISION_TAG}"
-        export RUN_MIGRATIONS="$${RUN_MIGRATIONS}"
-        export SHIFT_TRAFFIC="$${SHIFT_TRAFFIC}"
-        EOF
-
-        # Every substitution of this build, exported for the hooks: the ones this file
-        # knows and the ones the placement declares (var.substitutions in the stack, per
-        # environment). The build reads itself through the API, so nothing is rendered per
-        # name. The declared ones also reach the image build as build arguments, one
-        # --build-arg _NAME=value each in /workspace/build-args.sh (a bash array, kept out
-        # of environment.sh, which the OpenTofu steps read with a plain sh), for the
-        # Dockerfile's ARG _NAME. Known and not declared: the stack's substitutions, the
-        # trigger's own (_PR_NUMBER and, on a pull request, _BASE_BRANCH, _HEAD_BRANCH,
-        # _HEAD_REPO_URL) and this file's default (_DEFAULT_BRANCH).
-        gcloud builds describe "${BUILD_ID}" --project "${_PROJECT}" --region "${LOCATION}" --format=json > /workspace/build.json
-        jq -r '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | "export \(.key)=\(.value | @sh)"' /workspace/build.json >> /workspace/environment.sh
-        echo 'BUILD_ARGS=()' > /workspace/build-args.sh
-        KNOWN=" _ENV _APP _PROJECT _SERVICES _MIGRATE_JOB _REGISTRY _RECORDS_BUCKET _REPO_CONNECTION_NAME _REPO_NAME _RELEASE_ACTORS _PREVIOUS_ENV _PREVIOUS_RECORDS_BUCKET _APPLY_IDENTITY _MIGRATIONS_DIR _REPO_FULL_NAME _HOSTNAME _SEED _BUILD_SECRETS _DEPLOYER_APP_ID _DEPLOYER_KEY_SECRET _PR_NUMBER _BASE_BRANCH _HEAD_BRANCH _HEAD_REPO_URL _DEFAULT_BRANCH "
-        jq -r --arg known "$${KNOWN}" \
-          '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | .key as $$k | select(($$known | contains(" " + $$k + " ")) | not) | "BUILD_ARGS+=(--build-arg \(.key + "=" + .value | @sh))"' \
-          /workspace/build.json >> /workspace/build-args.sh
-        DECLARED=$(jq -r --arg known "$${KNOWN}" '[.substitutions // {} | to_entries[] | select(.key | startswith("_")) | .key as $$k | select(($$known | contains(" " + $$k + " ")) | not) | $$k] | join(", ")' /workspace/build.json)
-        echo "Declared substitutions for the hooks and the image build: $${DECLARED:-none}"
 
   # The deployer GitHub App's token, for a pull-request build that has an app to
   # talk back with (a deployment, comments): a JWT signed with the app's private key,

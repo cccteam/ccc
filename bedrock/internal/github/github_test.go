@@ -2,8 +2,11 @@ package github_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
@@ -160,4 +163,68 @@ func itoa(n int64) string {
 	}
 
 	return string(out)
+}
+
+func TestIssueComments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		count int
+		want  int
+		// wantCalls are the requests the read makes, in order.
+		wantCalls []string
+	}{
+		{
+			name:      "a short thread is one page",
+			count:     7,
+			want:      7,
+			wantCalls: []string{"GET /repos/acme/quill/issues/7", "GET /repos/acme/quill/issues/7/comments"},
+		},
+		{
+			name:      "a long thread reads its last page",
+			count:     250,
+			want:      50,
+			wantCalls: []string{"GET /repos/acme/quill/issues/7", "GET /repos/acme/quill/issues/7/comments"},
+		},
+		{
+			name:      "a last page under five comments takes the page before it too",
+			count:     203,
+			want:      103,
+			wantCalls: []string{"GET /repos/acme/quill/issues/7", "GET /repos/acme/quill/issues/7/comments", "GET /repos/acme/quill/issues/7/comments"},
+		},
+		{
+			name:      "no comments, no page",
+			count:     0,
+			want:      0,
+			wantCalls: []string{"GET /repos/acme/quill/issues/7"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := githubtest.New(t)
+			comments := make([]github.Comment, 0, tt.count)
+			for i := 1; i <= tt.count; i++ {
+				comments = append(comments, github.Comment{ID: int64(i), Body: fmt.Sprintf("comment %d", i)})
+			}
+			srv.AddRepo("acme", "quill", &githubtest.Repo{Comments: map[int][]github.Comment{7: comments}})
+			got, err := srv.Client().IssueComments(t.Context(), "acme", "quill", 7)
+			if err != nil {
+				t.Fatalf("IssueComments() error = %v", err)
+			}
+			if len(got) != tt.want {
+				t.Fatalf("IssueComments() = %d comments, want %d", len(got), tt.want)
+			}
+			if tt.want > 0 {
+				if first, last := got[0].Body, got[len(got)-1].Body; first != fmt.Sprintf("comment %d", tt.count-tt.want+1) || last != fmt.Sprintf("comment %d", tt.count) {
+					t.Errorf("IssueComments() spans %q to %q, want the latest %d in order", first, last, tt.want)
+				}
+			}
+			if diff := cmp.Diff(tt.wantCalls, srv.Calls); diff != "" {
+				t.Errorf("calls mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 }

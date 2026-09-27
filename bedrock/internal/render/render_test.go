@@ -290,16 +290,16 @@ func TestCommonPrefix(t *testing.T) {
 func TestSubstitutionNames(t *testing.T) {
 	t.Parallel()
 
-	names, err := substitutionNames()
+	names, err := SubstitutionNames()
 	if err != nil {
-		t.Fatalf("substitutionNames() error = %v", err)
+		t.Fatalf("SubstitutionNames() error = %v", err)
 	}
 	for _, want := range []string{"_ENV", "_APP", "_PROJECT", "_SERVICES", "_MIGRATE_JOB", "_SEED", "_DEPLOYER_KEY_SECRET", "_BUILD_SECRETS"} {
 		if !slices.Contains(names, want) {
-			t.Errorf("substitutionNames() = %v, want it to contain %s", names, want)
+			t.Errorf("SubstitutionNames() = %v, want it to contain %s", names, want)
 		}
 	}
 	if slices.Contains(names, "_PR_NUMBER") {
-		t.Errorf("substitutionNames() = %v: _PR_NUMBER is the trigger's, not the map's", names)
+		t.Errorf("SubstitutionNames() = %v: _PR_NUMBER is the trigger's, not the map's", names)
 	}
 }

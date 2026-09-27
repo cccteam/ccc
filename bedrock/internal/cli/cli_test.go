@@ -18,6 +18,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
+	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 	"github.com/cccteam/ccc/bedrock/internal/where"
 )
@@ -1291,7 +1292,7 @@ func TestDeployRecord(t *testing.T) {
 				}
 			}
 			store := &memoryStore{objects: map[string]string{}}
-			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, storage: store.open, interactive: never}
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, deploy: &deploy.Clients{Storage: store.open}, interactive: never}
 			out, err := execute(d, "", "deploy", "record", "--workspace", workspace)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -1314,6 +1315,94 @@ func TestDeployRecord(t *testing.T) {
 			if tt.wantStored != "" {
 				if _, ok := store.objects[tt.wantStored]; !ok {
 					t.Errorf("stored %v, want %s", store.objects, tt.wantStored)
+				}
+			}
+		})
+	}
+}
+
+// fakeBuilds is the deploy steps' Builds in tests: one build, one token.
+type fakeBuilds struct {
+	build string
+	token string
+}
+
+func (b *fakeBuilds) open(context.Context) (deploy.Builds, error) {
+	return b, nil
+}
+
+func (b *fakeBuilds) Get(context.Context, string, string, string) ([]byte, error) {
+	return []byte(b.build), nil
+}
+
+func (b *fakeBuilds) ReadToken(context.Context, string) (string, error) {
+	return b.token, nil
+}
+
+// noComments is the comment read for a build that must not need one.
+func noComments(context.Context, string, string, int) ([]github.Comment, error) {
+	return nil, errors.New("no comments in this test")
+}
+
+func TestDeployResolve(t *testing.T) {
+	// No t.Parallel(): the command reads the build's id, project and location from the
+	// process environment, as the pipeline passes them to the step.
+	build := `{"id": "b-1", "substitutions": {"TAG_NAME": "v1.2.3", "_ENV": "tst", "_SERVICES": "us-central1=quill-app", "_MIGRATE_JOB": "us-central1=quill-migrate", "_REPO_CONNECTION_NAME": "CONNECTION_NOT_AUTHORIZED_IN_2-ENV", "_REPO_NAME": "quill", "_REGISTRY": "reg", "_APP": "quill", "COMMIT_SHA": "deadbeefcafe", "SHORT_SHA": "deadbee", "_THEME": "dusk"}}`
+	tests := []struct {
+		name    string
+		env     map[string]string
+		wantOut []string
+		// wantFiles names what each workspace file must contain.
+		wantFiles map[string]string
+		wantErr   string
+	}{
+		{
+			name:    "the facts are worked out from the build and written to the workspace",
+			env:     map[string]string{"BUILD_ID": "b-1", "PROJECT_ID": "tst-project", "LOCATION": "us-central1"},
+			wantOut: []string{"Triggered by tag v1.2.3", "IMAGE=reg/quill IMAGE_TAG=v1.2.3-tst VERSION=v1.2.3 RELEASE=v1.2.3", "Declared substitutions for the hooks and the image build: _THEME"},
+			wantFiles: map[string]string{
+				"environment.sh": "export IMAGE_TAG=\"v1.2.3-tst\"\n",
+				"build-args.sh":  "BUILD_ARGS+=(--build-arg '_THEME=dusk')\n",
+				"build.json":     `"id": "b-1"`,
+			},
+		},
+		{
+			name:    "without the build's id the step refuses",
+			env:     map[string]string{"PROJECT_ID": "tst-project", "LOCATION": "us-central1"},
+			wantErr: "BUILD_ID is not set",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, name := range []string{"BUILD_ID", "PROJECT_ID", "LOCATION"} {
+				t.Setenv(name, tt.env[name])
+			}
+			workspace := t.TempDir()
+			builds := &fakeBuilds{build: build, token: "tok"}
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, deploy: &deploy.Clients{Builds: builds.open, Comments: noComments}, interactive: never}
+			out, err := execute(d, "", "deploy", "resolve", "--workspace", workspace)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for name, want := range tt.wantFiles {
+				data, err := os.ReadFile(filepath.Join(workspace, name))
+				if err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+				if !strings.Contains(string(data), want) {
+					t.Errorf("%s lacks %q:\n%s", name, want, data)
 				}
 			}
 		})

@@ -70,7 +70,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if env[skipDeploy] == "true" {
+	if env[skipDeploy] == trueValue {
 		return &RecordRequest{Skipped: "The pull request's environment was torn down: nothing to record."}, nil
 	}
 	build, err := w.Build()
@@ -92,7 +92,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		return nil, err
 	}
 	status := Preview
-	if env[shiftTraffic] == "true" {
+	if env[shiftTraffic] == trueValue {
 		status = Live
 	}
 	var regions []string

@@ -14,16 +14,16 @@ FROM cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8
 ENV CGO_ENABLED=0 \
     GOTOOLCHAIN=local
 
-WORKDIR /go/src/ccc
+WORKDIR /go/src/ccc/bedrock
 
-COPY impulse/go.mod impulse/go.sum ./impulse/
-COPY bedrock/go.mod bedrock/go.sum ./bedrock/
-RUN cd bedrock && go mod download
+COPY impulse/go.mod impulse/go.sum /go/src/ccc/impulse/
+COPY bedrock/go.mod bedrock/go.sum ./
+RUN go mod download
 
-COPY impulse/ ./impulse/
-COPY bedrock/ ./bedrock/
+COPY impulse/ /go/src/ccc/impulse/
+COPY bedrock/ ./
 
-RUN cd bedrock && go build -trimpath -ldflags="-s -w" -o /build/bedrock .
+RUN go build -trimpath -ldflags="-s -w" -o /build/bedrock .
 
 FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566a8d40766b2a4769f33a824
 
@@ -32,5 +32,8 @@ LABEL org.opencontainers.image.title="bedrock" \
 
 COPY --from=build-env /build/bedrock /bedrock
 
-USER nonroot
+# Root, as every Cloud Build step image is (the base image names user 65532, so it is
+# said here): the workspace the steps share is root's (mode 0755), and resolve writes the
+# files the later steps read from it.
+USER 0
 ENTRYPOINT ["/bedrock"]

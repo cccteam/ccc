@@ -38,6 +38,8 @@ type Repo struct {
 	Trees map[string]string
 	Files map[string]string
 	Blobs map[string]string
+	// Comments by issue or pull request number, oldest first.
+	Comments map[int][]github.Comment
 }
 
 // Server is the stand-in.
@@ -67,6 +69,8 @@ var (
 	treesRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/trees$`)
 	contentsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/contents/(.+)$`)
 	installsRE   = regexp.MustCompile(`^/orgs/([^/]+)/installations$`)
+	issueRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)$`)
+	commentsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)/comments$`)
 	rulesetIDMin = int64(1000)
 )
 
@@ -120,9 +124,70 @@ func (s *Server) AddRepo(owner, name string, repo *Repo) *Repo {
 	if repo.Blobs == nil {
 		repo.Blobs = map[string]string{}
 	}
+	if repo.Comments == nil {
+		repo.Comments = map[int][]github.Comment{}
+	}
 	s.Repos[owner+"/"+name] = repo
 
 	return repo
+}
+
+// route pairs a path pattern with what serves it; the submatches are the pattern's.
+type route struct {
+	re     *regexp.Regexp
+	handle func(s *Server, w http.ResponseWriter, r *http.Request, m []string)
+}
+
+// routes are served in order; the first pattern to match wins.
+var routes = []route{
+	{installsRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		reply(w, http.StatusOK, map[string]any{"installations": s.Installations[m[1]]})
+	}},
+	{rulesetsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.rulesets(w, r, m[1]+"/"+m[2])
+	}},
+	{rulesetRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		id, _ := strconv.ParseInt(m[3], 10, 64)
+		s.ruleset(w, r, m[1]+"/"+m[2], id)
+	}},
+	{refsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.createRef(w, r, m[1]+"/"+m[2])
+	}},
+	{refRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.ref(w, m[1]+"/"+m[2], "refs/"+m[3])
+	}},
+	{tagObjectRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.tagObject(w, m[1]+"/"+m[2], m[3])
+	}},
+	{compareRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.compare(w, m[1]+"/"+m[2], m[3], m[4])
+	}},
+	{tagsRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.tags(w, m[1]+"/"+m[2])
+	}},
+	{commitRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.commit(w, m[1]+"/"+m[2], m[3])
+	}},
+	{commitsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.createCommit(w, r, m[1]+"/"+m[2])
+	}},
+	{blobsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.createBlob(w, r, m[1]+"/"+m[2])
+	}},
+	{treesRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.createTree(w, r, m[1]+"/"+m[2])
+	}},
+	{contentsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.contents(w, r, m[1]+"/"+m[2], m[3])
+	}},
+	{issueRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		number, _ := strconv.Atoi(m[3])
+		s.issue(w, m[1]+"/"+m[2], number)
+	}},
+	{commentsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		number, _ := strconv.Atoi(m[3])
+		s.comments(w, r, m[1]+"/"+m[2], number)
+	}},
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
@@ -135,50 +200,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	switch {
-	case installsRE.MatchString(path):
-		org := installsRE.FindStringSubmatch(path)[1]
-		reply(w, http.StatusOK, map[string]any{"installations": s.Installations[org]})
-	case rulesetsRE.MatchString(path):
-		m := rulesetsRE.FindStringSubmatch(path)
-		s.rulesets(w, r, m[1]+"/"+m[2])
-	case rulesetRE.MatchString(path):
-		m := rulesetRE.FindStringSubmatch(path)
-		id, _ := strconv.ParseInt(m[3], 10, 64)
-		s.ruleset(w, r, m[1]+"/"+m[2], id)
-	case refsRE.MatchString(path):
-		m := refsRE.FindStringSubmatch(path)
-		s.createRef(w, r, m[1]+"/"+m[2])
-	case refRE.MatchString(path):
-		m := refRE.FindStringSubmatch(path)
-		s.ref(w, m[1]+"/"+m[2], "refs/"+m[3])
-	case tagObjectRE.MatchString(path):
-		m := tagObjectRE.FindStringSubmatch(path)
-		s.tagObject(w, m[1]+"/"+m[2], m[3])
-	case compareRE.MatchString(path):
-		m := compareRE.FindStringSubmatch(path)
-		s.compare(w, m[1]+"/"+m[2], m[3], m[4])
-	case tagsRE.MatchString(path):
-		m := tagsRE.FindStringSubmatch(path)
-		s.tags(w, m[1]+"/"+m[2])
-	case commitRE.MatchString(path):
-		m := commitRE.FindStringSubmatch(path)
-		s.commit(w, m[1]+"/"+m[2], m[3])
-	case commitsRE.MatchString(path):
-		m := commitsRE.FindStringSubmatch(path)
-		s.createCommit(w, r, m[1]+"/"+m[2])
-	case blobsRE.MatchString(path):
-		m := blobsRE.FindStringSubmatch(path)
-		s.createBlob(w, r, m[1]+"/"+m[2])
-	case treesRE.MatchString(path):
-		m := treesRE.FindStringSubmatch(path)
-		s.createTree(w, r, m[1]+"/"+m[2])
-	case contentsRE.MatchString(path):
-		m := contentsRE.FindStringSubmatch(path)
-		s.contents(w, r, m[1]+"/"+m[2], m[3])
-	default:
-		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+	for _, route := range routes {
+		if m := route.re.FindStringSubmatch(path); m != nil {
+			route.handle(s, w, r, m)
+
+			return
+		}
 	}
+	reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
 }
 
 func (s *Server) repo(w http.ResponseWriter, key string) (*Repo, bool) {
@@ -481,6 +510,37 @@ func (s *Server) createCommit(w http.ResponseWriter, r *http.Request, key string
 }
 
 // newSHA is a made-up object name, distinct per call.
+// issue answers the issue with its comment count, which the client pages by.
+func (s *Server) issue(w http.ResponseWriter, key string, number int) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	reply(w, http.StatusOK, map[string]any{"number": number, "comments": len(repo.Comments[number])})
+}
+
+// comments answers one page of the issue's comments, as per_page and page ask.
+func (s *Server) comments(w http.ResponseWriter, r *http.Request, key string, number int) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	all := repo.Comments[number]
+	size, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	if size <= 0 {
+		size = 30
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page <= 0 {
+		page = 1
+	}
+	start := min((page-1)*size, len(all))
+	end := min(start+size, len(all))
+	comments := make([]github.Comment, 0, end-start)
+	comments = append(comments, all[start:end]...)
+	reply(w, http.StatusOK, comments)
+}
+
 func (s *Server) newSHA(kind string) string {
 	s.nextID++
 

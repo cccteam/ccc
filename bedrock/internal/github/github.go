@@ -1,5 +1,6 @@
 // Package github is the small GitHub REST client bedrock needs: the organization's
-// installed apps, a repository's rulesets, and its refs, tags and comparisons. It
+// installed apps, a repository's rulesets, its refs, tags and comparisons, and the
+// comments on its pull requests. It
 // speaks to one API host with one token and translates the API's refusals into errors
 // that carry the status and the message.
 package github
@@ -29,6 +30,10 @@ const (
 	apiVersion = "2022-11-28"
 	// maxBody bounds what one answer may carry.
 	maxBody = 8 << 20
+	// perPage is the API's largest page; commentWindow is how many of the latest
+	// comments a read is sure to hold.
+	perPage       = 100
+	commentWindow = 5
 )
 
 // Client speaks to one GitHub API host with one token.
@@ -420,4 +425,41 @@ func (c *Client) CreateCommit(ctx context.Context, owner, repo, message, tree st
 // Base is the API host the client speaks to.
 func (c *Client) Base() string {
 	return c.base
+}
+
+// Comment is one comment on an issue or a pull request.
+type Comment struct {
+	ID   int64  `json:"id"`
+	Body string `json:"body"`
+}
+
+// IssueComments lists the latest comments on an issue or pull request, oldest first:
+// the last page of a hundred, and the page before it when the last holds fewer than
+// five, so the instruction a build ran on is found without walking a long thread.
+func (c *Client) IssueComments(ctx context.Context, owner, repo string, number int) ([]Comment, error) {
+	var issue struct {
+		Comments int `json:"comments"`
+	}
+	issuePath := fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, number)
+	if err := c.do(ctx, http.MethodGet, issuePath, nil, &issue); err != nil {
+		return nil, err
+	}
+	if issue.Comments == 0 {
+		return []Comment{}, nil
+	}
+	last := (issue.Comments-1)/perPage + 1
+	first := last
+	if last > 1 && issue.Comments-(last-1)*perPage < commentWindow {
+		first = last - 1
+	}
+	var all []Comment
+	for page := first; page <= last; page++ {
+		var comments []Comment
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/comments?per_page=%d&page=%d", issuePath, perPage, page), nil, &comments); err != nil {
+			return nil, err
+		}
+		all = append(all, comments...)
+	}
+
+	return all, nil
 }

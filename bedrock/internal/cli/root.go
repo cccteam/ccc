@@ -64,8 +64,9 @@ type deps struct {
 	// readSecret asks at the terminal for a value nobody should see and reads it
 	// without echo, after printing the question on the writer.
 	readSecret func(w io.Writer, question string) ([]byte, error)
-	// storage opens Cloud Storage, for the deployment records.
-	storage deploy.StoreFunc
+	// deploy holds what the deploy sequence's commands open: Cloud Storage for the
+	// records, Cloud Build for a build's own description and its GitHub token.
+	deploy *deploy.Clients
 }
 
 func newRoot() *cobra.Command {
@@ -76,7 +77,7 @@ func newRoot() *cobra.Command {
 		github:      github.Open,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,
-		storage:     deploy.NewStorage,
+		deploy:      deploy.DefaultClients(),
 	})
 }
 

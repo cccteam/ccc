@@ -69,6 +69,9 @@ linters:
             - cloud.google.com/go/domains
             # deploy record writes the deployment record to the records bucket.
             - cloud.google.com/go/storage
+            # deploy resolve reads the build and mints its GitHub token through the Cloud
+            # Build REST API with the process's default credentials.
+            - golang.org/x/oauth2/google
             - google.golang.org/api/option
             - github.com/hashicorp/hcl/v2
             - github.com/zclconf/go-cty
@@ -177,6 +180,13 @@ linters:
           - gosec
         path: _test\.go
         text: G703
+      # deploy resolve reads the build's id, project and location from the process
+      # environment, as the pipeline sets them; its command test sets them with
+      # t.Setenv, which forbids t.Parallel.
+      - linters:
+          - paralleltest
+        path: internal/cli/cli_test\.go
+        text: TestDeployResolve
       # The GitHub API's JSON is snake_case; the client and its stand-in write the
       # wire names as the API defines them.
       - linters:

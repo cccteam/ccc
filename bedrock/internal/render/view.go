@@ -231,7 +231,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.secrets()
 	v.blocks()
 
-	names, err := substitutionNames()
+	names, err := SubstitutionNames()
 	if err != nil {
 		return nil, err
 	}
@@ -594,9 +594,10 @@ func sweepMinute(app string) int {
 // four spaces, the underscored name, spaces, an equals sign.
 var substitutionKeyRE = regexp.MustCompile(`(?m)^ {4}(_[A-Z0-9_]+) += `)
 
-// substitutionNames reads the pipeline's contract off cloud-build.tf's template: the keys
-// of local.substitutions, in the template's order.
-func substitutionNames() ([]string, error) {
+// SubstitutionNames reads the pipeline's contract off cloud-build.tf's template: the keys
+// of local.substitutions, in the template's order. The resolve command tells the
+// declared substitutions of a build apart by it.
+func SubstitutionNames() ([]string, error) {
 	src, err := templates.ReadFile(templateDir + "/cloud-build.tf.tmpl")
 	if err != nil {
 		return nil, errors.Wrap(err, "embed.FS.ReadFile(): cloud-build.tf.tmpl")
