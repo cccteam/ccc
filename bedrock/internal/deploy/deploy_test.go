@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +181,27 @@ func (m *memoryStore) Write(_ context.Context, bucket, object string, data []byt
 	m.objects["gs://"+bucket+"/"+object] = string(data)
 
 	return nil
+}
+
+func (m *memoryStore) List(_ context.Context, bucket, prefix string) ([]string, error) {
+	var names []string
+	for path := range m.objects {
+		if object, ok := strings.CutPrefix(path, "gs://"+bucket+"/"); ok && strings.HasPrefix(object, prefix) {
+			names = append(names, object)
+		}
+	}
+	sort.Strings(names)
+
+	return names, nil
+}
+
+func (m *memoryStore) Read(_ context.Context, bucket, object string) ([]byte, error) {
+	data, ok := m.objects["gs://"+bucket+"/"+object]
+	if !ok {
+		return nil, errors.Newf("gs://%s/%s: no such object", bucket, object)
+	}
+
+	return []byte(data), nil
 }
 
 func (*memoryStore) Close() error {

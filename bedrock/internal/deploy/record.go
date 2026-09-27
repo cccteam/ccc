@@ -9,6 +9,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/api/iterator"
 )
 
 // Record is what a build leaves in the records bucket once it has deployed: what is
@@ -134,6 +135,9 @@ func (r *Record) JSON() ([]byte, error) {
 // Store writes objects into buckets: Cloud Storage, or a fake in tests.
 type Store interface {
 	Write(ctx context.Context, bucket, object string, data []byte) error
+	// List names the objects under the prefix; Read is one object's content.
+	List(ctx context.Context, bucket, prefix string) ([]string, error)
+	Read(ctx context.Context, bucket, object string) ([]byte, error)
 	Close() error
 }
 
@@ -154,6 +158,35 @@ func NewStorage(ctx context.Context) (Store, error) {
 // cloudStorage is Store over the Cloud Storage client.
 type cloudStorage struct {
 	client *storage.Client
+}
+
+func (s *cloudStorage) List(ctx context.Context, bucket, prefix string) ([]string, error) {
+	var names []string
+	it := s.client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: prefix})
+	for {
+		attrs, err := it.Next()
+		if errors.Is(err, iterator.Done) {
+			return names, nil
+		}
+		if err != nil {
+			return nil, errors.Wrapf(err, "storage.ObjectIterator.Next(): gs://%s/%s", bucket, prefix)
+		}
+		names = append(names, attrs.Name)
+	}
+}
+
+func (s *cloudStorage) Read(ctx context.Context, bucket, object string) ([]byte, error) {
+	r, err := s.client.Bucket(bucket).Object(object).NewReader(ctx)
+	if err != nil {
+		return nil, errors.Wrapf(err, "storage.ObjectHandle.NewReader(): gs://%s/%s", bucket, object)
+	}
+	defer r.Close()
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, errors.Wrapf(err, "io.ReadAll(): gs://%s/%s", bucket, object)
+	}
+
+	return data, nil
 }
 
 func (s *cloudStorage) Write(ctx context.Context, bucket, object string, data []byte) error {

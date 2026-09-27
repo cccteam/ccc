@@ -40,6 +40,8 @@ type Repo struct {
 	Blobs map[string]string
 	// Comments by issue or pull request number, oldest first.
 	Comments map[int][]github.Comment
+	// Releases by tag.
+	Releases map[string]github.Release
 }
 
 // Server is the stand-in.
@@ -71,6 +73,7 @@ var (
 	installsRE   = regexp.MustCompile(`^/orgs/([^/]+)/installations$`)
 	issueRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)$`)
 	commentsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)/comments$`)
+	releaseRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/releases/tags/(.+)$`)
 	rulesetIDMin = int64(1000)
 )
 
@@ -126,6 +129,9 @@ func (s *Server) AddRepo(owner, name string, repo *Repo) *Repo {
 	}
 	if repo.Comments == nil {
 		repo.Comments = map[int][]github.Comment{}
+	}
+	if repo.Releases == nil {
+		repo.Releases = map[string]github.Release{}
 	}
 	s.Repos[owner+"/"+name] = repo
 
@@ -187,6 +193,9 @@ var routes = []route{
 	{commentsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
 		number, _ := strconv.Atoi(m[3])
 		s.comments(w, r, m[1]+"/"+m[2], number)
+	}},
+	{releaseRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.release(w, m[1]+"/"+m[2], m[3])
 	}},
 }
 
@@ -539,6 +548,21 @@ func (s *Server) comments(w http.ResponseWriter, r *http.Request, key string, nu
 	comments := make([]github.Comment, 0, end-start)
 	comments = append(comments, all[start:end]...)
 	reply(w, http.StatusOK, comments)
+}
+
+// release answers the release a tag belongs to, or 404.
+func (s *Server) release(w http.ResponseWriter, key, tag string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	release, ok := repo.Releases[tag]
+	if !ok {
+		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+
+		return
+	}
+	reply(w, http.StatusOK, release)
 }
 
 func (s *Server) newSHA(kind string) string {

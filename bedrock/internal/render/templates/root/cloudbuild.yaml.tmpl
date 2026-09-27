@@ -3,7 +3,8 @@
 # bedrock render rewrites this file and bedrock check compares it with the code, so a change
 # belongs in bedrock, never here.
 #
-#   ResolveDeploymentTarget   what is deployed, where, and whether this build may deploy it (bedrock deploy resolve, from the pinned bedrock image)
+#   ResolveDeploymentTarget   what is deployed and where (bedrock deploy resolve, from the pinned bedrock image)
+#   ValidateRelease           whether this release may deploy here: the release, its commit, the record gate (bedrock deploy validate-release)
 #   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops
 #   Hook*                     the application's own scripts at four stages, when it commits them
 #   CheckRelease              a release already in the registry is reused (same commit) or refused
@@ -84,108 +85,17 @@ steps:
         echo "Deployer app ${_DEPLOYER_APP_ID}: token minted for installation $${INSTALLATION}."
 
   # Whether this release may deploy here, for a tag build (a pull-request build has no
-  # release to validate). Three checks: the tag belongs to a GitHub Release cut by an
-  # accepted release actor; the tagged commit is on the default branch or at the tip of
-  # its hotfix branch; and the previous environment holds a live deployment record of
-  # the release (the record gate). Cloud Build caps a step's script at 10,000
-  # characters, which is why this is not part of ResolveDeploymentTarget.
+  # release to validate): bedrock deploy validate-release, from the bedrock image the
+  # placement pins. Three checks: the tag belongs to a GitHub Release cut by an accepted
+  # release actor (_RELEASE_ACTORS); the tagged commit is on the default branch or at the
+  # tip of its hotfix branch; and the previous environment holds a live deployment record
+  # of the release (the record gate, read from its records bucket by a grant 2-env makes
+  # there). A refusal starts with "Build REJECTED" and says why.
   - id: ValidateRelease
     waitFor: ["MintDeployerToken"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.P.BedrockImage}}
+    args: [deploy, validate-release]
     timeout: 300s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-
-        if [ -z "${TAG_NAME}" ]; then
-          echo "Pull-request build: no release to validate."
-          exit 0
-        fi
-
-        # jq parses the GitHub API's answers and the deployment records.
-        apt-get -qq update && apt-get -qq install -y jq
-
-          # Two checks stand between a tag and a build, both through the GitHub API.
-          # First, the tag belongs to a GitHub Release cut by an accepted release actor
-          # (_RELEASE_ACTORS, comma-separated logins: the release app as <slug>[bot]),
-          # which is how release-please, and nothing else, makes a release. Second, the
-          # tagged commit is on the default branch ("identical": the branch is at the
-          # commit; "ahead": it has moved past it), or it is a hotfix: the tip of the
-          # line's branch hotfix/<major>.<minor>.x, whose base on the default branch
-          # carries a release tag of the same line.
-          if [ -n "$${GITHUB_TOKEN}" ]; then
-            API="https://api.github.com/repos/${REPO_FULL_NAME}"
-            AUTH=(-s -H "Authorization: Bearer $${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json")
-
-            RELEASE_JSON=$(curl "$${AUTH[@]}" -w '\n%{http_code}' "$${API}/releases/tags/${TAG_NAME}")
-            RELEASE_STATUS=$${RELEASE_JSON##*$$'\n'}
-            RELEASE_BODY=$${RELEASE_JSON%$$'\n'*}
-            if [[ "$${RELEASE_STATUS}" != "200" ]]; then
-              echo "Build REJECTED: tag ${TAG_NAME} has no GitHub Release (HTTP $${RELEASE_STATUS}); a release is cut by release-please as the release app, never by a tag alone."
-              exit 1
-            fi
-            RELEASE_AUTHOR=$(echo "$${RELEASE_BODY}" | jq -r '.author.login')
-            if [[ ",${_RELEASE_ACTORS}," != *",$${RELEASE_AUTHOR},"* ]]; then
-              echo "Build REJECTED: the GitHub Release for ${TAG_NAME} was made by $${RELEASE_AUTHOR}, not by an accepted release actor (${_RELEASE_ACTORS})."
-              exit 1
-            fi
-            echo "Release ${TAG_NAME} validated: cut by $${RELEASE_AUTHOR}"
-
-            COMPARE_STATUS=$(curl "$${AUTH[@]}" "$${API}/compare/${COMMIT_SHA}...${_DEFAULT_BRANCH}" | jq -r '.status')
-            if [[ "$${COMPARE_STATUS}" == "ahead" || "$${COMPARE_STATUS}" == "identical" ]]; then
-              echo "Tag ${TAG_NAME} validated: its commit is on ${_DEFAULT_BRANCH}"
-            else
-              LINE=$(echo "${TAG_NAME}" | sed -nE 's/^v([0-9]+)\.([0-9]+)\.[0-9]+$/\1.\2/p')
-              if [ -z "$${LINE}" ]; then
-                echo "Build REJECTED: tag ${TAG_NAME} is not on ${_DEFAULT_BRANCH} (compare status: $${COMPARE_STATUS}) and is not a v<major>.<minor>.<patch> tag a hotfix line could carry."
-                exit 1
-              fi
-              HOTFIX_BRANCH="hotfix/$${LINE}.x"
-              TIP=$(curl "$${AUTH[@]}" "$${API}/git/ref/heads/$${HOTFIX_BRANCH}" | jq -r '.object.sha // empty')
-              if [ -z "$${TIP}" ]; then
-                echo "Build REJECTED: tag ${TAG_NAME} is not on ${_DEFAULT_BRANCH} (compare status: $${COMPARE_STATUS}) and there is no branch $${HOTFIX_BRANCH} it could be a hotfix of."
-                exit 1
-              fi
-              if [[ "$${TIP}" != "${COMMIT_SHA}" ]]; then
-                echo "Build REJECTED: tag ${TAG_NAME} (commit ${COMMIT_SHA}) is not at the tip of $${HOTFIX_BRANCH} ($${TIP}); a hotfix release is the branch's tip."
-                exit 1
-              fi
-              BASE=$(curl "$${AUTH[@]}" "$${API}/compare/${_DEFAULT_BRANCH}...${COMMIT_SHA}" | jq -r '.merge_base_commit.sha // empty')
-              BASE_TAG=$(curl "$${AUTH[@]}" "$${API}/tags?per_page=100" | jq -r --arg base "$${BASE}" --arg prefix "v$${LINE}." '[.[] | select(.commit.sha == $$base and (.name | startswith($$prefix)))] | .[0].name // empty')
-              if [ -z "$${BASE_TAG}" ]; then
-                echo "Build REJECTED: $${HOTFIX_BRANCH} branches from $${BASE} on ${_DEFAULT_BRANCH}, which carries no v$${LINE}.* release tag; a hotfix line starts at a release."
-                exit 1
-              fi
-              echo "Tag ${TAG_NAME} validated as a hotfix: the tip of $${HOTFIX_BRANCH}, branched from release $${BASE_TAG} on ${_DEFAULT_BRANCH}"
-            fi
-          fi
-
-          # The record gate: this environment follows the previous one in the promotion
-          # order (_PREVIOUS_ENV, empty in the first). A release runs here only after the
-          # previous environment holds a live deployment record of it, which its
-          # WriteDeploymentRecord writes once traffic has shifted there. The deploy
-          # identity reads that environment's records bucket by a grant 2-env makes there.
-          if [ -n "${_PREVIOUS_ENV}" ]; then
-            RECORDS_PREFIX="gs://${_PREVIOUS_RECORDS_BUCKET}/${_APP}/${_PREVIOUS_ENV}/${TAG_NAME}/"
-            RECORDS=$(gcloud storage ls "$${RECORDS_PREFIX}" 2>/dev/null || true)
-            if [ -z "$${RECORDS}" ]; then
-              echo "Build REJECTED: release ${TAG_NAME} has no deployment record in ${_PREVIOUS_ENV} (nothing under $${RECORDS_PREFIX}); a release reaches ${_ENV} after it is live in ${_PREVIOUS_ENV}."
-              exit 1
-            fi
-            LIVE=''
-            for record in $${RECORDS}; do
-              if [[ "$(gcloud storage cat "$${record}" | jq -r '.status')" == "live" ]]; then LIVE="$${record}"; fi
-            done
-            if [ -z "$${LIVE}" ]; then
-              echo "Build REJECTED: release ${TAG_NAME} has deployment records in ${_PREVIOUS_ENV} but none is live: traffic never shifted to it there."
-              exit 1
-            fi
-            echo "Gate passed: ${TAG_NAME} is live in ${_PREVIOUS_ENV} ($(gcloud storage cat "$${LIVE}" | jq -r '"since \(.timestamp), build \(.build)"'))"
-          fi
 
   # The schema migrations, and the seed migrations beside them, are applied once each in
   # the order of their indexes, so each directory must be one contiguous sequence and a
@@ -870,6 +780,10 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  # The bedrock deploy steps read the build's substitutions through the API, so this file
+  # no longer names every one a trigger or a hand submission passes; without this, Cloud
+  # Build refuses a hand-submitted build for a key the file does not mention.
+  substitutionOption: ALLOW_LOOSE
 
 # The whole run: the image build and the migrate job are the long steps.
 timeout: 5400s

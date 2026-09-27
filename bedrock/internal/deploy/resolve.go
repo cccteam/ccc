@@ -37,8 +37,10 @@ const (
 	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 	// maxAnswer bounds what one API answer may carry.
 	maxAnswer = 8 << 20
-	// tstEnvironment is the one environment a pull request deploys to.
+	// tstEnvironment is the one environment a pull request deploys to; the others follow it.
 	tstEnvironment = "tst"
+	stgEnvironment = "stg"
+	prdEnvironment = "prd"
 	// trueValue is a boolean fact set, the way the shell steps test it.
 	trueValue = "true"
 )
@@ -59,7 +61,7 @@ const (
 
 var (
 	// environments are the ones a trigger names in _ENV.
-	environments = []string{tstEnvironment, "stg", "prd"}
+	environments = []string{tstEnvironment, stgEnvironment, prdEnvironment}
 	// triggerSubstitutions are the substitutions a trigger sets beyond the stack's map
 	// (_PR_NUMBER and, on a pull request, the branches) and the pipeline's own default
 	// (_DEFAULT_BRANCH): known, so never declared.
@@ -76,11 +78,13 @@ type Clients struct {
 	Builds BuildsFunc
 	// Comments reads a pull request's comments with that token.
 	Comments CommentsFunc
+	// GitHub opens the GitHub client with that token, for the release checks.
+	GitHub GitHubFunc
 }
 
 // DefaultClients opens the real services.
 func DefaultClients() *Clients {
-	return &Clients{Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments}
+	return &Clients{Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub}
 }
 
 // Builds reads a build and mints the GitHub token of the repository it came from,
@@ -178,12 +182,12 @@ type CommentsFunc func(ctx context.Context, token, repoFullName string, number i
 
 // GitHubComments reads the comments through the public API.
 func GitHubComments(ctx context.Context, token, repoFullName string, number int) ([]github.Comment, error) {
-	owner, repo, ok := strings.Cut(repoFullName, "/")
-	if !ok || owner == "" || repo == "" {
-		return nil, errors.Newf("REPO_FULL_NAME %q is not <organization>/<repository>", repoFullName)
+	owner, repo, err := splitRepo(repoFullName)
+	if err != nil {
+		return nil, err
 	}
 
-	return github.New(github.DefaultBase, token).IssueComments(ctx, owner, repo, number)
+	return PublicGitHub(token).IssueComments(ctx, owner, repo, number)
 }
 
 // ResolveRequest names the build to resolve: its id and where it runs (the pipeline

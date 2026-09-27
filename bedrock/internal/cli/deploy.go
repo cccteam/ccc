@@ -22,9 +22,10 @@ func newDeploy(d deps) *cobra.Command {
 facts the resolve step exports to the workspace (environment.sh), the build as Cloud Build
 describes it (build.json) and what the earlier steps left there. A pipeline lists the steps it
 wants, and the rendered cloudbuild.yaml runs them from the bedrock image the placement pins
-(bedrockImage). Today: resolve and record. The rest of the sequence follows, one step at a time.`,
+(bedrockImage). Today: resolve, validate-release and record. The rest of the sequence follows,
+one step at a time.`,
 	}
-	cmd.AddCommand(newDeployResolve(d), newDeployRecord(d))
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployRecord(d))
 
 	return cmd
 }
@@ -59,6 +60,32 @@ arguments) and build.json (the build as Cloud Build describes it) to the workspa
 			}
 
 			return facts.Write(deploy.Workspace(workspace))
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// newDeployValidateRelease is deploy validate-release.
+func newDeployValidateRelease(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "validate-release",
+		Short: "Refuse a tag that may not deploy here",
+		Long: `validate-release is what stands between a tag and a build, for a tag build (a pull-request
+build has no release to validate). Two checks through the GitHub API, with the token resolve
+minted: the tag belongs to a GitHub Release cut by an accepted release actor (_RELEASE_ACTORS: the
+release app as <slug>[bot]), which is how release-please, and nothing else, makes a release; and
+the tagged commit is on the default branch, or it is a hotfix, the tip of hotfix/<major>.<minor>.x
+whose base on the default branch carries a release tag of the same line. Then the record gate:
+this environment follows the previous one in the promotion order (_PREVIOUS_ENV, empty in the
+first), and a release runs here only after the previous environment holds a live deployment
+record of it. A refusal starts with "Build REJECTED" and says why. It reads environment.sh and
+build.json from the workspace.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
