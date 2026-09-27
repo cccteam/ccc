@@ -166,6 +166,20 @@ type Revision struct {
 	Revision string `json:"revision"`
 }
 
+// WriteRevisions leaves the revisions the deploy step created: one region,service,revision
+// per line.
+func (w Workspace) WriteRevisions(revisions []Revision) error {
+	var b strings.Builder
+	for _, r := range revisions {
+		b.WriteString(r.Region + "," + r.Service + "," + r.Revision + "\n")
+	}
+	if err := os.WriteFile(filepath.Join(string(w), RevisionsFile), []byte(b.String()), 0o600); err != nil {
+		return errors.Wrapf(err, "os.WriteFile(): %s", RevisionsFile)
+	}
+
+	return nil
+}
+
 // Revisions reads the workspace's revisions file: one region,service,revision per line.
 func (w Workspace) Revisions() ([]Revision, error) {
 	data, err := os.ReadFile(filepath.Join(string(w), RevisionsFile))

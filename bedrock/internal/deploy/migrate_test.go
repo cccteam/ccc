@@ -15,18 +15,22 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// fakeRun is Run in tests: resources by name, what was patched and run.
+// fakeRun is Run in tests: resources by name, what was patched (the last patch, and
+// every patch with its update mask in order) and run. A patch of a template creates a
+// revision, as the API does; a patch of the traffic settles the statuses onto it.
 type fakeRun struct {
 	resources map[string]map[string]any
 	patched   map[string]map[string]any
+	patches   map[string][]map[string]any
 	fields    map[string][]string
+	fieldsOf  map[string][][]string
 	ran       map[string][]string
 	execution map[string]any
 	runErr    error
 }
 
 func newFakeRun(resources map[string]map[string]any) *fakeRun {
-	return &fakeRun{resources: resources, patched: map[string]map[string]any{}, fields: map[string][]string{}, ran: map[string][]string{}}
+	return &fakeRun{resources: resources, patched: map[string]map[string]any{}, patches: map[string][]map[string]any{}, fields: map[string][]string{}, fieldsOf: map[string][][]string{}, ran: map[string][]string{}}
 }
 
 func (r *fakeRun) open(context.Context) (Run, error) {
@@ -44,10 +48,41 @@ func (r *fakeRun) Get(_ context.Context, name string) (map[string]any, error) {
 
 func (r *fakeRun) Patch(_ context.Context, name string, resource map[string]any, fields ...string) (map[string]any, error) {
 	r.patched[name] = resource
+	r.patches[name] = append(r.patches[name], resource)
 	r.fields[name] = fields
-	r.resources[name] = resource
+	r.fieldsOf[name] = append(r.fieldsOf[name], fields)
+	doc := r.resources[name]
+	if doc == nil {
+		doc = map[string]any{}
+		r.resources[name] = doc
+	}
+	if len(fields) == 0 {
+		for key, value := range resource {
+			doc[key] = value
+		}
+		if _, ok := resource["template"]; ok && strings.Contains(name, "/services/") {
+			doc["latestCreatedRevision"] = name + "/revisions/" + shortName(name) + "-00008-new"
+		}
 
-	return resource, nil
+		return doc, nil
+	}
+	for _, key := range fields {
+		doc[key] = resource[key]
+	}
+	if traffic, ok := resource[keyTraffic].([]any); ok {
+		statuses := make([]any, 0, len(traffic))
+		for _, entry := range traffic {
+			t, _ := entry.(map[string]any)
+			status := map[string]any{keyType: t[keyType], keyRevision: t[keyRevision], keyPercent: t[keyPercent]}
+			if t[keyType] == targetLatest {
+				status[keyRevision] = shortName(text(doc, "latestReadyRevision"))
+			}
+			statuses = append(statuses, status)
+		}
+		doc["trafficStatuses"] = statuses
+	}
+
+	return doc, nil
 }
 
 func (r *fakeRun) RunJob(_ context.Context, name string, args []string) (map[string]any, error) {

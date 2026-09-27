@@ -10,8 +10,8 @@
 #   CheckRelease              a release already in the registry is reused (same commit) or refused (bedrock deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit, pushed
 #   RunMigrations             the migrate command as a Cloud Run job, run to completion (bedrock deploy migrate)
-#   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet
-#   ShiftTraffic              every region to 100 percent on its new revision
+#   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (bedrock deploy service)
+#   ShiftTraffic              every region to 100 percent on its new revision (bedrock deploy shift-traffic)
 #   WriteDeploymentRecord     the record of what is now running, in the records bucket (bedrock deploy record, from the pinned bedrock image)
 #
 # The revision template (variables, secret mounts, identity, scaling) belongs to the
@@ -504,127 +504,26 @@ steps:
     args: [deploy, migrate]
     timeout: 2400s
 
-  # A new revision of the service in every region, receiving no traffic yet. The service
-  # itself is the infrastructure's (created with its runtime identity, ingress, and scaling);
-  # this step only updates it. Before each update the service is checked for the state a
-  # failed earlier deploy leaves behind (traffic pointed at a revision that is not ready)
-  # and repaired by moving traffic back to the last ready revision, as CCC's deployments do.
+  # A new revision of the service in every region, receiving no traffic yet: bedrock deploy
+  # service, from the bedrock image the placement pins. The service itself is the
+  # infrastructure's (created with its runtime identity, ingress and scaling); the step only
+  # updates the image and the labels. Before each update the service is checked for the
+  # state a failed earlier deploy leaves behind (traffic pointed at a revision that is not
+  # ready) and repaired by moving traffic back to the last ready revision, as CCC's
+  # deployments do. One line per region is left in /workspace/revisions.txt.
   - id: DeployServiceNoTraffic
     waitFor: ["RunMigrations"]
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: bash
+    name: {{.P.BedrockImage}}
+    args: [deploy, service]
     timeout: 1200s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
 
-        # jq reads the service's state and the update's answer.
-        apt-get -qq update && apt-get -qq install -y jq
-
-        # The last ready revision of a service whose traffic points at a revision that is
-        # not ready; empty when the service is consistent.
-        last_ready_if_inconsistent() {
-          gcloud run services describe "$$1" --project="${_PROJECT}" --region="$$2" --format=json | \
-          jq -r 'select(
-            (.spec.traffic[0].revisionName != .status.traffic[0].revisionName) and
-            ((.status.conditions[] | select(.type=="Ready")).status == "False")
-          ) | .status.latestReadyRevisionName'
-        }
-
-        # Only the image and the labels change: the service's variables, secret mounts,
-        # identity and scaling are the application layer's.
-        # A pull-request revision is reachable through its tag's URL and nothing else.
-        TAG_ARGS=()
-        if [ -n "$${REVISION_TAG}" ]; then TAG_ARGS=(--tag="$${REVISION_TAG}"); fi
-
-        LABELS="managed-by=cloudbuild,commit-sha=${COMMIT_SHA},gcb-build-id=${BUILD_ID},source_repo=${REPO_NAME},environment=${_ENV}"
-        if [ -n "${_PR_NUMBER}" ]; then LABELS+=",pr-number=${_PR_NUMBER}"; fi
-
-        # One line per region for the next steps: region, service, revision.
-        REVISIONS_FILE="/workspace/revisions.txt"
-        : > "$${REVISIONS_FILE}"
-
-        IFS=',' read -r -a SERVICES <<< "$${SERVICES}"
-        for ENTRY in "$${SERVICES[@]}"; do
-          REGION="$${ENTRY%%=*}"
-          SERVICE_NAME="$${ENTRY#*=}"
-          echo "--- Service [$${SERVICE_NAME}] in region [$${REGION}] ---"
-
-          LAST_READY=$(last_ready_if_inconsistent "$${SERVICE_NAME}" "$${REGION}")
-          if [[ -n "$${LAST_READY}" && "$${LAST_READY}" != "null" ]]; then
-            echo "PROBLEM: service [$${SERVICE_NAME}] is in an inconsistent state; moving traffic back to [$${LAST_READY}]..."
-            # The exit status is deliberately ignored: gcloud has reported an error here
-            # while the traffic did move, so the state is checked again instead.
-            gcloud run services update-traffic "$${SERVICE_NAME}" \
-              --project="${_PROJECT}" \
-              --region="$${REGION}" \
-              --to-revisions="$${LAST_READY}=100" \
-              --quiet || echo "gcloud reported an error; checking whether the traffic moved anyway..."
-            POST_FIX=$(last_ready_if_inconsistent "$${SERVICE_NAME}" "$${REGION}")
-            if [[ -z "$${POST_FIX}" || "$${POST_FIX}" == "null" ]]; then
-              echo "FIX VERIFIED: traffic for [$${SERVICE_NAME}] is consistent again."
-            else
-              echo "FIX FAILED: service [$${SERVICE_NAME}] is still inconsistent [$${POST_FIX}]."
-              exit 1
-            fi
-          else
-            echo "HEALTH CHECK PASSED: service [$${SERVICE_NAME}] is consistent."
-          fi
-
-          echo "Deploying revision to [$${SERVICE_NAME}] without traffic..."
-          REVISION_NAME=$(gcloud run services update "$${SERVICE_NAME}" \
-            --project="${_PROJECT}" \
-            --region="$${REGION}" \
-            --image="$${IMAGE}@$${IMAGE_DIGEST}" \
-            --labels="$${LABELS}" \
-            "$${TAG_ARGS[@]}" \
-            --no-traffic \
-            --quiet \
-            --format=json | jq -r '.status.latestCreatedRevisionName')
-          if [[ -z "$${REVISION_NAME}" || "$${REVISION_NAME}" == "null" ]]; then
-            echo "Error: the deployment to region $${REGION} failed, or its revision name could not be read."
-            exit 1
-          fi
-          echo "Revision [$${REVISION_NAME}] deployed to [$${SERVICE_NAME}] in [$${REGION}]"
-          echo "$${REGION},$${SERVICE_NAME},$${REVISION_NAME}" >> "$${REVISIONS_FILE}"
-        done
-
-  # Every region to 100 percent on its new revision. A pull-request build leaves traffic
-  # where it is: its revision is served under its tag.
+  # Every region to 100 percent on its new revision: bedrock deploy shift-traffic. A
+  # pull-request build served under a tag alone leaves traffic where it is.
   - id: ShiftTraffic
     waitFor: ["DeployServiceNoTraffic"]
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: bash
+    name: {{.P.BedrockImage}}
+    args: [deploy, shift-traffic]
     timeout: 600s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-
-        REVISIONS_FILE="/workspace/revisions.txt"
-        if [ ! -s "$${REVISIONS_FILE}" ]; then
-          echo "Error: $${REVISIONS_FILE} is missing or empty; no revision was deployed."
-          exit 1
-        fi
-
-        if [[ "$${SHIFT_TRAFFIC}" != "true" ]]; then
-          echo "Leaving traffic unchanged: a pull-request revision is served under its tag only."
-          exit 0
-        fi
-
-        while IFS=',' read -r REGION SERVICE_NAME REVISION_NAME; do
-          echo "--- Shifting traffic in [$${REGION}] to [$${REVISION_NAME}] ---"
-          gcloud run services update-traffic "$${SERVICE_NAME}" \
-            --project="${_PROJECT}" \
-            --region="$${REGION}" \
-            --to-revisions="$${REVISION_NAME}=100" \
-            --quiet
-        done < "$${REVISIONS_FILE}"
 
   # The application's hook after traffic moved, when it commits one at
   # infrastructure/hooks/after-traffic.sh: a smoke test, a cache warm, a notification. A

@@ -22,10 +22,10 @@ func newDeploy(d deps) *cobra.Command {
 facts the resolve step exports to the workspace (environment.sh), the build as Cloud Build
 describes it (build.json) and what the earlier steps left there. A pipeline lists the steps it
 wants, and the rendered cloudbuild.yaml runs them from the bedrock image the placement pins
-(bedrockImage). Today: resolve, validate-release, check-release, migrate and record. The rest
-of the sequence follows, one step at a time.`,
+(bedrockImage). Today: resolve, validate-release, check-release, migrate, deploy, shift-traffic
+and record; the image build stays a docker step.`,
 	}
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployMigrate(d), newDeployRecord(d))
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployMigrate(d), newDeployService(d), newDeployShiftTraffic(d), newDeployRecord(d))
 
 	return cmd
 }
@@ -132,6 +132,49 @@ placement's seed list names. A seeded database takes nothing twice. A build that
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// newDeployService is deploy service.
+func newDeployService(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "service",
+		Short: "Put a new revision of the service in every region, receiving no traffic yet",
+		Long: `service updates the service in every region to this build's image and the pipeline's labels
+through the Cloud Run API; the service itself is the infrastructure's (its variables, secret
+mounts, identity and scaling are the application layer's). Before each update the service is
+checked for the state a failed earlier deploy leaves behind, traffic pointed at a revision that is
+not ready, and repaired by moving traffic back to the last ready revision. The traffic that serves
+now is pinned by revision name so the new revision takes none; a revision tag, when there is one,
+names the new revision under its own URL. It leaves revisions.txt (region, service, revision per
+line) for shift-traffic and record.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.Deploy(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// newDeployShiftTraffic is deploy shift-traffic.
+func newDeployShiftTraffic(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "shift-traffic",
+		Short: "Move every region to 100 percent on its new revision",
+		Long: `shift-traffic moves each service's traffic to the revision this build deployed (revisions.txt),
+keeping the tags other revisions carry. A pull-request revision served under its tag alone leaves
+the traffic where it is.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.ShiftTraffic(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
