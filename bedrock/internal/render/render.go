@@ -5,10 +5,11 @@
 // and its README say what the code declares and nothing a person keeps by hand, and so
 // do the pipeline files Cloud Build reads at the application root (cloudbuild.yaml,
 // cloudbuild-sweep.yaml). A seeded file is written once, when absent, and never again:
-// terraform.tfvars holds the placement values a person fills in per environment, and
-// the Dockerfile at the application root is the image build a person takes over from
-// its first shape. Files the tool never writes (the lock file, the placement) have no
-// tier here.
+// terraform.tfvars holds the placement values a person fills in per environment, the
+// stack's .gitignore keeps the per-environment backend caches and saved plans out of
+// the repository, and the Dockerfile at the application root is the image build a
+// person takes over from its first shape. Files the tool never writes (the lock file,
+// the placement) have no tier here.
 package render
 
 import (
@@ -73,15 +74,17 @@ const (
 	templateDir     = "templates"
 	rootTemplateDir = "templates/root"
 	templateExt     = ".tmpl"
-	// The files the tool writes once: the placement values per environment, and the
-	// image build.
+	// The files the tool writes once: the placement values per environment, the
+	// stack's ignore rules, and the image build.
 	tfvarsFile     = "terraform.tfvars"
+	ignoreFile     = ".gitignore"
 	dockerfileFile = "Dockerfile"
 )
 
 // seeded are the files the tool writes once.
 var seeded = map[string]bool{
 	tfvarsFile:     true,
+	ignoreFile:     true,
 	dockerfileFile: true,
 }
 

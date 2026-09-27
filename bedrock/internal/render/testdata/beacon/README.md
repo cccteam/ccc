@@ -14,9 +14,11 @@ route, a command) it comes from. bedrock renders these files from the code
 (`bedrock render`) and owns them: `bedrock check` compares them with the code
 and fails on drift. It renders the pipeline the same way, `cloudbuild.yaml` and
 `cloudbuild-sweep.yaml` at the repository root where Cloud Build reads them.
-Two files are seeded once and then yours: `terraform.tfvars` here, the
-placement values per environment, and the `Dockerfile` at the root, the image
-build in its first shape ("Customizing the pipeline").
+Three files are seeded once and then yours: `terraform.tfvars` here, the
+placement values per environment; `.gitignore` here, keeping the
+per-environment backend caches and saved plans out of the repository; and the
+`Dockerfile` at the root, the image build in its first shape ("Customizing the
+pipeline").
 
 ## Applying
 

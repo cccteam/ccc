@@ -22,7 +22,7 @@ func newCheck(d deps) *cobra.Command {
 the stack directory, and the pipeline files (cloudbuild.yaml, cloudbuild-sweep.yaml) with the
 ones at the application root. It exits 1 when any differs or is missing, listing each with
 the first line that differs: the drift between the code and the committed infrastructure.
-Seeded files (terraform.tfvars, the Dockerfile) are a person's and are not compared.
+Seeded files (terraform.tfvars, .gitignore, the Dockerfile) are a person's and are not compared.
 
 It also refuses a schema migrations directory, or the seed directory beside it
 (schema/devseed), whose files do not form the sequence the migrate command applies:
