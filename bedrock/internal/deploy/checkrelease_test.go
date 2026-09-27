@@ -2,7 +2,7 @@ package deploy
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -160,21 +160,27 @@ func TestArtifactRegistry(t *testing.T) {
 	t.Parallel()
 
 	const pkg = "/v1/projects/shr/locations/us-central1/repositories/repo/packages/harbor"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// answer encodes what the stand-in says; a status other than 200 comes first.
+	answer := func(w http.ResponseWriter, status int, body map[string]any) {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(body)
+	}
+	refusal := func(code int, message string) map[string]any {
+		return map[string]any{"error": map[string]any{"code": code, "message": message}}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.RequestURI() {
 		case "GET " + pkg + "/tags/v1.2.3-tst":
-			fmt.Fprint(w, `{"name":"`+pkg[4:]+`/tags/v1.2.3-tst","version":"`+pkg[4:]+`/versions/sha256:abc"}`)
+			answer(w, http.StatusOK, map[string]any{"name": pkg[4:] + "/tags/v1.2.3-tst", "version": pkg[4:] + "/versions/sha256:abc"})
 		case "GET " + pkg + "/tags/missing":
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprint(w, `{"error":{"code":404,"message":"Requested entity was not found."}}`)
+			answer(w, http.StatusNotFound, refusal(http.StatusNotFound, "Requested entity was not found."))
 		case "POST " + pkg + "/tags?tagId=v1.2.4-tst":
-			fmt.Fprint(w, `{"name":"`+pkg[4:]+`/tags/v1.2.4-tst","version":"`+pkg[4:]+`/versions/sha256:abc"}`)
+			answer(w, http.StatusOK, map[string]any{"name": pkg[4:] + "/tags/v1.2.4-tst", "version": pkg[4:] + "/versions/sha256:abc"})
 		case "GET /v1/projects/shr/locations/us-central1/repositories/repo/packages/nested%2Fapp/tags/t":
-			fmt.Fprint(w, `{"version":"x/versions/sha256:nested"}`)
+			answer(w, http.StatusOK, map[string]any{"version": "x/versions/sha256:nested"})
 		default:
-			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprint(w, `{"error":{"code":403,"message":"Permission denied on resource"}}`)
+			answer(w, http.StatusForbidden, refusal(http.StatusForbidden, "Permission denied on resource"))
 		}
 	}))
 	t.Cleanup(srv.Close)
