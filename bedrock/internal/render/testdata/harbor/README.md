@@ -71,7 +71,7 @@ from `2-env`'s state.
   a migration never does. The design brief's rule of thumb, accessor for every
   process that constructs the level, would grant the migrate identity too;
   this is the narrower reading, and a fork for bedrock's derivation to settle.
-- **Cloud Run**: the service `imp-<env>-<uc1|uw3>-harbor-app` in both regions
+- **Cloud Run**: the service `imp-<env>-<region>-harbor-app` in both regions (`uc1|uw3`)
   (ingress internal and load balancer, 0 to 2 instances, CPU only during
   requests, `allUsers` invoker so the load balancer can forward) and the job
   `imp-<env>-uc1-harbor-migrate` (one task, no retries, 15-minute timeout),
@@ -196,7 +196,7 @@ those entries for the environment:
 
 ```
 hosts = {
-  "harbor-tst.impulseframework.dev" = "projects/<tst project>/global/backendServices/imp-tst-gbl-harbor-backend"
+  "harbor-tst.impulseframework.dev" = "projects/<the tst project>/global/backendServices/imp-tst-gbl-harbor-backend"
 }
 ```
 

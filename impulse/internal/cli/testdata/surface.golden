@@ -117,6 +117,7 @@ checks:
   eslint-ignore
   resource-styles
   package-manager
+  registry-pins
   test-runner
   paging
   rpc-execute

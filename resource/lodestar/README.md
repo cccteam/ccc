@@ -25,7 +25,7 @@ With [overmind](https://github.com/DarthSim/overmind), podman, and bun installed
 
 ```
 cp .envrc.template .envrc && direnv allow
-(cd web && ./ccclib.sh local)     # once: the local ccc-lib packages, then bun install
+(cd web && bun install)           # the published @cccteam/resource and @cccteam/resource-angular
 overmind start
 ```
 
@@ -41,8 +41,10 @@ Google directory is simulated from `APP_USERNAME` and `APP_ROLES` in `.envrc`, s
 tenant is contacted and the persona quick-fill still works. `APP_DROIDS_API_KEY` opens the
 droid channel.
 
-After a change in ccc-lib, push the rebuilt packages, restart the dev server, and reload the
-page:
+To work on ccc-lib itself, attach the workspace to the local checkout beside this one
+(`(cd web && ./ccclib.sh local)`, which rewrites the pins to `file:.yalc/` specs, never
+committed; `./ccclib.sh restore` puts the published versions back). After a change there,
+push the rebuilt packages, restart the dev server, and reload the page:
 
     (cd web && ./ccclib.sh push)
     overmind restart console portal
@@ -200,9 +202,9 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 - `web/`: one bun workspace, two Angular applications: `console/` (default outlet) and
   `portal/` (portal outlet), each over its own generated TypeScript client; the workspace's
   checks are `bun run build && bun run lint && bun run test`; ccc's CI runs all three in
-  its `lodestar-web` job against `@cccteam/resource` and `@cccteam/resource-angular` built
-  in the job from ccc-lib's branch and linked the way `web/ccclib.sh local` links them (the
-  published versions once they publish); the specs run on Angular's unit-test builder with
+  its `lodestar-web` job against the published `@cccteam/resource` and
+  `@cccteam/resource-angular`, the versions `web/package.json` pins, installed with the
+  lockfile frozen; the specs run on Angular's unit-test builder with
   Vitest under jsdom, no browser, the wiring the
   Impulse skeleton carries (the console's dashboard, login, header, top bar, footer, and
   shell, the portal's login and tracker, over a scripted client from
