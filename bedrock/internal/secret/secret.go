@@ -94,6 +94,30 @@ func ValidateVariable(variable string) error {
 	return nil
 }
 
+// buildSecretRE matches a build-time secret's name: upper snake case, no prefix required
+// (the name is the BuildKit secret id the Dockerfile mounts, KENDO_UI_LICENSE).
+var buildSecretRE = regexp.MustCompile(`^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$`)
+
+// ValidateBuildSecret checks that name is a build-time secret's name: upper snake case,
+// with or without the APP_ prefix.
+func ValidateBuildSecret(name string) error {
+	if !buildSecretRE.MatchString(name) {
+		return errors.Newf("build secret %q: a name in upper snake case, such as KENDO_UI_LICENSE", name)
+	}
+
+	return nil
+}
+
+// validateName checks a variable's name: a build-time secret's shape when build is true,
+// else a runtime secret variable's.
+func validateName(name string, build bool) error {
+	if build {
+		return ValidateBuildSecret(name)
+	}
+
+	return ValidateVariable(name)
+}
+
 // ValidateVersion checks that version is a positive integer or the word latest.
 func ValidateVersion(version string) error {
 	if !versionRE.MatchString(version) {
@@ -302,7 +326,7 @@ func (req *Request) validate() error {
 	if err := ValidateEnv(req.Env); err != nil {
 		return err
 	}
-	if err := ValidateVariable(req.Variable); err != nil {
+	if err := validateName(req.Variable, req.Build); err != nil {
 		return err
 	}
 

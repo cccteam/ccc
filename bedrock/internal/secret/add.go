@@ -31,6 +31,9 @@ type AddRequest struct {
 	Labels map[string]string
 	// Value is the secret value, stored as given.
 	Value []byte
+	// Build is true for a build-time secret (the stack's var.build_secrets), whose name
+	// needs no APP_ prefix.
+	Build bool
 }
 
 // validate checks the arguments before anything is asked of Secret Manager.
@@ -41,7 +44,7 @@ func (req *AddRequest) validate() error {
 	if err := ValidateEnv(req.Env); err != nil {
 		return err
 	}
-	if err := ValidateVariable(req.Variable); err != nil {
+	if err := validateName(req.Variable, req.Build); err != nil {
 		return err
 	}
 	if req.Project == "" {

@@ -202,7 +202,8 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 	if err != nil {
 		return nil, err
 	}
-	if err := secret.ValidateVariable(variable); err != nil {
+	isBuild := slices.Contains(build, variable)
+	if err := validateName(variable, isBuild); err != nil {
 		return nil, err
 	}
 	project, err := d.resolveProject(ctx, f.project, env)
@@ -227,7 +228,7 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 		Layer:     place.layer,
 		Project:   project,
 		Container: container,
-		Build:     slices.Contains(build, variable),
+		Build:     isBuild,
 	}, nil
 }
 
@@ -457,10 +458,17 @@ func (d deps) resolveAdd(cmd *cobra.Command, args []string, f *addFlags) (*secre
 	if err != nil {
 		return nil, err
 	}
-	if err := secret.ValidateVariable(variable); err != nil {
-		return nil, err
+	isBuild := slices.Contains(build, variable)
+	switch {
+	case isBuild:
+		if err := secret.ValidateBuildSecret(variable); err != nil {
+			return nil, err
+		}
+	case secret.ValidateVariable(variable) != nil && secret.ValidateBuildSecret(variable) != nil:
+		// A name of neither shape: the runtime rule says what a name looks like.
+		return nil, secret.ValidateVariable(variable)
 	}
-	if !slices.Contains(declared, variable) && !slices.Contains(build, variable) {
+	if !slices.Contains(declared, variable) && !isBuild {
 		declares := "none"
 		if len(build) > 0 {
 			declares = strings.Join(build, ", ")
@@ -489,7 +497,26 @@ func (d deps) resolveAdd(cmd *cobra.Command, args []string, f *addFlags) (*secre
 		Container: container,
 		Labels:    labels,
 		Value:     value,
+		Build:     isBuild,
 	}, nil
+}
+
+// validateName checks a variable's name: a build-time secret's shape (upper snake case,
+// no prefix required) when it is one, else a runtime secret variable's (under APP_). A
+// name of neither shape is refused by the runtime rule, whose message names both.
+func validateName(variable string, isBuild bool) error {
+	if isBuild {
+		return secret.ValidateBuildSecret(variable)
+	}
+	if err := secret.ValidateVariable(variable); err != nil {
+		if secret.ValidateBuildSecret(variable) == nil {
+			return errors.Newf("%s; a build-time secret needs no prefix, but the placement must declare it under build_secrets for the environment", errors.Cause(err))
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // resolveNewContainer is the container a value goes into, and the labels it is created

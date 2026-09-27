@@ -28,9 +28,9 @@ func TestSetVersion(t *testing.T) {
 		wantErr  string
 	}{
 		{name: "an entry joins the environment's map", src: "pins.tfvars", env: "tst", variable: "APP_MAIL_API_KEY", version: "4", want: "pins.added.want.tfvars"},
-		{name: "a build secret's pin is replaced under build_secrets, the runtime map untouched", src: "build.tfvars", build: true, env: "tst", variable: "APP_LICENSE", version: "2", want: "build.replaced.want.tfvars"},
-		{name: "a build secret's pin joins an empty environment map under build_secrets", src: "build.tfvars", build: true, env: "stg", variable: "APP_LICENSE", version: "1", want: "build.added.want.tfvars"},
-		{name: "a build secret's pin needs the build_secrets map", src: "pins.tfvars", build: true, env: "tst", variable: "APP_LICENSE", version: "1", wantErr: "no build_secrets in pins.tfvars"},
+		{name: "a build secret's pin is replaced under build_secrets, the runtime map untouched", src: "build.tfvars", build: true, env: "tst", variable: "UI_LICENSE", version: "2", want: "build.replaced.want.tfvars"},
+		{name: "a build secret's pin joins an empty environment map under build_secrets", src: "build.tfvars", build: true, env: "stg", variable: "UI_LICENSE", version: "1", want: "build.added.want.tfvars"},
+		{name: "a build secret's pin needs the build_secrets map", src: "pins.tfvars", build: true, env: "tst", variable: "UI_LICENSE", version: "1", wantErr: "no build_secrets in pins.tfvars"},
 		{name: "an empty map takes the first entry", src: "pins.tfvars", env: "stg", variable: "APP_COOKIE_KEY", version: "1", want: "pins.empty.want.tfvars"},
 		{name: "a pinned value is replaced", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", want: "pins.replaced.want.tfvars"},
 		{name: "latest is pinned as written", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "latest", want: "pins.latest.want.tfvars"},
@@ -100,8 +100,8 @@ func TestPinned(t *testing.T) {
 		wantErr     string
 	}{
 		{name: "a pinned variable", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantVersion: "2", wantPinned: true},
-		{name: "a build secret's pin, under build_secrets", src: "build.tfvars", key: buildKey, env: "tst", variable: "APP_LICENSE", wantVersion: "1", wantPinned: true},
-		{name: "a build secret's pin is not a runtime pin", src: "build.tfvars", env: "tst", variable: "APP_LICENSE"},
+		{name: "a build secret's pin, under build_secrets", src: "build.tfvars", key: buildKey, env: "tst", variable: "UI_LICENSE", wantVersion: "1", wantPinned: true},
+		{name: "a build secret's pin is not a runtime pin", src: "build.tfvars", env: "tst", variable: "UI_LICENSE"},
 		{name: "a variable the environment's map lacks", src: "pins.tfvars", env: "tst", variable: "APP_MAIL_API_KEY"},
 		{name: "an empty map", src: "pins.tfvars", env: "stg", variable: "APP_COOKIE_KEY"},
 		{name: "a quoted key", src: "quoted.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantVersion: "2", wantPinned: true},

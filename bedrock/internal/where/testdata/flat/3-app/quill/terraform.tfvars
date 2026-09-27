@@ -15,7 +15,7 @@ secret_versions = {
 # Secrets the image build reads, NAME = pinned version.
 build_secrets = {
   tst = {
-    APP_LICENSE = "1"
+    UI_LICENSE = "1"
   }
   stg = {}
   prd = {}

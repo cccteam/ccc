@@ -6,7 +6,7 @@ secret_versions = {
 
 build_secrets = {
   tst = {
-    APP_LICENSE = "2"
+    UI_LICENSE = "2"
   }
   stg = {}
 }

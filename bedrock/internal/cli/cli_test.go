@@ -677,20 +677,27 @@ func TestSecretAdd(t *testing.T) {
 		wantValue   string
 	}{
 		{
-			name:     "a build secret the placement declares for the environment is accepted",
-			args:     []string{"tst", "APP_LICENSE", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-license"},
+			name:     "a build secret the placement declares for the environment is accepted, no prefix needed",
+			args:     []string{"tst", "UI_LICENSE", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-ui-license"},
 			value:    "lic-2",
 			projects: noProjects,
-			secrets:  labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-license": {secret.Enabled}}},
-			wantOut:  []string{"Added version 2 of imp-tst-gbl-quill-license in project lab-tst-1, for APP_LICENSE of quill in tst.", "Pin it: bedrock secret pin tst APP_LICENSE 2"},
+			secrets:  labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-ui-license": {secret.Enabled}}},
+			wantOut:  []string{"Added version 2 of imp-tst-gbl-quill-ui-license in project lab-tst-1, for UI_LICENSE of quill in tst.", "Pin it: bedrock secret pin tst UI_LICENSE 2"},
 		},
 		{
 			name:     "a build secret the placement declares for another environment is refused, naming what this one declares",
-			args:     []string{"tst", "APP_LICENSE", "--container", "x"},
-			tfvars:   "state_bucket = \"b\"\nsecret_versions = {\n  tst = {}\n  stg = {}\n  prd = {}\n}\nbuild_secrets = {\n  tst = {}\n  stg = {\n    APP_LICENSE = \"1\"\n  }\n  prd = {}\n}\n",
+			args:     []string{"tst", "UI_LICENSE", "--container", "x"},
+			tfvars:   "state_bucket = \"b\"\nsecret_versions = {\n  tst = {}\n  stg = {}\n  prd = {}\n}\nbuild_secrets = {\n  tst = {}\n  stg = {\n    UI_LICENSE = \"1\"\n  }\n  prd = {}\n}\n",
 			value:    "k-1",
 			projects: noProjects,
-			wantErr:  "the code declares no secret variable APP_LICENSE (it declares APP_COOKIE_KEY, APP_MAIL_API_KEY): a container is added only for a secret the application reads, or for a build secret the placement declares for tst (it declares none)",
+			wantErr:  "the code declares no secret variable UI_LICENSE (it declares APP_COOKIE_KEY, APP_MAIL_API_KEY): a container is added only for a secret the application reads, or for a build secret the placement declares for tst (it declares none)",
+		},
+		{
+			name:     "a name without the prefix that the placement does not declare as a build secret is refused with what it declares",
+			args:     []string{"tst", "KENDO_UI_LICENSE", "--container", "x"},
+			value:    "k-1",
+			projects: noProjects,
+			wantErr:  "the code declares no secret variable KENDO_UI_LICENSE (it declares APP_COOKIE_KEY, APP_MAIL_API_KEY): a container is added only for a secret the application reads, or for a build secret the placement declares for tst (it declares UI_LICENSE)",
 		},
 		{
 			name:      "everything typed, the value from a file",
@@ -908,16 +915,16 @@ func TestSecretPin(t *testing.T) {
 		},
 		{
 			name:     "a build secret is pinned under build_secrets",
-			args:     []string{"tst", "APP_LICENSE", "2", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-license"},
+			args:     []string{"tst", "UI_LICENSE", "2", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-ui-license"},
 			withDir:  true,
 			projects: noProjects,
-			secrets:  labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-license": {secret.Enabled, secret.Enabled}}},
+			secrets:  labSecrets{layer: "3-app-quill", containers: map[string][]string{"imp-tst-gbl-quill-ui-license": {secret.Enabled, secret.Enabled}}},
 			wantOut: []string{
-				"Pinned APP_LICENSE to version 2 for quill in tst: build_secrets.tst in",
-				"Secret Manager confirms version 2 of imp-tst-gbl-quill-license in project lab-tst-1 is enabled.",
+				"Pinned UI_LICENSE to version 2 for quill in tst: build_secrets.tst in",
+				"Secret Manager confirms version 2 of imp-tst-gbl-quill-ui-license in project lab-tst-1 is enabled.",
 				"the plan for tst shows the change to the triggers' substitutions (the image build reads the new version)",
 			},
-			wantFile: []string{`APP_LICENSE = "2"`, `APP_COOKIE_KEY = "2"`},
+			wantFile: []string{`UI_LICENSE = "2"`, `APP_COOKIE_KEY = "2"`},
 		},
 		{
 			name:     "the project and the container are found by their labels",
@@ -1150,7 +1157,7 @@ func TestSecretPinCompletion(t *testing.T) {
 		want     []string
 	}{
 		{name: "the environments", args: []string{""}, want: []string{"tst", "stg", "prd"}},
-		{name: "the variables", args: []string{"tst", ""}, want: []string{"APP_COOKIE_KEY", "APP_MAIL_API_KEY", "APP_LICENSE"}},
+		{name: "the variables", args: []string{"tst", ""}, want: []string{"APP_COOKIE_KEY", "APP_MAIL_API_KEY", "UI_LICENSE"}},
 		{name: "the versions with their states", args: []string{"tst", "APP_COOKIE_KEY", ""}, want: []string{"3\tENABLED", "2\tDISABLED", "1\tENABLED"}},
 		{name: "the versions of the container named", args: []string{"tst", "APP_COOKIE_KEY", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-mail-api-key", ""}, projects: noProjects, want: []string{"2\tENABLED", "1\tDISABLED"}},
 		{name: "nothing after the third argument", args: []string{"tst", "APP_COOKIE_KEY", "3", ""}},
