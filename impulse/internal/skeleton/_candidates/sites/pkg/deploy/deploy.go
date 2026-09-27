@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/cccteam/access"
@@ -49,9 +50,13 @@ func MigrateSchema(ctx context.Context, settings config.SpannerSettings) error {
 }
 
 // SeedDevelopmentData applies the development seed to the database as data migrations.
-// An application without a seed directory has nothing to apply.
+// An application without a seed directory, or with an empty one, has nothing to apply.
 func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) error {
-	if _, err := os.Stat(strings.TrimPrefix(DevSeedSource, "file://")); errors.Is(err, os.ErrNotExist) {
+	files, err := filepath.Glob(filepath.Join(strings.TrimPrefix(DevSeedSource, "file://"), "*.up.sql"))
+	if err != nil {
+		return errors.Wrap(err, "filepath.Glob()")
+	}
+	if len(files) == 0 {
 		return nil
 	}
 	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)

@@ -28,6 +28,10 @@ concealed from logins that hold nothing there.
   deploy-time validation (`access.ValidateRoles`) and pins the warnings the deploy would
   print as typed values, none expected: a warning is accepted by pinning it there, or the
   role is fixed.
+  A development seed under `schema/devseed` (data files as migrations, tracked apart from
+  the schema, so a seeded database takes nothing twice) is applied by `cmd/bootstrap` and
+  by the migrate command with `-seed`, which the pipeline passes in test environments and
+  never in production; an application without the directory has nothing to apply.
 - `cmd/generate` runs the three generators: console, portal, shared. `impulse check`'s
   sites-generators check fails the build when a generator reads a different schema or the
   shared generator misses a site.

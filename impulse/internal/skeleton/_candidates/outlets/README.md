@@ -53,6 +53,10 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
   validation (`access.ValidateRoles`) and pins the warnings the deploy would print as
   typed values, none expected: a warning is accepted by pinning it there, or the role is
   fixed.
+  A development seed under `schema/devseed` (data files as migrations, tracked apart from
+  the schema, so a seeded database takes nothing twice) is applied by `cmd/bootstrap` and
+  by the migrate command with `-seed`, which the pipeline passes in test environments and
+  never in production; an application without the directory has nothing to apply.
 - `test/authz` is the generated authorization matrix over the generated test router;
   `test/integration` drives the served stack (real router, session, engine) end to end.
 - `web/` is the Angular workspace, one project per browser application (`console`,
