@@ -172,13 +172,13 @@ func TestArtifactRegistry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.RequestURI() {
 		case "GET " + pkg + "/tags/v1.2.3-tst":
-			answer(w, http.StatusOK, map[string]any{"name": pkg[4:] + "/tags/v1.2.3-tst", "version": pkg[4:] + "/versions/sha256:abc"})
+			answer(w, http.StatusOK, map[string]any{"name": pkg[4:] + "/tags/v1.2.3-tst", keyVersion: pkg[4:] + "/versions/sha256:abc"})
 		case "GET " + pkg + "/tags/missing":
 			answer(w, http.StatusNotFound, refusal(http.StatusNotFound, "Requested entity was not found."))
 		case "POST " + pkg + "/tags?tagId=v1.2.4-tst":
-			answer(w, http.StatusOK, map[string]any{"name": pkg[4:] + "/tags/v1.2.4-tst", "version": pkg[4:] + "/versions/sha256:abc"})
+			answer(w, http.StatusOK, map[string]any{"name": pkg[4:] + "/tags/v1.2.4-tst", keyVersion: pkg[4:] + "/versions/sha256:abc"})
 		case "GET /v1/projects/shr/locations/us-central1/repositories/repo/packages/nested%2Fapp/tags/t":
-			answer(w, http.StatusOK, map[string]any{"version": "x/versions/sha256:nested"})
+			answer(w, http.StatusOK, map[string]any{keyVersion: "x/versions/sha256:nested"})
 		default:
 			answer(w, http.StatusForbidden, refusal(http.StatusForbidden, "Permission denied on resource"))
 		}

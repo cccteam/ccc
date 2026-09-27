@@ -12,8 +12,12 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-// artifactRegistryAPI is where an image's tags are read and added.
-const artifactRegistryAPI = "https://artifactregistry.googleapis.com"
+// artifactRegistryAPI is where an image's tags are read and added; keyVersion is the
+// field of a tag that names its version, the digest.
+const (
+	artifactRegistryAPI = "https://artifactregistry.googleapis.com"
+	keyVersion          = "version"
+)
 
 // Registry reads and names the images in the application's Artifact Registry
 // repository: the API, or a fake in tests.
@@ -102,7 +106,7 @@ func (r *artifactRegistry) AddTag(ctx context.Context, image, tag, digest string
 	if err != nil {
 		return err
 	}
-	body := map[string]string{"version": p.name() + "/versions/" + digest}
+	body := map[string]string{keyVersion: p.name() + "/versions/" + digest}
 	if _, _, err := r.call(ctx, http.MethodPost, "/v1/"+p.name()+"/tags?tagId="+url.QueryEscape(tag), body); err != nil {
 		return err
 	}
