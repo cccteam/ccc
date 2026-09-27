@@ -292,10 +292,10 @@ The deploy sequence in `cloudbuild.yaml` is bedrock's and is rewritten on every
 render, so a lost step is caught rather than copied. Its steps are becoming
 `bedrock deploy` commands, run from the bedrock image the placement pins
 (`bedrockImage`, by digest; moved by upgrade): resolve, the release checks,
-the registry check and the deployment record are commands (`bedrock deploy
-resolve`, `validate-release`, `check-release`, `record`), the rest follow one
-at a time, and a pipeline then lists the steps it wants. What an application
-adds is declared in files of its own:
+the registry check, the migrate job and the deployment record are commands
+(`bedrock deploy resolve`, `validate-release`, `check-release`, `migrate`,
+`record`), the rest follow one at a time, and a pipeline then lists the steps
+it wants. What an application adds is declared in files of its own:
 
 - **Hooks.** A script the application commits at
   `infrastructure/hooks/<stage>.sh` runs at that stage, as the deploy identity,

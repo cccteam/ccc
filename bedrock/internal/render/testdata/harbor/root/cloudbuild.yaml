@@ -9,7 +9,7 @@
 #   Hook*                     the application's own scripts at four stages, when it commits them
 #   CheckRelease              a release already in the registry is reused (same commit) or refused (bedrock deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit, pushed
-#   RunMigrations             the migrate command as a Cloud Run job, run to completion
+#   RunMigrations             the migrate command as a Cloud Run job, run to completion (bedrock deploy migrate)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet
 #   ShiftTraffic              every region to 100 percent on its new revision
 #   WriteDeploymentRecord     the record of what is now running, in the records bucket (bedrock deploy record, from the pinned bedrock image)
@@ -491,63 +491,18 @@ steps:
         echo "=== Hook before-migrate: $${HOOK} ==="
         bash "$${HOOK}"
 
-  # The migrate command (the schema migrations, then the roles file) as a Cloud Run job in
-  # the first region, run to completion before any revision that expects the new schema
-  # exists. One job serves the environment; each deploy updates it to this image. A
-  # pull-request build skips it unless its comment said reload-db.
+  # The migrate command as a Cloud Run job, run to completion: bedrock deploy migrate, from
+  # the bedrock image the placement pins. Only the image and the labels change on the job
+  # (its variables, identity, resources and retry policy are the application layer's); the
+  # seed (schema/devseed as data migrations after the schema) runs where _SEED is true:
+  # every pull request, its database being new, and a release build only in the
+  # environments the placement's seed list names, none by default and never production. A
+  # seeded database takes nothing twice. A build that runs no migrations skips the job.
   - id: RunMigrations
     waitFor: ["HookBeforeMigrate"]
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: bash
+    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    args: [deploy, migrate]
     timeout: 2400s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-
-        if [[ "$${RUN_MIGRATIONS}" != "true" ]]; then
-          echo "Skipping the migrate job: this build does not run migrations."
-          exit 0
-        fi
-
-        # Cloud Build substitutes a plain dollar-brace name only, and it reads the whole
-        # script for them, so the region=name pair is copied into a shell variable before
-        # the shell splits it with a parameter expansion.
-        JOB_NAME="$${MIGRATE_JOB#*=}"
-        REGION="$${MIGRATE_JOB%%=*}"
-
-        LABELS="managed-by=cloudbuild,commit-sha=${COMMIT_SHA},gcb-build-id=${BUILD_ID},source_repo=${REPO_NAME},environment=${_ENV}"
-        if [ -n "${_PR_NUMBER}" ]; then LABELS+=",pr-number=${_PR_NUMBER}"; fi
-
-        echo "=== Updating job [$${JOB_NAME}] in [$${REGION}] to this image ==="
-        # Only the image and the labels change: the job's variables, identity, resources
-        # and retry policy are the application layer's.
-        gcloud run jobs update "$${JOB_NAME}" \
-          --project="${_PROJECT}" \
-          --region="$${REGION}" \
-          --image="$${IMAGE}@$${IMAGE_DIGEST}" \
-          --labels="$${LABELS}" \
-          --quiet
-
-        echo "=== Running job [$${JOB_NAME}] ==="
-        # --wait blocks until the execution ends and fails this step when it fails.
-        # The seed: where _SEED is true (every pull request, its database being new; a
-        # release build only in the environments the placement's seed list names, none by
-        # default and never production), the job applies schema/devseed as data migrations
-        # after the schema; a seeded database takes nothing twice, so this is safe to pass
-        # on every run.
-        SEED_ARGS=""
-        if [ "${_SEED}" = "true" ]; then
-          SEED_ARGS="--args=-seed"
-          echo "Seeding: the migrate job applies schema/devseed as data migrations."
-        fi
-        gcloud run jobs execute "$${JOB_NAME}" $${SEED_ARGS} \
-          --project="${_PROJECT}" \
-          --region="$${REGION}" \
-          --wait \
-          --quiet
 
   # A new revision of the service in every region, receiving no traffic yet. The service
   # itself is the infrastructure's (created with its runtime identity, ingress, and scaling);

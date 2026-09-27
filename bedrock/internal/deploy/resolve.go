@@ -82,11 +82,13 @@ type Clients struct {
 	GitHub GitHubFunc
 	// Registry opens Artifact Registry, for the release check on the image.
 	Registry RegistryFunc
+	// Run opens Cloud Run, for the migrate job and the services.
+	Run RunFunc
 }
 
 // DefaultClients opens the real services.
 func DefaultClients() *Clients {
-	return &Clients{Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub, Registry: NewArtifactRegistry}
+	return &Clients{Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub, Registry: NewArtifactRegistry, Run: NewCloudRun}
 }
 
 // Builds reads a build and mints the GitHub token of the repository it came from,

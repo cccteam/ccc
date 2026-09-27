@@ -22,10 +22,10 @@ func newDeploy(d deps) *cobra.Command {
 facts the resolve step exports to the workspace (environment.sh), the build as Cloud Build
 describes it (build.json) and what the earlier steps left there. A pipeline lists the steps it
 wants, and the rendered cloudbuild.yaml runs them from the bedrock image the placement pins
-(bedrockImage). Today: resolve, validate-release, check-release and record. The rest of the
-sequence follows, one step at a time.`,
+(bedrockImage). Today: resolve, validate-release, check-release, migrate and record. The rest
+of the sequence follows, one step at a time.`,
 	}
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployRecord(d))
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployMigrate(d), newDeployRecord(d))
 
 	return cmd
 }
@@ -110,6 +110,28 @@ after it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.CheckRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// newDeployMigrate is deploy migrate.
+func newDeployMigrate(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "migrate",
+		Short: "Run the migrate job with this build's image",
+		Long: `migrate updates the migrate job to this build's image and the pipeline's labels (its variables,
+identity, resources and retry policy are the application layer's) and runs it to completion through
+the Cloud Run API, with the seed (schema/devseed as data migrations after the schema) where _SEED is
+true: every pull request, its database being new, and a release build only in the environments the
+placement's seed list names. A seeded database takes nothing twice. A build that runs no migrations
+(shared-db) skips the job; a failed execution stops the build and names itself.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
