@@ -226,9 +226,9 @@ steps:
         echo 'BUILD_ARGS=()' >> /workspace/environment.sh
         KNOWN=" _ENV _APP _PROJECT _SERVICES _MIGRATE_JOB _REGISTRY _RECORDS_BUCKET _REPO_CONNECTION_NAME _REPO_NAME _RELEASE_ACTORS _PREVIOUS_ENV _PREVIOUS_RECORDS_BUCKET _APPLY_IDENTITY _MIGRATIONS_DIR _REPO_FULL_NAME _HOSTNAME _SEED _DEPLOYER_APP_ID _DEPLOYER_KEY_SECRET _PR_NUMBER "
         jq -r --arg known "$${KNOWN}" \
-          '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | select(($$known | contains(" " + .key + " ")) | not) | "BUILD_ARGS+=(--build-arg \(.key + "=" + .value | @sh))"' \
+          '.substitutions // {} | to_entries[] | select(.key | startswith("_")) | .key as $$k | select(($$known | contains(" " + $$k + " ")) | not) | "BUILD_ARGS+=(--build-arg \(.key + "=" + .value | @sh))"' \
           /workspace/build.json >> /workspace/environment.sh
-        DECLARED=$(jq -r --arg known "$${KNOWN}" '[.substitutions // {} | to_entries[] | select(.key | startswith("_")) | select(($$known | contains(" " + .key + " ")) | not) | .key] | join(", ")' /workspace/build.json)
+        DECLARED=$(jq -r --arg known "$${KNOWN}" '[.substitutions // {} | to_entries[] | select(.key | startswith("_")) | .key as $$k | select(($$known | contains(" " + $$k + " ")) | not) | $$k] | join(", ")' /workspace/build.json)
         echo "Declared substitutions for the hooks and the image build: $${DECLARED:-none}"
 
   # The deployer GitHub App's token, for a pull-request build that has an app to
