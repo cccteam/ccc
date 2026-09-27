@@ -119,11 +119,22 @@ sets it), `APP_CONSOLE_DIST` (where the image put the bundle).
 `var.secret_versions` pins, per environment and per variable, the version the
 environment runs. A secret with no pin has its container but is not mounted:
 the process starts without the variable, which is "not yet". After an
-operator adds a value (`gcloud secrets versions add`, as a Secret Version
-Adder), the pin is bumped in `terraform.tfvars` in the same pull request as
-the rotation and rolled out by the next apply and deploy. `latest` is allowed
+operator adds a value (`bedrock secret add <env> <VARIABLE>`, or `gcloud
+secrets versions add` as a Secret Version Adder), the pin is bumped in
+`terraform.tfvars` (`bedrock secret pin`) in the same pull request as the
+rotation and rolled out by the next apply and deploy. `latest` is allowed
 only where the map says so, for a secret whose placement marks it as tracking;
 a pinned number is the default posture.
+
+A new secret's value goes in ahead of the release that first reads it: the
+operator creates the container and adds the value (`bedrock secret add`
+creates a container the project lacks, named as this stack names it and
+labeled as it labels it), and `secret-manager.tf` adopts it: every declared
+container the project holds and this state does not is imported at plan time,
+so the apply reconciles it instead of failing to create it. A pull-request
+stack reads tst's containers and adopts none. Creating a
+container and adding a version is the `secretOperator` role 1-org defines,
+granted on the environment project to 2-env's `secret_operators`.
 
 ## The pipeline's contract
 
