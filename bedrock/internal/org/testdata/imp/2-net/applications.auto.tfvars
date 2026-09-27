@@ -11,9 +11,9 @@
 hosts = {
   "harbor-tst.impulseframework.dev" = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-harbor-backend"
   "harbor-stg.impulseframework.dev" = "projects/imp-stg-gbl-core-3c4d/global/backendServices/imp-stg-gbl-harbor-backend"
-  "harbor.impulseframework.dev" = "projects/imp-prd-gbl-core-5e6f/global/backendServices/imp-prd-gbl-harbor-backend"
+  "harbor.impulseframework.dev"     = "projects/imp-prd-gbl-core-5e6f/global/backendServices/imp-prd-gbl-harbor-backend"
   "beacon-tst.impulseframework.dev" = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-beacon-backend"
   "beacon-stg.impulseframework.dev" = "projects/imp-stg-gbl-core-3c4d/global/backendServices/imp-stg-gbl-beacon-backend"
-  "beacon.impulseframework.dev" = "projects/imp-prd-gbl-core-5e6f/global/backendServices/imp-prd-gbl-beacon-backend"
-  "*.impulseframework.dev" = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-pr-backend"
+  "beacon.impulseframework.dev"     = "projects/imp-prd-gbl-core-5e6f/global/backendServices/imp-prd-gbl-beacon-backend"
+  "*.impulseframework.dev"          = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-pr-backend"
 }

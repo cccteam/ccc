@@ -87,6 +87,36 @@ func (v *view) Host(env, app string) string {
 	return app + "-" + env + "." + v.AppsDomain
 }
 
+// HostRow is one entry of 2-net's hosts map: the quoted hostname, padded so the
+// entries' equals signs align the way tofu fmt writes them, and its backend service.
+type HostRow struct {
+	Key   string
+	Value string
+}
+
+// HostRows is every hostname the load balancer serves with its backend service, one
+// row per application and environment in that order and the pull-request wildcard
+// last, the keys padded to the longest so the rendered map is tofu fmt clean.
+func (v *view) HostRows() []HostRow {
+	rows := make([]HostRow, 0, len(v.Applications)*len(Environments)+1)
+	for _, app := range v.Applications {
+		for _, env := range Environments {
+			rows = append(rows, HostRow{Key: `"` + v.Host(env, app) + `"`, Value: v.Backend(env, app)})
+		}
+	}
+	rows = append(rows, HostRow{Key: `"*.` + v.AppsDomain + `"`, Value: v.PullRequestBackend()})
+
+	width := 0
+	for _, row := range rows {
+		width = max(width, len(row.Key))
+	}
+	for i := range rows {
+		rows[i].Key += strings.Repeat(" ", width-len(rows[i].Key))
+	}
+
+	return rows
+}
+
 // Prd is the production environment, the last.
 func (*view) Prd() string {
 	return Environments[len(Environments)-1]

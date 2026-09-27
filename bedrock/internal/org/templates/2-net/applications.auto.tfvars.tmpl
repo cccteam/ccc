@@ -9,10 +9,7 @@
 # pull-request environment, <app>-pr<N>, to the first environment's pull-request backend,
 # which picks the Cloud Run service by the hostname's first label; exact hostnames win.
 hosts = {
-{{- range $app := .Applications}}
-{{- range $env := $.Environments}}
-  "{{$.Host $env $app}}" = "{{$.Backend $env $app}}"
+{{- range .HostRows}}
+  {{.Key}} = "{{.Value}}"
 {{- end}}
-{{- end}}
-  "*.{{.AppsDomain}}" = "{{.PullRequestBackend}}"
 }
