@@ -49,10 +49,13 @@ locals {
     # The schema migrations, root-relative: /gcbrun shared-db is refused when a
     # pull request changes anything under it. The repository as GitHub names it
     # (owner/name, from the module path): the sweep asks GitHub about each pull
-    # request by it.
+    # request by it. _SEED says whether the migrate job applies the development
+    # seed here (the placement's seed environments; a pull-request environment
+    # seeds when its environment does; never production).
     _MIGRATIONS_DIR = "{{.Schema.MigrationsDir}}"
     _REPO_FULL_NAME = "{{.RepoFullName}}"
     _HOSTNAME       = local.hostnames[0]
+    _SEED           = contains({{.SeedList}}, var.environment) ? "true" : "false"
     # The deployer GitHub App the pipeline talks back on a pull request as (a
     # deployment carrying the environment's URL, a comment, the guard's
     # refusals): its App ID and the pinned secret version of its private key,

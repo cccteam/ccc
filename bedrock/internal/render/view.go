@@ -49,6 +49,9 @@ type view struct {
 	// PreviousEnvMap is the HCL map from each environment to the one before it.
 	ApprovalList   string
 	ApprovalsProse string
+	// SeedList is the HCL list of the environments whose migrate job applies the
+	// development seed.
+	SeedList       string
 	PreviousEnvMap string
 	// EnvCountWord is the number of environments as a word.
 	EnvCountWord string
@@ -473,6 +476,11 @@ func (v *view) order(envs []string) {
 		approvals = append(approvals, strconv.Quote(env))
 	}
 	v.ApprovalList = "[" + strings.Join(approvals, ", ") + "]"
+	seeds := make([]string, 0, len(v.P.SeedEnvironments()))
+	for _, env := range v.P.SeedEnvironments() {
+		seeds = append(seeds, strconv.Quote(env))
+	}
+	v.SeedList = "[" + strings.Join(seeds, ", ") + "]"
 	v.ApprovalsProse = joinAnd(v.P.ApprovalEnvironments())
 	if v.ApprovalsProse == "" {
 		v.ApprovalsProse = "no environment"

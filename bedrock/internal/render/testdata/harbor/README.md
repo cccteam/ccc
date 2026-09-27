@@ -145,8 +145,12 @@ substitutions and this stack's outputs:
   own, which the pipeline talks back with); `_DEPLOYER_APP_ID` and
   `_DEPLOYER_KEY_SECRET`, the deployer GitHub App the pipeline talks back on a
   pull request as and the pinned secret version of its key, empty until 2-env
-  holds them. Output `substitutions` is the same map, for a build submitted by
-  hand before the triggers exist.
+  holds them; `_SEED`, true where the migrate job applies the development seed
+  (`schema/devseed`, as data migrations tracked apart from the schema, so a
+  seeded database takes nothing twice): the placement's `seed` environments,
+  the first environment by default, a pull-request environment with its
+  environment, never production. Output `substitutions` is the same map, for a
+  build submitted by hand before the triggers exist.
 - The services and the job are deployed with `gcloud run services update
   --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
   --wait`, which leave the template's variables and secrets alone: the

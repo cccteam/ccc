@@ -45,6 +45,11 @@ type Placement struct {
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
 	Labels map[string]string `json:"labels"`
+	// Seed lists the environments whose migrate job applies the application's
+	// development seed (schema/devseed, as data migrations tracked apart from the
+	// schema) after the schema migrations; a pull-request environment seeds when its
+	// environment does. Absent, the first environment only; never production.
+	Seed []string `json:"seed,omitempty"`
 	// Approvals lists the environments whose version trigger waits for a person's
 	// approval in Cloud Build before a release runs there. Absent, every environment
 	// but the first.
@@ -113,6 +118,14 @@ func (p *Placement) Validate() error {
 			return errors.Newf("approvals names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
 		}
 	}
+	for _, env := range p.Seed {
+		if !slices.Contains(p.Environments, env) {
+			return errors.Newf("seed names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
+		}
+		if env == p.Production() {
+			return errors.Newf("seed names %q, the production environment, which is never seeded", env)
+		}
+	}
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
 		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
@@ -124,6 +137,16 @@ func (p *Placement) Validate() error {
 	}
 
 	return nil
+}
+
+// SeedEnvironments are the environments whose migrate job applies the development
+// seed: the placement's list, or the first environment alone.
+func (p *Placement) SeedEnvironments() []string {
+	if len(p.Seed) > 0 {
+		return p.Seed
+	}
+
+	return []string{p.Integration()}
 }
 
 // ApprovalEnvironments are the environments a release waits for approval in: Approvals

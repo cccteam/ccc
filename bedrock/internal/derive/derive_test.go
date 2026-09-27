@@ -2,6 +2,7 @@ package derive
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -210,6 +211,9 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "approvals in an unknown environment", mutate: func(p *Placement) { p.Approvals = []string{"stg"} }, wantErr: `approvals names "stg", which is not one of the environments (tst, prd)`},
 		{name: "approvals in a known environment", mutate: func(p *Placement) { p.Approvals = []string{"prd"} }},
 		{name: "no approvals at all", mutate: func(p *Placement) { p.Approvals = []string{} }},
+		{name: "seed in an unknown environment", mutate: func(p *Placement) { p.Seed = []string{"qa"} }, wantErr: `seed names "qa", which is not one of the environments (tst, prd)`},
+		{name: "seed in production", mutate: func(p *Placement) { p.Seed = []string{"prd"} }, wantErr: `seed names "prd", the production environment, which is never seeded`},
+		{name: "seed in the first environment", mutate: func(p *Placement) { p.Seed = []string{"tst"} }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -403,6 +407,31 @@ func TestTagDefault(t *testing.T) {
 			got, set := tagDefault(tt.tag)
 			if got != tt.want || set != tt.wantSet {
 				t.Errorf("tagDefault() = %q, %v; want %q, %v", got, set, tt.want, tt.wantSet)
+			}
+		})
+	}
+}
+
+func TestPlacementSeedEnvironments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		envs []string
+		seed []string
+		want []string
+	}{
+		{name: "default: the first environment", envs: []string{"tst", "stg", "prd"}, want: []string{"tst"}},
+		{name: "given", envs: []string{"tst", "stg", "prd"}, seed: []string{"tst", "stg"}, want: []string{"tst", "stg"}},
+		{name: "one environment", envs: []string{"prd"}, want: []string{"prd"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := &Placement{Environments: tt.envs, Seed: tt.seed}
+			if got := p.SeedEnvironments(); !slices.Equal(got, tt.want) {
+				t.Errorf("SeedEnvironments() = %v, want %v", got, tt.want)
 			}
 		})
 	}
