@@ -42,7 +42,6 @@ func TestApplicationName(t *testing.T) {
 				context.Background(),
 				"testdata/resources.go",
 				[]string{"file://generation/testdata/migrations"},
-				[]string{},
 				opts...,
 			)
 			if err != nil {

@@ -34,8 +34,9 @@ type importFixer struct {
 }
 
 // newImportFixer builds a fixer from authoritative imports (package names known
-// from type-checked parse data) and assumedPaths (import paths whose package
-// name can only be assumed from the path, e.g. the configured localPackages).
+// from type-checked parse data: the loaded packages, the output packages, the
+// payload's type imports) and assumedPaths (import paths whose package name can
+// only be assumed from the path: the ones WithImports names).
 func newImportFixer(imports []fixerImport, assumedPaths []string) *importFixer {
 	f := &importFixer{
 		known:      stdlibImports(),

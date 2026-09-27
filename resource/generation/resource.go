@@ -164,12 +164,13 @@ func (r *resourceGenerator) validateAnnotatedOutlets() error {
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
 //
-// localPackages lists import paths that generated code may reference beyond what the
-// templates declare (project packages and third-party field-type packages goimports
-// cannot resolve on its own). Standard-library paths are ignored: goimports resolves
-// those natively and placing them in the local-package import group would produce
-// output that editor format-on-save reorders.
-func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL, localPackages []string, options ...ResourceOption) (Generator, error) {
+// Every import path the generated code references is derived from what the run loads
+// and writes: the packages the options name carry their path from the type checker,
+// and the output packages (handlers, routes) are the module path from go.mod plus their
+// directory. A qualifier the generator cannot resolve is a generation error naming the
+// file, the template and the qualifier; WithImports names a path beyond the derived set
+// until the gap it covers is fixed in the generator.
+func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{}
 
 	opts := make([]option, 0, len(options))
@@ -177,7 +178,7 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourcePackageDir, migrationSourceURL, localPackages, opts)
+	c, err := newClient(ctx, resourcePackageDir, migrationSourceURL, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +187,11 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 
 	if err := resolveOptions(r, opts); err != nil {
 		return nil, err
+	}
+	for _, dir := range []packageDir{r.handler, r.router} {
+		if dir != "" {
+			c.outputs = append(c.outputs, dir)
+		}
 	}
 
 	if err := r.validateOutletConfig(); err != nil {

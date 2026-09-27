@@ -99,7 +99,7 @@ func LoadPackage(packagePattern string) (*packages.Package, error) {
 }
 
 func loadPackages(tolerateStaleOutput bool, packagePatterns ...string) ([]*packages.Package, bool, error) {
-	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypesInfo}
+	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedModule}
 	pkgs, err := packages.Load(cfg, packagePatterns...)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "packages.Load()")

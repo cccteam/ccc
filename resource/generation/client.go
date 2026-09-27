@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"text/template"
 	"unicode/utf8"
@@ -36,11 +37,19 @@ type client struct {
 	resource     packageDir
 	// types are the application packages WithTypes names: loaded with the run, and
 	// written into for the generated method pairs alone (storage.go, jsonmethods.go).
-	types               []packageDir
-	resources           []*resourceInfo
-	computedResources   []*computedResource
-	rpcMethods          []*rpcMethodInfo
-	localPackages       []string
+	types             []packageDir
+	resources         []*resourceInfo
+	computedResources []*computedResource
+	rpcMethods        []*rpcMethodInfo
+	// imports are the import paths WithImports names beyond what the run derives: the
+	// escape hatch, each use of it a generator gap.
+	imports []string
+	// module is the main module, recorded from the resources package when the run loads
+	// it: the output packages' import paths are its path plus their directory.
+	module *packages.Module
+	// outputs are the packages the run writes generated files into (the handlers and the
+	// routes), whose import paths are derived from the module.
+	outputs             []packageDir
 	rpc                 packageDir
 	computed            packageDir
 	virtual             packageDir
@@ -72,7 +81,7 @@ type client struct {
 	genCache *cache.Cache
 }
 
-func newClient(ctx context.Context, resourcePackageDir string, migrationSourceURL, localPackages []string, opts []option) (*client, error) {
+func newClient(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -97,7 +106,6 @@ func newClient(ctx context.Context, resourcePackageDir string, migrationSourceUR
 
 	c.loadPackages = append(c.loadPackages, resourcePackageDir)
 	c.resource = packageDir(resourcePackageDir)
-	c.localPackages = localPackages
 	c.migrationSourceURLs = migrationSourceURL
 
 	isSchemaClean, err := c.isSchemaClean()
@@ -153,11 +161,15 @@ func (c *client) HasNullBoolean() bool {
 	return false
 }
 
-// notePackages records the packages a run loaded, for the @typescript reader.
+// notePackages records the packages a run loaded, for the @typescript reader and the
+// import resolution, and the main module from the resources package among them.
 func (c *client) notePackages(packageMap map[string]*packages.Package) {
 	c.loadedPackages = packageMap
 	c.tsDecls = nil
 	c.leafResolver = nil
+	if resources := packageMap[c.resource.Package()]; resources != nil && resources.Module != nil {
+		c.module = resources.Module
+	}
 }
 
 // leaves is the run's leaf resolver: the built-in table and the @typescript
@@ -231,24 +243,113 @@ func (c *client) hasRPCMethodWithTransition() bool {
 	return false
 }
 
+// localPackageImports renders the import block the templates share, one quoted path per
+// line: every import path the run derives (importPaths). The import fixer then keeps the
+// ones each file references.
 func (c *client) localPackageImports() string {
-	// Standard-library packages are skipped: goimports resolves them natively into the
-	// stdlib import group, whereas rendering them here puts them in the local-package
-	// group, where editor format-on-save reorders them (generated output must be a
-	// fixed point of format-on-save).
-	pkgs := make([]string, 0, len(c.localPackages))
-	for _, pkg := range c.localPackages {
-		if root, _, _ := strings.Cut(pkg, "/"); !strings.Contains(root, ".") {
-			continue
-		}
-		pkgs = append(pkgs, pkg)
-	}
-
-	if len(pkgs) == 0 {
+	paths := c.importPaths()
+	if len(paths) == 0 {
 		return ""
 	}
 
-	return `"` + strings.Join(pkgs, "\"\n\t\"") + `"`
+	return `"` + strings.Join(paths, "\"\n\t\"") + `"`
+}
+
+// importPaths are the import paths generated code may reference, sorted: every package
+// the run loaded (its path from the type checker: the resources package and the RPC,
+// virtual, computed and WithTypes packages), the output packages (the module path plus
+// their directory), and the paths WithImports names. Standard-library paths WithImports
+// names are left out: goimports resolves them natively into the standard-library group,
+// and rendering them here would put them in the local group, where format-on-save
+// reorders them (generated output must be a fixed point of format-on-save).
+func (c *client) importPaths() []string {
+	set := map[string]bool{}
+	for _, pkg := range c.loadedPackages {
+		if pkg != nil && pkg.PkgPath != "" {
+			set[pkg.PkgPath] = true
+		}
+	}
+	for _, dir := range c.outputs {
+		if p, ok := c.outputPath(dir); ok {
+			set[p] = true
+		}
+	}
+	for _, p := range c.imports {
+		if isStandardLibrary(p) {
+			continue
+		}
+		set[p] = true
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(set))
+	for p := range set {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	return paths
+}
+
+// outputPath is an output package's import path: the module path plus the package
+// directory, known once the run has loaded the resources package. The run works from
+// the module root (newClient changes into it), so a relative directory is relative to
+// the module; an absolute one is taken relative to the module directory. A directory
+// outside the module has no path here.
+func (c *client) outputPath(dir packageDir) (string, bool) {
+	if c.module == nil || c.module.Path == "" || dir == "" {
+		return "", false
+	}
+	rel := filepath.Clean(dir.Dir())
+	if filepath.IsAbs(rel) {
+		var err error
+		if rel, err = filepath.Rel(c.module.Dir, rel); err != nil {
+			return "", false
+		}
+	}
+	if rel == "." {
+		return c.module.Path, true
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+
+	return c.module.Path + "/" + filepath.ToSlash(rel), true
+}
+
+// isStandardLibrary reports whether an import path is the standard library's: its first
+// element carries no dot.
+func isStandardLibrary(importPath string) bool {
+	root, _, _ := strings.Cut(importPath, "/")
+
+	return !strings.Contains(root, ".")
+}
+
+// fixerImports seeds the import fixer: every loaded package under its type-checked name
+// (authoritative), and every output package under its directory's base name, which is
+// its package name by construction (the templates write package {{ .Package }} from it).
+func (c *client) fixerImports() []fixerImport {
+	var imports []fixerImport
+	for name, pkg := range c.loadedPackages {
+		if pkg != nil && pkg.PkgPath != "" {
+			pkgName := pkg.Name
+			if pkgName == "" {
+				pkgName = name
+			}
+			imports = append(imports, fixerImport{name: pkgName, path: pkg.PkgPath})
+		}
+	}
+	for _, dir := range c.outputs {
+		if p, ok := c.outputPath(dir); ok {
+			imports = append(imports, fixerImport{name: dir.Package(), path: p})
+		}
+	}
+	sort.Slice(imports, func(i, j int) bool {
+		return imports[i].path < imports[j].path
+	})
+
+	return imports
 }
 
 func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
@@ -513,18 +614,16 @@ func (c *client) formatGoBytes(destinationPath, templateName string, output []by
 		typeImports = importer.typeImports()
 	}
 
-	fixer := newImportFixer(typeImports, c.localPackages)
+	fixer := newImportFixer(append(c.fixerImports(), typeImports...), c.imports)
 	fixed, unknown, err := fixer.fix(destinationPath, output)
-	switch {
-	case err != nil:
-		log.Printf("WARNING: local import resolution failed for %s (template %s): %v; falling back to goimports resolution (slow)", destinationPath, templateName, err)
-	case len(unknown) > 0:
-		log.Printf("WARNING: local import resolution for %s (template %s) could not resolve qualifier(s) %v; falling back to goimports resolution (slow). Add a scenario covering this to the resource/generation tests, then cover the qualifier via the template's import block or the payload's typeImports.", destinationPath, templateName, unknown)
-	default:
-		return c.formatBytes(destinationPath, fixed)
+	if err != nil {
+		return nil, errors.Wrapf(err, "import resolution for %s (template %s)", destinationPath, templateName)
+	}
+	if len(unknown) > 0 {
+		return nil, errors.Newf("import resolution for %s (template %s) cannot resolve qualifier(s) %v: the generator derives every import path from the packages it loads and writes; a path beyond those is a generator gap to file, and WithImports names it until it is fixed", destinationPath, templateName, unknown)
 	}
 
-	return c.GoFormatBytes(destinationPath, output)
+	return c.formatBytes(destinationPath, fixed)
 }
 
 // retrieveDatabaseEnumValues resolves every @enumerate named type against the schema's

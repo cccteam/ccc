@@ -690,6 +690,29 @@ func WithTypes(typesPackageDir string) ResourceOption {
 	})
 }
 
+// WithImports names import paths the generated code may reference beyond what the
+// generator derives from the packages it loads and writes (the resources, RPC, virtual,
+// computed and WithTypes packages by their type-checked paths; the handlers and routes
+// packages by the module path plus their directory). Each path's package name is
+// assumed from the path. It is the escape hatch: every use of it is a generator gap to
+// file as a bug against the generator, since a qualifier the derived set does not
+// resolve fails the run naming the file, the template and the qualifier.
+// Standard-library paths are ignored, as before: goimports resolves them natively.
+func WithImports(paths ...string) ResourceOption {
+	return Option(func(g any) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+		case *typescriptGenerator: // no-op
+		case *client:
+			t.imports = append(t.imports, paths...)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithImports(): %T", t))
+		}
+
+		return nil
+	})
+}
+
 // resolveOptions is called twice, once in the client constructor and once in either the resource or typescript generator's constructor.
 // That is why no-op cases are included to prevent falling through to the default panic case.
 func resolveOptions(generator any, options []option) error {

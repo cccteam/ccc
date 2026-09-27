@@ -19,13 +19,6 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		ctx,
 		"pkg/resources",
 		[]string{"file://schema/migrations"},
-		[]string{
-			"github.com/cccteam/ccc/resource/lodestar/pkg/resources",
-			"github.com/cccteam/ccc/resource/lodestar/pkg/router",
-			"github.com/cccteam/ccc/resource/lodestar/pkg/rpc",
-			"github.com/cccteam/ccc/resource/lodestar/pkg/virtualresources",
-			"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources",
-		},
 		generation.GenerateHandlers("app"),
 		// The router is generated: the default outlet is the console, the crew auth's
 		// password sessions under /api with the console's browser application at /.
