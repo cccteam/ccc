@@ -74,3 +74,47 @@ resource "google_compute_backend_service" "app" {
     sample_rate = 1.0
   }
 }
+
+# The next revision's backend: the same services under the revision tag "next",
+# which bedrock deploy service puts on each new revision before traffic moves.
+# The hostnames <app>-<env>-next reach it through the load balancer (2-net's
+# hosts, from this stack's net_hosts output), so a hook before traffic can call
+# the new revision at a public URL while the old one still serves; the
+# services' ingress admits the load balancer alone, so the revision's own
+# tagged run.app URL answers nothing from outside.
+resource "google_compute_region_network_endpoint_group" "next" {
+  for_each = local.is_pr ? {} : local.regions
+
+  project               = local.project_id
+  region                = each.value
+  name                  = "${local.name}-${each.key}-${local.app}-next-neg"
+  network_endpoint_type = "SERVERLESS"
+
+  cloud_run {
+    service = google_cloud_run_v2_service.app[each.key].name
+    tag     = "next"
+  }
+}
+
+resource "google_compute_backend_service" "next" {
+  count = local.is_pr ? 0 : 1
+
+  project     = local.project_id
+  name        = "${local.name}-gbl-${local.app}-next-backend"
+  description = "harbor site in ${var.environment}, the next revision before traffic: ${join(", ", local.next_hostnames)}"
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  protocol              = "HTTPS"
+
+  dynamic "backend" {
+    for_each = google_compute_region_network_endpoint_group.next
+    content {
+      group = backend.value.id
+    }
+  }
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+}

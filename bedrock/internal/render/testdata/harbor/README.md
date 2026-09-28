@@ -320,13 +320,20 @@ adds is declared in files of its own:
   pull-request number, database mode) and every substitution of the build
   exported; a hook before the build may add build arguments by appending
   `BUILD_ARGS+=(--build-arg NAME=value)` lines to `/workspace/build-args.sh`.
-  The stages: `before-build` (files written here are the
+  The stages, in order: `before-build` (files written here are the
   Dockerfile's to copy: a fetched config, a frontend version file),
   `before-migrate` (the image is built; `IMAGE_DIGEST` names it),
-  `after-traffic` (a smoke test, a cache warm; a failure here stops the build
-  before the deployment record, so the record gate never sees a release the
-  hook refused) and `after-down` (after a pull-request environment is torn
-  down, by `/gcbrun down` or the sweep). No file, nothing runs.
+  `after-migrate` (the schema is migrated and the service not yet deployed:
+  a backfill, a reference-data reload, an index warm-up), `before-traffic`
+  (the new revision is deployed in every region and the old one still
+  serves: `NEXT_URL` is the new revision's public URL through the load
+  balancer, `https://harbor-<env>-next.<domain>/`, empty in a pull-request
+  build, and `REVISION_URLS` the tagged run.app URL per region; a failure
+  here stops the build with the old revision serving), `after-traffic` (a
+  smoke test, a cache warm; a failure here stops the build before the
+  deployment record, so the record gate never sees a release the hook
+  refused) and `after-down` (after a pull-request environment is torn down,
+  by `/gcbrun down` or the sweep). No file, nothing runs.
 - **Build secrets.** A secret the image build needs is declared in
   `terraform.tfvars` (`build_secrets`, NAME = pinned version per environment)
   and reaches the build as a BuildKit secret the Dockerfile mounts ("Build

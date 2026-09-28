@@ -58,7 +58,15 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 		return err
 	}
 	labels := pipelineLabels(build)
+	// The new revision carries a tag from the start: the pull request's, when it is
+	// served under one, else "next", the tag the stack's next backend serves before
+	// traffic moves; the tag names one revision, so each deploy moves it.
+	tag := env[revisionTagFact]
+	if tag == "" {
+		tag = nextTag
+	}
 	revisions := make([]Revision, 0, len(entries))
+	urls := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		region, service, err := target(services, entry)
 		if err != nil {
@@ -71,15 +79,68 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 			return err
 		}
 		fmt.Fprintf(out, "Deploying revision to [%s] without traffic...\n", service)
-		revision, err := deployRevision(ctx, run, name, doc, image, labels, env[revisionTagFact])
+		revision, uri, err := deployRevision(ctx, run, name, doc, image, labels, tag)
 		if err != nil {
 			return errors.Wrapf(err, "the deployment to region %s", region)
 		}
-		fmt.Fprintf(out, "Revision [%s] deployed to [%s] in [%s]\n", revision, service, region)
+		fmt.Fprintf(out, "Revision [%s] deployed to [%s] in [%s] under the tag [%s]\n", revision, service, region, tag)
 		revisions = append(revisions, Revision{Region: region, Service: service, Revision: revision})
+		if url := taggedURL(uri, tag); url != "" {
+			urls = append(urls, region+"="+url)
+		}
+	}
+	if err := w.WriteRevisions(revisions); err != nil {
+		return err
+	}
+	// What the hook before traffic calls: the next revision's public URL through the load
+	// balancer (none for a pull request, whose environment is its own), and the tagged
+	// run.app URL per region, which the services' ingress answers from inside alone.
+	facts := map[string]string{
+		nextURLFact:      nextURL(build.Substitutions[hostnameSub], build.Substitutions[prNumberSub]),
+		revisionURLsFact: strings.Join(urls, ","),
+	}
+	if err := w.Append(facts); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s=%s %s=%s\n", nextURLFact, facts[nextURLFact], revisionURLsFact, facts[revisionURLsFact])
+
+	return nil
+}
+
+// The tag every deploy puts on its new revision when the build serves under no other,
+// and the facts the deploy leaves for the hook before traffic.
+const (
+	nextTag          = "next"
+	nextURLFact      = "NEXT_URL"
+	revisionURLsFact = "REVISION_URLS"
+	hostnameSub      = "_HOSTNAME"
+)
+
+// taggedURL is the revision's own URL under its tag: the service's run.app URL with the
+// tag and three dashes before its host. Empty when the service reports no URL.
+func taggedURL(uri, tag string) string {
+	host, ok := strings.CutPrefix(uri, "https://")
+	if !ok || host == "" || tag == "" {
+		return ""
 	}
 
-	return w.WriteRevisions(revisions)
+	return "https://" + tag + "---" + host
+}
+
+// nextURL is the next revision's public URL: the environment's hostname with -next on its
+// first label, through the load balancer, whose next backend serves the revision tagged
+// next. Empty for a pull-request build, which has an environment of its own and no next
+// backend, and without a hostname.
+func nextURL(hostname, pullRequest string) string {
+	if hostname == "" || pullRequest != "" {
+		return ""
+	}
+	label, rest, found := strings.Cut(hostname, ".")
+	if !found {
+		return ""
+	}
+
+	return "https://" + label + "-next." + rest + "/"
 }
 
 // repair reads the service and, when its traffic points at a revision that is not ready,
@@ -137,12 +198,13 @@ func inconsistentLastReady(doc map[string]any) string {
 }
 
 // deployRevision sends the service back with the image, the labels and its traffic
-// pinned to what serves now, and answers the revision the change created.
-func deployRevision(ctx context.Context, run Run, name string, doc map[string]any, image string, labels map[string]string, tag string) (string, error) {
+// pinned to what serves now, and answers the revision the change created and the
+// service's URL.
+func deployRevision(ctx context.Context, run Run, name string, doc map[string]any, image string, labels map[string]string, tag string) (revision, uri string, err error) {
 	template, _ := doc["template"].(map[string]any)
 	container, err := firstContainer(template)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	container["image"] = image
 	setLabels(doc, labels)
@@ -152,14 +214,14 @@ func deployRevision(ctx context.Context, run Run, name string, doc map[string]an
 	}
 	settled, err := run.Patch(ctx, name, doc)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	revision := shortName(text(settled, "latestCreatedRevision"))
+	revision = shortName(text(settled, "latestCreatedRevision"))
 	if revision == "" {
-		return "", errors.New("the revision name could not be read from the service")
+		return "", "", errors.New("the revision name could not be read from the service")
 	}
 
-	return revision, nil
+	return revision, text(settled, "uri"), nil
 }
 
 // pinnedTraffic is the service's traffic as it serves now, every target named by its

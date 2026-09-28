@@ -61,7 +61,8 @@ Until the first release, the lab builds it from a checkout of this repository
   the file.
 - **Hook**: a shell script the application commits at `infrastructure/hooks/<stage>.sh`,
   run at that stage of the pipeline as the deploy identity with the build's facts in its
-  environment. No file, nothing runs.
+  environment: `before-build`, `before-migrate`, `after-migrate`, `before-traffic`,
+  `after-traffic`, `after-down`. No file, nothing runs.
 - **Deploy identity** and **apply identity**: per application and environment, the
   service account the pipeline runs as (`<prefix>-<env>-gbl-<app>-deploy`) and the one
   that applies the stack (`<prefix>-<env>-gbl-<app>-tofu`), both created by `2-env`.
@@ -157,15 +158,22 @@ created). In order:
   `_SEED` is true: every pull request, and a release build only in the environments the
   placement's seed list names.
 - `deploy service`: puts a new revision of the service in every region, receiving no
-  traffic yet, after repairing a service a failed earlier deploy left inconsistent; a
-  revision tag, when there is one, names the new revision under its own URL.
+  traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
+  new revision carries the tag `next` (or the pull request's tag), under which the
+  stack's next backend serves it at `<app>-<env>-next`; `NEXT_URL` and the per-region
+  `REVISION_URLS` are left in the workspace for the hook before traffic.
 - `deploy shift-traffic`: moves every region to 100 percent on its new revision, keeping
   the tags other revisions carry; a pull-request revision served under its tag alone
   leaves the traffic where it is.
 - `deploy record`: writes the deployment record once traffic has moved.
 
-The pipeline's hooks run between them: `before-build`, `before-migrate`, `after-traffic`
-and `after-down`, each a script the application commits under `infrastructure/hooks/`.
+The pipeline's hooks run between them, each a script the application commits under
+`infrastructure/hooks/<stage>.sh` and sourced with the build's facts: `before-build`,
+`before-migrate`, `after-migrate` (the schema migrated, the service not yet deployed),
+`before-traffic` (the new revision deployed in every region and the old one still
+serving; `NEXT_URL` is the new revision's public URL through the load balancer, the
+`<app>-<env>-next` hostname over the revision tag `next`, and a failure here stops the
+build with the old revision serving), `after-traffic` and `after-down`.
 
 ## bedrock secret
 

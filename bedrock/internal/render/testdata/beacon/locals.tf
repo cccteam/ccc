@@ -62,6 +62,9 @@ locals {
   registry = try(data.terraform_remote_state.shr.outputs.image_paths[local.app], null)
 
   hostnames = local.is_pr ? ["${local.pr_name}.impulseframework.dev"] : var.hostnames[var.environment]
+  # The next revision's hostnames, the first label with -next: what the hook before
+  # traffic calls while the old revision still serves. None for a pull-request stack.
+  next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
 
   # The database the site opens: the environment's own, a pull request's own,
   # or in shared mode (var.shared_database) tst's, which the pull-request

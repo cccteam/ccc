@@ -34,8 +34,11 @@ output "identities" {
 }
 
 output "net_hosts" {
-  description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI. Empty for a pull-request stack, whose hostname the wildcard rule serves."
-  value       = local.is_pr ? {} : { for host in local.hostnames : host => google_compute_backend_service.app[0].id }
+  description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI, and each next hostname (<app>-<env>-next) to the next revision's backend. Empty for a pull-request stack, whose hostname the wildcard rule serves."
+  value = local.is_pr ? {} : merge(
+    { for host in local.hostnames : host => google_compute_backend_service.app[0].id },
+    { for host in local.next_hostnames : host => google_compute_backend_service.next[0].id },
+  )
 }
 
 output "migrate_job" {

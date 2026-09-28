@@ -5,9 +5,11 @@
 
 # One entry per hostname the load balancer serves, each with the backend service the
 # application's layer creates in that environment (its net_hosts output): <app>-<env>
-# under the apps domain, and the bare <app> in production. The wildcard routes every
-# pull-request environment, <app>-pr<N>, to the first environment's pull-request backend,
-# which picks the Cloud Run service by the hostname's first label; exact hostnames win.
+# under the apps domain, and the bare <app> in production, each with its -next twin,
+# which serves the revision the pipeline deployed and has not yet moved traffic to (the
+# revision tag next), for the hook before traffic. The wildcard routes every pull-request
+# environment, <app>-pr<N>, to the first environment's pull-request backend, which picks
+# the Cloud Run service by the hostname's first label; exact hostnames win.
 hosts = {
 {{- range .HostRows}}
   {{.Key}} = "{{.Value}}"

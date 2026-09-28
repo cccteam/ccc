@@ -74,7 +74,7 @@ func TestOrgCommands(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !strings.Contains(string(hosts), `"quill-tst.impulseframework.dev"  = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-quill-backend"`) {
+				if !strings.Contains(string(hosts), `"quill-tst.impulseframework.dev"       = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-quill-backend"`) {
 					t.Errorf("2-net/applications.auto.tfvars lacks quill's host:\n%s", hosts)
 				}
 				if code, out := run(t, "org", "check", "--dir", dir); code != 0 {

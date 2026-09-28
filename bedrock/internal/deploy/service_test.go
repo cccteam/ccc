@@ -2,6 +2,9 @@ package deploy
 
 import (
 	"fmt"
+	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -25,6 +28,7 @@ func serviceDoc(name string) map[string]any {
 		"terminalCondition":     map[string]any{keyType: "Ready", "state": conditionSucceeded},
 		"latestReadyRevision":   name + "/revisions/" + prev,
 		"latestCreatedRevision": name + "/revisions/" + prev,
+		"uri":                   "https://" + path.Base(name) + "-h4sh-uc.a.run.app",
 	}
 }
 
@@ -49,7 +53,11 @@ func TestDeploy(t *testing.T) {
 		// update masks of its patches, in order.
 		wantTraffic []any
 		wantFields  [][]string
-		wantErr     string
+		// wantEnv are lines environment.sh carries after the deploy.
+		wantEnv []string
+		// build replaces the build file when set.
+		build   string
+		wantErr string
 	}{
 		{
 			name:    "a torn-down environment does nothing",
@@ -57,12 +65,22 @@ func TestDeploy(t *testing.T) {
 			wantOut: []string{tornDown},
 		},
 		{
-			name:          "every region gets a revision without traffic",
+			name:          "every region gets a revision without traffic, tagged next, and the hook's URLs",
 			env:           environment,
-			wantOut:       []string{"HEALTH CHECK PASSED: service [harbor-app] is consistent.", "Revision [harbor-app-00008-new] deployed to [harbor-app] in [us-central1]", "Revision [harbor-app-00008-new] deployed to [harbor-app] in [us-west3]"},
+			wantOut:       []string{"HEALTH CHECK PASSED: service [harbor-app] is consistent.", "Revision [harbor-app-00008-new] deployed to [harbor-app] in [us-central1] under the tag [next]", "Revision [harbor-app-00008-new] deployed to [harbor-app] in [us-west3] under the tag [next]", "NEXT_URL= REVISION_URLS=us-central1=https://next---harbor-app-h4sh-uc.a.run.app,us-west3=https://next---harbor-app-h4sh-uc.a.run.app"},
 			wantRevisions: "us-central1,harbor-app,harbor-app-00008-new\nus-west3,harbor-app,harbor-app-00008-new\n",
-			wantTraffic:   pinned,
+			wantTraffic:   append(append([]any{}, pinned...), map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"}),
 			wantFields:    [][]string{nil},
+			wantEnv:       []string{"export NEXT_URL=\"\"\n", "export REVISION_URLS=\"us-central1=https://next---harbor-app-h4sh-uc.a.run.app,us-west3=https://next---harbor-app-h4sh-uc.a.run.app\"\n"},
+		},
+		{
+			name:          "a release build has the next URL through the load balancer",
+			env:           environment,
+			build:         `{"id": "b-1", "substitutions": {"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev"}}`,
+			wantRevisions: "us-central1,harbor-app,harbor-app-00008-new\nus-west3,harbor-app,harbor-app-00008-new\n",
+			wantTraffic:   append(append([]any{}, pinned...), map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"}),
+			wantFields:    [][]string{nil},
+			wantEnv:       []string{"export NEXT_URL=\"https://harbor-tst-next.example.dev/\"\n"},
 		},
 		{
 			name:          "an inconsistent service is repaired first",
@@ -70,7 +88,7 @@ func TestDeploy(t *testing.T) {
 			broken:        true,
 			wantOut:       []string{"PROBLEM: service [harbor-app] is in an inconsistent state; moving traffic back to [harbor-app-00007-prev]...", "FIX VERIFIED: traffic for [harbor-app] is consistent again.", "Revision [harbor-app-00008-new] deployed"},
 			wantRevisions: "us-central1,harbor-app,harbor-app-00008-new\nus-west3,harbor-app,harbor-app-00008-new\n",
-			wantTraffic:   pinned,
+			wantTraffic:   append(append([]any{}, pinned...), map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"}),
 			wantFields:    [][]string{{"traffic"}, nil},
 		},
 		{
@@ -102,7 +120,11 @@ func TestDeploy(t *testing.T) {
 				doc["traffic"] = []any{map[string]any{keyType: targetLatest, keyPercent: fullTraffic}}
 				doc["latestCreatedRevision"] = central + "/revisions/harbor-app-00007-broken"
 			}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: build})
+			buildFile := build
+			if tt.build != "" {
+				buildFile = tt.build
+			}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFile})
 			var out strings.Builder
 			err := Deploy(t.Context(), &Clients{Run: run.open}, w, &out)
 			if tt.wantErr != "" {
@@ -134,6 +156,15 @@ func TestDeploy(t *testing.T) {
 			if lines.String() != tt.wantRevisions {
 				t.Errorf("revisions.txt = %q, want %q", lines.String(), tt.wantRevisions)
 			}
+			envText, err := os.ReadFile(filepath.Join(string(w), EnvironmentFile))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tt.wantEnv {
+				if !strings.Contains(string(envText), want) {
+					t.Errorf("environment.sh lacks %q:\n%s", want, envText)
+				}
+			}
 			last := run.patches[central][len(run.patches[central])-1]
 			if diff := cmp.Diff(tt.wantTraffic, last["traffic"]); diff != "" {
 				t.Errorf("traffic mismatch (-want +got):\n%s", diff)
@@ -143,7 +174,7 @@ func TestDeploy(t *testing.T) {
 			if container["image"] != "reg/harbor@sha256:abc" {
 				t.Errorf("image = %v, want reg/harbor@sha256:abc", container["image"])
 			}
-			if text(last, "labels.gcb-build-id") != "b-1" || text(template, "labels.pr-number") != "7" || text(last, "labels.terraform") != "true" {
+			if text(last, "labels.gcb-build-id") != "b-1" || (tt.build == "" && text(template, "labels.pr-number") != "7") || text(last, "labels.terraform") != "true" {
 				t.Errorf("labels = %v / %v", last["labels"], template["labels"])
 			}
 			if diff := cmp.Diff(tt.wantFields, run.fieldsOf[central]); diff != "" {

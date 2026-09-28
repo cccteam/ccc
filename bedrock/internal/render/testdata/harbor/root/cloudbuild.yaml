@@ -6,7 +6,7 @@
 #   ResolveDeploymentTarget   what is deployed and where (bedrock deploy resolve, from the pinned bedrock image)
 #   ValidateRelease           whether this release may deploy here: the release, its commit, the record gate (bedrock deploy validate-release)
 #   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops and names the fix
-#   Hook*                     the application's own scripts at four stages, when it commits them
+#   Hook*                     the application's own scripts at six stages, when it commits them
 #   CheckRelease              a release already in the registry is reused (same commit) or refused (bedrock deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit, pushed
 #   RunMigrations             the migrate command as a Cloud Run job, run to completion (bedrock deploy migrate)
@@ -521,23 +521,69 @@ steps:
     args: [deploy, migrate]
     timeout: 2400s
 
+  # The application's hook after the migrations and before the service deploys, when it
+  # commits one at infrastructure/hooks/after-migrate.sh: data work that is not a
+  # migration (a backfill, a reference-data reload, an index warm-up) against the
+  # migrated schema, with the same facts as the hooks before it.
+  - id: HookAfterMigrate
+    waitFor: ["RunMigrations"]
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    timeout: 900s
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        source /workspace/environment.sh
+        HOOK="infrastructure/hooks/after-migrate.sh"
+        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
+        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run after migrate."; exit 0; fi
+        echo "=== Hook after-migrate: $${HOOK} ==="
+        bash "$${HOOK}"
+
   # A new revision of the service in every region, receiving no traffic yet: bedrock deploy
   # service, from the bedrock image the placement pins. The service itself is the
   # infrastructure's (created with its runtime identity, ingress and scaling); the step only
   # updates the image and the labels. Before each update the service is checked for the
   # state a failed earlier deploy leaves behind (traffic pointed at a revision that is not
   # ready) and repaired by moving traffic back to the last ready revision, as CCC's
-  # deployments do. One line per region is left in /workspace/revisions.txt.
+  # deployments do. The new revision carries the tag "next" (or the pull request's tag),
+  # under which the next backend serves it before traffic moves. One line per region is
+  # left in /workspace/revisions.txt, and NEXT_URL and REVISION_URLS in environment.sh.
   - id: DeployServiceNoTraffic
-    waitFor: ["RunMigrations"]
+    waitFor: ["HookAfterMigrate"]
     name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
     args: [deploy, service]
     timeout: 1200s
 
+  # The application's hook after the new revision is deployed in every region and before
+  # traffic moves, when it commits one at infrastructure/hooks/before-traffic.sh: a check
+  # against the new revision while the old one still serves. NEXT_URL is the new
+  # revision's public URL through the load balancer (the <app>-<env>-next hostname, the
+  # revision tag "next"; empty in a pull-request build, whose environment is its own) and
+  # REVISION_URLS the tagged run.app URL per region, which the services' ingress answers
+  # from inside the project alone. A failing hook stops the build with the old revision
+  # serving, which is what deploying without traffic first is for.
+  - id: HookBeforeTraffic
+    waitFor: ["DeployServiceNoTraffic"]
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    timeout: 900s
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        source /workspace/environment.sh
+        HOOK="infrastructure/hooks/before-traffic.sh"
+        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
+        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run before traffic."; exit 0; fi
+        echo "=== Hook before-traffic: $${HOOK} ==="
+        bash "$${HOOK}"
+
   # Every region to 100 percent on its new revision: bedrock deploy shift-traffic. A
   # pull-request build served under a tag alone leaves traffic where it is.
   - id: ShiftTraffic
-    waitFor: ["DeployServiceNoTraffic"]
+    waitFor: ["HookBeforeTraffic"]
     name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
     args: [deploy, shift-traffic]
     timeout: 600s

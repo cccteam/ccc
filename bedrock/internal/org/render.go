@@ -98,10 +98,13 @@ type HostRow struct {
 // row per application and environment in that order and the pull-request wildcard
 // last, the keys padded to the longest so the rendered map is tofu fmt clean.
 func (v *view) HostRows() []HostRow {
-	rows := make([]HostRow, 0, len(v.Applications)*len(Environments)+1)
+	rows := make([]HostRow, 0, 2*len(v.Applications)*len(Environments)+1)
 	for _, app := range v.Applications {
 		for _, env := range Environments {
-			rows = append(rows, HostRow{Key: `"` + v.Host(env, app) + `"`, Value: v.Backend(env, app)})
+			rows = append(rows,
+				HostRow{Key: `"` + v.Host(env, app) + `"`, Value: v.Backend(env, app)},
+				HostRow{Key: `"` + v.NextHost(env, app) + `"`, Value: v.NextBackend(env, app)},
+			)
 		}
 	}
 	rows = append(rows, HostRow{Key: `"*.` + v.AppsDomain + `"`, Value: v.PullRequestBackend()})
@@ -115,6 +118,21 @@ func (v *view) HostRows() []HostRow {
 	}
 
 	return rows
+}
+
+// NextHost is the hostname of the application's next revision in the environment, the
+// one the pipeline checks before traffic moves: the hostname's first label with -next.
+func (v *view) NextHost(env, app string) string {
+	host := v.Host(env, app)
+	label, rest, _ := strings.Cut(host, ".")
+
+	return label + "-next." + rest
+}
+
+// NextBackend is the backend service serving the application's next revision in the
+// environment (the revision tag next), as the application's stack names it.
+func (v *view) NextBackend(env, app string) string {
+	return "projects/" + v.Project(env) + "/global/backendServices/" + v.Prefix + "-" + env + "-gbl-" + app + "-next-backend"
 }
 
 // Prd is the production environment, the last.
