@@ -81,6 +81,10 @@ type view struct {
 	// and the stack the variables, the outputs and the hand steps for them. A password
 	// auth has none of that, and its stack carries the cookie key alone.
 	Directory bool
+	// GoogleDirectory reports a Google directory sign-in with role membership read
+	// from the directory's groups: the runtime identity signs for itself as the
+	// administrator (keyless domain-wide delegation), which the stack grants.
+	GoogleDirectory bool
 	// AuthVar is the stem of the auth's placement variables: <auth>_oidc.
 	AuthVar string
 	// RoutesDir is the directory of the file registering the callback, empty without one.
@@ -226,6 +230,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.SweepMinute = sweepMinute(m.App)
 	v.Auth = &m.Auths[0]
 	v.Directory = v.Auth.OIDC()
+	v.GoogleDirectory = v.Auth.Flavor == googleFlavor && v.Auth.Directory[derive.RoleAdminSubject] != nil
 	v.AuthVar = v.Auth.VariablePrefix()
 	if v.Directory {
 		v.RoutesDir = path.Dir(v.Auth.Callback.File)
@@ -594,6 +599,10 @@ func (v *view) order(envs []string) {
 	}
 	v.PreviousEnvMap = "{ " + strings.Join(previous, ", ") + " }"
 }
+
+// googleFlavor is the login flavor of a Google OpenID Connect auth, as impulse's reader
+// reports it.
+const googleFlavor = "oidc-google"
 
 // repoFullName is owner/name from a GitHub repository URL, or the placeholder the
 // pipeline reads as a refusal.

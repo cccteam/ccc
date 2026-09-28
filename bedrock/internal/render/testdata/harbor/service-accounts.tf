@@ -76,3 +76,16 @@ resource "google_service_account_iam_member" "deploy_uses_migrate" {
 
   depends_on = [google_service_account.migrate]
 }
+
+# The directory's groups carry role membership, read through the Admin SDK as the
+# runtime identity with domain-wide delegation and no key: the service signs a JWT
+# for itself as the administrator (APP_STAFF_OIDC_ADMIN_SUBJECT) through the IAM
+# Credentials API, which takes Service Account Token Creator on its own account.
+# The delegation itself is granted in the Workspace admin console (hand steps).
+resource "google_service_account_iam_member" "app_signs_for_itself" {
+  service_account_id = local.app_account_name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = local.app_member
+
+  depends_on = [google_service_account.app]
+}

@@ -355,12 +355,18 @@ Per environment, after the first apply:
    as version 1 of `imp-<env>-gbl-harbor-staff-oidc-client-secret`.
 2. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
    of `imp-<env>-gbl-harbor-cookie-key`.
-3. For the directory read: a service-account key with domain-wide delegation
-   for the Admin SDK groups scope as version 1 of
-   `imp-<env>-gbl-harbor-staff-oidc-admin-credentials`, and the administrator
-   it impersonates in `staff_oidc_admin_subject`. The lab's org policy forbids
-   creating service account keys under the environment folders, so where that
-   key comes from is an open question (below).
+3. For the directory read, in the Google Workspace admin console (Security >
+   Access and data control > API controls > Domain-wide delegation): add the
+   runtime identity's OAuth client ID (the `imp-<env>-gbl-harbor-app`
+   service account's unique ID, shown in the Cloud console under IAM > Service
+   Accounts) with the scope
+   `https://www.googleapis.com/auth/admin.directory.group.readonly`, and put the
+   administrator it impersonates (an account holding a Groups-read privilege) in
+   `staff_oidc_admin_subject`. No key: the service signs for itself through
+   the IAM Credentials API, which this stack grants. The container
+   `imp-<env>-gbl-harbor-staff-oidc-admin-credentials` exists for a
+   runtime outside Google Cloud, where a service-account key with the same
+   delegation goes; on Google Cloud it stays empty.
 4. Pin the versions in `secret_versions` and apply.
 
 ## Inputs
@@ -410,12 +416,6 @@ revision here can pull its image with nothing further.
 
 ## Open questions
 
-- The Admin SDK credential is a service-account key, and `1-org` enforces
-  `iam.managed.disableServiceAccountKeyCreation` on every environment folder.
-  Either the key is minted in a project outside those folders, the policy gets
-  a per-project exception, or the session library learns keyless domain-wide
-  delegation (`iamcredentials.signJwt` with a subject). Until decided, the
-  container exists and stays empty.
 - Outlier detection with serverless NEGs on an external managed backend
   service validates against the provider schema; whether the API accepts this
   exact parameter set is confirmed at the first apply.

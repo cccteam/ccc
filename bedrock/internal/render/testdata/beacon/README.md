@@ -386,12 +386,6 @@ revision here can pull its image with nothing further.
 
 ## Open questions
 
-- The Admin SDK credential is a service-account key, and `1-org` enforces
-  `iam.managed.disableServiceAccountKeyCreation` on every environment folder.
-  Either the key is minted in a project outside those folders, the policy gets
-  a per-project exception, or the session library learns keyless domain-wide
-  delegation (`iamcredentials.signJwt` with a subject). Until decided, the
-  container exists and stays empty.
 - Outlier detection with serverless NEGs on an external managed backend
   service validates against the provider schema; whether the API accepts this
   exact parameter set is confirmed at the first apply.

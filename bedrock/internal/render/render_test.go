@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,6 +37,10 @@ func deriveFixture(t *testing.T, name, placement string) *derive.Model {
 	return m
 }
 
+// update rewrites the goldens from the render instead of comparing: go test ./internal/render
+// -update, after a template change that is meant, in the same commit.
+var update = flag.Bool("update", false, "rewrite the goldens under testdata from the render")
+
 // TestRenderGolden proves the render reproduces the hand-written stack byte for byte:
 // every file under testdata/<golden>, comments included, since the comments naming the
 // source declarations are the point.
@@ -69,6 +74,14 @@ func TestRenderGolden(t *testing.T) {
 					golden = filepath.Join(goldenDir, "root")
 				}
 				rendered[filepath.Join(golden, f.Path)] = true
+				if *update {
+					if err := os.MkdirAll(filepath.Dir(filepath.Join(golden, f.Path)), 0o750); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(golden, f.Path), f.Content, 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
 				want, err := os.ReadFile(filepath.Join(golden, f.Path))
 				if err != nil {
 					t.Errorf("%s: rendered but not in %s: %v", f.Path, golden, err)
