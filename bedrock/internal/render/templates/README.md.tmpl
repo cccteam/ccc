@@ -78,7 +78,10 @@ from `2-env`'s state.
   job process{{end}} hold `roles/cloudtasks.enqueuer` on it and
   `roles/iam.serviceAccountUser` on their own account, so a task carries the
   enqueuer's OIDC token for the call back. A pull-request stack enqueues on
-  {{.Integration}}'s queue: a deleted queue's name stays reserved for seven days.
+  {{.Integration}}'s queue, since a deleted queue's name stays reserved for seven
+  days; so the declaration reaches {{.Integration}}'s stack first, and a pull request
+  that introduces it binds only once that stack is applied (the same order a
+  new secret container takes).
 {{- end}}
 {{- if .FirestoreDatabase}}
 - **The Firestore database** `{{.Prefix}}-<env>-gbl-{{.App}}-fs`

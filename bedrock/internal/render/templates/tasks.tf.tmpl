@@ -9,8 +9,11 @@
 # token on the way back in. One queue per environment, in the primary region;
 # a pull-request stack enqueues on {{.Integration}}'s queue and grants its own identity
 # on it, because a deleted queue's name stays reserved for seven days, which a
-# pull request torn down and rebuilt within the week would trip over. The
-# migrate command receives neither the name nor a grant: its work is known.
+# pull request torn down and rebuilt within the week would trip over. So the
+# queue reaches {{.Integration}}'s stack first: a pull request that introduces the
+# declaration cannot bind before that stack is applied ("Queue does not
+# exist"), the same order a new secret container takes. The migrate command
+# receives neither the name nor a grant: its work is known.
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_tasks_queue" "tasks" {
