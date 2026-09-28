@@ -4,6 +4,7 @@
 package cache
 
 import (
+	"fmt"
 	"io/fs"
 	"iter"
 	"os"
@@ -191,28 +192,61 @@ func (c *Cache) Store(subpath, key string, data any) error {
 		}
 	}
 
+	// The value is written to a temporary file beside the key and renamed over it, so a
+	// reader never sees a partial file and two processes storing the same key at once
+	// (the store is content-addressed, so they write the same bytes) both succeed: each
+	// rename replaces the key whole, where a remove-create-write-chmod sequence
+	// interleaved with another writer's failed on a file the other had removed.
 	fileName := filepath.Join(subpath, key)
-	if err := c.root.Remove(fileName); err != nil {
-		if !os.IsNotExist(err) {
-			return errors.Wrap(err, "os.Root.Remove()")
+	tmp, tmpName, err := c.createTemp(subpath, key)
+	if err != nil {
+		return err
+	}
+	if err := c.writeTemp(tmp, tmpName, data); err != nil {
+		_ = c.root.Remove(tmpName)
+
+		return err
+	}
+	if err := c.root.Rename(tmpName, fileName); err != nil {
+		_ = c.root.Remove(tmpName)
+
+		return errors.Wrap(err, "os.Root.Rename()")
+	}
+
+	return nil
+}
+
+// createTemp opens a new temporary file beside the key, named after it so a stray one is
+// recognizable, exclusively created so two writers never share one, and answers it with
+// its root-relative name.
+func (c *Cache) createTemp(subpath, key string) (*os.File, string, error) {
+	for attempt := range 100 {
+		name := filepath.Join(subpath, fmt.Sprintf(".%s.tmp-%d-%d", key, os.Getpid(), attempt))
+		f, err := c.root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_SYNC, fs.FileMode(c.permissionBits&^0o111))
+		if err == nil {
+			return f, name, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, "", errors.Wrap(err, "os.Root.OpenFile()")
 		}
 	}
 
-	f, err := c.root.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, fs.FileMode(c.permissionBits))
-	if err != nil {
-		return errors.Wrap(err, "os.Root.OpenFile()")
-	}
+	return nil, "", errors.Newf("no free temporary name for %q after 100 attempts", key)
+}
 
+// writeTemp encodes the value into the temporary file, closes it, and sets its mode:
+// files should not be executable, so the execute bits are dropped.
+func (c *Cache) writeTemp(f *os.File, name string, data any) error {
 	encoder := cbor.NewEncoder(f)
 	if err := encoder.Encode(data); err != nil {
+		_ = f.Close()
+
 		return errors.Wrap(err, "cbor.Encoder.Encode()")
 	}
 	if err := f.Close(); err != nil {
 		return errors.Wrap(err, "os.File.Close()")
 	}
-
-	// Files should not be executable, so drop execute bits
-	if err := c.root.Chmod(fileName, fs.FileMode(c.permissionBits&^0o111)); err != nil {
+	if err := c.root.Chmod(name, fs.FileMode(c.permissionBits&^0o111)); err != nil {
 		return errors.Wrap(err, "os.Root.Chmod()")
 	}
 
