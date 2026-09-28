@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -119,15 +118,15 @@ func server(t *testing.T, releases string, assets map[string]string) *Source {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/cccteam/ccc/releases", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") != "1" {
-			fmt.Fprint(w, "[]")
+			_, _ = w.Write([]byte("[]"))
 
 			return
 		}
-		fmt.Fprint(w, releases)
+		_, _ = w.Write([]byte(releases))
 	})
 	for name, content := range assets {
 		mux.HandleFunc("/cccteam/ccc/releases/download/bedrock/v0.4.0/"+name, func(w http.ResponseWriter, _ *http.Request) {
-			fmt.Fprint(w, content)
+			_, _ = w.Write([]byte(content))
 		})
 	}
 	srv := httptest.NewServer(mux)

@@ -31,3 +31,7 @@ bedrock/internal/github/githubtest/server.go
 # tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
 # not apply to it.
 bedrock/internal/migration/git.go
+# upgrade runs the bedrock release it fetched and verified against the release's
+# checksums file, with the render's own paths: running a program whose path it computed
+# is the command's purpose; the dangerous-exec audit does not apply to it.
+bedrock/internal/cli/upgrade.go

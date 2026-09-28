@@ -34,15 +34,15 @@ func releaseServer(t *testing.T) (src *release.Source, sum string) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/cccteam/ccc/releases", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") != "1" {
-			fmt.Fprint(w, "[]")
+			_, _ = w.Write([]byte("[]"))
 
 			return
 		}
-		fmt.Fprint(w, `[{"tag_name":"bedrock/v0.5.0-rc.1","prerelease":true},{"tag_name":"bedrock/v0.4.0"},{"tag_name":"resource/v0.11.0"}]`)
+		_, _ = w.Write([]byte(`[{"tag_name":"bedrock/v0.5.0-rc.1","prerelease":true},{"tag_name":"bedrock/v0.4.0"},{"tag_name":"resource/v0.11.0"}]`))
 	})
 	for name, content := range assets {
 		mux.HandleFunc("/cccteam/ccc/releases/download/bedrock/v0.4.0/"+name, func(w http.ResponseWriter, _ *http.Request) {
-			fmt.Fprint(w, content)
+			_, _ = w.Write([]byte(content))
 		})
 	}
 	srv := httptest.NewServer(mux)
