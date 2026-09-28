@@ -16,6 +16,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
 // view is the data every template executes against.
@@ -29,6 +30,9 @@ type view struct {
 	// from the application code, so that many applications' sweeps in one
 	// environment do not all queue at the top of the hour.
 	SweepMinute int
+	// BedrockURL is where the pipeline's first step and the infrastructure workflow
+	// download the bedrock the placement pins: the linux/amd64 binary of its release.
+	BedrockURL string
 
 	// Prefix is the placement's naming prefix.
 	Prefix string
@@ -297,6 +301,7 @@ func newView(m *derive.Model) (*view, error) {
 	v := &view{Model: m, P: p, Prefix: p.Prefix, Integration: p.Integration(), Production: p.Production()}
 	v.RepoFullName = repoFullName(m.Repository)
 	v.SweepMinute = sweepMinute(m.App)
+	v.BedrockURL = release.URL(p.BedrockVersion, release.PipelineAsset())
 	v.Auth = &m.Auths[0]
 	v.Directory = v.Auth.OIDC()
 	v.GoogleDirectory = v.Auth.Flavor == googleFlavor && v.Auth.Directory[derive.RoleAdminSubject] != nil

@@ -3,7 +3,8 @@
 # bedrock render rewrites this file and bedrock check compares it with the code, so a change
 # belongs in bedrock, never here.
 #
-#   ResolveDeploymentTarget   what is deployed and where (bedrock deploy resolve, from the pinned bedrock image)
+#   FetchBedrock              the bedrock release the placement pins, downloaded and verified against its checksum; every bedrock step runs it
+#   ResolveDeploymentTarget   what is deployed and where (bedrock deploy resolve)
 #   ValidateRelease           whether this release may deploy here: the release, its commit, the record gate (bedrock deploy validate-release)
 #   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops and names the fix
 #   Hook*                     the application's own scripts at six stages, when it commits them
@@ -12,7 +13,7 @@
 #   RunMigrations             the migrate command as a Cloud Run job, run to completion (bedrock deploy migrate)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (bedrock deploy service)
 #   ShiftTraffic              every region to 100 percent on its new revision (bedrock deploy shift-traffic)
-#   WriteDeploymentRecord     the record of what is now running, in the records bucket (bedrock deploy record, from the pinned bedrock image)
+#   WriteDeploymentRecord     the record of what is now running, in the records bucket (bedrock deploy record)
 #
 # The revision template (variables, secret mounts, identity, scaling) belongs to the
 # application's infrastructure layer (3-app/<app> in the infrastructure repository); a
@@ -32,18 +33,37 @@
 # at the end of this file and in README.md.
 
 steps:
-  # What is deployed and where: the trigger's kind, the environment, the tag or the pull
-  # request's comment, worked out by bedrock deploy resolve from the bedrock image the
-  # placement pins (bedrockImage). It reads this build through the Cloud Build API, mints
-  # the repository's GitHub token from the connection the trigger reads it through, and
-  # writes what the later steps share to /workspace/environment.sh (each sources it),
-  # the build to /workspace/build.json and the declared substitutions, as build
-  # arguments, to /workspace/build-args.sh. It also refuses, before the image build, a
-  # run that does not name what it updates. Whether a tag may deploy is the next step's
-  # question.
-  - id: ResolveDeploymentTarget
+  # The bedrock every bedrock step below runs: the release the placement pins
+  # (bedrockVersion), downloaded from its GitHub Release into the home directory the
+  # steps share and verified against the checksum the placement pins (bedrockSha256)
+  # before anything runs it. This is the one place a bedrock version appears in the
+  # pipeline: bedrock upgrade moves the pin and re-renders this file, never a hand edit.
+  - id: FetchBedrock
     waitFor: ["-"]
-    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    timeout: 120s
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        curl -fsSL --retry 3 -o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/v0.1.0/bedrock-linux-amd64"
+        echo "0000000000000000000000000000000000000000000000000000000000000000  /builder/home/bedrock" | sha256sum --check -
+        chmod 0755 /builder/home/bedrock
+        /builder/home/bedrock --version
+
+  # What is deployed and where: the trigger's kind, the environment, the tag or the pull
+  # request's comment, worked out by bedrock deploy resolve. It reads this build through
+  # the Cloud Build API, mints the repository's GitHub token from the connection the
+  # trigger reads it through, and writes what the later steps share to
+  # /workspace/environment.sh (each sources it), the build to /workspace/build.json and
+  # the declared substitutions, as build arguments, to /workspace/build-args.sh. It also
+  # refuses, before the image build, a run that does not name what it updates. Whether a
+  # tag may deploy is the next step's question.
+  - id: ResolveDeploymentTarget
+    waitFor: ["FetchBedrock"]
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
     args: [deploy, resolve]
     env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
     timeout: 300s
@@ -86,15 +106,16 @@ steps:
         echo "Deployer app ${_DEPLOYER_APP_ID}: token minted for installation $${INSTALLATION}."
 
   # Whether this release may deploy here, for a tag build (a pull-request build has no
-  # release to validate): bedrock deploy validate-release, from the bedrock image the
-  # placement pins. Three checks: the tag belongs to a GitHub Release cut by an accepted
-  # release actor (_RELEASE_ACTORS); the tagged commit is on the default branch or at the
-  # tip of its hotfix branch; and the previous environment holds a live deployment record
-  # of the release (the record gate, read from its records bucket by a grant 2-env makes
-  # there). A refusal starts with "Build REJECTED" and says why.
+  # release to validate): bedrock deploy validate-release. Three checks: the tag belongs
+  # to a GitHub Release cut by an accepted release actor (_RELEASE_ACTORS); the tagged
+  # commit is on the default branch or at the tip of its hotfix branch; and the previous
+  # environment holds a live deployment record of the release (the record gate, read from
+  # its records bucket by a grant 2-env makes there). A refusal starts with "Build
+  # REJECTED" and says why.
   - id: ValidateRelease
     waitFor: ["MintDeployerToken"]
-    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
     args: [deploy, validate-release]
     timeout: 300s
 
@@ -390,16 +411,16 @@ steps:
         echo "=== Hook after-down: $${HOOK} ==="
         bash "$${HOOK}"
 
-  # Whether the image build runs: bedrock deploy check-release, from the bedrock image the
-  # placement pins. One registry serves every environment and the image tags carry the
-  # environment, so the release tag's digest and the commit tag's digest decide: neither
-  # exists, BuildImage builds; the commit is built under another release name, that
-  # name is added and the build reused; both agree, reused; the release tag names another
-  # build, the run is refused (a release names one build per environment). It appends
-  # IMAGE_DIGEST and REUSE_IMAGE to environment.sh.
+  # Whether the image build runs: bedrock deploy check-release. One registry serves every
+  # environment and the image tags carry the environment, so the release tag's digest and
+  # the commit tag's digest decide: neither exists, BuildImage builds; the commit is built
+  # under another release name, that name is added and the build reused; both agree,
+  # reused; the release tag names another build, the run is refused (a release names one
+  # build per environment). It appends IMAGE_DIGEST and REUSE_IMAGE to environment.sh.
   - id: CheckRelease
     waitFor: ["HookAfterDown"]
-    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
     args: [deploy, check-release]
     timeout: 300s
 
@@ -508,16 +529,17 @@ steps:
         echo "=== Hook before-migrate: $${HOOK} ==="
         bash "$${HOOK}"
 
-  # The migrate command as a Cloud Run job, run to completion: bedrock deploy migrate, from
-  # the bedrock image the placement pins. Only the image and the labels change on the job
-  # (its variables, identity, resources and retry policy are the application layer's); the
-  # seed (schema/devseed as data migrations after the schema) runs where _SEED is true:
-  # every pull request, its database being new, and a release build only in the
-  # environments the placement's seed list names, none by default and never production. A
-  # seeded database takes nothing twice. A build that runs no migrations skips the job.
+  # The migrate command as a Cloud Run job, run to completion: bedrock deploy migrate.
+  # Only the image and the labels change on the job (its variables, identity, resources
+  # and retry policy are the application layer's); the seed (schema/devseed as data
+  # migrations after the schema) runs where _SEED is true: every pull request, its
+  # database being new, and a release build only in the environments the placement's seed
+  # list names, none by default and never production. A seeded database takes nothing
+  # twice. A build that runs no migrations skips the job.
   - id: RunMigrations
     waitFor: ["HookBeforeMigrate"]
-    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
     args: [deploy, migrate]
     timeout: 2400s
 
@@ -542,17 +564,18 @@ steps:
         bash "$${HOOK}"
 
   # A new revision of the service in every region, receiving no traffic yet: bedrock deploy
-  # service, from the bedrock image the placement pins. The service itself is the
-  # infrastructure's (created with its runtime identity, ingress and scaling); the step only
-  # updates the image and the labels. Before each update the service is checked for the
-  # state a failed earlier deploy leaves behind (traffic pointed at a revision that is not
-  # ready) and repaired by moving traffic back to the last ready revision, as CCC's
-  # deployments do. The new revision carries the tag "next" (or the pull request's tag),
-  # under which the next backend serves it before traffic moves. One line per region is
-  # left in /workspace/revisions.txt, and NEXT_URL and REVISION_URLS in environment.sh.
+  # service. The service itself is the infrastructure's (created with its runtime identity,
+  # ingress and scaling); the step only updates the image and the labels. Before each
+  # update the service is checked for the state a failed earlier deploy leaves behind
+  # (traffic pointed at a revision that is not ready) and repaired by moving traffic back
+  # to the last ready revision, as CCC's deployments do. The new revision carries the tag
+  # "next" (or the pull request's tag), under which the next backend serves it before
+  # traffic moves. One line per region is left in /workspace/revisions.txt, and NEXT_URL
+  # and REVISION_URLS in environment.sh.
   - id: DeployServiceNoTraffic
     waitFor: ["HookAfterMigrate"]
-    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
     args: [deploy, service]
     timeout: 1200s
 
@@ -584,7 +607,8 @@ steps:
   # pull-request build served under a tag alone leaves traffic where it is.
   - id: ShiftTraffic
     waitFor: ["HookBeforeTraffic"]
-    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
     args: [deploy, shift-traffic]
     timeout: 600s
 
@@ -608,13 +632,14 @@ steps:
         echo "=== Hook after-traffic: $${HOOK} ==="
         bash "$${HOOK}"
 
-  # The record of what is now running, written by bedrock deploy record from the bedrock
-  # image the placement pins (bedrockImage): the version, commit, image and digest, the
-  # regions and the revision each runs, the time, and live or preview. The next
-  # environment's gate reads it. It reads environment.sh, build.json and revisions.txt.
+  # The record of what is now running, written by bedrock deploy record: the version,
+  # commit, image and digest, the regions and the revision each runs, the time, and live
+  # or preview. The next environment's gate reads it. It reads environment.sh, build.json
+  # and revisions.txt.
   - id: WriteDeploymentRecord
     waitFor: ["HookAfterTraffic"]
-    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
     args: [deploy, record]
     timeout: 300s
 

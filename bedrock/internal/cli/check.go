@@ -50,7 +50,7 @@ is read from --placement, or from placement.json in the stack directory.`,
 			if err != nil {
 				return err
 			}
-			m, err := model(appDir, placement, dir)
+			m, err := d.model(appDir, placement, dir)
 			if err != nil {
 				return err
 			}

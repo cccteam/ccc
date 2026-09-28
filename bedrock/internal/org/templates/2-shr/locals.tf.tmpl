@@ -49,10 +49,6 @@ locals {
     ]) : pair.key => pair
   }
 
-  # Every application's deploy identities (the pushers), readers of the tools
-  # repository: Cloud Build pulls bedrock's image as the build's identity.
-  tools_reader_grants = toset(flatten([for app, members in var.pushers : members]))
-
   # Flatten application x pusher so for_each can grant one writer per pair.
   writer_grants = {
     for pair in flatten([

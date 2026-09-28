@@ -51,7 +51,7 @@ read from --placement, or from placement.json in the stack directory.`,
 			if err != nil {
 				return err
 			}
-			m, err := model(appDir, placement, outDir)
+			m, err := d.model(appDir, placement, outDir)
 			if err != nil {
 				return err
 			}

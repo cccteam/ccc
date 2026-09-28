@@ -103,14 +103,10 @@ var placed = map[string]func(v *view) string{
 
 		return path.Join(v.Schema.GenerateDir, generateFile)
 	},
-	// The GitHub workflows, under .github/workflows: the infrastructure check needs the
-	// identity provider the placement records to pull the pinned image, so without one
-	// it is not rendered; the release workflow needs nothing beyond the release app.
-	infrastructureWorkflow: func(v *view) string {
-		if v.P.GithubIdentityProvider == "" {
-			return ""
-		}
-
+	// The GitHub workflows, under .github/workflows: the infrastructure check, which
+	// downloads the bedrock the placement pins and checks with it, and the release
+	// workflow.
+	infrastructureWorkflow: func(*view) string {
 		return path.Join(workflowsDir, infrastructureWorkflow)
 	},
 	releaseWorkflow: func(*view) string {

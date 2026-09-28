@@ -1,0 +1,59 @@
+# The binaries of a bedrock release. release-please cuts the release (the tag
+# bedrock/vX.Y.Z and its GitHub Release, from release-please.yml); this workflow builds the
+# tool at that tag, one static binary per platform it runs on (linux/amd64, which every
+# application's pipeline and infrastructure check download; linux/arm64 and darwin/arm64
+# for developer machines), writes checksums.txt (the SHA-256 of each, in sha256sum's
+# format) and uploads them to the release. An application's placement pins the version and
+# the linux/amd64 checksum (bedrock upgrade moves it), and nothing runs a binary it has not
+# verified against that checksum. The build is reproducible, the same tag, toolchain and
+# flags giving the same bytes, and the version is stamped at link time: Go stamps a tag
+# only for a module at the repository root, and bedrock's tags carry its directory.
+name: bedrock release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  binaries:
+    name: build and upload
+    if: startsWith(github.event.release.tag_name, 'bedrock/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: bedrock/go.mod
+          cache-dependency-path: bedrock/go.sum
+      - name: Build
+        working-directory: bedrock
+        env:
+          CGO_ENABLED: "0"
+          GOFLAGS: -trimpath
+        run: |
+          set -euo pipefail
+          version="${TAG#bedrock/}"
+          mkdir -p ../dist
+          for platform in linux/amd64 linux/arm64 darwin/arm64; do
+            GOOS="${platform%/*}" GOARCH="${platform#*/}" go build \
+              -ldflags="-s -w -X github.com/cccteam/ccc/bedrock/internal/cli.releaseVersion=${version}" \
+              -o "../dist/bedrock-${platform%/*}-${platform#*/}" .
+          done
+          stamped=$(../dist/bedrock-linux-amd64 --version)
+          if [ "$stamped" != "bedrock version ${version}" ]; then
+            echo "the binary says '${stamped}', not '${version}'"
+            exit 1
+          fi
+          cd ../dist && sha256sum bedrock-* | tee checksums.txt
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/* --clobber

@@ -363,13 +363,14 @@ refusals, and on `/gcbrun down` the deployment marked inactive.
 ## Customizing the pipeline
 
 The deploy sequence in `cloudbuild.yaml` is bedrock's and is rewritten on every
-render, so a lost step is caught rather than copied. Its steps are becoming
-`bedrock deploy` commands, run from the bedrock image the placement pins
-(`bedrockImage`, by digest; moved by upgrade): every step but the image build
-is a command (`bedrock deploy resolve`, `validate-release`, `check-release`,
-`migrate`, `service`, `shift-traffic`, `record`); the image build stays a
-docker step, and a pipeline then lists the steps it wants. What an application
-adds is declared in files of its own:
+render, so a lost step is caught rather than copied. Its first step downloads
+the bedrock release the placement pins (`bedrockVersion`) and verifies it
+against the placement's checksum (`bedrockSha256`); every step but the image
+build then runs that bedrock (`bedrock deploy resolve`, `validate-release`,
+`check-release`, `migrate`, `jobs`, `service`, `shift-traffic`, `record`), and
+the image build stays a docker step. The version appears in that one place;
+`bedrock upgrade` moves the pin and re-renders. What an application adds is
+declared in files of its own:
 
 - **Hooks.** A script the application commits at
   `infrastructure/hooks/<stage>.sh` runs at that stage, as the deploy identity,

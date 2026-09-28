@@ -21,9 +21,10 @@ func newDeploy(d deps) *cobra.Command {
 		Long: `deploy holds the steps of the deploy sequence as commands, each over the same inputs: the
 facts the resolve step exports to the workspace (environment.sh), the build as Cloud Build
 describes it (build.json) and what the earlier steps left there. A pipeline lists the steps it
-wants, and the rendered cloudbuild.yaml runs them from the bedrock image the placement pins
-(bedrockImage). Today: resolve, validate-release, check-release, migrate, jobs, service,
-shift-traffic and record; the image build stays a docker step.`,
+wants, and the rendered cloudbuild.yaml runs them with the bedrock its first step downloads: the
+release the placement pins (bedrockVersion), verified against its checksum (bedrockSha256). Today:
+resolve, validate-release, check-release, migrate, jobs, service, shift-traffic and record; the
+image build stays a docker step.`,
 	}
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d), newDeployShiftTraffic(d), newDeployRecord(d))
 

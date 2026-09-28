@@ -104,35 +104,3 @@ resource "google_artifact_registry_repository_iam_member" "puller" {
   role       = "roles/artifactregistry.reader"
   member     = each.value.member
 }
-
-# ---------------------------------------------------------------------------
-# The tools repository: bedrock's image, which every application's pipeline
-# runs its deploy steps from (the application's placement pins it by digest,
-# bedrockImage). Readers are every application's deploy identities, the
-# pushers of the application repositories above, since Cloud Build pulls a
-# step's image as the build's identity. The image is pushed by an operator
-# for now (built from the bedrock module); a release pipeline follows.
-# ---------------------------------------------------------------------------
-
-resource "google_artifact_registry_repository" "tools" {
-  project       = local.project_id
-  location      = local.region
-  repository_id = "${local.name_prefix}-tools"
-  description   = "Tool images every application's pipeline runs: bedrock"
-  format        = "DOCKER"
-  labels        = local.labels
-
-  docker_config {
-    immutable_tags = true
-  }
-}
-
-resource "google_artifact_registry_repository_iam_member" "tools_reader" {
-  for_each = local.tools_reader_grants
-
-  project    = local.project_id
-  location   = google_artifact_registry_repository.tools.location
-  repository = google_artifact_registry_repository.tools.name
-  role       = "roles/artifactregistry.reader"
-  member     = each.value
-}

@@ -4,6 +4,7 @@
 package derive
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"regexp"
@@ -11,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
 // Placement is what the organization decided and the application cannot know: its
@@ -42,19 +45,17 @@ type Placement struct {
 	// runs as it): the pipeline accepts a release tag only from a GitHub Release it
 	// authored, and the repository's rules let it alone, with the admins, create one.
 	ReleaseApp string `json:"releaseApp"`
-	// BedrockImage is the bedrock image the pipeline runs its deploy steps from, pinned by
-	// digest (<registry>/<project>/<repository>/bedrock@sha256:...): the tool's version in
-	// the rendered pipeline, moved by upgrade, never by hand in the rendered file.
-	BedrockImage string `json:"bedrockImage"`
-	// GithubIdentityProvider is the workload identity provider the repository's GitHub
-	// Actions authenticate through (2-shr's github_identity_provider output,
-	// projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/github),
-	// so the rendered infrastructure workflow pulls the pinned bedrock image and checks
-	// with it. Absent, the workflow is not rendered and the application keeps its own.
-	GithubIdentityProvider string `json:"githubIdentityProvider,omitempty"`
+	// BedrockVersion is the bedrock release the pipeline and the infrastructure workflow
+	// run (v0.4.0: the tag bedrock/v0.4.0 of github.com/cccteam/ccc), and BedrockSHA256
+	// the SHA-256, in hex, of that release's linux/amd64 binary, which both download and
+	// verify before running it. The one place a bedrock version appears in the
+	// application: bedrock upgrade moves both together, never a hand edit in a rendered
+	// file. Both empty, the placement is unpinned, which render and check refuse.
+	BedrockVersion string `json:"bedrockVersion"`
+	BedrockSHA256  string `json:"bedrockSha256"`
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
-	Labels map[string]string `json:"labels"`
+	Labels map[string]string `json:"labels,omitempty"`
 	// Seed lists the environments whose database takes the development seed
 	// (schema/devseed, as data migrations tracked apart from the schema) at a release
 	// build, after the schema migrations. Absent, none: a database holding data is
@@ -77,6 +78,7 @@ var (
 	prefixRE = regexp.MustCompile(`^[a-z][a-z0-9]{0,7}$`)
 	envRE    = regexp.MustCompile(`^[a-z][a-z0-9]{1,7}$`)
 	codeRE   = regexp.MustCompile(`^[a-z][a-z0-9]{1,3}$`)
+	sha256RE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
 // ReadPlacement reads a placement from its JSON file.
@@ -90,7 +92,9 @@ func ReadPlacement(file string) (*Placement, error) {
 		return nil, errors.Wrap(err, "os.ReadFile()")
 	}
 	p := &Placement{}
-	if err := json.Unmarshal(data, p); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(p); err != nil {
 		return nil, errors.Wrapf(err, "placement %s", file)
 	}
 	if err := p.Validate(); err != nil {
@@ -140,11 +144,39 @@ func (p *Placement) Validate() error {
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
 		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
-		"releaseApp": p.ReleaseApp, "bedrockImage": p.BedrockImage,
+		"releaseApp": p.ReleaseApp,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return errors.Newf("%s is empty", name)
 		}
+	}
+	if (p.BedrockVersion == "") != (p.BedrockSHA256 == "") {
+		return errors.New("bedrockVersion and bedrockSha256 go together: bedrock upgrade sets both")
+	}
+	if p.BedrockVersion != "" && !release.IsVersion(p.BedrockVersion) {
+		return errors.Newf("bedrockVersion %q: a release version, v0.4.0 (the tag bedrock/v0.4.0 without its prefix)", p.BedrockVersion)
+	}
+	if p.BedrockSHA256 != "" && !sha256RE.MatchString(p.BedrockSHA256) {
+		return errors.Newf("bedrockSha256 %q: the SHA-256 of the release's %s, 64 hex digits from its %s", p.BedrockSHA256, release.PipelineAsset(), release.ChecksumsFile)
+	}
+
+	return nil
+}
+
+// Pinned reports whether the placement pins a bedrock release.
+func (p *Placement) Pinned() bool {
+	return p.BedrockVersion != ""
+}
+
+// WritePlacement writes the placement to its JSON file, in the fields' order, as
+// bedrock upgrade rewrites it after moving the pin.
+func WritePlacement(file string, p *Placement) error {
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "json.MarshalIndent()")
+	}
+	if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil {
+		return errors.Wrapf(err, "os.WriteFile(): %s", file)
 	}
 
 	return nil

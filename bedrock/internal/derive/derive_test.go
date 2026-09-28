@@ -236,7 +236,7 @@ func TestPlacementValidate(t *testing.T) {
 		return Placement{
 			Prefix: "imp", Environments: []string{"tst", "prd"}, Regions: []Region{{Name: "us-central1", Code: "uc1"}},
 			AppsDomain: "lab.example.com", HostedDomain: "example.com", StateBucket: "b", PlaceholderImage: "i",
-			DefaultBranch: "main", Repository: "harbor", ReleaseApp: "acme-release", BedrockImage: "us-central1-docker.pkg.dev/acme-shr/acme-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+			DefaultBranch: "main", Repository: "harbor", ReleaseApp: "acme-release", BedrockVersion: "v0.1.0", BedrockSHA256: "0000000000000000000000000000000000000000000000000000000000000000",
 		}
 	}
 	tests := []struct {
@@ -245,6 +245,10 @@ func TestPlacementValidate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "valid", mutate: func(*Placement) {}},
+		{name: "unpinned, both empty", mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "", "" }},
+		{name: "a version without its checksum", mutate: func(p *Placement) { p.BedrockSHA256 = "" }, wantErr: "go together"},
+		{name: "a version that is not a release", mutate: func(p *Placement) { p.BedrockVersion = "0.1.0" }, wantErr: `bedrockVersion "0.1.0"`},
+		{name: "a checksum that is not a SHA-256", mutate: func(p *Placement) { p.BedrockSHA256 = "abc" }, wantErr: `bedrockSha256 "abc"`},
 		{name: "prefix with a hyphen", mutate: func(p *Placement) { p.Prefix = "im-p" }, wantErr: "prefix"},
 		{name: "no environments", mutate: func(p *Placement) { p.Environments = nil }, wantErr: "environment"},
 		{name: "an uppercase environment", mutate: func(p *Placement) { p.Environments = []string{"TST"} }, wantErr: `environment "TST"`},

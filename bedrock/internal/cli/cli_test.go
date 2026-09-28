@@ -654,7 +654,7 @@ func TestSecretAdd(t *testing.T) {
 	placement := `{"prefix": "imp", "environments": ["tst", "stg", "prd"], "regions": [{"name": "us-central1", "code": "uc1"}],
 		"appsDomain": "impulseframework.dev", "hostedDomain": "impulseframework.com", "stateBucket": "imp-boot-gbl-state-0000",
 		"placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello", "defaultBranch": "master", "repository": "quill",
-		"releaseApp": "impulseframework-release", "bedrockImage": "us-central1-docker.pkg.dev/lab-shr-1/lab-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		"releaseApp": "impulseframework-release", "bedrockVersion": "v0.1.0", "bedrockSha256": "0000000000000000000000000000000000000000000000000000000000000000",
 		"labels": {"bedrock-lab": "true"}}`
 	added3 := []string{
 		"Added version 3 of imp-tst-gbl-quill-mail-api-key in project lab-tst-1, for APP_MAIL_API_KEY of quill in tst.",

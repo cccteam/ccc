@@ -9,25 +9,29 @@ The tool keeps no record of its own. It derives what an application needs from t
 application's own code, through impulse's reader (the config struct tags, the main
 packages, the auths, the generated router, the Dockerfile), and from a placement file that
 records what the code cannot know: the organization's naming prefix, its environments and
-regions, its domains, the bedrock image the pipeline runs. The code and the placement are
+regions, its domains, the bedrock release the pipeline runs. The code and the placement are
 the inputs; the stack and the pipeline are the output, rewritten on every render and
 compared by every check.
 
 ## Install
 
-```sh
-go install github.com/cccteam/ccc/bedrock@latest
-```
-
-Until the first release, the lab builds it from a checkout of this repository
-(`go build -o bedrock .` in `ccc/bedrock`) and pins the image built from that tree.
+Each release of the tool is a GitHub Release of this repository tagged `bedrock/vX.Y.Z`,
+carrying one static binary per platform the tool runs on (`bedrock-linux-amd64`,
+`bedrock-linux-arm64`, `bedrock-darwin-arm64`) and `checksums.txt`, the SHA-256 of each.
+Download the binary for your machine from the release page, verify it against the
+checksum and put it on your PATH; or build it from a checkout of this repository
+(`go build -o bedrock .` in `ccc/bedrock`). Which release an application runs is not the
+installed one's choice: the application's placement pins a release (`bedrockVersion`,
+`bedrockSha256`), its pipeline and its infrastructure check download and verify that
+one, and `render` and `check` refuse to run another release against it, so the
+installed bedrock is kept at the pinned version and `bedrock upgrade` moves the pin.
 
 ## Vocabulary
 
 - **Organization foundation**: the six layers of the CCC provisioning model, one OpenTofu
   root each, that every application deploys into: `0-bootstrap` (the state bucket and the
   boot identity), `1-org` (the folders, the environment projects and the organization
-  policies), `2-shr` (the shared project: the registries, the tools image), `2-spn` (the
+  policies), `2-shr` (the shared project: the registries), `2-spn` (the
   Spanner instances), `2-net` (the load balancer, the certificates and the hostnames) and
   `2-env` (per environment: the application identities and their grants, the records
   bucket, the repository links). Rendered by `bedrock org` from the organization's
@@ -38,8 +42,8 @@ Until the first release, the lab builds it from a checkout of this repository
   containers, the backend service, the triggers and the sweep schedule, per environment.
   Rendered by `bedrock render` from the code and the application's placement.
 - **Placement**: `placement.json` beside the stack. For an application it records the
-  organization's facts the stack needs and the bedrock image the pipeline runs
-  (`bedrockImage`, by digest); for an organization it records the prefix, the domains,
+  organization's facts the stack needs and the bedrock release the pipeline runs
+  (`bedrockVersion`, `bedrockSha256`); for an organization it records the prefix, the domains,
   the organization and billing ids, the regions, the Spanner configuration, the GitHub
   organization, the applications and the environment projects.
 - **Environment**: `tst`, `stg` and `prd`, in promotion order. A pull request deploys to
@@ -57,7 +61,7 @@ Until the first release, the lab builds it from a checkout of this repository
   application root.
 - **Pipeline**: `cloudbuild.yaml`, the deploy sequence Cloud Build runs on a pull request's
   `/gcbrun` comment and on a release tag. Every step but the image build is a `bedrock
-  deploy` command run from the pinned bedrock image; the application customizes it
+  deploy` command run by the pinned bedrock release; the application customizes it
   through hooks, build secrets, declared substitutions and its Dockerfile, never by editing
   the file.
 - **Hook**: a shell script the application commits at `infrastructure/hooks/<stage>.sh`,
@@ -146,22 +150,37 @@ It also refuses:
   image build of the one lacking it. An optional mount passes with nothing said.
 
 The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
-`bedrock check` on every pull request and on the default branch. It is rendered too:
-the job authenticates as the identity GitHub Actions has in the organization's shared
-project (the placement's `githubIdentityProvider`, from 2-shr's
-`github_identity_provider` output; no service account, no key), pulls the bedrock image
-the placement pins, takes the static binary out of it and runs that bedrock's `check` on
-the runner, whose Go toolchain the check reads the code with. So the checker is the
-pipeline's, by digest, and a wording change in a newer bedrock fails no application's
-check until that application moves its pin. A placement without the provider leaves the
-workflow unrendered, and the application keeps its own until it records one.
-`release-please.yml` is rendered beside it: release-please as the release app the
-placement names, on the default branch and the hotfix lines.
+`bedrock check` on every pull request and on the default branch. It is rendered too: the
+job downloads the bedrock release the placement pins from its GitHub Release, verifies it
+against the placement's checksum and runs that bedrock's `check` on the runner, whose Go
+toolchain the check reads the code with; no cloud identity, no service account, no key.
+So the checker is the pipeline's, by checksum, and a wording change in a newer bedrock
+fails no application's check until that application moves its pin. `release-please.yml`
+is rendered beside it: release-please as the release app the placement names, on the
+default branch and the hotfix lines.
+
+## bedrock upgrade
+
+`bedrock upgrade [version]` moves the application to a bedrock release. It writes the
+version and the release's linux/amd64 checksum into `placement.json` (`bedrockVersion`,
+`bedrockSha256`; the checksum is read from the release's `checksums.txt`, never typed),
+fetches that release for the machine it runs on (into the user's cache directory,
+verified against the same file) and renders the stack and the pipeline with it, so the
+committed files come from the bedrock the pin names. Without a version it moves to the
+latest release; a pre-release is moved to by name. Commit `placement.json` with the
+rendered files: from that commit the pipeline's first step and the infrastructure check
+download and verify that release, and every `bedrock deploy` step runs it. The pin is
+the one place a bedrock version appears in an application; nothing else names one.
+
+`render` and `check` refuse a placement pinned to another release than the bedrock
+running them (a build from a checkout, being nobody's release, renders any pin), and a
+placement with no pin at all: a new application runs `upgrade` first.
 
 ## bedrock deploy
 
-`deploy` holds the pipeline's steps, one command each, run from the bedrock image the
-placement pins inside Cloud Build. They share a workspace (`/workspace`, `--workspace`
+`deploy` holds the pipeline's steps, one command each, run inside Cloud Build by the
+bedrock its first step downloaded: the release the placement pins, verified against its
+checksum. They share a workspace (`/workspace`, `--workspace`
 overrides): `environment.sh` (the facts resolve exports, then what later steps append),
 `build.json` (the build as Cloud Build describes it), `build-args.sh` (the declared
 substitutions as build arguments) and `revisions.txt` (the revisions the service step
@@ -330,7 +349,8 @@ create and change what carries its own number).
 The tool is a Go module in this repository, `ccc/bedrock`, with `main.go` at its root:
 `go build -o bedrock .` there. Its packages: `internal/derive` reads the application into
 a model, `internal/render` writes the stack from templates (goldens under
-`internal/render/testdata/<application>`), `internal/check` compares, `internal/deploy`
+`internal/render/testdata/<application>`), `internal/check` compares, `internal/release` is the tool's own distribution (its
+release assets, their checksums, the verified fetch), `internal/deploy`
 holds the pipeline's steps over the Cloud Build, Cloud Run, Artifact Registry and Cloud
 Storage APIs, `internal/org` renders the foundation, `internal/secret`, `internal/hotfix`,
 `internal/protect` and `internal/migration` hold the operations, and `internal/cli` is the

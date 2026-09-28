@@ -56,18 +56,6 @@ identities, was rejected: those layers read this one for repository IDs, and
 two layers reading each other's state only works with `try()` on both sides
 and an apply order nobody can see in the code.
 
-## GitHub Actions
-
-`github.tf` gives the organization's GitHub Actions an identity: a workload
-identity pool whose provider trusts GitHub's OpenID Connect tokens for
-repositories owned by `impulseframework` (and no other), and one grant,
-reading the tools repository as that principal set. An application's
-infrastructure workflow authenticates with the provider (the output
-`github_identity_provider`, recorded in the application's placement as
-`githubIdentityProvider`), pulls the bedrock image its placement pins, and runs
-that bedrock's `check`: the same checker the pipeline runs, by digest. No
-service account and no key stand in between.
-
 ## Applying
 
 In a terminal, in this directory, after `1-org` has been applied. The bucket
@@ -126,9 +114,3 @@ Read by the environment and application layers through
   across regions, which works and costs a little egress; a `us` multi-region
   repository would avoid that at the price of a name outside the region-code
   convention. Decided for the region; revisit if the egress shows up.
-
-The layer also holds the tools repository (`<prefix>-shr-<region>-tools`), which
-carries bedrock's image: every application's pipeline runs its deploy steps
-from it, at the digest the application's placement pins (`bedrockImage`), and
-every application's deploy identity may read it. An operator pushes the image
-for now, built from the bedrock module; a release pipeline follows.

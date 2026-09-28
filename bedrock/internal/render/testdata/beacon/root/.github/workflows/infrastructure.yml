@@ -1,12 +1,11 @@
 # beacon's infrastructure check on every pull request and on the default branch, rendered by
 # bedrock and owned by it (bedrock render rewrites this file, bedrock check compares it). The
 # stack under infrastructure/ and the pipeline files at the root are rendered from the code
-# by bedrock; this job takes the bedrock the placement pins (bedrockImage, by digest: the
-# same one the pipeline runs), renders afresh and fails when a committed owned file differs
-# from what the code declares, then checks the stack's formatting and validity. The image
-# is pulled with the identity GitHub Actions has in the shared project (the placement's
-# githubIdentityProvider, no service account and no key), and the static binary is taken
-# out of it and run on the runner, which has the Go toolchain the check reads the code with.
+# by bedrock; this job takes the bedrock the placement pins (bedrockVersion, verified against
+# bedrockSha256: the same one the pipeline runs), renders afresh and fails when a committed
+# owned file differs from what the code declares, then checks the stack's formatting and
+# validity. The binary is downloaded from bedrock's GitHub Release and run on the runner,
+# which has the Go toolchain the check reads the code with; no cloud identity is involved.
 name: infrastructure
 
 on:
@@ -27,9 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     env:
-      BEDROCK_IMAGE: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      BEDROCK_URL: https://github.com/cccteam/ccc/releases/download/bedrock/v0.1.0/bedrock-linux-amd64
+      BEDROCK_SHA256: 0000000000000000000000000000000000000000000000000000000000000000
       OPENTOFU_VERSION: 1.12.6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,17 +36,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: The identity GitHub Actions has in the shared project
-        uses: google-github-actions/auth@8254fb75a33b976a221574d287e93919e6a36f70 # v2.1.6
-        with:
-          workload_identity_provider: projects/123456789012/locations/global/workloadIdentityPools/imp-shr-gbl-github/providers/github
-      - name: The pinned bedrock, out of its image
+      - name: The pinned bedrock, from its release
         run: |
-          gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin "${BEDROCK_IMAGE%%/*}"
-          docker pull -q "$BEDROCK_IMAGE"
-          id=$(docker create "$BEDROCK_IMAGE")
-          docker cp "$id:/bedrock" "$RUNNER_TEMP/bedrock"
-          docker rm "$id" >/dev/null
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/bedrock" "$BEDROCK_URL"
+          echo "$BEDROCK_SHA256  $RUNNER_TEMP/bedrock" | sha256sum --check -
+          chmod 0755 "$RUNNER_TEMP/bedrock"
           "$RUNNER_TEMP/bedrock" --version
       - name: bedrock check
         run: |

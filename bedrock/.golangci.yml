@@ -87,6 +87,10 @@ linters:
             # repository root, read from its go.mod with the same parser impulse's
             # reader uses.
             - golang.org/x/mod/modfile
+            # The tool's own version: upgrade and the pin check tell a release (v0.4.0)
+            # from the pseudo-version Go stamps on a build from a checkout.
+            - golang.org/x/mod/module
+            - golang.org/x/mod/semver
             # secret add tells a container Secret Manager does not know (NotFound, the
             # gRPC status of the client's error) from a refusal, and asks for the value at
             # the terminal without echo.
@@ -110,6 +114,11 @@ linters:
         - opinionated
         - performance
         - style
+      settings:
+        hugeParam:
+          # deps, the command tree's seams, is passed by value on purpose: one copy per
+          # command, never mutated. It holds eleven seams, 104 bytes.
+          sizeThreshold: 128
     gocyclo:
       min-complexity: 25
     godox:
@@ -169,6 +178,11 @@ linters:
           - gosec
         path: internal/render/render\.go
         text: G30[16]
+      # upgrade rewrites the placement, a file of the repository a person reads: 0644.
+      - linters:
+          - gosec
+        path: internal/derive/placement\.go
+        text: G306
       # The role constants name what a variable is for; the one named after the
       # admin credentials holds the words, not a credential.
       - linters:
@@ -195,16 +209,27 @@ linters:
           - paralleltest
         path: internal/cli/cli_test\.go
         text: TestDeployResolve
-      # The GitHub API's JSON is snake_case; the client and its stand-in write the
-      # wire names as the API defines them.
+      # The GitHub API's JSON is snake_case; the client, its stand-in and the release
+      # listing write the wire names as the API defines them.
       - linters:
           - tagliatelle
-        path: internal/github/
+        path: internal/(github|release)/
       # tokenEnv names the variable a token is read from; it holds no token.
       - linters:
           - gosec
-        path: internal/github/github\.go
+        path: internal/(github/github|release/release)\.go
         text: G101
+      # release fetches the tool's own binary: its directory and the file itself take
+      # the conventional modes of a program (0755), not a leak.
+      - linters:
+          - gosec
+        path: internal/release/release\.go
+        text: G30[12]
+      # upgrade runs the bedrock it fetched and verified, with the render's own paths.
+      - linters:
+          - gosec
+        path: internal/cli/upgrade\.go
+        text: G204
     paths:
       - third_party$
       - builtin$
