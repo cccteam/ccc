@@ -10,14 +10,14 @@ require (
 	cloud.google.com/go/spanner v1.94.0
 	github.com/cccteam/ccc v0.3.2
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260922183153-31dedfd272da
-	github.com/cccteam/ccc/cache v0.1.6
+	github.com/cccteam/ccc/cache v0.1.8-0.20260928033352-026459e32084
 	github.com/cccteam/ccc/pkg v0.1.4
 	github.com/cccteam/ccc/securehash v0.0.13
 	github.com/cccteam/ccc/tracer v0.1.6
 	github.com/cccteam/db-initiator v0.3.13
 	github.com/cccteam/httpio v0.7.17
 	github.com/cccteam/logger v0.1.27
-	github.com/cccteam/session v0.11.2-0.20260922184536-a333790eda73
+	github.com/cccteam/session v0.11.2-0.20260928032906-e588021ccc49
 	github.com/cccteam/spxscan v0.0.14
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0
