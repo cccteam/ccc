@@ -80,6 +80,15 @@ from `2-env`'s state.
   enqueuer's OIDC token for the call back. A pull-request stack enqueues on
   {{.Integration}}'s queue: a deleted queue's name stays reserved for seven days.
 {{- end}}
+{{- if .FirestoreDatabase}}
+- **The Firestore database** `{{.Prefix}}-<env>-gbl-{{.App}}-fs`
+  (`{{.FirestoreDatabase.Declaration}}` names it to the processes that construct
+  the {{.FirestoreDatabase.Level}} level), Native mode, in the primary region, beside the
+  Spanner database; {{.Production}} keeps point-in-time recovery on and resists deletion.
+  The site{{if .JobsReadsFirestore}} and the job process{{end}} hold `roles/datastore.user` under a
+  condition naming this database alone, so nothing else in the shared
+  environment project is reachable.
+{{- end}}
 - **Secret containers**, no versions, one per secret the code declares in
   `{{.SecretsFiles}}`, named `{{.Prefix}}-<env>-gbl-{{.App}}-<name>`:
 
@@ -145,6 +154,9 @@ above them.
 {{- end}}
 {{- if .TasksQueue}}
 | `{{.TasksQueue.Name}}` | {{.TasksQueue.Level}} | the task queue | yes | |{{if .Jobs}} {{if .JobsReadsTasks}}yes{{end}} |{{end}}
+{{- end}}
+{{- if .FirestoreDatabase}}
+| `{{.FirestoreDatabase.Name}}` | {{.FirestoreDatabase.Level}} | the Firestore database | yes | |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .Directory}}
 | `{{.HostedDomain.Name}}` | {{.HostedDomain.Level}} | `var.{{.AuthVar}}_hosted_domain` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
@@ -466,6 +478,9 @@ Per environment, after the first apply:
 {{- end}}
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
 | `database` | `{ project, instance, name }`. |
+{{- if .FirestoreDatabase}}
+| `firestore_database` | The Firestore database's id. |
+{{- end}}
 | `hostnames` | For `2-net`'s host rules, certificate, and DNS. |
 | `identities` | `{ app{{if .Jobs}}, jobs{{end}}, migrate }` runtime identity emails. |
 {{- if .Jobs}}

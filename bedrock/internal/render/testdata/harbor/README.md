@@ -77,6 +77,13 @@ from `2-env`'s state.
   `roles/iam.serviceAccountUser` on their own account, so a task carries the
   enqueuer's OIDC token for the call back. A pull-request stack enqueues on
   tst's queue: a deleted queue's name stays reserved for seven days.
+- **The Firestore database** `imp-<env>-gbl-harbor-fs`
+  (`dataConfig.FirestoreDatabase` names it to the processes that construct
+  the data level), Native mode, in the primary region, beside the
+  Spanner database; prd keeps point-in-time recovery on and resists deletion.
+  The site and the job process hold `roles/datastore.user` under a
+  condition naming this database alone, so nothing else in the shared
+  environment project is reachable.
 - **Secret containers**, no versions, one per secret the code declares in
   `pkg/config/data.go`, named `imp-<env>-gbl-harbor-<name>`:
 
@@ -135,6 +142,7 @@ above them.
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
 | `APP_ASSETS_BUCKET` | data | the assets bucket | yes | | yes |
 | `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |
+| `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | | yes |
 | `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |
 | `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
@@ -434,6 +442,7 @@ Per environment, after the first apply:
 | `assets_bucket` | The assets bucket's name. |
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
 | `database` | `{ project, instance, name }`. |
+| `firestore_database` | The Firestore database's id. |
 | `hostnames` | For `2-net`'s host rules, certificate, and DNS. |
 | `identities` | `{ app, jobs, migrate }` runtime identity emails. |
 | `jobs_job` | `{ name, region, resource }` of the job process's Cloud Run job. |

@@ -25,6 +25,11 @@ output "database" {
   }
 }
 
+output "firestore_database" {
+  description = "The Firestore database the site and the job process read and write, as APP_FIRESTORE_DATABASE names it to them."
+  value       = google_firestore_database.firestore.name
+}
+
 output "hostnames" {
   description = "Hostnames this environment's site answers on; 2-net registers them with the load balancer and the certificate."
   value       = local.hostnames

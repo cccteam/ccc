@@ -110,8 +110,11 @@ Cloud Tasks queue in the primary region (a pull-request stack enqueues on the
 integration environment's), the variable set to its resource name, with `enqueuer` on
 the queue and Service Account User on its own account for the site and, when it
 constructs that level, the job process, so a task calls the application back with the
-enqueuer's OIDC token; the generated router's outlets become the service's paths on the
-backend. The rendered README of the
+enqueuer's OIDC token; a config variable `APP_FIRESTORE_DATABASE` becomes a Firestore
+database in Native mode beside the Spanner database, the variable set to its id, with
+`datastore.user` under a condition naming that database alone for the site and, when it
+constructs that level, the job process; the generated router's outlets become the
+service's paths on the backend. The rendered README of the
 stack explains every file and names the declaration it comes from.
 
 ## bedrock check

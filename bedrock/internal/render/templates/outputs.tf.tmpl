@@ -27,6 +27,13 @@ output "database" {
   }
 }
 
+{{if .FirestoreDatabase -}}
+output "firestore_database" {
+  description = "The Firestore database the site{{if .JobsReadsFirestore}} and the job process{{end}} read and write, as {{.FirestoreDatabase.Name}} names it to them."
+  value       = google_firestore_database.firestore.name
+}
+
+{{end -}}
 output "hostnames" {
   description = "Hostnames this environment's site answers on; 2-net registers them with the load balancer and the certificate."
   value       = local.hostnames

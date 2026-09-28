@@ -290,6 +290,9 @@ variable "required_apis" {
       "cloudtasks.googleapis.com",
       "cloudtrace.googleapis.com",
       "compute.googleapis.com",
+      # An application that declares a Firestore database (APP_FIRESTORE_DATABASE)
+      # gets one beside its Spanner database, in the environment project.
+      "firestore.googleapis.com",
       "iam.googleapis.com",
       "iamcredentials.googleapis.com",
       "logging.googleapis.com",

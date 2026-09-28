@@ -197,4 +197,7 @@ type dataConfig struct {
 	// TasksQueue is the Cloud Tasks queue the application enqueues its deferred work on,
 	// as the Cloud Tasks API names it (projects/<project>/locations/<region>/queues/<name>).
 	TasksQueue string `env:"APP_TASKS_QUEUE"`
+
+	// FirestoreDatabase is the Firestore database the application keeps documents in, by id.
+	FirestoreDatabase string `env:"APP_FIRESTORE_DATABASE"`
 }

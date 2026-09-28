@@ -182,6 +182,9 @@ const (
 	RoleAssetsBucket Role = "assets-bucket"
 	// RoleTasksQueue names the task queue to the processes that construct its level.
 	RoleTasksQueue Role = "tasks-queue"
+	// RoleFirestoreDatabase names the Firestore database to the processes that construct
+	// its level.
+	RoleFirestoreDatabase Role = "firestore-database"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID         Role = "client-id"
@@ -196,7 +199,7 @@ const (
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue, RoleFirestoreDatabase:
 		return true
 	default:
 		return false
@@ -254,20 +257,26 @@ const (
 	// processes that construct the variable's level to enqueue on it and to sign as
 	// themselves for the call back.
 	varTasksQueue = "APP_TASKS_QUEUE"
+	// varFirestoreDatabase is the variable an application declares to keep documents in
+	// Firestore beside its Spanner database: the stack creates the database, sets the
+	// variable to its id and grants the processes that construct the variable's level
+	// on that database alone.
+	varFirestoreDatabase = "APP_FIRESTORE_DATABASE"
 )
 
 // wellKnown are the well-known variables by name.
 var wellKnown = map[string]Role{
-	varServiceName:      RoleServiceName,
-	varLoggingProject:   RoleLoggingProject,
-	varVersion:          RoleVersion,
-	varDatabaseProject:  RoleDatabaseProject,
-	varDatabaseInstance: RoleDatabaseInstance,
-	varDatabaseName:     RoleDatabaseName,
-	varPort:             RolePort,
-	varJobsJob:          RoleJobsJob,
-	varAssetsBucket:     RoleAssetsBucket,
-	varTasksQueue:       RoleTasksQueue,
+	varServiceName:       RoleServiceName,
+	varLoggingProject:    RoleLoggingProject,
+	varVersion:           RoleVersion,
+	varDatabaseProject:   RoleDatabaseProject,
+	varDatabaseInstance:  RoleDatabaseInstance,
+	varDatabaseName:      RoleDatabaseName,
+	varPort:              RolePort,
+	varJobsJob:           RoleJobsJob,
+	varAssetsBucket:      RoleAssetsBucket,
+	varTasksQueue:        RoleTasksQueue,
+	varFirestoreDatabase: RoleFirestoreDatabase,
 }
 
 // directoryRoles maps the fields of an auth's Directory struct to their roles.

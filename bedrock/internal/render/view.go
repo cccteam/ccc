@@ -147,6 +147,11 @@ type view struct {
 	// none; JobsReadsTasks reports that the job process constructs its level.
 	TasksQueue     *derive.Variable
 	JobsReadsTasks bool
+	// FirestoreDatabase is the variable naming the Firestore database, or nil when the
+	// code declares none; JobsReadsFirestore reports that the job process constructs
+	// its level.
+	FirestoreDatabase  *derive.Variable
+	JobsReadsFirestore bool
 	// IdentityLines are the aligned identity lines of the service-accounts header.
 	IdentityLines string
 	// LabelLines are the extra labels, aligned to the derived ones.
@@ -582,6 +587,10 @@ func (v *view) declarations() {
 	v.TasksQueue = v.byRole(derive.RoleTasksQueue)
 	if v.TasksQueue != nil && v.Jobs != nil {
 		v.JobsReadsTasks = v.Jobs.Reads(v.TasksQueue.Level)
+	}
+	v.FirestoreDatabase = v.byRole(derive.RoleFirestoreDatabase)
+	if v.FirestoreDatabase != nil && v.Jobs != nil {
+		v.JobsReadsFirestore = v.Jobs.Reads(v.FirestoreDatabase.Level)
 	}
 }
 
