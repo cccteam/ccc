@@ -181,7 +181,9 @@ func (c *Cache) Store(subpath, key string, data any) error {
 		for part := range strings.SplitSeq(filepath.Clean(subpath), string(os.PathSeparator)) {
 			path = filepath.Join(path, part)
 			if _, err := c.root.Stat(path); os.IsNotExist(err) {
-				if err := c.root.Mkdir(path, fs.FileMode(c.permissionBits)); err != nil {
+				// Another process may create the directory between the stat and the
+				// mkdir; one that exists now is what was wanted.
+				if err := c.root.Mkdir(path, fs.FileMode(c.permissionBits)); err != nil && !errors.Is(err, fs.ErrExist) {
 					return errors.Wrapf(err, "os.Root.Mkdir(%q)", path)
 				}
 
