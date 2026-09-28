@@ -461,13 +461,13 @@ steps:
           umask 077
           IFS=',' read -ra ENTRIES <<< "${_BUILD_SECRETS}"
           for ENTRY in "$${ENTRIES[@]}"; do
-            NAME="$${ENTRY%%=*}"; VERSION="$${ENTRY#*=}"
-            if ! curl -sf -H "Authorization: Bearer $${TOKEN}" "https://secretmanager.googleapis.com/v1/$${VERSION}:access" | jq -r '.payload.data' | base64 -d > "/dev/shm/$${NAME}"; then
-              echo "Build REJECTED: the build secret $${NAME} ($${VERSION}) could not be read as the deploy identity; the stack grants it accessor on the container, and the version must exist and be enabled."
+            SECRET_NAME="$${ENTRY%%=*}"; SECRET_VERSION="$${ENTRY#*=}"
+            if ! curl -sf -H "Authorization: Bearer $${TOKEN}" "https://secretmanager.googleapis.com/v1/$${SECRET_VERSION}:access" | jq -r '.payload.data' | base64 -d > "/dev/shm/$${SECRET_NAME}"; then
+              echo "Build REJECTED: the build secret $${SECRET_NAME} ($${SECRET_VERSION}) could not be read as the deploy identity; the stack grants it accessor on the container, and the version must exist and be enabled."
               exit 1
             fi
-            SECRET_ARGS+=(--secret "id=$${NAME},src=/dev/shm/$${NAME}")
-            echo "Build secret $${NAME}: $${VERSION} ($$(wc -c < "/dev/shm/$${NAME}") bytes)"
+            SECRET_ARGS+=(--secret "id=$${SECRET_NAME},src=/dev/shm/$${SECRET_NAME}")
+            echo "Build secret $${SECRET_NAME}: $${SECRET_VERSION} ($$(wc -c < "/dev/shm/$${SECRET_NAME}") bytes)"
           done
         fi
 
