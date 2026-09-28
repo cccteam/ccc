@@ -190,4 +190,7 @@ type dataConfig struct {
 	StaffGroupPrefix      string `env:"APP_STAFF_OIDC_GROUP_PREFIX"`
 	StaffAdminCredentials []byte `env:"APP_STAFF_OIDC_ADMIN_CREDENTIALS" secret:"true"`
 	StaffAdminSubject     string `env:"APP_STAFF_OIDC_ADMIN_SUBJECT"`
+
+	// AssetsBucket is the Cloud Storage bucket the application's files live in, by name.
+	AssetsBucket string `env:"APP_ASSETS_BUCKET"`
 }

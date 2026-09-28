@@ -102,8 +102,11 @@ its runtime identity with the site's project roles and, when it constructs the d
 level, the database user grant and accessor on that level's secrets, its timeout,
 retries and resources as stack variables, and, when the site's config declares
 `APP_JOBS_JOB`, that variable set to the job's resource name with `run.invoker` for the
-site's identity, so the site runs it through the Cloud Run API; the generated router's
-outlets become the service's paths on the backend. The rendered README of the
+site's identity, so the site runs it through the Cloud Run API; a config variable
+`APP_ASSETS_BUCKET` becomes a Cloud Storage bucket in the primary region, named to the
+processes that construct its level, with `objectUser` for the site and, when it
+constructs that level, the job process; the generated router's outlets become the
+service's paths on the backend. The rendered README of the
 stack explains every file and names the declaration it comes from.
 
 ## bedrock check

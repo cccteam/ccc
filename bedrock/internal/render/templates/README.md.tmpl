@@ -62,6 +62,14 @@ from `2-env`'s state.
   (`2-env` output `spanner_instance`: {{.Integration}}'s own, the spn instance for {{.SharedInstanceEnvsWrapped}}), GoogleSQL, no schema (the migrations own it). {{.Production}}: deletion and drop
   protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
   incremental one (02:00 UTC), each kept 90 days.
+{{- if .AssetsBucket}}
+- **The assets bucket** `{{.Prefix}}-<env>-gbl-{{.App}}-assets-<project number>`
+  (`{{.AssetsBucket.Declaration}}` names it to the processes that construct the
+  {{.AssetsBucket.Level}} level), in the primary region, uniform access, no public
+  access, unversioned; {{.Production}}'s survives a destroy. The site{{if .JobsReadsAssets}} and the job
+  process{{end}} hold `roles/storage.objectUser` on it; the migrate command gets
+  neither the name nor a grant.
+{{- end}}
 - **Secret containers**, no versions, one per secret the code declares in
   `{{.SecretsFiles}}`, named `{{.Prefix}}-<env>-gbl-{{.App}}-<name>`:
 
@@ -122,6 +130,9 @@ above them.
 | `{{.ServiceName.Name}}` | {{.ServiceName.Level}} | `{{.App}}` / `{{.App}}-migrate`{{if .Jobs}} / `{{.App}}-jobs`{{end}} | yes | yes |{{if .Jobs}} yes |{{end}}
 | `{{.LoggingProject.Name}}` | {{.LoggingProject.Level}} | the environment project | yes | yes |{{if .Jobs}} yes |{{end}}
 | {{.DatabaseVariablesCell}} | {{.Database.Project.Level}} | the database | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
+{{- if .AssetsBucket}}
+| `{{.AssetsBucket.Name}}` | {{.AssetsBucket.Level}} | the assets bucket | yes | |{{if .Jobs}} {{if .JobsReadsAssets}}yes{{end}} |{{end}}
+{{- end}}
 {{- if .Directory}}
 | `{{.HostedDomain.Name}}` | {{.HostedDomain.Level}} | `var.{{.AuthVar}}_hosted_domain` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
 | `{{.GroupPrefix.Name}}` | {{.GroupPrefix.Level}} | `var.{{.AuthVar}}_group_prefix` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
@@ -433,6 +444,9 @@ Per environment, after the first apply:
 
 | Name | Description |
 |---|---|
+{{- if .AssetsBucket}}
+| `assets_bucket` | The assets bucket's name. |
+{{- end}}
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
 | `database` | `{ project, instance, name }`. |
 | `hostnames` | For `2-net`'s host rules, certificate, and DNS. |

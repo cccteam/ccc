@@ -81,6 +81,10 @@ locals {
   own_database  = !(local.is_pr && var.shared_database)
   database_name = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
 
+  # The assets bucket (dataConfig.AssetsBucket): a pull-request stack has its
+  # own, and the environment project's number makes the name unique.
+  assets_bucket_name = "${local.name}-gbl-${local.is_pr ? local.pr_name : local.app}-assets-${local.env.project_number}"
+
   # The job process's Cloud Run job (cmd/jobs), in the primary region, by name
   # and as the Cloud Run API names it: what APP_JOBS_JOB tells the site.
   jobs_job_name = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-${local.primary_region_code}-${local.app}-jobs"
@@ -194,10 +198,16 @@ locals {
     APP_JOBS_JOB = local.jobs_job
   }
 
+  # dataConfig.AssetsBucket: the assets bucket (storage.tf), for the processes that
+  # construct the data level and run the application's own code.
+  assets_env = {
+    APP_ASSETS_BUCKET = google_storage_bucket.assets.name
+  }
+
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
   # error) and APP_CONSOLE_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.site_jobs_env)
+  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.site_jobs_env, local.assets_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them.
   job_env = merge(local.core_env, local.data_env, {
@@ -206,7 +216,7 @@ locals {
 
   # cmd/jobs reads core and data and nothing above them: the job process, the
   # application's own code as a Cloud Run job.
-  jobs_env = merge(local.core_env, local.data_env, {
+  jobs_env = merge(local.core_env, local.data_env, local.assets_env, {
     APP_SERVICE_NAME = "${local.app}-jobs"
   })
 

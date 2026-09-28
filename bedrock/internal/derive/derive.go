@@ -178,6 +178,8 @@ const (
 	RoleCookieKey        Role = "cookie-key"
 	// RoleJobsJob names the job process's Cloud Run job to the site, which runs it.
 	RoleJobsJob Role = "jobs-job"
+	// RoleAssetsBucket names the assets bucket to the processes that construct its level.
+	RoleAssetsBucket Role = "assets-bucket"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID         Role = "client-id"
@@ -192,7 +194,7 @@ const (
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket:
 		return true
 	default:
 		return false
@@ -241,6 +243,10 @@ const (
 	// varJobsJob is the variable a site declares to run the job process: the stack sets
 	// it to the job's resource name and grants the site's identity on the job.
 	varJobsJob = "APP_JOBS_JOB"
+	// varAssetsBucket is the variable an application declares to keep files in Cloud
+	// Storage: the stack creates the bucket, sets the variable to its name and grants the
+	// processes that construct the variable's level on it.
+	varAssetsBucket = "APP_ASSETS_BUCKET"
 )
 
 // wellKnown are the well-known variables by name.
@@ -253,6 +259,7 @@ var wellKnown = map[string]Role{
 	varDatabaseName:     RoleDatabaseName,
 	varPort:             RolePort,
 	varJobsJob:          RoleJobsJob,
+	varAssetsBucket:     RoleAssetsBucket,
 }
 
 // directoryRoles maps the fields of an auth's Directory struct to their roles.

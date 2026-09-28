@@ -63,6 +63,12 @@ from `2-env`'s state.
   prd), GoogleSQL, no schema (the migrations own it). prd: deletion and drop
   protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
   incremental one (02:00 UTC), each kept 90 days.
+- **The assets bucket** `imp-<env>-gbl-harbor-assets-<project number>`
+  (`dataConfig.AssetsBucket` names it to the processes that construct the
+  data level), in the primary region, uniform access, no public
+  access, unversioned; prd's survives a destroy. The site and the job
+  process hold `roles/storage.objectUser` on it; the migrate command gets
+  neither the name nor a grant.
 - **Secret containers**, no versions, one per secret the code declares in
   `pkg/config/data.go`, named `imp-<env>-gbl-harbor-<name>`:
 
@@ -119,6 +125,7 @@ above them.
 | `APP_SERVICE_NAME` | core | `harbor` / `harbor-migrate` / `harbor-jobs` | yes | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes | yes |
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
+| `APP_ASSETS_BUCKET` | data | the assets bucket | yes | | yes |
 | `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |
 | `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
@@ -413,6 +420,7 @@ Per environment, after the first apply:
 
 | Name | Description |
 |---|---|
+| `assets_bucket` | The assets bucket's name. |
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
 | `database` | `{ project, instance, name }`. |
 | `hostnames` | For `2-net`'s host rules, certificate, and DNS. |

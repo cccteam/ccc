@@ -1,6 +1,11 @@
 # What the pipeline reads, and what 2-net reads to route this environment's
 # hostnames. Readable by anything that can read the state bucket; no secrets.
 
+output "assets_bucket" {
+  description = "The assets bucket the site and the job process read and write, as APP_ASSETS_BUCKET names it to them."
+  value       = google_storage_bucket.assets.name
+}
+
 output "backend_service_id" {
   description = "Backend service URI in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>; null for a pull-request stack."
   value       = try(google_compute_backend_service.app[0].id, null)

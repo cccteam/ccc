@@ -139,6 +139,10 @@ type view struct {
 	// JobsJob is the site's variable naming the job process's Cloud Run job, or nil
 	// when the site declares none.
 	JobsJob *derive.Variable
+	// AssetsBucket is the variable naming the assets bucket, or nil when the code
+	// declares none; JobsReadsAssets reports that the job process constructs its level.
+	AssetsBucket    *derive.Variable
+	JobsReadsAssets bool
 	// IdentityLines are the aligned identity lines of the service-accounts header.
 	IdentityLines string
 	// LabelLines are the extra labels, aligned to the derived ones.
@@ -490,6 +494,10 @@ func (v *view) blocks() {
 		identities = append(identities, [2]string{stem + v.Jobs.Name, v.Jobs.Dir + ", the job process (Cloud Run job)"})
 	}
 	v.IdentityLines = aligned("#   ", identities, "  ")
+	v.AssetsBucket = v.byRole(derive.RoleAssetsBucket)
+	if v.AssetsBucket != nil && v.Jobs != nil {
+		v.JobsReadsAssets = v.Jobs.Reads(v.AssetsBucket.Level)
+	}
 
 	keys := make([]string, 0, len(v.P.Labels))
 	width := labelsWidth
