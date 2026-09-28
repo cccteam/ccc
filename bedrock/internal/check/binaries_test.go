@@ -83,3 +83,44 @@ func TestScanBinaries(t *testing.T) {
 		})
 	}
 }
+
+func TestScanBundles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		model derive.Model
+		want  []BundleFinding
+	}{
+		{
+			name: "a bundle the image sets passes",
+			model: derive.Model{Variables: []derive.Variable{
+				{Name: "APP_CONSOLE_DIST", Level: derive.LevelSite, HasDefault: true, Default: "web/dist/console", Image: true},
+			}},
+		},
+		{
+			name: "a bundle the image does not set is found",
+			model: derive.Model{Variables: []derive.Variable{
+				{Name: "APP_CONSOLE_DIST", Level: derive.LevelSite, HasDefault: true, Default: "web/dist/console", Image: true},
+				{Name: "APP_PORTAL_DIST", Level: derive.LevelSite, HasDefault: true, Default: "portal/dist/portal"},
+			}},
+			want: []BundleFinding{{Var: "APP_PORTAL_DIST", Path: "portal/dist/portal"}},
+		},
+		{
+			name: "a site variable that is not a bundle is not looked for",
+			model: derive.Model{Variables: []derive.Variable{
+				{Name: "PORT", Level: derive.LevelSite, HasDefault: true, Default: "8080"},
+				{Name: "APP_UPLOAD_DIR", Level: derive.LevelData, HasDefault: true, Default: "web/dist/x"},
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, scanBundles(&tt.model)); diff != "" {
+				t.Errorf("scanBundles() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

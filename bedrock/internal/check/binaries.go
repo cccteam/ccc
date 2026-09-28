@@ -30,6 +30,31 @@ type BinaryFinding struct {
 	Binary  string
 }
 
+// BundleFinding is a browser bundle the Dockerfile does not set the site's variable
+// for: the site would serve the bundle from the code's default, a path the image does
+// not hold.
+type BundleFinding struct {
+	// Var is the site's variable, Path the bundle it names (web/dist/console).
+	Var  string
+	Path string
+}
+
+// scanBundles reports every browser bundle the site declares (a site-level variable
+// whose default is <workspace>/dist/<bundle>) that the Dockerfile's ENV does not set:
+// the seeded Dockerfile builds each workspace and sets the variable to where it put the
+// bundle, and a workspace added later needs the same by hand.
+func scanBundles(m *derive.Model) []BundleFinding {
+	var findings []BundleFinding
+	for _, v := range m.ByLevel(derive.LevelSite) {
+		if !v.HasDefault || v.Image || !derive.BundleRE.MatchString(v.Default) {
+			continue
+		}
+		findings = append(findings, BundleFinding{Var: v.Name, Path: v.Default})
+	}
+
+	return findings
+}
+
 // scanBinaries reads the Dockerfile at the application root for the binary each job of
 // the stack runs, /<process> (the seeded Dockerfile builds it with go build -o
 // /build/<process> and copies /build into the runtime image), and reports every job

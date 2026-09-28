@@ -138,7 +138,7 @@ The migrate job and the job process carry the hosted domain and group prefix bec
 library refuses to construct without them. Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
-sets it), `APP_CONSOLE_DIST` (where the image put the bundle).
+sets it), `APP_CONSOLE_DIST and APP_PORTAL_DIST` (where the image put the bundle).
 
 ### Secret versions
 

@@ -89,7 +89,8 @@ COPY schema/roles /home/nonroot/schema/roles
 # carries its own release, so no deploy step repeats it. PORT is Cloud Run's; the
 # configuration's default, 8080, is what the image declares.
 ENV APP_VERSION="${VERSION}" \
-    APP_CONSOLE_DIST=/home/nonroot/web/dist/console
+    APP_CONSOLE_DIST=/home/nonroot/web/dist/console \
+    APP_PORTAL_DIST=/home/nonroot/portal/dist/portal
 
 WORKDIR /home/nonroot
 USER nonroot

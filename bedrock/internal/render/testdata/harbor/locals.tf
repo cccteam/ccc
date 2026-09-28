@@ -205,7 +205,7 @@ locals {
   }
 
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
-  # error) and APP_CONSOLE_DIST is where the image put the bundle, a build
+  # error) and APP_CONSOLE_DIST and APP_PORTAL_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
   service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.site_jobs_env, local.assets_env)
 

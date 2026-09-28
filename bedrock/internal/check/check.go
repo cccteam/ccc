@@ -71,14 +71,16 @@ type Report struct {
 	// BuildSecrets are the build secrets the Dockerfile mounts as required that some
 	// environment's placement does not declare.
 	BuildSecrets []BuildSecretFinding
-	// Binaries are the jobs whose command the Dockerfile does not build.
+	// Binaries are the jobs whose command the Dockerfile does not build, and Bundles
+	// the browser bundles whose variable it does not set.
 	Binaries []BinaryFinding
+	Bundles  []BundleFinding
 }
 
 // Clean reports no drift, no refused resource, a sound migration sequence, every
 // required build secret declared and every job's binary built.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -139,6 +141,7 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 		return nil, err
 	}
 	r.Binaries = binaries
+	r.Bundles = scanBundles(m)
 
 	return r, nil
 }
@@ -243,6 +246,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, b := range r.Binaries {
 		fmt.Fprintf(w, "  refused  Dockerfile builds no %s, the command the %s job runs: go build -o /build%s ./%s in the Go stage, with /build copied into the runtime image\n", b.Binary, b.Process, b.Binary, b.Dir)
+	}
+	for _, b := range r.Bundles {
+		fmt.Fprintf(w, "  refused  Dockerfile sets no %s: the bundle %s is built in a browser stage of its workspace, copied under the working directory and named by an ENV %s=<path>, as the seeded Dockerfile does\n", b.Var, b.Path, b.Var)
 	}
 }
 

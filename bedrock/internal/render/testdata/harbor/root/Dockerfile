@@ -56,9 +56,9 @@ RUN go build -trimpath -ldflags="-s -w" -o /build/app . && \
     go build -trimpath -ldflags="-s -w" -o /build/jobs ./cmd/jobs
 
 # ---- Browser: the Angular bundles --------------------------------------------------------
-# bun installs the workspace from web/bun.lock and runs its scripts; Angular's CLI itself
+# bun installs each workspace from its bun.lock and runs its scripts; Angular's CLI itself
 # runs under Node, so the builder is a node image with bun's pinned binary copied in from
-# bun's own image. Nothing else of that image is used.
+# bun's own image. Nothing else of that image is used. One stage per workspace.
 FROM docker.io/oven/bun@sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2 AS bun-binary
 
 FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS web-build-env
@@ -74,6 +74,22 @@ COPY web/ ./
 # build's input, never its output. `bun run build` builds every browser app of the
 # workspace (web/package.json), whose default configuration is production; it
 # writes dist/console.
+RUN bun install --frozen-lockfile && \
+    bun run build
+
+FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS portal-build-env
+
+COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
+
+ENV CI=true
+
+WORKDIR /src/portal
+COPY portal/ ./
+
+# --frozen-lockfile installs exactly what bun.lock records or fails: the lockfile is the
+# build's input, never its output. `bun run build` builds every browser app of the
+# workspace (portal/package.json), whose default configuration is production; it
+# writes dist/portal.
 RUN bun install --frozen-lockfile && \
     bun run build
 
@@ -93,13 +109,15 @@ COPY --from=build-env /build /
 # working directory, and the server serves each bundle from the directory its variable
 # names, so everything sits under the working directory set below.
 COPY --from=web-build-env /src/web/dist/console /home/nonroot/web/dist/console
+COPY --from=portal-build-env /src/portal/dist/portal /home/nonroot/portal/dist/portal
 COPY schema /home/nonroot/schema
 
 # APP_VERSION is the configuration's version input: the image carries its own release, so
 # no deploy step repeats it. PORT is Cloud Run's; the configuration's default, 8080, is what the
 # image declares.
 ENV APP_VERSION="${VERSION}" \
-    APP_CONSOLE_DIST=/home/nonroot/web/dist/console
+    APP_CONSOLE_DIST=/home/nonroot/web/dist/console \
+    APP_PORTAL_DIST=/home/nonroot/portal/dist/portal
 
 WORKDIR /home/nonroot
 USER nonroot

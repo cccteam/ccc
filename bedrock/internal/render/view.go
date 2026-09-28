@@ -191,20 +191,38 @@ type imageView struct {
 	// SchemaDir is the directory the migrate command reads relative to its working
 	// directory (schema: the migrations, the seed, the roles), copied whole.
 	SchemaDir string
-	// WebDir is the browser workspace (web), empty for an application without one;
-	// Bundles are the bundles built there, one per browser app.
-	WebDir  string
-	Bundles []bundle
+	// Workspaces are the browser workspaces, in the order the site's variables name
+	// them, each with the bundles built there (one per browser app); Bundles lists every
+	// bundle across them. An application without a browser has none.
+	Workspaces []workspace
+	Bundles    []bundle
 	// VersionVar is the variable the image sets to the release, empty when the code
 	// declares none.
 	VersionVar string
 }
 
+// workspace is one browser workspace: its root-relative directory (web), the build
+// stage that builds it, and its bundles.
+type workspace struct {
+	Dir     string
+	Stage   string
+	Bundles []bundle
+}
+
 // bundle is one built browser bundle: the variable naming its directory to the server
-// (APP_CONSOLE_DIST) and its path under the workspace (dist/console).
+// (APP_CONSOLE_DIST), its path under the workspace (dist/console), and the workspace and
+// build stage it comes from.
 type bundle struct {
-	Var  string
-	Path string
+	Var       string
+	Path      string
+	Workspace string
+	Stage     string
+}
+
+// stageName names the build stage of a workspace after its directory: web-build-env
+// for web, with a nested directory's slashes as dashes.
+func stageName(dir string) string {
+	return strings.ReplaceAll(dir, "/", "-") + "-build-env"
 }
 
 // pkgPath is a root-relative directory as go build names the package: "." at the root.
@@ -236,12 +254,20 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 		if v.Level != siteLevel || !v.HasDefault {
 			continue
 		}
-		if parts := derive.BundleRE.FindStringSubmatch(v.Default); parts != nil {
-			if iv.WebDir == "" {
-				iv.WebDir = parts[1]
-			}
-			iv.Bundles = append(iv.Bundles, bundle{Var: v.Name, Path: "dist/" + parts[2]})
+		parts := derive.BundleRE.FindStringSubmatch(v.Default)
+		if parts == nil {
+			continue
 		}
+		b := bundle{Var: v.Name, Path: "dist/" + parts[2], Workspace: parts[1], Stage: stageName(parts[1])}
+		iv.Bundles = append(iv.Bundles, b)
+		at := slices.IndexFunc(iv.Workspaces, func(w workspace) bool {
+			return w.Dir == b.Workspace
+		})
+		if at < 0 {
+			iv.Workspaces = append(iv.Workspaces, workspace{Dir: b.Workspace, Stage: b.Stage})
+			at = len(iv.Workspaces) - 1
+		}
+		iv.Workspaces[at].Bundles = append(iv.Workspaces[at].Bundles, b)
 	}
 
 	return iv

@@ -54,32 +54,34 @@ COPY . ./
 RUN go build -trimpath -ldflags="-s -w" -o /build/app {{.Image.SitePkg}} && \
     go build -trimpath -ldflags="-s -w" -o /build/migrate {{.Image.MigratePkg}}{{if .Image.JobsPkg}} && \
     go build -trimpath -ldflags="-s -w" -o /build/jobs {{.Image.JobsPkg}}{{end}}
-{{- if .Image.WebDir}}
+{{- if .Image.Workspaces}}
 
 # ---- Browser: the Angular bundles --------------------------------------------------------
-# bun installs the workspace from {{.Image.WebDir}}/bun.lock and runs its scripts; Angular's CLI itself
+# bun installs {{if gt (len .Image.Workspaces) 1}}each workspace from its bun.lock{{else}}the workspace from {{(index .Image.Workspaces 0).Dir}}/bun.lock{{end}} and runs its scripts; Angular's CLI itself
 # runs under Node, so the builder is a node image with bun's pinned binary copied in from
-# bun's own image. Nothing else of that image is used.
+# bun's own image. Nothing else of that image is used.{{if gt (len .Image.Workspaces) 1}} One stage per workspace.{{end}}
 FROM docker.io/oven/bun@sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2 AS bun-binary
+{{- range .Image.Workspaces}}
 
-FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS web-build-env
+FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS {{.Stage}}
 
 COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
 
 ENV CI=true
 
-WORKDIR /src/{{.Image.WebDir}}
-COPY {{.Image.WebDir}}/ ./
+WORKDIR /src/{{.Dir}}
+COPY {{.Dir}}/ ./
 
 # --frozen-lockfile installs exactly what bun.lock records or fails: the lockfile is the
 # build's input, never its output. `bun run build` builds every browser app of the
-# workspace ({{.Image.WebDir}}/package.json), whose default configuration is production; it
-# writes {{range $i, $b := .Image.Bundles}}{{if $i}} and {{end}}{{$b.Path}}{{end}}.
+# workspace ({{.Dir}}/package.json), whose default configuration is production; it
+# writes {{range $i, $b := .Bundles}}{{if $i}} and {{end}}{{$b.Path}}{{end}}.
 RUN bun install --frozen-lockfile && \
     bun run build
 {{- end}}
+{{- end}}
 
-# ---- Runtime: a static image with the {{if .Image.JobsPkg}}three{{else}}two{{end}} binaries{{if .Image.WebDir}}, the bundles,{{end}} and the schema -----------
+# ---- Runtime: a static image with the {{if .Image.JobsPkg}}three{{else}}two{{end}} binaries{{if .Image.Workspaces}}, the bundles,{{end}} and the schema -----------
 FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566a8d40766b2a4769f33a824
 
 ARG VERSION
@@ -92,10 +94,10 @@ LABEL org.opencontainers.image.title="{{.App}}" \
 COPY --from=build-env /build /
 
 # The migrate command reads {{.Image.SchemaDir}} (the migrations, the seed, the roles) relative to its
-# working directory{{if .Image.WebDir}}, and the server serves each bundle from the directory its variable
+# working directory{{if .Image.Workspaces}}, and the server serves each bundle from the directory its variable
 # names{{end}}, so everything sits under the working directory set below.
 {{- range .Image.Bundles}}
-COPY --from=web-build-env /src/{{$.Image.WebDir}}/{{.Path}} /home/nonroot/{{$.Image.WebDir}}/{{.Path}}
+COPY --from={{.Stage}} /src/{{.Workspace}}/{{.Path}} /home/nonroot/{{.Workspace}}/{{.Path}}
 {{- end}}
 COPY {{.Image.SchemaDir}} /home/nonroot/{{.Image.SchemaDir}}
 
@@ -103,7 +105,7 @@ COPY {{.Image.SchemaDir}} /home/nonroot/{{.Image.SchemaDir}}
 # no deploy step repeats it. {{end}}PORT is Cloud Run's; the configuration's default, 8080, is what the
 # image declares.
 ENV {{if .Image.VersionVar}}{{.Image.VersionVar}}="${VERSION}"{{end}}{{range .Image.Bundles}} \
-    {{.Var}}=/home/nonroot/{{$.Image.WebDir}}/{{.Path}}{{end}}
+    {{.Var}}=/home/nonroot/{{.Workspace}}/{{.Path}}{{end}}
 
 WORKDIR /home/nonroot
 USER nonroot
