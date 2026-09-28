@@ -121,13 +121,15 @@ resource "google_tags_location_tag_binding" "public_invoker" {
   location  = each.value.location
 }
 
-# A tag binding takes a minute or two to reach the policy evaluation, and an
-# invoker grant made before then is refused (both first applies were). The
-# pause is what makes the dependency real.
+# A tag binding takes minutes to reach the policy evaluation, and an invoker
+# grant made before then is refused ("do not belong to a permitted customer").
+# Both first applies were refused, and so were two pull-request stacks after a
+# pause of 120 seconds, so the pause is five minutes. It is paid once, when a
+# stack's services are created; a refusal costs a whole rerun of the build.
 resource "time_sleep" "public_invoker_tag" {
   depends_on = [google_tags_location_tag_binding.public_invoker]
 
-  create_duration = "120s"
+  create_duration = "300s"
 }
 
 resource "google_cloud_run_v2_service_iam_member" "invoker" {
