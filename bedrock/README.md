@@ -1,0 +1,298 @@
+# bedrock
+
+`bedrock` is the command-line tool for the infrastructure of Impulse applications: the
+organization foundation an application deploys into, the application's own stack, the
+pipeline that deploys it, and the operations around a deployment (secrets, hotfix lines,
+repository rules, migration renumbering).
+
+The tool keeps no record of its own. It derives what an application needs from the
+application's own code, through impulse's reader (the config struct tags, the main
+packages, the auths, the generated router, the Dockerfile), and from a placement file that
+records what the code cannot know: the organization's naming prefix, its environments and
+regions, its domains, the bedrock image the pipeline runs. The code and the placement are
+the inputs; the stack and the pipeline are the output, rewritten on every render and
+compared by every check.
+
+## Install
+
+```sh
+go install github.com/cccteam/ccc/bedrock@latest
+```
+
+Until the first release, the lab builds it from a checkout of this repository
+(`go build -o bedrock .` in `ccc/bedrock`) and pins the image built from that tree.
+
+## Vocabulary
+
+- **Organization foundation**: the six layers of the CCC provisioning model, one OpenTofu
+  root each, that every application deploys into: `0-bootstrap` (the state bucket and the
+  boot identity), `1-org` (the folders, the environment projects and the organization
+  policies), `2-shr` (the shared project: the registries, the tools image), `2-spn` (the
+  Spanner instances), `2-net` (the load balancer, the certificates and the hostnames) and
+  `2-env` (per environment: the application identities and their grants, the records
+  bucket, the repository links). Rendered by `bedrock org` from the organization's
+  placement into the organization's infrastructure repository.
+- **Application stack**: the OpenTofu root under the application repository's
+  `infrastructure/` directory (or the one layer under `3-app/` of an infrastructure
+  repository): the Cloud Run services and the migrate job, the database, the secret
+  containers, the backend service, the triggers and the sweep schedule, per environment.
+  Rendered by `bedrock render` from the code and the application's placement.
+- **Placement**: `placement.json` beside the stack. For an application it records the
+  organization's facts the stack needs and the bedrock image the pipeline runs
+  (`bedrockImage`, by digest); for an organization it records the prefix, the domains,
+  the organization and billing ids, the regions, the Spanner configuration, the GitHub
+  organization, the applications and the environment projects.
+- **Environment**: `tst`, `stg` and `prd`, in promotion order. A pull request deploys to
+  the first; a release goes through them in order, each after it is live in the previous
+  one.
+- **Owned file**: a file bedrock writes on every render and compares on every check: the
+  stack's `.tf` files and its README, the pipeline files at the application root
+  (`cloudbuild.yaml`, `cloudbuild-sweep.yaml`) and the generate-time step
+  (`cmd/generate/bedrock.go`). A person never edits one; the code or the placement changes
+  and the file is rendered again.
+- **Seeded file**: a file bedrock writes once when it is absent and then leaves to a
+  person: `terraform.tfvars` (the placement values per environment: the pins, the build
+  secrets, the substitutions), the stack's `.gitignore` and the Dockerfile at the
+  application root.
+- **Pipeline**: `cloudbuild.yaml`, the deploy sequence Cloud Build runs on a pull request's
+  `/gcbrun` comment and on a release tag. Every step but the image build is a `bedrock
+  deploy` command run from the pinned bedrock image; the application customizes it
+  through hooks, build secrets, declared substitutions and its Dockerfile, never by editing
+  the file.
+- **Hook**: a shell script the application commits at `infrastructure/hooks/<stage>.sh`,
+  run at that stage of the pipeline as the deploy identity with the build's facts in its
+  environment. No file, nothing runs.
+- **Deploy identity** and **apply identity**: per application and environment, the
+  service account the pipeline runs as (`<prefix>-<env>-gbl-<app>-deploy`) and the one
+  that applies the stack (`<prefix>-<env>-gbl-<app>-tofu`), both created by `2-env`.
+- **Deployment record**: what a build deployed, written to the environment's records
+  bucket as `<app>/<env>/<release>/<build id>.json`; the next environment's gate reads
+  it, and the pipeline reads the newest one to tell a stale pull-request database.
+- **Release**: a tag `v<major>.<minor>.<patch>` cut by release-please as the release app;
+  the pipeline accepts a release from that author only. A **hotfix line** is the branch
+  `hotfix/<major>.<minor>.x` on which release-please releases the line's next patch
+  versions while the default branch moves on.
+
+## bedrock render
+
+`render` reads the application (its config struct tags, its main packages, its auths, its
+generated router, its Dockerfile) and the placement, and writes the stack: the owned
+files rewritten, the seeded files written when absent.
+
+```sh
+bedrock render                       # from anywhere inside the application repository
+bedrock render --app . --out infrastructure
+bedrock render --placement infrastructure/placement.json
+```
+
+Run from anywhere inside the repository, it finds both directories: the stack is the
+application repository's `infrastructure` directory, or the one application layer under
+`3-app` of an infrastructure root; `--out` overrides. The application is read from the
+repository root when the stack is in its infrastructure directory, else from the working
+directory; `--app` overrides.
+
+What the stack carries comes from declarations in the code: a config variable tagged as
+a secret becomes a Secret Manager container mounted at a pinned version; a directory auth
+becomes the registration variables, the redirect output and the hand steps in the README;
+a main package under `cmd/deployment/migrate` becomes the migrate job; the generated
+router's outlets become the service's paths on the backend. The rendered README of the
+stack explains every file and names the declaration it comes from.
+
+## bedrock check
+
+`check` renders the stack afresh and compares every owned file with the committed one,
+at the stack directory and at the application root. It exits 1 when any differs or is
+missing, listing each with the first line that differs: the drift between the code and
+the committed infrastructure. Seeded files are a person's and are not compared.
+
+```sh
+bedrock check
+bedrock check --app . --dir infrastructure
+```
+
+It also refuses:
+
+- a schema migrations directory, or the seed directory beside it (`schema/devseed`),
+  whose files do not form the sequence the migrate command applies: six-digit indexes, one
+  up file per index, at most one down, contiguous from the lowest present. The pipeline
+  repeats that rule on every build and, in a pull-request build, also refuses a migration
+  modified, renamed or removed against the default branch, and an index the default branch
+  has taken since the branch was cut; `bedrock migration renumber` is the fix it names.
+- an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
+  such a resource replaces every member of its role on each apply, so a pull-request stack
+  applying one would remove the environment's members. A `*_iam_member` adds one member.
+- a build secret the Dockerfile mounts as required (`--mount=type=secret,id=NAME,required=true`)
+  that some environment's `build_secrets` in `terraform.tfvars` does not declare, naming
+  the environments: a release that passed the earlier environments would fail in the
+  image build of the one lacking it. An optional mount passes with nothing said.
+
+The application's infrastructure workflow runs `bedrock check` on every pull request.
+
+## bedrock deploy
+
+`deploy` holds the pipeline's steps, one command each, run from the bedrock image the
+placement pins inside Cloud Build. They share a workspace (`/workspace`, `--workspace`
+overrides): `environment.sh` (the facts resolve exports, then what later steps append),
+`build.json` (the build as Cloud Build describes it), `build-args.sh` (the declared
+substitutions as build arguments) and `revisions.txt` (the revisions the service step
+created). In order:
+
+- `deploy resolve`: reads the build through the Cloud Build API, mints the repository's
+  GitHub token from the Cloud Build connection, and works out the facts: the trigger's
+  kind (a tag's build, or a pull request's, which deploys only to the first environment),
+  the pull request's instruction (the words after its latest `/gcbrun` comment:
+  `shared-db`, `reload-db`, `down`), the image and its tags, whether the migrate job runs
+  and traffic shifts, and whether a stale pull-request database is recreated (a migration
+  the last build applied is no longer in the tree).
+- `deploy validate-release`: for a tag build, the tag belongs to a GitHub Release cut by
+  an accepted release actor, the tagged commit is on the default branch or at the tip of
+  a hotfix line, and the record gate holds: the release is live in the previous
+  environment. A refusal starts with `Build REJECTED` and says why.
+- `deploy check-release`: reads the registry before the image build. Neither tag exists,
+  the build runs; the commit is built and the release tag is not, the release name is
+  added to that build; both exist and agree, the build is reused; the release tag names
+  another build, the run is refused.
+- `deploy migrate`: updates the migrate job to this build's image and runs it to
+  completion, with the seed (`schema/devseed` as data migrations after the schema) where
+  `_SEED` is true: every pull request, and a release build only in the environments the
+  placement's seed list names.
+- `deploy service`: puts a new revision of the service in every region, receiving no
+  traffic yet, after repairing a service a failed earlier deploy left inconsistent; a
+  revision tag, when there is one, names the new revision under its own URL.
+- `deploy shift-traffic`: moves every region to 100 percent on its new revision, keeping
+  the tags other revisions carry; a pull-request revision served under its tag alone
+  leaves the traffic where it is.
+- `deploy record`: writes the deployment record once traffic has moved.
+
+The pipeline's hooks run between them: `before-build`, `before-migrate`, `after-traffic`
+and `after-down`, each a script the application commits under `infrastructure/hooks/`.
+
+## bedrock secret
+
+Secrets are containers in Secret Manager, one per variable the code declares as a secret
+(and one per build-time secret the placement declares), mounted by the stack at a pinned
+version. Two commands move them along.
+
+```sh
+bedrock secret add tst APP_MAIL_API_KEY --from-file key.txt     # a new version, the container created when absent
+bedrock secret pin tst APP_MAIL_API_KEY 2                       # terraform.tfvars secret_versions.tst
+```
+
+`secret add` stores a value as a new version of the container the stack names for the
+variable in the environment (`<prefix>-<env>-gbl-<app>-<kebab name>`), creating the
+container when the project has none by that name, so an operator puts the value in place
+ahead of the release that first reads it; the stack's next apply adopts the container.
+The value is read from `--from-file` (a path, or `-` for standard input), from standard
+input when it is not a terminal, else asked for at the terminal without echo. Nothing is
+pinned or rolled out; the command prints the pin to make.
+
+`secret pin` writes the version an environment runs into the application layer's
+`terraform.tfvars` under `secret_versions.<env>.<VARIABLE>`, after asking Secret Manager
+whether the version exists and is enabled. The pull request's plan shows the revision
+template change and nothing elsewhere; after the apply the release is re-run in the
+environment to move traffic to the new revision. An argument left out is asked for at
+the terminal with the choices listed.
+
+Both find the rest from where they run: the infrastructure root, the application, the
+environment project (by its labels) and the container (by its labels and the variable);
+`--dir`, `--app`, `--project` and `--container` override.
+
+## bedrock migration renumber
+
+`migration renumber` moves the migrations this branch added, up and down files together,
+to follow the default branch's highest index with no gap, keeping their order; the seed
+directory beside the migrations is renumbered the same way against its own sequence. A
+migration the default branch holds is never touched: git says which files are the
+branch's own, and the default branch is read from origin's copy of it when the repository
+has one, else from the local branch, so fetch first. A tracked file moves with `git mv`;
+an untracked one is renamed on disk.
+
+```sh
+bedrock migration renumber          # by hand
+go generate ./...                   # through the rendered cmd/generate/bedrock.go, before the generators
+```
+
+It closes the two holes the pipeline's guard refuses a pull request for: an index the
+default branch took since the branch was cut (the branch's migration moves up), and a gap
+(the branch's migration moves down). Nothing to do prints nothing.
+
+## bedrock hotfix
+
+`hotfix start <release>` starts the hotfix line of a release: the branch
+`hotfix/<major>.<minor>.x` at the release's commit, on which release-please releases
+fixes as the line's next patch versions while the default branch moves on. The pipeline's
+release check accepts a tag at the tip of such a line whose base on the default branch
+carries a release tag of the same line.
+
+## bedrock repository
+
+`repository protect` puts the release and branch rules on the application's GitHub
+repository, the one the command runs in, addressed through its origin remote: the
+default branch and the hotfix lines change by pull request only, and a `v*` tag is
+created by the release app alone (with the repository admins), which is what makes the
+pipeline's tag check sound.
+
+## bedrock domain
+
+`domain add <domain>` puts a domain registration into the network layer's placement,
+where the layer's `domains.tf` registers it through Cloud Domains.
+
+## bedrock org
+
+`org` renders and checks the organization foundation from the organization's placement.
+
+```sh
+bedrock org new ../infrastructure --placement placement.json   # a foundation for an organization that has none
+bedrock org render                                              # after a placement change
+bedrock org check                                               # the committed layers against the placement
+bedrock org register quill                                      # an application joins the foundation
+```
+
+`org new` renders the six layers, each with its `.tf` files, its README and its seeded
+`terraform.tfvars`, and at the root the README, the journal, the ignore rules and the
+OpenTofu version, then prints the hand steps the model needs before the first apply (the
+seed, the bootstrap apply on local state and its migration into the bucket, the billing
+grants). Everything the seed decides is `REPLACEME` in the seeded values until it has run.
+
+`org render` rewrites the owned files from the placement and seeds the absent ones;
+`org check` compares them and exits 1 on drift.
+
+`org register <app>` adds an application: its code goes into `placement.json`'s
+applications, each layer's `applications.auto.tfvars` is rendered from it (2-env's list,
+2-shr's pushers and pullers, 2-spn's database admins, 2-net's hostnames with the
+wildcard for pull-request environments), and the apply sequence is printed: 2-env for
+every environment, then for every environment but the last again (each grants the next
+environment's deploy identity read on its records bucket, from state the first pass did
+not have), then 2-shr and 2-spn, then the application's own stack per environment, then
+2-net. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
+decides.
+
+## The application's pipeline
+
+The pipeline a render writes runs on two triggers per environment: a pull request's
+`/gcbrun` comment (the first environment only) and a release tag (every environment, in
+promotion order, the later ones by a person's approval where the placement says so). A
+pull-request build stands its own environment up under `<app>-pr<N>` on the pull-request
+hostname, with its own database (or the environment's, on `/gcbrun shared-db`), and tears
+it down on `/gcbrun down` or by the hourly sweep once the pull request closes. The build
+talks back on the pull request: a deployment the sidebar shows, a comment with the release
+and the database mode, the guard's refusals.
+
+The guards run before anything deploys: the migration guard (the sequence, never
+modified, no gaps, and against the default branch for a pull request; a refusal names
+`bedrock migration renumber` as the fix, and for a modified committed seed file a new
+file after it with `/gcbrun reload-db`), and the plan guard (a pull-request stack may only
+create and change what carries its own number).
+
+## Development
+
+The tool is a Go module in this repository, `ccc/bedrock`, with `main.go` at its root:
+`go build -o bedrock .` there. Its packages: `internal/derive` reads the application into
+a model, `internal/render` writes the stack from templates (goldens under
+`internal/render/testdata/<application>`), `internal/check` compares, `internal/deploy`
+holds the pipeline's steps over the Cloud Build, Cloud Run, Artifact Registry and Cloud
+Storage APIs, `internal/org` renders the foundation, `internal/secret`, `internal/hotfix`,
+`internal/protect` and `internal/migration` hold the operations, and `internal/cli` is the
+command surface. Every rendered file carries a comment naming what it comes from; a
+change to a template is a change to the goldens, and the render test reads every golden
+file, comments included.
