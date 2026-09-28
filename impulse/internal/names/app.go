@@ -1,6 +1,7 @@
 package names
 
 import (
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
@@ -63,6 +64,30 @@ var (
 // envTemplates are the environment template names an application may carry.
 var envTemplates = map[string]bool{".envrc.template": true, ".env.template": true, ".env.example": true}
 
+// browserSource reports a file of a browser application's source tree that may show
+// the application's name as a title: the page, and the components.
+func browserSource(rel string) bool {
+	base := path.Base(rel)
+	if !strings.Contains(rel, "/src/") {
+		return false
+	}
+
+	return base == "index.html" || strings.HasSuffix(base, ".component.ts") || strings.HasSuffix(base, ".component.html")
+}
+
+// Display is the application name as a title: each hyphenated word capitalized, the
+// hyphens spaces (field-ops shows as Field Ops).
+func Display(name string) string {
+	words := strings.Split(name, "-")
+	for i, w := range words {
+		if w != "" {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+
+	return strings.Join(words, " ")
+}
+
 // RenameApp substitutes the application name where a template carries its candidate's
 // name as the application's: the workspace name in package.json and bun.lock
 // (<candidate>-web, <candidate>-<site>-web), the environment template's values that name
@@ -106,6 +131,16 @@ func RenameApp(rel, text, from, to string) string {
 	case rel == "README.md":
 		if rest, ok := strings.CutPrefix(text, "# "+from+"\n"); ok {
 			return "# " + to + "\n" + rest
+		}
+
+		return text
+	case browserSource(rel):
+		// The browser application shows the application's name as a title: the page
+		// title, the component's title field, the login card's heading. The candidate's
+		// name stands there in display form (Solo), as a whole HTML text or string.
+		fromTitle, toTitle := Display(from), Display(to)
+		for _, q := range []string{">%s<", "'%s'", `"%s"`} {
+			text = strings.ReplaceAll(text, fmt.Sprintf(q, fromTitle), fmt.Sprintf(q, toTitle))
 		}
 
 		return text

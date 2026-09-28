@@ -1,9 +1,12 @@
 package transition
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"go/format"
+	"io/fs"
 	"os"
 	"path"
 	"regexp"
@@ -130,6 +133,9 @@ func (f AuthFlavor) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 		return nil, err
 	}
 	if err := f.rewritePrograms(a, cur, ch); err != nil {
+		return nil, err
+	}
+	if err := f.lowercaseRoles(a, ch); err != nil {
 		return nil, err
 	}
 	if err := au.tagProcfile(a, ch); err != nil {
@@ -651,6 +657,9 @@ func (f AuthFlavor) rewritePrograms(a *app.App, cur *app.Auth, ch *Change) error
 		if n == 0 {
 			continue
 		}
+		// The program's comment on the outlet names the sessions the base's password auth
+		// served; the directory serves them now.
+		edited = bytes.ReplaceAll(edited, []byte("the "+f.Name+" auth's password sessions"), []byte("the "+f.Name+" auth's directory sessions"))
 		if err := os.WriteFile(a.Abs(g.File), edited, mode); err != nil {
 			return errors.Wrap(err, "os.WriteFile()")
 		}
@@ -658,6 +667,125 @@ func (f AuthFlavor) rewritePrograms(a *app.App, cur *app.Auth, ch *Change) error
 	}
 
 	return nil
+}
+
+// lowercaseRoles renames the roles of a fresh Google directory-run auth to lowercase
+// wherever the base names them: the directory's groups assign roles by name, a group
+// email is lowercase by nature, so session.GoogleRoleSync lowercases every derived name
+// and the store compares them verbatim; a role kept in the base's mixed case would never
+// be held and every login refused with no_roles. Only a fresh auth is renamed: a
+// swapped one carries roles a person authored, and the check names them instead.
+func (f AuthFlavor) lowercaseRoles(a *app.App, ch *Change) error {
+	if !f.Fresh || f.Flavor != FlavorOIDCGoogle || f.Authority != AuthorityDirectory {
+		return nil
+	}
+	rolesFile := path.Join("schema/roles", f.Name+".json")
+	names, err := roleNamesOf(a, rolesFile)
+	if err != nil {
+		return err
+	}
+	var renamed []string
+	for _, name := range names {
+		if name != strings.ToLower(name) {
+			renamed = append(renamed, name)
+		}
+	}
+	if len(renamed) == 0 {
+		return nil
+	}
+	files, err := roleNamingFiles(a, rolesFile)
+	if err != nil {
+		return err
+	}
+	var edited []string
+	for _, rel := range files {
+		src, mode, err := readFile(a, rel)
+		if err != nil {
+			return err
+		}
+		text := string(src)
+		for _, name := range renamed {
+			text = roleWordRE(name).ReplaceAllString(text, strings.ToLower(name))
+		}
+		if text == string(src) {
+			continue
+		}
+		if err := os.WriteFile(a.Abs(rel), []byte(text), mode); err != nil {
+			return errors.Wrap(err, "os.WriteFile()")
+		}
+		edited = append(edited, rel)
+	}
+	lowered := make([]string, 0, len(renamed))
+	for _, name := range renamed {
+		lowered = append(lowered, name+" to "+strings.ToLower(name))
+	}
+	ch.didf("%s: the %s auth's role(s) renamed %s, since the directory's groups assign roles by lowercase name (session.GoogleRoleSync) and a role in another case is never held", strings.Join(edited, ", "), f.Name, strings.Join(lowered, ", "))
+
+	return nil
+}
+
+// roleNamesOf reads the role names the roles file defines, global and domain alike.
+func roleNamesOf(a *app.App, rolesFile string) ([]string, error) {
+	data, err := os.ReadFile(a.Abs(rolesFile))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	var doc struct {
+		Roles map[string][]struct {
+			Name string `json:"name"`
+		} `json:"roles"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, errors.Wrapf(err, "%s is not a roles file", rolesFile)
+	}
+	var names []string
+	for _, scope := range []string{"global", "domain"} {
+		for _, role := range doc.Roles[scope] {
+			names = append(names, role.Name)
+		}
+	}
+
+	return names, nil
+}
+
+// readmeFile is the application's root README, and bootstrapUsersFile the development
+// identities the bootstrap seeds, with their roles.
+const (
+	readmeFile         = "README.md"
+	bootstrapUsersFile = "cmd/bootstrap/users.json"
+)
+
+// roleNamingFiles lists the files that name a role beside the roles file: the bootstrap
+// identities, the environment template, the README and the test harnesses.
+func roleNamingFiles(a *app.App, rolesFile string) ([]string, error) {
+	tests, err := fs.Glob(os.DirFS(a.Root), "test/*/*_test.go")
+	if err != nil {
+		return nil, errors.Wrap(err, "fs.Glob()")
+	}
+	files := make([]string, 0, 4+len(tests))
+	files = append(files, rolesFile, bootstrapUsersFile, a.EnvTemplate, readmeFile)
+	files = append(files, tests...)
+	var present []string
+	for _, rel := range files {
+		if rel == "" {
+			continue
+		}
+		if _, err := os.Stat(a.Abs(rel)); err == nil {
+			present = append(present, rel)
+		}
+	}
+
+	return present, nil
+}
+
+// roleWordRE matches the role name as a whole word, so a role that is the prefix of
+// another is left alone.
+func roleWordRE(name string) *regexp.Regexp {
+	return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
 }
 
 // oidcRoutes is the directory's login block in the base router's shape.
@@ -706,6 +834,9 @@ func (f AuthFlavor) Meaning() string {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, item)
 	}
 	if f.Fresh {
+		if f.Flavor == FlavorOIDCGoogle && f.Authority == AuthorityDirectory {
+			b.WriteString("\nRole names are lowercase: the directory's groups assign roles by name, a group email is lowercase by nature, and `session.GoogleRoleSync` lowercases every derived name while the store compares them verbatim, so a role in any other case is never held and its logins are refused with `no_roles`. The base's roles were renamed to lowercase in the roles file, the bootstrap identities, the environment template and the tests; name every new role in lowercase.\n")
+		}
 		b.WriteString("\nNo data consequence: the auth was created moments ago, so nobody signs in again and no role assignment existed to drop; the bootstrap's development identities are the only people it knows.\n")
 
 		return b.String()
