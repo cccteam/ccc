@@ -472,8 +472,10 @@ const (
 		session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, groups),
 `
 	googleGroupsConstruction = `	// The directory's groups are the source of role membership, read through the Admin
-	// SDK. Under the session library's skipAuth build tag the lookup is simulated: every
-	// login is in the groups APP_ROLES names.
+	// SDK as the runtime identity (keyless domain-wide delegation: the service account
+	// signs for itself as the administrator), or with a service-account key when one is
+	// given. Under the session library's skipAuth build tag the lookup is simulated:
+	// every login is in the groups APP_ROLES names.
 	groups, err := googlegroups.NewDirectory(ctx, settings.Directory.AdminCredentials, settings.Directory.AdminSubject)
 	if err != nil {
 		return nil, errors.Wrap(err, "googlegroups.NewDirectory()")
@@ -484,9 +486,12 @@ const (
 	// <GroupPrefix><role>@<domain> assigns <role>. It is never empty, since it is the only
 	// filter between role groups and the rest of the directory.
 	GroupPrefix string
-	// AdminCredentials is the service-account key (JSON) with domain-wide delegation for
-	// the Admin SDK's groups scope, and AdminSubject the account it impersonates, which
-	// holds a Groups-read privilege. Neither is read under the skipAuth build tag.
+	// AdminSubject is the administrator the groups lookup impersonates through domain-wide
+	// delegation, which holds a Groups-read privilege. On Google Cloud the runtime
+	// identity signs for itself (keyless), so AdminCredentials, a service-account key
+	// (JSON) with domain-wide delegation for the Admin SDK's groups scope, is for a
+	// runtime outside Google Cloud and stays empty otherwise. Neither is read under the
+	// skipAuth build tag.
 	AdminCredentials []byte
 	AdminSubject     string
 `
@@ -971,7 +976,7 @@ func (au Auth) writeEnvTemplate(a *app.App, ch *Change) error {
 	if au.Flavor == FlavorOIDCGoogle {
 		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy;\n# a script following the callback (a curl walkthrough) uses the server's own host and port.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n# APP_%[1]s_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the\n# simulated directory presents it too, so it is set in development.\nexport APP_%[1]s_OIDC_HOSTED_DOMAIN=example.com\n", upper, au.Name)
 		if au.Authority == AuthorityDirectory {
-			fmt.Fprintf(&b, "# APP_%[1]s_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>\n# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),\n# so it is set in development.\nexport APP_%[1]s_OIDC_GROUP_PREFIX=%[2]s-\n# The Admin SDK service account that reads the groups: a key with domain-wide delegation for\n# the groups scope, and the admin it impersonates. Unread under the simulated directory.\n# export APP_%[1]s_OIDC_ADMIN_CREDENTIALS=\n# export APP_%[1]s_OIDC_ADMIN_SUBJECT=\n", upper, au.Name)
+			fmt.Fprintf(&b, "# APP_%[1]s_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>\n# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),\n# so it is set in development.\nexport APP_%[1]s_OIDC_GROUP_PREFIX=%[2]s-\n# The administrator the groups lookup impersonates through domain-wide delegation. On Google\n# Cloud the runtime identity signs for itself, keyless; elsewhere a service-account key with\n# delegation for the groups scope goes in ADMIN_CREDENTIALS. Unread under the simulated directory.\n# export APP_%[1]s_OIDC_ADMIN_SUBJECT=\n# export APP_%[1]s_OIDC_ADMIN_CREDENTIALS=\n", upper, au.Name)
 		}
 	} else {
 		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_ISSUER_URL=\n# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy;\n# a script following the callback (a curl walkthrough) uses the server's own host and port.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n", upper, au.Name)
@@ -1039,7 +1044,7 @@ func (au Auth) oidcMeaning() string {
 	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable %s; cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. Its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), anchor, au.Name, au.Name, au.Pascal(), au.Name, directory)
 	switch {
 	case au.Authority == AuthorityDirectory && au.Flavor == FlavorOIDCGoogle:
-		fmt.Fprintf(&b, "Role membership is the directory's (`session.GoogleRoleSync`): every login reconciles the person's roles to the Google Groups the directory places them in, a group named `<prefix><role>@<domain>` assigning `<role>`, and removes any role no group names; a login in no role group is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory's groups assign them. The groups are read through the Admin SDK (`googlegroups.NewDirectory`, a service-account key with domain-wide delegation and the admin it impersonates); under the session library's `skipAuth` tag the lookup is simulated and `APP_ROLES` names the groups every login is in. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
+		fmt.Fprintf(&b, "Role membership is the directory's (`session.GoogleRoleSync`): every login reconciles the person's roles to the Google Groups the directory places them in, a group named `<prefix><role>@<domain>` assigning `<role>`, and removes any role no group names; a login in no role group is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory's groups assign them. The groups are read through the Admin SDK (`googlegroups.NewDirectory`) as the runtime identity, which signs for itself as the administrator it impersonates through domain-wide delegation (keyless; grant the service account delegation for the groups scope in the Workspace admin console and `roles/iam.serviceAccountTokenCreator` on itself, which the stack does), or with a service-account key outside Google Cloud; under the session library's `skipAuth` tag the lookup is simulated and `APP_ROLES` names the groups every login is in. Name every role in lowercase: the groups assign roles by lowercase name. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
 	case au.Authority == AuthorityDirectory:
 		fmt.Fprintf(&b, "Role membership is the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory assigns them. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
 	default:
