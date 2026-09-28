@@ -69,6 +69,14 @@ from `2-env`'s state.
   access, unversioned; prd's survives a destroy. The site and the job
   process hold `roles/storage.objectUser` on it; the migrate command gets
   neither the name nor a grant.
+- **The task queue** `imp-<env>-uc1-harbor-tasks`
+  (`dataConfig.TasksQueue` names it to the processes that construct the
+  data level), in the primary region, `var.tasks_max_concurrent` tasks
+  in flight and `var.tasks_max_attempts` attempts each. The site and the
+  job process hold `roles/cloudtasks.enqueuer` on it and
+  `roles/iam.serviceAccountUser` on their own account, so a task carries the
+  enqueuer's OIDC token for the call back. A pull-request stack enqueues on
+  tst's queue: a deleted queue's name stays reserved for seven days.
 - **Secret containers**, no versions, one per secret the code declares in
   `pkg/config/data.go`, named `imp-<env>-gbl-harbor-<name>`:
 
@@ -126,6 +134,7 @@ above them.
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes | yes |
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
 | `APP_ASSETS_BUCKET` | data | the assets bucket | yes | | yes |
+| `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |
 | `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |
 | `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
@@ -410,6 +419,8 @@ Per environment, after the first apply:
 | `placeholder_image` | Image the services and job are created with. | `string` | `us-docker.pkg.dev/cloudrun/container/hello` | no |
 | `secret_versions` | Pinned secret version per environment per variable. | `map(map(string))` | all empty | no |
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
+| `tasks_max_attempts` | Attempts per task of the queue. | `number` | `5` | no |
+| `tasks_max_concurrent` | Tasks of the queue in flight at once. | `number` | `10` | no |
 | `staff_oidc_admin_subject` | Impersonated Workspace administrator, per environment. | `map(string)` | all empty | no |
 | `staff_oidc_client_id` | OAuth client ID, per environment. | `map(string)` | all empty | no |
 | `staff_oidc_group_prefix` | Prefix of the role groups. | `string` | `"staff-"` | no |
@@ -431,6 +442,7 @@ Per environment, after the first apply:
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers harbor. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per region code: `name`, `region`, `uri`. |
+| `tasks_queue` | The task queue's resource name. |
 | `staff_oidc_redirect_url` | The redirect URI to register on the OAuth client. |
 | `substitutions` | What the triggers pass to `cloudbuild.yaml`. |
 | `triggers` | `{ version, pr }` trigger IDs (`pr` null outside tst). |

@@ -180,6 +180,8 @@ const (
 	RoleJobsJob Role = "jobs-job"
 	// RoleAssetsBucket names the assets bucket to the processes that construct its level.
 	RoleAssetsBucket Role = "assets-bucket"
+	// RoleTasksQueue names the task queue to the processes that construct its level.
+	RoleTasksQueue Role = "tasks-queue"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID         Role = "client-id"
@@ -194,7 +196,7 @@ const (
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue:
 		return true
 	default:
 		return false
@@ -247,6 +249,11 @@ const (
 	// Storage: the stack creates the bucket, sets the variable to its name and grants the
 	// processes that construct the variable's level on it.
 	varAssetsBucket = "APP_ASSETS_BUCKET"
+	// varTasksQueue is the variable an application declares to enqueue Cloud Tasks: the
+	// stack creates the queue, sets the variable to its resource name and grants the
+	// processes that construct the variable's level to enqueue on it and to sign as
+	// themselves for the call back.
+	varTasksQueue = "APP_TASKS_QUEUE"
 )
 
 // wellKnown are the well-known variables by name.
@@ -260,6 +267,7 @@ var wellKnown = map[string]Role{
 	varPort:             RolePort,
 	varJobsJob:          RoleJobsJob,
 	varAssetsBucket:     RoleAssetsBucket,
+	varTasksQueue:       RoleTasksQueue,
 }
 
 // directoryRoles maps the fields of an auth's Directory struct to their roles.

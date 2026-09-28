@@ -109,6 +109,20 @@ variable "jobs_resources" {
   }
 }
 {{- end}}
+{{- if .TasksQueue}}
+
+variable "tasks_max_concurrent" {
+  description = "How many tasks of the queue ({{.TasksQueue.Name}}) Cloud Tasks dispatches at once."
+  type        = number
+  default     = 10
+}
+
+variable "tasks_max_attempts" {
+  description = "How many times Cloud Tasks attempts a task of the queue before giving it up, the first try included."
+  type        = number
+  default     = 5
+}
+{{- end}}
 
 variable "substitutions" {
   description = <<-EOT

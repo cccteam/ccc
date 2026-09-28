@@ -193,4 +193,8 @@ type dataConfig struct {
 
 	// AssetsBucket is the Cloud Storage bucket the application's files live in, by name.
 	AssetsBucket string `env:"APP_ASSETS_BUCKET"`
+
+	// TasksQueue is the Cloud Tasks queue the application enqueues its deferred work on,
+	// as the Cloud Tasks API names it (projects/<project>/locations/<region>/queues/<name>).
+	TasksQueue string `env:"APP_TASKS_QUEUE"`
 }

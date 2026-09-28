@@ -56,3 +56,5 @@ build_secrets = {
 #   jobs_timeout             = "1800s"
 #   jobs_retries             = 0
 #   jobs_resources           = cpu 1, memory 512Mi
+#   tasks_max_concurrent     = 10
+#   tasks_max_attempts       = 5

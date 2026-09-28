@@ -106,6 +106,18 @@ variable "jobs_resources" {
   }
 }
 
+variable "tasks_max_concurrent" {
+  description = "How many tasks of the queue (APP_TASKS_QUEUE) Cloud Tasks dispatches at once."
+  type        = number
+  default     = 10
+}
+
+variable "tasks_max_attempts" {
+  description = "How many times Cloud Tasks attempts a task of the queue before giving it up, the first try included."
+  type        = number
+  default     = 5
+}
+
 variable "substitutions" {
   description = <<-EOT
     Extra trigger substitutions per environment, for the application's hooks

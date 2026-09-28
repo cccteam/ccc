@@ -95,6 +95,11 @@ output "staff_oidc_redirect_url" {
   value       = local.redirect_url
 }
 
+output "tasks_queue" {
+  description = "The task queue the site and the job process enqueue on, as APP_TASKS_QUEUE names it to them; a pull-request stack's is tst's."
+  value       = local.tasks_queue
+}
+
 output "substitutions" {
   description = "The substitutions the version trigger passes to cloudbuild.yaml, which a hand-submitted tag build passes too (_PR_NUMBER empty: no pull request). The pull-request trigger passes the same without _PR_NUMBER, which its event supplies."
   value       = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })

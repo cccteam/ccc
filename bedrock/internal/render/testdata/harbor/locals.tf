@@ -85,6 +85,11 @@ locals {
   # own, and the environment project's number makes the name unique.
   assets_bucket_name = "${local.name}-gbl-${local.is_pr ? local.pr_name : local.app}-assets-${local.env.project_number}"
 
+  # The task queue (dataConfig.TasksQueue), by name and as the Cloud Tasks API
+  # names it: tst's for a pull-request stack, which enqueues on it (tasks.tf).
+  tasks_queue_name = "${local.name}-${local.primary_region_code}-${local.app}-tasks"
+  tasks_queue      = "projects/${local.project_id}/locations/${local.primary_region}/queues/${local.tasks_queue_name}"
+
   # The job process's Cloud Run job (cmd/jobs), in the primary region, by name
   # and as the Cloud Run API names it: what APP_JOBS_JOB tells the site.
   jobs_job_name = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-${local.primary_region_code}-${local.app}-jobs"
@@ -204,10 +209,16 @@ locals {
     APP_ASSETS_BUCKET = google_storage_bucket.assets.name
   }
 
+  # dataConfig.TasksQueue: the task queue (tasks.tf), for the processes that
+  # construct the data level and run the application's own code.
+  tasks_env = {
+    APP_TASKS_QUEUE = local.tasks_queue
+  }
+
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
   # error) and APP_CONSOLE_DIST and APP_PORTAL_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.site_jobs_env, local.assets_env)
+  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.site_jobs_env, local.assets_env, local.tasks_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them.
   job_env = merge(local.core_env, local.data_env, {
@@ -216,7 +227,7 @@ locals {
 
   # cmd/jobs reads core and data and nothing above them: the job process, the
   # application's own code as a Cloud Run job.
-  jobs_env = merge(local.core_env, local.data_env, local.assets_env, {
+  jobs_env = merge(local.core_env, local.data_env, local.assets_env, local.tasks_env, {
     APP_SERVICE_NAME = "${local.app}-jobs"
   })
 

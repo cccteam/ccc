@@ -70,6 +70,16 @@ from `2-env`'s state.
   process{{end}} hold `roles/storage.objectUser` on it; the migrate command gets
   neither the name nor a grant.
 {{- end}}
+{{- if .TasksQueue}}
+- **The task queue** `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-tasks`
+  (`{{.TasksQueue.Declaration}}` names it to the processes that construct the
+  {{.TasksQueue.Level}} level), in the primary region, `var.tasks_max_concurrent` tasks
+  in flight and `var.tasks_max_attempts` attempts each. The site{{if .JobsReadsTasks}} and the
+  job process{{end}} hold `roles/cloudtasks.enqueuer` on it and
+  `roles/iam.serviceAccountUser` on their own account, so a task carries the
+  enqueuer's OIDC token for the call back. A pull-request stack enqueues on
+  {{.Integration}}'s queue: a deleted queue's name stays reserved for seven days.
+{{- end}}
 - **Secret containers**, no versions, one per secret the code declares in
   `{{.SecretsFiles}}`, named `{{.Prefix}}-<env>-gbl-{{.App}}-<name>`:
 
@@ -132,6 +142,9 @@ above them.
 | {{.DatabaseVariablesCell}} | {{.Database.Project.Level}} | the database | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
 {{- if .AssetsBucket}}
 | `{{.AssetsBucket.Name}}` | {{.AssetsBucket.Level}} | the assets bucket | yes | |{{if .Jobs}} {{if .JobsReadsAssets}}yes{{end}} |{{end}}
+{{- end}}
+{{- if .TasksQueue}}
+| `{{.TasksQueue.Name}}` | {{.TasksQueue.Level}} | the task queue | yes | |{{if .Jobs}} {{if .JobsReadsTasks}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .Directory}}
 | `{{.HostedDomain.Name}}` | {{.HostedDomain.Level}} | `var.{{.AuthVar}}_hosted_domain` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
@@ -432,6 +445,10 @@ Per environment, after the first apply:
 | `placeholder_image` | Image the services and job are created with. | `string` | `{{.P.PlaceholderImage}}` | no |
 | `secret_versions` | Pinned secret version per environment per variable. | `map(map(string))` | all empty | no |
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
+{{- if .TasksQueue}}
+| `tasks_max_attempts` | Attempts per task of the queue. | `number` | `5` | no |
+| `tasks_max_concurrent` | Tasks of the queue in flight at once. | `number` | `10` | no |
+{{- end}}
 {{- if .Directory}}
 | `{{.AuthVar}}_admin_subject` | Impersonated Workspace administrator, per environment. | `map(string)` | all empty | no |
 | `{{.AuthVar}}_client_id` | OAuth client ID, per environment. | `map(string)` | all empty | no |
@@ -459,6 +476,9 @@ Per environment, after the first apply:
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers {{.App}}. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per region code: `name`, `region`, `uri`. |
+{{- if .TasksQueue}}
+| `tasks_queue` | The task queue's resource name. |
+{{- end}}
 {{- if .Directory}}
 | `{{.AuthVar}}_redirect_url` | The redirect URI to register on the OAuth client. |
 {{- end}}

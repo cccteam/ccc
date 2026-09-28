@@ -143,6 +143,10 @@ type view struct {
 	// declares none; JobsReadsAssets reports that the job process constructs its level.
 	AssetsBucket    *derive.Variable
 	JobsReadsAssets bool
+	// TasksQueue is the variable naming the task queue, or nil when the code declares
+	// none; JobsReadsTasks reports that the job process constructs its level.
+	TasksQueue     *derive.Variable
+	JobsReadsTasks bool
 	// IdentityLines are the aligned identity lines of the service-accounts header.
 	IdentityLines string
 	// LabelLines are the extra labels, aligned to the derived ones.
@@ -172,6 +176,13 @@ const (
 	jobsRetries = "0"
 	jobsCPU     = "1"
 	jobsMemory  = "512Mi"
+)
+
+// The task queue's defaults (var.tasks_max_concurrent, var.tasks_max_attempts): ten
+// tasks in flight, five attempts.
+const (
+	tasksMaxConcurrent = "10"
+	tasksMaxAttempts   = "5"
 )
 
 // numberWords spell the small counts the prose uses.
@@ -520,10 +531,7 @@ func (v *view) blocks() {
 		identities = append(identities, [2]string{stem + v.Jobs.Name, v.Jobs.Dir + ", the job process (Cloud Run job)"})
 	}
 	v.IdentityLines = aligned("#   ", identities, "  ")
-	v.AssetsBucket = v.byRole(derive.RoleAssetsBucket)
-	if v.AssetsBucket != nil && v.Jobs != nil {
-		v.JobsReadsAssets = v.Jobs.Reads(v.AssetsBucket.Level)
-	}
+	v.declarations()
 
 	keys := make([]string, 0, len(v.P.Labels))
 	width := labelsWidth
@@ -555,7 +563,26 @@ func (v *view) blocks() {
 			[2]string{"jobs_resources", "cpu " + jobsCPU + ", memory " + jobsMemory},
 		)
 	}
+	if v.TasksQueue != nil {
+		restated = append(restated,
+			[2]string{"tasks_max_concurrent", tasksMaxConcurrent},
+			[2]string{"tasks_max_attempts", tasksMaxAttempts},
+		)
+	}
 	v.RestatedDefaults = aligned("#   ", restated, " = ")
+}
+
+// declarations finds the resources the code declares by a well-known variable (the
+// assets bucket, the task queue) and whether the job process constructs their levels.
+func (v *view) declarations() {
+	v.AssetsBucket = v.byRole(derive.RoleAssetsBucket)
+	if v.AssetsBucket != nil && v.Jobs != nil {
+		v.JobsReadsAssets = v.Jobs.Reads(v.AssetsBucket.Level)
+	}
+	v.TasksQueue = v.byRole(derive.RoleTasksQueue)
+	if v.TasksQueue != nil && v.Jobs != nil {
+		v.JobsReadsTasks = v.Jobs.Reads(v.TasksQueue.Level)
+	}
 }
 
 // Purpose says what a secret is for: the framework's words for the roles it knows,
