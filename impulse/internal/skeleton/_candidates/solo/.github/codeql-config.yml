@@ -1,0 +1,8 @@
+# CodeQL's configuration for the CI workflow's codeql job. The generated code (zz_gen_*)
+# is scanned with the rest; the browser workspaces' installed packages and build outputs
+# are not code of this repository.
+name: "codeql"
+paths-ignore:
+  - "**/node_modules"
+  - "**/dist"
+  - "**/.angular"

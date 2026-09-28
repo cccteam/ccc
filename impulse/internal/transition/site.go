@@ -1120,9 +1120,62 @@ func (s Site) copyWorkspace(a *app.App, from, to string, ch *Change) (project st
 		project = s.Name
 	}
 	ch.didf("%s: the %s site's browser workspace, a copy of %s with its project named %s on port %d; its titles and API prefix still say what the %s site's do", to, s.Name, from, project, port, old.Name)
+	s.extendCI(a, to, ch)
 
 	return project, port
 }
+
+// extendCI gives the new site's browser workspace its Angular job in the CI workflow,
+// beside the first site's, so the workspace is built, linted and tested on every pull
+// request; the ci-workflow check holds every workspace to one. A workflow the
+// application does not carry is left alone (the check names it).
+func (s Site) extendCI(a *app.App, webDir string, ch *Change) {
+	src, mode, err := readFile(a, check.CIWorkflowFile)
+	if err != nil {
+		return
+	}
+	text := string(src)
+	if strings.Contains(text, "working-directory: ./"+webDir+"\n") {
+		return
+	}
+	pin := ""
+	if m := ciUsesRE.FindStringSubmatch(text); m != nil {
+		pin = m[1]
+	}
+	if pin == "" {
+		ch.skipf("%s: no shared workflow pin found, so the %s site's Angular job was not added; add one like the first site's", check.CIWorkflowFile, s.Name)
+
+		return
+	}
+	job := fmt.Sprintf(`  angular-%[1]s:
+    # The browser workspace at %[2]s: bun install with the lockfile frozen, then the
+    # package scripts build, lint and test (the component specs on Angular's unit-test
+    # builder). Bun 1.4.0 is the one that wrote bun.lock.
+    uses: cccteam/github-workflows/.github/workflows/angular-ci.yml@%[3]s
+    permissions:
+      contents: read
+    with:
+      working-directory: ./%[2]s
+      bun-version: "1.4.0"
+      commands: '["build", "lint", "test"]'
+`, s.Name, webDir, pin)
+	anchor := "  dockerfile:\n"
+	if i := strings.Index(text, anchor); i >= 0 {
+		text = text[:i] + job + text[i:]
+	} else {
+		text = strings.TrimRight(text, "\n") + "\n" + job
+	}
+	if err := os.WriteFile(a.Abs(check.CIWorkflowFile), []byte(text), mode); err != nil {
+		ch.skipf("%s: not written (%v); add the %s site's Angular job by hand", check.CIWorkflowFile, err, s.Name)
+
+		return
+	}
+	ch.didf("%s: an angular-%s job builds, lints and tests the %s workspace beside the first site's", check.CIWorkflowFile, s.Name, webDir)
+}
+
+// ciUsesRE captures the pin (the ref with its version comment) of a shared workflow's
+// uses: line, so a new job carries the same one.
+var ciUsesRE = regexp.MustCompile(`uses: cccteam/github-workflows/\.github/workflows/[a-z-]+\.yml@(\S+(?: # \S+)?)`)
 
 // nameWorkspace gives the promoted site's browser workspace the site's name the way the
 // sites skeleton spells it: <app>-web becomes <app>-<site>-web in package.json and bun.lock,

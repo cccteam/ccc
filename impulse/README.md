@@ -111,6 +111,20 @@ impulse new ./harbor --module example.com/harbor --auth staff --tenancy --outlet
 impulse new ./fleet --module example.com/fleet --auth crew --site console --site portal
 ```
 
+The application ships its CI: `.github/workflows/ci.yml` wires the shared workflows of
+cccteam/github-workflows on every pull request (the semantic title, the Go build, vet,
+lint, Semgrep and tests with and without the `skipAuth` tag, an Angular job per browser
+workspace, the image build and scan once bedrock has seeded a Dockerfile, CodeQL over the
+Go, the TypeScript and the workflows with `.github/codeql-config.yml`, secret scanning,
+and schema protection over `schema/migrations`), every `uses:` line pinned at one version
+with its tag in the comment. `impulse check` (`ci-workflow`) fails when the file is
+missing and warns when a pin is behind the skeleton's. A directory-flavored first auth
+under the `directory` authority with Google is born with lowercase role names: the
+directory's groups assign roles by name and `session.GoogleRoleSync` lowercases every
+derived name, so the base's `Administrator_Global` becomes `administrator_global` in the
+roles file, the bootstrap identities, the environment template and the tests, and every
+new role is named in lowercase; `auths-wired` refuses one that is not.
+
 ## impulse check
 
 `check` verifies the agreements between an application's parts and exits non-zero when
@@ -141,6 +155,7 @@ impulse check --list
 | `package-manager` | Every browser app carries the same kind of lockfile (bun, npm, yarn, or pnpm), and the process files and package scripts invoke that tool and no other. Two tools in one repository means two lockfiles drifting apart. |
 | `registry-pins` | Every browser app installs its packages from the registry: a committed `file:.yalc/<package>` spec (or a lockfile recording one) is a local yalc attachment that a clean checkout cannot install, so the pipeline's install fails. `ccclib.sh restore` puts the registry pins back. |
 | `test-runner` | Every browser application project runs its component specs on Angular's unit-test builder, the runner `ng new` scaffolds (`@angular/build:unit-test`: Vitest under jsdom in Node, no browser): a `test` target on that builder, the spec tsconfig it reads (named in the target, or `tsconfig.spec.json` in the project root), and a package script running `ng test <project>`, so `bun run test` runs every project's specs once. A project with no `*.spec.ts` under its source root warns: the runner is wired and nothing runs on it yet. |
+| `ci-workflow` | The shared CI runs on every pull request: `.github/workflows/ci.yml` wires the workflows of cccteam/github-workflows (semantic titles, the Go checks, an Angular job per browser workspace, the image build and scan once a Dockerfile exists, CodeQL, secret scanning, schema protection), every `uses:` line pinned at the version the skeleton carries. A missing file fails: the pull requests run no checks at all. An older pin warns. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it; tests and specs are not read, since a spec describes the server's answer (whose page state carries an `offset` field) as often as a request. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
 | `sites-generators` | In the sites layout, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |

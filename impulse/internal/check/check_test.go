@@ -84,7 +84,7 @@ func TestSelect(t *testing.T) {
 	}{
 		{name: "all", want: []string{
 			"generator-program", "options", "tenancy-wired", "outlet-wired", "sites-wired", "session-tables", "auths-wired", "conditions-proven", "skipauth", "emulator-version", "prettier-ignore", "eslint-ignore",
-			"resource-styles", "package-manager", "registry-pins", "test-runner",
+			"resource-styles", "package-manager", "registry-pins", "test-runner", "ci-workflow",
 			"paging", "rpc-execute", "sites-generators", "env-template", "pins", "gowork-off", "regen",
 		}},
 		{name: "subset keeps run order", only: []string{regen{}.Name(), pins{}.Name()}, want: []string{pins{}.Name(), regen{}.Name()}},

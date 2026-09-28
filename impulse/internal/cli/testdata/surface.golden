@@ -119,6 +119,7 @@ checks:
   package-manager
   registry-pins
   test-runner
+  ci-workflow
   paging
   rpc-execute
   sites-generators

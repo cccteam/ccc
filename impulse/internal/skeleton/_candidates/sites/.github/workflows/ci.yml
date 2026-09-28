@@ -1,0 +1,104 @@
+# The application's CI on every pull request: the shared workflows of cccteam/github-workflows,
+# pinned to one version (the commit and its tag in the comment; every uses: line carries the
+# same pin, and impulse check compares it with the skeleton's). The infrastructure workflow
+# beside this one checks the stack; release-please cuts the releases.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  semantic-titles:
+    # The pull request's title is a conventional commit line, the one the squash merge
+    # carries and release-please reads.
+    uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      pull-requests: read
+  golang-ci:
+    # Build, vet, lint (golangci-lint over .golangci.yml), Semgrep and the tests, once
+    # without tags and once with skipAuth, the tag that simulates the directory so the
+    # login tests run.
+    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      build-tags: '["", "skipAuth"]'
+      golangci-lint-version: "v2.12.2"
+  angular-console:
+    # The browser workspace at apps/console/web: bun install with the lockfile frozen, then the
+    # package scripts build, lint and test (the component specs on Angular's unit-test
+    # builder). Bun 1.4.0 is the one that wrote bun.lock.
+    uses: cccteam/github-workflows/.github/workflows/angular-ci.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      contents: read
+    with:
+      working-directory: ./apps/console/web
+      bun-version: "1.4.0"
+      commands: '["build", "lint", "test"]'
+  angular-portal:
+    # The browser workspace at apps/portal/web: bun install with the lockfile frozen, then the
+    # package scripts build, lint and test (the component specs on Angular's unit-test
+    # builder). Bun 1.4.0 is the one that wrote bun.lock.
+    uses: cccteam/github-workflows/.github/workflows/angular-ci.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      contents: read
+    with:
+      working-directory: ./apps/portal/web
+      bun-version: "1.4.0"
+      commands: '["build", "lint", "test"]'
+  dockerfile:
+    # The image is built and scanned once the application has a Dockerfile, which bedrock
+    # seeds with the stack; until then the scan has nothing to build.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      present: ${{ steps.look.outputs.present }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: look
+        run: |
+          if [ -f Dockerfile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+  docker-build-and-scan:
+    needs: dockerfile
+    if: needs.dockerfile.outputs.present == 'true'
+    uses: cccteam/github-workflows/.github/workflows/docker-build-and-scan.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      dockerfile: Dockerfile
+      execute-grype-scan: true
+  codeql:
+    # Code scanning over the Go, the TypeScript and the workflows themselves, with the
+    # configuration in .github/codeql-config.yml.
+    uses: cccteam/github-workflows/.github/workflows/codeql.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    with:
+      languages: '["go", "javascript-typescript", "actions"]'
+  secrets-scanning:
+    uses: cccteam/github-workflows/.github/workflows/secrets-scanning.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      contents: read
+  schema-protection:
+    # A committed migration is never modified: the pipeline's guard refuses it too, and
+    # bedrock migration renumber moves a branch's own migrations when the sequence collides.
+    uses: cccteam/github-workflows/.github/workflows/schema-protection.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    permissions:
+      contents: read
+    with:
+      migrations_path: schema/migrations

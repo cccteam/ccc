@@ -154,6 +154,7 @@ func All() []Check {
 		packageManager{},
 		registryPins{},
 		testRunner{},
+		ciWorkflow{},
 		paging{},
 		rpcExecute{},
 		sitesGenerators{},
