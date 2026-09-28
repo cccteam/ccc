@@ -40,3 +40,10 @@ bedrock/internal/cli/upgrade.go
 # fake does; the direct-write audit (an HTML page writing user data) does not apply.
 bedrock/internal/release/release_test.go
 bedrock/internal/cli/upgrade_test.go
+# The deploy steps' runner runs the programs a step drives (tofu, docker, an
+# application's hook script through bash) with arguments the step builds: that is its
+# purpose, so it is excluded from the dangerous-exec audit. git names a blob by the SHA-1
+# of its content, and the migration guard computes that name to compare a file with the
+# committed one: naming, not cryptography, so the weak-hash audit does not apply.
+bedrock/internal/deploy/exec.go
+bedrock/internal/migration/sequence.go

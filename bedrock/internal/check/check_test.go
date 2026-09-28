@@ -75,7 +75,7 @@ func TestRun(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantFindings: []Finding{{Path: "cloudbuild.yaml", Root: true, Line: 1, Want: "# harbor's deploy pipeline: Cloud Build steps, in the sequence CCC's deployments use, that take one", Got: "# edited"}},
+			wantFindings: []Finding{{Path: "cloudbuild.yaml", Root: true, Line: 1, Want: "# harbor's deploy pipeline: the Cloud Build steps that take one commit into one environment,", Got: "# edited"}},
 			wantOutput:   []string{"1 of 19 owned file(s) differ from the code", "differs  cloudbuild.yaml:1 (at the application root)"},
 		},
 		{

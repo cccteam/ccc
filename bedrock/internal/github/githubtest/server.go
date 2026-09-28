@@ -4,8 +4,12 @@
 package githubtest
 
 import (
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -16,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/migration"
 )
 
 // Repo is one repository's state.
@@ -38,10 +43,24 @@ type Repo struct {
 	Trees map[string]string
 	Files map[string]string
 	Blobs map[string]string
-	// Comments by issue or pull request number, oldest first.
+	// Comments by issue or pull request number, oldest first; a comment posted through
+	// the API is appended.
 	Comments map[int][]github.Comment
 	// Releases by tag.
 	Releases map[string]github.Release
+	// Changed lists, per head commit, the files a comparison against it names.
+	Changed map[string][]string
+	// PullStates by pull request number: open or closed.
+	PullStates map[int]string
+	// Deployments made through the API, oldest first, with their statuses.
+	Deployments []*Deployment
+}
+
+// Deployment is one deployment made through the API and the statuses added to it.
+type Deployment struct {
+	ID       int64
+	Request  github.DeploymentRequest
+	Statuses []github.DeploymentStatus
 }
 
 // Server is the stand-in.
@@ -50,7 +69,13 @@ type Server struct {
 	mu            sync.Mutex
 	Installations map[string][]github.Installation
 	Repos         map[string]*Repo
-	nextID        int64
+	// AppID and AppKey are the GitHub App whose JWT the installation endpoints accept;
+	// AppInstallation is its installation's id. The installation token it mints is the
+	// token every other endpoint accepts.
+	AppID           string
+	AppKey          *rsa.PublicKey
+	AppInstallation int64
+	nextID          int64
 	// Calls records every method and path served, in order; Messages the commit
 	// messages of commits made through the API.
 	Calls    []string
@@ -74,11 +99,17 @@ var (
 	issueRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)$`)
 	commentsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)/comments$`)
 	releaseRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/releases/tags/(.+)$`)
+	pullRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls/(\d+)$`)
+	deploysRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments$`)
+	statusesRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments/(\d+)/statuses$`)
+	repoInstRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/installation$`)
+	tokensRE     = regexp.MustCompile(`^/app/installations/(\d+)/access_tokens$`)
 	rulesetIDMin = int64(1000)
 )
 
 const (
 	messageKey = "message"
+	idKey      = "id"
 	notFound   = "Not Found"
 	typeCommit = "commit"
 )
@@ -132,6 +163,12 @@ func (s *Server) AddRepo(owner, name string, repo *Repo) *Repo {
 	}
 	if repo.Releases == nil {
 		repo.Releases = map[string]github.Release{}
+	}
+	if repo.Changed == nil {
+		repo.Changed = map[string][]string{}
+	}
+	if repo.PullStates == nil {
+		repo.PullStates = map[int]string{}
 	}
 	s.Repos[owner+"/"+name] = repo
 
@@ -197,6 +234,34 @@ var routes = []route{
 	{releaseRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.release(w, m[1]+"/"+m[2], m[3])
 	}},
+	{pullRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		number, _ := strconv.Atoi(m[3])
+		s.pull(w, m[1]+"/"+m[2], number)
+	}},
+	{deploysRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.deployments(w, r, m[1]+"/"+m[2])
+	}},
+	{statusesRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		id, _ := strconv.ParseInt(m[3], 10, 64)
+		s.deploymentStatus(w, r, m[1]+"/"+m[2], id)
+	}},
+}
+
+// appRoutes are served to the app's JWT, before the token check the others take.
+var appRoutes = []route{
+	{repoInstRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		if _, ok := s.repo(w, m[1]+"/"+m[2]); ok {
+			reply(w, http.StatusOK, map[string]int64{idKey: s.AppInstallation})
+		}
+	}},
+	{tokensRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		if id, _ := strconv.ParseInt(m[1], 10, 64); id != s.AppInstallation {
+			reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+
+			return
+		}
+		reply(w, http.StatusCreated, map[string]string{"token": "test-token"})
+	}},
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +269,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	path := r.URL.Path
 	s.Calls = append(s.Calls, r.Method+" "+path)
+	for _, route := range appRoutes {
+		if m := route.re.FindStringSubmatch(path); m != nil {
+			if err := s.verifyAppJWT(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")); err != nil {
+				reply(w, http.StatusUnauthorized, map[string]string{messageKey: err.Error()})
+
+				return
+			}
+			route.handle(s, w, r, m)
+
+			return
+		}
+	}
 	if r.Header.Get("Authorization") != "Bearer test-token" {
 		reply(w, http.StatusUnauthorized, map[string]string{messageKey: "Bad credentials"})
 
@@ -379,7 +456,11 @@ func (s *Server) compare(w http.ResponseWriter, key, base, head string) {
 			mergeBase = repo.MergeBase[headSHA+" "+baseSHA]
 		}
 	}
-	reply(w, http.StatusOK, github.Comparison{Status: status, MergeBaseCommit: github.Object{Type: typeCommit, SHA: mergeBase}})
+	files := make([]github.ComparedFile, 0, len(repo.Changed[headSHA]))
+	for _, name := range repo.Changed[headSHA] {
+		files = append(files, github.ComparedFile{Filename: name})
+	}
+	reply(w, http.StatusOK, github.Comparison{Status: status, MergeBaseCommit: github.Object{Type: typeCommit, SHA: mergeBase}, Files: files})
 }
 
 // tags lists the tags with their commits, annotated ones resolved.
@@ -426,13 +507,33 @@ func (s *Server) contents(w http.ResponseWriter, r *http.Request, key, path stri
 	}
 	ref := r.URL.Query().Get("ref")
 	tree, ok := repo.Trees[repo.resolve(ref)]
-	content, found := repo.Files[tree+":"+path]
-	if !ok || !found {
+	if !ok {
 		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
 
 		return
 	}
-	reply(w, http.StatusOK, map[string]string{"content": base64.StdEncoding.EncodeToString([]byte(content)), "encoding": "base64"})
+	if content, found := repo.Files[tree+":"+path]; found {
+		reply(w, http.StatusOK, map[string]string{"content": base64.StdEncoding.EncodeToString([]byte(content)), "encoding": "base64"})
+
+		return
+	}
+	// A directory: the files directly under it, each with its blob's git SHA.
+	var entries []github.DirEntry
+	for key, content := range repo.Files {
+		rest, under := strings.CutPrefix(key, tree+":"+path+"/")
+		if under && !strings.Contains(rest, "/") {
+			entries = append(entries, github.DirEntry{Name: rest, SHA: migration.BlobSHA([]byte(content)), Type: "file"})
+		}
+	}
+	if len(entries) == 0 {
+		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+
+		return
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
+	reply(w, http.StatusOK, entries)
 }
 
 func (s *Server) createBlob(w http.ResponseWriter, r *http.Request, key string) {
@@ -528,10 +629,27 @@ func (s *Server) issue(w http.ResponseWriter, key string, number int) {
 	reply(w, http.StatusOK, map[string]any{"number": number, "comments": len(repo.Comments[number])})
 }
 
-// comments answers one page of the issue's comments, as per_page and page ask.
+// comments answers one page of the issue's comments, as per_page and page ask, or
+// appends a posted one.
 func (s *Server) comments(w http.ResponseWriter, r *http.Request, key string, number int) {
 	repo, ok := s.repo(w, key)
 	if !ok {
+		return
+	}
+	if r.Method == http.MethodPost {
+		var in struct {
+			Body string `json:"body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Body == "" {
+			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "body is required"})
+
+			return
+		}
+		s.nextID++
+		comment := github.Comment{ID: s.nextID, Body: in.Body}
+		repo.Comments[number] = append(repo.Comments[number], comment)
+		reply(w, http.StatusCreated, comment)
+
 		return
 	}
 	all := repo.Comments[number]
@@ -563,6 +681,105 @@ func (s *Server) release(w http.ResponseWriter, key, tag string) {
 		return
 	}
 	reply(w, http.StatusOK, release)
+}
+
+// pull answers the pull request's state.
+func (s *Server) pull(w http.ResponseWriter, key string, number int) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	state, ok := repo.PullStates[number]
+	if !ok {
+		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+
+		return
+	}
+	reply(w, http.StatusOK, map[string]any{"number": number, "state": state})
+}
+
+// deployments lists the environment's deployments, newest first, or creates one.
+func (s *Server) deployments(w http.ResponseWriter, r *http.Request, key string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	if r.Method == http.MethodPost {
+		var in github.DeploymentRequest
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Ref == "" || in.Environment == "" {
+			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "ref and environment are required"})
+
+			return
+		}
+		s.nextID++
+		repo.Deployments = append(repo.Deployments, &Deployment{ID: s.nextID, Request: in})
+		reply(w, http.StatusCreated, map[string]int64{idKey: s.nextID})
+
+		return
+	}
+	environment := r.URL.Query().Get("environment")
+	list := []map[string]int64{}
+	for i := len(repo.Deployments) - 1; i >= 0; i-- {
+		if d := repo.Deployments[i]; environment == "" || d.Request.Environment == environment {
+			list = append(list, map[string]int64{idKey: d.ID})
+		}
+	}
+	reply(w, http.StatusOK, list)
+}
+
+// deploymentStatus adds a status to a deployment.
+func (s *Server) deploymentStatus(w http.ResponseWriter, r *http.Request, key string, id int64) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	var in github.DeploymentStatus
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.State == "" {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "state is required"})
+
+		return
+	}
+	for _, d := range repo.Deployments {
+		if d.ID == id {
+			d.Statuses = append(d.Statuses, in)
+			reply(w, http.StatusCreated, in)
+
+			return
+		}
+	}
+	reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+}
+
+// verifyAppJWT checks an app JWT the way GitHub does: signed RS256 by the app's key,
+// issued by the app.
+func (s *Server) verifyAppJWT(token string) error {
+	if s.AppKey == nil {
+		return fmt.Errorf("no app is registered with the stand-in")
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("not a JWT")
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return fmt.Errorf("signature: %w", err)
+	}
+	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if err := rsa.VerifyPKCS1v15(s.AppKey, crypto.SHA256, digest[:], sig); err != nil {
+		return fmt.Errorf("signature does not verify: %w", err)
+	}
+	claims, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return fmt.Errorf("claims: %w", err)
+	}
+	var c struct {
+		Issuer string `json:"iss"`
+	}
+	if err := json.Unmarshal(claims, &c); err != nil || c.Issuer != s.AppID {
+		return fmt.Errorf("issuer %q is not app %s", c.Issuer, s.AppID)
+	}
+
+	return nil
 }
 
 func (s *Server) newSHA(kind string) string {

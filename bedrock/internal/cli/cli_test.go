@@ -129,7 +129,8 @@ func appRepo(t *testing.T) string {
 
 	dir := copyRepo(t, fixtureApp)
 	infra := filepath.Join(dir, "infrastructure")
-	if err := os.Mkdir(infra, 0o700); err != nil {
+	// The fixture carries its hook scripts there already.
+	if err := os.MkdirAll(infra, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(placement)
@@ -1384,7 +1385,7 @@ func TestDeployResolve(t *testing.T) {
 			wantOut: []string{"Triggered by tag v1.2.3", "IMAGE=reg/quill IMAGE_TAG=v1.2.3-tst VERSION=v1.2.3 RELEASE=v1.2.3", "Declared substitutions for the hooks and the image build: _THEME"},
 			wantFiles: map[string]string{
 				"environment.sh": "export IMAGE_TAG=\"v1.2.3-tst\"\n",
-				"build-args.sh":  "BUILD_ARGS+=(--build-arg '_THEME=dusk')\n",
+				"build-args.txt": "_THEME=dusk\n",
 				"build.json":     `"id": "b-1"`,
 			},
 		},

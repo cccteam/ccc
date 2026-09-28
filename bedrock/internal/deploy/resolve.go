@@ -21,10 +21,9 @@ import (
 )
 
 const (
-	// BuildArgsFile holds the declared substitutions as build arguments, a bash array
-	// (BUILD_ARGS+=(--build-arg _NAME=value)) the image build sources; an array stays
-	// out of the environment file, which the OpenTofu steps read with a plain sh.
-	BuildArgsFile = "build-args.sh"
+	// BuildArgsFile holds the image build's arguments, one NAME=value per line: the
+	// declared substitutions resolve writes, then what a hook before the build appends.
+	BuildArgsFile = "build-args.txt"
 	// notAuthorized starts the connection name the stack passes before 2-env holds the
 	// environment's GitHub connection: only a hand-submitted build reaches the pipeline
 	// then, and the GitHub checks are skipped with a notice.
@@ -60,6 +59,9 @@ const (
 	revisionTagFact   = "REVISION_TAG"
 	runMigrationsFact = "RUN_MIGRATIONS"
 	prNumberSub       = "_PR_NUMBER"
+	// projectFact and locationFact are where the build runs, by Cloud Build's own names.
+	projectFact  = "PROJECT_ID"
+	locationFact = "LOCATION"
 )
 
 var (
@@ -87,11 +89,18 @@ type Clients struct {
 	Registry RegistryFunc
 	// Run opens Cloud Run, for the migrate job and the services.
 	Run RunFunc
+	// Secrets opens Secret Manager, for the build secrets and the deployer app's key.
+	Secrets SecretsFunc
+	// Exec runs the programs a step drives: tofu, docker, a hook's script.
+	Exec Runner
 }
 
 // DefaultClients opens the real services.
 func DefaultClients() *Clients {
-	return &Clients{Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub, Registry: NewArtifactRegistry, Run: NewCloudRun}
+	return &Clients{
+		Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
+		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
+	}
 }
 
 // Builds reads a build and mints the GitHub token of the repository it came from,
@@ -255,6 +264,9 @@ type Facts struct {
 	RevisionTag   string
 	RunMigrations bool
 	ShiftTraffic  bool
+	// Project and Location are where the build runs, for the steps that link to its log.
+	Project  string
+	Location string
 	// Substitutions are every substitution of the build; Declared are the ones the
 	// placement added beyond the contract, sorted.
 	Substitutions map[string]string
@@ -285,6 +297,7 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 	if err != nil {
 		return nil, err
 	}
+	f.Project, f.Location = req.Project, req.Location
 	if err := f.mint(ctx, builds, req, out); err != nil {
 		return nil, err
 	}
@@ -594,6 +607,8 @@ func (f *Facts) environment() string {
 		{revisionTagFact, f.RevisionTag},
 		{runMigrationsFact, strconv.FormatBool(f.RunMigrations)},
 		{shiftTraffic, strconv.FormatBool(f.ShiftTraffic)},
+		{projectFact, f.Project},
+		{locationFact, f.Location},
 	}
 	for _, kv := range facts {
 		b.WriteString("export " + kv[0] + "=" + doubleQuote(kv[1]) + "\n")
@@ -605,13 +620,11 @@ func (f *Facts) environment() string {
 	return b.String()
 }
 
-// buildArgs is the build arguments file: a bash array of --build-arg _NAME=value, one
-// per declared substitution.
+// buildArgs is the build arguments file: one _NAME=value line per declared substitution.
 func (f *Facts) buildArgs() string {
 	var b strings.Builder
-	b.WriteString("BUILD_ARGS=()\n")
 	for _, name := range f.Declared {
-		b.WriteString("BUILD_ARGS+=(--build-arg " + singleQuote(name+"="+f.Substitutions[name]) + ")\n")
+		b.WriteString(name + "=" + f.Substitutions[name] + "\n")
 	}
 
 	return b.String()

@@ -1,8 +1,8 @@
 // Package github is the small GitHub REST client bedrock needs: the organization's
-// installed apps, a repository's rulesets, its refs, tags and comparisons, and the
-// comments on its pull requests. It
-// speaks to one API host with one token and translates the API's refusals into errors
-// that carry the status and the message.
+// installed apps, a repository's rulesets, its refs, tags, comparisons and directory
+// listings, its pull requests with their comments and deployments, and a GitHub App's
+// installation token. It speaks to one API host with one token and translates the API's
+// refusals into errors that carry the status and the message.
 package github
 
 import (
@@ -295,10 +295,17 @@ func (c *Client) CreateRef(ctx context.Context, owner, repo, ref, sha string) er
 }
 
 // Comparison is how head relates to base: identical, ahead (head has commits base
-// lacks), behind, or diverged; and the commit the two share.
+// lacks), behind, or diverged; the commit the two share; and the files that differ
+// between the merge base and head (the API lists up to 300).
 type Comparison struct {
-	Status          string `json:"status"`
-	MergeBaseCommit Object `json:"merge_base_commit"`
+	Status          string         `json:"status"`
+	MergeBaseCommit Object         `json:"merge_base_commit"`
+	Files           []ComparedFile `json:"files"`
+}
+
+// ComparedFile is one file a comparison lists.
+type ComparedFile struct {
+	Filename string `json:"filename"`
 }
 
 // Compare compares head against base (a commit, branch or tag each).

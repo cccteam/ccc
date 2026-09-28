@@ -178,6 +178,13 @@ linters:
           - gosec
         path: internal/render/render\.go
         text: G30[16]
+      # git names a blob by the SHA-1 of its content; the migration guard computes it to
+      # compare a file with the one the default branch holds, which is naming, not
+      # cryptography.
+      - linters:
+          - gosec
+        path: internal/migration/sequence\.go
+        text: G(401|505)
       # upgrade rewrites the placement, a file of the repository a person reads: 0644.
       - linters:
           - gosec
@@ -209,15 +216,16 @@ linters:
           - paralleltest
         path: internal/cli/cli_test\.go
         text: TestDeployResolve
-      # The GitHub API's JSON is snake_case; the client, its stand-in and the release
-      # listing write the wire names as the API defines them.
+      # The GitHub API's JSON is snake_case, and so is the plan tofu show -json writes;
+      # the client, its stand-in, the release listing and the plan guard write the wire
+      # names as they are defined.
       - linters:
           - tagliatelle
-        path: internal/(github|release)/
+        path: internal/(github/|release/|deploy/guardplan\.go)
       # tokenEnv names the variable a token is read from; it holds no token.
       - linters:
           - gosec
-        path: internal/(github/github|release/release)\.go
+        path: internal/(github/github|release/release|deploy/talk)\.go
         text: G101
       # release fetches the tool's own binary: its directory and the file itself take
       # the conventional modes of a program (0755), not a leak.
@@ -225,6 +233,13 @@ linters:
           - gosec
         path: internal/release/release\.go
         text: G30[12]
+      # The deploy steps run the programs they drive (tofu for a pull request's stack,
+      # docker for the image build, bash for an application's hook script), with
+      # arguments the step builds: running them is the runner's purpose.
+      - linters:
+          - gosec
+        path: internal/deploy/exec\.go
+        text: G204
       # upgrade runs the bedrock it fetched and verified, with the render's own paths.
       - linters:
           - gosec

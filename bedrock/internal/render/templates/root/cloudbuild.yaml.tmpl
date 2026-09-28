@@ -1,49 +1,50 @@
-# {{.App}}'s deploy pipeline: Cloud Build steps, in the sequence CCC's deployments use, that take one
-# commit into one environment. Rendered by bedrock from its pipeline template and owned by it:
-# bedrock render rewrites this file and bedrock check compares it with the code, so a change
-# belongs in bedrock, never here.
+# {{.App}}'s deploy pipeline: the Cloud Build steps that take one commit into one environment,
+# in the sequence CCC's deployments use. Rendered by bedrock from its pipeline template and
+# owned by it: bedrock render rewrites this file and bedrock check compares it with the code,
+# so a change belongs in bedrock, never here.
 #
-#   FetchBedrock              the bedrock release the placement pins, downloaded and verified against its checksum; every bedrock step runs it
-#   ResolveDeploymentTarget   what is deployed and where (bedrock deploy resolve)
-#   ValidateRelease           whether this release may deploy here: the release, its commit, the record gate (bedrock deploy validate-release)
-#   GuardMigrations           the migrations are one contiguous sequence, unchanged once committed, or the build stops and names the fix
-#   Hook*                     the application's own scripts at six stages, when it commits them
-#   CheckRelease              a release already in the registry is reused (same commit) or refused (bedrock deploy check-release)
-#   BuildImage                one image per environment, built fresh from the commit, pushed
-#   RunMigrations             the migrate command as a Cloud Run job, run to completion (bedrock deploy migrate)
+# Every step but the first runs one bedrock command. The first downloads the bedrock release
+# the placement pins and verifies it; each step after it runs that bedrock in the image whose
+# tool it drives (gcloud's for most, OpenTofu's for the pull request's stack, docker's for the
+# image build). The steps share the workspace, which is the checkout: resolve writes the facts
+# (environment.sh) and the build (build.json), and each step reads them, does one thing, and
+# appends what it learned. No step installs anything. What each command does in full:
+# bedrock deploy <command> --help.
+#
+#   FetchBedrock              the pinned bedrock, downloaded and verified against its checksum
+#   ResolveDeploymentTarget   what is deployed and where (deploy resolve)
+#   ValidateRelease           whether this release may deploy here (deploy validate-release)
+#   GuardMigrations           the migrations are one sequence, unchanged once committed (deploy guard-migrations)
+#   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
+#   CheckRelease              a release already built from this commit is reused (deploy check-release)
+#   BuildImage                one image per environment, built fresh from the commit and pushed (deploy build-image)
+#   RunMigrations             the migrate command as a Cloud Run job, run to completion (deploy migrate)
 {{- if .Jobs}}
-#   DeployJobs                the job process's Cloud Run job updated to this image, not run (bedrock deploy jobs)
+#   DeployJobs                the job process's Cloud Run job updated to this image, not run (deploy jobs)
 {{- end}}
-#   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (bedrock deploy service)
-#   ShiftTraffic              every region to 100 percent on its new revision (bedrock deploy shift-traffic)
-#   WriteDeploymentRecord     the record of what is now running, in the records bucket (bedrock deploy record)
+#   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
+#   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
+#   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
+#   TalkBack                  the pull request is told what the build did (deploy talk-back)
+#   Hook*                     the application's own scripts, one step per script it commits (deploy hook <stage>)
 #
 # The revision template (variables, secret mounts, identity, scaling) belongs to the
-# application's infrastructure layer (3-app/<app> in the infrastructure repository); a
-# deploy changes the image and stamps its labels, nothing else, so a later apply of that
-# layer and a deploy never fight over the same fields.
+# application's infrastructure layer; a deploy changes the image and stamps its labels,
+# nothing else, so a later apply of that layer and a deploy never fight over the same fields.
 #
-# Two kinds of trigger run it (README.md, "Deploying"):
-#   - a version trigger per environment, on a tag push: the tagged commit must be on the
-#     default branch, the migrate job runs, traffic shifts.
-#   - the pull-request trigger for tst, started by a "/gcbrun" comment: the pull request's
-#     own stack is applied, the migrate job runs against its own database (recreated on
-#     "reload-db", or on its own when the migrations the last build applied are no longer
-#     in the tree), and the revision takes the environment's traffic.
+# Two kinds of trigger run it (README.md, "Deploying"): a version trigger per environment, on
+# a release tag; and the pull-request trigger for {{.Integration}}, started by a "/gcbrun" comment,
+# which stands the pull request's own environment up (or down, on "/gcbrun down").
 #
-# Every shell variable is written $$NAME: Cloud Build reads $NAME and ${NAME} as its own
-# substitutions and hands the shell one dollar sign for $$. The substitutions are listed
-# at the end of this file and in README.md.
+# The steps run in the order written: a step with no waitFor waits for every step before it.
 
 steps:
-  # The bedrock every bedrock step below runs: the release the placement pins
-  # (bedrockVersion), downloaded from its GitHub Release into the home directory the
-  # steps share and verified against the checksum the placement pins (bedrockSha256)
-  # before anything runs it. This is the one place a bedrock version appears in the
-  # pipeline: bedrock upgrade moves the pin and re-renders this file, never a hand edit.
+  # The bedrock every later step runs: the release the placement pins (bedrockVersion),
+  # downloaded from its GitHub Release into the home directory the steps share and verified
+  # against the placement's checksum (bedrockSha256) before anything runs it. The one place
+  # a bedrock version appears; bedrock upgrade moves it.
   - id: FetchBedrock
-    waitFor: ["-"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: bash
     timeout: 120s
     args:
@@ -55,659 +56,173 @@ steps:
         chmod 0755 /builder/home/bedrock
         /builder/home/bedrock --version
 
-  # What is deployed and where: the trigger's kind, the environment, the tag or the pull
-  # request's comment, worked out by bedrock deploy resolve. It reads this build through
-  # the Cloud Build API, mints the repository's GitHub token from the connection the
-  # trigger reads it through, and writes what the later steps share to
-  # /workspace/environment.sh (each sources it), the build to /workspace/build.json and
-  # the declared substitutions, as build arguments, to /workspace/build-args.sh. It also
-  # refuses, before the image build, a run that does not name what it updates. Whether a
-  # tag may deploy is the next step's question.
+  # What is deployed and where: the trigger's kind, the environment, the /gcbrun comment's
+  # options, the image and its tags. Writes environment.sh, build.json and build-args.txt.
   - id: ResolveDeploymentTarget
-    waitFor: ["FetchBedrock"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, resolve]
     env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
     timeout: 300s
 
-  # The deployer GitHub App's token, for a pull-request build that has an app to
-  # talk back with (a deployment, comments): a JWT signed with the app's private key,
-  # read from the pinned secret version 2-env names, exchanged for an installation
-  # token good for an hour. The key touches the workspace for the signature only.
-  - id: MintDeployerToken
-    waitFor: ["ResolveDeploymentTarget"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
-    timeout: 120s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        if [ -z "${_PR_NUMBER}" ] || [ -z "${_DEPLOYER_APP_ID}" ] || [ -z "${_DEPLOYER_KEY_SECRET}" ]; then
-          echo "No talk-back: not a pull-request build, or no deployer app in ${_ENV} yet."
-          exit 0
-        fi
-        apt-get -qq update && apt-get -qq install -y jq
-        gcloud secrets versions access "${_DEPLOYER_KEY_SECRET}" > /workspace/deployer.pem
-        b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-        NOW=$(date +%s)
-        HEADER=$(printf '{"alg":"RS256","typ":"JWT"}' | b64)
-        CLAIMS=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' $((NOW - 60)) $((NOW + 540)) "${_DEPLOYER_APP_ID}" | b64)
-        SIGNATURE=$(printf '%s.%s' "$${HEADER}" "$${CLAIMS}" | openssl dgst -sha256 -sign /workspace/deployer.pem | b64)
-        rm -f /workspace/deployer.pem
-        JWT="$${HEADER}.$${CLAIMS}.$${SIGNATURE}"
-        INSTALLATION=$(curl -s -f -H "Authorization: Bearer $${JWT}" -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/repos/${REPO_FULL_NAME}/installation" | jq -r '.id')
-        TOKEN=$(curl -s -f -X POST -H "Authorization: Bearer $${JWT}" -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/app/installations/$${INSTALLATION}/access_tokens" | jq -r '.token')
-        if [ -z "$${TOKEN}" ] || [ "$${TOKEN}" = "null" ]; then
-          echo "Error: could not mint an installation token for the deployer app ${_DEPLOYER_APP_ID} on ${REPO_FULL_NAME}."
-          exit 1
-        fi
-        echo "export DEPLOYER_TOKEN=\"$${TOKEN}\"" >> /workspace/environment.sh
-        echo "Deployer app ${_DEPLOYER_APP_ID}: token minted for installation $${INSTALLATION}."
-
-  # Whether this release may deploy here, for a tag build (a pull-request build has no
-  # release to validate): bedrock deploy validate-release. Three checks: the tag belongs
-  # to a GitHub Release cut by an accepted release actor (_RELEASE_ACTORS); the tagged
-  # commit is on the default branch or at the tip of its hotfix branch; and the previous
-  # environment holds a live deployment record of the release (the record gate, read from
-  # its records bucket by a grant 2-env makes there). A refusal starts with "Build
-  # REJECTED" and says why.
+  # A tag build only: the tag is a release cut by the release app, its commit is on the
+  # default branch (or tips its hotfix line), and the previous environment runs it live.
   - id: ValidateRelease
-    waitFor: ["MintDeployerToken"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, validate-release]
     timeout: 300s
 
-  # The schema migrations, and the seed migrations beside them, are applied once each in
-  # the order of their indexes, so each directory must be one contiguous sequence and a
-  # committed migration never changes. This step refuses a build otherwise, before it
-  # touches anything: a gap, two up files on one index, a name that is not a migration
-  # (the rule bedrock check applies) and, in a pull-request build, a migration modified,
-  # renamed or removed against the commit the branch started from, or an index the default
-  # branch has taken since (the pull request's own migration is renumbered to the next
-  # free index). The schema-protection workflow in the application's CI is the merge gate
-  # for the same rule; this step is the deploy gate.
+  # The schema migrations and the seed are each one contiguous sequence, and in a
+  # pull-request build unchanged against the default branch; a refusal names the fix.
   - id: GuardMigrations
-    waitFor: ["ValidateRelease"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, guard-migrations]
     timeout: 300s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-        if [ "$${DOWN:-}" = "true" ]; then echo "Teardown: nothing to check."; exit 0; fi
-        if [ -z "${_MIGRATIONS_DIR}" ]; then echo "No schema migrations: nothing to check."; exit 0; fi
-        apt-get -qq update && apt-get -qq install -y jq
-        API="https://api.github.com/repos/${REPO_FULL_NAME}"
-        AUTH=(-s -H "Authorization: Bearer $${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json")
-        BASE=""
-        if [ -n "${_PR_NUMBER}" ]; then
-          # The commit the pull request branched from: what its tree must still carry unchanged.
-          BASE=$$(curl "$${AUTH[@]}" "$${API}/compare/${_DEFAULT_BRANCH}...${COMMIT_SHA}" | jq -r '.merge_base_commit.sha // empty')
-          if [ -z "$${BASE}" ]; then echo "Build REJECTED: GitHub gave no merge base for ${_DEFAULT_BRANCH}...${COMMIT_SHA}."; exit 1; fi
-        fi
-        # listing: name<TAB>blob sha of a directory's files on a ref; nothing when the ref has no such directory.
-        listing() {
-          curl "$${AUTH[@]}" "$${API}/contents/$$1?ref=$$2" | jq -r 'if type == "array" then .[] | select(.type == "file") | "\(.name)\t\(.sha)" else empty end'
-        }
-        PROBLEMS=""
-        for DIR in "${_MIGRATIONS_DIR}" "$$(dirname "${_MIGRATIONS_DIR}")/devseed"; do
-          [ -d "$${DIR}" ] || continue
-          # In a pull-request build, every file the branch started with is still there, unchanged...
-          if [ -n "$${BASE}" ]; then
-            while IFS=$$'\t' read -r NAME SHA; do
-              [ -n "$${NAME}" ] || continue
-              FIX="a new one follows it"
-              if [ "$${DIR}" != "${_MIGRATIONS_DIR}" ]; then FIX="a new one follows it, and /gcbrun reload-db recreates the pull request's database so the seed applies from the start"; fi
-              if [ ! -f "$${DIR}/$${NAME}" ]; then
-                PROBLEMS+="  $${DIR}/$${NAME}: removed or renamed; a committed migration never changes"$$'\n'
-              elif [ "$$(git hash-object "$${DIR}/$${NAME}")" != "$${SHA}" ]; then
-                PROBLEMS+="  $${DIR}/$${NAME}: modified; a committed migration never changes, $${FIX}"$$'\n'
-              fi
-            done <<< "$$(listing "$${DIR}" "$${BASE}")"
-          fi
-          # ...and the sequence is read over the tree together with the default branch's, so an
-          # index taken there since the branch was cut is seen now, not after the merge.
-          declare -A UPS=() DOWNS=() UPN=() DOWNN=()
-          NAMES=$$(ls "$${DIR}")
-          if [ -n "$${BASE}" ]; then
-            NAMES=$$( { echo "$${NAMES}"; listing "$${DIR}" "${_DEFAULT_BRANCH}" | cut -f1; } | sort -u )
-          fi
-          while read -r NAME; do
-            [ -n "$${NAME}" ] || continue
-            WHERE=""
-            [ -e "$${DIR}/$${NAME}" ] || WHERE=" (on ${_DEFAULT_BRANCH}, not in this pull request)"
-            if [[ "$${NAME}" =~ ^([0-9]{6})_[A-Za-z0-9_-]+\.(up|down)\.sql$$ ]]; then
-              IDX="$${BASH_REMATCH[1]}"
-              if [ "$${BASH_REMATCH[2]}" = "up" ]; then
-                UPS[$${IDX}]+="$${NAME}$${WHERE}, "; UPN[$${IDX}]=$$(( $${UPN[$${IDX}]:-0} + 1 ))
-              else
-                DOWNS[$${IDX}]+="$${NAME}$${WHERE}, "; DOWNN[$${IDX}]=$$(( $${DOWNN[$${IDX}]:-0} + 1 ))
-              fi
-            elif [[ "$${NAME}" == *.sql ]]; then
-              PROBLEMS+="  $${DIR}/$${NAME}: not a migration file name (NNNNNN_name.up.sql or NNNNNN_name.down.sql)"$$'\n'
-            fi
-          done <<< "$${NAMES}"
-          INDEXES=$$(printf '%s\n' "$${!UPS[@]}" "$${!DOWNS[@]}" | grep . | sort -u || true)
-          for IDX in $${INDEXES}; do
-            if [ "$${UPN[$${IDX}]:-0}" -gt 1 ]; then PROBLEMS+="  $${DIR}: index $${IDX} has $${UPN[$${IDX}]} up files ($${UPS[$${IDX}]%, }); one migration per index"$$'\n'; fi
-            if [ "$${DOWNN[$${IDX}]:-0}" -gt 1 ]; then PROBLEMS+="  $${DIR}: index $${IDX} has $${DOWNN[$${IDX}]} down files ($${DOWNS[$${IDX}]%, }); at most one"$$'\n'; fi
-            if [ -z "$${UPS[$${IDX}]:-}" ]; then PROBLEMS+="  $${DIR}: index $${IDX} has a down file and no up file ($${DOWNS[$${IDX}]%, })"$$'\n'; fi
-          done
-          if [ -n "$${INDEXES}" ]; then
-            LOW=$$(echo "$${INDEXES}" | head -1); HIGH=$$(echo "$${INDEXES}" | tail -1)
-            for (( I=10#$${LOW}; I<=10#$${HIGH}; I++ )); do
-              IDX=$$(printf '%06d' "$${I}")
-              if [ -z "$${UPS[$${IDX}]:-}$${DOWNS[$${IDX}]:-}" ]; then PROBLEMS+="  $${DIR}: gap: no migration $${IDX} between $${LOW} and $${HIGH}; the sequence is contiguous so nothing is skipped"$$'\n'; fi
-            done
-            echo "$${DIR}: $${#UPS[@]} migration(s), $${LOW} to $${HIGH}$${BASE:+, read together with ${_DEFAULT_BRANCH}}."
-          else
-            echo "$${DIR}: no migrations."
-          fi
-          unset UPS DOWNS UPN DOWNN
-        done
-        if [ -n "$${PROBLEMS}" ]; then
-          echo "Build REJECTED: the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous, never changed once committed):"
-          printf '%s' "$${PROBLEMS}"
-          if [ -n "${_PR_NUMBER}" ]; then
-            echo "The fix for an index ${_DEFAULT_BRANCH} has taken, or a gap: bedrock migration renumber on the branch (go generate ./... runs it) moves the pull request's own migrations, up and down together, to follow ${_DEFAULT_BRANCH}'s highest index with no gap; a committed migration is never renumbered."
-            BODY=$$(jq -n --arg list "$${PROBLEMS}" --arg build "${BUILD_ID}" --arg branch "${_DEFAULT_BRANCH}" \
-              '{body: ("The pull-request build stopped: the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous, never changed once committed). Build " + $$build + ":\n\n```\n" + $$list + "```\nThe fix for an index " + $$branch + " has taken, or a gap: `bedrock migration renumber` on the branch (`go generate ./...` runs it) moves the pull request'"'"'s own migrations, up and down together, to follow " + $$branch + "'"'"'s highest index with no gap; a committed migration is never renumbered.")}')
-            curl -s -o /dev/null -w "Posted on the pull request: HTTP %{http_code}\n" -X POST \
-              -H "Authorization: Bearer $${DEPLOYER_TOKEN:-$${GITHUB_TOKEN}}" -H "Accept: application/vnd.github.v3+json" \
-              "$${API}/issues/${_PR_NUMBER}/comments" -d "$${BODY}"
-          fi
-          exit 1
-        fi
-        echo "Guard passed: the migrations form one sequence$${BASE:+, unchanged against ${_DEFAULT_BRANCH}}."
-        # The pull request is told when its database is recreated without being asked
-        # (resolve found the migrations the last build applied no longer in the tree);
-        # this is the first step with the deployer token, so the note is posted here.
-        if [ -n "${_PR_NUMBER}" ] && [ "$${RELOAD_DB}" = "true" ] && [ "$${RELOAD_DB_REASON}" != "/gcbrun reload-db" ]; then
-          BODY=$$(jq -n --arg reason "$${RELOAD_DB_REASON}" --arg build "${BUILD_ID}" '{body: ("The pull request'"'"'s database is recreated this build: " + $$reason + " (build " + $$build + ").")}')
-          curl -s -o /dev/null -w "Posted the recreate note on the pull request: HTTP %{http_code}\n" -X POST \
-            -H "Authorization: Bearer $${DEPLOYER_TOKEN:-$${GITHUB_TOKEN}}" -H "Accept: application/vnd.github.v3+json" \
-            "$${API}/issues/${_PR_NUMBER}/comments" -d "$${BODY}"
-        fi
 
-  # A pull request's environment is the same stack applied into the pull request's own
-  # prefix as the tst apply identity (impersonated by the deploy identity; 2-env grants
-  # it in tst only). Plan, guard, apply: the plan is saved, the guard reads it as JSON
-  # and lets only the pull request's own resources through, and the apply applies
-  # exactly that plan. /gcbrun shared-db plans without a database of its own, /gcbrun
-  # reload-db, from the comment or decided by resolve, replaces the pull request's database
-  # when it exists; /gcbrun down plans the destroy.
+  # A pull-request build only: the stack applied into the pull request's own prefix as the
+  # apply identity. The plan is saved, the guard lets only the pull request's own resources
+  # through, and the apply applies exactly that plan (a destroy on /gcbrun down).
   - id: PlanPullRequestStack
-    waitFor: ["GuardMigrations"]
-    name: ghcr.io/opentofu/opentofu:1.12.6
-    entrypoint: sh
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-stack, plan]
     timeout: 900s
-    args:
-      - -c
-      - |
-        set -euf
-        . /workspace/environment.sh
 
-        if [ -z "${_PR_NUMBER}" ]; then
-          echo "Tag build: the environment's stack is applied on its own rhythm, not here."
-          exit 0
-        fi
-
-        cd infrastructure
-        export GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="${_APPLY_IDENTITY}"
-        PREFIX="3-app/${_APP}/${_ENV}/pr${_PR_NUMBER}"
-        echo "=== Pull request ${_PR_NUMBER}: stack at $${PREFIX} as ${_APPLY_IDENTITY} ==="
-        tofu init -input=false -no-color \
-          -backend-config="prefix=$${PREFIX}" \
-          -backend-config="impersonate_service_account=${_APPLY_IDENTITY}"
-
-        VARS="-var environment=${_ENV} -var pull_request=${_PR_NUMBER}"
-        if [ "$${DOWN}" = "true" ]; then
-          echo "=== /gcbrun down: planning the destroy of the pull request's environment ==="
-          tofu plan -destroy -input=false -no-color -out=/workspace/pr.plan $${VARS}
-        else
-          if [ "$${SHARED_DB}" = "true" ]; then
-            echo "=== /gcbrun shared-db: the site runs against ${_ENV}'s database; no database of its own ==="
-            VARS="$${VARS} -var shared_database=true"
-          fi
-          if [ "$${RELOAD_DB}" = "true" ]; then
-            if tofu state list 2>/dev/null | grep -qx "google_spanner_database.${_APP}\[0\]"; then
-              echo "=== The pull request's database is recreated: $${RELOAD_DB_REASON} ==="
-              VARS="$${VARS} -replace=google_spanner_database.${_APP}[0]"
-            else
-              echo "=== The pull request has no database yet to recreate ($${RELOAD_DB_REASON}); it is created ==="
-            fi
-          fi
-          tofu plan -input=false -no-color -out=/workspace/pr.plan $${VARS}
-        fi
-        tofu show -json /workspace/pr.plan > /workspace/pr-plan.json
-
-  # The guard. A pull request may have edited the stack any way at all, so every
-  # resource the plan creates, changes or destroys must carry the pull request's name
-  # in what names it (name, account, service, job, database, parent, secret, service
-  # account), or be an IAM membership naming one of the pull request's own accounts.
-  # Anything else stops the run, and the offending addresses are posted on the pull
-  # request. Resources outside the google provider (time_sleep) shape nothing and pass.
-  # Shared mode is refused here too, when the pull request changes the migrations.
   - id: GuardPullRequestPlan
-    waitFor: ["PlanPullRequestStack"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-stack, guard]
     timeout: 300s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        . /workspace/environment.sh
-
-        if [ -z "${_PR_NUMBER}" ]; then
-          echo "Tag build: nothing to guard."
-          exit 0
-        fi
-        apt-get -qq update && apt-get -qq install -y jq
-        PR_NAME="${_APP}-pr${_PR_NUMBER}"
-
-        if [ "$${SHARED_DB}" = "true" ]; then
-          CHANGED=$(curl -s -f -H "Authorization: Bearer $${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${REPO_FULL_NAME}/compare/${_DEFAULT_BRANCH}...${COMMIT_SHA}" \
-            | jq -r --arg dir "${_MIGRATIONS_DIR}/" '[.files[]? | select(.filename | startswith($$dir)) | .filename] | .[]')
-          if [ -n "$${CHANGED}" ]; then
-            echo "Build REJECTED: /gcbrun shared-db with changes under ${_MIGRATIONS_DIR} against ${_DEFAULT_BRANCH}; a migration on the shared database would change ${_ENV} before any release:"
-            echo "$${CHANGED}" | sed 's/^/  /'
-            exit 1
-          fi
-          echo "shared-db: nothing under ${_MIGRATIONS_DIR} changed against ${_DEFAULT_BRANCH}."
-        fi
-
-        OFFENDERS=$(jq -r --arg pr "$${PR_NAME}" '
-          def ident: [.name?, .account_id?, .service?, .job?, .database?, .parent?, .secret_id?, .service_account_id?]
-            | map(select(. != null) | tostring) | join(" ");
-          [ .resource_changes[]?
-            | select((.change.actions | map(select(. != "no-op" and . != "read")) | length) > 0)
-            | select(.type | startswith("google_"))
-            | . as $$c
-            | ($$c.change.after // $$c.change.before // {}) as $$v
-            | select(
-                (($$v | ident) | contains($$pr))
-                or (($$c.type | endswith("_iam_member")) and (($$v.member // "") | startswith("serviceAccount:" + $$pr + "-")))
-                | not)
-            | "\($$c.address) (\($$c.change.actions | join(",")))" ] | .[]' /workspace/pr-plan.json)
-        COUNT=$(jq '[.resource_changes[]? | select((.change.actions | map(select(. != "no-op" and . != "read")) | length) > 0)] | length' /workspace/pr-plan.json)
-        if [ -n "$${OFFENDERS}" ]; then
-          echo "Build REJECTED: the plan touches resources that are not pull request ${_PR_NUMBER}'s:"
-          echo "$${OFFENDERS}" | sed 's/^/  /'
-          BODY=$(jq -n --arg name "$${PR_NAME}" --arg list "$${OFFENDERS}" --arg build "${BUILD_ID}" \
-            '{body: ("The pull-request build stopped: its plan touches resources that do not belong to this pull request. A pull-request stack applies only resources named " + $$name + ", or memberships of its own accounts. Build " + $$build + ":\n\n```\n" + $$list + "\n```")}')
-          curl -s -o /dev/null -w "Posted on the pull request: HTTP %{http_code}\n" -X POST \
-            -H "Authorization: Bearer $${DEPLOYER_TOKEN:-$${GITHUB_TOKEN}}" -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${REPO_FULL_NAME}/issues/${_PR_NUMBER}/comments" -d "$${BODY}"
-          exit 1
-        fi
-        echo "Guard passed: $${COUNT} planned change(s), all pull request ${_PR_NUMBER}'s."
 
   - id: ApplyPullRequestStack
-    waitFor: ["GuardPullRequestPlan"]
-    name: ghcr.io/opentofu/opentofu:1.12.6
-    entrypoint: sh
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-stack, apply]
     timeout: 1800s
-    args:
-      - -c
-      - |
-        set -eu
-        . /workspace/environment.sh
+{{- if .HasHook "after-down"}}
 
-        if [ -z "${_PR_NUMBER}" ]; then
-          echo "Tag build: nothing to apply."
-          exit 0
-        fi
-
-        cd infrastructure
-        export GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="${_APPLY_IDENTITY}"
-        tofu apply -input=false -no-color /workspace/pr.plan
-
-        if [ "$${DOWN}" = "true" ]; then
-          echo "=== /gcbrun down: the pull request's environment is gone; nothing deploys ==="
-          echo 'export SKIP_DEPLOY="true"' >> /workspace/environment.sh
-          exit 0
-        fi
-
-        # The stack's substitutions output names this pull request's services and job{{if .Jobs}}s{{end}}; the
-        # JSON is one key per line, which sed reads without jq (absent from this image).
-        tofu output -json substitutions > /workspace/pr-substitutions.json
-        SERVICES=$(sed -n 's/.*"_SERVICES": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
-        MIGRATE_JOB=$(sed -n 's/.*"_MIGRATE_JOB": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
-{{- if .Jobs}}
-        JOBS_JOB=$(sed -n 's/.*"_JOBS_JOB": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
-{{- end}}
-        PR_HOSTNAME=$(sed -n 's/.*"_HOSTNAME": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
-        if [ -z "$${SERVICES}" ] || [ -z "$${MIGRATE_JOB}" ]{{if .Jobs}} || [ -z "$${JOBS_JOB}" ]{{end}}; then
-          echo "Error: the pull request's stack named no services or no {{if .Jobs}}job{{else}}migrate job{{end}} (see pr-substitutions.json)."
-          exit 1
-        fi
-        echo "SERVICES=$${SERVICES} MIGRATE_JOB=$${MIGRATE_JOB}{{if .Jobs}} JOBS_JOB=$${JOBS_JOB}{{end}}"
-        {
-          echo "export SERVICES=\"$${SERVICES}\""
-          echo "export MIGRATE_JOB=\"$${MIGRATE_JOB}\""
-{{- if .Jobs}}
-          echo "export JOBS_JOB=\"$${JOBS_JOB}\""
-{{- end}}
-          echo "export PR_HOSTNAME=\"$${PR_HOSTNAME}\""
-        } >> /workspace/environment.sh
-
-  # The application's hook after a pull-request environment is torn down (/gcbrun down or
-  # the sweep), when it commits one at infrastructure/hooks/after-down.sh: third-party
-  # registrations to undo, a notification. Only on a teardown.
+  # The application's hook after a teardown: {{.HookScript "after-down"}}.
   - id: HookAfterDown
-    waitFor: ["ApplyPullRequestStack"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, after-down]
     timeout: 900s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        HOOK="infrastructure/hooks/after-down.sh"
-        if [ "$${DOWN:-}" != "true" ]; then echo "Not a teardown: nothing to run after down."; exit 0; fi
-        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run after down."; exit 0; fi
-        echo "=== Hook after-down: $${HOOK} ==="
-        bash "$${HOOK}"
+{{- end}}
 
-  # Whether the image build runs: bedrock deploy check-release. One registry serves every
-  # environment and the image tags carry the environment, so the release tag's digest and
-  # the commit tag's digest decide: neither exists, BuildImage builds; the commit is built
-  # under another release name, that name is added and the build reused; both agree,
-  # reused; the release tag names another build, the run is refused (a release names one
-  # build per environment). It appends IMAGE_DIGEST and REUSE_IMAGE to environment.sh.
+  # Whether the image build runs: a release already built from this commit is reused, and
+  # a release tag naming another build is refused.
   - id: CheckRelease
-    waitFor: ["HookAfterDown"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, check-release]
     timeout: 300s
+{{- if .HasHook "before-build"}}
 
-  # The application's hook before the image build, when it commits one at
-  # infrastructure/hooks/before-build.sh: run as the deploy identity in the checkout, with
-  # the pipeline's facts (environment.sh) and every substitution of the build exported.
-  # Files it writes are the Dockerfile's to copy (a fetched config, a frontend version
-  # file); build arguments it appends to /workspace/build-args.sh (BUILD_ARGS+=(--build-arg
-  # NAME=value)) reach the image build. No file, nothing runs; a failing hook stops the
-  # build here.
+  # The application's hook before the image build: {{.HookScript "before-build"}}. Build
+  # arguments it appends to build-args.txt (NAME=value lines) reach the build.
   - id: HookBeforeBuild
-    waitFor: ["CheckRelease"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, before-build]
     timeout: 900s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        HOOK="infrastructure/hooks/before-build.sh"
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run before build."; exit 0; fi
-        echo "=== Hook before-build: $${HOOK} ==="
-        bash "$${HOOK}"
+{{- end}}
 
+  # The image, built fresh from the commit's Dockerfile with the declared build arguments
+  # and build secrets, pushed under <release>-<env> and <commit>-<env>.
   - id: BuildImage
-    waitFor: ["HookBeforeBuild"]
-    name: gcr.io/cloud-builders/docker
-    entrypoint: bash
+    name: {{.DockerImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, build-image]
     timeout: 1800s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        # The declared substitutions as build arguments, and whatever a hook before the
-        # build appended (BUILD_ARGS+=(--build-arg NAME=value) lines).
-        source /workspace/build-args.sh
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
+{{- if .HasHook "before-migrate"}}
 
-        # jq reads the build's metadata file.
-        apt-get -qq update && apt-get -qq install -y jq
-
-        if [[ "$${REUSE_IMAGE:-}" == "true" ]]; then
-          echo "Reusing $${IMAGE}@$${IMAGE_DIGEST}: CheckRelease found this release already built from this commit."
-          exit 0
-        fi
-
-        # Declared build secrets (_BUILD_SECRETS: NAME=<secret version>, comma-separated):
-        # each is read as the deploy identity through the Secret Manager API and passed to
-        # the build as a BuildKit secret the Dockerfile mounts (RUN --mount=type=secret,id=NAME).
-        # The value lives in this step's memory-backed /dev/shm, gone with the step and
-        # never in /workspace, so no later step sees it; it is never a build argument,
-        # which the image would keep.
-        SECRET_ARGS=()
-        if [ -n "${_BUILD_SECRETS}" ]; then
-          TOKEN=$$(curl -sf -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" | jq -r '.access_token')
-          umask 077
-          IFS=',' read -ra ENTRIES <<< "${_BUILD_SECRETS}"
-          for ENTRY in "$${ENTRIES[@]}"; do
-            SECRET_NAME="$${ENTRY%%=*}"; SECRET_VERSION="$${ENTRY#*=}"
-            if ! curl -sf -H "Authorization: Bearer $${TOKEN}" "https://secretmanager.googleapis.com/v1/$${SECRET_VERSION}:access" | jq -r '.payload.data' | base64 -d > "/dev/shm/$${SECRET_NAME}"; then
-              echo "Build REJECTED: the build secret $${SECRET_NAME} ($${SECRET_VERSION}) could not be read as the deploy identity; the stack grants it accessor on the container, and the version must exist and be enabled."
-              exit 1
-            fi
-            SECRET_ARGS+=(--secret "id=$${SECRET_NAME},src=/dev/shm/$${SECRET_NAME}")
-            echo "Build secret $${SECRET_NAME}: $${SECRET_VERSION} ($$(wc -c < "/dev/shm/$${SECRET_NAME}") bytes)"
-          done
-        fi
-
-        docker buildx build \
-          --build-arg VERSION="$${VERSION}" \
-          --build-arg COMMIT="${COMMIT_SHA}" \
-          $${BUILD_ARGS[@]+"$${BUILD_ARGS[@]}"} \
-          $${SECRET_ARGS[@]+"$${SECRET_ARGS[@]}"} \
-          --tag "$${IMAGE}:$${COMMIT_TAG}" \
-          --tag "$${IMAGE}:$${IMAGE_TAG}" \
-          --metadata-file /workspace/image-metadata.json \
-          --file Dockerfile --no-cache --push .
-
-        IMAGE_DIGEST=$(jq -r '."containerimage.digest"' /workspace/image-metadata.json)
-        if [[ -z "$${IMAGE_DIGEST}" || "$${IMAGE_DIGEST}" == "null" ]]; then
-          echo "Error: no image digest in /workspace/image-metadata.json."
-          exit 1
-        fi
-        echo "export IMAGE_DIGEST=\"$${IMAGE_DIGEST}\"" >> /workspace/environment.sh
-        echo "Built and pushed $${IMAGE}@$${IMAGE_DIGEST}"
-
-  # The application's hook before the migrations, when it commits one at
-  # infrastructure/hooks/before-migrate.sh, with the image built and its digest in
-  # IMAGE_DIGEST; the same facts and substitutions as the hook before the build.
+  # The application's hook before the migrations: {{.HookScript "before-migrate"}}.
   - id: HookBeforeMigrate
-    waitFor: ["BuildImage"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, before-migrate]
     timeout: 900s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        HOOK="infrastructure/hooks/before-migrate.sh"
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run before migrate."; exit 0; fi
-        echo "=== Hook before-migrate: $${HOOK} ==="
-        bash "$${HOOK}"
+{{- end}}
 
-  # The migrate command as a Cloud Run job, run to completion: bedrock deploy migrate.
-  # Only the image and the labels change on the job (its variables, identity, resources
-  # and retry policy are the application layer's); the seed (schema/devseed as data
-  # migrations after the schema) runs where _SEED is true: every pull request, its
-  # database being new, and a release build only in the environments the placement's seed
-  # list names, none by default and never production. A seeded database takes nothing
-  # twice. A build that runs no migrations skips the job.
+  # The migrate job on this image, run to completion; with the seed in a pull request and
+  # in the environments the placement's seed list names.
   - id: RunMigrations
-    waitFor: ["HookBeforeMigrate"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, migrate]
     timeout: 2400s
+{{- if .HasHook "after-migrate"}}
 
-  # The application's hook after the migrations and before the service deploys, when it
-  # commits one at infrastructure/hooks/after-migrate.sh: data work that is not a
-  # migration (a backfill, a reference-data reload, an index warm-up) against the
-  # migrated schema, with the same facts as the hooks before it.
+  # The application's hook after the migrations: {{.HookScript "after-migrate"}}.
   - id: HookAfterMigrate
-    waitFor: ["RunMigrations"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, after-migrate]
     timeout: 900s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        HOOK="infrastructure/hooks/after-migrate.sh"
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run after migrate."; exit 0; fi
-        echo "=== Hook after-migrate: $${HOOK} ==="
-        bash "$${HOOK}"
+{{- end}}
 {{- if .Jobs}}
 
-  # The job process ({{.Jobs.Dir}}) as a Cloud Run job, updated to this build's image and the
-  # pipeline's labels and not run: bedrock deploy jobs. The application runs it; its
-  # timeout, retries and resources are the stack's. After the migrations, so a run the
-  # application starts from here on sees the migrated schema.
+  # The job process's Cloud Run job ({{.Jobs.Dir}}) updated to this image, not run.
   - id: DeployJobs
-    waitFor: ["HookAfterMigrate"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, jobs]
     timeout: 600s
 {{- end}}
 
-  # A new revision of the service in every region, receiving no traffic yet: bedrock deploy
-  # service. The service itself is the infrastructure's (created with its runtime identity,
-  # ingress and scaling); the step only updates the image and the labels. Before each
-  # update the service is checked for the state a failed earlier deploy leaves behind
-  # (traffic pointed at a revision that is not ready) and repaired by moving traffic back
-  # to the last ready revision, as CCC's deployments do. The new revision carries the tag
-  # "next" (or the pull request's tag), under which the next backend serves it before
-  # traffic moves. One line per region is left in /workspace/revisions.txt, and NEXT_URL
-  # and REVISION_URLS in environment.sh.
+  # A new revision in every region, receiving no traffic yet, tagged "next" (or the pull
+  # request's tag) so it can be reached before traffic moves.
   - id: DeployServiceNoTraffic
-    waitFor: [{{if .Jobs}}"DeployJobs"{{else}}"HookAfterMigrate"{{end}}]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, service]
     timeout: 1200s
+{{- if .HasHook "before-traffic"}}
 
-  # The application's hook after the new revision is deployed in every region and before
-  # traffic moves, when it commits one at infrastructure/hooks/before-traffic.sh: a check
-  # against the new revision while the old one still serves. NEXT_URL is the new
-  # revision's public URL through the load balancer (the <app>-<env>-next hostname, the
-  # revision tag "next"; empty in a pull-request build, whose environment is its own) and
-  # REVISION_URLS the tagged run.app URL per region, which the services' ingress answers
-  # from inside the project alone. A failing hook stops the build with the old revision
-  # serving, which is what deploying without traffic first is for.
+  # The application's hook before traffic moves: {{.HookScript "before-traffic"}}. NEXT_URL
+  # and REVISION_URLS reach the new revision while the old one still serves; a failing hook
+  # stops the build with the old revision serving.
   - id: HookBeforeTraffic
-    waitFor: ["DeployServiceNoTraffic"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, before-traffic]
     timeout: 900s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        HOOK="infrastructure/hooks/before-traffic.sh"
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run before traffic."; exit 0; fi
-        echo "=== Hook before-traffic: $${HOOK} ==="
-        bash "$${HOOK}"
+{{- end}}
 
-  # Every region to 100 percent on its new revision: bedrock deploy shift-traffic. A
-  # pull-request build served under a tag alone leaves traffic where it is.
+  # Every region to 100 percent on its new revision; a pull request's revision stays under
+  # its tag.
   - id: ShiftTraffic
-    waitFor: ["HookBeforeTraffic"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, shift-traffic]
     timeout: 600s
+{{- if .HasHook "after-traffic"}}
 
-  # The application's hook after traffic moved, when it commits one at
-  # infrastructure/hooks/after-traffic.sh: a smoke test, a cache warm, a notification. A
-  # failing hook fails the build before the deployment record is written, so the record
-  # gate never sees a release the hook refused.
+  # The application's hook after traffic moved: {{.HookScript "after-traffic"}}. A failing
+  # hook fails the build before the record is written, so the gate never sees the release.
   - id: HookAfterTraffic
-    waitFor: ["ShiftTraffic"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, after-traffic]
     timeout: 900s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        source /workspace/environment.sh
-        HOOK="infrastructure/hooks/after-traffic.sh"
-        if [ "$${SKIP_DEPLOY:-}" = "true" ]; then echo "The pull request's environment was torn down: nothing to do."; exit 0; fi
-        if [ ! -e "$${HOOK}" ]; then echo "No hook at $${HOOK}: nothing to run after traffic."; exit 0; fi
-        echo "=== Hook after-traffic: $${HOOK} ==="
-        bash "$${HOOK}"
+{{- end}}
 
-  # The record of what is now running, written by bedrock deploy record: the version,
-  # commit, image and digest, the regions and the revision each runs, the time, and live
-  # or preview. The next environment's gate reads it. It reads environment.sh, build.json
-  # and revisions.txt.
+  # The record of what now runs, in the records bucket; the next environment's gate reads it.
   - id: WriteDeploymentRecord
-    waitFor: ["HookAfterTraffic"]
-    name: gcr.io/cloud-builders/gcloud
+    name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, record]
     timeout: 300s
 
-  # Talk back on the pull request as the deployer app: a GitHub deployment named
-  # after the environment, carrying its URL (the pull request's sidebar shows it, and
-  # "View deployment" opens it), and a comment with the release and the database
-  # mode; /gcbrun down marks every deployment of the environment inactive. Skipped
-  # without a token (a tag build, or no deployer app in the environment yet).
+  # A pull-request build only, as the deployer app: a GitHub deployment carrying the
+  # environment's URL and a comment with the release and the database mode.
   - id: TalkBack
-    waitFor: ["WriteDeploymentRecord"]
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, talk-back]
     timeout: 120s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        . /workspace/environment.sh
-        if [ -z "${_PR_NUMBER}" ] || [ -z "$${DEPLOYER_TOKEN:-}" ]; then
-          echo "No talk-back."
-          exit 0
-        fi
-        apt-get -qq update && apt-get -qq install -y jq
-        API="https://api.github.com/repos/${REPO_FULL_NAME}"
-        AUTH=(-s -f -H "Authorization: Bearer $${DEPLOYER_TOKEN}" -H "Accept: application/vnd.github+json")
-        ENVIRONMENT="${_APP}-pr${_PR_NUMBER}"
-        LOG_URL="https://console.cloud.google.com/cloud-build/builds;region=${LOCATION}/${BUILD_ID}?project=${PROJECT_ID}"
-        if [ "$${DOWN}" = "true" ]; then
-          for DEPLOYMENT in $(curl "$${AUTH[@]}" "$${API}/deployments?environment=$${ENVIRONMENT}&per_page=100" | jq -r '.[].id'); do
-            curl "$${AUTH[@]}" -o /dev/null -X POST "$${API}/deployments/$${DEPLOYMENT}/statuses" \
-              -d "{\"state\":\"inactive\",\"log_url\":\"$${LOG_URL}\",\"description\":\"Destroyed by /gcbrun down\"}"
-          done
-          BODY="The environment $${ENVIRONMENT} is destroyed (/gcbrun down, build ${BUILD_ID})."
-        else
-          URL="https://$${PR_HOSTNAME}/"
-          DEPLOYMENT=$(curl "$${AUTH[@]}" -X POST "$${API}/deployments" \
-            -d "{\"ref\":\"${COMMIT_SHA}\",\"environment\":\"$${ENVIRONMENT}\",\"transient_environment\":true,\"auto_merge\":false,\"required_contexts\":[],\"description\":\"Cloud Build ${BUILD_ID}\"}" | jq -r '.id')
-          curl "$${AUTH[@]}" -o /dev/null -X POST "$${API}/deployments/$${DEPLOYMENT}/statuses" \
-            -d "{\"state\":\"success\",\"environment_url\":\"$${URL}\",\"log_url\":\"$${LOG_URL}\",\"auto_inactive\":true,\"description\":\"Deployed $${RELEASE}\"}"
-          MODE="its own database"
-          if [ "$${SHARED_DB}" = "true" ]; then MODE="${_ENV}'s database (shared-db)"; fi
-          if [ "$${RELOAD_DB}" = "true" ]; then MODE="its own database, recreated this build ($${RELOAD_DB_REASON})"; fi
-          BODY="Deployed $${RELEASE} to $${URL} with $${MODE} (build ${BUILD_ID})."
-        fi
-        curl "$${AUTH[@]}" -o /dev/null -X POST "$${API}/issues/${_PR_NUMBER}/comments" -d "$(jq -n --arg body "$${BODY}" '{body: $$body}')"
-        echo "Talked back on pull request ${_PR_NUMBER}: $${BODY}"
 
 options:
   logging: CLOUD_LOGGING_ONLY

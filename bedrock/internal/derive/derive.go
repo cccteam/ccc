@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/impulse/app"
 )
 
@@ -50,6 +51,10 @@ type Model struct {
 	// Jobs is the job process, the application's own code as a Cloud Run job, or nil
 	// when the application has no cmd/jobs.
 	Jobs *Process
+	// Hooks are the stages the application commits a hook script for
+	// (infrastructure/hooks/<stage>.sh), in the pipeline's order: the pipeline has a step
+	// for each.
+	Hooks []hook.Stage
 	// Auths are the auths, sorted by name.
 	Auths []Auth
 	// Schema is what the migration owns.
@@ -474,6 +479,11 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.schema(a); err != nil {
 		return nil, err
 	}
+	hooks, err := hook.Scripts(a.Root)
+	if err != nil {
+		return nil, err
+	}
+	m.Hooks = hooks
 	if err := m.generateStep(a); err != nil {
 		return nil, err
 	}

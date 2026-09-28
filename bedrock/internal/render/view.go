@@ -16,6 +16,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
@@ -33,6 +34,12 @@ type view struct {
 	// BedrockURL is where the pipeline's first step and the infrastructure workflow
 	// download the bedrock the placement pins: the linux/amd64 binary of its release.
 	BedrockURL string
+	// GcloudImage, OpenTofuImage and DockerImage are the images the pipeline's steps run
+	// bedrock in: gcloud's for most (Cloud Build workers keep it cached), OpenTofu's for
+	// the steps that drive tofu, docker's for the image build.
+	GcloudImage   string
+	OpenTofuImage string
+	DockerImage   string
 
 	// Prefix is the placement's naming prefix.
 	Prefix string
@@ -293,6 +300,25 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 	return iv
 }
 
+// The images the pipeline runs bedrock in. The OpenTofu version is the one the stack's
+// infrastructure workflow checks with.
+const (
+	gcloudImage   = "gcr.io/cloud-builders/gcloud"
+	openTofuImage = "ghcr.io/opentofu/opentofu:1.12.6"
+	dockerImage   = "gcr.io/cloud-builders/docker"
+)
+
+// HasHook reports whether the application commits a hook script for the stage: the
+// pipeline has a step for it.
+func (v *view) HasHook(stage string) bool {
+	return slices.Contains(v.Hooks, hook.Stage(stage))
+}
+
+// HookScript is the stage's script, as the application commits it.
+func (v *view) HookScript(stage string) string {
+	return hook.Stage(stage).Script()
+}
+
 func newView(m *derive.Model) (*view, error) {
 	if len(m.Auths) != 1 {
 		return nil, errors.Newf("the stack binds one auth; %s has %d", m.App, len(m.Auths))
@@ -302,6 +328,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.RepoFullName = repoFullName(m.Repository)
 	v.SweepMinute = sweepMinute(m.App)
 	v.BedrockURL = release.URL(p.BedrockVersion, release.PipelineAsset())
+	v.GcloudImage, v.OpenTofuImage, v.DockerImage = gcloudImage, openTofuImage, dockerImage
 	v.Auth = &m.Auths[0]
 	v.Directory = v.Auth.OIDC()
 	v.GoogleDirectory = v.Auth.Flavor == googleFlavor && v.Auth.Directory[derive.RoleAdminSubject] != nil

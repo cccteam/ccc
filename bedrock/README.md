@@ -180,11 +180,15 @@ placement with no pin at all: a new application runs `upgrade` first.
 
 `deploy` holds the pipeline's steps, one command each, run inside Cloud Build by the
 bedrock its first step downloaded: the release the placement pins, verified against its
-checksum. They share a workspace (`/workspace`, `--workspace`
-overrides): `environment.sh` (the facts resolve exports, then what later steps append),
-`build.json` (the build as Cloud Build describes it), `build-args.sh` (the declared
-substitutions as build arguments) and `revisions.txt` (the revisions the service step
-created). In order:
+checksum. Each step runs its command in the image whose tool the command drives (gcloud's
+for most, OpenTofu's for the pull request's stack, docker's for the image build), and no
+step installs anything. The steps share a workspace, the checkout (`/workspace`,
+`--workspace` overrides): `environment.sh` (the facts resolve exports, then what later
+steps append), `build.json` (the build as Cloud Build describes it), `build-args.txt` (the
+image build's arguments, `NAME=value` lines: the declared substitutions, then what a hook
+before the build adds) and `revisions.txt` (the revisions the service step created). Each
+command reads those files, does one thing and appends what it learned; that is the only
+thing one step hands the next. In order:
 
 - `deploy resolve`: reads the build through the Cloud Build API, mints the repository's
   GitHub token from the Cloud Build connection, and works out the facts: the trigger's
@@ -197,10 +201,23 @@ created). In order:
   an accepted release actor, the tagged commit is on the default branch or at the tip of
   a hotfix line, and the record gate holds: the release is live in the previous
   environment. A refusal starts with `Build REJECTED` and says why.
+- `deploy guard-migrations`: the schema migrations and the seed are each one sequence
+  (the rule `bedrock check` applies), and in a pull-request build every migration the
+  branch started from is still there unchanged and the sequence is read together with
+  the default branch's. A refusal is posted on the pull request and names the fix.
+- `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
+  applied into its own state prefix as the apply identity. The plan is saved, the guard
+  lets only the pull request's own resources through, the apply applies exactly that
+  plan and leaves the pull request's services, jobs and hostname for the steps after (a
+  destroy on `/gcbrun down`). A tag build skips all three.
 - `deploy check-release`: reads the registry before the image build. Neither tag exists,
   the build runs; the commit is built and the release tag is not, the release name is
   added to that build; both exist and agree, the build is reused; the release tag names
   another build, the run is refused.
+- `deploy build-image`: builds the checkout's Dockerfile with docker and pushes the image
+  under its two tags, with the build arguments and the declared build secrets (read as
+  the deploy identity into memory and passed as BuildKit secrets, never build
+  arguments); the digest goes to `environment.sh`.
 - `deploy migrate`: updates the migrate job to this build's image and runs it to
   completion, with the seed (`schema/devseed` as data migrations after the schema) where
   `_SEED` is true: every pull request, and a release build only in the environments the
@@ -218,14 +235,21 @@ created). In order:
   the tags other revisions carry; a pull-request revision served under its tag alone
   leaves the traffic where it is.
 - `deploy record`: writes the deployment record once traffic has moved.
+- `deploy talk-back`: in a pull-request build, tells the pull request what the build did
+  as the deployer app: a GitHub deployment carrying the environment's URL and a comment.
+  The app's token is minted from its key when there is something to say, by this step or
+  by a guard with a refusal to post, and is kept nowhere.
 
-The pipeline's hooks run between them, each a script the application commits under
-`infrastructure/hooks/<stage>.sh` and sourced with the build's facts: `before-build`,
-`before-migrate`, `after-migrate` (the schema migrated, the service not yet deployed),
-`before-traffic` (the new revision deployed in every region and the old one still
-serving; `NEXT_URL` is the new revision's public URL through the load balancer, the
+`deploy hook <stage>` runs the application's script for a stage,
+`infrastructure/hooks/<stage>.sh`, with the build's facts in its environment:
+`before-build`, `before-migrate`, `after-migrate` (the schema migrated, the service not
+yet deployed), `before-traffic` (the new revision deployed in every region and the old one
+still serving; `NEXT_URL` is the new revision's public URL through the load balancer, the
 `<app>-<env>-next` hostname over the revision tag `next`, and a failure here stops the
-build with the old revision serving), `after-traffic` and `after-down`.
+build with the old revision serving), `after-traffic` and `after-down` (on a teardown).
+The pipeline has a step for each stage the application has a script for. `deploy sweep`
+is the hourly sweep's one step: the pull requests whose services stand, which of them
+are closed, and each closed one's stack destroyed.
 
 ## bedrock secret
 

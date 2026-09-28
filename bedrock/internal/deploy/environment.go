@@ -142,6 +142,19 @@ type Build struct {
 	Substitutions map[string]string `json:"substitutions"`
 }
 
+// parseBuild reads a build as Cloud Build describes it.
+func parseBuild(data []byte) (*Build, error) {
+	var b Build
+	if err := json.Unmarshal(data, &b); err != nil {
+		return nil, errors.Wrap(err, "json.Unmarshal(): the build")
+	}
+	if b.Substitutions == nil {
+		b.Substitutions = map[string]string{}
+	}
+
+	return &b, nil
+}
+
 // Build reads the workspace's build file.
 func (w Workspace) Build() (*Build, error) {
 	data, err := os.ReadFile(filepath.Join(string(w), BuildFile))

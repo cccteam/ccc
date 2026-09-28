@@ -5,11 +5,8 @@
 package check
 
 import (
-	"fmt"
 	"os"
 	"path"
-	"sort"
-	"strconv"
 
 	"github.com/go-playground/errors/v5"
 
@@ -24,14 +21,14 @@ type MigrationFinding struct {
 	Problem string
 }
 
-// scanMigrations reads the migrations directory and reports every file that is not a
-// migration file, every index with two up files or a down file without an up, and every
-// gap: the indexes run contiguously from the lowest present to the highest, one up file
-// each, so a consolidated history that starts above 000001 passes and a skipped number
-// does not. A directory that does not exist has nothing to check. Findings name their
-// files under rel, the directory as the application names it.
+// scanMigrations reads the migrations directory by the sequence rule (migration.Sequence)
+// and reports every file that is not a migration file, every index with two up files or a
+// down file without an up, and every gap: the indexes run contiguously from the lowest
+// present to the highest, one up file each, so a consolidated history that starts above
+// 000001 passes and a skipped number does not. A directory that does not exist has nothing
+// to check. Findings name their files under rel, the directory as the application names it.
 func scanMigrations(dir, rel string) ([]MigrationFinding, error) {
-	entries, err := os.ReadDir(dir)
+	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -39,62 +36,20 @@ func scanMigrations(dir, rel string) ([]MigrationFinding, error) {
 
 		return nil, errors.Wrapf(err, "os.ReadDir(): %s", dir)
 	}
-	var findings []MigrationFinding
-	ups := map[int][]string{}
-	downs := map[int][]string{}
-	for _, e := range entries {
-		if e.IsDir() || path.Ext(e.Name()) != ".sql" {
-			continue
-		}
-		m := migration.NameRE.FindStringSubmatch(e.Name())
-		if m == nil {
-			findings = append(findings, MigrationFinding{Path: path.Join(rel, e.Name()), Problem: "not a migration file name (NNNNNN_name.up.sql or NNNNNN_name.down.sql)"})
-
-			continue
-		}
-		idx, _ := strconv.Atoi(m[1])
-		if m[3] == "up" {
-			ups[idx] = append(ups[idx], e.Name())
-		} else {
-			downs[idx] = append(downs[idx], e.Name())
+	entries := make([]migration.Entry, 0, len(dirEntries))
+	for _, e := range dirEntries {
+		if !e.IsDir() {
+			entries = append(entries, migration.Entry{Name: e.Name()})
 		}
 	}
-	indexes := make([]int, 0, len(ups)+len(downs))
-	for idx := range ups {
-		indexes = append(indexes, idx)
-	}
-	for idx := range downs {
-		if _, ok := ups[idx]; !ok {
-			indexes = append(indexes, idx)
+	problems, _ := migration.Sequence(entries)
+	findings := make([]MigrationFinding, 0, len(problems))
+	for _, p := range problems {
+		where := rel
+		if p.File != "" {
+			where = path.Join(rel, p.File)
 		}
-	}
-	sort.Ints(indexes)
-	for _, idx := range indexes {
-		if len(ups[idx]) > 1 {
-			for _, name := range ups[idx] {
-				findings = append(findings, MigrationFinding{Path: path.Join(rel, name), Problem: fmt.Sprintf("index %06d has %d up files; one migration per index", idx, len(ups[idx]))})
-			}
-		}
-		if len(downs[idx]) > 1 {
-			for _, name := range downs[idx] {
-				findings = append(findings, MigrationFinding{Path: path.Join(rel, name), Problem: fmt.Sprintf("index %06d has %d down files; at most one", idx, len(downs[idx]))})
-			}
-		}
-		if _, ok := ups[idx]; !ok {
-			for _, name := range downs[idx] {
-				findings = append(findings, MigrationFinding{Path: path.Join(rel, name), Problem: fmt.Sprintf("index %06d has a down file and no up file", idx)})
-			}
-		}
-	}
-	if len(indexes) > 0 {
-		for idx := indexes[0]; idx <= indexes[len(indexes)-1]; idx++ {
-			if _, ok := ups[idx]; !ok {
-				if _, down := downs[idx]; down {
-					continue // reported above
-				}
-				findings = append(findings, MigrationFinding{Path: rel, Problem: fmt.Sprintf("gap: no migration %06d between %06d and %06d; the sequence is contiguous so nothing is skipped", idx, indexes[0], indexes[len(indexes)-1])})
-			}
-		}
+		findings = append(findings, MigrationFinding{Path: where, Problem: p.Text})
 	}
 
 	return findings, nil

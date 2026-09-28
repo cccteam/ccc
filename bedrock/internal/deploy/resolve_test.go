@@ -433,23 +433,23 @@ func TestFactsWrite(t *testing.T) {
 		comments []string
 		wantEnv  map[string]string
 		wantArgs string
-		// wantShell is what bash prints for the declared value and the build arguments.
+		// wantShell is what bash prints for the declared value, sourced from the environment file.
 		wantShell string
 	}{
 		{
 			name:      "a tag build with a declared substitution",
 			subs:      tagBuild(nil),
 			wantEnv:   map[string]string{"GITHUB_TOKEN": "tok", "SERVICES": "us-central1=harbor-app", "MIGRATE_JOB": "us-central1=harbor-migrate", sharedDBFact: "", "SKIP_DEPLOY": "", "IMAGE_TAG": "v1.2.3-tst", "COMMIT_TAG": "deadbeefcafe-tst", "RELEASE": "v1.2.3", runMigrationsFact: "true", "SHIFT_TRAFFIC": "true", "_ENV": "tst", "_WIDGET_MODE": trickyValue},
-			wantArgs:  "BUILD_ARGS=()\nBUILD_ARGS+=(--build-arg '_WIDGET_MODE=it'\\''s \"on\" $now`')\n",
-			wantShell: trickyValue + "\n--build-arg\n_WIDGET_MODE=" + trickyValue + "\n",
+			wantArgs:  "_WIDGET_MODE=" + trickyValue + "\n",
+			wantShell: trickyValue + "\n",
 		},
 		{
 			name:      "a pull request in shared mode",
 			subs:      prBuild(map[string]string{"_WIDGET_MODE": ""}),
 			comments:  []string{"/gcbrun shared-db"},
 			wantEnv:   map[string]string{sharedDBFact: "true", "RELOAD_DB": "", "DOWN": "", runMigrationsFact: "false", "VERSION": "pr7@deadbee", prNumberSub: "7"},
-			wantArgs:  "BUILD_ARGS=()\n",
-			wantShell: "\n\n",
+			wantArgs:  "",
+			wantShell: "\n",
 		},
 	}
 	for _, tt := range tests {
@@ -487,7 +487,14 @@ func TestFactsWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			if string(args) != tt.wantArgs {
-				t.Errorf("build-args.sh = %q, want %q", args, tt.wantArgs)
+				t.Errorf("%s = %q, want %q", BuildArgsFile, args, tt.wantArgs)
+			}
+			read, err := Workspace(dir).BuildArgs()
+			if err != nil {
+				t.Fatalf("BuildArgs() error = %v", err)
+			}
+			if got := strings.Join(read, "\n"); got != strings.TrimSuffix(tt.wantArgs, "\n") {
+				t.Errorf("BuildArgs() = %q, want the file's lines %q", got, tt.wantArgs)
 			}
 			build, err := Workspace(dir).Build()
 			if err != nil {
@@ -499,7 +506,7 @@ func TestFactsWrite(t *testing.T) {
 			if _, err := exec.LookPath("bash"); err != nil {
 				t.Skip("no bash to source the files with")
 			}
-			shell := exec.CommandContext(t.Context(), "bash", "-c", `source ./environment.sh && source ./build-args.sh && printf '%s\n' "${_WIDGET_MODE:-}" && printf '%s\n' ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}`)
+			shell := exec.CommandContext(t.Context(), "bash", "-c", `source ./environment.sh && printf '%s\n' "${_WIDGET_MODE:-}"`)
 			shell.Dir = dir
 			got, err := shell.CombinedOutput()
 			if err != nil {

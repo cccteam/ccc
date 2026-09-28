@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -39,6 +40,8 @@ type Run interface {
 	// RunJob starts an execution of the job, with the arguments overriding the container's
 	// when given, and waits for it to end. It answers the execution.
 	RunJob(ctx context.Context, name string, args []string) (map[string]any, error)
+	// Services lists the services of the project in the region, every page.
+	Services(ctx context.Context, project, region string) ([]map[string]any, error)
 }
 
 // RunFunc opens Run.
@@ -64,6 +67,30 @@ type cloudRun struct {
 
 func (c *cloudRun) Get(ctx context.Context, name string) (map[string]any, error) {
 	return c.call(ctx, http.MethodGet, "/v2/"+name, nil)
+}
+
+func (c *cloudRun) Services(ctx context.Context, project, region string) ([]map[string]any, error) {
+	var all []map[string]any
+	token := ""
+	for {
+		path := "/v2/projects/" + project + "/locations/" + region + "/services?pageSize=100"
+		if token != "" {
+			path += "&pageToken=" + url.QueryEscape(token)
+		}
+		page, err := c.call(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		list, _ := page["services"].([]any)
+		for _, item := range list {
+			if doc, ok := item.(map[string]any); ok {
+				all = append(all, doc)
+			}
+		}
+		if token, _ = page["nextPageToken"].(string); token == "" {
+			return all, nil
+		}
+	}
 }
 
 func (c *cloudRun) Patch(ctx context.Context, name string, resource map[string]any, fields ...string) (map[string]any, error) {

@@ -365,20 +365,25 @@ refusals, and on `/gcbrun down` the deployment marked inactive.
 The deploy sequence in `cloudbuild.yaml` is bedrock's and is rewritten on every
 render, so a lost step is caught rather than copied. Its first step downloads
 the bedrock release the placement pins (`bedrockVersion`) and verifies it
-against the placement's checksum (`bedrockSha256`); every step but the image
-build then runs that bedrock (`bedrock deploy resolve`, `validate-release`,
-`check-release`, `migrate`, `jobs`, `service`, `shift-traffic`, `record`), and
-the image build stays a docker step. The version appears in that one place;
-`bedrock upgrade` moves the pin and re-renders. What an application adds is
-declared in files of its own:
+against the placement's checksum (`bedrockSha256`); every step after it is one
+`bedrock deploy` command run in the image whose tool it drives: gcloud's for
+most, OpenTofu's for the pull request's stack, docker's for the image build.
+The steps share the checkout as their workspace: each reads the facts
+(`environment.sh`) and the build (`build.json`), does one thing and appends what
+it learned, and none installs anything. `bedrock deploy <command> --help` says
+what each does in full. The version appears in that one place; `bedrock
+upgrade` moves the pin and re-renders. What an application adds is declared in
+files of its own:
 
 - **Hooks.** A script the application commits at
-  `infrastructure/hooks/<stage>.sh` runs at that stage, as the deploy identity,
-  in the checkout, with the pipeline's facts sourced from
-  `/workspace/environment.sh` (the environment, project, image, release,
-  pull-request number, database mode) and every substitution of the build
-  exported; a hook before the build may add build arguments by appending
-  `BUILD_ARGS+=(--build-arg NAME=value)` lines to `/workspace/build-args.sh`.
+  `infrastructure/hooks/<stage>.sh` runs at that stage (`bedrock deploy hook
+  <stage>`), as the deploy identity, in the checkout, with the pipeline's facts
+  (the environment, project, image, release, pull-request number, database
+  mode) and every substitution of the build in its environment; a hook before
+  the build may add build arguments by appending `NAME=value` lines to the file
+  `BUILD_ARGS_FILE` names (`/workspace/build-args.txt`). The pipeline has a step
+  for each stage the application has a script for, so a new script is a render
+  away: `bedrock check` reports the pipeline as differing until then.
   The stages, in order: `before-build` (files written here are the
   Dockerfile's to copy: a fetched config, a frontend version file),
   `before-migrate` (the image is built; `IMAGE_DIGEST` names it),
@@ -392,7 +397,7 @@ declared in files of its own:
   smoke test, a cache warm; a failure here stops the build before the
   deployment record, so the record gate never sees a release the hook
   refused) and `after-down` (after a pull-request environment is torn down,
-  by `/gcbrun down` or the sweep). No file, nothing runs.
+  by `/gcbrun down`).
 - **Build secrets.** A secret the image build needs is declared in
   `terraform.tfvars` (`build_secrets`, NAME = pinned version per environment)
   and reaches the build as a BuildKit secret the Dockerfile mounts ("Build
@@ -408,9 +413,8 @@ declared in files of its own:
   `bedrock check` refuses a Dockerfile that builds no binary for a job the
   stack deploys (`/migrate`{{if .Jobs}}, `/jobs`{{end}}).
 
-Anything beyond that is a new hook point or, once the steps are `bedrock
-deploy` commands, a pipeline the application composes from them; never an edit
-to the rendered file.
+Anything beyond that is a new hook point or a new `bedrock deploy` command,
+never an edit to the rendered file.
 
 ## Hand steps
 

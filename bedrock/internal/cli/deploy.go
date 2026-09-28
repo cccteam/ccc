@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
@@ -18,15 +19,28 @@ func newDeploy(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   deployUse,
 		Short: "The deploy sequence, one command per step",
-		Long: `deploy holds the steps of the deploy sequence as commands, each over the same inputs: the
-facts the resolve step exports to the workspace (environment.sh), the build as Cloud Build
-describes it (build.json) and what the earlier steps left there. A pipeline lists the steps it
-wants, and the rendered cloudbuild.yaml runs them with the bedrock its first step downloads: the
-release the placement pins (bedrockVersion), verified against its checksum (bedrockSha256). Today:
-resolve, validate-release, check-release, migrate, jobs, service, shift-traffic and record; the
-image build stays a docker step.`,
+		Long: `deploy holds the steps of the deploy sequence as commands, one per pipeline step, each over the
+same inputs: the facts resolve writes to the workspace (environment.sh), the build as Cloud Build
+describes it (build.json) and what the earlier steps appended. A step reads those files, does one
+thing, and appends what it learned for the steps after it; no step installs anything. The rendered
+cloudbuild.yaml runs them with the bedrock its first step downloads: the release the placement pins
+(bedrockVersion), verified against its checksum (bedrockSha256). The steps, in order: resolve,
+validate-release, guard-migrations, pr-stack plan, pr-stack guard, pr-stack apply, check-release,
+build-image, migrate, jobs, service, shift-traffic, record and talk-back, with hook <stage> where the
+application commits a hook script. The hourly sweep runs sweep.`,
 	}
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d), newDeployShiftTraffic(d), newDeployRecord(d))
+	stack := &cobra.Command{
+		Use:   "pr-stack",
+		Short: "A pull request's own environment: plan, guard, apply",
+		Long: `pr-stack holds the three steps that stand a pull request's environment up, or take it down on
+/gcbrun down: the application's stack applied into the pull request's own state prefix
+(3-app/<app>/<env>/pr<N>) as the apply identity. plan saves the plan, guard lets only the pull
+request's own resources through, apply applies exactly that plan. A tag build skips all three.`,
+	}
+	stack.AddCommand(newDeployStackPlan(d), newDeployStackGuard(d), newDeployStackApply(d))
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), stack, newDeployHook(d),
+		newDeployCheckRelease(d), newDeployBuildImage(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
+		newDeployShiftTraffic(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d))
 
 	return cmd
 }
@@ -46,8 +60,9 @@ reload-db, down), the image and its tags (<release>-<env> and <commit>-<env>), a
 migrate job runs and traffic shifts. It refuses a build that is neither a tag's nor a pull
 request's, one that names no services or migrate job, a pull-request build with no connection or
 no /gcbrun comment, an unknown option, and shared-db with reload-db. It writes environment.sh (the
-facts, then every substitution of the build), build-args.sh (the declared substitutions as build
-arguments) and build.json (the build as Cloud Build describes it) to the workspace.`,
+facts, then every substitution of the build), build-args.txt (the declared substitutions as the
+image build's arguments, NAME=value lines) and build.json (the build as Cloud Build describes it) to
+the workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			known, err := render.SubstitutionNames()
@@ -230,6 +245,199 @@ the deploy step created). A torn-down pull-request environment (SKIP_DEPLOY) rec
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// workspaceFlag is the flag every step takes for the directory the build's steps share.
+func workspaceFlag(cmd *cobra.Command, workspace *string) {
+	cmd.Flags().StringVar(workspace, "workspace", "/workspace", "the directory the build's steps share (the checkout)")
+}
+
+// newDeployGuardMigrations is deploy guard-migrations.
+func newDeployGuardMigrations(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "guard-migrations",
+		Short: "Refuse migrations the migrate command could not apply in order",
+		Long: `guard-migrations is the deploy gate for the migration rule bedrock check applies before the
+merge. The schema migrations directory and the seed directory beside it (schema/devseed) must each
+be one sequence: six-digit indexes, one up file each, at most one down, contiguous. In a
+pull-request build, every migration the branch started from must still be in the tree unchanged,
+and the sequence is read together with the default branch's, so an index the default branch took
+since the branch was cut is refused now rather than after the merge. A refusal lists every
+problem, names the fix (bedrock migration renumber, which go generate runs) and is posted on the
+pull request.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.GuardMigrations(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployStackPlan is deploy pr-stack plan.
+func newDeployStackPlan(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "plan",
+		Short: "Plan the pull request's stack and save the plan",
+		Long: `plan runs tofu init and tofu plan in the checkout's infrastructure directory as the apply identity,
+against the pull request's own state prefix: the destroy on /gcbrun down; without a database of
+its own on /gcbrun shared-db; with the pull request's database replaced when resolve decided it is
+recreated and it exists. It leaves the plan (pr.plan) and its JSON (pr-plan.json) in the workspace.
+It runs in the OpenTofu image, whose tofu it drives.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.PlanStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployStackGuard is deploy pr-stack guard.
+func newDeployStackGuard(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "guard",
+		Short: "Refuse a plan that touches what is not the pull request's",
+		Long: `guard reads the saved plan's JSON and lets only the pull request's own resources through: every
+resource it creates, changes or destroys carries the pull request's name (<app>-pr<N>) in what
+names it, or is an IAM membership of one of the pull request's accounts. Anything else stops the
+build and is listed on the pull request. Shared mode is refused too when the pull request changes
+the schema migrations against the default branch.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.GuardPlan(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployStackApply is deploy pr-stack apply.
+func newDeployStackApply(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "apply",
+		Short: "Apply the saved plan of the pull request's stack",
+		Long: `apply applies exactly the plan the guard passed. After a destroy nothing deploys (SKIP_DEPLOY is
+appended to environment.sh); else the stack's substitutions output names the pull request's
+services, migrate job, job process's job and hostname, which are appended for the steps after. A
+database recreated without being asked (resolve found the migrations the last build applied no
+longer in the tree) is said on the pull request. It runs in the OpenTofu image.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.ApplyStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployHook is deploy hook.
+func newDeployHook(d deps) *cobra.Command {
+	var workspace string
+	stages := make([]string, 0, len(hook.Stages))
+	for _, s := range hook.Stages {
+		stages = append(stages, string(s))
+	}
+	cmd := &cobra.Command{
+		Use:       "hook <stage>",
+		Short:     "Run the application's hook for a stage",
+		ValidArgs: stages,
+		Long: `hook runs the application's script for the stage, infrastructure/hooks/<stage>.sh, in the checkout
+as the build's deploy identity, with every fact of environment.sh and every substitution of the
+build in its environment. The stages, in the pipeline's order: after-down (only on a teardown),
+before-build, before-migrate, after-migrate, before-traffic and after-traffic. A hook before the
+build may add build arguments by appending NAME=value lines to the file BUILD_ARGS_FILE names. No
+script, nothing runs; a failing script stops the build at its stage. The pipeline has a step for
+each stage the application has a script for.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return deploy.Hook(cmd.Context(), d.deploy, deploy.Workspace(workspace), hook.Stage(args[0]), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployBuildImage is deploy build-image.
+func newDeployBuildImage(d deps) *cobra.Command {
+	var workspace, secretDir string
+	cmd := &cobra.Command{
+		Use:   "build-image",
+		Short: "Build the image from the checkout's Dockerfile and push it",
+		Long: `build-image runs docker buildx build over the checkout's Dockerfile and pushes the image under its
+two tags (<release>-<env> and <commit>-<env>), unless check-release found this commit's build to
+reuse. The build arguments are VERSION and COMMIT, the declared substitutions and what a hook
+before the build added (build-args.txt, NAME=value lines). Each declared build secret
+(_BUILD_SECRETS) is read as the deploy identity by its pinned version into --secret-dir (memory
+backed, gone with the step) and passed as a BuildKit secret the Dockerfile mounts; it is never a
+build argument, which the image would keep. The digest the push answered is appended to
+environment.sh (IMAGE_DIGEST). It runs in the docker builder image, whose docker it drives.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.BuildImage(cmd.Context(), d.deploy, deploy.Workspace(workspace), secretDir, cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+	cmd.Flags().StringVar(&secretDir, "secret-dir", "/dev/shm", "where the build secrets are written for docker, memory-backed")
+
+	return cmd
+}
+
+// newDeployTalkBack is deploy talk-back.
+func newDeployTalkBack(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "talk-back",
+		Short: "Say on the pull request what the build did",
+		Long: `talk-back speaks on the pull request as the deployer GitHub App (2-env's App ID and pinned key
+version, which the stack passes as _DEPLOYER_APP_ID and _DEPLOYER_KEY_SECRET): a GitHub deployment
+named <app>-pr<N> carrying the environment's URL, which the pull request's sidebar shows, and a
+comment with the release and the database mode. A teardown marks every deployment of the
+environment inactive instead. The app's installation token is minted when there is something to
+say, from its private key read by the pinned version, and is kept nowhere. A tag build, or an
+environment without a deployer app yet, says nothing.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.TalkBack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeploySweep is deploy sweep.
+func newDeploySweep(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "sweep",
+		Short: "Destroy the environments of closed pull requests",
+		Long: `sweep is the hourly sweep's one step (cloudbuild-sweep.yaml). It reads its build through the Cloud
+Build API (BUILD_ID, PROJECT_ID and LOCATION, which the step passes), lists the pull requests
+whose services stand (the pull_request label on the application's services, in every region),
+asks GitHub which of them are closed with the repository's token minted from the Cloud Build
+connection, and destroys each closed one's stack as the apply identity from its own state prefix,
+the way /gcbrun down does. Closing or merging a pull request starts no build, so this is how an
+environment nobody took down goes away. It runs in the OpenTofu image.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			req := &deploy.SweepRequest{BuildID: os.Getenv("BUILD_ID"), Project: os.Getenv("PROJECT_ID"), Location: os.Getenv("LOCATION")}
+
+			return deploy.Sweep(cmd.Context(), d.deploy, deploy.Workspace(workspace), req, cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
 
 	return cmd
 }

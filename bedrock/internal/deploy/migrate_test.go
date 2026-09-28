@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -83,6 +84,21 @@ func (r *fakeRun) Patch(_ context.Context, name string, resource map[string]any,
 	}
 
 	return doc, nil
+}
+
+func (r *fakeRun) Services(_ context.Context, project, region string) ([]map[string]any, error) {
+	prefix := "projects/" + project + "/locations/" + region + "/services/"
+	var list []map[string]any
+	for name, doc := range r.resources {
+		if strings.HasPrefix(name, prefix) {
+			list = append(list, doc)
+		}
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return text(list[i], "name") < text(list[j], "name")
+	})
+
+	return list, nil
 }
 
 func (r *fakeRun) RunJob(_ context.Context, name string, args []string) (map[string]any, error) {
