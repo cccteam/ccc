@@ -240,14 +240,20 @@ thing one step hands the next. In order:
   The app's token is minted from its key when there is something to say, by this step or
   by a guard with a refusal to post, and is kept nowhere.
 
-`deploy hook <stage>` runs the application's script for a stage,
-`infrastructure/hooks/<stage>.sh`, with the build's facts in its environment:
-`before-build`, `before-migrate`, `after-migrate` (the schema migrated, the service not
-yet deployed), `before-traffic` (the new revision deployed in every region and the old one
-still serving; `NEXT_URL` is the new revision's public URL through the load balancer, the
-`<app>-<env>-next` hostname over the revision tag `next`, and a failure here stops the
-build with the old revision serving), `after-traffic` and `after-down` (on a teardown).
-The pipeline has a step for each stage the application has a script for. `deploy sweep`
+`deploy hook <stage>` runs the application's hook for a stage, with the build's facts in
+its environment: `before-build`, `before-migrate`, `after-migrate` (the schema migrated,
+the service not yet deployed), `before-traffic` (the new revision deployed in every region
+and the old one still serving; `NEXT_URL` is the new revision's public URL through the load
+balancer, the `<app>-<env>-next` hostname over the revision tag `next`, and a failure here
+stops the build with the old revision serving), `after-traffic` and `after-down` (on a
+teardown). A hook is a script, `infrastructure/hooks/<stage>.sh`, or a function of the
+application's hooks program: a Go program at `cmd/deployment/hooks` built on impulse's
+`deployhook` package (`deployhook.Main(deployhook.Hooks{AfterMigrate: backfill})`), which
+takes the four stages after the image build. bedrock reads the program's stages from its
+`Hooks` literal, `check` refuses a Dockerfile that does not build it as `/hooks` and a stage
+that has both a script and a function, and the image build (`deploy build-image --hooks`)
+takes the program out of the image for the hook steps (`deploy hook <stage> --program`).
+The pipeline has a step for each stage the application implements. `deploy sweep`
 is the hourly sweep's one step: the pull requests whose services stand, which of them
 are closed, and each closed one's stack destroyed.
 

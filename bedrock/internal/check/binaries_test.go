@@ -32,19 +32,19 @@ func TestScanBinaries(t *testing.T) {
 			name:       "a job process the Dockerfile does not build is found",
 			dockerfile: "FROM golang AS build-env\nRUN go build -o /build/app . && go build -o /build/migrate ./cmd/deployment/migrate\nFROM scratch\nCOPY --from=build-env /build /\n",
 			model:      derive.Model{Migrate: migrate, Jobs: jobs},
-			want:       []BinaryFinding{{Process: "jobs", Dir: "cmd/jobs", Binary: "/jobs"}},
+			want:       []BinaryFinding{{Process: "jobs", Dir: "cmd/jobs", Binary: "/jobs", Runs: "the jobs job runs"}},
 		},
 		{
 			name:       "a mention in a comment is not a build",
 			dockerfile: "# the job process (/jobs)\nFROM golang AS build-env\nRUN go build -o /build/migrate ./cmd/deployment/migrate\n",
 			model:      derive.Model{Migrate: migrate, Jobs: jobs},
-			want:       []BinaryFinding{{Process: "jobs", Dir: "cmd/jobs", Binary: "/jobs"}},
+			want:       []BinaryFinding{{Process: "jobs", Dir: "cmd/jobs", Binary: "/jobs", Runs: "the jobs job runs"}},
 		},
 		{
 			name:       "a longer name is not the binary",
 			dockerfile: "FROM golang AS build-env\nRUN go build -o /build/migrate ./cmd/deployment/migrate && go build -o /build/jobsworth ./cmd/jobsworth\n",
 			model:      derive.Model{Migrate: migrate, Jobs: jobs},
-			want:       []BinaryFinding{{Process: "jobs", Dir: "cmd/jobs", Binary: "/jobs"}},
+			want:       []BinaryFinding{{Process: "jobs", Dir: "cmd/jobs", Binary: "/jobs", Runs: "the jobs job runs"}},
 		},
 		{
 			name:       "without a job process only the migrate command is looked for",
@@ -55,7 +55,18 @@ func TestScanBinaries(t *testing.T) {
 			name:       "a migrate command the Dockerfile does not build is found",
 			dockerfile: "FROM golang AS build-env\nRUN go build -o /build/app .\n",
 			model:      derive.Model{Migrate: migrate},
-			want:       []BinaryFinding{{Process: "migrate", Dir: "cmd/deployment/migrate", Binary: "/migrate"}},
+			want:       []BinaryFinding{{Process: "migrate", Dir: "cmd/deployment/migrate", Binary: "/migrate", Runs: "the migrate job runs"}},
+		},
+		{
+			name:       "a hooks program the Dockerfile does not build is found",
+			dockerfile: both,
+			model:      derive.Model{Migrate: migrate, Jobs: jobs, HookProgram: &derive.HookProgram{Dir: "cmd/deployment/hooks"}},
+			want:       []BinaryFinding{{Process: "hooks", Dir: "cmd/deployment/hooks", Binary: "/hooks", Runs: "the pipeline's hook steps run"}},
+		},
+		{
+			name:       "a hooks program the Dockerfile builds passes",
+			dockerfile: both + "RUN go build -o /build/hooks ./cmd/deployment/hooks\n",
+			model:      derive.Model{Migrate: migrate, HookProgram: &derive.HookProgram{Dir: "cmd/deployment/hooks"}},
 		},
 		{
 			name:   "no Dockerfile, nothing to scan",

@@ -514,6 +514,35 @@ application needs is therefore a direct dependency. Build products
 (`node_modules`, `.angular`, `dist`, `.ccc-cache`, `.yalc`, `go.work`) are never embedded;
 `internal/skeleton`'s tests enforce that.
 
+## Deploy hooks
+
+An application's own work at a fixed point of a deploy (data work after the migrations, a
+check against the new revision before traffic moves to it, a smoke test after) is a hook.
+The package `github.com/cccteam/ccc/impulse/deployhook` is the contract for writing hooks
+in Go: a program at `cmd/deployment/hooks`, beside the migrate command, passes one
+`deployhook.Hooks` literal to `deployhook.Main`, with a function for each stage it
+implements:
+
+```go
+func main() {
+	deployhook.Main(deployhook.Hooks{
+		AfterMigrate:  backfill,
+		BeforeTraffic: checkNextRevision,
+	})
+}
+```
+
+Each function receives the build's facts as typed values (`deployhook.Facts`: the
+application, the environment, the release, the image and its digest, the pull request,
+the next revision's URL) and answers an error to stop the build at its stage. bedrock
+reads the stages from the literal, renders a pipeline step for each and checks that the
+Dockerfile builds the program into the image as `/hooks`; the pipeline takes it out of the
+image it built and runs it on the build worker, where a hook script runs. The contract
+holds only the four stages after the image build (`BeforeMigrate`, `AfterMigrate`,
+`BeforeTraffic`, `AfterTraffic`), so a program cannot implement the two stages that come
+before an image exists (`before-build`, `after-down`); those take a script,
+`infrastructure/hooks/<stage>.sh`. A program and scripts mix, one or the other per stage.
+
 ## Development
 
 ```sh

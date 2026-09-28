@@ -362,9 +362,14 @@ files of its own:
   (the environment, project, image, release, pull-request number, database
   mode) and every substitution of the build in its environment; a hook before
   the build may add build arguments by appending `NAME=value` lines to the file
-  `BUILD_ARGS_FILE` names (`/workspace/build-args.txt`). The pipeline has a step
-  for each stage the application has a script for, so a new script is a render
-  away: `bedrock check` reports the pipeline as differing until then.
+  `BUILD_ARGS_FILE` names (`/workspace/build-args.txt`). The four stages after
+  the image build may instead be functions of a hooks program: a Go program at
+  `cmd/deployment/hooks` built on impulse's `deployhook` package
+  (`deployhook.Main(deployhook.Hooks{AfterMigrate: backfill})`), which the
+  Dockerfile builds into the image as `/hooks` and the image build takes out
+  for the hook steps; a stage has a script or a function, not both. The
+  pipeline has a step for each stage the application implements, so a new hook
+  is a render away: `bedrock check` reports the pipeline as differing until then.
   The stages, in order: `before-build` (files written here are the
   Dockerfile's to copy: a fetched config, a frontend version file),
   `before-migrate` (the image is built; `IMAGE_DIGEST` names it),

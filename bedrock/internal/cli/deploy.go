@@ -341,9 +341,16 @@ longer in the tree) is said on the pull request. It runs in the OpenTofu image.`
 	return cmd
 }
 
+// hooksProgram is where the image build leaves the hooks program for the hook steps: the
+// home directory every step of a build shares.
+const hooksProgram = "/builder/home/hooks"
+
 // newDeployHook is deploy hook.
 func newDeployHook(d deps) *cobra.Command {
-	var workspace string
+	var (
+		workspace, programPath string
+		program                bool
+	)
 	stages := make([]string, 0, len(hook.Stages))
 	for _, s := range hook.Stages {
 		stages = append(stages, string(s))
@@ -352,26 +359,38 @@ func newDeployHook(d deps) *cobra.Command {
 		Use:       "hook <stage>",
 		Short:     "Run the application's hook for a stage",
 		ValidArgs: stages,
-		Long: `hook runs the application's script for the stage, infrastructure/hooks/<stage>.sh, in the checkout
-as the build's deploy identity, with every fact of environment.sh and every substitution of the
-build in its environment. The stages, in the pipeline's order: after-down (only on a teardown),
-before-build, before-migrate, after-migrate, before-traffic and after-traffic. A hook before the
-build may add build arguments by appending NAME=value lines to the file BUILD_ARGS_FILE names. No
-script, nothing runs; a failing script stops the build at its stage. The pipeline has a step for
-each stage the application has a script for.`,
+		Long: `hook runs the application's hook for the stage in the checkout as the build's deploy identity, with
+every fact of environment.sh and every substitution of the build in its environment: the script
+infrastructure/hooks/<stage>.sh, or with --program the application's hooks program
+(cmd/deployment/hooks, built on impulse's deployhook package), which build-image took out of the
+image. The stages, in the pipeline's order: after-down (only on a teardown), before-build,
+before-migrate, after-migrate, before-traffic and after-traffic; the program takes the four after
+the image build, a script any. A hook before the build may add build arguments by appending
+NAME=value lines to the file BUILD_ARGS_FILE names. No script, nothing runs; a failing hook stops
+the build at its stage. The pipeline has a step for each stage the application implements.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return deploy.Hook(cmd.Context(), d.deploy, deploy.Workspace(workspace), hook.Stage(args[0]), cmd.OutOrStdout())
+			path := ""
+			if program {
+				path = programPath
+			}
+
+			return deploy.Hook(cmd.Context(), d.deploy, deploy.Workspace(workspace), hook.Stage(args[0]), path, cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)
+	cmd.Flags().BoolVar(&program, "program", false, "run the hooks program rather than the stage's script")
+	cmd.Flags().StringVar(&programPath, "program-path", hooksProgram, "where build-image left the hooks program")
 
 	return cmd
 }
 
 // newDeployBuildImage is deploy build-image.
 func newDeployBuildImage(d deps) *cobra.Command {
-	var workspace, secretDir string
+	var (
+		workspace, secretDir, hooksPath string
+		hooks                           bool
+	)
 	cmd := &cobra.Command{
 		Use:   "build-image",
 		Short: "Build the image from the checkout's Dockerfile and push it",
@@ -382,14 +401,23 @@ before the build added (build-args.txt, NAME=value lines). Each declared build s
 (_BUILD_SECRETS) is read as the deploy identity by its pinned version into --secret-dir (memory
 backed, gone with the step) and passed as a BuildKit secret the Dockerfile mounts; it is never a
 build argument, which the image would keep. The digest the push answered is appended to
-environment.sh (IMAGE_DIGEST). It runs in the docker builder image, whose docker it drives.`,
+environment.sh (IMAGE_DIGEST). With --hooks, the application's hooks program (/hooks in the image)
+is copied out of the image, built or reused, for the hook steps after it. It runs in the docker
+builder image, whose docker it drives.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.BuildImage(cmd.Context(), d.deploy, deploy.Workspace(workspace), secretDir, cmd.OutOrStdout())
+			path := ""
+			if hooks {
+				path = hooksPath
+			}
+
+			return deploy.BuildImage(cmd.Context(), d.deploy, deploy.Workspace(workspace), secretDir, path, cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)
 	cmd.Flags().StringVar(&secretDir, "secret-dir", "/dev/shm", "where the build secrets are written for docker, memory-backed")
+	cmd.Flags().BoolVar(&hooks, "hooks", false, "take the hooks program out of the image for the hook steps")
+	cmd.Flags().StringVar(&hooksPath, "hooks-path", hooksProgram, "where the hooks program is left")
 
 	return cmd
 }

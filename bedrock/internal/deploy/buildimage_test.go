@@ -23,6 +23,10 @@ func TestBuildImage(t *testing.T) {
 		wantOut   []string
 		wantErr   string
 		wantBuilt bool
+		// hooks takes the hooks program out of the image; wantHooks are the docker commands
+		// that do it.
+		hooks     bool
+		wantHooks []string
 	}{
 		{name: "a torn-down environment builds nothing", env: "export SKIP_DEPLOY=\"true\"\n", wantOut: []string{tornDown}},
 		{name: "a build to reuse is not rebuilt", env: env + "export REUSE_IMAGE=\"true\"\nexport IMAGE_DIGEST=\"sha256:old\"\n", wantOut: []string{"Reusing reg/quill@sha256:old"}},
@@ -42,6 +46,15 @@ func TestBuildImage(t *testing.T) {
 		},
 		{name: "a build secret the deploy identity cannot read is refused", env: env, declared: "NPM_TOKEN=projects/p/secrets/npm/versions/9", wantErr: "Build REJECTED: the build secret NPM_TOKEN (projects/p/secrets/npm/versions/9) could not be read"},
 		{name: "a push without a digest is refused", env: env, metadata: `{}`, wantErr: "no image digest", wantBuilt: true},
+		{
+			name: "the hooks program is taken out of the built image", env: env, metadata: `{"containerimage.digest": "sha256:new"}`, hooks: true, wantBuilt: true,
+			wantOut:   []string{"The hooks program is taken out of the image to HOOKS."},
+			wantHooks: []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/hooks HOOKS", "docker rm cid-1"},
+		},
+		{
+			name: "and out of a reused one", env: env + "export REUSE_IMAGE=\"true\"\nexport IMAGE_DIGEST=\"sha256:old\"\n", hooks: true,
+			wantHooks: []string{"docker create reg/quill@sha256:old", "docker cp cid-1:/hooks HOOKS", "docker rm cid-1"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,7 +63,14 @@ func TestBuildImage(t *testing.T) {
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, map[string]string{commitSub: "c9", buildSecretsSub: tt.declared}), BuildArgsFile: tt.buildArgs})
 			secretDir := t.TempDir()
 			var secretSeen string
-			run := &fakeRunner{effect: func(c Command) error {
+			hooks := ""
+			if tt.hooks {
+				hooks = filepath.Join(t.TempDir(), "hooks")
+			}
+			run := &fakeRunner{outputs: map[string]string{"docker create": "cid-1\n"}, effect: func(c Command) error {
+				if c.Args[0] != "buildx" {
+					return nil
+				}
 				for _, arg := range c.Args {
 					if src, ok := strings.CutPrefix(arg, "id=NPM_TOKEN,src="); ok {
 						data, _ := os.ReadFile(src)
@@ -61,7 +81,7 @@ func TestBuildImage(t *testing.T) {
 				return os.WriteFile(filepath.Join(string(w), MetadataFile), []byte(tt.metadata), 0o600)
 			}}
 			var out strings.Builder
-			err := BuildImage(t.Context(), &Clients{Exec: run, Secrets: (&fakeSecrets{payloads: tt.secrets}).open}, w, secretDir, &out)
+			err := BuildImage(t.Context(), &Clients{Exec: run, Secrets: (&fakeSecrets{payloads: tt.secrets}).open}, w, secretDir, hooks, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("BuildImage() error = %v, want %q", err, tt.wantErr)
@@ -69,11 +89,31 @@ func TestBuildImage(t *testing.T) {
 			} else if err != nil {
 				t.Fatalf("BuildImage() error = %v\n%s", err, out.String())
 			}
-			containsAll(t, out.String(), tt.wantOut...)
-			if got := len(run.ran) == 1; got != tt.wantBuilt {
+			var built bool
+			var taken []string
+			for _, line := range run.lines() {
+				if strings.HasPrefix(line, "docker buildx") {
+					built = true
+
+					continue
+				}
+				if hooks != "" {
+					line = strings.ReplaceAll(line, hooks, "HOOKS")
+				}
+				taken = append(taken, line)
+			}
+			said := out.String()
+			if hooks != "" {
+				said = strings.ReplaceAll(said, hooks, "HOOKS")
+			}
+			containsAll(t, said, tt.wantOut...)
+			if built != tt.wantBuilt {
 				t.Fatalf("ran %v, want a build %t", run.lines(), tt.wantBuilt)
 			}
-			if !tt.wantBuilt || tt.wantErr != "" {
+			if strings.Join(taken, "|") != strings.Join(tt.wantHooks, "|") {
+				t.Errorf("took the hooks program with %q, want %q", taken, tt.wantHooks)
+			}
+			if !tt.wantBuilt || tt.wantErr != "" || tt.secrets == nil {
 				return
 			}
 			line := strings.ReplaceAll(run.lines()[0], secretDir, "SECRETS")

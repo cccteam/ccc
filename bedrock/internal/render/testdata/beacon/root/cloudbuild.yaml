@@ -23,7 +23,7 @@
 #   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
 #   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
 #   TalkBack                  the pull request is told what the build did (deploy talk-back)
-#   Hook*                     the application's own scripts, one step per script it commits (deploy hook <stage>)
+#   Hook*                     the application's own hooks, one step per stage it implements (deploy hook <stage>)
 #
 # The revision template (variables, secret mounts, identity, scaling) belongs to the
 # application's infrastructure layer; a deploy changes the image and stamps its labels,
@@ -108,12 +108,20 @@ steps:
     timeout: 300s
 
   # The image, built fresh from the commit's Dockerfile with the declared build arguments
-  # and build secrets, pushed under <release>-<env> and <commit>-<env>.
+  # and build secrets, pushed under <release>-<env> and <commit>-<env>. The hooks
+  # program (/hooks) is taken out of it for the hook steps after it.
   - id: BuildImage
     name: gcr.io/cloud-builders/docker
     entrypoint: /builder/home/bedrock
-    args: [deploy, build-image]
+    args: [deploy, build-image, --hooks]
     timeout: 1800s
+
+  # The application's hook before the migrations: the hooks program (cmd/deployment/hooks).
+  - id: HookBeforeMigrate
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, before-migrate, --program]
+    timeout: 900s
 
   # The migrate job on this image, run to completion; with the seed in a pull request and
   # in the environments the placement's seed list names.
@@ -138,6 +146,14 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, shift-traffic]
     timeout: 600s
+
+  # The application's hook after traffic moved: the hooks program (cmd/deployment/hooks). A failing
+  # hook fails the build before the record is written, so the gate never sees the release.
+  - id: HookAfterTraffic
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, after-traffic, --program]
+    timeout: 900s
 
   # The record of what now runs, in the records bucket; the next environment's gate reads it.
   - id: WriteDeploymentRecord

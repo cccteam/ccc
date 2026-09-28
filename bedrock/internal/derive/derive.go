@@ -52,9 +52,11 @@ type Model struct {
 	// when the application has no cmd/jobs.
 	Jobs *Process
 	// Hooks are the stages the application commits a hook script for
-	// (infrastructure/hooks/<stage>.sh), in the pipeline's order: the pipeline has a step
-	// for each.
-	Hooks []hook.Stage
+	// (infrastructure/hooks/<stage>.sh), in the pipeline's order, and HookProgram its hooks
+	// program (cmd/deployment/hooks) with the stages it implements, when it has one: the
+	// pipeline has a step for each stage either implements.
+	Hooks       []hook.Stage
+	HookProgram *HookProgram
 	// Auths are the auths, sorted by name.
 	Auths []Auth
 	// Schema is what the migration owns.
@@ -479,11 +481,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.schema(a); err != nil {
 		return nil, err
 	}
-	hooks, err := hook.Scripts(a.Root)
-	if err != nil {
+	if err := m.hooks(a); err != nil {
 		return nil, err
 	}
-	m.Hooks = hooks
 	if err := m.generateStep(a); err != nil {
 		return nil, err
 	}

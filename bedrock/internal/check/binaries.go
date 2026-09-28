@@ -23,11 +23,12 @@ const dockerfileName = "Dockerfile"
 
 // BinaryFinding is a job whose command the Dockerfile does not build.
 type BinaryFinding struct {
-	// Process is the process's name (migrate, jobs), Dir its main package, and Binary
-	// the path its Cloud Run job runs.
+	// Process is the program's name (migrate, jobs, hooks), Dir its main package, Binary
+	// the path in the image, and Runs what runs it (the migrate job, the hook steps).
 	Process string
 	Dir     string
 	Binary  string
+	Runs    string
 }
 
 // BundleFinding is a browser bundle the Dockerfile does not set the site's variable
@@ -71,15 +72,22 @@ func scanBinaries(appDir string, m *derive.Model) ([]BinaryFinding, error) {
 	}
 	instructions := instructionLines(src)
 	var findings []BinaryFinding
+	type binary struct{ name, dir, runs string }
+	var want []binary
 	for _, p := range []*derive.Process{m.Migrate, m.Jobs} {
-		if p == nil {
+		if p != nil {
+			want = append(want, binary{name: p.Name, dir: p.Dir, runs: "the " + p.Name + " job runs"})
+		}
+	}
+	if m.HookProgram != nil {
+		want = append(want, binary{name: "hooks", dir: m.HookProgram.Dir, runs: "the pipeline's hook steps run"})
+	}
+	for _, b := range want {
+		path := "/" + b.name
+		if regexp.MustCompile(regexp.QuoteMeta(path) + `\b`).MatchString(instructions) {
 			continue
 		}
-		binary := "/" + p.Name
-		if regexp.MustCompile(regexp.QuoteMeta(binary) + `\b`).MatchString(instructions) {
-			continue
-		}
-		findings = append(findings, BinaryFinding{Process: p.Name, Dir: p.Dir, Binary: binary})
+		findings = append(findings, BinaryFinding{Process: b.name, Dir: b.dir, Binary: path, Runs: b.runs})
 	}
 
 	return findings, nil

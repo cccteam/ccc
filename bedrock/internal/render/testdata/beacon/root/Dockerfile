@@ -1,5 +1,6 @@
 # beacon's container image: one image that serves the site (/app, the entrypoint) and runs
-# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with).
+# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with); it also carries
+# the hooks program (/hooks), which the pipeline takes out of it and runs on the build worker.
 # Seeded by bedrock from the code's shape and then yours: bedrock render writes it once and
 # never again, so the image build can grow with the application.
 #
@@ -51,7 +52,8 @@ COPY . ./
 # the debug information, which nothing in a deployed image reads. No build tags: the
 # session library's skipAuth tag (Procfile) simulates the directory and never ships.
 RUN go build -trimpath -ldflags="-s -w" -o /build/app . && \
-    go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate
+    go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate && \
+    go build -trimpath -ldflags="-s -w" -o /build/hooks ./cmd/deployment/hooks
 
 # ---- Browser: the Angular bundles --------------------------------------------------------
 # bun installs the workspace from web/bun.lock and runs its scripts; Angular's CLI itself

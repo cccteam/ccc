@@ -245,7 +245,7 @@ func (r *Report) Write(w io.Writer) {
 		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinEnvironments(bs.Missing), pluralS(len(bs.Missing)))
 	}
 	for _, b := range r.Binaries {
-		fmt.Fprintf(w, "  refused  Dockerfile builds no %s, the command the %s job runs: go build -o /build%s ./%s in the Go stage, with /build copied into the runtime image\n", b.Binary, b.Process, b.Binary, b.Dir)
+		fmt.Fprintf(w, "  refused  Dockerfile builds no %s, the command %s: go build -o /build%s ./%s in the Go stage, with /build copied into the runtime image\n", b.Binary, b.Runs, b.Binary, b.Dir)
 	}
 	for _, b := range r.Bundles {
 		fmt.Fprintf(w, "  refused  Dockerfile sets no %s: the bundle %s is built in a browser stage of its workspace, copied under the working directory and named by an ENV %s=<path>, as the seeded Dockerfile does\n", b.Var, b.Path, b.Var)

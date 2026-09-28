@@ -215,6 +215,8 @@ type imageView struct {
 	SitePkg    string
 	MigratePkg string
 	JobsPkg    string
+	// HooksPkg is the hooks program's package, empty without one.
+	HooksPkg string
 	// SchemaDir is the directory the migrate command reads relative to its working
 	// directory (schema: the migrations, the seed, the roles), copied whole.
 	SchemaDir string
@@ -270,6 +272,9 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 	if m.Jobs != nil {
 		iv.JobsPkg = pkgPath(m.Jobs.Dir)
 	}
+	if m.HookProgram != nil {
+		iv.HooksPkg = pkgPath(m.HookProgram.Dir)
+	}
 	if iv.SchemaDir == "." || iv.SchemaDir == "" {
 		iv.SchemaDir = m.Schema.MigrationsDir
 	}
@@ -308,14 +313,23 @@ const (
 	dockerImage   = "gcr.io/cloud-builders/docker"
 )
 
-// HasHook reports whether the application commits a hook script for the stage: the
-// pipeline has a step for it.
+// HasHook reports whether the application implements a hook for the stage, a script or
+// its hooks program: the pipeline has a step for it.
 func (v *view) HasHook(stage string) bool {
-	return slices.Contains(v.Hooks, hook.Stage(stage))
+	return slices.Contains(v.Hooks, hook.Stage(stage)) || v.HookByProgram(stage)
 }
 
-// HookScript is the stage's script, as the application commits it.
-func (v *view) HookScript(stage string) string {
+// HookByProgram reports whether the stage's hook is the hooks program's.
+func (v *view) HookByProgram(stage string) bool {
+	return v.HookProgram != nil && slices.Contains(v.HookProgram.Stages, hook.Stage(stage))
+}
+
+// HookSource is where the stage's hook is: its script, or the hooks program.
+func (v *view) HookSource(stage string) string {
+	if v.HookByProgram(stage) {
+		return "the hooks program (" + v.HookProgram.Dir + ")"
+	}
+
 	return hook.Stage(stage).Script()
 }
 

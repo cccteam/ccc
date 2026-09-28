@@ -26,7 +26,7 @@
 #   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
 #   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
 #   TalkBack                  the pull request is told what the build did (deploy talk-back)
-#   Hook*                     the application's own scripts, one step per script it commits (deploy hook <stage>)
+#   Hook*                     the application's own hooks, one step per stage it implements (deploy hook <stage>)
 #
 # The revision template (variables, secret mounts, identity, scaling) belongs to the
 # application's infrastructure layer; a deploy changes the image and stamps its labels,
@@ -103,7 +103,7 @@ steps:
     timeout: 1800s
 {{- if .HasHook "after-down"}}
 
-  # The application's hook after a teardown: {{.HookScript "after-down"}}.
+  # The application's hook after a teardown: {{.HookSource "after-down"}}.
   - id: HookAfterDown
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
@@ -120,7 +120,7 @@ steps:
     timeout: 300s
 {{- if .HasHook "before-build"}}
 
-  # The application's hook before the image build: {{.HookScript "before-build"}}. Build
+  # The application's hook before the image build: {{.HookSource "before-build"}}. Build
   # arguments it appends to build-args.txt (NAME=value lines) reach the build.
   - id: HookBeforeBuild
     name: {{.GcloudImage}}
@@ -130,19 +130,20 @@ steps:
 {{- end}}
 
   # The image, built fresh from the commit's Dockerfile with the declared build arguments
-  # and build secrets, pushed under <release>-<env> and <commit>-<env>.
+  # and build secrets, pushed under <release>-<env> and <commit>-<env>.{{if .HookProgram}} The hooks
+  # program (/hooks) is taken out of it for the hook steps after it.{{end}}
   - id: BuildImage
     name: {{.DockerImage}}
     entrypoint: /builder/home/bedrock
-    args: [deploy, build-image]
+    args: [deploy, build-image{{if .HookProgram}}, --hooks{{end}}]
     timeout: 1800s
 {{- if .HasHook "before-migrate"}}
 
-  # The application's hook before the migrations: {{.HookScript "before-migrate"}}.
+  # The application's hook before the migrations: {{.HookSource "before-migrate"}}.
   - id: HookBeforeMigrate
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
-    args: [deploy, hook, before-migrate]
+    args: [deploy, hook, before-migrate{{if .HookByProgram "before-migrate"}}, --program{{end}}]
     timeout: 900s
 {{- end}}
 
@@ -155,11 +156,11 @@ steps:
     timeout: 2400s
 {{- if .HasHook "after-migrate"}}
 
-  # The application's hook after the migrations: {{.HookScript "after-migrate"}}.
+  # The application's hook after the migrations: {{.HookSource "after-migrate"}}.
   - id: HookAfterMigrate
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
-    args: [deploy, hook, after-migrate]
+    args: [deploy, hook, after-migrate{{if .HookByProgram "after-migrate"}}, --program{{end}}]
     timeout: 900s
 {{- end}}
 {{- if .Jobs}}
@@ -181,13 +182,13 @@ steps:
     timeout: 1200s
 {{- if .HasHook "before-traffic"}}
 
-  # The application's hook before traffic moves: {{.HookScript "before-traffic"}}. NEXT_URL
+  # The application's hook before traffic moves: {{.HookSource "before-traffic"}}. NEXT_URL
   # and REVISION_URLS reach the new revision while the old one still serves; a failing hook
   # stops the build with the old revision serving.
   - id: HookBeforeTraffic
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
-    args: [deploy, hook, before-traffic]
+    args: [deploy, hook, before-traffic{{if .HookByProgram "before-traffic"}}, --program{{end}}]
     timeout: 900s
 {{- end}}
 
@@ -200,12 +201,12 @@ steps:
     timeout: 600s
 {{- if .HasHook "after-traffic"}}
 
-  # The application's hook after traffic moved: {{.HookScript "after-traffic"}}. A failing
+  # The application's hook after traffic moved: {{.HookSource "after-traffic"}}. A failing
   # hook fails the build before the record is written, so the gate never sees the release.
   - id: HookAfterTraffic
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
-    args: [deploy, hook, after-traffic]
+    args: [deploy, hook, after-traffic{{if .HookByProgram "after-traffic"}}, --program{{end}}]
     timeout: 900s
 {{- end}}
 

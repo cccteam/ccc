@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/impulse/app"
 )
 
@@ -48,6 +49,9 @@ func TestDerive(t *testing.T) {
 		wantHostnames map[string]string
 		wantSupplies  map[string]Supply
 		wantGroupPfx  string
+		// wantHooks are the stages with a script, wantProgram the hooks program's.
+		wantHooks   []hook.Stage
+		wantProgram []hook.Stage
 	}{
 		{
 			name:    "harbor",
@@ -97,6 +101,7 @@ func TestDerive(t *testing.T) {
 				varFirestoreDatabase:           SupplyDerived,
 			},
 			wantGroupPfx: "staff-",
+			wantHooks:    []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
 		},
 		{
 			name:    "beacon, a password auth: no registration, no callback",
@@ -128,6 +133,7 @@ func TestDerive(t *testing.T) {
 				varPort:                       SupplyPlatform,
 				"APP_CONSOLE_DIST":            SupplyImage,
 			},
+			wantProgram: []hook.Stage{hook.BeforeMigrate, hook.AfterTraffic},
 		},
 		{
 			name:    "no go.mod",
@@ -197,6 +203,12 @@ func TestDerive(t *testing.T) {
 			}
 			if m.Schema != tt.wantSchema {
 				t.Errorf("Schema = %+v, want %+v", m.Schema, tt.wantSchema)
+			}
+			if !slices.Equal(m.Hooks, tt.wantHooks) {
+				t.Errorf("Hooks = %v, want %v", m.Hooks, tt.wantHooks)
+			}
+			if (m.HookProgram == nil) != (tt.wantProgram == nil) || (m.HookProgram != nil && !slices.Equal(m.HookProgram.Stages, tt.wantProgram)) {
+				t.Errorf("HookProgram = %+v, want stages %v", m.HookProgram, tt.wantProgram)
 			}
 			for _, e := range m.Environments {
 				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {

@@ -51,7 +51,8 @@ COPY . ./
 # the debug information, which nothing in a deployed image reads. No build tags: the
 # session library's skipAuth tag (Procfile) simulates the directory and never ships.
 RUN go build -trimpath -ldflags="-s -w" -o /build/app . && \
-    go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate
+    go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate && \
+    go build -trimpath -ldflags="-s -w" -o /build/hooks ./cmd/deployment/hooks
 
 # ---- Browser: the Angular bundles --------------------------------------------------------
 # bun installs the workspace from web/bun.lock and runs its scripts; Angular's CLI itself

@@ -36,7 +36,10 @@ const (
 // never in the workspace) and passed to docker as a BuildKit secret the Dockerfile
 // mounts; it is never a build argument, which the image would keep. The digest the push
 // answered goes to the environment file (IMAGE_DIGEST).
-func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir string, out io.Writer) error {
+//
+// With hooks set, the hooks program the image carries (/hooks) is taken out of the image,
+// built or reused, and left at hooks for the hook steps after it.
+func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, hooks string, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -49,7 +52,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir st
 	if env[reuseImageFact] == trueValue {
 		fmt.Fprintf(out, "Reusing %s@%s: the release check found this release already built from this commit.\n", env[imageFact], env[digestFact])
 
-		return nil
+		return takeHooks(ctx, clients, env[imageFact]+"@"+env[digestFact], hooks, out)
 	}
 	build, err := w.Build()
 	if err != nil {
@@ -75,7 +78,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir st
 		"--tag", env[imageFact]+":"+env[imageTagFact],
 		"--metadata-file", metadata,
 		"--file", "Dockerfile", "--no-cache", "--push", ".")
-	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: "docker", Args: args}, out); err != nil {
+	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: args}, out); err != nil {
 		return err
 	}
 	digest, err := imageDigest(metadata)
@@ -86,6 +89,37 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir st
 		return err
 	}
 	fmt.Fprintf(out, "Built and pushed %s@%s\n", env[imageFact], digest)
+
+	return takeHooks(ctx, clients, env[imageFact]+"@"+digest, hooks, out)
+}
+
+// hooksInImage is where the image carries the hooks program, and dockerProgram the program
+// the image build drives.
+const (
+	hooksInImage  = "/hooks"
+	dockerProgram = "docker"
+)
+
+// takeHooks copies the hooks program out of the image to dst, when dst is set: a
+// container is created from the image (pulled when this worker lacks it, with the step's
+// registry credentials), the program copied out, the container removed. It never runs.
+func takeHooks(ctx context.Context, clients *Clients, image, dst string, out io.Writer) error {
+	if dst == "" {
+		return nil
+	}
+	created, err := clients.Exec.Output(ctx, Command{Name: dockerProgram, Args: []string{"create", image}}, out)
+	if err != nil {
+		return err
+	}
+	id := strings.TrimSpace(string(created))
+	copyErr := clients.Exec.Run(ctx, Command{Name: dockerProgram, Args: []string{"cp", id + ":" + hooksInImage, dst}}, out)
+	if err := clients.Exec.Run(ctx, Command{Name: dockerProgram, Args: []string{"rm", id}}, io.Discard); err != nil && copyErr == nil {
+		return err
+	}
+	if copyErr != nil {
+		return errors.Newf("the image carries no hooks program at %s (the Dockerfile builds it: go build -o /build/hooks ./cmd/deployment/hooks): %v", hooksInImage, copyErr)
+	}
+	fmt.Fprintf(out, "The hooks program is taken out of the image to %s.\n", dst)
 
 	return nil
 }
