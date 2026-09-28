@@ -17,3 +17,8 @@ internal/migration/git.go
 # checksums file, with the render's own paths: running a program whose path it computed
 # is the command's purpose; the dangerous-exec audit does not apply to it.
 internal/cli/upgrade.go
+# The test servers standing in for GitHub in the release package's and the upgrade
+# command's tests answer JSON and a script to the client under test, as the GitHub test
+# fake does; the direct-write audit (an HTML page writing user data) does not apply.
+internal/release/release_test.go
+internal/cli/upgrade_test.go
