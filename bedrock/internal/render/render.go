@@ -103,7 +103,27 @@ var placed = map[string]func(v *view) string{
 
 		return path.Join(v.Schema.GenerateDir, generateFile)
 	},
+	// The GitHub workflows, under .github/workflows: the infrastructure check needs the
+	// identity provider the placement records to pull the pinned image, so without one
+	// it is not rendered; the release workflow needs nothing beyond the release app.
+	infrastructureWorkflow: func(v *view) string {
+		if v.P.GithubIdentityProvider == "" {
+			return ""
+		}
+
+		return path.Join(workflowsDir, infrastructureWorkflow)
+	},
+	releaseWorkflow: func(*view) string {
+		return path.Join(workflowsDir, releaseWorkflow)
+	},
 }
+
+// The GitHub workflows bedrock renders at the application root.
+const (
+	workflowsDir           = ".github/workflows"
+	infrastructureWorkflow = "infrastructure.yml"
+	releaseWorkflow        = "release-please.yml"
+)
 
 // Render renders every file of the application's stack.
 func Render(m *derive.Model) ([]File, error) {

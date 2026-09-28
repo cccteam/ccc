@@ -1,9 +1,19 @@
 {
   "prefix": "imp",
-  "environments": ["tst", "stg", "prd"],
+  "environments": [
+    "tst",
+    "stg",
+    "prd"
+  ],
   "regions": [
-    {"name": "us-central1", "code": "uc1"},
-    {"name": "us-west3", "code": "uw3"}
+    {
+      "name": "us-central1",
+      "code": "uc1"
+    },
+    {
+      "name": "us-west3",
+      "code": "uw3"
+    }
   ],
   "appsDomain": "impulseframework.dev",
   "hostedDomain": "impulseframework.com",
@@ -13,5 +23,8 @@
   "repository": "harbor",
   "releaseApp": "impulseframework-release",
   "bedrockImage": "us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "labels": {"bedrock-lab": "true"}
+  "labels": {
+    "bedrock-lab": "true"
+  },
+  "githubIdentityProvider": "projects/123456789012/locations/global/workloadIdentityPools/imp-shr-gbl-github/providers/github"
 }

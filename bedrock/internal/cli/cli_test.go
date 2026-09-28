@@ -71,7 +71,7 @@ func TestRenderThenCheck(t *testing.T) {
 			name:      "a fresh render checks clean",
 			afterFunc: func(*testing.T, string) {},
 			wantCode:  0,
-			wantOut:   []string{"14 owned file(s) match the code"},
+			wantOut:   []string{"16 owned file(s) match the code"},
 		},
 		{
 			name: "an edited owned file fails the check",
@@ -104,7 +104,7 @@ func TestRenderThenCheck(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "stack")
 			app := copyRepo(t, fixtureApp)
 			code, out := run(t, "render", "--app", app, "--out", dir, "--placement", placement)
-			if code != 0 || !strings.Contains(out, "Rendered the harbor stack") || !strings.Contains(out, "Seeded terraform.tfvars") || !strings.Contains(out, "Rendered the pipeline into "+app+": cloudbuild-sweep.yaml, cloudbuild.yaml, cmd/generate/bedrock.go.") {
+			if code != 0 || !strings.Contains(out, "Rendered the harbor stack") || !strings.Contains(out, "Seeded terraform.tfvars") || !strings.Contains(out, "Rendered the pipeline into "+app+": .github/workflows/infrastructure.yml, .github/workflows/release-please.yml, cloudbuild-sweep.yaml, cloudbuild.yaml, cmd/generate/bedrock.go.") {
 				t.Fatalf("render exit = %d, output:\n%s", code, out)
 			}
 			tt.afterFunc(t, dir)
@@ -236,7 +236,7 @@ func TestStackFromLayout(t *testing.T) {
 			if err != nil {
 				t.Fatalf("check error = %v; output:\n%s", err, out)
 			}
-			if want := "14 owned file(s) match the code"; !strings.Contains(out, want) {
+			if want := "16 owned file(s) match the code"; !strings.Contains(out, want) {
 				t.Errorf("check output lacks %q:\n%s", want, out)
 			}
 		})

@@ -46,6 +46,12 @@ type Placement struct {
 	// digest (<registry>/<project>/<repository>/bedrock@sha256:...): the tool's version in
 	// the rendered pipeline, moved by upgrade, never by hand in the rendered file.
 	BedrockImage string `json:"bedrockImage"`
+	// GithubIdentityProvider is the workload identity provider the repository's GitHub
+	// Actions authenticate through (2-shr's github_identity_provider output,
+	// projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/github),
+	// so the rendered infrastructure workflow pulls the pinned bedrock image and checks
+	// with it. Absent, the workflow is not rendered and the application keeps its own.
+	GithubIdentityProvider string `json:"githubIdentityProvider,omitempty"`
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
 	Labels map[string]string `json:"labels"`

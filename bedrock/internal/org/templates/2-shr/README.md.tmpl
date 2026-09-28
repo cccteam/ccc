@@ -56,6 +56,18 @@ identities, was rejected: those layers read this one for repository IDs, and
 two layers reading each other's state only works with `try()` on both sides
 and an apply order nobody can see in the code.
 
+## GitHub Actions
+
+`github.tf` gives the organization's GitHub Actions an identity: a workload
+identity pool whose provider trusts GitHub's OpenID Connect tokens for
+repositories owned by `{{.GithubOrganization}}` (and no other), and one grant,
+reading the tools repository as that principal set. An application's
+infrastructure workflow authenticates with the provider (the output
+`github_identity_provider`, recorded in the application's placement as
+`githubIdentityProvider`), pulls the bedrock image its placement pins, and runs
+that bedrock's `check`: the same checker the pipeline runs, by digest. No
+service account and no key stand in between.
+
 ## Applying
 
 In a terminal, in this directory, after `1-org` has been applied. The bucket

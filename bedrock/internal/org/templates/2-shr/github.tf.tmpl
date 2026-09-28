@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# GitHub Actions' identity: a workload identity pool whose provider trusts
+# GitHub's OpenID Connect tokens for this organization's repositories, and the
+# one grant it needs, reading the tools repository, so an application's
+# infrastructure workflow pulls the bedrock image its placement pins and runs
+# that bedrock's check against the committed stack: the checker is the
+# pipeline's, by digest, never a build from a moving branch. No service
+# account stands in between: the workflow's token is the principal
+# (attribute.repository_owner), which is how the grant is scoped to the
+# organization and to nothing else.
+#
+# Rendered by bedrock org from placement.json (githubOrganization) and owned
+# by it.
+# ---------------------------------------------------------------------------
+
+resource "google_iam_workload_identity_pool" "github" {
+  project                   = local.project_id
+  workload_identity_pool_id = "${local.prefix}-shr-gbl-github"
+  display_name              = "GitHub Actions"
+  description               = "GitHub Actions in the {{.GithubOrganization}} organization: the infrastructure workflows' identity."
+}
+
+resource "google_iam_workload_identity_pool_provider" "github" {
+  project                            = local.project_id
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github"
+  display_name                       = "GitHub"
+
+  attribute_mapping = {
+    "google.subject"             = "assertion.sub"
+    "attribute.repository"       = "assertion.repository"
+    "attribute.repository_owner" = "assertion.repository_owner"
+  }
+
+  # Tokens from repositories of this organization alone; a fork's workflow
+  # does not carry the organization as its owner.
+  attribute_condition = "assertion.repository_owner == \"{{.GithubOrganization}}\""
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+}
+
+# Pull from the tools repository, as the organization's workflows: the bedrock
+# image an application's placement pins, from which the workflow takes the
+# binary it checks with.
+resource "google_artifact_registry_repository_iam_member" "tools_github_reader" {
+  project    = local.project_id
+  location   = google_artifact_registry_repository.tools.location
+  repository = google_artifact_registry_repository.tools.name
+  role       = "roles/artifactregistry.reader"
+  member     = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository_owner/{{.GithubOrganization}}"
+}

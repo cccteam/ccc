@@ -1,0 +1,39 @@
+# release-please cuts every release of harbor: on master the next version from the
+# commits since the last release, on a hotfix branch (hotfix/<major>.<minor>.x) the line's
+# next patch. It runs as the release app (impulseframework-release), whose token the two organization
+# secrets make, so the tag and the GitHub Release carry the app as their author: the
+# pipeline's tag check accepts releases from that author only, and the repository's tag
+# ruleset lets that app alone (with the repository admins) create a v* tag. Rendered by
+# bedrock and owned by it.
+#
+# The job runs on pushes to the protected branches only, which reach them by pull request;
+# a pull request's own workflow files never run this job, so the app's key is exposed to
+# merged code alone.
+name: release-please
+
+on:
+  push:
+    branches:
+      - master
+      - "hotfix/**"
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Token of the release app
+        id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Release pull request, or the release itself once it merged
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          token: ${{ steps.app.outputs.token }}
+          target-branch: ${{ github.ref_name }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

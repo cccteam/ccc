@@ -47,9 +47,10 @@ Until the first release, the lab builds it from a checkout of this repository
   one.
 - **Owned file**: a file bedrock writes on every render and compares on every check: the
   stack's `.tf` files and its README, the pipeline files at the application root
-  (`cloudbuild.yaml`, `cloudbuild-sweep.yaml`) and the generate-time step
-  (`cmd/generate/bedrock.go`). A person never edits one; the code or the placement changes
-  and the file is rendered again.
+  (`cloudbuild.yaml`, `cloudbuild-sweep.yaml`), the generate-time step
+  (`cmd/generate/bedrock.go`) and the GitHub workflows (`.github/workflows/infrastructure.yml`,
+  `release-please.yml`). A person never edits one; the code or the placement changes and
+  the file is rendered again.
 - **Seeded file**: a file bedrock writes once when it is absent and then leaves to a
   person: `terraform.tfvars` (the placement values per environment: the pins, the build
   secrets, the substitutions), the stack's `.gitignore` and the Dockerfile at the
@@ -127,7 +128,18 @@ It also refuses:
   the environments: a release that passed the earlier environments would fail in the
   image build of the one lacking it. An optional mount passes with nothing said.
 
-The application's infrastructure workflow runs `bedrock check` on every pull request.
+The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
+`bedrock check` on every pull request and on the default branch. It is rendered too:
+the job authenticates as the identity GitHub Actions has in the organization's shared
+project (the placement's `githubIdentityProvider`, from 2-shr's
+`github_identity_provider` output; no service account, no key), pulls the bedrock image
+the placement pins, takes the static binary out of it and runs that bedrock's `check` on
+the runner, whose Go toolchain the check reads the code with. So the checker is the
+pipeline's, by digest, and a wording change in a newer bedrock fails no application's
+check until that application moves its pin. A placement without the provider leaves the
+workflow unrendered, and the application keeps its own until it records one.
+`release-please.yml` is rendered beside it: release-please as the release app the
+placement names, on the default branch and the hotfix lines.
 
 ## bedrock deploy
 

@@ -41,7 +41,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return run(t, "org", "new", dir)
 			},
-			wantOut: []string{"Rendered the imp foundation", "57 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars", "By hand, before the first apply", "Seed, as bedrock@impulseframework.com", "imp-boot-gbl-tofu"},
+			wantOut: []string{"Rendered the imp foundation", "58 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars", "By hand, before the first apply", "Seed, as bedrock@impulseframework.com", "imp-boot-gbl-tofu"},
 		},
 		{
 			name: "check is clean after new",
@@ -53,7 +53,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return run(t, "org", "check", "--dir", dir)
 			},
-			wantOut: []string{"57 owned file(s) match the placement"},
+			wantOut: []string{"58 owned file(s) match the placement"},
 		},
 		{
 			name: "register adds an application, renders the values and prints the sequence",
@@ -104,7 +104,7 @@ func TestOrgCommands(t *testing.T) {
 				return run(t, "org", "check", "--dir", dir)
 			},
 			wantCode: 1,
-			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 of 57 owned file(s) differ"},
+			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 of 58 owned file(s) differ"},
 		},
 		{
 			name: "render keeps the seeded values",
@@ -128,7 +128,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return code, out
 			},
-			wantOut: []string{"57 owned file(s) written"},
+			wantOut: []string{"58 owned file(s) written"},
 		},
 	}
 	for _, tt := range tests {

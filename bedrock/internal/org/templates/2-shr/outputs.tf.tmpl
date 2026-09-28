@@ -36,3 +36,8 @@ output "tools_image_path" {
   description = "Image path prefix of the tools repository: {registry_hostname}/{project}/{repository}. bedrock's image lives at /bedrock, pinned by digest in each application's placement."
   value       = "${local.registry_hostname}/${local.project_id}/${google_artifact_registry_repository.tools.repository_id}"
 }
+
+output "github_identity_provider" {
+  description = "The workload identity provider GitHub Actions authenticates through (google-github-actions/auth, no service account): what an application's placement records as githubIdentityProvider, so its infrastructure workflow pulls the pinned bedrock image."
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
