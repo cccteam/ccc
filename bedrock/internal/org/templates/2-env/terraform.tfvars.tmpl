@@ -2,8 +2,10 @@
 # from the 0-bootstrap output boot_project_id.
 # environment is never set here: every run passes -var environment=<env>.
 
-boot_project_id = "{{.Prefix}}-boot-gbl-core-REPLACEME" # output boot_project_id of 0-bootstrap
-state_bucket    = "{{.Bucket}}" # the bucket in every backend block
+# boot_project_id is the output boot_project_id of 0-bootstrap; state_bucket
+# the bucket in every backend block.
+boot_project_id = "{{.Prefix}}-boot-gbl-core-REPLACEME"
+state_bucket    = "{{.Bucket}}"
 
 # From the browser authorization described in the README: the Cloud Build
 # GitHub App installed on github.com/{{.GithubOrganization}} for all
