@@ -166,6 +166,19 @@ resource "google_service_account_iam_member" "deploy_impersonates_apply" {
   member             = google_service_account.deploy[each.key].member
 }
 
+# In tst only: the deploy identity may act as itself. Cloud Scheduler runs the
+# application's sweep trigger (tst only) as the deploy identity, and running a
+# trigger whose builds run as a service account needs iam.serviceAccounts.actAs
+# on that account, which no builder role carries. Without it every scheduled
+# sweep was refused (PERMISSION_DENIED, from the first one on 2026-09-27).
+resource "google_service_account_iam_member" "deploy_runs_sweep" {
+  for_each = local.is_tst ? local.apps : toset([])
+
+  service_account_id = google_service_account.deploy[each.key].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = google_service_account.deploy[each.key].member
+}
+
 # Reader on this environment's deployment records for the next environment's
 # deploy identities: that environment's pipeline admits a release only after a
 # live record of it exists here (the record gate).
