@@ -23,6 +23,7 @@ locals {
   # The runtime accounts' IDs: by the convention, or the short name.
   app_account     = local.is_pr ? "${local.pr_name}-app" : "${local.name}-gbl-${local.app}-app"
   migrate_account = local.is_pr ? "${local.pr_name}-migrate" : "${local.name}-gbl-${local.app}-migrate"
+  jobs_account    = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-gbl-${local.app}-jobs"
 
   # The same accounts as members and as resource names, spelled out rather than
   # read from the account resources, so a plan knows every membership before
@@ -35,6 +36,9 @@ locals {
   migrate_member       = "serviceAccount:${local.migrate_email}"
   app_account_name     = "projects/${local.project_id}/serviceAccounts/${local.app_email}"
   migrate_account_name = "projects/${local.project_id}/serviceAccounts/${local.migrate_email}"
+  jobs_email           = "${local.jobs_account}@${local.project_id}.iam.gserviceaccount.com"
+  jobs_member          = "serviceAccount:${local.jobs_email}"
+  jobs_account_name    = "projects/${local.project_id}/serviceAccounts/${local.jobs_email}"
 
   # The environment before this one in the promotion order (tst, stg, prd) and
   # its deployment-records bucket: the pipeline runs a release here only after
@@ -77,6 +81,11 @@ locals {
   own_database  = !(local.is_pr && var.shared_database)
   database_name = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
 
+  # The job process's Cloud Run job (cmd/jobs), in the primary region, by name
+  # and as the Cloud Run API names it: what APP_JOBS_JOB tells the site.
+  jobs_job_name = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-${local.primary_region_code}-${local.app}-jobs"
+  jobs_job      = "projects/${local.project_id}/locations/${local.primary_region}/jobs/${local.jobs_job_name}"
+
   # ---------------------------------------------------------------------------
   # What the code declares, read from pkg/config by bedrock render; each entry
   # names the field it comes from.
@@ -97,16 +106,19 @@ locals {
   secrets = {
     APP_COOKIE_KEY = {
       name    = "cookie-key"
+      level   = "data"
       source  = "pkg/config/data.go dataConfig.CookieKey"
       purpose = "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
     }
     APP_STAFF_OIDC_CLIENT_SECRET = {
       name    = "staff-oidc-client-secret"
+      level   = "data"
       source  = "pkg/config/data.go dataConfig.StaffClientSecret"
       purpose = "OAuth client secret of the application's registration with Google (pairs with APP_STAFF_OIDC_CLIENT_ID)."
     }
     APP_STAFF_OIDC_ADMIN_CREDENTIALS = {
       name    = "staff-oidc-admin-credentials"
+      level   = "data"
       source  = "pkg/config/data.go dataConfig.StaffAdminCredentials"
       purpose = "Service-account key (JSON) with domain-wide delegation for the Admin SDK groups scope, through which the staff auth reads role groups."
     }
@@ -123,6 +135,13 @@ locals {
     for key, s in local.secrets : key => merge(s, { version = local.secret_versions[key] })
     if contains(keys(local.secret_versions), key)
   }
+
+  # The job process's share: the secrets at the levels it constructs (core and data).
+  # It runs the application's own code, and what that code reads the derivation
+  # cannot know, so it gets the levels' secrets the way the site does; the
+  # migrate command, whose work is known, gets none.
+  jobs_secrets         = { for key, s in local.secrets : key => s if contains(["core", "data"], s.level) }
+  jobs_mounted_secrets = { for key, s in local.mounted_secrets : key => s if contains(keys(local.jobs_secrets), key) }
 
   # Build-time secrets (var.build_secrets): what the image build reads in this
   # environment, NAME = pinned version, their containers named like the runtime
@@ -169,14 +188,26 @@ locals {
     APP_STAFF_OIDC_ADMIN_SUBJECT = var.staff_oidc_admin_subject[var.environment]
   }
 
+  # siteConfig.JobsJob: the job process's Cloud Run job, which the site runs
+  # through the Cloud Run API (run.invoker on the job, cloud-run.tf).
+  site_jobs_env = {
+    APP_JOBS_JOB = local.jobs_job
+  }
+
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
   # error) and APP_CONSOLE_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env, local.site_directory_env)
+  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.site_jobs_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them.
   job_env = merge(local.core_env, local.data_env, {
     APP_SERVICE_NAME = "${local.app}-migrate"
+  })
+
+  # cmd/jobs reads core and data and nothing above them: the job process, the
+  # application's own code as a Cloud Run job.
+  jobs_env = merge(local.core_env, local.data_env, {
+    APP_SERVICE_NAME = "${local.app}-jobs"
   })
 
   # Every resource carries these. terraform_source_path is the stack's state slot

@@ -47,6 +47,9 @@ type Model struct {
 	// Migrate is the migration process, or nil when the application has no migrate
 	// command.
 	Migrate *Process
+	// Jobs is the job process, the application's own code as a Cloud Run job, or nil
+	// when the application has no cmd/jobs.
+	Jobs *Process
 	// Auths are the auths, sorted by name.
 	Auths []Auth
 	// Schema is what the migration owns.
@@ -173,6 +176,8 @@ const (
 	RoleDatabaseName     Role = "database-name"
 	RolePort             Role = "port"
 	RoleCookieKey        Role = "cookie-key"
+	// RoleJobsJob names the job process's Cloud Run job to the site, which runs it.
+	RoleJobsJob Role = "jobs-job"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID         Role = "client-id"
@@ -187,7 +192,7 @@ const (
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob:
 		return true
 	default:
 		return false
@@ -233,6 +238,9 @@ const (
 	varDatabaseInstance = "GOOGLE_CLOUD_SPANNER_INSTANCE_ID"
 	varDatabaseName     = "GOOGLE_CLOUD_SPANNER_DATABASE_NAME"
 	varPort             = "PORT"
+	// varJobsJob is the variable a site declares to run the job process: the stack sets
+	// it to the job's resource name and grants the site's identity on the job.
+	varJobsJob = "APP_JOBS_JOB"
 )
 
 // wellKnown are the well-known variables by name.
@@ -244,6 +252,7 @@ var wellKnown = map[string]Role{
 	varDatabaseInstance: RoleDatabaseInstance,
 	varDatabaseName:     RoleDatabaseName,
 	varPort:             RolePort,
+	varJobsJob:          RoleJobsJob,
 }
 
 // directoryRoles maps the fields of an auth's Directory struct to their roles.
@@ -380,8 +389,11 @@ type Environment struct {
 const (
 	siteProcess    = "app"
 	migrateProcess = "migrate"
-	// migrateDir is where the skeleton keeps the migrate command.
+	jobsProcess    = "jobs"
+	// migrateDir is where the skeleton keeps the migrate command; jobsDir is where an
+	// application keeps its job process, when it has one.
 	migrateDir = "cmd/deployment/migrate"
+	jobsDir    = "cmd/jobs"
 	// appPrefix is the prefix the application's own variables carry.
 	appPrefix = "APP_"
 )

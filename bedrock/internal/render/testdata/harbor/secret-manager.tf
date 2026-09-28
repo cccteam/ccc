@@ -74,6 +74,20 @@ resource "google_secret_manager_secret_iam_member" "app_accessor" {
   depends_on = [google_secret_manager_secret.harbor, google_service_account.app]
 }
 
+# Accessor for the job process too, on the secrets at the levels it constructs
+# (local.jobs_secrets): it runs the application's own code, and what that code
+# reads the derivation cannot know.
+resource "google_secret_manager_secret_iam_member" "jobs_accessor" {
+  for_each = local.jobs_secrets
+
+  project   = local.project_id
+  secret_id = local.secret_ids[each.key]
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.jobs_member
+
+  depends_on = [google_secret_manager_secret.harbor, google_service_account.jobs]
+}
+
 # ---------------------------------------------------------------------------
 # Build-time secret containers
 #

@@ -2,7 +2,7 @@
 # Cloud Run
 #
 # The site (main.go) as a service in both lab regions, and the migration
-# (cmd/deployment/migrate) as a job in the primary region. Both are created
+# (cmd/deployment/migrate) as a job in the primary region. All are created
 # with a placeholder image: the pipeline owns the image from the first deploy
 # on, so the image and the labels and annotations a deploy stamps are ignored
 # here, and everything else about the revision template (identity, scaling,

@@ -1,5 +1,6 @@
 # harbor's container image: one image that serves the site (/app, the entrypoint) and runs
-# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with).
+# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with)
+# and the job process (/jobs, the command its Cloud Run job is deployed with).
 # Seeded by bedrock from the code's shape and then yours: bedrock render writes it once and
 # never again, so the image build can grow with the application.
 #
@@ -28,7 +29,7 @@
 ARG VERSION=dev
 ARG COMMIT=unknown
 
-# ---- Go: the server and the migrate command ----------------------------------------------
+# ---- Go: the server, the migrate command and the job process ----------------------------------------------
 # The go image is pinned at a digest that carries a toolchain at least as new as go.mod
 # declares (go1.27.1, published 2026-09-02), found the way the header says. GOTOOLCHAIN=local
 # makes a go.mod that outruns the image fail the build instead of downloading a toolchain:
@@ -51,7 +52,8 @@ COPY . ./
 # the debug information, which nothing in a deployed image reads. No build tags: the
 # session library's skipAuth tag (Procfile) simulates the directory and never ships.
 RUN go build -trimpath -ldflags="-s -w" -o /build/app . && \
-    go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate
+    go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate && \
+    go build -trimpath -ldflags="-s -w" -o /build/jobs ./cmd/jobs
 
 # ---- Browser: the Angular bundles --------------------------------------------------------
 # bun installs the workspace from web/bun.lock and runs its scripts; Angular's CLI itself
@@ -75,7 +77,7 @@ COPY web/ ./
 RUN bun install --frozen-lockfile && \
     bun run build
 
-# ---- Runtime: a static image with the two binaries, the bundles, and the schema -----------
+# ---- Runtime: a static image with the three binaries, the bundles, and the schema -----------
 FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566a8d40766b2a4769f33a824
 
 ARG VERSION

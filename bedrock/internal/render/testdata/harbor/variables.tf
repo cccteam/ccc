@@ -82,6 +82,30 @@ variable "placeholder_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+variable "jobs_timeout" {
+  description = "How long one run of the job process (cmd/jobs) may take before Cloud Run stops it, as a duration. Thirty minutes by default."
+  type        = string
+  default     = "1800s"
+}
+
+variable "jobs_retries" {
+  description = "How many times Cloud Run retries a failed run of the job process. None by default: a run that failed is looked at, and the application decides what runs again."
+  type        = number
+  default     = 0
+}
+
+variable "jobs_resources" {
+  description = "CPU and memory of one run of the job process."
+  type = object({
+    cpu    = string
+    memory = string
+  })
+  default = {
+    cpu    = "1"
+    memory = "512Mi"
+  }
+}
+
 variable "substitutions" {
   description = <<-EOT
     Extra trigger substitutions per environment, for the application's hooks

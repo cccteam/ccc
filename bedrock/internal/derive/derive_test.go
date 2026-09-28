@@ -40,6 +40,7 @@ func TestDerive(t *testing.T) {
 		wantSite      []string
 		wantSiteLvls  []string
 		wantMigrate   []string
+		wantJobs      []string
 		wantOIDC      bool
 		wantCallback  Route
 		wantRedirect  string
@@ -64,9 +65,10 @@ func TestDerive(t *testing.T) {
 				"APP_STAFF_OIDC_CLIENT_ID", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_REDIRECT_URL", "APP_STAFF_OIDC_HOSTED_DOMAIN",
 				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_ADMIN_CREDENTIALS", "APP_STAFF_OIDC_ADMIN_SUBJECT",
 			},
-			wantSite:     []string{varPort, "APP_CONSOLE_DIST"},
+			wantSite:     []string{varPort, "APP_CONSOLE_DIST", varJobsJob},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
 			wantMigrate:  []string{LevelCore, LevelData},
+			wantJobs:     []string{LevelCore, LevelData},
 			wantOIDC:     true,
 			wantCallback: Route{Method: "GET", Path: "/api/user/callback", File: "pkg/router/zz_gen_router.go"},
 			wantRedirect: "APP_STAFF_OIDC_REDIRECT_URL",
@@ -87,6 +89,7 @@ func TestDerive(t *testing.T) {
 				"APP_STAFF_OIDC_HOSTED_DOMAIN": SupplyPlacement,
 				varPort:                        SupplyPlatform,
 				"APP_CONSOLE_DIST":             SupplyImage,
+				varJobsJob:                     SupplyDerived,
 			},
 			wantGroupPfx: "staff-",
 		},
@@ -174,6 +177,9 @@ func TestDerive(t *testing.T) {
 			}
 			if m.Migrate == nil || strings.Join(m.Migrate.Levels, ",") != strings.Join(tt.wantMigrate, ",") {
 				t.Errorf("Migrate = %+v, want levels %v", m.Migrate, tt.wantMigrate)
+			}
+			if (m.Jobs == nil) != (tt.wantJobs == nil) || (m.Jobs != nil && strings.Join(m.Jobs.Levels, ",") != strings.Join(tt.wantJobs, ",")) {
+				t.Errorf("Jobs = %+v, want levels %v", m.Jobs, tt.wantJobs)
 			}
 			if len(m.Auths) != 1 || m.Auths[0].OIDC() != tt.wantOIDC || m.Auths[0].Callback != tt.wantCallback {
 				t.Errorf("Auths = %+v, want one with OIDC %t and callback %+v", m.Auths, tt.wantOIDC, tt.wantCallback)
@@ -465,6 +471,57 @@ func TestPlacementSeedEnvironments(t *testing.T) {
 			p := &Placement{Environments: tt.envs, Seed: tt.seed}
 			if got := p.SeedEnvironments(); !slices.Equal(got, tt.want) {
 				t.Errorf("SeedEnvironments() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJobsJob(t *testing.T) {
+	t.Parallel()
+
+	jobs := &Process{Name: jobsProcess, Dir: jobsDir}
+	tests := []struct {
+		name    string
+		model   Model
+		wantErr string
+	}{
+		{
+			name:  "a site variable naming an existing job process passes",
+			model: Model{Jobs: jobs, Variables: []Variable{{Name: varJobsJob, Role: RoleJobsJob, Level: LevelSite, Struct: "siteConfig", Field: "JobsJob"}}},
+		},
+		{
+			name:  "no variable, no process: nothing to check",
+			model: Model{},
+		},
+		{
+			name:  "a job process the site does not name is fine",
+			model: Model{Jobs: jobs},
+		},
+		{
+			name:    "the variable without the process is refused",
+			model:   Model{Variables: []Variable{{Name: varJobsJob, Role: RoleJobsJob, Level: LevelSite, Struct: "siteConfig", Field: "JobsJob"}}},
+			wantErr: "APP_JOBS_JOB (siteConfig.JobsJob) names the job process's Cloud Run job, but there is no main package at cmd/jobs",
+		},
+		{
+			name:    "the variable at the data level is refused",
+			model:   Model{Jobs: jobs, Variables: []Variable{{Name: varJobsJob, Role: RoleJobsJob, Level: LevelData, Struct: "dataConfig", Field: "JobsJob"}}},
+			wantErr: "APP_JOBS_JOB (dataConfig.JobsJob) is declared at the data level; the site alone runs the job process, so it belongs at the site level",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.model.jobsJob()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("jobsJob() error = %v", err)
+				}
+
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("jobsJob() error = %v, want %q", err, tt.wantErr)
 			}
 		})
 	}

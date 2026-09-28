@@ -59,6 +59,22 @@ resource "google_spanner_database_iam_member" "app_user" {
   }
 }
 
+# The job process (cmd/jobs) constructs the data level and opens the
+# database the way the site does, as its own identity.
+resource "google_spanner_database_iam_member" "jobs_user" {
+  project  = local.instance.project
+  instance = local.instance.name
+  database = local.database_name
+  role     = "roles/spanner.databaseUser"
+  member   = local.jobs_member
+
+  depends_on = [google_spanner_database.harbor, google_service_account.jobs]
+
+  lifecycle {
+    replace_triggered_by = [google_spanner_database.harbor]
+  }
+}
+
 # DDL, for the migrations (pkg/deploy MigrateSchema), on this database only, and
 # never on a shared one.
 resource "google_spanner_database_iam_member" "migrate_admin" {

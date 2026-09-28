@@ -53,3 +53,6 @@ build_secrets = {
 #   placeholder_image        = us-docker.pkg.dev/cloudrun/container/hello
 #   staff_oidc_group_prefix  = "staff-"
 #   staff_oidc_hosted_domain = "impulseframework.com"
+#   jobs_timeout             = "1800s"
+#   jobs_retries             = 0
+#   jobs_resources           = cpu 1, memory 512Mi

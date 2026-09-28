@@ -92,6 +92,7 @@ locals {
   secrets = {
     APP_COOKIE_KEY = {
       name    = "cookie-key"
+      level   = "data"
       source  = "pkg/config/data.go dataConfig.CookieKey"
       purpose = "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
     }

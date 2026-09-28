@@ -82,34 +82,19 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 	if err != nil {
 		return err
 	}
-	region, jobName, err := target(migrateJobFact, env[migrateJobFact])
+	image, err := builtImage(env)
 	if err != nil {
 		return err
-	}
-	image := env[imageFact] + "@" + env[digestFact]
-	if env[imageFact] == "" || env[digestFact] == "" {
-		return errors.Newf("%s names no image digest (IMAGE, IMAGE_DIGEST): the image build writes it", EnvironmentFile)
 	}
 	run, err := clients.Run(ctx)
 	if err != nil {
 		return err
 	}
-	name := "projects/" + build.Substitutions[projectSub] + "/locations/" + region + "/jobs/" + jobName
-	fmt.Fprintf(out, "=== Updating job [%s] in [%s] to this image ===\n", jobName, region)
-	job, err := run.Get(ctx, name)
+	name, err := updateJob(ctx, run, build, migrateJobFact, env[migrateJobFact], image, out)
 	if err != nil {
 		return err
 	}
-	task, _ := field(job, "template.template").(map[string]any)
-	container, err := firstContainer(task)
-	if err != nil {
-		return errors.Wrapf(err, "job %s", jobName)
-	}
-	container["image"] = image
-	setLabels(job, pipelineLabels(build))
-	if _, err := run.Patch(ctx, name, job); err != nil {
-		return err
-	}
+	jobName := shortName(name)
 	fmt.Fprintf(out, "=== Running job [%s] ===\n", jobName)
 	var args []string
 	if build.Substitutions[seedSub] == trueValue {
@@ -126,4 +111,43 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 	fmt.Fprintf(out, "Migrate job done: execution %s succeeded.\n", shortName(text(execution, "name")))
 
 	return nil
+}
+
+// builtImage is this build's image by digest, as the image build left it in the
+// environment file.
+func builtImage(env map[string]string) (string, error) {
+	if env[imageFact] == "" || env[digestFact] == "" {
+		return "", errors.Newf("%s names no image digest (IMAGE, IMAGE_DIGEST): the image build writes it", EnvironmentFile)
+	}
+
+	return env[imageFact] + "@" + env[digestFact], nil
+}
+
+// updateJob updates a Cloud Run job to the image and the pipeline's labels, the one
+// change a deploy makes to a job (its variables, identity, resources and retry policy
+// are the application layer's), and answers the job's resource name. fact and pair name
+// the job the way the stack's substitutions do, region=name.
+func updateJob(ctx context.Context, run Run, build *Build, fact, pair, image string, out io.Writer) (string, error) {
+	region, jobName, err := target(fact, pair)
+	if err != nil {
+		return "", err
+	}
+	name := "projects/" + build.Substitutions[projectSub] + "/locations/" + region + "/jobs/" + jobName
+	fmt.Fprintf(out, "=== Updating job [%s] in [%s] to this image ===\n", jobName, region)
+	job, err := run.Get(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	task, _ := field(job, "template.template").(map[string]any)
+	container, err := firstContainer(task)
+	if err != nil {
+		return "", errors.Wrapf(err, "job %s", jobName)
+	}
+	container["image"] = image
+	setLabels(job, pipelineLabels(build))
+	if _, err := run.Patch(ctx, name, job); err != nil {
+		return "", err
+	}
+
+	return name, nil
 }

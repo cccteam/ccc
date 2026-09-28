@@ -50,6 +50,7 @@ const (
 // beside it), and the trigger's substitution naming the pull request.
 const (
 	migrateJobFact    = "MIGRATE_JOB"
+	jobsJobFact       = "JOBS_JOB"
 	sharedDBFact      = "SHARED_DB"
 	reloadDBFact      = "RELOAD_DB"
 	reloadReasonFact  = "RELOAD_DB_REASON"
@@ -234,9 +235,11 @@ type Facts struct {
 	// hand-submitted build before the environment holds one, with Notice saying so.
 	Token  string
 	Notice string
-	// The facts the environment file exports, as the later steps read them.
+	// The facts the environment file exports, as the later steps read them. JobsJob
+	// names the job process's Cloud Run job, empty for an application without one.
 	Services   string
 	MigrateJob string
+	JobsJob    string
 	SharedDB   bool
 	ReloadDB   bool
 	// ReloadReason says why the pull request's database is recreated: the comment
@@ -321,7 +324,7 @@ func newFacts(data []byte) (*Facts, error) {
 	if f.Tag == "" && f.Environment != tstEnvironment {
 		return nil, errors.Newf("a pull-request build deploys only to tst (this trigger's _ENV is %s)", f.Environment)
 	}
-	f.Services, f.MigrateJob = subs["_SERVICES"], subs["_MIGRATE_JOB"]
+	f.Services, f.MigrateJob, f.JobsJob = subs["_SERVICES"], subs["_MIGRATE_JOB"], subs["_JOBS_JOB"]
 	if f.Services == "" || f.MigrateJob == "" {
 		return nil, errors.New("_SERVICES and _MIGRATE_JOB name the Cloud Run services and the migrate job this build updates; one is empty")
 	}
@@ -577,6 +580,7 @@ func (f *Facts) environment() string {
 		{"GITHUB_TOKEN", f.Token},
 		{services, f.Services},
 		{migrateJobFact, f.MigrateJob},
+		{jobsJobFact, f.JobsJob},
 		{sharedDBFact, flag(f.SharedDB)},
 		{reloadDBFact, flag(f.ReloadDB)},
 		{reloadReasonFact, f.ReloadReason},

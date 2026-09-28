@@ -26,12 +26,26 @@ output "hostnames" {
 }
 
 output "identities" {
-  description = "Runtime identities by process: app (the site) and migrate (the migration job)."
+  description = "Runtime identities by process: app (the site){{if .Jobs}}, jobs (the job process){{end}} and migrate (the migration job)."
   value = {
     app     = google_service_account.app.email
+{{- if .Jobs}}
+    jobs    = google_service_account.jobs.email
+{{- end}}
     migrate = google_service_account.migrate.email
   }
 }
+{{- if .Jobs}}
+
+output "jobs_job" {
+  description = "The job process's Cloud Run job, which the application runs: its name, its region and the resource name the Cloud Run API takes."
+  value = {
+    name     = google_cloud_run_v2_job.jobs.name
+    region   = google_cloud_run_v2_job.jobs.location
+    resource = local.jobs_job
+  }
+}
+{{- end}}
 
 output "net_hosts" {
   description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI, and each next hostname (<app>-<env>-next) to the next revision's backend. Empty for a pull-request stack, whose hostname the wildcard rule serves."

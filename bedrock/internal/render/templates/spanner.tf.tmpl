@@ -58,6 +58,24 @@ resource "google_spanner_database_iam_member" "app_user" {
     replace_triggered_by = [google_spanner_database.{{.App}}]
   }
 }
+{{- if .JobsReadsData}}
+
+# The job process ({{.Jobs.Dir}}) constructs the {{.DataLevel.Name}} level and opens the
+# database the way the site does, as its own identity.
+resource "google_spanner_database_iam_member" "jobs_user" {
+  project  = local.instance.project
+  instance = local.instance.name
+  database = local.database_name
+  role     = "roles/spanner.databaseUser"
+  member   = local.jobs_member
+
+  depends_on = [google_spanner_database.{{.App}}, google_service_account.jobs]
+
+  lifecycle {
+    replace_triggered_by = [google_spanner_database.{{.App}}]
+  }
+}
+{{- end}}
 
 # DDL, for the migrations ({{.Schema.MigrateCall}}), on this database only, and
 # never on a shared one.

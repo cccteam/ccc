@@ -58,4 +58,8 @@ type siteConfig struct {
 
 	// ConsoleDist is the directory holding the console's built Angular bundle.
 	ConsoleDist string `env:"APP_CONSOLE_DIST,default=web/dist/console"`
+
+	// JobsJob is the job process's Cloud Run job as the Cloud Run API names it
+	// (projects/<project>/locations/<region>/jobs/<name>), which the site runs on demand.
+	JobsJob string `env:"APP_JOBS_JOB"`
 }

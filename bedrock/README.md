@@ -96,8 +96,14 @@ directory; `--app` overrides.
 What the stack carries comes from declarations in the code: a config variable tagged as
 a secret becomes a Secret Manager container mounted at a pinned version; a directory auth
 becomes the registration variables, the redirect output and the hand steps in the README;
-a main package under `cmd/deployment/migrate` becomes the migrate job; the generated
-router's outlets become the service's paths on the backend. The rendered README of the
+a main package under `cmd/deployment/migrate` becomes the migrate job; a main package
+under `cmd/jobs` becomes the job process: its own Cloud Run job in the primary region,
+its runtime identity with the site's project roles and, when it constructs the data
+level, the database user grant and accessor on that level's secrets, its timeout,
+retries and resources as stack variables, and, when the site's config declares
+`APP_JOBS_JOB`, that variable set to the job's resource name with `run.invoker` for the
+site's identity, so the site runs it through the Cloud Run API; the generated router's
+outlets become the service's paths on the backend. The rendered README of the
 stack explains every file and names the declaration it comes from.
 
 ## bedrock check
@@ -169,6 +175,10 @@ created). In order:
   completion, with the seed (`schema/devseed` as data migrations after the schema) where
   `_SEED` is true: every pull request, and a release build only in the environments the
   placement's seed list names.
+- `deploy jobs`: updates the job process's Cloud Run job (`cmd/jobs`, named by the
+  stack's `_JOBS_JOB`) to this build's image and the pipeline's labels and does not run
+  it; the application runs its job process. Rendered into the pipeline only when the
+  application has one, after the migrations.
 - `deploy service`: puts a new revision of the service in every region, receiving no
   traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
   new revision carries the tag `next` (or the pull request's tag), under which the

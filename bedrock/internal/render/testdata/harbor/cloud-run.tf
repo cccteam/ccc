@@ -2,7 +2,8 @@
 # Cloud Run
 #
 # The site (main.go) as a service in both lab regions, and the migration
-# (cmd/deployment/migrate) as a job in the primary region. Both are created
+# (cmd/deployment/migrate) as a job in the primary region, with the job
+# process (cmd/jobs) as a second job beside it. All are created
 # with a placeholder image: the pipeline owns the image from the first deploy
 # on, so the image and the labels and annotations a deploy stamps are ignored
 # here, and everything else about the revision template (identity, scaling,
@@ -208,4 +209,97 @@ resource "google_cloud_run_v2_job" "migrate" {
   }
 
   depends_on = [google_spanner_database_iam_member.migrate_admin]
+}
+
+# ---------------------------------------------------------------------------
+# The job process: cmd/jobs, the application's own code as a Cloud Run job
+# in the primary region. The pipeline updates it to each build's image and
+# never runs it; the application does: the site holds run.invoker on it
+# and finds it as APP_JOBS_JOB. Its timeout, retries and resources are
+# the stack's (var.jobs_timeout, var.jobs_retries, var.jobs_resources).
+# ---------------------------------------------------------------------------
+
+resource "google_cloud_run_v2_job" "jobs" {
+  project  = local.project_id
+  location = local.primary_region
+  name     = local.jobs_job_name
+
+  deletion_protection = false
+
+  labels = local.labels
+
+  template {
+    task_count = 1
+    labels     = local.labels
+
+    template {
+      service_account       = google_service_account.jobs.email
+      execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+      max_retries           = var.jobs_retries
+      timeout               = var.jobs_timeout
+
+      containers {
+        image = var.placeholder_image
+        # The image's entrypoint is the site; the job runs the jobs binary
+        # beside it (Dockerfile: /jobs).
+        command = ["/jobs"]
+
+        resources {
+          limits = {
+            cpu    = var.jobs_resources.cpu
+            memory = var.jobs_resources.memory
+          }
+        }
+
+        dynamic "env" {
+          for_each = local.jobs_env
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+
+        # Secrets by reference, at the version var.secret_versions pins: the
+        # ones at the levels the job process constructs (locals.tf, jobs_secrets).
+        dynamic "env" {
+          for_each = local.jobs_mounted_secrets
+          content {
+            name = env.key
+            value_source {
+              secret_key_ref {
+                secret  = local.secret_ids[env.key]
+                version = env.value.version
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].template[0].containers[0].image,
+      template[0].labels,
+      template[0].annotations,
+      labels,
+      annotations,
+      client,
+      client_version,
+    ]
+  }
+
+  depends_on = [google_spanner_database_iam_member.jobs_user, google_secret_manager_secret_iam_member.jobs_accessor]
+}
+
+# The site runs the job through the Cloud Run API as its own identity
+# (APP_JOBS_JOB names the job to it).
+resource "google_cloud_run_v2_job_iam_member" "app_runs_jobs" {
+  project  = google_cloud_run_v2_job.jobs.project
+  location = google_cloud_run_v2_job.jobs.location
+  name     = google_cloud_run_v2_job.jobs.name
+  role     = "roles/run.invoker"
+  member   = local.app_member
+
+  depends_on = [google_service_account.app]
 }

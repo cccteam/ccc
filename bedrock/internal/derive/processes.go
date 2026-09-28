@@ -48,6 +48,33 @@ func (m *Model) processes(a *app.App, cfg *config) error {
 		}
 		m.Migrate = &migrate
 	}
+	if slices.Contains(a.MainPackages, jobsDir) {
+		jobs, err := m.process(a, cfg, jobsProcess, jobsDir)
+		if err != nil {
+			return err
+		}
+		m.Jobs = &jobs
+	}
+
+	return m.jobsJob()
+}
+
+// jobsJob checks the variable that names the job process to the site, when the code
+// declares one: the application has the process, and the variable is the site's (the
+// site alone runs the job; the migrate command and the job itself have no use for it).
+func (m *Model) jobsJob() error {
+	for i := range m.Variables {
+		v := &m.Variables[i]
+		if v.Role != RoleJobsJob {
+			continue
+		}
+		if m.Jobs == nil {
+			return errors.Newf("%s (%s) names the job process's Cloud Run job, but there is no main package at %s", v.Name, v.Declaration(), jobsDir)
+		}
+		if v.Level != LevelSite {
+			return errors.Newf("%s (%s) is declared at the %s level; the site alone runs the job process, so it belongs at the %s level", v.Name, v.Declaration(), v.Level, LevelSite)
+		}
+	}
 
 	return nil
 }

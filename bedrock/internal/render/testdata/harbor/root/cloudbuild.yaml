@@ -10,6 +10,7 @@
 #   CheckRelease              a release already in the registry is reused (same commit) or refused (bedrock deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit, pushed
 #   RunMigrations             the migrate command as a Cloud Run job, run to completion (bedrock deploy migrate)
+#   DeployJobs                the job process's Cloud Run job updated to this image, not run (bedrock deploy jobs)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (bedrock deploy service)
 #   ShiftTraffic              every region to 100 percent on its new revision (bedrock deploy shift-traffic)
 #   WriteDeploymentRecord     the record of what is now running, in the records bucket (bedrock deploy record, from the pinned bedrock image)
@@ -354,20 +355,22 @@ steps:
           exit 0
         fi
 
-        # The stack's substitutions output names this pull request's services and job; the
+        # The stack's substitutions output names this pull request's services and jobs; the
         # JSON is one key per line, which sed reads without jq (absent from this image).
         tofu output -json substitutions > /workspace/pr-substitutions.json
         SERVICES=$(sed -n 's/.*"_SERVICES": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
         MIGRATE_JOB=$(sed -n 's/.*"_MIGRATE_JOB": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
+        JOBS_JOB=$(sed -n 's/.*"_JOBS_JOB": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
         PR_HOSTNAME=$(sed -n 's/.*"_HOSTNAME": *"\([^"]*\)".*/\1/p' /workspace/pr-substitutions.json)
-        if [ -z "$${SERVICES}" ] || [ -z "$${MIGRATE_JOB}" ]; then
-          echo "Error: the pull request's stack named no services or no migrate job (see pr-substitutions.json)."
+        if [ -z "$${SERVICES}" ] || [ -z "$${MIGRATE_JOB}" ] || [ -z "$${JOBS_JOB}" ]; then
+          echo "Error: the pull request's stack named no services or no job (see pr-substitutions.json)."
           exit 1
         fi
-        echo "SERVICES=$${SERVICES} MIGRATE_JOB=$${MIGRATE_JOB}"
+        echo "SERVICES=$${SERVICES} MIGRATE_JOB=$${MIGRATE_JOB} JOBS_JOB=$${JOBS_JOB}"
         {
           echo "export SERVICES=\"$${SERVICES}\""
           echo "export MIGRATE_JOB=\"$${MIGRATE_JOB}\""
+          echo "export JOBS_JOB=\"$${JOBS_JOB}\""
           echo "export PR_HOSTNAME=\"$${PR_HOSTNAME}\""
         } >> /workspace/environment.sh
 
@@ -541,6 +544,16 @@ steps:
         echo "=== Hook after-migrate: $${HOOK} ==="
         bash "$${HOOK}"
 
+  # The job process (cmd/jobs) as a Cloud Run job, updated to this build's image and the
+  # pipeline's labels and not run: bedrock deploy jobs, from the bedrock image the placement
+  # pins. The application runs it; its timeout, retries and resources are the stack's. After
+  # the migrations, so a run the application starts from here on sees the migrated schema.
+  - id: DeployJobs
+    waitFor: ["HookAfterMigrate"]
+    name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    args: [deploy, jobs]
+    timeout: 600s
+
   # A new revision of the service in every region, receiving no traffic yet: bedrock deploy
   # service, from the bedrock image the placement pins. The service itself is the
   # infrastructure's (created with its runtime identity, ingress and scaling); the step only
@@ -551,7 +564,7 @@ steps:
   # under which the next backend serves it before traffic moves. One line per region is
   # left in /workspace/revisions.txt, and NEXT_URL and REVISION_URLS in environment.sh.
   - id: DeployServiceNoTraffic
-    waitFor: ["HookAfterMigrate"]
+    waitFor: ["DeployJobs"]
     name: us-central1-docker.pkg.dev/imp-shr-gbl-core-REPLACEME/imp-shr-uc1-tools/bedrock@sha256:0000000000000000000000000000000000000000000000000000000000000000
     args: [deploy, service]
     timeout: 1200s

@@ -71,12 +71,14 @@ type Report struct {
 	// BuildSecrets are the build secrets the Dockerfile mounts as required that some
 	// environment's placement does not declare.
 	BuildSecrets []BuildSecretFinding
+	// Binaries are the jobs whose command the Dockerfile does not build.
+	Binaries []BinaryFinding
 }
 
-// Clean reports no drift, no refused resource, a sound migration sequence and every
-// required build secret declared.
+// Clean reports no drift, no refused resource, a sound migration sequence, every
+// required build secret declared and every job's binary built.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -132,6 +134,11 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 		return nil, err
 	}
 	r.BuildSecrets = buildSecrets
+	binaries, err := scanBinaries(appDir, m)
+	if err != nil {
+		return nil, err
+	}
+	r.Binaries = binaries
 
 	return r, nil
 }
@@ -233,6 +240,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, bs := range r.BuildSecrets {
 		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinEnvironments(bs.Missing), pluralS(len(bs.Missing)))
+	}
+	for _, b := range r.Binaries {
+		fmt.Fprintf(w, "  refused  Dockerfile builds no %s, the command the %s job runs: go build -o /build%s ./%s in the Go stage, with /build copied into the runtime image\n", b.Binary, b.Process, b.Binary, b.Dir)
 	}
 }
 

@@ -53,8 +53,9 @@ from `2-env`'s state.
   on the database, and accessor on the secrets; `imp-<env>-gbl-beacon-migrate`
   for the migration job (`cmd/deployment/migrate`) with
   `roles/logging.logWriter` and `roles/spanner.databaseAdmin` on the database
-  only, for DDL. The deploy identity from `2-env` gets
-  `roles/iam.serviceAccountUser` on both.
+  only, for DDL.
+  The deploy identity from `2-env` gets `roles/iam.serviceAccountUser` on
+  both.
 - **The database** `imp-<env>-gbl-beacon-db` on the environment's instance
   (`2-env` output `spanner_instance`: tst's own, the spn instance for stg and
   prd), GoogleSQL, no schema (the migrations own it). prd: deletion and drop
@@ -67,17 +68,17 @@ from `2-env`'s state.
   |---|---|---|
   | `APP_COOKIE_KEY` | `dataConfig.CookieKey` | `...-cookie-key` |
 
-  Only the site's identity holds accessor. The migrate step constructs the
-  same configuration level, but the session library reads these values only
-  when someone signs in (the cookie key falls back to an ephemeral one), which
-  a migration never does. The design brief's rule of thumb, accessor for every
-  process that constructs the level, would grant the migrate identity too;
-  this is the narrower reading, and a fork for bedrock's derivation to settle.
+  The site's identity holds accessor. The migrate step
+  constructs the same configuration level, but its work is known: the session
+  library reads these values only when someone signs in (the cookie key falls
+  back to an ephemeral one), which a migration never does, so the migrate
+  identity holds no accessor.
 - **Cloud Run**: the service `imp-<env>-<region>-beacon-app` in both regions (`uc1|uw3`)
   (ingress internal and load balancer, 0 to 2 instances, CPU only during
   requests, `allUsers` invoker so the load balancer can forward) and the job
   `imp-<env>-uc1-beacon-migrate` (one task, no retries, 15-minute timeout),
-  both created with a placeholder image. From the first deploy on, the image
+  both created with a placeholder image.
+  From the first deploy on, the image
   and the labels and annotations a deploy stamps are the pipeline's
   (`ignore_changes`); identity, scaling, variables, and secret mounts stay
   this stack's.
@@ -103,7 +104,7 @@ from `2-env`'s state.
 By level (`pkg/config`): a process gets the levels it constructs and nothing
 above them.
 
-| Variable | Level | Value | Service | Job |
+| Variable | Level | Value | Service | Migrate job |
 |---|---|---|---|---|
 | `APP_SERVICE_NAME` | core | `beacon` / `beacon-migrate` | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes |
@@ -187,12 +188,13 @@ substitutions and this stack's outputs:
   database holding data is seeded only where the placement says so. Output
   `substitutions` is the same map, for a build submitted by hand before the
   triggers exist.
-- The services and the job are deployed with `gcloud run services update
-  --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
-  --wait`, which leave the template's variables and secrets alone: the
-  revision template is this stack's, a deploy changes the image and its labels.
-- Two images per release in the one repository, `beacon:<tag>` for the site
-  and `beacon-migrate:<tag>` for the job, with `APP_VERSION` baked in at build.
+- The services and the job are deployed through the Cloud Run API by
+  `bedrock deploy service` and `deploy migrate`, which
+  change the image and the labels and leave the template's variables, secrets
+  and identity alone: the revision template is this stack's.
+- One image per release and environment in the one repository,
+  `beacon:<release>-<env>` (its commit's tag beside it), carrying the site and
+  the migrate command, with `APP_VERSION` baked in at build.
 - `options.logging: CLOUD_LOGGING_ONLY`, required when a build runs as a
   user-specified service account.
 - The deploy identity writes one object per run into `_RECORDS_BUCKET`, at
@@ -336,8 +338,10 @@ adds is declared in files of its own:
   (`ARG _NAME` in the Dockerfile). A name the pipeline's contract already
   carries is refused by the triggers' plan.
 - **The Dockerfile.** Seeded from the code's shape (the site and the migrate
-  command, the browser workspace and its bundles, the schema directory) and
-  then yours: extra stages, build arguments, private assets.
+  command, the browser workspace and its bundles, the schema
+  directory) and then yours: extra stages, build arguments, private assets.
+  `bedrock check` refuses a Dockerfile that builds no binary for a job the
+  stack deploys (`/migrate`).
 
 Anything beyond that is a new hook point or, once the steps are `bedrock
 deploy` commands, a pipeline the application composes from them; never an edit

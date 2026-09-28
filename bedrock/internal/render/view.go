@@ -130,6 +130,15 @@ type view struct {
 	SiteImageVars string
 	// MigrateLevels spells the levels the migration constructs: "core and data".
 	MigrateLevels string
+	// JobsLevels spells the levels the job process constructs, JobsLevelList lists them
+	// as HCL, and JobsReadsData reports whether the data level is among them; all empty
+	// without a job process.
+	JobsLevels    string
+	JobsLevelList string
+	JobsReadsData bool
+	// JobsJob is the site's variable naming the job process's Cloud Run job, or nil
+	// when the site declares none.
+	JobsJob *derive.Variable
 	// IdentityLines are the aligned identity lines of the service-accounts header.
 	IdentityLines string
 	// LabelLines are the extra labels, aligned to the derived ones.
@@ -152,6 +161,15 @@ type view struct {
 // The width the labels block aligns to: its longest derived key.
 const labelsWidth = len("terraform_source_path")
 
+// The job process's defaults (var.jobs_timeout, var.jobs_retries, var.jobs_resources),
+// restated in the seeded tfvars: thirty minutes, no retry, one CPU and 512 MiB.
+const (
+	jobsTimeout = "1800s"
+	jobsRetries = "0"
+	jobsCPU     = "1"
+	jobsMemory  = "512Mi"
+)
+
 // numberWords spell the small counts the prose uses.
 var numberWords = map[int]string{1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
 
@@ -161,9 +179,11 @@ var numberWords = map[int]string{1: "one", 2: "two", 3: "three", 4: "four", 5: "
 // and the variable the image sets to the release.
 type imageView struct {
 	// SitePkg and MigratePkg are the packages go build compiles, as go names them from
-	// the root: "." for the site at the root, "./cmd/deployment/migrate".
+	// the root: "." for the site at the root, "./cmd/deployment/migrate"; JobsPkg is
+	// the job process's, empty without one.
 	SitePkg    string
 	MigratePkg string
+	JobsPkg    string
 	// SchemaDir is the directory the migrate command reads relative to its working
 	// directory (schema: the migrations, the seed, the roles), copied whole.
 	SchemaDir string
@@ -197,6 +217,9 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 	iv := imageView{SitePkg: pkgPath(m.Site.Dir), SchemaDir: path.Dir(m.Schema.MigrationsDir)}
 	if m.Migrate != nil {
 		iv.MigratePkg = pkgPath(m.Migrate.Dir)
+	}
+	if m.Jobs != nil {
+		iv.JobsPkg = pkgPath(m.Jobs.Dir)
 	}
 	if iv.SchemaDir == "." || iv.SchemaDir == "" {
 		iv.SchemaDir = m.Schema.MigrationsDir
@@ -455,10 +478,18 @@ func (v *view) blocks() {
 	v.MigrateLevels = joinAnd(v.Migrate.Levels)
 
 	stem := v.Prefix + "-<env>-gbl-" + v.App + "-"
-	v.IdentityLines = aligned("#   ", [][2]string{
+	identities := [][2]string{
 		{stem + v.Site.Name, v.Site.Main + ", the served site (Cloud Run service)"},
 		{stem + v.Migrate.Name, v.Migrate.Dir + " (Cloud Run job)"},
-	}, "  ")
+	}
+	if v.Jobs != nil {
+		v.JobsLevels = joinAnd(v.Jobs.Levels)
+		v.JobsLevelList = `["` + strings.Join(v.Jobs.Levels, `", "`) + `"]`
+		v.JobsReadsData = v.Jobs.Reads(v.DataLevel.Name)
+		v.JobsJob = v.byRole(derive.RoleJobsJob)
+		identities = append(identities, [2]string{stem + v.Jobs.Name, v.Jobs.Dir + ", the job process (Cloud Run job)"})
+	}
+	v.IdentityLines = aligned("#   ", identities, "  ")
 
 	keys := make([]string, 0, len(v.P.Labels))
 	width := labelsWidth
@@ -481,6 +512,13 @@ func (v *view) blocks() {
 		restated = append(restated,
 			[2]string{v.AuthVar + "_group_prefix", `"` + v.Auth.GroupPrefixDefault + `"`},
 			[2]string{v.AuthVar + "_hosted_domain", `"` + v.P.HostedDomain + `"`},
+		)
+	}
+	if v.Jobs != nil {
+		restated = append(restated,
+			[2]string{"jobs_timeout", `"` + jobsTimeout + `"`},
+			[2]string{"jobs_retries", jobsRetries},
+			[2]string{"jobs_resources", "cpu " + jobsCPU + ", memory " + jobsMemory},
 		)
 	}
 	v.RestatedDefaults = aligned("#   ", restated, " = ")

@@ -53,8 +53,11 @@ from `2-env`'s state.
   on the database, and accessor on the secrets; `imp-<env>-gbl-harbor-migrate`
   for the migration job (`cmd/deployment/migrate`) with
   `roles/logging.logWriter` and `roles/spanner.databaseAdmin` on the database
-  only, for DDL. The deploy identity from `2-env` gets
-  `roles/iam.serviceAccountUser` on both.
+  only, for DDL; `imp-<env>-gbl-harbor-jobs` for the job process
+  (`cmd/jobs`) with the site's project roles, `roles/spanner.databaseUser`
+  on the database and accessor on the secrets at the levels it constructs.
+  The deploy identity from `2-env` gets `roles/iam.serviceAccountUser` on
+  each.
 - **The database** `imp-<env>-gbl-harbor-db` on the environment's instance
   (`2-env` output `spanner_instance`: tst's own, the spn instance for stg and
   prd), GoogleSQL, no schema (the migrations own it). prd: deletion and drop
@@ -69,17 +72,23 @@ from `2-env`'s state.
   | `APP_STAFF_OIDC_CLIENT_SECRET` | `dataConfig.StaffClientSecret` | `...-staff-oidc-client-secret` |
   | `APP_STAFF_OIDC_ADMIN_CREDENTIALS` | `dataConfig.StaffAdminCredentials` | `...-staff-oidc-admin-credentials` |
 
-  Only the site's identity holds accessor. The migrate step constructs the
-  same configuration level, but the session library reads these values only
-  when someone signs in (the cookie key falls back to an ephemeral one), which
-  a migration never does. The design brief's rule of thumb, accessor for every
-  process that constructs the level, would grant the migrate identity too;
-  this is the narrower reading, and a fork for bedrock's derivation to settle.
+  The site's identity holds accessor, and so does the job process's, on
+  the secrets at the levels it constructs: it runs the application's own
+  code, and what that code reads the derivation cannot know. The migrate step
+  constructs the same configuration level, but its work is known: the session
+  library reads these values only when someone signs in (the cookie key falls
+  back to an ephemeral one), which a migration never does, so the migrate
+  identity holds no accessor.
 - **Cloud Run**: the service `imp-<env>-<region>-harbor-app` in both regions (`uc1|uw3`)
   (ingress internal and load balancer, 0 to 2 instances, CPU only during
   requests, `allUsers` invoker so the load balancer can forward) and the job
   `imp-<env>-uc1-harbor-migrate` (one task, no retries, 15-minute timeout),
-  both created with a placeholder image. From the first deploy on, the image
+  and the job `imp-<env>-uc1-harbor-jobs` for the job process
+  (`cmd/jobs`; its timeout, retries and resources are `var.jobs_timeout`,
+  `var.jobs_retries` and `var.jobs_resources`), which the pipeline updates
+  and the application runs: the site holds `roles/run.invoker` on it and
+  `APP_JOBS_JOB` names it; all created with a placeholder image.
+  From the first deploy on, the image
   and the labels and annotations a deploy stamps are the pipeline's
   (`ignore_changes`); identity, scaling, variables, and secret mounts stay
   this stack's.
@@ -105,19 +114,20 @@ from `2-env`'s state.
 By level (`pkg/config`): a process gets the levels it constructs and nothing
 above them.
 
-| Variable | Level | Value | Service | Job |
-|---|---|---|---|---|
-| `APP_SERVICE_NAME` | core | `harbor` / `harbor-migrate` | yes | yes |
-| `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes |
-| `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes |
-| `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes |
-| `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes |
-| `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | |
-| `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | |
-| `APP_STAFF_OIDC_ADMIN_SUBJECT` | data | `var.staff_oidc_admin_subject[env]` | yes | |
-| `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET`, `APP_STAFF_OIDC_ADMIN_CREDENTIALS` | data | secret, at the pinned version | yes | |
+| Variable | Level | Value | Service | Migrate job | Job process |
+|---|---|---|---|---|---|
+| `APP_SERVICE_NAME` | core | `harbor` / `harbor-migrate` / `harbor-jobs` | yes | yes | yes |
+| `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes | yes |
+| `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
+| `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |
+| `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
+| `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
+| `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | | |
+| `APP_STAFF_OIDC_ADMIN_SUBJECT` | data | `var.staff_oidc_admin_subject[env]` | yes | | |
+| `APP_JOBS_JOB` | site | the job process's Cloud Run job | yes | | |
+| `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET`, `APP_STAFF_OIDC_ADMIN_CREDENTIALS` | data | secret, at the pinned version | yes | | yes |
 
-The job carries the hosted domain and group prefix because the session
+The migrate job and the job process carry the hosted domain and group prefix because the session
 library refuses to construct without them. Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
@@ -173,7 +183,8 @@ What `cloudbuild.yaml` in the harbor repository can rely on, from the trigger
 substitutions and this stack's outputs:
 
 - `_ENV`, `_APP`, `_PROJECT`; `_SERVICES` as `<region>=<service>` per region,
-  comma-separated; `_MIGRATE_JOB` as `<region>=<job>`; `_REGISTRY` as
+  comma-separated; `_MIGRATE_JOB` as `<region>=<job>`, and `_JOBS_JOB` the
+  same for the job process; `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
   `_REPO_CONNECTION_NAME` and `_REPO_NAME` (placeholders until 2-env holds the
   connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
@@ -195,12 +206,13 @@ substitutions and this stack's outputs:
   database holding data is seeded only where the placement says so. Output
   `substitutions` is the same map, for a build submitted by hand before the
   triggers exist.
-- The services and the job are deployed with `gcloud run services update
-  --image` and `gcloud run jobs update --image` then `gcloud run jobs execute
-  --wait`, which leave the template's variables and secrets alone: the
-  revision template is this stack's, a deploy changes the image and its labels.
-- Two images per release in the one repository, `harbor:<tag>` for the site
-  and `harbor-migrate:<tag>` for the job, with `APP_VERSION` baked in at build.
+- The services and the jobs are deployed through the Cloud Run API by
+  `bedrock deploy service`, `deploy migrate` and `deploy jobs`, which
+  change the image and the labels and leave the template's variables, secrets
+  and identity alone: the revision template is this stack's.
+- One image per release and environment in the one repository,
+  `harbor:<release>-<env>` (its commit's tag beside it), carrying the site,
+  the migrate command and the job process, with `APP_VERSION` baked in at build.
 - `options.logging: CLOUD_LOGGING_ONLY`, required when a build runs as a
   user-specified service account.
 - The deploy identity writes one object per run into `_RECORDS_BUCKET`, at
@@ -344,8 +356,10 @@ adds is declared in files of its own:
   (`ARG _NAME` in the Dockerfile). A name the pipeline's contract already
   carries is refused by the triggers' plan.
 - **The Dockerfile.** Seeded from the code's shape (the site and the migrate
-  command, the browser workspace and its bundles, the schema directory) and
-  then yours: extra stages, build arguments, private assets.
+  command, the job process, the browser workspace and its bundles, the schema
+  directory) and then yours: extra stages, build arguments, private assets.
+  `bedrock check` refuses a Dockerfile that builds no binary for a job the
+  stack deploys (`/migrate`, `/jobs`).
 
 Anything beyond that is a new hook point or, once the steps are `bedrock
 deploy` commands, a pipeline the application composes from them; never an edit
@@ -383,6 +397,9 @@ Per environment, after the first apply:
 | `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the three above | no |
+| `jobs_resources` | CPU and memory of one run of the job process. | `object({ cpu, memory })` | `1`, `512Mi` | no |
+| `jobs_retries` | Retries of a failed run of the job process. | `number` | `0` | no |
+| `jobs_timeout` | How long one run of the job process may take. | `string` | `"1800s"` | no |
 | `placeholder_image` | Image the services and job are created with. | `string` | `us-docker.pkg.dev/cloudrun/container/hello` | no |
 | `secret_versions` | Pinned secret version per environment per variable. | `map(map(string))` | all empty | no |
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
@@ -399,7 +416,8 @@ Per environment, after the first apply:
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
 | `database` | `{ project, instance, name }`. |
 | `hostnames` | For `2-net`'s host rules, certificate, and DNS. |
-| `identities` | `{ app, migrate }` runtime identity emails. |
+| `identities` | `{ app, jobs, migrate }` runtime identity emails. |
+| `jobs_job` | `{ name, region, resource }` of the job process's Cloud Run job. |
 | `migrate_job` | `{ name, region }` of the migration job. |
 | `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to the backend service URI. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers harbor. |

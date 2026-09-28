@@ -22,10 +22,10 @@ func newDeploy(d deps) *cobra.Command {
 facts the resolve step exports to the workspace (environment.sh), the build as Cloud Build
 describes it (build.json) and what the earlier steps left there. A pipeline lists the steps it
 wants, and the rendered cloudbuild.yaml runs them from the bedrock image the placement pins
-(bedrockImage). Today: resolve, validate-release, check-release, migrate, deploy, shift-traffic
-and record; the image build stays a docker step.`,
+(bedrockImage). Today: resolve, validate-release, check-release, migrate, jobs, service,
+shift-traffic and record; the image build stays a docker step.`,
 	}
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployMigrate(d), newDeployService(d), newDeployShiftTraffic(d), newDeployRecord(d))
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployCheckRelease(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d), newDeployShiftTraffic(d), newDeployRecord(d))
 
 	return cmd
 }
@@ -132,6 +132,28 @@ placement's seed list names. A seeded database takes nothing twice. A build that
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// newDeployJobs is deploy jobs.
+func newDeployJobs(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "jobs",
+		Short: "Update the job process's Cloud Run job to this build's image, without running it",
+		Long: `jobs updates the job process's Cloud Run job (cmd/jobs, named by the stack's _JOBS_JOB) to this
+build's image and the pipeline's labels through the Cloud Run API and does not run it: the
+application runs its job process (the site through the Cloud Run API, or a schedule), and the
+pipeline only keeps the job on the image every other process of the build runs. Its variables,
+identity, timeout, retries and resources are the application layer's. The step runs after the
+migrations, so a run the application starts from then on sees the migrated schema.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.Jobs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")

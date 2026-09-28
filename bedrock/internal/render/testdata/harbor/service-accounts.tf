@@ -5,6 +5,7 @@
 #
 #   imp-<env>-gbl-harbor-app      main.go, the served site (Cloud Run service)
 #   imp-<env>-gbl-harbor-migrate  cmd/deployment/migrate (Cloud Run job)
+#   imp-<env>-gbl-harbor-jobs     cmd/jobs, the job process (Cloud Run job)
 #
 # Each holds what its process needs while it runs and nothing more; the
 # migrate identity alone holds database admin, on its own database, for DDL.
@@ -23,6 +24,13 @@ resource "google_service_account" "migrate" {
   account_id   = local.migrate_account
   display_name = "Runtime SA - ${local.migrate_account}"
   description  = "Runtime identity of the harbor migration job (cmd/deployment/migrate) in ${var.environment}."
+}
+
+resource "google_service_account" "jobs" {
+  project      = local.project_id
+  account_id   = local.jobs_account
+  display_name = "Runtime SA - ${local.jobs_account}"
+  description  = "Runtime identity of the harbor job process (cmd/jobs) in ${var.environment}."
 }
 
 # The site writes request logs (coreConfig.LoggingProjectID), traces, and
@@ -58,9 +66,25 @@ resource "google_project_iam_member" "migrate" {
   depends_on = [google_service_account.migrate]
 }
 
-# The deploy identity from 2-env rolls out revisions and runs the job as
+# The job process runs the application's own code: logs, traces and metrics
+# like the site. Its database and secret grants are on those resources.
+resource "google_project_iam_member" "jobs" {
+  for_each = toset([
+    "roles/logging.logWriter",
+    "roles/cloudtrace.agent",
+    "roles/monitoring.metricWriter",
+  ])
+
+  project = local.project_id
+  role    = each.value
+  member  = local.jobs_member
+
+  depends_on = [google_service_account.jobs]
+}
+
+# The deploy identity from 2-env rolls out revisions and updates the jobs as
 # these identities, and as no other application's: Service Account User is
-# granted here, on the two accounts, rather than at project level.
+# granted here, on each account, rather than at project level.
 resource "google_service_account_iam_member" "deploy_uses_app" {
   service_account_id = local.app_account_name
   role               = "roles/iam.serviceAccountUser"
@@ -75,6 +99,14 @@ resource "google_service_account_iam_member" "deploy_uses_migrate" {
   member             = local.identities.deploy_identity_member
 
   depends_on = [google_service_account.migrate]
+}
+
+resource "google_service_account_iam_member" "deploy_uses_jobs" {
+  service_account_id = local.jobs_account_name
+  role               = "roles/iam.serviceAccountUser"
+  member             = local.identities.deploy_identity_member
+
+  depends_on = [google_service_account.jobs]
 }
 
 # The directory's groups carry role membership, read through the Admin SDK as the

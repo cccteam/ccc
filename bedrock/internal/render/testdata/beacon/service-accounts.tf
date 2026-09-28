@@ -58,9 +58,9 @@ resource "google_project_iam_member" "migrate" {
   depends_on = [google_service_account.migrate]
 }
 
-# The deploy identity from 2-env rolls out revisions and runs the job as
+# The deploy identity from 2-env rolls out revisions and updates the jobs as
 # these identities, and as no other application's: Service Account User is
-# granted here, on the two accounts, rather than at project level.
+# granted here, on each account, rather than at project level.
 resource "google_service_account_iam_member" "deploy_uses_app" {
   service_account_id = local.app_account_name
   role               = "roles/iam.serviceAccountUser"

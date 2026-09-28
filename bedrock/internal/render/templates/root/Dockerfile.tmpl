@@ -1,5 +1,6 @@
 # {{.App}}'s container image: one image that serves the site (/app, the entrypoint) and runs
-# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with).
+# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with){{if .Image.JobsPkg}}
+# and the job process (/jobs, the command its Cloud Run job is deployed with){{end}}.
 # Seeded by bedrock from the code's shape and then yours: bedrock render writes it once and
 # never again, so the image build can grow with the application.
 #
@@ -28,7 +29,7 @@
 ARG VERSION=dev
 ARG COMMIT=unknown
 
-# ---- Go: the server and the migrate command ----------------------------------------------
+# ---- Go: the server{{if .Image.JobsPkg}}, the migrate command and the job process{{else}} and the migrate command{{end}} ----------------------------------------------
 # The go image is pinned at a digest that carries a toolchain at least as new as go.mod
 # declares (go1.27.1, published 2026-09-02), found the way the header says. GOTOOLCHAIN=local
 # makes a go.mod that outruns the image fail the build instead of downloading a toolchain:
@@ -51,7 +52,8 @@ COPY . ./
 # the debug information, which nothing in a deployed image reads. No build tags: the
 # session library's skipAuth tag (Procfile) simulates the directory and never ships.
 RUN go build -trimpath -ldflags="-s -w" -o /build/app {{.Image.SitePkg}} && \
-    go build -trimpath -ldflags="-s -w" -o /build/migrate {{.Image.MigratePkg}}
+    go build -trimpath -ldflags="-s -w" -o /build/migrate {{.Image.MigratePkg}}{{if .Image.JobsPkg}} && \
+    go build -trimpath -ldflags="-s -w" -o /build/jobs {{.Image.JobsPkg}}{{end}}
 {{- if .Image.WebDir}}
 
 # ---- Browser: the Angular bundles --------------------------------------------------------
@@ -77,7 +79,7 @@ RUN bun install --frozen-lockfile && \
     bun run build
 {{- end}}
 
-# ---- Runtime: a static image with the two binaries{{if .Image.WebDir}}, the bundles,{{end}} and the schema -----------
+# ---- Runtime: a static image with the {{if .Image.JobsPkg}}three{{else}}two{{end}} binaries{{if .Image.WebDir}}, the bundles,{{end}} and the schema -----------
 FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566a8d40766b2a4769f33a824
 
 ARG VERSION

@@ -23,6 +23,9 @@ locals {
   # The runtime accounts' IDs: by the convention, or the short name.
   app_account     = local.is_pr ? "${local.pr_name}-app" : "${local.name}-gbl-${local.app}-app"
   migrate_account = local.is_pr ? "${local.pr_name}-migrate" : "${local.name}-gbl-${local.app}-migrate"
+{{- if .Jobs}}
+  jobs_account    = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-gbl-${local.app}-jobs"
+{{- end}}
 
   # The same accounts as members and as resource names, spelled out rather than
   # read from the account resources, so a plan knows every membership before
@@ -35,6 +38,11 @@ locals {
   migrate_member       = "serviceAccount:${local.migrate_email}"
   app_account_name     = "projects/${local.project_id}/serviceAccounts/${local.app_email}"
   migrate_account_name = "projects/${local.project_id}/serviceAccounts/${local.migrate_email}"
+{{- if .Jobs}}
+  jobs_email           = "${local.jobs_account}@${local.project_id}.iam.gserviceaccount.com"
+  jobs_member          = "serviceAccount:${local.jobs_email}"
+  jobs_account_name    = "projects/${local.project_id}/serviceAccounts/${local.jobs_email}"
+{{- end}}
 
   # The environment before this one in the promotion order ({{.EnvsComma}}) and
   # its deployment-records bucket: the pipeline runs a release here only after
@@ -78,6 +86,13 @@ locals {
   # stack then only reads by name and grants its app identity on.
   own_database  = !(local.is_pr && var.shared_database)
   database_name = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
+{{- if .Jobs}}
+
+  # The job process's Cloud Run job ({{.Jobs.Dir}}), in the primary region, by name
+  # and as the Cloud Run API names it{{if .JobsJob}}: what {{.JobsJob.Name}} tells the site{{end}}.
+  jobs_job_name = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-${local.primary_region_code}-${local.app}-jobs"
+  jobs_job      = "projects/${local.project_id}/locations/${local.primary_region}/jobs/${local.jobs_job_name}"
+{{- end}}
 
   # ---------------------------------------------------------------------------
   # What the code declares, read from {{.ConfigDir}} by bedrock render; each entry
@@ -100,6 +115,7 @@ locals {
 {{- range .Secrets}}
     {{.Variable.Name}} = {
       name    = "{{.Name}}"
+      level   = "{{.Variable.Level}}"
       source  = "{{.Variable.File}} {{.Variable.Declaration}}"
       purpose = "{{$.Purpose .}}"
     }
@@ -117,6 +133,15 @@ locals {
     for key, s in local.secrets : key => merge(s, { version = local.secret_versions[key] })
     if contains(keys(local.secret_versions), key)
   }
+{{- if .Jobs}}
+
+  # The job process's share: the secrets at the levels it constructs ({{.JobsLevels}}).
+  # It runs the application's own code, and what that code reads the derivation
+  # cannot know, so it gets the levels' secrets the way the site does; the
+  # migrate command, whose work is known, gets none.
+  jobs_secrets         = { for key, s in local.secrets : key => s if contains({{.JobsLevelList}}, s.level) }
+  jobs_mounted_secrets = { for key, s in local.mounted_secrets : key => s if contains(keys(local.jobs_secrets), key) }
+{{- end}}
 
   # Build-time secrets (var.build_secrets): what the image build reads in this
   # environment, NAME = pinned version, their containers named like the runtime
@@ -166,15 +191,32 @@ locals {
   }
 {{- end}}
 
+{{- if .JobsJob}}
+
+  # {{.JobsJob.Declaration}}: the job process's Cloud Run job, which the site runs
+  # through the Cloud Run API (run.invoker on the job, cloud-run.tf).
+  site_jobs_env = {
+    {{.JobsJob.Name}} = local.jobs_job
+  }
+{{- end}}
+
   # {{.SiteLevel.FileBase}}: {{.Port.Name}} is set by Cloud Run itself (reserved; setting it is an
   # error) and {{.SiteImageVars}} is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}})
+  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .JobsJob}}, local.site_jobs_env{{end}})
 
   # {{.Migrate.Dir}} reads {{.MigrateLevels}} and nothing above them.
   job_env = merge(local.core_env, local.data_env, {
     {{.ServiceName.Name}} = "${local.app}-migrate"
   })
+{{- if .Jobs}}
+
+  # {{.Jobs.Dir}} reads {{.JobsLevels}} and nothing above them: the job process, the
+  # application's own code as a Cloud Run job.
+  jobs_env = merge(local.core_env{{if .JobsReadsData}}, local.data_env{{end}}, {
+    {{.ServiceName.Name}} = "${local.app}-jobs"
+  })
+{{- end}}
 
   # Every resource carries these. terraform_source_path is the stack's state slot
   # in the organization's bucket (3-app/{{.App}}) written as a label value, which

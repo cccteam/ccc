@@ -38,6 +38,7 @@ locals {
     _PROJECT                 = local.project_id
     _SERVICES                = join(",", [for code, service in google_cloud_run_v2_service.app : "${service.location}=${service.name}"]) # region=service per region; the pipeline updates each
     _MIGRATE_JOB             = "${google_cloud_run_v2_job.migrate.location}=${google_cloud_run_v2_job.migrate.name}"                     # region=job; the pipeline updates it to the image and runs it
+    _JOBS_JOB                = "${google_cloud_run_v2_job.jobs.location}=${google_cloud_run_v2_job.jobs.name}"                           # region=job; the pipeline updates it to the image, the application runs it
     _REGISTRY                = coalesce(local.registry, "REGISTRY_NOT_REGISTERED_IN_2-SHR")
     _RECORDS_BUCKET          = local.env.records_bucket
     _REPO_CONNECTION_NAME    = coalesce(try(local.env.connection_name, null), "CONNECTION_NOT_AUTHORIZED_IN_2-ENV")          # the pipeline mints a GitHub token from the connection for the tag check and the comment read; a null output is absent from remote state, hence try

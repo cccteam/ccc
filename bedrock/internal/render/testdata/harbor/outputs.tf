@@ -26,10 +26,20 @@ output "hostnames" {
 }
 
 output "identities" {
-  description = "Runtime identities by process: app (the site) and migrate (the migration job)."
+  description = "Runtime identities by process: app (the site), jobs (the job process) and migrate (the migration job)."
   value = {
     app     = google_service_account.app.email
+    jobs    = google_service_account.jobs.email
     migrate = google_service_account.migrate.email
+  }
+}
+
+output "jobs_job" {
+  description = "The job process's Cloud Run job, which the application runs: its name, its region and the resource name the Cloud Run API takes."
+  value = {
+    name     = google_cloud_run_v2_job.jobs.name
+    region   = google_cloud_run_v2_job.jobs.location
+    resource = local.jobs_job
   }
 }
 
