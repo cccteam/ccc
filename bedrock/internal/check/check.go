@@ -68,11 +68,15 @@ type Report struct {
 	// Migrations are the problems with the schema migrations directory: a file that
 	// is not a migration, an index with two up files, a gap in the sequence.
 	Migrations []MigrationFinding
+	// BuildSecrets are the build secrets the Dockerfile mounts as required that some
+	// environment's placement does not declare.
+	BuildSecrets []BuildSecretFinding
 }
 
-// Clean reports no drift, no refused resource and a sound migration sequence.
+// Clean reports no drift, no refused resource, a sound migration sequence and every
+// required build secret declared.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -123,6 +127,11 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 		}
 		r.Migrations = append(r.Migrations, migrations...)
 	}
+	buildSecrets, err := scanBuildSecrets(appDir, dir, m.Placement.Environments)
+	if err != nil {
+		return nil, err
+	}
+	r.BuildSecrets = buildSecrets
 
 	return r, nil
 }
@@ -222,4 +231,29 @@ func (r *Report) Write(w io.Writer) {
 	for _, mf := range r.Migrations {
 		fmt.Fprintf(w, "  refused  %s: %s\n", mf.Path, mf.Problem)
 	}
+	for _, bs := range r.BuildSecrets {
+		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinEnvironments(bs.Missing), pluralS(len(bs.Missing)))
+	}
+}
+
+// joinEnvironments writes environments the way a sentence lists them: "stg", "stg and
+// prd", "tst, stg and prd".
+func joinEnvironments(envs []string) string {
+	switch len(envs) {
+	case 0:
+		return ""
+	case 1:
+		return envs[0]
+	default:
+		return strings.Join(envs[:len(envs)-1], ", ") + " and " + envs[len(envs)-1]
+	}
+}
+
+// pluralS is the verb's ending for one environment ("declares") or several ("declare").
+func pluralS(n int) string {
+	if n == 1 {
+		return "s"
+	}
+
+	return ""
 }

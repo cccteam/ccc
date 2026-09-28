@@ -32,6 +32,12 @@ pipeline repeats that rule on every build and, in a pull-request build, also ref
 migration modified, renamed or removed against the default branch, and an index the
 default branch has taken since the branch was cut.
 
+The build secrets: a secret the Dockerfile mounts as required (--mount=type=secret,
+id=NAME,required=true) must be declared in every environment's build_secrets in
+terraform.tfvars, or a release that passed the earlier environments fails in the image
+build of the one that lacks it; the check refuses a required mount naming the
+environments without it. An optional mount passes with nothing said.
+
 Run from anywhere inside the repository, it finds both directories: the stack is the
 application repository's infrastructure directory, or the one application layer under
 3-app of an infrastructure root (the repository root, or its infrastructure directory);
