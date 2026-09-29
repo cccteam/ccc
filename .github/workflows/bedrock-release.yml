@@ -15,8 +15,12 @@
 # on. An application's placement pins the version and the linux/amd64 checksum (bedrock
 # upgrade moves it), and nothing runs a binary it has not verified against that checksum.
 # The build is reproducible, the same tag, toolchain and flags giving the same bytes, and it
-# reads no cache. Go stamps the version from the tag too; the link-time stamp names it
-# explicitly, and the build refuses a binary whose --version does not print it.
+# reads no cache. The binaries are written outside the checkout, so the tree Go builds from
+# stays clean for every platform: Go stamps each binary's build information with the tag's
+# version, the commit and an unmodified tree, and the build refuses a binary whose build
+# information says otherwise. The link-time stamp names the version explicitly, and the
+# build refuses a linux/amd64 binary (the one the runner can run) whose --version does not
+# print it.
 #
 # Started by hand with a tag, the workflow finishes a draft that a failed run left behind:
 # rerunning release-please cannot, because its pull request is already labeled as tagged.
@@ -138,23 +142,36 @@ jobs:
         env:
           CGO_ENABLED: "0"
           GOFLAGS: -trimpath
+          COMMIT: ${{ steps.draft.outputs.commit }}
         run: |
           set -euo pipefail
           version="${TAG#bedrock/}"
-          mkdir -p ../dist
+          # Outside the checkout: a binary written inside it would leave the tree modified,
+          # and Go would stamp every later binary as built from a modified tree.
+          dist="${RUNNER_TEMP}/dist"
+          mkdir -p "$dist"
           for platform in linux/amd64 linux/arm64 darwin/arm64; do
+            binary="${dist}/bedrock-${platform%/*}-${platform#*/}"
             GOOS="${platform%/*}" GOARCH="${platform#*/}" go build \
               -ldflags="-s -w -X github.com/cccteam/ccc/bedrock/internal/cli.releaseVersion=${version}" \
-              -o "../dist/bedrock-${platform%/*}-${platform#*/}" .
+              -o "$binary" .
+            info=$(go version -m -json "$binary")
+            stamped=$(jq -r '[.Main.Version,
+              (.Settings[] | select(.Key == "vcs.revision" or .Key == "vcs.modified") | "\(.Key)=\(.Value)")]
+              | join(" ")' <<<"$info")
+            if [ "$stamped" != "${version} vcs.revision=${COMMIT} vcs.modified=false" ]; then
+              echo "the ${platform} binary's build information says '${stamped}', not ${version} built from ${COMMIT} unmodified"
+              exit 1
+            fi
           done
-          stamped=$(../dist/bedrock-linux-amd64 --version)
+          stamped=$("${dist}/bedrock-linux-amd64" --version)
           if [ "$stamped" != "bedrock version ${version}" ]; then
             echo "the binary says '${stamped}', not '${version}'"
             exit 1
           fi
-          cd ../dist && sha256sum bedrock-* | tee checksums.txt
+          cd "$dist" && sha256sum bedrock-* | tee checksums.txt
       - name: Upload
-        run: gh release upload "$TAG" dist/* --clobber
+        run: gh release upload "$TAG" "${RUNNER_TEMP}"/dist/* --clobber
       - name: Verify and publish
         env:
           RELEASE_ID: ${{ steps.draft.outputs.id }}
@@ -163,7 +180,7 @@ jobs:
           set -euo pipefail
           # What this job built, as GitHub reports an asset: each binary's line of
           # checksums.txt and the digest of checksums.txt itself.
-          built=$(cd dist && { cat checksums.txt; sha256sum checksums.txt; } |
+          built=$(cd "${RUNNER_TEMP}/dist" && { cat checksums.txt; sha256sum checksums.txt; } |
             awk '{ print "sha256:" $1 "  " $2 }' | sort)
           # matches reads the release and refuses unless it is on the tag at the commit, is
           # a draft or not as its argument says, and carries exactly the files built; it
