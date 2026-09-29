@@ -13,9 +13,10 @@ internal/github/githubtest/server.go
 # tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
 # not apply to it.
 internal/migration/git.go
-# upgrade runs the bedrock release it fetched and verified against the release's
-# checksums file, with the render's own paths: running a program whose path it computed
-# is the command's purpose; the dangerous-exec audit does not apply to it.
+# upgrade runs go install for a commit pin (the Go checksum database verifies the module),
+# then runs the bedrock it installed, or the release it fetched and verified against the
+# release's checksums file, with the render's own paths: running a program whose path it
+# computed is the command's purpose; the dangerous-exec audit does not apply to it.
 internal/cli/upgrade.go
 # The test servers standing in for GitHub in the release package's and the upgrade
 # command's tests answer JSON and a script to the client under test, as the GitHub test
