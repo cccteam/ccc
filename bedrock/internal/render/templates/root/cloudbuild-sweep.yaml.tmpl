@@ -14,9 +14,10 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, sweep]
     env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
-    timeout: 3600s
+    timeout: {{.SweepStepTimeout}}
 
 options:
   logging: CLOUD_LOGGING_ONLY
 
-timeout: 4200s
+# The whole run: FetchBedrock's timeout, the sweep's, and time to pull the images.
+timeout: {{.SweepTimeout}}

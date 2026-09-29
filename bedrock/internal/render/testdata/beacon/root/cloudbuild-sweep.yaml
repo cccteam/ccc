@@ -42,4 +42,5 @@ steps:
 options:
   logging: CLOUD_LOGGING_ONLY
 
-timeout: 4200s
+# The whole run: FetchBedrock's timeout, the sweep's, and time to pull the images.
+timeout: 4680s

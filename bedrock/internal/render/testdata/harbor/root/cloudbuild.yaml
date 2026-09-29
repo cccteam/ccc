@@ -194,7 +194,8 @@ options:
   # Build refuses a hand-submitted build for a key the file does not mention.
   substitutionOption: ALLOW_LOOSE
 
-# The whole run: the image build and the migrate job are the long steps.
+# The whole run: the image build and the migrate job are the long steps, and a commit
+# pin's FetchBedrock builds bedrock where a release pin's downloads it.
 timeout: 5400s
 
 # Defaults a trigger may override. _PR_NUMBER is not one of them: the pull-request

@@ -342,6 +342,22 @@ var goInstallEnv = []string{
 	"GOPROXY=https://proxy.golang.org", "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GOINSECURE=",
 }
 
+// The FetchBedrock step's timeout in seconds: a release pin's download, or a commit pin's
+// go install, which pulls the Go image and builds bedrock. The pipeline's and the sweep's
+// whole-build timeouts are what each spends after that step plus the step's own timeout,
+// so the longer build of a commit pin never eats the time the later steps had.
+const (
+	releaseFetchSeconds = 120
+	commitFetchSeconds  = 600
+	// pipelineAfterFetchSeconds is the pipeline's time after FetchBedrock: the image
+	// build and the migrate job are the long steps.
+	pipelineAfterFetchSeconds = 5280
+	// sweepAfterFetchSeconds is the sweep's time after FetchBedrock: the sweep step's
+	// own timeout and 480 seconds for pulling the images and starting the steps.
+	sweepAfterFetchSeconds = sweepStepSeconds + 480
+	sweepStepSeconds       = 3600
+)
+
 // FetchBedrockStep is the first step of the pipeline and of the sweep, which both print
 // it, so the two cannot drift: it leaves the pinned bedrock at /builder/home/bedrock for
 // every later step. For a release pin the release's linux/amd64 binary is downloaded and
@@ -354,7 +370,7 @@ func (v *view) FetchBedrockStep() string {
 	if !v.CommitPin {
 		fmt.Fprintf(&b, `    name: %s
     entrypoint: bash
-    timeout: 120s
+    timeout: %ds
     args:
       - -c
       - |
@@ -363,11 +379,11 @@ func (v *view) FetchBedrockStep() string {
         echo "%s  /builder/home/bedrock" | sha256sum --check -
         chmod 0755 /builder/home/bedrock
         /builder/home/bedrock --version
-`, v.GcloudImage, v.BedrockURL, v.P.BedrockSHA256)
+`, v.GcloudImage, releaseFetchSeconds, v.BedrockURL, v.P.BedrockSHA256)
 
 		return b.String()
 	}
-	fmt.Fprintf(&b, "    name: %s\n    entrypoint: sh\n    timeout: 600s\n    env:\n", v.GoImage)
+	fmt.Fprintf(&b, "    name: %s\n    entrypoint: sh\n    timeout: %ds\n    env:\n", v.GoImage, commitFetchSeconds)
 	for _, e := range append([]string{"GOBIN=/builder/home"}, goInstallEnv...) {
 		fmt.Fprintf(&b, "      - %s\n", e)
 	}
@@ -380,6 +396,30 @@ func (v *view) FetchBedrockStep() string {
 `, release.Module, v.P.BedrockVersion)
 
 	return b.String()
+}
+
+// fetchBedrockSeconds is the FetchBedrock step's timeout for the placement's pin.
+func (v *view) fetchBedrockSeconds() int {
+	if v.CommitPin {
+		return commitFetchSeconds
+	}
+
+	return releaseFetchSeconds
+}
+
+// PipelineTimeout is the pipeline's whole-build timeout.
+func (v *view) PipelineTimeout() string {
+	return strconv.Itoa(v.fetchBedrockSeconds()+pipelineAfterFetchSeconds) + "s"
+}
+
+// SweepStepTimeout is the timeout of the sweep's SweepClosedPullRequests step.
+func (v *view) SweepStepTimeout() string {
+	return strconv.Itoa(sweepStepSeconds) + "s"
+}
+
+// SweepTimeout is the sweep's whole-build timeout.
+func (v *view) SweepTimeout() string {
+	return strconv.Itoa(v.fetchBedrockSeconds()+sweepAfterFetchSeconds) + "s"
 }
 
 // BedrockModule is the module go install builds for a commit pin.
