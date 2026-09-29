@@ -213,6 +213,14 @@ linters:
           - paralleltest
         path: internal/cli/cli_test\.go
         text: TestDeployResolve
+      # upgrade writes a bedrock binary and then runs it. When a parallel test forks in
+      # between, the child holds the new file open until it execs, and running the binary
+      # fails with "text file busy" (ETXTBSY, golang/go#22315). The upgrade test runs
+      # alone, before the parallel tests resume, so no fork can come between.
+      - linters:
+          - paralleltest
+        path: internal/cli/upgrade_test\.go
+        text: TestUpgrade
       # The GitHub API's JSON is snake_case, and so is the plan tofu show -json writes;
       # the client, its stand-in, the release listing and the plan guard write the wire
       # names as they are defined.

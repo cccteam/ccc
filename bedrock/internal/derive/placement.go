@@ -43,14 +43,18 @@ type Placement struct {
 	Repository string `json:"repository"`
 	// ReleaseApp is the slug of the GitHub App that cuts the releases (release-please
 	// runs as it): the pipeline accepts a release tag only from a GitHub Release it
-	// authored, and the repository's rules let it alone, with the admins, create one.
+	// authored, and the repository's rules let it alone create one.
 	ReleaseApp string `json:"releaseApp"`
-	// BedrockVersion is the bedrock release the pipeline and the infrastructure workflow
-	// run (v0.4.0: the tag bedrock/v0.4.0 of github.com/cccteam/ccc), and BedrockSHA256
-	// the SHA-256, in hex, of that release's linux/amd64 binary, which both download and
-	// verify before running it. The one place a bedrock version appears in the
-	// application: bedrock upgrade moves both together, never a hand edit in a rendered
-	// file. Both empty, the placement is unpinned, which render and check refuse.
+	// BedrockVersion is the bedrock the pipeline and the infrastructure workflow run, one
+	// of two kinds of pin. A release (v0.4.0: the tag bedrock/v0.4.0 of
+	// github.com/cccteam/ccc) comes with BedrockSHA256, the SHA-256, in hex, of that
+	// release's linux/amd64 binary, which both download and verify before running it. A
+	// commit pin (v0.0.0-lab.1.0.20260928222237-58b211dce544: the pseudo-version the Go
+	// module proxy gives a pushed commit of the bedrock module) comes with no checksum:
+	// both build it with go install, and Go's checksum database verifies it. The one place
+	// a bedrock version appears in the application: bedrock upgrade moves the pin, never a
+	// hand edit in a rendered file. Both empty, the placement is unpinned, which render and
+	// check refuse.
 	BedrockVersion string `json:"bedrockVersion"`
 	BedrockSHA256  string `json:"bedrockSha256"`
 	// Labels are labels the organization puts on every resource, beside the ones the
@@ -150,20 +154,39 @@ func (p *Placement) Validate() error {
 			return errors.Newf("%s is empty", name)
 		}
 	}
-	if (p.BedrockVersion == "") != (p.BedrockSHA256 == "") {
-		return errors.New("bedrockVersion and bedrockSha256 go together: bedrock upgrade sets both")
-	}
-	if p.BedrockVersion != "" && !release.IsVersion(p.BedrockVersion) {
-		return errors.Newf("bedrockVersion %q: a release version, v0.4.0 (the tag bedrock/v0.4.0 without its prefix)", p.BedrockVersion)
-	}
-	if p.BedrockSHA256 != "" && !sha256RE.MatchString(p.BedrockSHA256) {
-		return errors.Newf("bedrockSha256 %q: the SHA-256 of the release's %s, 64 hex digits from its %s", p.BedrockSHA256, release.PipelineAsset(), release.ChecksumsFile)
-	}
 
-	return nil
+	return p.validatePin()
 }
 
-// Pinned reports whether the placement pins a bedrock release.
+// validatePin checks the bedrock pin: none (both fields empty), a release with the
+// SHA-256 of its pipeline binary, or a commit pin with no checksum.
+func (p *Placement) validatePin() error {
+	switch {
+	case p.BedrockVersion == "" && p.BedrockSHA256 == "":
+		return nil
+	case p.BedrockVersion == "":
+		return errors.New("bedrockSha256 without a bedrockVersion: bedrock upgrade sets the pin")
+	case release.IsVersion(p.BedrockVersion):
+		if p.BedrockSHA256 == "" {
+			return errors.Newf("bedrockVersion %s is a release, and a release pin carries its bedrockSha256: bedrock upgrade sets both together", p.BedrockVersion)
+		}
+		if !sha256RE.MatchString(p.BedrockSHA256) {
+			return errors.Newf("bedrockSha256 %q: the SHA-256 of the release's %s, 64 hex digits from its %s", p.BedrockSHA256, release.PipelineAsset(), release.ChecksumsFile)
+		}
+
+		return nil
+	case release.IsCommitPin(p.BedrockVersion):
+		if p.BedrockSHA256 != "" {
+			return errors.Newf("bedrockVersion %s is a commit pin, and a commit pin carries no bedrockSha256: Go's checksum database verifies it", p.BedrockVersion)
+		}
+
+		return nil
+	default:
+		return errors.Newf("bedrockVersion %q: a release version, v0.4.0 (the tag bedrock/v0.4.0 without its prefix), or a commit pin, the pseudo-version the Go module proxy gives a pushed commit (bedrock upgrade <commit> writes it)", p.BedrockVersion)
+	}
+}
+
+// Pinned reports whether the placement pins bedrock: a release or a commit.
 func (p *Placement) Pinned() bool {
 	return p.BedrockVersion != ""
 }

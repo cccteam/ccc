@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
 // The substitutions the release checks read, beyond the record step's, and the words
@@ -65,8 +66,11 @@ func splitRepo(fullName string) (owner, repo string, err error) {
 // (_PREVIOUS_ENV, empty in the first), and a release runs here only after the previous
 // environment holds a live deployment record of it, which its record step writes once
 // traffic has shifted there. A pull-request build has no release to validate; a
-// hand-submitted build without a connection (no token) skips the GitHub checks.
-func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
+// hand-submitted build without a connection (no token) skips the GitHub checks. A tag
+// build first says which bedrock runs it (bedrock, the running version), and whether that
+// is a commit pin: a release may be deployed by a bedrock built from an unreleased commit,
+// and the log says so rather than refusing it.
+func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock string, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -86,6 +90,11 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, out io.
 
 		return nil
 	}
+	if release.IsCommitPin(bedrock) {
+		fmt.Fprintf(out, "This tag build runs bedrock %s, a commit pin: bedrock built from an unreleased commit (placement.json bedrockVersion).\n", bedrock)
+	} else {
+		fmt.Fprintf(out, "This tag build runs bedrock %s.\n", bedrock)
+	}
 	if token := env["GITHUB_TOKEN"]; token != "" {
 		if err := validateTag(ctx, clients.GitHub(token), subs, out); err != nil {
 			return err
@@ -103,7 +112,7 @@ func validateTag(ctx context.Context, gh *github.Client, subs map[string]string,
 		return err
 	}
 	tag, commit, branch := subs[tagSub], subs[commitSub], subs[defaultBranchSub]
-	release, err := gh.Release(ctx, owner, repo, tag)
+	cut, err := gh.Release(ctx, owner, repo, tag)
 	if err != nil {
 		var apiErr *github.Error
 		if errors.As(err, &apiErr) {
@@ -113,10 +122,10 @@ func validateTag(ctx context.Context, gh *github.Client, subs map[string]string,
 		return err
 	}
 	actors := strings.Split(subs[releaseActorsSub], ",")
-	if !slices.Contains(actors, release.Author.Login) {
-		return errors.Newf("%sthe GitHub Release for %s was made by %s, not by an accepted release actor (%s).", rejected, tag, release.Author.Login, subs[releaseActorsSub])
+	if !slices.Contains(actors, cut.Author.Login) {
+		return errors.Newf("%sthe GitHub Release for %s was made by %s, not by an accepted release actor (%s).", rejected, tag, cut.Author.Login, subs[releaseActorsSub])
 	}
-	fmt.Fprintf(out, "Release %s validated: cut by %s\n", tag, release.Author.Login)
+	fmt.Fprintf(out, "Release %s validated: cut by %s\n", tag, cut.Author.Login)
 	comparison, err := gh.Compare(ctx, owner, repo, commit, branch)
 	if err != nil {
 		return err

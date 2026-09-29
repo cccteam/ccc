@@ -258,8 +258,41 @@ func TestPlacementValidate(t *testing.T) {
 	}{
 		{name: "valid", mutate: func(*Placement) {}},
 		{name: "unpinned, both empty", mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "", "" }},
-		{name: "a version without its checksum", mutate: func(p *Placement) { p.BedrockSHA256 = "" }, wantErr: "go together"},
-		{name: "a version that is not a release", mutate: func(p *Placement) { p.BedrockVersion = "0.1.0" }, wantErr: `bedrockVersion "0.1.0"`},
+		{name: "a release without its checksum", mutate: func(p *Placement) { p.BedrockSHA256 = "" }, wantErr: "bedrockVersion v0.1.0 is a release, and a release pin carries its bedrockSha256"},
+		{name: "a version that is not a release", mutate: func(p *Placement) { p.BedrockVersion = "0.1.0" }, wantErr: `bedrockVersion "0.1.0": a release version, v0.4.0 (the tag bedrock/v0.4.0 without its prefix), or a commit pin`},
+		{
+			name: "a commit pin with no checksum",
+			mutate: func(p *Placement) {
+				p.BedrockVersion, p.BedrockSHA256 = "v0.0.0-20260928182105-6f6f7795969d", ""
+			},
+		},
+		{
+			name: "a commit pin built on a pre-release tag, with no checksum",
+			mutate: func(p *Placement) {
+				p.BedrockVersion, p.BedrockSHA256 = "v0.0.0-lab.1.0.20260928222237-58b211dce544", ""
+			},
+		},
+		{
+			name: "a commit pin with a checksum",
+			mutate: func(p *Placement) {
+				p.BedrockVersion = "v0.0.0-lab.1.0.20260928222237-58b211dce544"
+			},
+			wantErr: "a commit pin carries no bedrockSha256: Go's checksum database verifies it",
+		},
+		{
+			name: "a dirty build's version",
+			mutate: func(p *Placement) {
+				p.BedrockVersion, p.BedrockSHA256 = "v0.0.0-lab.1.0.20260928222237-58b211dce544+dirty", ""
+			},
+			wantErr: `bedrockVersion "v0.0.0-lab.1.0.20260928222237-58b211dce544+dirty": a release version`,
+		},
+		{
+			name: "a checksum with no version",
+			mutate: func(p *Placement) {
+				p.BedrockVersion = ""
+			},
+			wantErr: "bedrockSha256 without a bedrockVersion",
+		},
 		{name: "a checksum that is not a SHA-256", mutate: func(p *Placement) { p.BedrockSHA256 = "abc" }, wantErr: `bedrockSha256 "abc"`},
 		{name: "prefix with a hyphen", mutate: func(p *Placement) { p.Prefix = "im-p" }, wantErr: "prefix"},
 		{name: "no environments", mutate: func(p *Placement) { p.Environments = nil }, wantErr: "environment"},

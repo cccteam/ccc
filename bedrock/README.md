@@ -9,8 +9,8 @@ The tool keeps no record of its own. It derives what an application needs from t
 application's own code, through impulse's reader (the config struct tags, the main
 packages, the auths, the generated router, the Dockerfile), and from a placement file that
 records what the code cannot know: the organization's naming prefix, its environments and
-regions, its domains, the bedrock release the pipeline runs. The code and the placement are
-the inputs; the stack and the pipeline are the output, rewritten on every render and
+regions, its domains, the bedrock the pipeline runs. The code and the placement are the
+inputs; the stack and the pipeline are the output, rewritten on every render and
 compared by every check.
 
 ## Install
@@ -19,12 +19,28 @@ Each release of the tool is a GitHub Release of this repository tagged `bedrock/
 carrying one static binary per platform the tool runs on (`bedrock-linux-amd64`,
 `bedrock-linux-arm64`, `bedrock-darwin-arm64`) and `checksums.txt`, the SHA-256 of each.
 Download the binary for your machine from the release page, verify it against the
-checksum and put it on your PATH; or build it from a checkout of this repository
-(`go build -o bedrock .` in `ccc/bedrock`). Which release an application runs is not the
-installed one's choice: the application's placement pins a release (`bedrockVersion`,
-`bedrockSha256`), its pipeline and its infrastructure check download and verify that
-one, and `render` and `check` refuse to run another release against it, so the
-installed bedrock is kept at the pinned version and `bedrock upgrade` moves the pin.
+checksum and put it on your PATH. A pushed commit installs with Go:
+`go install github.com/cccteam/ccc/bedrock@<commit>`. Or build it from a checkout of this
+repository (`go build -o bedrock .` in `ccc/bedrock`).
+
+Which bedrock an application runs is not the installed one's choice. The application's
+placement pins it (`bedrockVersion`), one of two ways:
+
+- **A release**, with the SHA-256 of its linux/amd64 binary (`bedrockSha256`). The
+  pipeline and the infrastructure check download that binary and verify it against the
+  checksum.
+- **A commit pin**: the pseudo-version the Go module proxy gives a pushed commit of this
+  module (`v0.0.0-lab.1.0.20260928222237-58b211dce544`), with no `bedrockSha256`. The
+  pipeline and the infrastructure check build it with `go install` in a Go image pinned by
+  digest, and Go's checksum database verifies the module in place of a checksum in the
+  placement. This runs bedrock from an unreleased commit, for trying a change in an
+  application before it is released; it costs each pipeline build and each hourly sweep
+  a minute or two of building.
+
+`render` and `check` refuse to run a release, or a commit installed with `go install`,
+against a placement that pins another bedrock, so the installed bedrock is kept at the
+pin and `bedrock upgrade` moves it. A build from a checkout is nobody's pin and renders
+any pin.
 
 ## Vocabulary
 
@@ -42,10 +58,10 @@ installed bedrock is kept at the pinned version and `bedrock upgrade` moves the 
   containers, the backend service, the triggers and the sweep schedule, per environment.
   Rendered by `bedrock render` from the code and the application's placement.
 - **Placement**: `placement.json` beside the stack. For an application it records the
-  organization's facts the stack needs and the bedrock release the pipeline runs
-  (`bedrockVersion`, `bedrockSha256`); for an organization it records the prefix, the domains,
-  the organization and billing ids, the regions, the Spanner configuration, the GitHub
-  organization, the applications and the environment projects.
+  organization's facts the stack needs and the bedrock the pipeline runs
+  (`bedrockVersion`, and `bedrockSha256` for a release); for an organization it records
+  the prefix, the domains, the organization and billing ids, the regions, the Spanner
+  configuration, the GitHub organization, the applications and the environment projects.
 - **Environment**: `tst`, `stg` and `prd`, in promotion order. A pull request deploys to
   the first; a release goes through them in order, each after it is live in the previous
   one.
@@ -151,39 +167,62 @@ It also refuses:
 
 The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
 `bedrock check` on every pull request and on the default branch. It is rendered too: the
-job downloads the bedrock release the placement pins from its GitHub Release, verifies it
-against the placement's checksum and runs that bedrock's `check` on the runner, whose Go
+job gets the bedrock the placement pins as the pipeline does (a release downloaded from
+its GitHub Release and verified against the placement's checksum; a commit pin built with
+`go install` in the pipeline's Go image, since the runner's Go is the application's and
+may be older than bedrock's) and runs that bedrock's `check` on the runner, whose Go
 toolchain the check reads the code with; no cloud identity, no service account, no key.
-So the checker is the pipeline's, by checksum, and a wording change in a newer bedrock
-fails no application's check until that application moves its pin. `release-please.yml`
+So the checker is the pipeline's, and a wording change in a newer bedrock fails no
+application's check until that application moves its pin. `release-please.yml`
 is rendered beside it: release-please as the release app the placement names, on the
 default branch and the hotfix lines.
 
 ## bedrock upgrade
 
-`bedrock upgrade [version]` moves the application to a bedrock release. It writes the
-version and the release's linux/amd64 checksum into `placement.json` (`bedrockVersion`,
-`bedrockSha256`; the checksum is read from the release's `checksums.txt`, never typed),
-fetches that release for the machine it runs on (into the user's cache directory,
-verified against the same file) and renders the stack and the pipeline with it, so the
-committed files come from the bedrock the pin names. Without a version it moves to the
-latest release; a pre-release is moved to by name. Commit `placement.json` with the
-rendered files: from that commit the pipeline's first step and the infrastructure check
-download and verify that release, and every `bedrock deploy` step runs it. The pin is
-the one place a bedrock version appears in an application; nothing else names one.
+`bedrock upgrade [version|commit|branch]` moves the application's bedrock pin and renders
+the stack and the pipeline with the bedrock it names, so the committed files come from
+that bedrock. Commit `placement.json` with the rendered files: from that commit the
+pipeline's first step and the infrastructure check get that bedrock, and every
+`bedrock deploy` step runs it. The pin is the one place a bedrock version appears in an
+application; nothing else names one.
 
-`render` and `check` refuse a placement pinned to another release than the bedrock
-running them (a build from a checkout, being nobody's release, renders any pin), and a
-placement with no pin at all: a new application runs `upgrade` first.
+- **A release** (`bedrock upgrade v0.4.0`, or no argument for the latest release; a
+  pre-release is moved to by name). It writes the version and the release's linux/amd64
+  checksum into `placement.json` (`bedrockVersion`, `bedrockSha256`; the checksum is read
+  from the release's `checksums.txt`, never typed), and fetches that release for the
+  machine it runs on (into the user's cache directory, verified against the same file)
+  to render with.
+- **A commit** (`bedrock upgrade 58b211dce544`, a full or abbreviated hash; a branch,
+  `bedrock upgrade feature/my-change`, whose head commit is read from the GitHub API; or
+  the pseudo-version itself). The Go module proxy names the commit's version, and
+  `upgrade` writes it as `bedrockVersion` with no `bedrockSha256`, clearing the checksum
+  a release pin left. It builds that commit with `go install` into the user's cache
+  directory to render with, so a commit pin needs Go on the machine; the install turns
+  Go's checksum database on, whatever the machine's Go settings say. A commit a release
+  tag names moves to that release instead. A commit whose `go.mod` has a `replace` or
+  `exclude` directive is refused, since `go install` cannot build it.
+
+Push the commit before pinning it: the proxy knows only pushed commits, and when it is
+asked about one too soon it remembers for about 30 minutes that it did not know it.
+`upgrade` then says to push first and retry.
+
+`render` and `check` refuse a placement with no pin at all (a new application runs
+`upgrade` first), and a placement pinned to another bedrock than the one running them
+when that one is held to its pin: a release, however it was built, and a commit installed
+with `go install`. The refusal names how to install the pinned one: its release page, or
+`go install github.com/cccteam/ccc/bedrock@<pin>`. A build from a checkout, at any
+commit, and a `(devel)` build are nobody's pin and render any pin.
 
 ## bedrock deploy
 
 `deploy` holds the pipeline's steps, one command each, run inside Cloud Build by the
-bedrock its first step downloaded: the release the placement pins, verified against its
-checksum. Each step runs its command in the image whose tool the command drives (gcloud's
-for most, OpenTofu's for the pull request's stack, docker's for the image build), and no
-step installs anything. The steps share a workspace, the checkout (`/workspace`,
-`--workspace` overrides): `environment.sh` (the facts resolve exports, then what later
+bedrock its first step got: the release the placement pins, downloaded and verified
+against its checksum, or the commit it pins, built with `go install` (in about one and a
+half to two minutes, against seconds for a download) and verified by Go's checksum
+database. Each step after it runs its command in the image whose tool the command drives
+(gcloud's for most, OpenTofu's for the pull request's stack, docker's for the image
+build), and none of them installs anything. The steps share a workspace, the checkout
+(`/workspace`, `--workspace` overrides): `environment.sh` (the facts resolve exports, then what later
 steps append), `build.json` (the build as Cloud Build describes it), `build-args.txt` (the
 image build's arguments, `NAME=value` lines: the declared substitutions, then what a hook
 before the build adds) and `revisions.txt` (the revisions the service step created). Each
@@ -200,7 +239,9 @@ thing one step hands the next. In order:
 - `deploy validate-release`: for a tag build, the tag belongs to a GitHub Release cut by
   an accepted release actor, the tagged commit is on the default branch or at the tip of
   a hotfix line, and the record gate holds: the release is live in the previous
-  environment. A refusal starts with `Build REJECTED` and says why.
+  environment. A refusal starts with `Build REJECTED` and says why. A tag build's log first
+  names the bedrock running it, and says when that is a commit pin; a release may deploy
+  with a commit pin.
 - `deploy guard-migrations`: the schema migrations and the seed are each one sequence
   (the rule `bedrock check` applies), and in a pull-request build every migration the
   branch started from is still there unchanged and the sequence is read together with

@@ -68,14 +68,36 @@ func TestValidateRelease(t *testing.T) {
 		// repo changes the repository; objects the previous environment's records.
 		repo    func(r *githubtest.Repo)
 		objects map[string]string
-		wantOut []string
-		wantErr string
+		// bedrock is the running bedrock's version; empty, a release.
+		bedrock    string
+		wantOut    []string
+		wantAbsent []string
+		wantErr    string
 	}{
 		{
-			name:    "a pull-request build has no release to validate",
+			name:       "a pull-request build has no release to validate",
+			env:        connected,
+			subs:       map[string]string{tagSub: ""},
+			bedrock:    "v0.0.0-lab.1.0.20260928222237-58b211dce544",
+			wantOut:    []string{"Pull-request build: no release to validate."},
+			wantAbsent: []string{"This tag build runs bedrock"},
+		},
+		{
+			name:    "a tag build run by a commit pin says so and is not refused for it",
 			env:     connected,
-			subs:    map[string]string{tagSub: ""},
-			wantOut: []string{"Pull-request build: no release to validate."},
+			objects: live,
+			bedrock: "v0.0.0-lab.1.0.20260928222237-58b211dce544",
+			wantOut: []string{
+				"This tag build runs bedrock v0.0.0-lab.1.0.20260928222237-58b211dce544, a commit pin: bedrock built from an unreleased commit (placement.json bedrockVersion).",
+				"Gate passed: v1.2.3 is live in tst",
+			},
+		},
+		{
+			name:       "a tag build run by a release names it",
+			env:        connected,
+			objects:    live,
+			wantOut:    []string{"This tag build runs bedrock v0.4.0.\n", "Gate passed: v1.2.3 is live in tst"},
+			wantAbsent: []string{"a commit pin"},
 		},
 		{
 			name:    "a torn-down environment does nothing",
@@ -195,8 +217,12 @@ func TestValidateRelease(t *testing.T) {
 				return srv.Client()
 			}}
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: releaseBuild(t, tt.subs)})
+			bedrock := tt.bedrock
+			if bedrock == "" {
+				bedrock = "v0.4.0"
+			}
 			var out strings.Builder
-			err := ValidateRelease(t.Context(), clients, w, &out)
+			err := ValidateRelease(t.Context(), clients, w, bedrock, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("ValidateRelease() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out.String())
@@ -210,6 +236,11 @@ func TestValidateRelease(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output lacks %q:\n%s", want, out.String())
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(out.String(), absent) {
+					t.Errorf("output has %q:\n%s", absent, out.String())
 				}
 			}
 		})

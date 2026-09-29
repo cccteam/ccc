@@ -5,18 +5,29 @@
 # Closing or merging a pull request starts no build, so this is how an environment nobody
 # took down with /gcbrun down goes away.
 steps:
-  # The pinned bedrock, downloaded and verified, as the pipeline's first step does it.
+  # The pinned bedrock, built with go install, as the pipeline's first step does it.
   - id: FetchBedrock
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
-    timeout: 120s
+    name: cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16
+    entrypoint: sh
+    timeout: 600s
+    env:
+      - GOBIN=/builder/home
+      - CGO_ENABLED=0
+      - GOTOOLCHAIN=local
+      - GOFLAGS=-trimpath
+      - GOPATH=/tmp/go
+      - GOCACHE=/tmp/go-build
+      - GOMODCACHE=/tmp/go-mod
+      - GOPROXY=https://proxy.golang.org
+      - GOSUMDB=sum.golang.org
+      - GONOSUMDB=
+      - GOPRIVATE=
+      - GOINSECURE=
     args:
       - -c
       - |
-        set -euo pipefail
-        curl -fsSL --retry 3 -o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/v0.1.0/bedrock-linux-amd64"
-        echo "0000000000000000000000000000000000000000000000000000000000000000  /builder/home/bedrock" | sha256sum --check -
-        chmod 0755 /builder/home/bedrock
+        set -eu
+        go install -ldflags="-s -w" github.com/cccteam/ccc/bedrock@v0.0.0-20260928182105-6f6f7795969d
         /builder/home/bedrock --version
 
   # The pull requests whose services stand, which of them GitHub says are closed, and each

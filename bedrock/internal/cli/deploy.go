@@ -23,11 +23,12 @@ func newDeploy(d deps) *cobra.Command {
 same inputs: the facts resolve writes to the workspace (environment.sh), the build as Cloud Build
 describes it (build.json) and what the earlier steps appended. A step reads those files, does one
 thing, and appends what it learned for the steps after it; no step installs anything. The rendered
-cloudbuild.yaml runs them with the bedrock its first step downloads: the release the placement pins
-(bedrockVersion), verified against its checksum (bedrockSha256). The steps, in order: resolve,
-validate-release, guard-migrations, pr-stack plan, pr-stack guard, pr-stack apply, check-release,
-build-image, migrate, jobs, service, shift-traffic, record and talk-back, with hook <stage> where the
-application commits a hook script. The hourly sweep runs sweep.`,
+cloudbuild.yaml runs them with the bedrock its first step gets: for a release pin, the release the
+placement pins (bedrockVersion) downloaded and verified against its checksum (bedrockSha256); for
+a commit pin, that commit built with go install and verified by Go's checksum database. The steps,
+in order: resolve, validate-release, guard-migrations, pr-stack plan, pr-stack guard, pr-stack
+apply, check-release, build-image, migrate, jobs, service, shift-traffic, record and talk-back, with
+hook <stage> where the application commits a hook script. The hourly sweep runs sweep.`,
 	}
 	stack := &cobra.Command{
 		Use:   "pr-stack",
@@ -97,11 +98,12 @@ the tagged commit is on the default branch, or it is a hotfix, the tip of hotfix
 whose base on the default branch carries a release tag of the same line. Then the record gate:
 this environment follows the previous one in the promotion order (_PREVIOUS_ENV, empty in the
 first), and a release runs here only after the previous environment holds a live deployment
-record of it. A refusal starts with "Build REJECTED" and says why. It reads environment.sh and
-build.json from the workspace.`,
+record of it. A refusal starts with "Build REJECTED" and says why. A tag build's log first names
+the bedrock running it, and says when that is a commit pin, which it does not refuse. It reads
+environment.sh and build.json from the workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), d.running().version, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")

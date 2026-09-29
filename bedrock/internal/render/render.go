@@ -104,7 +104,7 @@ var placed = map[string]func(v *view) string{
 		return path.Join(v.Schema.GenerateDir, generateFile)
 	},
 	// The GitHub workflows, under .github/workflows: the infrastructure check, which
-	// downloads the bedrock the placement pins and checks with it, and the release
+	// gets the bedrock the placement pins and checks with it, and the release
 	// workflow.
 	infrastructureWorkflow: func(*view) string {
 		return path.Join(workflowsDir, infrastructureWorkflow)

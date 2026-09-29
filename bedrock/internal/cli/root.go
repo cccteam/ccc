@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -71,13 +72,16 @@ type deps struct {
 	// deploy holds what the deploy sequence's commands open: Cloud Storage for the
 	// records, Cloud Build for a build's own description and its GitHub token.
 	deploy *deploy.Clients
-	// releases is where bedrock's own releases are read from, for upgrade; version is
-	// the running bedrock's version, which render and check hold against the
-	// placement's pin (nil: a build from a checkout, nobody's release); cacheDir is
-	// where upgrade keeps the release it fetched (empty: the user's cache directory).
+	// releases is where bedrock's own releases and commits are read from, for upgrade;
+	// version is the running bedrock, its version and how it was built, which render and
+	// check hold against the placement's pin (nil: (devel), nobody's release or commit);
+	// cacheDir is where upgrade keeps the bedrock it fetched or installed (empty: the
+	// user's cache directory); install builds a commit pin with go install into a
+	// directory, for upgrade (nil: the real go install).
 	releases func() *release.Source
-	version  func() string
+	version  func() build
 	cacheDir string
+	install  func(ctx context.Context, version, dir string) error
 }
 
 func newRoot() *cobra.Command {
@@ -105,7 +109,7 @@ func newRootWith(d deps) *cobra.Command {
 		Long: `bedrock derives what an Impulse application needs from the application's own code, through
 impulse's reader, and renders the application stack that provisions it. It keeps no record of
 its own: the code and a placement are the inputs, the stack is the output.`,
-		Version:       version(),
+		Version:       d.running().version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -265,29 +269,71 @@ func plain(names []string, err error) ([]prompt.Choice, error) {
 
 // releaseVersion is the version a release build stamps at link time
 // (-X github.com/cccteam/ccc/bedrock/internal/cli.releaseVersion=v0.4.0, in ccc's release
-// workflow): Go stamps a module's version from its tag only for a module at the
-// repository root, and bedrock's tags carry its directory (bedrock/v0.4.0). Empty in a
-// build from a checkout, whose version is the pseudo-version Go stamps from the commit.
+// workflow, which then checks what --version prints). Go stamps the same version from the
+// tag itself, bedrock/v0.4.0, on a build from a clean checkout at that tag, so the stamp
+// repeats what the build info says; it is kept so a release binary states its version
+// however it was built. Empty in any other build.
 var releaseVersion string
 
-// version is the running bedrock's version: the release's, else what Go stamped.
-func version() string {
-	if releaseVersion != "" {
-		return releaseVersion
-	}
-	info, ok := debug.ReadBuildInfo()
-	if !ok || info.Main.Version == "" {
-		return develVersion
-	}
+// buildKind is how the running bedrock was built, which decides the pins it may render.
+type buildKind int
 
-	return info.Main.Version
+const (
+	// buildDevel is a build Go could not stamp, (devel): nobody's release or commit.
+	buildDevel buildKind = iota
+	// buildCheckout is go build in a checkout: Go stamps the commit's pseudo-version (with
+	// +dirty over uncommitted changes), or the release's version at a commit a release
+	// tag names. The build info carries the vcs settings and no module sum.
+	buildCheckout
+	// buildInstalled is go install at a version, through the module proxy: the build info
+	// carries the module's sum.
+	buildInstalled
+	// buildStamped is a release build of ccc's release workflow, stamped at link time.
+	buildStamped
+)
+
+// build is the running bedrock: its version and how it was built.
+type build struct {
+	version string
+	kind    buildKind
 }
 
-// running is the running bedrock's version through the seam; a test without one is a
-// build from a checkout.
-func (d deps) running() string {
+// buildOf reads the running bedrock off the version stamped at link time and the build
+// info Go recorded (nil when the binary carries none).
+func buildOf(stamped string, info *debug.BuildInfo) build {
+	if stamped != "" {
+		return build{version: stamped, kind: buildStamped}
+	}
+	if info == nil || info.Main.Version == "" || info.Main.Version == develVersion {
+		return build{version: develVersion, kind: buildDevel}
+	}
+	if info.Main.Sum != "" {
+		return build{version: info.Main.Version, kind: buildInstalled}
+	}
+
+	return build{version: info.Main.Version, kind: buildCheckout}
+}
+
+// version is the running bedrock, as this binary was built. ReadBuildInfo answers nil
+// for a binary that carries no build info.
+func version() build {
+	info, _ := debug.ReadBuildInfo()
+
+	return buildOf(releaseVersion, info)
+}
+
+// heldToPin reports whether the build must be the one the placement pins to render
+// against it: a release, however it was built, and a commit installed with go install
+// are someone's pin; a build from a checkout at any other commit, dirty or clean, and
+// (devel) are nobody's and render any pin.
+func (b build) heldToPin() bool {
+	return release.IsVersion(b.version) || (b.kind == buildInstalled && release.IsCommitPin(b.version))
+}
+
+// running is the running bedrock through the seam; a test without one is (devel).
+func (d deps) running() build {
 	if d.version == nil {
-		return develVersion
+		return build{version: develVersion, kind: buildDevel}
 	}
 
 	return d.version()
@@ -324,20 +370,25 @@ func (d deps) model(appDir, placement, stackDir string) (*derive.Model, error) {
 	return derive.Derive(a, p)
 }
 
-// pinned refuses a placement that pins no bedrock, and one that pins another release
-// than the bedrock running: the pipeline and the infrastructure check run the pinned
-// one, so the committed files must come from it. A build from a checkout (a
-// pseudo-version, (devel)) is nobody's release and renders any pin.
+// pinned refuses a placement that pins no bedrock, and one that pins another bedrock
+// than the one running when that one is held to its pin (a release, or a commit installed
+// with go install): the pipeline and the infrastructure check run the pinned one, so the
+// committed files must come from it. A build from a checkout, at any commit, and (devel)
+// are nobody's pin and render any pin.
 func (d deps) pinned(p *derive.Placement, placement string) error {
 	if !p.Pinned() {
-		return errors.Newf("%s pins no bedrock (bedrockVersion, bedrockSha256): run bedrock upgrade", placement)
+		return errors.Newf("%s pins no bedrock (bedrockVersion): run bedrock upgrade", placement)
 	}
 	running := d.running()
-	if release.IsVersion(running) && running != p.BedrockVersion {
-		return errors.Newf("%s pins bedrock %s and this is bedrock %s: install the pinned one (%s) or move the pin (bedrock upgrade)", placement, p.BedrockVersion, running, release.Page(p.BedrockVersion))
+	if !running.heldToPin() || running.version == p.BedrockVersion {
+		return nil
+	}
+	install := release.Page(p.BedrockVersion)
+	if release.IsCommitPin(p.BedrockVersion) {
+		install = "go install " + release.Module + "@" + p.BedrockVersion
 	}
 
-	return nil
+	return errors.Newf("%s pins bedrock %s and this is bedrock %s: install the pinned one (%s) or move the pin (bedrock upgrade)", placement, p.BedrockVersion, running.version, install)
 }
 
 // asExit reports whether the error carries an exit code, and sets it.

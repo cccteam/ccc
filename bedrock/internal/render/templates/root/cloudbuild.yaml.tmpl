@@ -3,15 +3,16 @@
 # owned by it: bedrock render rewrites this file and bedrock check compares it with the code,
 # so a change belongs in bedrock, never here.
 #
-# Every step but the first runs one bedrock command. The first downloads the bedrock release
-# the placement pins and verifies it; each step after it runs that bedrock in the image whose
-# tool it drives (gcloud's for most, OpenTofu's for the pull request's stack, docker's for the
-# image build). The steps share the workspace, which is the checkout: resolve writes the facts
-# (environment.sh) and the build (build.json), and each step reads them, does one thing, and
-# appends what it learned. No step installs anything. What each command does in full:
-# bedrock deploy <command> --help.
+# Every step but the first runs one bedrock command. The first gets the bedrock the placement
+# pins: a release's binary, downloaded and verified against its checksum, or a commit, built
+# with go install and verified by Go's checksum database. Each step after it runs that bedrock
+# in the image whose tool it drives (gcloud's for most, OpenTofu's for the pull request's
+# stack, docker's for the image build). The steps share the workspace, which is the checkout:
+# resolve writes the facts (environment.sh) and the build (build.json), and each step reads
+# them, does one thing, and appends what it learned. No step after the first installs
+# anything. What each command does in full: bedrock deploy <command> --help.
 #
-#   FetchBedrock              the pinned bedrock, downloaded and verified against its checksum
+#   FetchBedrock              the pinned bedrock: a release verified against its checksum, or a commit built with go install
 #   ResolveDeploymentTarget   what is deployed and where (deploy resolve)
 #   ValidateRelease           whether this release may deploy here (deploy validate-release)
 #   GuardMigrations           the migrations are one sequence, unchanged once committed (deploy guard-migrations)
@@ -39,23 +40,19 @@
 # The steps run in the order written: a step with no waitFor waits for every step before it.
 
 steps:
+{{- if .CommitPin}}
+  # The bedrock every later step runs: the commit the placement pins (bedrockVersion, a
+  # commit pin), built with go install in the Go image pinned by digest into the home
+  # directory the steps share. Go's checksum database verifies the module, and bedrock's
+  # go.sum its dependencies, in place of a checksum in the placement. The one place a
+  # bedrock version appears; bedrock upgrade moves it.
+{{- else}}
   # The bedrock every later step runs: the release the placement pins (bedrockVersion),
   # downloaded from its GitHub Release into the home directory the steps share and verified
   # against the placement's checksum (bedrockSha256) before anything runs it. The one place
   # a bedrock version appears; bedrock upgrade moves it.
-  - id: FetchBedrock
-    name: {{.GcloudImage}}
-    entrypoint: bash
-    timeout: 120s
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        curl -fsSL --retry 3 -o /builder/home/bedrock "{{.BedrockURL}}"
-        echo "{{.P.BedrockSHA256}}  /builder/home/bedrock" | sha256sum --check -
-        chmod 0755 /builder/home/bedrock
-        /builder/home/bedrock --version
-
+{{- end}}
+{{.FetchBedrockStep}}
   # What is deployed and where: the trigger's kind, the environment, the /gcbrun comment's
   # options, the image and its tags. Writes environment.sh, build.json and build-args.txt.
   - id: ResolveDeploymentTarget

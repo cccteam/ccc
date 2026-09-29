@@ -1,11 +1,13 @@
 # beacon's infrastructure check on every pull request and on the default branch, rendered by
 # bedrock and owned by it (bedrock render rewrites this file, bedrock check compares it). The
 # stack under infrastructure/ and the pipeline files at the root are rendered from the code
-# by bedrock; this job takes the bedrock the placement pins (bedrockVersion, verified against
-# bedrockSha256: the same one the pipeline runs), renders afresh and fails when a committed
-# owned file differs from what the code declares, then checks the stack's formatting and
-# validity. The binary is downloaded from bedrock's GitHub Release and run on the runner,
-# which has the Go toolchain the check reads the code with; no cloud identity is involved.
+# by bedrock; this job takes the bedrock the placement pins (bedrockVersion: the same one the
+# pipeline runs), renders afresh and fails when a committed owned file differs from what the
+# code declares, then checks the stack's formatting and validity. A release's binary is
+# downloaded from bedrock's GitHub Release and verified against bedrockSha256; a commit is
+# built with go install in the Go image the pipeline builds it in, and verified by Go's
+# checksum database. bedrock runs on the runner, which has the Go toolchain the check reads
+# the code with; no cloud identity is involved.
 name: infrastructure
 
 on:
@@ -27,8 +29,8 @@ jobs:
     permissions:
       contents: read
     env:
-      BEDROCK_URL: https://github.com/cccteam/ccc/releases/download/bedrock/v0.1.0/bedrock-linux-amd64
-      BEDROCK_SHA256: 0000000000000000000000000000000000000000000000000000000000000000
+      BEDROCK_VERSION: v0.0.0-20260928182105-6f6f7795969d
+      GO_IMAGE: cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16
       OPENTOFU_VERSION: 1.12.6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,11 +38,24 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: The pinned bedrock, from its release
+      # The runner's Go is the application's, from its go.mod, which may be older than
+      # bedrock's; the commit is built in the pipeline's Go image instead.
+      - name: The pinned bedrock, built from its commit
         run: |
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/bedrock" "$BEDROCK_URL"
-          echo "$BEDROCK_SHA256  $RUNNER_TEMP/bedrock" | sha256sum --check -
-          chmod 0755 "$RUNNER_TEMP/bedrock"
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/out" \
+            -e GOBIN=/out \
+            -e CGO_ENABLED=0 \
+            -e GOTOOLCHAIN=local \
+            -e GOFLAGS=-trimpath \
+            -e GOPATH=/tmp/go \
+            -e GOCACHE=/tmp/go-build \
+            -e GOMODCACHE=/tmp/go-mod \
+            -e GOPROXY=https://proxy.golang.org \
+            -e GOSUMDB=sum.golang.org \
+            -e GONOSUMDB= \
+            -e GOPRIVATE= \
+            -e GOINSECURE= \
+            "$GO_IMAGE" install -ldflags="-s -w" "github.com/cccteam/ccc/bedrock@$BEDROCK_VERSION"
           "$RUNNER_TEMP/bedrock" --version
       - name: bedrock check
         run: |

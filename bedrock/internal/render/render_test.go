@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	goversion "go/version"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/impulse/app"
@@ -125,6 +128,52 @@ func firstDiff(want, got []byte) string {
 	}
 
 	return "(same lines, different bytes)"
+}
+
+// TestGoImage holds the Go image a commit pin is built in to bedrock: its Go is at least
+// the go line of bedrock's go.mod, since the builds run with GOTOOLCHAIN=local and a newer
+// go line would fail every pipeline pinned to that commit, and it is the image the seeded
+// Dockerfile builds the application in, so bedrock names one Go digest.
+func TestGoImage(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile("../../go.mod")
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+	mod, err := modfile.Parse("go.mod", data, nil)
+	if err != nil {
+		t.Fatalf("modfile.Parse() error = %v", err)
+	}
+	dockerfile, err := templates.ReadFile("templates/root/Dockerfile.tmpl")
+	if err != nil {
+		t.Fatalf("templates.ReadFile() error = %v", err)
+	}
+	tests := []struct {
+		name string
+		ok   bool
+		why  string
+	}{
+		{
+			name: "the image's Go is at least bedrock's go line",
+			ok:   mod.Go != nil && goversion.Compare("go"+goImageGo, "go"+mod.Go.Version) >= 0,
+			why:  fmt.Sprintf("goImage carries Go %s and bedrock's go.mod says go %v: pin a digest of an image with that Go and set goImageGo", goImageGo, mod.Go),
+		},
+		{
+			name: "the seeded Dockerfile builds in the same image",
+			ok:   bytes.Contains(dockerfile, []byte("FROM "+goImage+" AS build-env")),
+			why:  "the seeded Dockerfile's build stage is not FROM " + goImage + ": move both to the same digest",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if !tt.ok {
+				t.Error(tt.why)
+			}
+		})
+	}
 }
 
 func TestWrite(t *testing.T) {

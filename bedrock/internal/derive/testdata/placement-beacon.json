@@ -22,8 +22,8 @@
   "defaultBranch": "master",
   "repository": "beacon",
   "releaseApp": "impulseframework-release",
-  "bedrockVersion": "v0.1.0",
-  "bedrockSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "bedrockVersion": "v0.0.0-20260928182105-6f6f7795969d",
+  "bedrockSha256": "",
   "labels": {
     "bedrock-lab": "true"
   }

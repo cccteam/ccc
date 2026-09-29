@@ -32,8 +32,12 @@ type view struct {
 	// environment do not all queue at the top of the hour.
 	SweepMinute int
 	// BedrockURL is where the pipeline's first step and the infrastructure workflow
-	// download the bedrock the placement pins: the linux/amd64 binary of its release.
+	// download the bedrock a release pin names: the linux/amd64 binary of the release;
+	// empty for a commit pin. CommitPin reports a commit pin, which both build with go
+	// install in GoImage, the Go image pinned by digest.
 	BedrockURL string
+	CommitPin  bool
+	GoImage    string
 	// GcloudImage, OpenTofuImage and DockerImage are the images the pipeline's steps run
 	// bedrock in: gcloud's for most (Cloud Build workers keep it cached), OpenTofu's for
 	// the steps that drive tofu, docker's for the image build.
@@ -313,6 +317,88 @@ const (
 	dockerImage   = "gcr.io/cloud-builders/docker"
 )
 
+// goImage is the image a commit pin is built in, by the pipeline's first step and the
+// infrastructure workflow: the Go image the seeded Dockerfile builds the application in,
+// pinned at the same digest, so bedrock names one Go image. goImageGo is the Go it carries,
+// which must be at least the go line of bedrock's go.mod: the builds set
+// GOTOOLCHAIN=local, so a newer go line fails them rather than downloading a toolchain,
+// and the fix is a new digest here (a test holds the two together).
+const (
+	goImage   = "cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16"
+	goImageGo = "1.27.1"
+)
+
+// goInstallEnv is the environment go install builds a commit pin in, the pipeline's and
+// the infrastructure workflow's alike. A static binary (CGO_ENABLED=0): the later steps run
+// it in OpenTofu's image, which is Alpine and has no glibc. The image's Go and no other
+// (GOTOOLCHAIN=local). The build directory kept out of the binary (-trimpath). The caches
+// and GOPATH (where Go keeps what the checksum database said) under /tmp, off the home
+// directory the pipeline's later steps share. The module proxy with no direct fallback,
+// which serves a commit even after the tag its pseudo-version was built on is gone. Go's
+// checksum database verifies the module, whatever the image or the runner would set.
+var goInstallEnv = []string{
+	"CGO_ENABLED=0", "GOTOOLCHAIN=local", "GOFLAGS=-trimpath",
+	"GOPATH=/tmp/go", "GOCACHE=/tmp/go-build", "GOMODCACHE=/tmp/go-mod",
+	"GOPROXY=https://proxy.golang.org", "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GOINSECURE=",
+}
+
+// FetchBedrockStep is the first step of the pipeline and of the sweep, which both print
+// it, so the two cannot drift: it leaves the pinned bedrock at /builder/home/bedrock for
+// every later step. For a release pin the release's linux/amd64 binary is downloaded and
+// verified against the placement's checksum. For a commit pin the commit is built with go
+// install in the Go image, where Go's checksum database verifies it; the script holds no
+// $, which Cloud Build would read as a substitution.
+func (v *view) FetchBedrockStep() string {
+	var b strings.Builder
+	b.WriteString("  - id: FetchBedrock\n")
+	if !v.CommitPin {
+		fmt.Fprintf(&b, `    name: %s
+    entrypoint: bash
+    timeout: 120s
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        curl -fsSL --retry 3 -o /builder/home/bedrock "%s"
+        echo "%s  /builder/home/bedrock" | sha256sum --check -
+        chmod 0755 /builder/home/bedrock
+        /builder/home/bedrock --version
+`, v.GcloudImage, v.BedrockURL, v.P.BedrockSHA256)
+
+		return b.String()
+	}
+	fmt.Fprintf(&b, "    name: %s\n    entrypoint: sh\n    timeout: 600s\n    env:\n", v.GoImage)
+	for _, e := range append([]string{"GOBIN=/builder/home"}, goInstallEnv...) {
+		fmt.Fprintf(&b, "      - %s\n", e)
+	}
+	fmt.Fprintf(&b, `    args:
+      - -c
+      - |
+        set -eu
+        go install -ldflags="-s -w" %s@%s
+        /builder/home/bedrock --version
+`, release.Module, v.P.BedrockVersion)
+
+	return b.String()
+}
+
+// BedrockModule is the module go install builds for a commit pin.
+func (v *view) BedrockModule() string {
+	return release.Module
+}
+
+// GoInstallDockerEnv is goInstallEnv as the -e options of docker run, for the
+// infrastructure workflow, which builds a commit pin in the same image: one line each,
+// continued with a backslash and indented to sit under its docker run.
+func (v *view) GoInstallDockerEnv() string {
+	lines := make([]string, 0, len(goInstallEnv))
+	for _, e := range goInstallEnv {
+		lines = append(lines, "            -e "+e+" \\")
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 // HasHook reports whether the application implements a hook for the stage, a script or
 // its hooks program: the pipeline has a step for it.
 func (v *view) HasHook(stage string) bool {
@@ -341,7 +427,11 @@ func newView(m *derive.Model) (*view, error) {
 	v := &view{Model: m, P: p, Prefix: p.Prefix, Integration: p.Integration(), Production: p.Production()}
 	v.RepoFullName = repoFullName(m.Repository)
 	v.SweepMinute = sweepMinute(m.App)
-	v.BedrockURL = release.URL(p.BedrockVersion, release.PipelineAsset())
+	v.CommitPin = release.IsCommitPin(p.BedrockVersion)
+	if !v.CommitPin {
+		v.BedrockURL = release.URL(p.BedrockVersion, release.PipelineAsset())
+	}
+	v.GoImage = goImage
 	v.GcloudImage, v.OpenTofuImage, v.DockerImage = gcloudImage, openTofuImage, dockerImage
 	v.Auth = &m.Auths[0]
 	v.Directory = v.Auth.OIDC()
