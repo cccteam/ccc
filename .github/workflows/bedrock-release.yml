@@ -1,38 +1,138 @@
-# The binaries of a bedrock release. release-please cuts the release (the tag
-# bedrock/vX.Y.Z and its GitHub Release, from release-please.yml); this workflow builds the
-# tool at that tag, one static binary per platform it runs on (linux/amd64, which every
-# application's pipeline and infrastructure check download; linux/arm64 and darwin/arm64
-# for developer machines), writes checksums.txt (the SHA-256 of each, in sha256sum's
-# format) and uploads them to the release. An application's placement pins the version and
-# the linux/amd64 checksum (bedrock upgrade moves it), and nothing runs a binary it has not
-# verified against that checksum. The build is reproducible, the same tag, toolchain and
-# flags giving the same bytes, and the version is stamped at link time: Go stamps a tag
-# only for a module at the repository root, and bedrock's tags carry its directory.
+# The binaries of a bedrock release, and its publication. release-please cuts a bedrock
+# release as a draft: it creates the tag bedrock/vX.Y.Z at the release commit first
+# (force-tag-creation, in the bedrock block of release-please-config.json), then a draft
+# GitHub Release on it. A draft raises no release event, so release-please.yml calls this
+# workflow from a job of the same run, with the tag, the release's id and its commit. The
+# job checks out the tag and refuses one whose commit is not the release's, builds the tool
+# there, one static binary per platform it runs on (linux/amd64, which every application's
+# pipeline and infrastructure check download; linux/arm64 and darwin/arm64 for developer
+# machines), writes checksums.txt (the SHA-256 of each, in sha256sum's format) and uploads
+# them to the draft. Before publishing it reads the draft's assets back and refuses when one
+# is not a file it built or its digest, as GitHub reports it, differs from checksums.txt:
+# while the release is a draft, any writer could add or replace an asset. It then publishes
+# the draft with the workflow's own token, which starts no workflow and creates no tag (the
+# tag exists); with immutable releases on, the release and its assets are locked from then
+# on. An application's placement pins the version and the linux/amd64 checksum (bedrock
+# upgrade moves it), and nothing runs a binary it has not verified against that checksum.
+# The build is reproducible, the same tag, toolchain and flags giving the same bytes, and it
+# reads no cache. Go stamps the version from the tag too; the link-time stamp names it
+# explicitly, and the build refuses a binary whose --version does not print it.
+#
+# Started by hand with a tag, the workflow finishes a draft that a failed run left behind:
+# rerunning release-please cannot, because its pull request is already labeled as tagged.
 name: bedrock release
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: The release's tag, bedrock/vX.Y.Z.
+        required: true
+        type: string
+      release-id:
+        description: The id of the draft release on that tag.
+        required: true
+        type: string
+      commit:
+        description: The commit the release was cut at, which the tag must name.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag of the draft to finish, bedrock/vX.Y.Z.
+        required: true
+        type: string
 
 permissions: {}
 
 jobs:
   binaries:
-    name: build and upload
-    if: startsWith(github.event.release.tag_name, 'bedrock/v')
+    name: build, upload and publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: bedrock-release-${{ inputs.tag }}
+      cancel-in-progress: false
     env:
-      TAG: ${{ github.event.release.tag_name }}
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      # The release app that cuts every release of this repository: a draft another
+      # author made is not published.
+      RELEASE_AUTHOR: ccc-release-please[bot]
     steps:
+      - name: Find the draft
+        id: draft
+        env:
+          RELEASE_ID: ${{ inputs.release-id }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^bedrock/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "'${TAG}' is not a bedrock release tag, bedrock/vX.Y.Z"
+            exit 1
+          fi
+          if [ -n "$RELEASE_ID" ]; then
+            if ! [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]; then
+              echo "'${RELEASE_ID}' is not a release id"
+              exit 1
+            fi
+            release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}")
+          else
+            # Started by hand: the one release on the tag. A draft is only in the listing.
+            release=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" |
+              jq -s --arg tag "$TAG" '[add[] | select(.tag_name == $tag)]
+                | if length == 1 then .[0] else error("\(length) releases are tagged \($tag), not one") end')
+          fi
+          id=$(jq -r .id <<<"$release")
+          tagged=$(jq -r .tag_name <<<"$release")
+          draft=$(jq -r .draft <<<"$release")
+          author=$(jq -r .author.login <<<"$release")
+          target=$(jq -r .target_commitish <<<"$release")
+          if [ "$tagged" != "$TAG" ]; then
+            echo "release ${id} is on '${tagged}', not ${TAG}"
+            exit 1
+          fi
+          if [ "$draft" != true ]; then
+            echo "release ${id} on ${TAG} is published already; only a draft is finished"
+            exit 1
+          fi
+          if [ "$author" != "$RELEASE_AUTHOR" ]; then
+            echo "release ${id} on ${TAG} was made by ${author}, not ${RELEASE_AUTHOR}"
+            exit 1
+          fi
+          commit="${COMMIT:-$target}"
+          if ! [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "release ${id} on ${TAG} names '${commit}', not a commit"
+            exit 1
+          fi
+          if [ "$target" != "$commit" ]; then
+            echo "release ${id} on ${TAG} names ${target}, not ${commit}"
+            exit 1
+          fi
+          echo "release ${id}, the draft on ${TAG} at ${commit}"
+          echo "id=${id}" >> "$GITHUB_OUTPUT"
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Check the tag's commit
+        env:
+          COMMIT: ${{ steps.draft.outputs.commit }}
+        run: |
+          set -euo pipefail
+          tagged=$(git rev-parse HEAD)
+          if [ "$tagged" != "$COMMIT" ]; then
+            echo "${TAG} is at ${tagged}, not at the release's commit ${COMMIT}"
+            exit 1
+          fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: bedrock/go.mod
-          cache-dependency-path: bedrock/go.sum
+          cache: false
       - name: Build
         working-directory: bedrock
         env:
@@ -54,6 +154,44 @@ jobs:
           fi
           cd ../dist && sha256sum bedrock-* | tee checksums.txt
       - name: Upload
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" dist/* --clobber
+      - name: Verify and publish
+        env:
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+          COMMIT: ${{ steps.draft.outputs.commit }}
+        run: |
+          set -euo pipefail
+          # What this job built, as GitHub reports an asset: each binary's line of
+          # checksums.txt and the digest of checksums.txt itself.
+          built=$(cd dist && { cat checksums.txt; sha256sum checksums.txt; } |
+            awk '{ print "sha256:" $1 "  " $2 }' | sort)
+          # matches reads the release and refuses unless it is on the tag at the commit, is
+          # a draft or not as its argument says, and carries exactly the files built; it
+          # prints whether the release is immutable, and why it refuses on stderr.
+          matches() {
+            local release
+            release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}") || return 1
+            if [ "$(jq -r .tag_name <<<"$release")" != "$TAG" ] ||
+              [ "$(jq -r .target_commitish <<<"$release")" != "$COMMIT" ] ||
+              [ "$(jq -r .draft <<<"$release")" != "$1" ]; then
+              echo "release ${RELEASE_ID} is no longer the one found: $(jq -c '{tag_name, target_commitish, draft}' <<<"$release")" >&2
+              return 1
+            fi
+            if ! diff <(echo "$built") <(jq -r '.assets[] | "\(.digest)  \(.name)"' <<<"$release" | sort) >&2; then
+              echo "release ${RELEASE_ID} carries an asset this job did not build, or one whose digest differs from checksums.txt (lines marked > are the release's)" >&2
+              return 1
+            fi
+            jq -r .immutable <<<"$release"
+          }
+          if ! matches true >/dev/null; then
+            echo "not published"
+            exit 1
+          fi
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=false --jq .html_url
+          if ! immutable=$(matches false); then
+            echo "published, but the release now differs from what this job built"
+            exit 1
+          fi
+          if [ "$immutable" != true ]; then
+            echo "::warning::${TAG} is published but not immutable: turn on release immutability in the repository's settings"
+          fi

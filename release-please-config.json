@@ -54,10 +54,14 @@
       "package-name": "middleware"
     },
     "impulse": {
-      "package-name": "impulse"
+      "package-name": "impulse",
+      "initial-version": "0.1.0"
     },
     "bedrock": {
-      "package-name": "bedrock"
+      "package-name": "bedrock",
+      "initial-version": "0.1.0",
+      "draft": true,
+      "force-tag-creation": true
     }
   }
 }
