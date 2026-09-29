@@ -43,7 +43,8 @@ type Placement struct {
 	Repository string `json:"repository"`
 	// ReleaseApp is the slug of the GitHub App that cuts the releases (release-please
 	// runs as it): the pipeline accepts a release tag only from a GitHub Release it
-	// authored, and the repository's rules let it alone create one.
+	// authored, and the repository's rules let it alone create one; not even an admin
+	// may bypass them.
 	ReleaseApp string `json:"releaseApp"`
 	// BedrockVersion is the bedrock the pipeline and the infrastructure workflow run, one
 	// of two kinds of pin. A release (v0.4.0: the tag bedrock/v0.4.0 of

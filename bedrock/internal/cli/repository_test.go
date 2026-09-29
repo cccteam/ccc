@@ -65,7 +65,7 @@ func TestRepositoryProtectAndHotfixStart(t *testing.T) {
 			args:   []string{"repository", "protect", "--placement", placement},
 			wantOut: []string{
 				"Repository impulseframework/harbor, release app impulseframework-release (app 5080645):",
-				"release tags     created (id 1000): tags v* are created, moved or deleted only by the release app and repository admins",
+				"release tags     created (id 1000): tags v* and */v* are created, moved or deleted only by the release app",
 				"master branch    created (id 1001): changes to refs/heads/master arrive by pull request; no force push, no deletion",
 				"hotfix branches  created (id 1002): changes to refs/heads/hotfix/** arrive by pull request; no force push, no deletion",
 			},

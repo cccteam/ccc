@@ -39,10 +39,10 @@ func newRepositoryProtect(d deps) *cobra.Command {
 		Use:   protectUse,
 		Short: "Put the release and branch rules on the repository",
 		Long: `protect creates, or brings back in line, the three rulesets of an application repository:
-release tags (v*) are created, moved or deleted only by the release app and repository admins;
-the default branch and the hotfix branches (hotfix/<major>.<minor>.x) change only by pull
-request, with no force push and no deletion. A ruleset that already matches is left alone, and
-rulesets bedrock did not make are not touched.
+release tags (v* and */v*) are created, moved or deleted only by the release app, with no bypass
+for the repository's admins; the default branch and the hotfix branches
+(hotfix/<major>.<minor>.x) change only by pull request, with no force push and no deletion. A
+ruleset that already matches is left alone, and rulesets bedrock did not make are not touched.
 
 The repository is the origin of the repository the command runs in. The default branch and the
 release app come from the placement beside the stack. The token is GITHUB_TOKEN when set, else

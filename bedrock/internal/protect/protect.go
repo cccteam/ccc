@@ -17,15 +17,17 @@ import (
 const (
 	// TagRuleset covers the release tags.
 	TagRuleset = "release tags"
-	// TagPattern is the release tags: v followed by anything.
+	// TagPattern is the release tags of a repository with one release: v followed by
+	// anything, v1.2.3.
 	TagPattern = "refs/tags/v*"
+	// ComponentTagPattern is the release tags of a repository whose releases carry a
+	// component name before the version, bedrock/v1.2.3. A * in a ruleset pattern does
+	// not match /, so TagPattern alone would leave these open.
+	ComponentTagPattern = "refs/tags/*/v*"
 	// HotfixRuleset covers the hotfix branches.
 	HotfixRuleset = "hotfix branches"
 	// HotfixPattern is the hotfix branches: hotfix/<major>.<minor>.x, one per release line.
 	HotfixPattern = "refs/heads/hotfix/**"
-	// adminRole is the repository role ID of admin, the one role that may bypass the
-	// tag ruleset beside the release app.
-	adminRole = 5
 	// Created is the action an Outcome reports when the ruleset was made.
 	Created = "created"
 	// Updated is the action when the ruleset differed and was replaced.
@@ -37,7 +39,6 @@ const (
 	targetBranch     = "branch"
 	enforcementOn    = "active"
 	actorIntegration = "Integration"
-	actorRole        = "RepositoryRole"
 	bypassAlways     = "always"
 	rulePullRequest  = "pull_request"
 	reviewCountKey   = "required_approving_review_count"
@@ -52,7 +53,8 @@ type Request struct {
 	// DefaultBranch is the branch releases are cut from.
 	DefaultBranch string
 	// ReleaseApp is the slug of the GitHub App that cuts releases (release-please runs
-	// as it); it alone, with the repository's admins, may create a release tag.
+	// as it); it alone may create, move or delete a release tag. No one else bypasses
+	// the tag ruleset, the repository's admins included.
 	ReleaseApp string
 }
 
@@ -186,9 +188,8 @@ func Rulesets(defaultBranch string, releaseAppID int64) []github.Ruleset {
 			Enforcement: enforcementOn,
 			BypassActors: []github.BypassActor{
 				{ActorID: releaseAppID, ActorType: actorIntegration, BypassMode: bypassAlways},
-				{ActorID: adminRole, ActorType: actorRole, BypassMode: bypassAlways},
 			},
-			Conditions: github.Conditions{RefName: github.RefName{Include: []string{TagPattern}, Exclude: []string{}}},
+			Conditions: github.Conditions{RefName: github.RefName{Include: []string{TagPattern, ComponentTagPattern}, Exclude: []string{}}},
 			Rules:      []github.Rule{{Type: "creation"}, {Type: "update"}, {Type: "deletion"}, {Type: "non_fast_forward"}},
 		},
 		{
@@ -213,7 +214,7 @@ func Rulesets(defaultBranch string, releaseAppID int64) []github.Ruleset {
 // effect says in a sentence what the ruleset enforces.
 func effect(rs *github.Ruleset) string {
 	if rs.Target == targetTag {
-		return "tags v* are created, moved or deleted only by the release app and repository admins"
+		return "tags v* and */v* are created, moved or deleted only by the release app"
 	}
 
 	return "changes to " + strings.Join(rs.Conditions.RefName.Include, ", ") + " arrive by pull request; no force push, no deletion"

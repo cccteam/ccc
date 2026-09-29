@@ -362,9 +362,9 @@ carries a release tag of the same line.
 
 `repository protect` puts the release and branch rules on the application's GitHub
 repository, the one the command runs in, addressed through its origin remote: the
-default branch and the hotfix lines change by pull request only, and a `v*` tag is
-created by the release app alone (with the repository admins), which is what makes the
-pipeline's tag check sound.
+default branch and the hotfix lines change by pull request only, and a `v*` or `*/v*`
+tag is created, moved or deleted by the release app alone, with no bypass for the
+repository's admins, which is what makes the pipeline's tag check sound.
 
 ## bedrock domain
 
