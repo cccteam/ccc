@@ -3,13 +3,20 @@
 // bedrock one of two ways.
 //
 // A release is a GitHub Release of github.com/cccteam/ccc tagged bedrock/vX.Y.Z, cut by
-// release-please. ccc's release workflow uploads to it one static binary per platform the
-// tool runs on (bedrock-linux-amd64, which the pipelines and the infrastructure workflows
-// run; bedrock-linux-arm64 and bedrock-darwin-arm64 for developer machines) and
-// checksums.txt, the SHA-256 of each in the format sha256sum reads. A release pin is the
-// version and the linux/amd64 checksum; the rendered pipeline downloads that binary at its
-// first step and the rendered infrastructure workflow at its own, and both verify it
-// against the checksum before running it.
+// release-please, and it is made in this order. release-please creates the tag at the
+// release commit and a draft release on it. A job of the same release-please run builds
+// the tool at the tag, one static binary per platform it runs on (bedrock-linux-amd64,
+// which the pipelines and the infrastructure workflows run; bedrock-linux-arm64 and
+// bedrock-darwin-arm64 for developer machines), and uploads them to the draft with
+// checksums.txt, the SHA-256 of each in the format sha256sum reads. It then checks the
+// draft's assets against checksums.txt and the digests GitHub reports, and publishes the
+// draft; with the repository's immutable releases on, neither the release nor its assets
+// change after that. Latest skips a draft, so a release is not found before its binaries
+// are on it.
+//
+// A release pin is the version and the linux/amd64 checksum; the rendered pipeline
+// downloads that binary at its first step and the rendered infrastructure workflow at its
+// own, and both verify it against the checksum before running it.
 //
 // A commit pin is the pseudo-version the Go module proxy gives a pushed commit of the
 // bedrock module (v0.0.0-lab.1.0.20260928222237-58b211dce544), with no checksum: the

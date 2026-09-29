@@ -42,6 +42,28 @@ against a placement that pins another bedrock, so the installed bedrock is kept 
 pin and `bedrock upgrade` moves it. A build from a checkout is nobody's pin and renders
 any pin.
 
+A release is made in four steps, all in one run of this repository's release-please
+workflow when bedrock's release pull request merges:
+
+- **Draft**: release-please, as the release app, creates the tag `bedrock/vX.Y.Z` at the
+  release commit and a draft release on it (`draft` and `force-tag-creation` in the
+  bedrock block of `release-please-config.json`).
+- **Binaries**: a job of the same run (`.github/workflows/bedrock-release.yml`) checks out
+  the tag, refuses it if it names another commit than the release, builds the binaries
+  there, and uploads them and `checksums.txt` to the draft.
+- **Publish**: the job reads the draft's assets back and publishes only when they are
+  exactly the files it built, each with the digest GitHub reports matching
+  `checksums.txt`; while the release is a draft, anyone with write access could add or
+  replace an asset.
+- **Locked**: with the repository's immutable releases on, the published release and its
+  assets cannot change.
+
+A draft is not a release `bedrock upgrade` finds, so no application can move to a release
+before its binaries are on it. If the job fails, the draft stays a draft: re-run the
+run's failed jobs, or start the `bedrock release` workflow by hand from the Actions tab
+with the tag, and it builds, checks and publishes that draft. Starting release-please
+again does not, because its pull request is already labeled as tagged.
+
 ## Vocabulary
 
 - **Organization foundation**: the six layers of the CCC provisioning model, one OpenTofu
