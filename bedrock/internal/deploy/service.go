@@ -226,8 +226,9 @@ func deployRevision(ctx context.Context, run Run, name string, doc map[string]an
 
 // pinnedTraffic is the service's traffic as it serves now, every target named by its
 // revision (a target on the latest revision becomes that revision), so a new revision
-// takes no traffic; a tag names the new revision, replacing an older target of that
-// tag. Nil when the service serves nothing yet, which leaves its traffic alone.
+// takes no traffic; a tag names the new revision, taken off the target that carried it
+// while that target keeps the traffic it serves. Nil when the service serves nothing
+// yet, which leaves its traffic alone.
 func pinnedTraffic(doc map[string]any, tag string) []any {
 	serving, _ := doc["trafficStatuses"].([]any)
 	if len(serving) == 0 {
@@ -237,7 +238,11 @@ func pinnedTraffic(doc map[string]any, tag string) []any {
 	pinned := make([]any, 0, len(serving)+1)
 	for _, entry := range serving {
 		status, _ := entry.(map[string]any)
-		if tag != "" && text(status, keyTag) == tag {
+		// After a shift the serving revision is also the latest, so Cloud Run reports its
+		// traffic and the tag on the latest revision as one status: the tag moves to the
+		// new revision, and the traffic stays where it is.
+		moving := tag != "" && text(status, keyTag) == tag
+		if percent, _ := status[keyPercent].(float64); moving && percent == 0 {
 			continue
 		}
 		// A status names the revision it serves; a service whose latest allocation has
@@ -252,7 +257,7 @@ func pinnedTraffic(doc map[string]any, tag string) []any {
 		if revision == "" {
 			target = map[string]any{keyType: targetLatest, keyPercent: status[keyPercent]}
 		}
-		if t := text(status, keyTag); t != "" {
+		if t := text(status, keyTag); t != "" && !moving {
 			target[keyTag] = t
 		}
 		pinned = append(pinned, target)

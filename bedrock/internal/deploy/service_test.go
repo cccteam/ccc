@@ -328,6 +328,30 @@ func TestPinnedTraffic(t *testing.T) {
 				map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "pr12"},
 			},
 		},
+		{
+			name: "a tag on the serving revision moves and its traffic stays",
+			statuses: []any{
+				map[string]any{keyType: targetLatest, keyRevision: "harbor-app-00020-last", keyPercent: fullTraffic, keyTag: "next"},
+			},
+			ready: service + "/revisions/harbor-app-00020-last",
+			tag:   "next",
+			want: []any{
+				map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00020-last", keyPercent: fullTraffic},
+				map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"},
+			},
+		},
+		{
+			name: "another tag on the serving revision stays with it",
+			statuses: []any{
+				map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00020-last", keyPercent: fullTraffic, keyTag: "stable"},
+			},
+			ready: service + "/revisions/harbor-app-00020-last",
+			tag:   "next",
+			want: []any{
+				map[string]any{keyType: targetRevision, keyRevision: "harbor-app-00020-last", keyPercent: fullTraffic, keyTag: "stable"},
+				map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"},
+			},
+		},
 		{name: "no statuses pin nothing"},
 	}
 	for _, tt := range tests {
