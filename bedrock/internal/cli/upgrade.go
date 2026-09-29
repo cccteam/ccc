@@ -49,7 +49,9 @@ names its version (v0.0.0-lab.1.0.20260928222237-58b211dce544); the placement ho
 and no checksum, and the pipeline and the infrastructure check build it with go install, which
 verifies it against Go's checksum database. The commit must be pushed first: the proxy knows only
 pushed commits, and remembers for about 30 minutes that it did not know one asked about too soon.
-A commit a release tag names moves to that release. A commit pin needs Go on this machine: the
+A commit a release tag names moves to that release. A commit named by its hash or its
+pseudo-version must be on a branch of github.com/cccteam/ccc, since GitHub also serves the
+commits of the repository's forks by hash. A commit pin needs Go on this machine: the
 commit is built with go install into the user's cache directory to render with.
 
 Either way the stack and the pipeline are then rendered with that bedrock, so the committed files

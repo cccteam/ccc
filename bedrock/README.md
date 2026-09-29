@@ -200,7 +200,10 @@ application; nothing else names one.
   directory to render with, so a commit pin needs Go on the machine; the install turns
   Go's checksum database on, whatever the machine's Go settings say. A commit a release
   tag names moves to that release instead. A commit whose `go.mod` has a `replace` or
-  `exclude` directive is refused, since `go install` cannot build it.
+  `exclude` directive is refused, since `go install` cannot build it. A commit named by
+  its hash or its pseudo-version must be on a branch of `cccteam/ccc`: GitHub serves the
+  commits of the repository's forks by hash too, and the proxy would fetch one, so
+  `upgrade` refuses a commit none of the repository's branches holds.
 
 Push the commit before pinning it: the proxy knows only pushed commits, and when it is
 asked about one too soon it remembers for about 30 minutes that it did not know it.

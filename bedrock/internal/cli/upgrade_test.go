@@ -68,7 +68,7 @@ func releaseServer(t *testing.T) (src *release.Source, sum string) {
 }
 
 // proxyRoutes add the Go module proxy's answers for the bedrock module (.info and .mod)
-// and the GitHub API's branch heads to the fake: 404 for anything they do not know.
+// and the GitHub API's branches to the fake: 404 for anything they do not know.
 func proxyRoutes(mux *http.ServeMux) {
 	infos := map[string]string{
 		headCommit: headVersion, headCommit[:12]: headVersion, taggedCommit[:8]: "v0.4.0", replacedCommit[:8]: replaced,
@@ -93,6 +93,9 @@ func proxyRoutes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("/repos/cccteam/ccc/git/ref/heads/feature/abac-implementation", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprintf(w, `{"object":{"sha":%q}}`, headCommit)
+	})
+	mux.HandleFunc("/repos/cccteam/ccc/branches", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `[{"name":"feature/abac-implementation","commit":{"sha":%q}}]`, headCommit)
 	})
 }
 

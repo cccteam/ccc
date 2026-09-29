@@ -69,7 +69,9 @@ const (
 	// repository cuts releases for a dozen modules, so bedrock's latest is within the
 	// first pages.
 	releasePages = 10
-	perPage      = 100
+	// branchPages bounds the branch listing a commit pin is looked for in.
+	branchPages = 10
+	perPage     = 100
 	// fetchTimeout bounds one download.
 	fetchTimeout = 5 * time.Minute
 )
@@ -191,46 +193,49 @@ func (s *Source) Checksums(ctx context.Context, version string) (Checksums, erro
 // GitHub API first (the proxy takes no name with a slash, and most branches have one). A
 // commit that carries a release tag answers with that release, which the caller treats as
 // a release pin. Any other answer is a commit pin, and its go.mod must let go install
-// build it: no replace or exclude directive. A revision the proxy does not know is refused
-// with the cause it almost always has: the commit is not pushed yet.
+// build it: no replace or exclude directive. A commit named by its hash or its
+// pseudo-version must also be on a branch of github.com/cccteam/ccc (onBranch); a branch's
+// head already is. A revision the proxy does not know is refused with the cause it almost
+// always has: the commit is not pushed yet.
 func (s *Source) Resolve(ctx context.Context, rev string) (string, error) {
-	commit := rev
+	commit, isBranchHead := rev, false
 	if !hashRE.MatchString(rev) && !semver.IsValid(rev) {
 		head, err := s.branchHead(ctx, rev)
 		if err != nil {
 			return "", err
 		}
-		commit = head
+		commit, isBranchHead = head, true
 	}
-	version, err := s.proxyVersion(ctx, commit)
+	info, err := s.askProxy(ctx, commit)
 	if err != nil {
 		return "", err
 	}
-	if IsVersion(version) {
-		return version, nil
+	if IsVersion(info.Version) {
+		return info.Version, nil
 	}
-	if !IsCommitPin(version) {
-		return "", errors.Newf("the module proxy answers %q for %s, which is neither a release nor a commit's pseudo-version", version, rev)
+	if !IsCommitPin(info.Version) {
+		return "", errors.Newf("the module proxy answers %q for %s, which is neither a release nor a commit's pseudo-version", info.Version, rev)
 	}
-	if err := s.installable(ctx, version); err != nil {
+	if err := s.installable(ctx, info.Version); err != nil {
 		return "", err
 	}
+	if !isBranchHead {
+		if err := s.onBranch(ctx, info.commit()); err != nil {
+			return "", err
+		}
+	}
 
-	return version, nil
+	return info.Version, nil
 }
 
 // branchHead is the commit at the head of a branch of the repository.
 func (s *Source) branchHead(ctx context.Context, branch string) (string, error) {
-	segments := strings.Split(branch, "/")
-	for i, segment := range segments {
-		segments[i] = url.PathEscape(segment)
-	}
 	var ref struct {
 		Object struct {
 			SHA string `json:"sha"`
 		} `json:"object"`
 	}
-	err := s.getJSON(ctx, fmt.Sprintf("%s/repos/%s/git/ref/heads/%s", s.api(), Repository, strings.Join(segments, "/")), &ref)
+	err := s.getJSON(ctx, fmt.Sprintf("%s/repos/%s/git/ref/heads/%s", s.api(), Repository, escapeBranch(branch)), &ref)
 	var status *statusError
 	if errors.As(err, &status) && status.code == http.StatusNotFound {
 		return "", errors.Newf("%q is neither a commit, a version nor a branch of %s", branch, Repository)
@@ -245,25 +250,124 @@ func (s *Source) branchHead(ctx context.Context, branch string) (string, error) 
 	return ref.Object.SHA, nil
 }
 
-// proxyVersion asks the module proxy which version it gives a commit or a version of the
+// onBranch refuses a commit that no branch of the repository holds. GitHub serves a commit
+// of any fork of the repository by its hash through the repository's own address, so the
+// module proxy fetches a fork's commit as readily as one of cccteam/ccc, and the
+// pseudo-version it answers looks the same; only a branch of cccteam/ccc says the commit
+// is the repository's. The branch heads are looked at first, since a commit pin is most
+// often the head of a branch just pushed; then each branch is compared with the commit,
+// and a branch holds it when the comparison says the branch is ahead of the commit or
+// identical to it. GitHub answers 404 for a commit it does not know here at all.
+func (s *Source) onBranch(ctx context.Context, commit string) error {
+	refused := errors.Newf("commit %s is on no branch of %s: GitHub also serves the commits of the repository's forks by hash, so bedrock pins only a commit a branch of %s holds; push it to a branch there, then retry", commit, Repository, Repository)
+	if commit == "" {
+		return refused
+	}
+	branches, err := s.branches(ctx)
+	if err != nil {
+		return err
+	}
+	for _, b := range branches {
+		if strings.HasPrefix(b.Commit.SHA, commit) {
+			return nil
+		}
+	}
+	for _, b := range branches {
+		var comparison struct {
+			Status string `json:"status"`
+		}
+		err := s.getJSON(ctx, fmt.Sprintf("%s/repos/%s/compare/%s...%s", s.api(), Repository, commit, escapeBranch(b.Name)), &comparison)
+		var status *statusError
+		if errors.As(err, &status) && status.code == http.StatusNotFound {
+			return refused
+		}
+		if err != nil {
+			return err
+		}
+		if comparison.Status == "ahead" || comparison.Status == "identical" {
+			return nil
+		}
+	}
+
+	return refused
+}
+
+// branch is one branch of the repository as the GitHub API lists it.
+type branch struct {
+	Name   string `json:"name"`
+	Commit struct {
+		SHA string `json:"sha"`
+	} `json:"commit"`
+}
+
+// branches lists the repository's branches with their heads.
+func (s *Source) branches(ctx context.Context) ([]branch, error) {
+	var all []branch
+	for page := 1; page <= branchPages; page++ {
+		var listed []branch
+		listing := fmt.Sprintf("%s/repos/%s/branches?per_page=%d&page=%d", s.api(), Repository, perPage, page)
+		if err := s.getJSON(ctx, listing, &listed); err != nil {
+			return nil, err
+		}
+		all = append(all, listed...)
+		if len(listed) < perPage {
+			break
+		}
+	}
+
+	return all, nil
+}
+
+// escapeBranch escapes each segment of a branch name for a URL path, keeping its slashes.
+func escapeBranch(name string) string {
+	segments := strings.Split(name, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+
+	return strings.Join(segments, "/")
+}
+
+// proxyInfo is the module proxy's answer about a revision: the version it gives it and,
+// in Origin, the commit it fetched, which the proxy states in full for a commit.
+type proxyInfo struct {
+	Version string `json:"Version"`
+	Origin  struct {
+		Hash string `json:"Hash"`
+	} `json:"Origin"`
+}
+
+// askProxy asks the module proxy which version it gives a commit or a version of the
 // module.
-func (s *Source) proxyVersion(ctx context.Context, rev string) (string, error) {
+func (s *Source) askProxy(ctx context.Context, rev string) (*proxyInfo, error) {
 	escaped, err := module.EscapeVersion(rev)
 	if err != nil {
-		return "", errors.Newf("%q is not a revision the module proxy can be asked about: %v", rev, err)
+		return nil, errors.Newf("%q is not a revision the module proxy can be asked about: %v", rev, err)
 	}
 	body, err := s.proxyGet(ctx, rev, escaped+".info")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var info struct {
-		Version string `json:"Version"`
-	}
-	if err := json.Unmarshal(body, &info); err != nil {
-		return "", errors.Wrap(err, "json.Unmarshal()")
+	info := &proxyInfo{}
+	if err := json.Unmarshal(body, info); err != nil {
+		return nil, errors.Wrap(err, "json.Unmarshal()")
 	}
 
-	return info.Version, nil
+	return info, nil
+}
+
+// commit is the commit the answer names: the proxy's full hash, else the abbreviated one
+// in the pseudo-version; empty when neither says one.
+func (i *proxyInfo) commit() string {
+	if hashRE.MatchString(i.Origin.Hash) {
+		return i.Origin.Hash
+	}
+	rev, err := module.PseudoVersionRev(i.Version)
+	if err != nil {
+		return ""
+	}
+
+	return rev
 }
 
 // installable refuses a version whose go.mod go install would refuse: go install builds a

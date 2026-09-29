@@ -260,27 +260,42 @@ func TestIsCommitPin(t *testing.T) {
 // The commits the proxy fake knows: head, at the head of feature/abac-implementation,
 // whose go.mod go install can build; tagged, which carries the release tag
 // bedrock/v0.0.0-lab.1; replaced, at the head of master, whose go.mod has a replace
-// directive.
+// directive; inner, a commit feature/abac-implementation holds below its head, which the
+// proxy names in full; fork, a commit of a fork, which GitHub compares with every branch
+// as diverged; stranger, a commit GitHub does not know in the repository at all.
 const (
 	headCommit      = "58b211dce54409b23306e30f73f3444796ed561b"
 	headVersion     = "v0.0.0-lab.1.0.20260928222237-58b211dce544"
 	taggedCommit    = "32ae32fb975d683d12d8d070cb66ee77a68263f2"
 	replacedCommit  = "6f6f7795969d3e5a6b2c1d0e9f8a7b6c5d4e3f2a"
 	replacedVersion = "v0.0.0-20260928182105-6f6f7795969d"
+	innerCommit     = "857753981c2b3a4d5e6f708192a3b4c5d6e7f809"
+	innerVersion    = "v0.0.0-lab.1.0.20260928210000-857753981c2b"
+	forkCommit      = "aabbccddeeff00112233445566778899aabbccdd"
+	forkVersion     = "v0.0.0-lab.1.0.20260928230000-aabbccddeeff"
+	strangerCommit  = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c"
+	strangerVersion = "v0.0.0-lab.1.0.20260928231000-0f1e2d3c4b5a"
 )
 
 // proxyServer stands in for the Go module proxy (the bedrock module's .info and .mod
-// files) and for the GitHub API's branch heads, as Resolve reads them. The proxy answers
-// 410 for a revision starting fedcba98 and 404 for any other it does not know.
+// files) and for the GitHub API's branches and comparisons, as Resolve reads them. The
+// proxy answers 410 for a revision starting fedcba98 and 404 for any other it does not
+// know.
 func proxyServer(t *testing.T) *Source {
 	t.Helper()
 
 	infos := map[string]string{
 		headCommit: headVersion, headCommit[:12]: headVersion, headVersion: headVersion,
 		taggedCommit[:8]: "v0.0.0-lab.1", replacedCommit: replacedVersion, replacedCommit[:8]: replacedVersion,
+		innerCommit[:8]: innerVersion, forkCommit: forkVersion, forkVersion: forkVersion, strangerCommit[:8]: strangerVersion,
 	}
+	// origins are the full hashes the proxy states beside a version.
+	origins := map[string]string{innerVersion: innerCommit}
 	mods := map[string]string{
 		headVersion:     "module github.com/cccteam/ccc/bedrock\n\ngo 1.26.6\n",
+		innerVersion:    "module github.com/cccteam/ccc/bedrock\n\ngo 1.26.6\n",
+		forkVersion:     "module github.com/cccteam/ccc/bedrock\n\ngo 1.26.6\n",
+		strangerVersion: "module github.com/cccteam/ccc/bedrock\n\ngo 1.26.6\n",
 		replacedVersion: "module github.com/cccteam/ccc/bedrock\n\ngo 1.26.6\n\nreplace github.com/cccteam/ccc/impulse => ../impulse\n",
 	}
 	branches := map[string]string{"feature/abac-implementation": headCommit, "master": replacedCommit}
@@ -288,7 +303,8 @@ func proxyServer(t *testing.T) *Source {
 	mux.HandleFunc("/github.com/cccteam/ccc/bedrock/@v/", func(w http.ResponseWriter, r *http.Request) {
 		file := strings.TrimPrefix(r.URL.Path, "/github.com/cccteam/ccc/bedrock/@v/")
 		if rev, ok := strings.CutSuffix(file, ".info"); ok && infos[rev] != "" {
-			_, _ = fmt.Fprintf(w, `{"Version":%q,"Time":"2026-09-28T22:22:37Z"}`, infos[rev])
+			version := infos[rev]
+			_, _ = fmt.Fprintf(w, `{"Version":%q,"Time":"2026-09-28T22:22:37Z","Origin":{"VCS":"git","Hash":%q}}`, version, origins[version])
 
 			return
 		}
@@ -312,6 +328,29 @@ func proxyServer(t *testing.T) *Source {
 			return
 		}
 		_, _ = fmt.Fprintf(w, `{"object":{"type":"commit","sha":%q}}`, head)
+	})
+	mux.HandleFunc("/repos/cccteam/ccc/branches", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") != "1" {
+			_, _ = w.Write([]byte("[]"))
+
+			return
+		}
+		_, _ = fmt.Fprintf(w, `[{"name":"feature/abac-implementation","commit":{"sha":%q}},{"name":"master","commit":{"sha":%q}}]`, headCommit, replacedCommit)
+	})
+	// comparisons are what GitHub says of a branch against a commit: ahead when the branch
+	// holds the commit.
+	comparisons := map[string]string{
+		innerCommit + "...feature/abac-implementation": "ahead", innerCommit + "...master": "diverged",
+		forkCommit + "...feature/abac-implementation": "diverged", forkCommit + "...master": "diverged",
+	}
+	mux.HandleFunc("/repos/cccteam/ccc/compare/", func(w http.ResponseWriter, r *http.Request) {
+		status, ok := comparisons[strings.TrimPrefix(r.URL.Path, "/repos/cccteam/ccc/compare/")]
+		if !ok {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"status":%q}`, status)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -341,6 +380,13 @@ func TestResolve(t *testing.T) {
 		{name: "an unknown branch", rev: "no-such-branch", wantErr: `"no-such-branch" is neither a commit, a version nor a branch of cccteam/ccc`},
 		{name: "a go.mod with a replace directive", rev: replacedCommit[:8], wantErr: "bedrock " + replacedVersion + " cannot be installed with go install: its go.mod has a replace directive"},
 		{name: "a branch whose head has a replace directive", rev: "master", wantErr: "its go.mod has a replace directive"},
+		{name: "a commit a branch holds below its head", rev: innerCommit[:8], want: innerVersion},
+		{
+			name: "a commit no branch holds, as a fork's", rev: forkCommit,
+			wantErr: "commit aabbccddeeff is on no branch of cccteam/ccc: GitHub also serves the commits of the repository's forks by hash",
+		},
+		{name: "a fork's commit by its pseudo-version", rev: forkVersion, wantErr: "commit aabbccddeeff is on no branch of cccteam/ccc"},
+		{name: "a commit GitHub does not know here", rev: strangerCommit[:8], wantErr: "commit 0f1e2d3c4b5a is on no branch of cccteam/ccc"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
