@@ -10,7 +10,7 @@ func TestBuildOf(t *testing.T) {
 
 	const (
 		commit = "v0.0.0-lab.1.0.20260928222237-58b211dce544"
-		sum    = "h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+		sum    = "h1:bm90LWEtcmVhbC1zdW0tZm9yLXRoZS10ZXN0cyE="
 	)
 	checkout := []debug.BuildSetting{{Key: "vcs", Value: "git"}, {Key: "vcs.revision", Value: "58b211dce54409b23306e30f73f3444796ed561b"}}
 	tests := []struct {
