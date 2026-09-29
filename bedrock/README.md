@@ -377,7 +377,13 @@ create and change what carries its own number).
 ## Development
 
 The tool is a Go module in this repository, `ccc/bedrock`, with `main.go` at its root:
-`go build -o bedrock .` there. Its packages: `internal/derive` reads the application into
+`go build -o bedrock .` there. It requires impulse (`ccc/impulse`) by version, like any
+other module, never by a path to the working tree: `go install` refuses a module whose
+`go.mod` has a replace directive, and a commit pin is installed that way. A change to both
+commits and pushes impulse first, then moves bedrock to it with
+`GOWORK=off go get github.com/cccteam/ccc/impulse@<commit>` in `bedrock/`. To try the two
+together before pushing, name an untracked workspace file with `GOWORK`, outside the
+repository root. Its packages: `internal/derive` reads the application into
 a model, `internal/render` writes the stack from templates (goldens under
 `internal/render/testdata/<application>`), `internal/check` compares, `internal/release` is the tool's own distribution (its
 release assets, their checksums, the verified fetch), `internal/deploy`

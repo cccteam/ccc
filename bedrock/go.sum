@@ -40,6 +40,8 @@ github.com/apparentlymart/go-textseg/v15 v15.0.0 h1:uYvfpb3DyLSCGWnctWKGj857c6ew
 github.com/apparentlymart/go-textseg/v15 v15.0.0/go.mod h1:K8XmNZdhEBkdlyDdvbmmsvpAG721bKi0joRfFdHIWJ4=
 github.com/apparentlymart/go-textseg/v17 v17.0.1 h1:bpMXRgQ5cEoRNuQke1a80/Nl6w3G5eoIbWo9f3gXkAs=
 github.com/apparentlymart/go-textseg/v17 v17.0.1/go.mod h1:fa8X4jgGeevslICIY6LcdjkSecWnXmYd9Lk34z/VxZs=
+github.com/cccteam/ccc/impulse v0.0.0-20260928182914-32ae32fb975d h1:QM2lhKtu0fHonqsxx0qWZFKj2uivN/rWDahkX1eXfCU=
+github.com/cccteam/ccc/impulse v0.0.0-20260928182914-32ae32fb975d/go.mod h1:5QzkWbC8cGdRyP5ToO/uWRz4msKiAyeBeKs0LDjHW70=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 h1:aBangftG7EVZoUb69Os8IaYg++6uMOdKK83QtkkvJik=

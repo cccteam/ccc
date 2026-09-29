@@ -125,9 +125,6 @@ linters:
       keywords:
         - TODO
         - BUG
-    gomoddirectives:
-      # The reader is read from impulse's working tree until its export is released.
-      replace-local: true
     misspell:
       locale: US
     nestif:

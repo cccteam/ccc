@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/resourcemanager v1.17.0
 	cloud.google.com/go/secretmanager v1.22.0
 	cloud.google.com/go/storage v1.68.0
-	github.com/cccteam/ccc/impulse v0.0.0
+	github.com/cccteam/ccc/impulse v0.0.0-20260928182914-32ae32fb975d
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/hcl/v2 v2.25.0
@@ -74,7 +74,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260630182238-925bb5da69e7 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-// The reader (impulse/app) is read from the working tree until the export is released;
-// this replace goes away with that release.
-replace github.com/cccteam/ccc/impulse => ../impulse
