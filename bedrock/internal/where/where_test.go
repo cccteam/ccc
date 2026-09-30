@@ -342,7 +342,7 @@ func TestVariables(t *testing.T) {
 	t.Parallel()
 
 	quillLocals := []string{"APP_COOKIE_KEY", "APP_MAIL_API_KEY"}
-	harborSecrets := []string{"APP_COOKIE_KEY", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_ADMIN_CREDENTIALS"}
+	harborSecrets := []string{"APP_COOKIE_KEY", "APP_STAFF_OIDC_CLIENT_SECRET"}
 	tests := []struct {
 		name     string
 		appDir   string

@@ -42,6 +42,10 @@ func (m *Model) auths(a *app.App, cfg *config) error {
 			if prefix := auth.Variable(RoleGroupPrefix); prefix != nil {
 				auth.GroupPrefixDefault = cfg.envTemplate[prefix.Name]
 			}
+			auth.GroupLookupDefault = defaultGroupLookup
+			if lookup := auth.Variable(RoleGroupLookup); lookup != nil && cfg.envTemplate[lookup.Name] != "" {
+				auth.GroupLookupDefault = cfg.envTemplate[lookup.Name]
+			}
 			route, err := callbackRoute(a, routesDir)
 			if err != nil {
 				return err

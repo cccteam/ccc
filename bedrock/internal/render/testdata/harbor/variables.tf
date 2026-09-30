@@ -199,22 +199,6 @@ variable "secret_versions" {
   }
 }
 
-variable "staff_oidc_admin_subject" {
-  description = <<-EOT
-    Per environment, the Workspace administrator the staff auth impersonates to
-    read role groups through the Admin SDK (APP_STAFF_OIDC_ADMIN_SUBJECT,
-    pkg/config/data.go dataConfig.StaffAdminSubject). Not a secret; the
-    credential it pairs with is (secret staff-oidc-admin-credentials). Empty
-    until the directory read is set up.
-  EOT
-  type        = map(string)
-  default = {
-    tst = ""
-    stg = ""
-    prd = ""
-  }
-}
-
 variable "staff_oidc_client_id" {
   description = <<-EOT
     Per environment, the OAuth client ID of the application's registration with
@@ -230,6 +214,17 @@ variable "staff_oidc_client_id" {
     tst = ""
     stg = ""
     prd = ""
+  }
+}
+
+variable "staff_oidc_group_lookup" {
+  description = "How far the staff sign-in's groups read reaches (APP_STAFF_OIDC_GROUP_LOOKUP, dataConfig.StaffGroupLookup): direct reads the Google Groups the person is a direct member of; nested climbs from those to the groups they are in, level by level, for a directory that nests its role groups. The read runs with the person's own sign-in token through the Cloud Identity Groups API, which 1-org enables in the environment project."
+  type        = string
+  default     = "direct"
+
+  validation {
+    condition     = contains(["direct", "nested"], var.staff_oidc_group_lookup)
+    error_message = "staff_oidc_group_lookup is direct or nested."
   }
 }
 

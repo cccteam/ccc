@@ -52,7 +52,8 @@ export APP_STAFF_OIDC_HOSTED_DOMAIN=example.com
 # assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),
 # so it is set in development.
 export APP_STAFF_OIDC_GROUP_PREFIX=staff-
-# The Admin SDK service account that reads the groups: a key with domain-wide delegation for
-# the groups scope, and the admin it impersonates. Unread under the simulated directory.
-# export APP_STAFF_OIDC_ADMIN_CREDENTIALS=
-# export APP_STAFF_OIDC_ADMIN_SUBJECT=
+# APP_STAFF_OIDC_GROUP_LOOKUP is how far the groups lookup reaches: direct (the default when
+# unset) reads the groups the person is a direct member of; nested climbs from those to the
+# groups they are in, level by level, for a directory that nests its role groups. The lookup
+# runs with the person's own sign-in token. No effect under the simulated directory.
+# export APP_STAFF_OIDC_GROUP_LOOKUP=direct

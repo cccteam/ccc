@@ -278,13 +278,18 @@ variable "required_apis" {
     # storage ones included (the first 3-app apply, 2026-09-25, was refused:
     # "Cloud Resource Manager API has not been used in project ...").
     app = [
-      # The staff sign-in reads a login's role groups through the Admin SDK
-      # Directory API as the runtime identity, and the API is consumed in the
-      # identity's own project (the first tst sign-in, 2026-09-26, failed with
-      # "Admin SDK API has not been used in project ... or it is disabled").
+      # The Admin SDK Directory API served the role-groups read before the
+      # sign-in moved to the Cloud Identity Groups API (the first tst sign-in,
+      # 2026-09-26, failed with "Admin SDK API has not been used in project ...
+      # or it is disabled"). It stays enabled until every application is
+      # released on the moved sign-in; then this line goes.
       "admin.googleapis.com",
       "artifactregistry.googleapis.com",
       "cloudbuild.googleapis.com",
+      # The sign-in reads a login's role groups through the Cloud Identity
+      # Groups API with the person's own token, and the API is consumed in the
+      # project that owns the OAuth client: the environment project.
+      "cloudidentity.googleapis.com",
       "cloudresourcemanager.googleapis.com",
       "cloudscheduler.googleapis.com",
       "cloudtasks.googleapis.com",

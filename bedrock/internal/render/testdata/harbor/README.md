@@ -94,7 +94,6 @@ from `2-env`'s state.
   |---|---|---|
   | `APP_COOKIE_KEY` | `dataConfig.CookieKey` | `...-cookie-key` |
   | `APP_STAFF_OIDC_CLIENT_SECRET` | `dataConfig.StaffClientSecret` | `...-staff-oidc-client-secret` |
-  | `APP_STAFF_OIDC_ADMIN_CREDENTIALS` | `dataConfig.StaffAdminCredentials` | `...-staff-oidc-admin-credentials` |
 
   The site's identity holds accessor, and so does the job process's, on
   the secrets at the levels it constructs: it runs the application's own
@@ -150,9 +149,9 @@ above them.
 | `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
 | `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | | |
-| `APP_STAFF_OIDC_ADMIN_SUBJECT` | data | `var.staff_oidc_admin_subject[env]` | yes | | |
+| `APP_STAFF_OIDC_GROUP_LOOKUP` | data | `var.staff_oidc_group_lookup` | yes | | |
 | `APP_JOBS_JOB` | site | the job process's Cloud Run job | yes | | |
-| `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET`, `APP_STAFF_OIDC_ADMIN_CREDENTIALS` | data | secret, at the pinned version | yes | | yes |
+| `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
 The migrate job and the job process carry the hosted domain and group prefix because the session
 library refuses to construct without them. Not set: `APP_VERSION` (the
@@ -413,21 +412,13 @@ Per environment, after the first apply:
    authorized redirect URI = output `staff_oidc_redirect_url`. Put the client
    ID in `terraform.tfvars` (`staff_oidc_client_id`) and add the client secret
    as version 1 of `imp-<env>-gbl-harbor-staff-oidc-client-secret`.
+   The role-groups read needs no step of its own: the sign-in reads a person's
+   groups through the Cloud Identity Groups API with their own sign-in token,
+   and 1-org enables that API in the environment project. If the role groups
+   are nested, set `staff_oidc_group_lookup = "nested"` in `terraform.tfvars`.
 2. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
    of `imp-<env>-gbl-harbor-cookie-key`.
-3. For the directory read, in the Google Workspace admin console (Security >
-   Access and data control > API controls > Domain-wide delegation): add the
-   runtime identity's OAuth client ID (the `imp-<env>-gbl-harbor-app`
-   service account's unique ID, shown in the Cloud console under IAM > Service
-   Accounts) with the scope
-   `https://www.googleapis.com/auth/admin.directory.group.readonly`, and put the
-   administrator it impersonates (an account holding a Groups-read privilege) in
-   `staff_oidc_admin_subject`. No key: the service signs for itself through
-   the IAM Credentials API, which this stack grants. The container
-   `imp-<env>-gbl-harbor-staff-oidc-admin-credentials` exists for a
-   runtime outside Google Cloud, where a service-account key with the same
-   delegation goes; on Google Cloud it stays empty.
-4. Pin the versions in `secret_versions` and apply.
+3. Pin the versions in `secret_versions` and apply.
 
 ## Inputs
 
@@ -444,8 +435,8 @@ Per environment, after the first apply:
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
 | `tasks_max_attempts` | Attempts per task of the queue. | `number` | `5` | no |
 | `tasks_max_concurrent` | Tasks of the queue in flight at once. | `number` | `10` | no |
-| `staff_oidc_admin_subject` | Impersonated Workspace administrator, per environment. | `map(string)` | all empty | no |
 | `staff_oidc_client_id` | OAuth client ID, per environment. | `map(string)` | all empty | no |
+| `staff_oidc_group_lookup` | How far the groups read reaches: direct or nested. | `string` | `"direct"` | no |
 | `staff_oidc_group_prefix` | Prefix of the role groups. | `string` | `"staff-"` | no |
 | `staff_oidc_hosted_domain` | Workspace domain logins are restricted to. | `string` | `"impulseframework.com"` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |

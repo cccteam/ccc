@@ -88,13 +88,12 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/login",
 		Directory: staff.Directory{
-			ClientID:         env.StaffClientID,
-			ClientSecret:     env.StaffClientSecret,
-			RedirectURL:      env.StaffRedirectURL,
-			HostedDomain:     env.StaffHostedDomain,
-			GroupPrefix:      env.StaffGroupPrefix,
-			AdminCredentials: env.StaffAdminCredentials,
-			AdminSubject:     env.StaffAdminSubject,
+			ClientID:     env.StaffClientID,
+			ClientSecret: env.StaffClientSecret,
+			RedirectURL:  env.StaffRedirectURL,
+			HostedDomain: env.StaffHostedDomain,
+			GroupPrefix:  env.StaffGroupPrefix,
+			GroupLookup:  env.StaffGroupLookup,
 		},
 	})
 	if err != nil {
@@ -180,16 +179,15 @@ type dataConfig struct {
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"true"`
 	// The staff auth's directory registration (pkg/auth/staff): the application's client
 	// credentials, the callback Google returns the browser to, the Workspace domain logins are
-	// restricted to, the prefix of the Google Groups that carry roles, and the Admin SDK service
-	// account (a key with domain-wide delegation, and the admin it impersonates) that reads them.
+	// restricted to, the prefix of the Google Groups that carry roles, and how far the groups
+	// lookup reaches: direct (the default), or nested for a directory that nests its role groups.
 	// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.
-	StaffClientID         string `env:"APP_STAFF_OIDC_CLIENT_ID"`
-	StaffClientSecret     string `env:"APP_STAFF_OIDC_CLIENT_SECRET" secret:"true"`
-	StaffRedirectURL      string `env:"APP_STAFF_OIDC_REDIRECT_URL"`
-	StaffHostedDomain     string `env:"APP_STAFF_OIDC_HOSTED_DOMAIN"`
-	StaffGroupPrefix      string `env:"APP_STAFF_OIDC_GROUP_PREFIX"`
-	StaffAdminCredentials []byte `env:"APP_STAFF_OIDC_ADMIN_CREDENTIALS" secret:"true"`
-	StaffAdminSubject     string `env:"APP_STAFF_OIDC_ADMIN_SUBJECT"`
+	StaffClientID     string `env:"APP_STAFF_OIDC_CLIENT_ID"`
+	StaffClientSecret string `env:"APP_STAFF_OIDC_CLIENT_SECRET" secret:"true"`
+	StaffRedirectURL  string `env:"APP_STAFF_OIDC_REDIRECT_URL"`
+	StaffHostedDomain string `env:"APP_STAFF_OIDC_HOSTED_DOMAIN"`
+	StaffGroupPrefix  string `env:"APP_STAFF_OIDC_GROUP_PREFIX"`
+	StaffGroupLookup  string `env:"APP_STAFF_OIDC_GROUP_LOOKUP"`
 
 	// AssetsBucket is the Cloud Storage bucket the application's files live in, by name.
 	AssetsBucket string `env:"APP_ASSETS_BUCKET"`

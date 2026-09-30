@@ -129,12 +129,6 @@ locals {
       source  = "pkg/config/data.go dataConfig.StaffClientSecret"
       purpose = "OAuth client secret of the application's registration with Google (pairs with APP_STAFF_OIDC_CLIENT_ID)."
     }
-    APP_STAFF_OIDC_ADMIN_CREDENTIALS = {
-      name    = "staff-oidc-admin-credentials"
-      level   = "data"
-      source  = "pkg/config/data.go dataConfig.StaffAdminCredentials"
-      purpose = "Service-account key (JSON) with domain-wide delegation for the Admin SDK groups scope, through which the staff auth reads role groups."
-    }
   }
 
   # The container each secret lives in, by the naming convention: this
@@ -197,8 +191,8 @@ locals {
     APP_STAFF_OIDC_CLIENT_ID = var.staff_oidc_client_id[var.environment]
     # dataConfig.StaffRedirectURL: built from the canonical hostname.
     APP_STAFF_OIDC_REDIRECT_URL = local.redirect_url
-    # dataConfig.StaffAdminSubject: the administrator the groups read impersonates.
-    APP_STAFF_OIDC_ADMIN_SUBJECT = var.staff_oidc_admin_subject[var.environment]
+    # dataConfig.StaffGroupLookup: how far the groups read reaches, direct or nested.
+    APP_STAFF_OIDC_GROUP_LOOKUP = var.staff_oidc_group_lookup
   }
 
   # siteConfig.JobsJob: the job process's Cloud Run job, which the site runs

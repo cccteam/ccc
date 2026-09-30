@@ -204,20 +204,6 @@ variable "secret_versions" {
 }
 
 {{if .Directory -}}
-variable "{{.AuthVar}}_admin_subject" {
-  description = <<-EOT
-    Per environment, the Workspace administrator the {{.Auth.Name}} auth impersonates to
-    read role groups through the Admin SDK ({{.AdminSubject.Name}},
-    {{.AdminSubject.File}} {{.AdminSubject.Declaration}}). Not a secret; the
-    credential it pairs with is (secret {{.AdminCredentialsSecret.Name}}). Empty
-    until the directory read is set up.
-  EOT
-  type        = map(string)
-  default = {
-{{.EmptyEnvStrings}}
-  }
-}
-
 variable "{{.AuthVar}}_client_id" {
   description = <<-EOT
     Per environment, the OAuth client ID of the application's registration with
@@ -231,6 +217,17 @@ variable "{{.AuthVar}}_client_id" {
   type        = map(string)
   default = {
 {{.EmptyEnvStrings}}
+  }
+}
+
+variable "{{.AuthVar}}_group_lookup" {
+  description = "How far the {{.Auth.Name}} sign-in's groups read reaches ({{.GroupLookup.Name}}, {{.GroupLookup.Declaration}}): direct reads the Google Groups the person is a direct member of; nested climbs from those to the groups they are in, level by level, for a directory that nests its role groups. The read runs with the person's own sign-in token through the Cloud Identity Groups API, which 1-org enables in the environment project."
+  type        = string
+  default     = "{{.Auth.GroupLookupDefault}}"
+
+  validation {
+    condition     = contains(["direct", "nested"], var.{{.AuthVar}}_group_lookup)
+    error_message = "{{.AuthVar}}_group_lookup is direct or nested."
   }
 }
 

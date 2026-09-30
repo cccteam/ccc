@@ -96,30 +96,24 @@ type view struct {
 	// and the stack the variables, the outputs and the hand steps for them. A password
 	// auth has none of that, and its stack carries the cookie key alone.
 	Directory bool
-	// GoogleDirectory reports a Google directory sign-in with role membership read
-	// from the directory's groups: the runtime identity signs for itself as the
-	// administrator (keyless domain-wide delegation), which the stack grants.
-	GoogleDirectory bool
 	// AuthVar is the stem of the auth's placement variables: <auth>_oidc.
 	AuthVar string
 	// RoutesDir is the directory of the file registering the callback, empty without one.
 	RoutesDir string
 	// The variables by role, for the templates that name them.
-	ServiceName      *derive.Variable
-	LoggingProject   *derive.Variable
-	Version          *derive.Variable
-	Port             *derive.Variable
-	ClientID         *derive.Variable
-	ClientSecret     *derive.Variable
-	RedirectURL      *derive.Variable
-	HostedDomain     *derive.Variable
-	GroupPrefix      *derive.Variable
-	AdminCredentials *derive.Variable
-	AdminSubject     *derive.Variable
-	// CookieKeySecret, ClientSecretSecret, AdminCredentialsSecret are the secrets by role.
-	CookieKeySecret        *derive.Secret
-	ClientSecretSecret     *derive.Secret
-	AdminCredentialsSecret *derive.Secret
+	ServiceName    *derive.Variable
+	LoggingProject *derive.Variable
+	Version        *derive.Variable
+	Port           *derive.Variable
+	ClientID       *derive.Variable
+	ClientSecret   *derive.Variable
+	RedirectURL    *derive.Variable
+	HostedDomain   *derive.Variable
+	GroupPrefix    *derive.Variable
+	GroupLookup    *derive.Variable
+	// CookieKeySecret and ClientSecretSecret are the secrets by role.
+	CookieKeySecret    *derive.Secret
+	ClientSecretSecret *derive.Secret
 	// The levels by name.
 	CoreLevel derive.Level
 	DataLevel derive.Level
@@ -475,7 +469,6 @@ func newView(m *derive.Model) (*view, error) {
 	v.GcloudImage, v.OpenTofuImage, v.DockerImage = gcloudImage, openTofuImage, dockerImage
 	v.Auth = &m.Auths[0]
 	v.Directory = v.Auth.OIDC()
-	v.GoogleDirectory = v.Auth.Flavor == googleFlavor && v.Auth.Directory[derive.RoleAdminSubject] != nil
 	v.AuthVar = v.Auth.VariablePrefix()
 	if v.Directory {
 		v.RoutesDir = path.Dir(v.Auth.Callback.File)
@@ -519,8 +512,7 @@ func (v *view) roles() error {
 			{derive.RoleRedirectURL, &v.RedirectURL},
 			{derive.RoleHostedDomain, &v.HostedDomain},
 			{derive.RoleGroupPrefix, &v.GroupPrefix},
-			{derive.RoleAdminCredentials, &v.AdminCredentials},
-			{derive.RoleAdminSubject, &v.AdminSubject},
+			{derive.RoleGroupLookup, &v.GroupLookup},
 		}...)
 	}
 	for _, r := range roles {
@@ -535,16 +527,14 @@ func (v *view) roles() error {
 			v.CookieKeySecret = ptr(s)
 		case derive.RoleClientSecret:
 			v.ClientSecretSecret = ptr(s)
-		case derive.RoleAdminCredentials:
-			v.AdminCredentialsSecret = ptr(s)
 		default:
 		}
 	}
 	if v.CookieKeySecret == nil {
 		return errors.New("the stack needs the cookie key among the secrets")
 	}
-	if v.Directory && (v.ClientSecretSecret == nil || v.AdminCredentialsSecret == nil) {
-		return errors.New("the stack needs the client secret and the admin credentials among the secrets of a directory sign-in")
+	if v.Directory && v.ClientSecretSecret == nil {
+		return errors.New("the stack needs the client secret among the secrets of a directory sign-in")
 	}
 	levels := []struct {
 		name string
@@ -733,6 +723,7 @@ func (v *view) blocks() {
 	}
 	if v.Directory {
 		restated = append(restated,
+			[2]string{v.AuthVar + "_group_lookup", `"` + v.Auth.GroupLookupDefault + `"`},
 			[2]string{v.AuthVar + "_group_prefix", `"` + v.Auth.GroupPrefixDefault + `"`},
 			[2]string{v.AuthVar + "_hosted_domain", `"` + v.P.HostedDomain + `"`},
 		)
@@ -778,8 +769,6 @@ func (v *view) Purpose(s *derive.Secret) string {
 		return "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
 	case derive.RoleClientSecret:
 		return "OAuth client secret of the application's registration with Google (pairs with " + v.ClientID.Name + ")."
-	case derive.RoleAdminCredentials:
-		return "Service-account key (JSON) with domain-wide delegation for the Admin SDK groups scope, through which the " + v.Auth.Name + " auth reads role groups."
 	default:
 		if s.Variable.Doc != "" {
 			return firstSentence(s.Variable.Doc)
@@ -883,10 +872,6 @@ func (v *view) order(envs []string) {
 	}
 	v.PreviousEnvMap = "{ " + strings.Join(previous, ", ") + " }"
 }
-
-// googleFlavor is the login flavor of a Google OpenID Connect auth, as impulse's reader
-// reports it.
-const googleFlavor = "oidc-google"
 
 // repoFullName is owner/name from a GitHub repository URL, or the placeholder the
 // pipeline reads as a refusal.

@@ -194,14 +194,17 @@ const (
 	RoleFirestoreDatabase Role = "firestore-database"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
-	RoleClientID         Role = "client-id"
-	RoleClientSecret     Role = "client-secret"
-	RoleRedirectURL      Role = "redirect-url"
-	RoleHostedDomain     Role = "hosted-domain"
-	RoleGroupPrefix      Role = "group-prefix"
-	RoleAdminCredentials Role = "admin-credentials"
-	RoleAdminSubject     Role = "admin-subject"
+	RoleClientID     Role = "client-id"
+	RoleClientSecret Role = "client-secret"
+	RoleRedirectURL  Role = "redirect-url"
+	RoleHostedDomain Role = "hosted-domain"
+	RoleGroupPrefix  Role = "group-prefix"
+	RoleGroupLookup  Role = "group-lookup"
 )
+
+// defaultGroupLookup is how far a sign-in's groups read reaches when the development
+// environment template does not say: the groups the person is a direct member of.
+const defaultGroupLookup = "direct"
 
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
@@ -216,7 +219,7 @@ func (r Role) Derived() bool {
 // Placed reports a role whose value is a placement variable.
 func (r Role) Placed() bool {
 	switch r {
-	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleAdminSubject:
+	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup:
 		return true
 	default:
 		return false
@@ -226,7 +229,7 @@ func (r Role) Placed() bool {
 // PerEnvironment reports a placed role whose value differs per environment (a
 // registration in the environment's project) rather than once per organization.
 func (r Role) PerEnvironment() bool {
-	return r == RoleClientID || r == RoleAdminSubject
+	return r == RoleClientID
 }
 
 // ConstructionTime reports a directory role the session library reads when the auth is
@@ -288,13 +291,12 @@ var wellKnown = map[string]Role{
 
 // directoryRoles maps the fields of an auth's Directory struct to their roles.
 var directoryRoles = map[string]Role{
-	"ClientID":         RoleClientID,
-	"ClientSecret":     RoleClientSecret,
-	"RedirectURL":      RoleRedirectURL,
-	"HostedDomain":     RoleHostedDomain,
-	"GroupPrefix":      RoleGroupPrefix,
-	"AdminCredentials": RoleAdminCredentials,
-	"AdminSubject":     RoleAdminSubject,
+	"ClientID":     RoleClientID,
+	"ClientSecret": RoleClientSecret,
+	"RedirectURL":  RoleRedirectURL,
+	"HostedDomain": RoleHostedDomain,
+	"GroupPrefix":  RoleGroupPrefix,
+	"GroupLookup":  RoleGroupLookup,
 }
 
 // cookieKeyField is the data-level field that signs session cookies, by the skeleton's
@@ -367,6 +369,9 @@ type Auth struct {
 	// GroupPrefixDefault is the group prefix the development environment template sets,
 	// or empty.
 	GroupPrefixDefault string
+	// GroupLookupDefault is how far the sign-in's groups read reaches, direct or nested:
+	// what the development environment template sets, or direct.
+	GroupLookupDefault string
 }
 
 // OIDC reports whether the auth signs in through a directory (an OpenID Connect

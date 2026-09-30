@@ -205,8 +205,8 @@ locals {
     {{.ClientID.Name}} = var.{{.AuthVar}}_client_id[var.environment]
     # {{.RedirectURL.Declaration}}: built from the canonical hostname.
     {{.RedirectURL.Name}} = local.redirect_url
-    # {{.AdminSubject.Declaration}}: the administrator the groups read impersonates.
-    {{.AdminSubject.Name}} = var.{{.AuthVar}}_admin_subject[var.environment]
+    # {{.GroupLookup.Declaration}}: how far the groups read reaches, direct or nested.
+    {{.GroupLookup.Name}} = var.{{.AuthVar}}_group_lookup
   }
 {{- end}}
 

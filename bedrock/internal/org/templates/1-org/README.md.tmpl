@@ -104,7 +104,7 @@ want Essential Contacts registered. Addresses must be in one of
 
 | Set | APIs |
 |---|---|
-| `app` | artifactregistry, cloudbuild, cloudscheduler, cloudtasks, cloudtrace, compute, iam, iamcredentials, logging, monitoring, run, secretmanager, spanner, sts |
+| `app` | admin, artifactregistry, cloudbuild, cloudidentity, cloudscheduler, cloudtasks, cloudtrace, compute, iam, iamcredentials, logging, monitoring, run, secretmanager, spanner, sts |
 | `shr` | artifactregistry, iam, iamcredentials, logging, monitoring, secretmanager, sts |
 | `net` | certificatemanager, compute, dns, iam, logging, monitoring |
 | `spn` | iam, logging, monitoring, spanner |

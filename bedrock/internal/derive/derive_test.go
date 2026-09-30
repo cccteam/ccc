@@ -60,14 +60,13 @@ func TestDerive(t *testing.T) {
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
 				"APP_STAFF_OIDC_CLIENT_SECRET staff-oidc-client-secret pkg/config/data.go dataConfig.StaffClientSecret",
-				"APP_STAFF_OIDC_ADMIN_CREDENTIALS staff-oidc-admin-credentials pkg/config/data.go dataConfig.StaffAdminCredentials",
 			},
 			wantCore: []string{varVersion, varServiceName, varLoggingProject},
 			wantData: []string{
 				varDatabaseProject, varDatabaseInstance, varDatabaseName,
 				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
 				"APP_STAFF_OIDC_CLIENT_ID", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_REDIRECT_URL", "APP_STAFF_OIDC_HOSTED_DOMAIN",
-				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_ADMIN_CREDENTIALS", "APP_STAFF_OIDC_ADMIN_SUBJECT",
+				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_GROUP_LOOKUP",
 				varAssetsBucket, varTasksQueue, varFirestoreDatabase,
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", varJobsJob},
@@ -370,7 +369,7 @@ func TestSecretName(t *testing.T) {
 		want     string
 	}{
 		{name: "the APP_ prefix is dropped", variable: "APP_COOKIE_KEY", want: "cookie-key"},
-		{name: "a longer name", variable: "APP_STAFF_OIDC_ADMIN_CREDENTIALS", want: "staff-oidc-admin-credentials"},
+		{name: "a longer name", variable: "APP_STAFF_OIDC_CLIENT_SECRET", want: "staff-oidc-client-secret"},
 		{name: "no prefix", variable: "TWILIO_AUTH_TOKEN", want: "twilio-auth-token"},
 	}
 	for _, tt := range tests {
@@ -438,11 +437,11 @@ func TestIsSecret(t *testing.T) {
 	}{
 		{name: "a key", variable: "APP_COOKIE_KEY", want: true},
 		{name: "a secret", variable: "APP_STAFF_OIDC_CLIENT_SECRET", want: true},
-		{name: "credentials", variable: "APP_STAFF_OIDC_ADMIN_CREDENTIALS", want: true},
+		{name: "credentials", variable: "APP_MAIL_CREDENTIALS", want: true},
 		{name: "a token", variable: "APP_TWILIO_AUTH_TOKEN", want: true},
 		{name: "a password", variable: "DB_PASSWORD", want: true},
 		{name: "a client id", variable: "APP_STAFF_OIDC_CLIENT_ID", want: false},
-		{name: "a subject", variable: "APP_STAFF_OIDC_ADMIN_SUBJECT", want: false},
+		{name: "a subject", variable: "APP_MAIL_SUBJECT", want: false},
 		{name: "a key id", variable: "APP_KEY_ID", want: false},
 	}
 	for _, tt := range tests {
