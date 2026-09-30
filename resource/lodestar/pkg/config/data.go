@@ -127,13 +127,12 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		LoginURL:       "/portal/login",
 		Domains:        conf.Domains,
 		Directory: members.Directory{
-			ClientID:         env.MembersClientID,
-			ClientSecret:     env.MembersClientSecret,
-			RedirectURL:      env.MembersRedirectURL,
-			HostedDomain:     env.MembersHostedDomain,
-			GroupPrefix:      env.MembersGroupPrefix,
-			AdminCredentials: env.MembersAdminCredentials,
-			AdminSubject:     env.MembersAdminSubject,
+			ClientID:     env.MembersClientID,
+			ClientSecret: env.MembersClientSecret,
+			RedirectURL:  env.MembersRedirectURL,
+			HostedDomain: env.MembersHostedDomain,
+			GroupPrefix:  env.MembersGroupPrefix,
+			GroupLookup:  env.MembersGroupLookup,
 		},
 	})
 	if err != nil {
@@ -242,16 +241,15 @@ type dataConfig struct {
 	CookieKey string `env:"APP_COOKIE_KEY"`
 	// The members auth's directory registration (pkg/auth/members): the application's client
 	// credentials, the callback Google returns the browser to, the Workspace domain logins are
-	// restricted to, the prefix of the Google Groups that carry roles, and the Admin SDK service
-	// account (a key with domain-wide delegation, and the admin it impersonates) that reads them.
+	// restricted to, the prefix of the Google Groups that carry roles, and how far the groups
+	// lookup reaches: direct (the default), or nested for a directory that nests its role groups.
 	// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.
-	MembersClientID         string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
-	MembersClientSecret     string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
-	MembersRedirectURL      string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
-	MembersHostedDomain     string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
-	MembersGroupPrefix      string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
-	MembersAdminCredentials []byte `env:"APP_MEMBERS_OIDC_ADMIN_CREDENTIALS"`
-	MembersAdminSubject     string `env:"APP_MEMBERS_OIDC_ADMIN_SUBJECT"`
+	MembersClientID     string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
+	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
+	MembersRedirectURL  string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
+	MembersHostedDomain string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
+	MembersGroupPrefix  string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
+	MembersGroupLookup  string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
 
 	// UploadDir is the directory the document store keeps mission documents in: the
 	// upload frames stream into it, the file route reads from it, and the resource

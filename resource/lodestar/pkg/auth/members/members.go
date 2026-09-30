@@ -27,7 +27,6 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/session"
-	"github.com/cccteam/session/googlegroups"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 )
@@ -89,11 +88,11 @@ type Directory struct {
 	// <GroupPrefix><role>@<domain> assigns <role>. It is never empty, since it is the only
 	// filter between role groups and the rest of the directory.
 	GroupPrefix string
-	// AdminCredentials is the service-account key (JSON) with domain-wide delegation for
-	// the Admin SDK's groups scope, and AdminSubject the account it impersonates, which
-	// holds a Groups-read privilege. Neither is read under the skipAuth build tag.
-	AdminCredentials []byte
-	AdminSubject     string
+	// GroupLookup is how far the groups lookup reaches: "direct" (the default when empty)
+	// reads the groups the person is a direct member of, and "nested" climbs from those to
+	// the groups they are in, level by level, for a directory that nests its role groups.
+	// It has no effect under the skipAuth build tag, where the lookup is simulated.
+	GroupLookup string
 }
 
 // Auth is the members auth: its permission store and its session manager.
@@ -117,12 +116,14 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "access.Client.WaitReady()")
 	}
 
-	// The directory's groups are the source of role membership, read through the Admin
-	// SDK. Under the session library's skipAuth build tag the lookup is simulated: every
-	// login is in the groups APP_ROLES names.
-	groups, err := googlegroups.NewDirectory(ctx, settings.Directory.AdminCredentials, settings.Directory.AdminSubject)
+	// The directory's groups are the source of role membership, read through the Cloud
+	// Identity Groups API with the person's own sign-in token, as far as the configured
+	// lookup reaches: the groups they are a direct member of, or with the nested lookup
+	// the groups above those too, level by level. Under the session library's skipAuth
+	// build tag the lookup is simulated: every login is in the groups APP_ROLES names.
+	lookup, err := session.ParseGroupLookup(settings.Directory.GroupLookup)
 	if err != nil {
-		return nil, errors.Wrap(err, "googlegroups.NewDirectory()")
+		return nil, errors.Wrap(err, "session.ParseGroupLookup()")
 	}
 
 	oidcAuth, err := session.NewOIDCGoogle[session.NoCustomData, session.NoCustomData](
@@ -132,7 +133,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		// by the group prefix), removing any it does not name, and a login naming no known
 		// role is refused. Hand-assigned roles do not survive it, so nothing in the
 		// application assigns roles in this store.
-		session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, groups),
+		session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, lookup),
 		settings.CookieKey,
 		settings.Directory.ClientID,
 		settings.Directory.ClientSecret,
