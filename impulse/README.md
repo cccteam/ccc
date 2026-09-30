@@ -375,14 +375,25 @@ restricted to) in place of the issuer, so the registration is `APP_<NAME>_OIDC_C
 subject claim (`Sub`, `Hd`) in place of Azure's tenant and object identifiers; and no
 front-channel logout, since Google has no directory-initiated logout. The rewrite is
 textual, so the brief says to read the package over. With `--authority directory` the
-directory's authority is its Groups: the package constructs the Admin SDK adapter
-(`googlegroups.NewDirectory`) and hands `session.GoogleRoleSync` the group prefix its
-role groups carry, so a group `<prefix><role>@<domain>` assigns `<role>`; the
-registration gains `_GROUP_PREFIX`, `_ADMIN_CREDENTIALS` (a service-account key with
-domain-wide delegation), and `_ADMIN_SUBJECT` (the admin it impersonates). Under the
-session library's `skipAuth` tag the lookup is simulated: every login is in the groups
-`APP_ROLES` names, so the group prefix is set from the start and the Admin SDK account is
-left for the registration.
+directory's authority is its Google Groups: a group named `<prefix><role>@<domain>`
+assigns `<role>`. The groups are read through Google's Cloud Identity Groups API with the
+signing-in person's own access token, so the sign-in asks for one extra OAuth scope, the
+groups read-only scope, beside the identity scopes. No service account, key, domain-wide
+delegation, or administrator role is involved. The Cloud Identity API must be enabled in
+the Google Cloud project that owns the OAuth client (the one `_CLIENT_ID` names), or every
+sign-in fails. The package parses the lookup setting with
+`session.ParseGroupLookup(settings.Directory.GroupLookup)` and hands
+`session.GoogleRoleSync` the group prefix and that lookup. The registration gains
+`_GROUP_PREFIX` (the `<prefix>`) and `_GROUP_LOOKUP`. `_GROUP_LOOKUP` is how far the
+lookup reaches: `direct` (the default when unset) reads the groups the person is a direct
+member of; `nested` climbs from those to the groups they are in, level by level, for a
+directory that nests its role groups (a team group made a member of a role group). Google
+leaves out a group whose member list the person may not view, so that one membership does
+not count, and under `nested` the climb cannot go through it. That is not an error: the
+sign-in goes on with the groups Google does return. Under the session library's `skipAuth`
+tag the lookup is simulated: every login is in the groups `APP_ROLES` names and
+`_GROUP_LOOKUP` has no effect, but the group prefix is still set from the start, since
+`session.NewOIDCGoogle` refuses an empty one.
 
 ```sh
 impulse add auth partners --agent

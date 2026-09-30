@@ -99,7 +99,7 @@ const (
 // registrationVar is one variable of an OIDC auth's directory registration: the Settings
 // field it fills, the suffix of its environment variable, APP_<NAME>_OIDC_<suffix>, the
 // field's Go type when it is not a string, and whether the value is a credential: the
-// client secret and the Admin SDK key carry secret:"true" beside the env tag, the marker
+// client secret carries secret:"true" beside the env tag, the marker
 // bedrock reads to serve the variable from Secret Manager (a plain name that sounds like
 // a credential is refused there until the author says which it is).
 type registrationVar struct {
@@ -110,12 +110,12 @@ type registrationVar struct {
 // registration lists the directory registration an OIDC flavor reads from the
 // environment: Azure names its issuer, Google (one issuer) the Workspace domain logins
 // are restricted to, and a directory-run Google auth the group prefix its role groups
-// carry and the Admin SDK service account that reads them.
+// carry and how far its groups lookup reaches (direct, or nested).
 func (au Auth) registration() []registrationVar {
 	if au.Flavor == FlavorOIDCGoogle {
 		vars := []registrationVar{{"ClientID", "CLIENT_ID", "", false}, {"ClientSecret", "CLIENT_SECRET", "", true}, {"RedirectURL", "REDIRECT_URL", "", false}, {"HostedDomain", "HOSTED_DOMAIN", "", false}}
 		if au.Authority == AuthorityDirectory {
-			vars = append(vars, registrationVar{"GroupPrefix", "GROUP_PREFIX", "", false}, registrationVar{"AdminCredentials", "ADMIN_CREDENTIALS", "[]byte", true}, registrationVar{"AdminSubject", "ADMIN_SUBJECT", "", false})
+			vars = append(vars, registrationVar{"GroupPrefix", "GROUP_PREFIX", "", false}, registrationVar{"GroupLookup", "GROUP_LOOKUP", "", false})
 		}
 
 		return vars
@@ -460,25 +460,25 @@ const (
 )
 
 // The Google directory authority's forms: the slot over the directory's groups, the
-// groups adapter constructed before the session manager, the registration fields the
-// lookup needs, and the package documentation. swapGoogleAuthority lays them in or takes
-// them out.
+// group lookup parsed before the session manager, the registration fields the lookup
+// needs, and the package documentation. swapGoogleAuthority lays them in or takes them
+// out.
 const (
 	googleDirectorySlot = `		// The directory is the authority for role membership: every login reconciles the
 		// person's roles to the Google Groups the directory places them in (those named
 		// by the group prefix), removing any it does not name, and a login naming no known
 		// role is refused. Hand-assigned roles do not survive it, so nothing in the
 		// application assigns roles in this store.
-		session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, groups),
+		session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, lookup),
 `
-	googleGroupsConstruction = `	// The directory's groups are the source of role membership, read through the Admin
-	// SDK as the runtime identity (keyless domain-wide delegation: the service account
-	// signs for itself as the administrator), or with a service-account key when one is
-	// given. Under the session library's skipAuth build tag the lookup is simulated:
-	// every login is in the groups APP_ROLES names.
-	groups, err := googlegroups.NewDirectory(ctx, settings.Directory.AdminCredentials, settings.Directory.AdminSubject)
+	googleGroupsConstruction = `	// The directory's groups are the source of role membership, read through the Cloud
+	// Identity Groups API with the person's own sign-in token, as far as the configured
+	// lookup reaches: the groups they are a direct member of, or with the nested lookup
+	// the groups above those too, level by level. Under the session library's skipAuth
+	// build tag the lookup is simulated: every login is in the groups APP_ROLES names.
+	lookup, err := session.ParseGroupLookup(settings.Directory.GroupLookup)
 	if err != nil {
-		return nil, errors.Wrap(err, "googlegroups.NewDirectory()")
+		return nil, errors.Wrap(err, "session.ParseGroupLookup()")
 	}
 
 `
@@ -486,18 +486,11 @@ const (
 	// <GroupPrefix><role>@<domain> assigns <role>. It is never empty, since it is the only
 	// filter between role groups and the rest of the directory.
 	GroupPrefix string
-	// AdminSubject is the administrator the groups lookup impersonates through domain-wide
-	// delegation, which holds a Groups-read privilege. On Google Cloud the runtime
-	// identity signs for itself (keyless), so AdminCredentials, a service-account key
-	// (JSON) with domain-wide delegation for the Admin SDK's groups scope, is for a
-	// runtime outside Google Cloud and stays empty otherwise. Neither is read under the
-	// skipAuth build tag.
-	AdminCredentials []byte
-	AdminSubject     string
-`
-	googleSessionImport = `	"github.com/cccteam/session"
-`
-	googleGroupsImport = `	"github.com/cccteam/session/googlegroups"
+	// GroupLookup is how far the groups lookup reaches: "direct" (the default when empty)
+	// reads the groups the person is a direct member of, and "nested" climbs from those to
+	// the groups they are in, level by level, for a directory that nests its role groups.
+	// It has no effect under the skipAuth build tag, where the lookup is simulated.
+	GroupLookup string
 `
 	googleConstructor    = `	oidcAuth, err := session.NewOIDCGoogle[`
 	googleHostedField    = "\tHostedDomain string\n"
@@ -578,15 +571,14 @@ func swapAuthority(text, flavor, authority string) (string, bool) {
 }
 
 // swapGoogleAuthority is swapAuthority for a package already in the Google flavor: the
-// directory-run form reads role membership from the directory's groups, so it constructs
-// the groups adapter, imports its package, and registers the group prefix and the Admin
-// SDK account beside the rest of the registration.
+// directory-run form reads role membership from the directory's groups, so it parses the
+// group lookup before the session manager and registers the group prefix and the lookup
+// beside the rest of the registration.
 func swapGoogleAuthority(text, authority string) (string, bool) {
 	switch {
 	case authority == AuthorityDirectory && strings.Contains(text, applicationSlot):
 		text = strings.Replace(text, applicationSlot, googleDirectorySlot, 1)
 		text = strings.Replace(text, googleConstructor, googleGroupsConstruction+googleConstructor, 1)
-		text = strings.Replace(text, googleSessionImport, googleSessionImport+googleGroupsImport, 1)
 		text = strings.Replace(text, directoryField, directoryField+domainsField, 1)
 		text = strings.Replace(text, googleHostedField, googleHostedField+googleGroupsFields, 1)
 		text = strings.Replace(text, googleDirectoryDoc, googleDirectoryRunDoc, 1)
@@ -596,7 +588,6 @@ func swapGoogleAuthority(text, authority string) (string, bool) {
 	case authority == AuthorityApplication && strings.Contains(text, googleDirectorySlot):
 		text = strings.Replace(text, googleDirectorySlot, applicationSlot, 1)
 		text = strings.Replace(text, googleGroupsConstruction, "", 1)
-		text = strings.Replace(text, googleGroupsImport, "", 1)
 		text = strings.Replace(text, domainsField, "", 1)
 		text = strings.Replace(text, googleGroupsFields, "", 1)
 		text = strings.Replace(text, googleDirectoryRunDoc, googleDirectoryDoc, 1)
@@ -890,7 +881,7 @@ func (au Auth) oidcConstruction(rel string, edited []byte, statements string, ch
 		if au.Flavor == FlavorOIDCGoogle {
 			comment = fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the application's client\n// credentials, the callback Google returns the browser to, and the Workspace domain logins\n// are restricted to. Under the session library's skipAuth build tag only %s are read.\n", au.Name, au.Name, au.simulatedReads())
 			if au.Authority == AuthorityDirectory {
-				comment = fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the application's client\n// credentials, the callback Google returns the browser to, the Workspace domain logins are\n// restricted to, the prefix of the Google Groups that carry roles, and the Admin SDK service\n// account (a key with domain-wide delegation, and the admin it impersonates) that reads them.\n// Under the session library's skipAuth build tag only %s are read.\n", au.Name, au.Name, au.simulatedReads())
+				comment = fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the application's client\n// credentials, the callback Google returns the browser to, the Workspace domain logins are\n// restricted to, the prefix of the Google Groups that carry roles, and how far the groups\n// lookup reaches: direct (the default), or nested for a directory that nests its role groups.\n// Under the session library's skipAuth build tag only %s are read.\n", au.Name, au.Name, au.simulatedReads())
 			}
 		}
 		var directory strings.Builder
@@ -976,7 +967,7 @@ func (au Auth) writeEnvTemplate(a *app.App, ch *Change) error {
 	if au.Flavor == FlavorOIDCGoogle {
 		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy;\n# a script following the callback (a curl walkthrough) uses the server's own host and port.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n# APP_%[1]s_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the\n# simulated directory presents it too, so it is set in development.\nexport APP_%[1]s_OIDC_HOSTED_DOMAIN=example.com\n", upper, au.Name)
 		if au.Authority == AuthorityDirectory {
-			fmt.Fprintf(&b, "# APP_%[1]s_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>\n# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),\n# so it is set in development.\nexport APP_%[1]s_OIDC_GROUP_PREFIX=%[2]s-\n# The administrator the groups lookup impersonates through domain-wide delegation. On Google\n# Cloud the runtime identity signs for itself, keyless; elsewhere a service-account key with\n# delegation for the groups scope goes in ADMIN_CREDENTIALS. Unread under the simulated directory.\n# export APP_%[1]s_OIDC_ADMIN_SUBJECT=\n# export APP_%[1]s_OIDC_ADMIN_CREDENTIALS=\n", upper, au.Name)
+			fmt.Fprintf(&b, "# APP_%[1]s_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>\n# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),\n# so it is set in development.\nexport APP_%[1]s_OIDC_GROUP_PREFIX=%[2]s-\n# APP_%[1]s_OIDC_GROUP_LOOKUP is how far the groups lookup reaches: direct (the default when\n# unset) reads the groups the person is a direct member of; nested climbs from those to the\n# groups they are in, level by level, for a directory that nests its role groups. The lookup\n# runs with the person's own sign-in token. No effect under the simulated directory.\n# export APP_%[1]s_OIDC_GROUP_LOOKUP=direct\n", upper, au.Name)
 		}
 	} else {
 		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_ISSUER_URL=\n# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy;\n# a script following the callback (a curl walkthrough) uses the server's own host and port.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n", upper, au.Name)
@@ -1044,7 +1035,7 @@ func (au Auth) oidcMeaning() string {
 	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable %s; cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. Its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), anchor, au.Name, au.Name, au.Pascal(), au.Name, directory)
 	switch {
 	case au.Authority == AuthorityDirectory && au.Flavor == FlavorOIDCGoogle:
-		fmt.Fprintf(&b, "Role membership is the directory's (`session.GoogleRoleSync`): every login reconciles the person's roles to the Google Groups the directory places them in, a group named `<prefix><role>@<domain>` assigning `<role>`, and removes any role no group names; a login in no role group is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory's groups assign them. The groups are read through the Admin SDK (`googlegroups.NewDirectory`) as the runtime identity, which signs for itself as the administrator it impersonates through domain-wide delegation (keyless; grant the service account delegation for the groups scope in the Workspace admin console and `roles/iam.serviceAccountTokenCreator` on itself, which the stack does), or with a service-account key outside Google Cloud; under the session library's `skipAuth` tag the lookup is simulated and `APP_ROLES` names the groups every login is in. Name every role in lowercase: the groups assign roles by lowercase name. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
+		fmt.Fprintf(&b, "Role membership is the directory's (`session.GoogleRoleSync`): every login reconciles the person's roles to the Google Groups the directory places them in, a group named `<prefix><role>@<domain>` assigning `<role>`, and removes any role no group names; a login in no role group is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory's groups assign them. The groups are read through the Cloud Identity Groups API with the person's own sign-in token (the sign-in asks for the groups read-only scope beside the identity scopes; no service account, key, or delegation is involved, and the Cloud Identity API must be enabled in the Google Cloud project that owns the OAuth client). `APP_%s_OIDC_GROUP_LOOKUP` sets how far the lookup reaches: `direct` (the default) reads the groups the person is a direct member of; `nested` climbs from those to the groups they are in, level by level, for a directory that nests its role groups. A group the person may not view is not seen, which costs that one membership and never the sign-in. Under the session library's `skipAuth` tag the lookup is simulated and `APP_ROLES` names the groups every login is in. Name every role in lowercase: the groups assign roles by lowercase name. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, strings.ToUpper(au.Name), au.Name)
 	case au.Authority == AuthorityDirectory:
 		fmt.Fprintf(&b, "Role membership is the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory assigns them. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
 	default:
@@ -1085,7 +1076,7 @@ func (au Auth) bindItem() string {
 // registered with its directory.
 func (au Auth) registrationToFill() string {
 	if au.Flavor == FlavorOIDCGoogle && au.Authority == AuthorityDirectory {
-		return "the client and secret, the hosted domain (the Workspace domain logins are restricted to, which the simulated directory presents too, so it is set from the start), the group prefix (set from the start too, since the simulated groups carry it), and the Admin SDK service account that reads the groups"
+		return "the client and secret, the hosted domain (the Workspace domain logins are restricted to, which the simulated directory presents too, so it is set from the start), the group prefix (set from the start too, since the simulated groups carry it), and the group lookup (direct unless the directory nests its role groups)"
 	}
 	if au.Flavor == FlavorOIDCGoogle {
 		return "the client, secret, and hosted domain (the Workspace domain logins are restricted to, which the simulated directory presents too, so it is set from the start)"

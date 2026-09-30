@@ -253,8 +253,9 @@ claims the authority (session.RoleSync: every login reconciles the person's role
 and removes what they do not name), "application" keeps role assignment in the application
 (session.DisableRoleSync). There is no default, because the wrong answer deletes
 hand-assigned roles at the next login. For Google the directory's authority is its Groups
-(session.GoogleRoleSync over the Admin SDK), read by a group prefix the registration names;
-under skipAuth the lookup is simulated from APP_ROLES.
+(session.GoogleRoleSync over the Cloud Identity Groups API, with the person's own sign-in
+token), read by a group prefix the registration names, as far as the group lookup it names
+reaches (direct, or nested); under skipAuth the lookup is simulated from APP_ROLES.
 
 Binding a site or an outlet to the new auth, provisioning its roles, its development
 identities, and the tests that prove its people are strangers to the other auths are

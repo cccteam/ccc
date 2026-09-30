@@ -477,7 +477,7 @@ func TestAuthApply(t *testing.T) {
 				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted and the constructor rewritten for Google (session.NewOIDCGoogle: a hosted domain in place of an issuer, a subject-keyed user anchor, no front-channel logout); read it over, since the rewrite is textual, role membership the directory's (session.GoogleRoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
 				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
-				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, _HOSTED_DOMAIN, _GROUP_PREFIX, _ADMIN_CREDENTIALS, and _ADMIN_SUBJECT",
+				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, _HOSTED_DOMAIN, _GROUP_PREFIX, and _GROUP_LOOKUP",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
 				".envrc.template: APP_USERNAME and APP_ROLES for the simulated directory, and the partners auth's APP_PARTNERS_OIDC_* registration, to fill in",
@@ -488,12 +488,12 @@ func TestAuthApply(t *testing.T) {
 				t.Helper()
 				pkg := read(t, a, "pkg/auth/partners/partners.go")
 				for _, want := range []string{
-					"\t\"github.com/cccteam/session\"\n\t\"github.com/cccteam/session/googlegroups\"\n",
-					"groups, err := googlegroups.NewDirectory(ctx, settings.Directory.AdminCredentials, settings.Directory.AdminSubject)",
-					"session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, groups),",
+					"\t\"github.com/cccteam/session\"\n",
+					"lookup, err := session.ParseGroupLookup(settings.Directory.GroupLookup)",
+					"session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, lookup),",
 					"\tDomains session.DomainsProvider\n",
 					"\tHostedDomain string\n\t// GroupPrefix is the local-part prefix",
-					"\tAdminCredentials []byte\n\tAdminSubject     string\n}",
+					"\tGroupLookup string\n}",
 					"Role membership is the\n// directory's (session.GoogleRoleSync)",
 					"only RedirectURL,\n// HostedDomain, and GroupPrefix are read",
 				} {
@@ -501,7 +501,7 @@ func TestAuthApply(t *testing.T) {
 						t.Errorf("partners.go lacks %q:\n%s", want, pkg)
 					}
 				}
-				for _, absent := range []string{"session.DisableRoleSync(),", "session.RoleSync(", "Azure", "IssuerURL"} {
+				for _, absent := range []string{"session.DisableRoleSync(),", "session.RoleSync(", "Azure", "IssuerURL", "googlegroups", "AdminSubject"} {
 					if strings.Contains(pkg, absent) {
 						t.Errorf("partners.go still has %q", absent)
 					}
@@ -511,9 +511,9 @@ func TestAuthApply(t *testing.T) {
 				}
 				config := read(t, a, "pkg/config/data.go")
 				for _, want := range []string{
-					"\t\t\tHostedDomain:     env.PartnersHostedDomain,\n\t\t\tGroupPrefix:      env.PartnersGroupPrefix,\n\t\t\tAdminCredentials: env.PartnersAdminCredentials,\n\t\t\tAdminSubject:     env.PartnersAdminSubject,\n\t\t},",
-					"\tPartnersAdminCredentials []byte `env:\"APP_PARTNERS_OIDC_ADMIN_CREDENTIALS\" secret:\"true\"`\n",
-					"\tPartnersGroupPrefix      string `env:\"APP_PARTNERS_OIDC_GROUP_PREFIX\"`\n",
+					"\t\t\tHostedDomain: env.PartnersHostedDomain,\n\t\t\tGroupPrefix:  env.PartnersGroupPrefix,\n\t\t\tGroupLookup:  env.PartnersGroupLookup,\n\t\t},",
+					"\tPartnersGroupLookup  string `env:\"APP_PARTNERS_OIDC_GROUP_LOOKUP\"`\n",
+					"\tPartnersGroupPrefix  string `env:\"APP_PARTNERS_OIDC_GROUP_PREFIX\"`\n",
 					"// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.\n",
 				} {
 					if !strings.Contains(config, want) {
@@ -521,7 +521,7 @@ func TestAuthApply(t *testing.T) {
 					}
 				}
 				env := read(t, a, ".envrc.template")
-				for _, want := range []string{"export APP_PARTNERS_OIDC_HOSTED_DOMAIN=example.com\n", "export APP_PARTNERS_OIDC_GROUP_PREFIX=partners-\n", "# export APP_PARTNERS_OIDC_ADMIN_CREDENTIALS=\n", "# export APP_PARTNERS_OIDC_ADMIN_SUBJECT=\n", "only the redirect URL, the hosted domain, and the group prefix below is read"} {
+				for _, want := range []string{"export APP_PARTNERS_OIDC_HOSTED_DOMAIN=example.com\n", "export APP_PARTNERS_OIDC_GROUP_PREFIX=partners-\n", "# export APP_PARTNERS_OIDC_GROUP_LOOKUP=direct\n", "only the redirect URL, the hosted domain, and the group prefix below is read"} {
 					if !strings.Contains(env, want) {
 						t.Errorf(".envrc.template lacks %q:\n%s", want, env)
 					}
