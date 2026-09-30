@@ -102,7 +102,10 @@ stack reads: `1-org/`, `2-env/<env>/`, `2-env/<previous env>/`, `2-shr/`.
 
 Runs every build and deploy; never writes infrastructure. On the environment
 project: `roles/serviceusage.serviceUsageConsumer`, `roles/run.developer`,
-`roles/logging.logWriter`, `roles/cloudbuild.builds.builder`. Bounded grants:
+`roles/logging.logWriter`, `roles/cloudbuild.builds.builder`, and
+`runJobPolicyAdmin` (`1-org`'s custom role: reads and sets the IAM policy of
+Cloud Run jobs, so `bedrock deploy jobs` can copy the template job's grant onto
+the job it makes for each build of an application's job process). Bounded grants:
 `roles/storage.objectCreator` on the records bucket;
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
 `var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; in tst
@@ -207,7 +210,7 @@ the layers that publish them:
 
 | Layer | Output | Used for |
 |---|---|---|
-| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role` | everything |
+| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role`, `run_job_policy_admin_role` | everything |
 | `2-shr` | `repository_names` | map of application code to repository ID; the `repositories_registered` warning |
 | `2-spn` | `project_id`, `instance_name` | the shared instance for stg and prd (project falls back to `1-org`'s) |
 | `2-net` | `shared_vpc_id` | null today; gates `compute.networkUser` |

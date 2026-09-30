@@ -62,5 +62,6 @@ locals {
   custom_roles = {
     secretContainerAdmin = google_organization_iam_custom_role.secret_container_admin.id
     secretOperator       = google_organization_iam_custom_role.secret_operator.id
+    runJobPolicyAdmin    = google_organization_iam_custom_role.run_job_policy_admin.id
   }
 }

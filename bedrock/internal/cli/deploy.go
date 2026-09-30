@@ -167,7 +167,9 @@ func newDeployJobs(d deps) *cobra.Command {
 		Long: `jobs makes this build's job for the job process (cmd/jobs): a copy of the template job the stack
 owns (named by the stack's _JOBS_JOB; never run, never deployed to), named <template>-<version key>
 (v0.1.15 gives v0-1-15) and put on this build's image with the pipeline's labels through the Cloud
-Run API. The image the build made names that job to the site (APP_JOBS_JOB), so the revision this
+Run API, under the template's IAM policy (the stack grants the site's identity run.invoker on the
+template; the copy is what lets the site start this job). The image the build made names that job
+to the site (APP_JOBS_JOB), so the revision this
 build deploys starts a job of its own code, and a traffic rollback to an earlier revision starts
 that revision's job. Only the running service starts the job process: the pipeline never runs it,
 a hook never starts it, and a schedule calls an endpoint on the service, which starts it. The

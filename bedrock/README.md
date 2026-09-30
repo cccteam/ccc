@@ -146,9 +146,9 @@ site's project roles and, when it constructs the data level, the database user g
 accessor on that level's secrets, its timeout, retries and resources as stack variables,
 and, when the site's config declares `APP_JOBS_JOB`, that variable baked into each
 build's image as the name of that build's job, with `run.invoker` for the site's
-identity on the builds' jobs by name prefix, so the running service, and only it, starts
-the job of its own build through the Cloud Run API (a schedule calls an endpoint on the
-service; the pipeline runs only the migrate job); a config variable
+identity on the template job, copied by the pipeline onto each build's job, so the
+running service, and only it, starts the job of its own build through the Cloud Run API
+(a schedule calls an endpoint on the service; the pipeline runs only the migrate job); a config variable
 `APP_ASSETS_BUCKET` becomes a Cloud Storage bucket in the primary region, named to the
 processes that construct its level, with `objectUser` for the site and, when it
 constructs that level, the job process; a config variable `APP_TASKS_QUEUE` becomes a
@@ -294,7 +294,8 @@ thing one step hands the next. In order:
   placement's seed list names.
 - `deploy jobs`: makes this build's job for the job process (`cmd/jobs`): a copy of the
   stack's template job (`_JOBS_JOB`) named after it with the build's version, on this
-  build's image with the pipeline's labels, and does not run it; the image the build made
+  build's image with the pipeline's labels and the template's IAM policy (the site's
+  `run.invoker`), and does not run it; the image the build made
   names that job to the site (`APP_JOBS_JOB`), so the revision starts the job of its own
   build and a traffic rollback starts the earlier one. Rendered into the pipeline only
   when the application has a job process, after the migrations.

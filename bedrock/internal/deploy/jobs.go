@@ -20,9 +20,11 @@ import (
 // build deploys starts a job of its own code, and a traffic rollback to an earlier
 // revision starts that revision's job. The pipeline never runs it: only the running
 // service starts the job process. A build of a version this environment deployed before
-// updates the job it made then, the same code. After the migrations, so a run the service
-// starts from here on sees the migrated schema; before the service, so the job stands
-// when its revision serves. A torn-down pull-request environment has nothing to make.
+// updates the job it made then, the same code. The template's IAM policy goes with it:
+// the stack grants the site's identity run.invoker on the template, and the copy is what
+// lets the site start the build's job. After the migrations, so a run the service starts
+// from here on sees the migrated schema; before the service, so the job stands when its
+// revision serves. A torn-down pull-request environment has nothing to make.
 func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -77,8 +79,51 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 		return err
 	}
 	fmt.Fprintf(out, "Job %s %s: the revision this build deploys starts it through the Cloud Run API; the pipeline does not run it.\n", shortName(name), verb)
+	starters, err := copyPolicy(ctx, run, template, name)
+	if err != nil {
+		return err
+	}
+	if starters == "" {
+		fmt.Fprintf(out, "Job %s has no starter: the template's IAM policy grants nothing. The stack grants run.invoker on the template to the site's identity when the site declares the job variable.\n", shortName(name))
+	} else {
+		fmt.Fprintf(out, "Job %s may be started by %s, as the template's IAM policy says.\n", shortName(name), starters)
+	}
 
 	return nil
+}
+
+// copyPolicy puts the template job's IAM policy on the build's job, bindings and version,
+// under the etag of the job's own policy, and answers who holds what on it (role by role,
+// its members), or empty when the template grants nothing.
+func copyPolicy(ctx context.Context, run Run, template, name string) (string, error) {
+	source, err := run.GetIamPolicy(ctx, template)
+	if err != nil {
+		return "", err
+	}
+	current, err := run.GetIamPolicy(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	bindings, _ := source[keyBindings].([]any)
+	policy := map[string]any{keyBindings: bindings, keyEtag: current[keyEtag]}
+	if version, ok := source["version"]; ok {
+		policy["version"] = version
+	}
+	if _, err := run.SetIamPolicy(ctx, name, policy); err != nil {
+		return "", err
+	}
+	var holders []string
+	for _, entry := range bindings {
+		binding, _ := entry.(map[string]any)
+		members, _ := binding["members"].([]any)
+		names := make([]string, 0, len(members))
+		for _, member := range members {
+			names = append(names, fmt.Sprint(member))
+		}
+		holders = append(holders, strings.Join(names, ", ")+" ("+text(binding, "role")+")")
+	}
+
+	return strings.Join(holders, "; "), nil
 }
 
 // buildJob names the template job and this build's job, as the Cloud Run API names them,

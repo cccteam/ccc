@@ -58,3 +58,22 @@ resource "google_organization_iam_custom_role" "secret_operator" {
     "secretmanager.versions.list",
   ]
 }
+
+# Cloud Run job policies for the deploy pipeline. bedrock deploy jobs makes a
+# job per build for an application's job process and copies the template job's
+# IAM policy onto it, so the site's identity may start the job of its own build.
+# Setting a job's policy is run.jobs.setIamPolicy, which roles/run.developer
+# lacks and roles/run.admin carries together with the policy of every service,
+# which the pipeline has no business setting. Read and set the policy of a job,
+# nothing else; 2-env grants it to each application's deploy identity beside
+# roles/run.developer.
+resource "google_organization_iam_custom_role" "run_job_policy_admin" {
+  org_id      = local.org_id
+  role_id     = "runJobPolicyAdmin"
+  title       = "Cloud Run Job Policy Admin"
+  description = "Reads and sets the IAM policy of Cloud Run jobs, and nothing else about them."
+  permissions = [
+    "run.jobs.getIamPolicy",
+    "run.jobs.setIamPolicy",
+  ]
+}

@@ -302,19 +302,18 @@ resource "google_cloud_run_v2_job" "jobs" {
 }
 
 # The site starts the job of its own build through the Cloud Run API as its
-# own identity (APP_JOBS_JOB names it from the image). The builds' jobs
-# are named after the template, so the grant is by name prefix at the project,
-# and never reaches the template itself.
-resource "google_project_iam_member" "app_runs_jobs" {
-  project = local.project_id
-  role    = "roles/run.invoker"
-  member  = local.app_member
-
-  condition {
-    title       = "${local.jobs_job_name} builds only"
-    description = "The job process's jobs, one per build, named after the template job."
-    expression  = "resource.type == \"run.googleapis.com/Job\" && resource.name.startsWith(\"${local.jobs_job}-\")"
-  }
+# own identity (APP_JOBS_JOB names it from the image). The grant sits on
+# the template, which is never run: bedrock deploy jobs copies the template's
+# IAM policy onto each build's job with its settings, so who may start the job
+# process is decided here and nowhere else. (Cloud Run does not evaluate IAM
+# conditions on a job's name when a job is run, so one grant on the project
+# bounded to the builds' names would grant nothing.)
+resource "google_cloud_run_v2_job_iam_member" "app_runs_jobs" {
+  project  = google_cloud_run_v2_job.jobs.project
+  location = google_cloud_run_v2_job.jobs.location
+  name     = google_cloud_run_v2_job.jobs.name
+  role     = "roles/run.invoker"
+  member   = local.app_member
 
   depends_on = [google_service_account.app]
 }

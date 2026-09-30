@@ -116,9 +116,12 @@ locals {
   ]
 
   # The deploy identity runs every build and deploy and never writes
-  # infrastructure: new revisions, job executions, build logs. Its bounded
-  # grants (records bucket creator, build-time secrets, tst database admin)
-  # are separate resources in identities.tf; writer on its image repository is
+  # infrastructure: new revisions, job executions, build logs, and the jobs it
+  # makes per build for an application's job process, whose IAM policy it
+  # copies from the stack's template job (runJobPolicyAdmin, 1-org's custom
+  # role: run.developer cannot set a job's policy). Its bounded grants
+  # (records bucket creator, build-time secrets, tst database admin) are
+  # separate resources in identities.tf; writer on its image repository is
   # 2-shr's grant (var.pushers there), and Service Account User on the
   # runtime identities is granted where they are created, in the application
   # stack.
@@ -127,6 +130,7 @@ locals {
     "roles/run.developer",
     "roles/logging.logWriter",
     "roles/cloudbuild.builds.builder",
+    local.org.run_job_policy_admin_role,
   ]
 
   # app x role pairs, so for_each can grant several roles per identity.

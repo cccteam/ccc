@@ -36,14 +36,18 @@ func TestJobs(t *testing.T) {
 		build       = `{"id": "b-1", "substitutions": {"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_PR_NUMBER": "7"}}`
 	)
 	wantLabels := map[string]any{"terraform": "true", "application": "harbor", managedByLabel: managedByValue, commitLabel: "deadbeef", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst", prNumberLabel: "7", versionLabel: "v1-2-3"}
+	templateBindings := []any{map[string]any{"role": "roles/run.invoker", "members": []any{"serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com"}}}
+	templatePolicy := map[string]any{keyBindings: templateBindings, "version": float64(1), keyEtag: "etag-of-template"}
 	tests := []struct {
-		name        string
-		env         string
-		run         *fakeRun
-		wantOut     []string
-		wantCreated []string
-		wantPatched bool
-		wantErr     string
+		name         string
+		env          string
+		run          *fakeRun
+		policies     map[string]map[string]any
+		wantOut      []string
+		wantCreated  []string
+		wantPatched  bool
+		wantBindings []any
+		wantErr      string
 	}{
 		{
 			name:    "a torn-down environment does nothing",
@@ -52,18 +56,29 @@ func TestJobs(t *testing.T) {
 			wantOut: []string{tornDown},
 		},
 		{
-			name:        "the build's job is created from the template on this image, named after the version, and not run",
+			name:         "the build's job is created from the template on this image, named after the version, with the template's policy, and not run",
+			env:          environment,
+			run:          newFakeRun(map[string]map[string]any{template: jobsDoc()}),
+			policies:     map[string]map[string]any{template: templatePolicy},
+			wantOut:      []string{"=== Making job [harbor-jobs-v1-2-3] from [harbor-jobs] on this image ===", "Job harbor-jobs-v1-2-3 created: the revision this build deploys starts it through the Cloud Run API; the pipeline does not run it.", "Job harbor-jobs-v1-2-3 may be started by serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com (roles/run.invoker), as the template's IAM policy says."},
+			wantCreated:  []string{jobName},
+			wantBindings: templateBindings,
+		},
+		{
+			name:        "a template that grants nothing leaves the job with no starter",
 			env:         environment,
 			run:         newFakeRun(map[string]map[string]any{template: jobsDoc()}),
-			wantOut:     []string{"=== Making job [harbor-jobs-v1-2-3] from [harbor-jobs] on this image ===", "Job harbor-jobs-v1-2-3 created: the revision this build deploys starts it through the Cloud Run API; the pipeline does not run it."},
+			wantOut:     []string{"Job harbor-jobs-v1-2-3 has no starter: the template's IAM policy grants nothing."},
 			wantCreated: []string{jobName},
 		},
 		{
-			name:        "a version deployed before updates the job it made then",
-			env:         environment,
-			run:         newFakeRun(map[string]map[string]any{template: jobsDoc(), jobName: {keyName: jobName, "template": map[string]any{"template": map[string]any{"containers": []any{map[string]any{"image": "reg/harbor@sha256:older"}}}}}}),
-			wantOut:     []string{"Job harbor-jobs-v1-2-3 updated: the revision this build deploys starts it"},
-			wantPatched: true,
+			name:         "a version deployed before updates the job it made then, policy included",
+			env:          environment,
+			run:          newFakeRun(map[string]map[string]any{template: jobsDoc(), jobName: {keyName: jobName, "template": map[string]any{"template": map[string]any{"containers": []any{map[string]any{"image": "reg/harbor@sha256:older"}}}}}}),
+			policies:     map[string]map[string]any{template: templatePolicy, jobName: {keyBindings: []any{map[string]any{"role": "roles/run.invoker", "members": []any{"serviceAccount:someone-else@tst-project.iam.gserviceaccount.com"}}}, keyEtag: "etag-of-job"}},
+			wantOut:      []string{"Job harbor-jobs-v1-2-3 updated: the revision this build deploys starts it", "may be started by serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com (roles/run.invoker)"},
+			wantPatched:  true,
+			wantBindings: templateBindings,
 		},
 		{
 			name:    "a pipeline without a job process is refused",
@@ -101,6 +116,9 @@ func TestJobs(t *testing.T) {
 			t.Parallel()
 
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: build})
+			for name, policy := range tt.policies {
+				tt.run.policies[name] = policy
+			}
 			var out strings.Builder
 			err := Jobs(t.Context(), &Clients{Run: tt.run.open}, w, &out)
 			if tt.wantErr != "" {
@@ -152,6 +170,19 @@ func TestJobs(t *testing.T) {
 			}
 			if template := tt.run.resources[template]; text(template, "template.template.containers.0.image") == "reg/harbor@sha256:abc" {
 				t.Error("the template job took the image")
+			}
+			if diff := cmp.Diff([]string{jobName}, tt.run.policySets); diff != "" {
+				t.Errorf("policies set mismatch (-want +got):\n%s", diff)
+			}
+			set := tt.run.policies[jobName]
+			if diff := cmp.Diff(tt.wantBindings, set[keyBindings]); diff != "" {
+				t.Errorf("job bindings mismatch (-want +got):\n%s", diff)
+			}
+			if tt.policies[template] != nil && set["version"] != tt.policies[template]["version"] {
+				t.Errorf("job policy version = %v, want the template's %v", set["version"], tt.policies[template]["version"])
+			}
+			if tt.run.policies[template] != nil && tt.run.policies[template][keyEtag] != tt.policies[template][keyEtag] {
+				t.Error("the template's policy was set")
 			}
 		})
 	}

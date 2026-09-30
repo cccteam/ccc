@@ -91,3 +91,8 @@ output "secret_operator_role" {
   description = "Full name of the secretOperator custom organization role: creates secrets and adds versions, never reads one. 2-env grants it on the environment project to its secret_operators."
   value       = google_organization_iam_custom_role.secret_operator.id
 }
+
+output "run_job_policy_admin_role" {
+  description = "Full name of the runJobPolicyAdmin custom organization role: reads and sets the IAM policy of Cloud Run jobs, nothing else. 2-env grants it on the environment project to each application's deploy identity."
+  value       = google_organization_iam_custom_role.run_job_policy_admin.id
+}

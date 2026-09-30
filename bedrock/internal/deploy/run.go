@@ -29,6 +29,9 @@ const (
 	keyTag      = "tag"
 	keyLabels   = "labels"
 	keyTemplate = "template"
+	keyPolicy   = "policy"
+	keyBindings = "bindings"
+	keyEtag     = "etag"
 )
 
 // Run reads and changes Cloud Run services and jobs and follows what it started: the
@@ -56,6 +59,11 @@ type Run interface {
 	CreateJob(ctx context.Context, parent, id string, job map[string]any) (map[string]any, error)
 	// Delete deletes the resource and waits for the deletion.
 	Delete(ctx context.Context, name string) error
+	// GetIamPolicy reads the resource's IAM policy: its bindings, its version and the etag
+	// a SetIamPolicy must carry.
+	GetIamPolicy(ctx context.Context, name string) (map[string]any, error)
+	// SetIamPolicy replaces the resource's IAM policy and answers it as set.
+	SetIamPolicy(ctx context.Context, name string, policy map[string]any) (map[string]any, error)
 }
 
 // apiError is an answer outside 2xx from the API, with its status.
@@ -160,6 +168,14 @@ func (c *cloudRun) Delete(ctx context.Context, name string) error {
 	_, err = c.wait(ctx, op)
 
 	return err
+}
+
+func (c *cloudRun) GetIamPolicy(ctx context.Context, name string) (map[string]any, error) {
+	return c.call(ctx, http.MethodGet, "/v2/"+name+":getIamPolicy", nil)
+}
+
+func (c *cloudRun) SetIamPolicy(ctx context.Context, name string, policy map[string]any) (map[string]any, error) {
+	return c.call(ctx, http.MethodPost, "/v2/"+name+":setIamPolicy", map[string]any{keyPolicy: policy})
 }
 
 func (c *cloudRun) Patch(ctx context.Context, name string, resource map[string]any, fields ...string) (map[string]any, error) {

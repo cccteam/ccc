@@ -113,7 +113,8 @@ from `2-env`'s state.
   build's version (`…-jobs-v0-1-15`), on the build's image, and bakes that
   job's name into the image as the site's `APP_JOBS_JOB`, so a revision starts the
   job of its own build and a traffic rollback starts the earlier one; the site
-  holds `roles/run.invoker` on the builds' jobs by name prefix, at the project.
+  holds `roles/run.invoker` on the template, a grant the pipeline copies onto
+  each build's job with the template's settings.
   Only the running service starts the job process: the pipeline never runs
   it, a hook never starts it, and a schedule calls an endpoint on the service,
   which starts it. The pipeline retires the builds' jobs no revision runs any
@@ -245,8 +246,9 @@ substitutions and this stack's outputs:
   `bedrock deploy service` and `deploy migrate`, which change the image and the
   labels and leave the template's variables, secrets and identity alone: the
   revision template is this stack's. `deploy jobs` makes each build's job
-  for the job process as a copy of the template job on the build's image, and
-  `deploy sweep-jobs` deletes the builds' jobs no revision runs any more.
+  for the job process as a copy of the template job on the build's image, with
+  the template's IAM policy, and `deploy sweep-jobs` deletes the builds' jobs no
+  revision runs any more.
 - One image per release and environment in the one repository,
   `harbor:<release>-<env>` (its commit's tag beside it), carrying the site,
   the migrate command and the job process, with `APP_VERSION` baked in at build.

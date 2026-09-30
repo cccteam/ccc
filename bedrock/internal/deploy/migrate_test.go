@@ -30,10 +30,14 @@ type fakeRun struct {
 	runErr    error
 	// created and deleted are the resource names CreateJob and Delete took, in order.
 	created, deleted []string
+	// policies holds the IAM policy of each resource that has one; policySets are the
+	// resources SetIamPolicy set, in order.
+	policies   map[string]map[string]any
+	policySets []string
 }
 
 func newFakeRun(resources map[string]map[string]any) *fakeRun {
-	return &fakeRun{resources: resources, patched: map[string]map[string]any{}, patches: map[string][]map[string]any{}, fields: map[string][]string{}, fieldsOf: map[string][][]string{}, ran: map[string][]string{}}
+	return &fakeRun{resources: resources, patched: map[string]map[string]any{}, patches: map[string][]map[string]any{}, fields: map[string][]string{}, fieldsOf: map[string][][]string{}, ran: map[string][]string{}, policies: map[string]map[string]any{}}
 }
 
 func (r *fakeRun) open(context.Context) (Run, error) {
@@ -494,4 +498,30 @@ func TestRunHelpers(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (r *fakeRun) GetIamPolicy(_ context.Context, name string) (map[string]any, error) {
+	if _, ok := r.resources[name]; !ok {
+		return nil, errors.Wrap(&apiError{status: 404, method: "GET", path: "/v2/" + name + ":getIamPolicy", message: "not found"}, "fakeRun.GetIamPolicy()")
+	}
+	if policy, ok := r.policies[name]; ok {
+		return policy, nil
+	}
+
+	return map[string]any{keyEtag: "etag-of-" + shortName(name)}, nil
+}
+
+func (r *fakeRun) SetIamPolicy(_ context.Context, name string, policy map[string]any) (map[string]any, error) {
+	if _, ok := r.resources[name]; !ok {
+		return nil, errors.Wrap(&apiError{status: 404, method: "POST", path: "/v2/" + name + ":setIamPolicy", message: "not found"}, "fakeRun.SetIamPolicy()")
+	}
+	set := map[string]any{}
+	for key, value := range policy {
+		set[key] = value
+	}
+	set[keyEtag] = "etag-set-on-" + shortName(name)
+	r.policies[name] = set
+	r.policySets = append(r.policySets, name)
+
+	return set, nil
 }

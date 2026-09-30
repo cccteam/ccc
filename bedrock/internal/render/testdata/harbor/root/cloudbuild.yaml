@@ -20,7 +20,7 @@
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit and pushed (deploy build-image)
 #   RunMigrations             the migrate command as a Cloud Run job, run to completion (deploy migrate)
-#   DeployJobs                the job process's Cloud Run job updated to this image, not run (deploy jobs)
+#   DeployJobs                this build's job for the job process, from the template on this image, not run (deploy jobs)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
 #   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
 #   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)

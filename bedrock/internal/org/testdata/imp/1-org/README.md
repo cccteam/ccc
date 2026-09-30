@@ -47,6 +47,14 @@ the boot project as `imp-org-gbl-tofu`.
   role, granted on each environment project by `2-env` (`secret_operators`):
   an operator creates a container ahead of the release that first reads it
   (`bedrock secret add`) and the application stack adopts it.
+- The custom organization role `runJobPolicyAdmin`: reads and sets the IAM
+  policy of Cloud Run jobs (`run.jobs.getIamPolicy`, `run.jobs.setIamPolicy`)
+  and nothing else. `2-env` grants it to each application's deploy identity
+  beside `roles/run.developer`, which lacks the setting: `bedrock deploy jobs`
+  makes a job per build for the application's job process and copies the
+  template job's policy onto it, so the site's identity may start the job of
+  its own build. `roles/run.admin` would carry that permission together with
+  the policy of every service.
 
 ## Applying
 
@@ -208,3 +216,4 @@ bucket, prefix `1-org`.
 | `project_ids`, `project_numbers` | Project ID and number by environment code. |
 | `secret_container_admin_role` | Full name of the `secretContainerAdmin` role. |
 | `secret_operator_role` | Full name of the `secretOperator` role. |
+| `run_job_policy_admin_role` | Full name of the `runJobPolicyAdmin` role. |
