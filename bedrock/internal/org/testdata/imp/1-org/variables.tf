@@ -278,12 +278,6 @@ variable "required_apis" {
     # storage ones included (the first 3-app apply, 2026-09-25, was refused:
     # "Cloud Resource Manager API has not been used in project ...").
     app = [
-      # The Admin SDK Directory API served the role-groups read before the
-      # sign-in moved to the Cloud Identity Groups API (the first tst sign-in,
-      # 2026-09-26, failed with "Admin SDK API has not been used in project ...
-      # or it is disabled"). It stays enabled until every application is
-      # released on the moved sign-in; then this line goes.
-      "admin.googleapis.com",
       "artifactregistry.googleapis.com",
       "cloudbuild.googleapis.com",
       # The sign-in reads a login's role groups through the Cloud Identity
