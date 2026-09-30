@@ -192,18 +192,19 @@ func sortedByName(docs []map[string]any) []map[string]any {
 }
 
 // deletePullRequestJobs deletes the jobs deploy jobs made for the pull request's builds
-// (the ones carrying its number and a version key, never the template the stack owns) in
-// the region, when its environment goes.
-func deletePullRequestJobs(ctx context.Context, run Run, project, region, app, number string, out io.Writer) error {
+// (the ones named under the template's prefix and carrying the application, its number
+// and a version key; never the template or the migrate job, which the stack owns) in the
+// region, when its environment goes.
+func deletePullRequestJobs(ctx context.Context, run Run, project, region, prefix, app, number string, out io.Writer) error {
 	jobs, err := run.Jobs(ctx, project, region)
 	if err != nil {
 		return err
 	}
 	for _, job := range sortedByName(jobs) {
-		if text(job, "labels."+applicationLabel) != app || text(job, "labels."+pullRequestLabel) != number || text(job, "labels."+versionLabel) == "" {
+		name := text(job, keyName)
+		if !strings.HasPrefix(name, prefix) || text(job, "labels."+applicationLabel) != app || text(job, "labels."+pullRequestLabel) != number || text(job, "labels."+versionLabel) == "" {
 			continue
 		}
-		name := text(job, keyName)
 		if err := run.Delete(ctx, name); err != nil {
 			return err
 		}

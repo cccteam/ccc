@@ -128,9 +128,10 @@ func TestDeletePullRequestJobs(t *testing.T) {
 		jobs + "harbor-pr7-jobs-pr7-def": {keyName: jobs + "harbor-pr7-jobs-pr7-def", "labels": map[string]any{applicationLabel: "harbor", pullRequestLabel: "7", versionLabel: "pr7-def"}},
 		jobs + "harbor-pr8-jobs-pr8-abc": {keyName: jobs + "harbor-pr8-jobs-pr8-abc", "labels": map[string]any{applicationLabel: "harbor", pullRequestLabel: "8", versionLabel: "pr8-abc"}},
 		jobs + "beacon-pr7-jobs-pr7-abc": {keyName: jobs + "beacon-pr7-jobs-pr7-abc", "labels": map[string]any{applicationLabel: "beacon", pullRequestLabel: "7", versionLabel: "pr7-abc"}},
+		jobs + "harbor-pr7-migrate":      {keyName: jobs + "harbor-pr7-migrate", "labels": map[string]any{applicationLabel: "harbor", pullRequestLabel: "7", versionLabel: "pr7-def"}},
 	})
 	var out strings.Builder
-	if err := deletePullRequestJobs(t.Context(), run, "tst-project", "us-central1", "harbor", "7", &out); err != nil {
+	if err := deletePullRequestJobs(t.Context(), run, "tst-project", "us-central1", jobs+"harbor-pr7-jobs-", "harbor", "7", &out); err != nil {
 		t.Fatalf("deletePullRequestJobs() error = %v", err)
 	}
 	want := []string{jobs + "harbor-pr7-jobs-pr7-abc", jobs + "harbor-pr7-jobs-pr7-def"}
