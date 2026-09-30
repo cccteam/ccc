@@ -101,7 +101,7 @@ func programStages(a *app.App) ([]hook.Stage, error) {
 	for _, elt := range literals[0].Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
-			return nil, errors.Newf("%s's %s.%s literal must be keyed by field (AfterMigrate: backfill)", hooksDir, path.Base(deployhookPath), hooksType)
+			return nil, errors.Newf("%s's %s.%s literal must be keyed by field (BeforeTraffic: checkNextRevision)", hooksDir, path.Base(deployhookPath), hooksType)
 		}
 		key, _ := kv.Key.(*ast.Ident)
 		if value, isIdent := kv.Value.(*ast.Ident); key == nil || (isIdent && value.Name == "nil") {

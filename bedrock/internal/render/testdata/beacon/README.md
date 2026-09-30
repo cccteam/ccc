@@ -323,7 +323,7 @@ is declared in files of its own:
   `BUILD_ARGS_FILE` names (`/workspace/build-args.txt`). The four stages after
   the image build may instead be functions of a hooks program: a Go program at
   `cmd/deployment/hooks` built on impulse's `deployhook` package
-  (`deployhook.Main(deployhook.Hooks{AfterMigrate: backfill})`), which the
+  (`deployhook.Main(deployhook.Hooks{BeforeTraffic: checkNextRevision})`), which the
   Dockerfile builds into the image as `/hooks` and the image build takes out
   for the hook steps; a stage has a script or a function, not both. The
   pipeline has a step for each stage the application implements, so a new hook
@@ -332,7 +332,9 @@ is declared in files of its own:
   Dockerfile's to copy: a fetched config, a frontend version file),
   `before-migrate` (the image is built; `IMAGE_DIGEST` names it),
   `after-migrate` (the schema is migrated and the service not yet deployed:
-  a backfill, a reference-data reload, an index warm-up), `before-traffic`
+  a check against a dependency the release needs, a notice to another system;
+  a hook has no database and never starts the job process, whose work on the
+  data the running service starts), `before-traffic`
   (the new revision is deployed in every region and the old one still
   serves: `NEXT_URL` is the new revision's public URL through the load
   balancer, `https://beacon-<env>-next.<domain>/`, empty in a pull-request

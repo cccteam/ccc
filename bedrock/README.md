@@ -324,7 +324,7 @@ balancer, the `<app>-<env>-next` hostname over the revision tag `next`, and a fa
 stops the build with the old revision serving), `after-traffic` and `after-down` (on a
 teardown). A hook is a script, `infrastructure/hooks/<stage>.sh`, or a function of the
 application's hooks program: a Go program at `cmd/deployment/hooks` built on impulse's
-`deployhook` package (`deployhook.Main(deployhook.Hooks{AfterMigrate: backfill})`), which
+`deployhook` package (`deployhook.Main(deployhook.Hooks{BeforeTraffic: checkNextRevision})`), which
 takes the four stages after the image build. bedrock reads the program's stages from its
 `Hooks` literal, `check` refuses a Dockerfile that does not build it as `/hooks` and a stage
 that has both a script and a function, and the image build (`deploy build-image --hooks`)
