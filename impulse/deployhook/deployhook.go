@@ -1,13 +1,13 @@
 // Package deployhook is the contract between an application's hooks program and the deploy
 // pipeline bedrock renders for it. A hook is the application's own work at a fixed point of
-// a deploy: data work after the migrations, a check against the new revision before traffic
-// moves to it, a smoke test after. An application writes its hooks as a Go program at
-// cmd/deployment/hooks, beside the migrate command:
+// a deploy: a check against a dependency after the migrations, a check against the new
+// revision before traffic moves to it, a smoke test after. An application writes its hooks
+// as a Go program at cmd/deployment/hooks, beside the migrate command:
 //
 //	func main() {
 //		deployhook.Main(deployhook.Hooks{
-//			AfterMigrate:  backfill,
 //			BeforeTraffic: checkNextRevision,
+//			AfterTraffic:  smokeTest,
 //		})
 //	}
 //
@@ -21,9 +21,10 @@
 //
 // Only the stages after the image build take a program, because the program comes out of
 // the image: before-build (the image does not exist yet) and after-down (a teardown builds
-// no image) take a script. A hook has no database and no application secrets; work that
-// needs the application's runtime belongs to its job process (cmd/jobs), which a hook may
-// start.
+// no image) take a script. A hook has no database and no application secrets, and it never
+// starts the application's job process (cmd/jobs): work that needs the application's runtime
+// is the running service's, which starts the job of its own build. A backfill after a
+// release is an endpoint on the service, called once traffic moved.
 package deployhook
 
 import (
@@ -45,8 +46,9 @@ const (
 	// BeforeMigrate runs after the image is built (Facts.ImageDigest names it) and
 	// before the migrate job.
 	BeforeMigrate Stage = "before-migrate"
-	// AfterMigrate runs once the schema is migrated, before the service deploys: a
-	// backfill, a reference-data reload, an index warm-up.
+	// AfterMigrate runs once the schema is migrated, before the service deploys: a check
+	// against a dependency the release needs, a notice to another system that the schema
+	// moved. Work on the data is the job process's, started by the running service.
 	AfterMigrate Stage = "after-migrate"
 	// BeforeTraffic runs with the new revision deployed in every region and the old one
 	// still serving; Facts.NextURL reaches the new one. A failure stops the build with the

@@ -527,8 +527,10 @@ application needs is therefore a direct dependency. Build products
 
 ## Deploy hooks
 
-An application's own work at a fixed point of a deploy (data work after the migrations, a
-check against the new revision before traffic moves to it, a smoke test after) is a hook.
+An application's own work at a fixed point of a deploy (a check against a dependency after
+the migrations, a check against the new revision before traffic moves to it, a smoke test
+after) is a hook. A hook has no database and never starts the application's job process:
+work on the data is the running service's, which starts the job of its own build.
 The package `github.com/cccteam/ccc/impulse/deployhook` is the contract for writing hooks
 in Go: a program at `cmd/deployment/hooks`, beside the migrate command, passes one
 `deployhook.Hooks` literal to `deployhook.Main`, with a function for each stage it
@@ -537,8 +539,8 @@ implements:
 ```go
 func main() {
 	deployhook.Main(deployhook.Hooks{
-		AfterMigrate:  backfill,
 		BeforeTraffic: checkNextRevision,
+		AfterTraffic:  smokeTest,
 	})
 }
 ```
