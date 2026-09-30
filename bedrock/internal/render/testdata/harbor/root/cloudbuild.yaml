@@ -132,7 +132,9 @@ steps:
     args: [deploy, hook, after-migrate]
     timeout: 900s
 
-  # The job process's Cloud Run job (cmd/jobs) updated to this image, not run.
+  # This build's job for the job process (cmd/jobs): a copy of the stack's template
+  # job on this image, named after the version; not run. Only the running service
+  # starts it.
   - id: DeployJobs
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
@@ -162,6 +164,14 @@ steps:
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
     args: [deploy, shift-traffic]
+    timeout: 600s
+
+  # The job process's jobs no revision runs any more are deleted: not serving, not among
+  # the five newest revisions, no execution running. The template and this build's stay.
+  - id: SweepJobs
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
+    args: [deploy, sweep-jobs]
     timeout: 600s
 
   # The application's hook after traffic moved: infrastructure/hooks/after-traffic.sh. A failing

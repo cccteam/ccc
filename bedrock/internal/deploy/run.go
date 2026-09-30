@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -26,6 +27,8 @@ const (
 	keyRevision = "revision"
 	keyPercent  = "percent"
 	keyTag      = "tag"
+	keyLabels   = "labels"
+	keyTemplate = "template"
 )
 
 // Run reads and changes Cloud Run services and jobs and follows what it started: the
@@ -42,6 +45,35 @@ type Run interface {
 	RunJob(ctx context.Context, name string, args []string) (map[string]any, error)
 	// Services lists the services of the project in the region, every page.
 	Services(ctx context.Context, project, region string) ([]map[string]any, error)
+	// Jobs lists the jobs of the project in the region, every page.
+	Jobs(ctx context.Context, project, region string) ([]map[string]any, error)
+	// Revisions lists the service's revisions, every page, in no particular order.
+	Revisions(ctx context.Context, service string) ([]map[string]any, error)
+	// Executions lists the job's executions, every page.
+	Executions(ctx context.Context, job string) ([]map[string]any, error)
+	// CreateJob creates the job under the parent (projects/<p>/locations/<r>) with the id
+	// and waits for it; it answers the job as it settled.
+	CreateJob(ctx context.Context, parent, id string, job map[string]any) (map[string]any, error)
+	// Delete deletes the resource and waits for the deletion.
+	Delete(ctx context.Context, name string) error
+}
+
+// apiError is an answer outside 2xx from the API, with its status.
+type apiError struct {
+	status       int
+	method, path string
+	message      string
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("Cloud Run answered HTTP %d to %s %s: %s", e.status, e.method, e.path, e.message)
+}
+
+// isNotFound reports an error that is the API answering 404.
+func isNotFound(err error) bool {
+	var e *apiError
+
+	return errors.As(err, &e) && e.status == http.StatusNotFound
 }
 
 // RunFunc opens Run.
@@ -70,27 +102,64 @@ func (c *cloudRun) Get(ctx context.Context, name string) (map[string]any, error)
 }
 
 func (c *cloudRun) Services(ctx context.Context, project, region string) ([]map[string]any, error) {
+	return c.list(ctx, "/v2/projects/"+project+"/locations/"+region+"/services", "services")
+}
+
+func (c *cloudRun) Jobs(ctx context.Context, project, region string) ([]map[string]any, error) {
+	return c.list(ctx, "/v2/projects/"+project+"/locations/"+region+"/jobs", "jobs")
+}
+
+func (c *cloudRun) Revisions(ctx context.Context, service string) ([]map[string]any, error) {
+	return c.list(ctx, "/v2/"+service+"/revisions", "revisions")
+}
+
+func (c *cloudRun) Executions(ctx context.Context, job string) ([]map[string]any, error) {
+	return c.list(ctx, "/v2/"+job+"/executions", "executions")
+}
+
+// list reads every page of the collection at path, whose items the answer carries under
+// key.
+func (c *cloudRun) list(ctx context.Context, path, key string) ([]map[string]any, error) {
 	var all []map[string]any
 	token := ""
 	for {
-		path := "/v2/projects/" + project + "/locations/" + region + "/services?pageSize=100"
+		page := path + "?pageSize=100"
 		if token != "" {
-			path += "&pageToken=" + url.QueryEscape(token)
+			page += "&pageToken=" + url.QueryEscape(token)
 		}
-		page, err := c.call(ctx, http.MethodGet, path, nil)
+		answer, err := c.call(ctx, http.MethodGet, page, nil)
 		if err != nil {
 			return nil, err
 		}
-		list, _ := page["services"].([]any)
+		list, _ := answer[key].([]any)
 		for _, item := range list {
 			if doc, ok := item.(map[string]any); ok {
 				all = append(all, doc)
 			}
 		}
-		if token, _ = page["nextPageToken"].(string); token == "" {
+		if token, _ = answer["nextPageToken"].(string); token == "" {
 			return all, nil
 		}
 	}
+}
+
+func (c *cloudRun) CreateJob(ctx context.Context, parent, id string, job map[string]any) (map[string]any, error) {
+	op, err := c.call(ctx, http.MethodPost, "/v2/"+parent+"/jobs?jobId="+url.QueryEscape(id), job)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.wait(ctx, op)
+}
+
+func (c *cloudRun) Delete(ctx context.Context, name string) error {
+	op, err := c.call(ctx, http.MethodDelete, "/v2/"+name, nil)
+	if err != nil {
+		return err
+	}
+	_, err = c.wait(ctx, op)
+
+	return err
 }
 
 func (c *cloudRun) Patch(ctx context.Context, name string, resource map[string]any, fields ...string) (map[string]any, error) {
@@ -177,7 +246,7 @@ func (c *cloudRun) call(ctx context.Context, method, path string, body map[strin
 		return nil, errors.Wrap(err, "io.ReadAll()")
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
-		return nil, errors.Newf("Cloud Run answered HTTP %d to %s %s: %s", resp.StatusCode, method, path, apiMessage(data))
+		return nil, errors.Wrap(&apiError{status: resp.StatusCode, method: method, path: path, message: apiMessage(data)}, "cloudRun.call()")
 	}
 	answer := map[string]any{}
 	if len(data) > 0 {
@@ -230,7 +299,7 @@ func firstContainer(template map[string]any) (map[string]any, error) {
 // setLabels puts the pipeline's labels on the document's labels, keeping every other
 // label; a label with an empty value is removed.
 func setLabels(doc map[string]any, labels map[string]string) {
-	existing, _ := doc["labels"].(map[string]any)
+	existing, _ := doc[keyLabels].(map[string]any)
 	if existing == nil {
 		existing = map[string]any{}
 	}
@@ -242,7 +311,7 @@ func setLabels(doc map[string]any, labels map[string]string) {
 		}
 		existing[name] = value
 	}
-	doc["labels"] = existing
+	doc[keyLabels] = existing
 }
 
 // shortName is the last element of a resource name (a revision's, an execution's).

@@ -7,17 +7,20 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// jobsDoc is a job process's Cloud Run job as the API answers it, the parts the step
-// touches.
+// jobsDoc is the job process's template job as the API answers it, the parts the step
+// copies and the ones it leaves behind.
 func jobsDoc() map[string]any {
 	return map[string]any{
-		keyName:  "projects/tst-project/locations/us-central1/jobs/harbor-jobs",
-		"labels": map[string]any{"terraform": "true"},
+		keyName:      "projects/tst-project/locations/us-central1/jobs/harbor-jobs",
+		"uid":        "u-1",
+		"createTime": "2026-09-30T20:00:00Z",
+		"labels":     map[string]any{"terraform": "true", "application": "harbor"},
 		"template": map[string]any{
 			"taskCount": float64(1),
 			"template": map[string]any{
-				"containers": []any{map[string]any{"image": "reg/harbor@sha256:old", "command": []any{"/jobs"}}},
-				"timeout":    "1800s",
+				"serviceAccount": "harbor-jobs@tst-project.iam.gserviceaccount.com",
+				"containers":     []any{map[string]any{"image": "placeholder", "command": []any{"/jobs"}, "env": []any{map[string]any{"name": "APP_SERVICE_NAME", "value": "harbor-jobs"}}}},
+				"timeout":        "1800s",
 			},
 		},
 	}
@@ -27,18 +30,20 @@ func TestJobs(t *testing.T) {
 	t.Parallel()
 
 	const (
-		jobName     = "projects/tst-project/locations/us-central1/jobs/harbor-jobs"
-		environment = "export SKIP_DEPLOY=\"\"\nexport JOBS_JOB=\"us-central1=harbor-jobs\"\nexport IMAGE=\"reg/harbor\"\nexport IMAGE_DIGEST=\"sha256:abc\"\n"
+		template    = "projects/tst-project/locations/us-central1/jobs/harbor-jobs"
+		jobName     = "projects/tst-project/locations/us-central1/jobs/harbor-jobs-v1-2-3"
+		environment = "export SKIP_DEPLOY=\"\"\nexport JOBS_JOB=\"us-central1=harbor-jobs\"\nexport VERSION=\"v1.2.3\"\nexport IMAGE=\"reg/harbor\"\nexport IMAGE_DIGEST=\"sha256:abc\"\n"
 		build       = `{"id": "b-1", "substitutions": {"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_PR_NUMBER": "7"}}`
 	)
+	wantLabels := map[string]any{"terraform": "true", "application": "harbor", managedByLabel: managedByValue, commitLabel: "deadbeef", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst", prNumberLabel: "7", versionLabel: "v1-2-3"}
 	tests := []struct {
-		name       string
-		env        string
-		run        *fakeRun
-		wantOut    []string
-		wantImage  string
-		wantLabels map[string]any
-		wantErr    string
+		name        string
+		env         string
+		run         *fakeRun
+		wantOut     []string
+		wantCreated []string
+		wantPatched bool
+		wantErr     string
 	}{
 		{
 			name:    "a torn-down environment does nothing",
@@ -47,12 +52,18 @@ func TestJobs(t *testing.T) {
 			wantOut: []string{tornDown},
 		},
 		{
-			name:       "the job takes the image and the labels and is not run",
-			env:        environment,
-			run:        newFakeRun(map[string]map[string]any{jobName: jobsDoc()}),
-			wantOut:    []string{"=== Updating job [harbor-jobs] in [us-central1] to this image ===", "Job harbor-jobs updated: its next run is on this build's image; the pipeline does not run it."},
-			wantImage:  "reg/harbor@sha256:abc",
-			wantLabels: map[string]any{"terraform": "true", managedByLabel: managedByValue, commitLabel: "deadbeef", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst", prNumberLabel: "7"},
+			name:        "the build's job is created from the template on this image, named after the version, and not run",
+			env:         environment,
+			run:         newFakeRun(map[string]map[string]any{template: jobsDoc()}),
+			wantOut:     []string{"=== Making job [harbor-jobs-v1-2-3] from [harbor-jobs] on this image ===", "Job harbor-jobs-v1-2-3 created: the revision this build deploys starts it through the Cloud Run API; the pipeline does not run it."},
+			wantCreated: []string{jobName},
+		},
+		{
+			name:        "a version deployed before updates the job it made then",
+			env:         environment,
+			run:         newFakeRun(map[string]map[string]any{template: jobsDoc(), jobName: {keyName: jobName, "template": map[string]any{"template": map[string]any{"containers": []any{map[string]any{"image": "reg/harbor@sha256:older"}}}}}}),
+			wantOut:     []string{"Job harbor-jobs-v1-2-3 updated: the revision this build deploys starts it"},
+			wantPatched: true,
 		},
 		{
 			name:    "a pipeline without a job process is refused",
@@ -61,10 +72,16 @@ func TestJobs(t *testing.T) {
 			wantErr: "JOBS_JOB names no job: the stack's substitutions carry _JOBS_JOB when the application has a job process (cmd/jobs), which this step is for; render and apply the stack",
 		},
 		{
-			name:    "a job the project lacks is refused",
+			name:    "a template the project lacks is refused",
 			env:     environment,
 			run:     newFakeRun(map[string]map[string]any{}),
-			wantErr: "Cloud Run answered HTTP 404 to GET /v2/" + jobName,
+			wantErr: "Cloud Run answered HTTP 404 to GET /v2/" + template,
+		},
+		{
+			name:    "a build without a version is refused",
+			env:     strings.Replace(environment, "export VERSION=\"v1.2.3\"\n", "", 1),
+			run:     newFakeRun(map[string]map[string]any{template: jobsDoc()}),
+			wantErr: "environment.sh names no version (VERSION): the resolve step writes it",
 		},
 		{
 			name:    "a workspace without the digest is refused",
@@ -104,17 +121,37 @@ func TestJobs(t *testing.T) {
 			if len(tt.run.ran) != 0 {
 				t.Errorf("the step ran a job: %v", tt.run.ran)
 			}
-			if tt.wantImage == "" {
+			if diff := cmp.Diff(tt.wantCreated, tt.run.created); diff != "" {
+				t.Errorf("created mismatch (-want +got):\n%s", diff)
+			}
+			if tt.wantCreated == nil && !tt.wantPatched {
 				return
 			}
-			patched := tt.run.patched[jobName]
-			task, _ := field(patched, "template.template").(map[string]any)
-			container, err := firstContainer(task)
-			if err != nil || container["image"] != tt.wantImage {
-				t.Errorf("job image = %v, want %s (patched %v)", container["image"], tt.wantImage, patched != nil)
+			job := tt.run.resources[jobName]
+			if tt.wantPatched {
+				job = tt.run.patched[jobName]
 			}
-			if diff := cmp.Diff(tt.wantLabels, patched["labels"]); diff != "" {
+			if job == nil {
+				t.Fatalf("no job at %s (created %v, patched %v)", jobName, tt.run.created, tt.run.patched[jobName] != nil)
+			}
+			task, _ := field(job, "template.template").(map[string]any)
+			container, err := firstContainer(task)
+			if err != nil || container["image"] != "reg/harbor@sha256:abc" {
+				t.Errorf("job image = %v, want reg/harbor@sha256:abc", container["image"])
+			}
+			if diff := cmp.Diff(wantLabels, job["labels"]); diff != "" {
 				t.Errorf("labels mismatch (-want +got):\n%s", diff)
+			}
+			for _, key := range []string{"uid", "createTime"} {
+				if _, ok := job[key]; ok {
+					t.Errorf("the copy carries the template's %s", key)
+				}
+			}
+			if text(job, "template.template.serviceAccount") != "harbor-jobs@tst-project.iam.gserviceaccount.com" {
+				t.Errorf("the copy lost the template's identity: %v", job["template"])
+			}
+			if template := tt.run.resources[template]; text(template, "template.template.containers.0.image") == "reg/harbor@sha256:abc" {
+				t.Error("the template job took the image")
 			}
 		})
 	}

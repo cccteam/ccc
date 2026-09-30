@@ -139,12 +139,16 @@ What the stack carries comes from declarations in the code: a config variable ta
 a secret becomes a Secret Manager container mounted at a pinned version; a directory auth
 becomes the registration variables, the redirect output and the hand steps in the README;
 a main package under `cmd/deployment/migrate` becomes the migrate job; a main package
-under `cmd/jobs` becomes the job process: its own Cloud Run job in the primary region,
-its runtime identity with the site's project roles and, when it constructs the data
-level, the database user grant and accessor on that level's secrets, its timeout,
-retries and resources as stack variables, and, when the site's config declares
-`APP_JOBS_JOB`, that variable set to the job's resource name with `run.invoker` for the
-site's identity, so the site runs it through the Cloud Run API; a config variable
+under `cmd/jobs` becomes the job process: a template Cloud Run job in the primary
+region (never run, never deployed to; each build copies it into a job of its own, named
+after it with the build's version, on the build's image), its runtime identity with the
+site's project roles and, when it constructs the data level, the database user grant and
+accessor on that level's secrets, its timeout, retries and resources as stack variables,
+and, when the site's config declares `APP_JOBS_JOB`, that variable baked into each
+build's image as the name of that build's job, with `run.invoker` for the site's
+identity on the builds' jobs by name prefix, so the running service, and only it, starts
+the job of its own build through the Cloud Run API (a schedule calls an endpoint on the
+service; the pipeline runs only the migrate job); a config variable
 `APP_ASSETS_BUCKET` becomes a Cloud Storage bucket in the primary region, named to the
 processes that construct its level, with `objectUser` for the site and, when it
 constructs that level, the job process; a config variable `APP_TASKS_QUEUE` becomes a
@@ -288,10 +292,15 @@ thing one step hands the next. In order:
   completion, with the seed (`schema/devseed` as data migrations after the schema) where
   `_SEED` is true: every pull request, and a release build only in the environments the
   placement's seed list names.
-- `deploy jobs`: updates the job process's Cloud Run job (`cmd/jobs`, named by the
-  stack's `_JOBS_JOB`) to this build's image and the pipeline's labels and does not run
-  it; the application runs its job process. Rendered into the pipeline only when the
-  application has one, after the migrations.
+- `deploy jobs`: makes this build's job for the job process (`cmd/jobs`): a copy of the
+  stack's template job (`_JOBS_JOB`) named after it with the build's version, on this
+  build's image with the pipeline's labels, and does not run it; the image the build made
+  names that job to the site (`APP_JOBS_JOB`), so the revision starts the job of its own
+  build and a traffic rollback starts the earlier one. Rendered into the pipeline only
+  when the application has a job process, after the migrations.
+- `deploy sweep-jobs`: deletes the builds' jobs no revision runs any more (not serving,
+  not among the five newest revisions, no execution running); the template stays. After
+  traffic moved, so the revision that just stopped serving keeps its job for a rollback.
 - `deploy service`: puts a new revision of the service in every region, receiving no
   traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
   new revision carries the tag `next` (or the pull request's tag), under which the

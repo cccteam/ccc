@@ -28,6 +28,8 @@ type fakeRun struct {
 	ran       map[string][]string
 	execution map[string]any
 	runErr    error
+	// created and deleted are the resource names CreateJob and Delete took, in order.
+	created, deleted []string
 }
 
 func newFakeRun(resources map[string]map[string]any) *fakeRun {
@@ -41,7 +43,7 @@ func (r *fakeRun) open(context.Context) (Run, error) {
 func (r *fakeRun) Get(_ context.Context, name string) (map[string]any, error) {
 	doc, ok := r.resources[name]
 	if !ok {
-		return nil, errors.Newf("Cloud Run answered HTTP 404 to GET /v2/%s: not found", name)
+		return nil, errors.Wrap(&apiError{status: 404, method: "GET", path: "/v2/" + name, message: "not found"}, "fakeRun.Get()")
 	}
 
 	return doc, nil
@@ -99,6 +101,59 @@ func (r *fakeRun) Services(_ context.Context, project, region string) ([]map[str
 	})
 
 	return list, nil
+}
+
+func (r *fakeRun) Jobs(_ context.Context, project, region string) ([]map[string]any, error) {
+	return r.listed("projects/" + project + "/locations/" + region + "/jobs/"), nil
+}
+
+func (r *fakeRun) Revisions(_ context.Context, service string) ([]map[string]any, error) {
+	return r.listed(service + "/revisions/"), nil
+}
+
+func (r *fakeRun) Executions(_ context.Context, job string) ([]map[string]any, error) {
+	return r.listed(job + "/executions/"), nil
+}
+
+// listed is the resources whose names start with prefix and go no deeper (a job, not
+// its executions), by name.
+func (r *fakeRun) listed(prefix string) []map[string]any {
+	var list []map[string]any
+	for name, doc := range r.resources {
+		if strings.HasPrefix(name, prefix) && !strings.Contains(strings.TrimPrefix(name, prefix), "/") {
+			list = append(list, doc)
+		}
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return text(list[i], "name") < text(list[j], "name")
+	})
+
+	return list
+}
+
+func (r *fakeRun) CreateJob(_ context.Context, parent, id string, job map[string]any) (map[string]any, error) {
+	name := parent + "/jobs/" + id
+	if _, ok := r.resources[name]; ok {
+		return nil, &apiError{status: 409, method: "POST", path: "/v2/" + parent + "/jobs", message: "already exists"}
+	}
+	doc := map[string]any{keyName: name}
+	for key, value := range job {
+		doc[key] = value
+	}
+	r.resources[name] = doc
+	r.created = append(r.created, name)
+
+	return doc, nil
+}
+
+func (r *fakeRun) Delete(_ context.Context, name string) error {
+	if _, ok := r.resources[name]; !ok {
+		return &apiError{status: 404, method: "DELETE", path: "/v2/" + name, message: "not found"}
+	}
+	delete(r.resources, name)
+	r.deleted = append(r.deleted, name)
+
+	return nil
 }
 
 func (r *fakeRun) RunJob(_ context.Context, name string, args []string) (map[string]any, error) {
@@ -277,26 +332,29 @@ func TestPipelineLabels(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		build Build
-		want  map[string]string
+		name    string
+		build   Build
+		version string
+		want    map[string]string
 	}{
 		{
-			name:  "a pull request's build labels its number",
-			build: Build{ID: "b-1", Substitutions: map[string]string{commitSub: "d", repoNameSub: "harbor", envSub: "tst", prNumberSub: "7"}},
-			want:  map[string]string{managedByLabel: managedByValue, commitLabel: "d", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst", prNumberLabel: "7"},
+			name:    "a pull request's build labels its number and its version as a name",
+			build:   Build{ID: "b-1", Substitutions: map[string]string{commitSub: "d", repoNameSub: "harbor", envSub: "tst", prNumberSub: "7"}},
+			version: "pr7@d",
+			want:    map[string]string{managedByLabel: managedByValue, commitLabel: "d", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst", prNumberLabel: "7", versionLabel: "pr7-d"},
 		},
 		{
-			name:  "a release build clears the number",
-			build: Build{ID: "b-2", Substitutions: map[string]string{commitSub: "e", repoNameSub: "harbor", envSub: "stg"}},
-			want:  map[string]string{managedByLabel: managedByValue, commitLabel: "e", buildIDLabel: "b-2", sourceRepoLabel: "harbor", environmentLabel: "stg", prNumberLabel: ""},
+			name:    "a release build clears the number",
+			build:   Build{ID: "b-2", Substitutions: map[string]string{commitSub: "e", repoNameSub: "harbor", envSub: "stg"}},
+			version: "v1.2.3",
+			want:    map[string]string{managedByLabel: managedByValue, commitLabel: "e", buildIDLabel: "b-2", sourceRepoLabel: "harbor", environmentLabel: "stg", prNumberLabel: "", versionLabel: "v1-2-3"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if diff := cmp.Diff(tt.want, pipelineLabels(&tt.build)); diff != "" {
+			if diff := cmp.Diff(tt.want, pipelineLabels(&tt.build, tt.version)); diff != "" {
 				t.Errorf("pipelineLabels() mismatch (-want +got):\n%s", diff)
 			}
 		})

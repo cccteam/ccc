@@ -44,6 +44,14 @@ func TestBuildImage(t *testing.T) {
 			wantOut:   []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Built and pushed reg/quill@sha256:new"},
 			wantBuilt: true,
 		},
+		{
+			name:      "an application with a job process bakes its build's job into the image",
+			env:       env + "export JOBS_JOB=\"us-central1=quill-jobs\"\n",
+			metadata:  `{"containerimage.digest": "sha256:new"}`,
+			wantArgs:  []string{"--build-arg VERSION=v1.2.3", "--build-arg COMMIT=c9", "--build-arg JOBS_JOB=projects/p/locations/us-central1/jobs/quill-jobs-v1-2-3", "--push ."},
+			wantOut:   []string{"Built and pushed reg/quill@sha256:new"},
+			wantBuilt: true,
+		},
 		{name: "a build secret the deploy identity cannot read is refused", env: env, declared: "NPM_TOKEN=projects/p/secrets/npm/versions/9", wantErr: "Build REJECTED: the build secret NPM_TOKEN (projects/p/secrets/npm/versions/9) could not be read"},
 		{name: "a push without a digest is refused", env: env, metadata: `{}`, wantErr: "no image digest", wantBuilt: true},
 		{
@@ -60,7 +68,7 @@ func TestBuildImage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, map[string]string{commitSub: "c9", buildSecretsSub: tt.declared}), BuildArgsFile: tt.buildArgs})
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, map[string]string{commitSub: "c9", buildSecretsSub: tt.declared, projectSub: "p"}), BuildArgsFile: tt.buildArgs})
 			secretDir := t.TempDir()
 			var secretSeen string
 			hooks := ""

@@ -149,6 +149,11 @@ func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Write
 		return err
 	}
 	subs := build.Substitutions
+	if env[downFact] == trueValue {
+		if err := deleteBuildJobs(ctx, clients, subs, subs[prNumberSub], out); err != nil {
+			return err
+		}
+	}
 	s := newStack(clients, w, subs, out)
 	if err := s.tofu(ctx, "apply", "-input=false", "-no-color", filepath.Join(string(w), PlanFile)); err != nil {
 		return err

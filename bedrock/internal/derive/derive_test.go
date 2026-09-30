@@ -94,7 +94,7 @@ func TestDerive(t *testing.T) {
 				varPort:                        SupplyPlatform,
 				"APP_CONSOLE_DIST":             SupplyImage,
 				"APP_PORTAL_DIST":              SupplyImage,
-				varJobsJob:                     SupplyDerived,
+				varJobsJob:                     SupplyImage,
 				varAssetsBucket:                SupplyDerived,
 				varTasksQueue:                  SupplyDerived,
 				varFirestoreDatabase:           SupplyDerived,

@@ -215,10 +215,17 @@ resource "google_cloud_run_v2_job" "migrate" {
 
 # ---------------------------------------------------------------------------
 # The job process: cmd/jobs, the application's own code as a Cloud Run job
-# in the primary region. The pipeline updates it to each build's image and
-# never runs it; the application does: the site holds run.invoker on it
-# and finds it as APP_JOBS_JOB. Its timeout, retries and resources are
-# the stack's (var.jobs_timeout, var.jobs_retries, var.jobs_resources).
+# in the primary region. This is the template: never run, never deployed to.
+# Each build copies it (bedrock deploy jobs) into a job of its own, named
+# after this one with the build's version (<name>-v0-1-15), on the build's
+# image, and bakes that job's name into the image as the site's
+# APP_JOBS_JOB: a revision starts the job of its own build, and a
+# traffic rollback starts the earlier one. Only the running service starts
+# the job process; the pipeline never runs it and a schedule calls an endpoint
+# on the service. The stack keeps the jobs' variables, secrets, identity,
+# timeout, retries and resources here (var.jobs_timeout, var.jobs_retries,
+# var.jobs_resources), and the pipeline retires the builds' jobs no revision
+# runs any more (bedrock deploy sweep-jobs).
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_job" "jobs" {
@@ -294,14 +301,20 @@ resource "google_cloud_run_v2_job" "jobs" {
   depends_on = [google_spanner_database_iam_member.jobs_user, google_secret_manager_secret_iam_member.jobs_accessor]
 }
 
-# The site runs the job through the Cloud Run API as its own identity
-# (APP_JOBS_JOB names the job to it).
-resource "google_cloud_run_v2_job_iam_member" "app_runs_jobs" {
-  project  = google_cloud_run_v2_job.jobs.project
-  location = google_cloud_run_v2_job.jobs.location
-  name     = google_cloud_run_v2_job.jobs.name
-  role     = "roles/run.invoker"
-  member   = local.app_member
+# The site starts the job of its own build through the Cloud Run API as its
+# own identity (APP_JOBS_JOB names it from the image). The builds' jobs
+# are named after the template, so the grant is by name prefix at the project,
+# and never reaches the template itself.
+resource "google_project_iam_member" "app_runs_jobs" {
+  project = local.project_id
+  role    = "roles/run.invoker"
+  member  = local.app_member
+
+  condition {
+    title       = "${local.jobs_job_name} builds only"
+    description = "The job process's jobs, one per build, named after the template job."
+    expression  = "resource.type == \"run.googleapis.com/Job\" && resource.name.startsWith(\"${local.jobs_job}-\")"
+  }
 
   depends_on = [google_service_account.app]
 }

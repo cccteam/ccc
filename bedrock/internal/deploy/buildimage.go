@@ -29,9 +29,11 @@ const (
 
 // BuildImage builds the application's image from the checkout's Dockerfile and pushes
 // it under its two tags (<release>-<env> and <commit>-<env>), unless the release check
-// found this commit's build to reuse. The build arguments are VERSION and COMMIT, the
-// declared substitutions and what a hook before the build added (the build arguments
-// file, NAME=value lines). Each declared build secret is read as the deploy identity by
+// found this commit's build to reuse. The build arguments are VERSION and COMMIT, for an
+// application with a job process JOBS_JOB (the resource name of the job this build makes
+// for its revision, which the Dockerfile sets as the site's APP_JOBS_JOB, so the image
+// names the job of its own build), the declared substitutions and what a hook before the
+// build added (the build arguments file, NAME=value lines). Each declared build secret is read as the deploy identity by
 // its pinned version into secretDir (memory-backed in Cloud Build, gone with the step,
 // never in the workspace) and passed to docker as a BuildKit secret the Dockerfile
 // mounts; it is never a build argument, which the image would keep. The digest the push
@@ -63,6 +65,13 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 		return err
 	}
 	args := []string{"buildx", "build", "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
+	if env[jobsJobFact] != "" {
+		_, job, err := buildJob(build.Substitutions[projectSub], env)
+		if err != nil {
+			return err
+		}
+		args = append(args, "--build-arg", "JOBS_JOB="+job)
+	}
 	for _, arg := range buildArgs {
 		args = append(args, "--build-arg", arg)
 	}

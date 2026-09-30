@@ -29,6 +29,12 @@
 
 ARG VERSION=dev
 ARG COMMIT=unknown
+{{- if .Image.JobsJobVar}}
+# The job of this build for the job process, as the Cloud Run API names it: the pipeline
+# makes it from the stack's template job and passes its name here, and the image names it
+# to the site as {{.Image.JobsJobVar}}, so each revision starts the job of its own build.
+ARG JOBS_JOB=
+{{- end}}
 
 # ---- Go: the server{{if .Image.JobsPkg}}, the migrate command and the job process{{else}} and the migrate command{{end}} ----------------------------------------------
 # The go image is pinned at a digest that carries a toolchain at least as new as go.mod
@@ -88,6 +94,9 @@ FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566
 
 ARG VERSION
 ARG COMMIT
+{{- if .Image.JobsJobVar}}
+ARG JOBS_JOB
+{{- end}}
 LABEL org.opencontainers.image.title="{{.App}}" \
       org.opencontainers.image.source="{{.Repository}}" \
       org.opencontainers.image.version="${VERSION}" \
@@ -106,7 +115,8 @@ COPY {{.Image.SchemaDir}} /home/nonroot/{{.Image.SchemaDir}}
 # {{if .Image.VersionVar}}{{.Image.VersionVar}} is the configuration's version input: the image carries its own release, so
 # no deploy step repeats it. {{end}}PORT is Cloud Run's; the configuration's default, 8080, is what the
 # image declares.
-ENV {{if .Image.VersionVar}}{{.Image.VersionVar}}="${VERSION}"{{end}}{{range .Image.Bundles}} \
+ENV {{if .Image.VersionVar}}{{.Image.VersionVar}}="${VERSION}"{{end}}{{if .Image.JobsJobVar}} \
+    {{.Image.JobsJobVar}}="${JOBS_JOB}"{{end}}{{range .Image.Bundles}} \
     {{.Var}}=/home/nonroot/{{.Workspace}}/{{.Path}}{{end}}
 
 WORKDIR /home/nonroot

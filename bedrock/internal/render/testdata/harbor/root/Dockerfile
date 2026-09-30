@@ -28,6 +28,10 @@
 
 ARG VERSION=dev
 ARG COMMIT=unknown
+# The job of this build for the job process, as the Cloud Run API names it: the pipeline
+# makes it from the stack's template job and passes its name here, and the image names it
+# to the site as APP_JOBS_JOB, so each revision starts the job of its own build.
+ARG JOBS_JOB=
 
 # ---- Go: the server, the migrate command and the job process ----------------------------------------------
 # The go image is pinned at a digest that carries a toolchain at least as new as go.mod
@@ -98,6 +102,7 @@ FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566
 
 ARG VERSION
 ARG COMMIT
+ARG JOBS_JOB
 LABEL org.opencontainers.image.title="harbor" \
       org.opencontainers.image.source="https://github.com/impulseframework/harbor" \
       org.opencontainers.image.version="${VERSION}" \
@@ -116,6 +121,7 @@ COPY schema /home/nonroot/schema
 # no deploy step repeats it. PORT is Cloud Run's; the configuration's default, 8080, is what the
 # image declares.
 ENV APP_VERSION="${VERSION}" \
+    APP_JOBS_JOB="${JOBS_JOB}" \
     APP_CONSOLE_DIST=/home/nonroot/web/dist/console \
     APP_PORTAL_DIST=/home/nonroot/portal/dist/portal
 

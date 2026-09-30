@@ -57,7 +57,7 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 	if err != nil {
 		return err
 	}
-	labels := pipelineLabels(build)
+	labels := pipelineLabels(build, env[versionFact])
 	// The new revision carries a tag from the start: the pull request's, when it is
 	// served under one, else "next", the tag the stack's next backend serves before
 	// traffic moves; the tag names one revision, so each deploy moves it.
@@ -201,7 +201,7 @@ func inconsistentLastReady(doc map[string]any) string {
 // pinned to what serves now, and answers the revision the change created and the
 // service's URL.
 func deployRevision(ctx context.Context, run Run, name string, doc map[string]any, image string, labels map[string]string, tag string) (revision, uri string, err error) {
-	template, _ := doc["template"].(map[string]any)
+	template, _ := doc[keyTemplate].(map[string]any)
 	container, err := firstContainer(template)
 	if err != nil {
 		return "", "", err

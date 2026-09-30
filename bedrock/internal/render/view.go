@@ -135,7 +135,8 @@ type view struct {
 	CodeDefaults []*derive.Variable
 	// CodeDefaultsCell lists them for the README.
 	CodeDefaultsCell string
-	// SiteImageVars names the site-level variables the image sets.
+	// SiteImageVars names the site-level variables the image sets to where it put a
+	// bundle; the job variable, which the image also sets, is told on its own.
 	SiteImageVars string
 	// MigrateLevels spells the levels the migration constructs: "core and data".
 	MigrateLevels string
@@ -223,6 +224,9 @@ type imageView struct {
 	// bundle across them. An application without a browser has none.
 	Workspaces []workspace
 	Bundles    []bundle
+	// JobsJobVar is the site's variable the image sets to the job of its build, empty
+	// when the site declares none.
+	JobsJobVar string
 	// VersionVar is the variable the image sets to the release, empty when the code
 	// declares none.
 	VersionVar string
@@ -269,6 +273,9 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 	}
 	if m.Jobs != nil {
 		iv.JobsPkg = pkgPath(m.Jobs.Dir)
+		if v := m.ByRoleAtLevel(derive.RoleJobsJob, derive.LevelSite); v != nil {
+			iv.JobsJobVar = v.Name
+		}
 	}
 	if m.HookProgram != nil {
 		iv.HooksPkg = pkgPath(m.HookProgram.Dir)
@@ -682,7 +689,7 @@ func (v *view) blocks() {
 	v.CodeDefaultsCell = strings.Join(defaults, ", ")
 	var image []string
 	for _, x := range v.ByLevel(v.SiteLevel.Name) {
-		if x.Image {
+		if x.Image && x.Role != derive.RoleJobsJob {
 			image = append(image, x.Name)
 		}
 	}

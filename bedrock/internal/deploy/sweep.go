@@ -86,6 +86,9 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 			continue
 		}
 		fmt.Fprintf(out, "Pull request %s is closed: its environment goes.\n", number)
+		if err := deleteBuildJobs(ctx, clients, subs, number, out); err != nil {
+			return err
+		}
 		// Each pull request's stack is initialized afresh against its own prefix.
 		if err := os.RemoveAll(filepath.Join(s.dir, ".terraform")); err != nil {
 			return errors.Wrap(err, "os.RemoveAll()")
@@ -99,6 +102,25 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 	}
 
 	return nil
+}
+
+// deleteBuildJobs deletes the jobs the pull request's builds made for the job process,
+// which its stack never owned, in the job process's region (the migrate job's): an
+// application without a job process has none.
+func deleteBuildJobs(ctx context.Context, clients *Clients, subs map[string]string, number string, out io.Writer) error {
+	if subs["_JOBS_JOB"] == "" {
+		return nil
+	}
+	region, _, err := target(migrateJobFact, subs["_MIGRATE_JOB"])
+	if err != nil {
+		return err
+	}
+	run, err := clients.Run(ctx)
+	if err != nil {
+		return err
+	}
+
+	return deletePullRequestJobs(ctx, run, subs[projectSub], region, subs[appSub], number, out)
 }
 
 // pullRequestEnvironments are the numbers of the pull requests whose services stand, in

@@ -19,8 +19,10 @@ const (
 	seedArg = "-seed"
 )
 
-// The labels a deploy stamps on the job and the services: who deployed, what and for
-// which build; the pull request's number on its own service.
+// The labels a deploy stamps on the jobs and the services' revisions: who deployed, what
+// and for which build, the build's version as a name (version-key, what the job process's
+// job of the build is named after, so the sweep can tell which job a revision runs); the
+// pull request's number on its own service.
 const (
 	managedByLabel   = "managed-by"
 	managedByValue   = "cloudbuild"
@@ -28,11 +30,12 @@ const (
 	sourceRepoLabel  = "source_repo"
 	environmentLabel = "environment"
 	prNumberLabel    = "pr-number"
+	versionLabel     = "version-key"
 )
 
-// pipelineLabels are the pipeline's labels for this build; an empty value removes the
-// label (a release build carries no pull request number).
-func pipelineLabels(build *Build) map[string]string {
+// pipelineLabels are the pipeline's labels for this build of the version; an empty value
+// removes the label (a release build carries no pull request number).
+func pipelineLabels(build *Build, version string) map[string]string {
 	subs := build.Substitutions
 
 	return map[string]string{
@@ -42,6 +45,7 @@ func pipelineLabels(build *Build) map[string]string {
 		sourceRepoLabel:  subs[repoNameSub],
 		environmentLabel: subs[envSub],
 		prNumberLabel:    subs[prNumberSub],
+		versionLabel:     versionKey(version),
 	}
 }
 
@@ -90,7 +94,7 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 	if err != nil {
 		return err
 	}
-	name, err := updateJob(ctx, run, build, migrateJobFact, env[migrateJobFact], image, out)
+	name, err := updateJob(ctx, run, build, migrateJobFact, env[migrateJobFact], image, env[versionFact], out)
 	if err != nil {
 		return err
 	}
@@ -123,11 +127,12 @@ func builtImage(env map[string]string) (string, error) {
 	return env[imageFact] + "@" + env[digestFact], nil
 }
 
-// updateJob updates a Cloud Run job to the image and the pipeline's labels, the one
-// change a deploy makes to a job (its variables, identity, resources and retry policy
-// are the application layer's), and answers the job's resource name. fact and pair name
-// the job the way the stack's substitutions do, region=name.
-func updateJob(ctx context.Context, run Run, build *Build, fact, pair, image string, out io.Writer) (string, error) {
+// updateJob updates a Cloud Run job to the image and the pipeline's labels for the
+// build of the version, the one change a deploy makes to the migrate job (its variables,
+// identity, resources and retry policy are the application layer's), and answers the
+// job's resource name. fact and pair name the job the way the stack's substitutions do,
+// region=name.
+func updateJob(ctx context.Context, run Run, build *Build, fact, pair, image, version string, out io.Writer) (string, error) {
 	region, jobName, err := target(fact, pair)
 	if err != nil {
 		return "", err
@@ -144,7 +149,7 @@ func updateJob(ctx context.Context, run Run, build *Build, fact, pair, image str
 		return "", errors.Wrapf(err, "job %s", jobName)
 	}
 	container["image"] = image
-	setLabels(job, pipelineLabels(build))
+	setLabels(job, pipelineLabels(build, version))
 	if _, err := run.Patch(ctx, name, job); err != nil {
 		return "", err
 	}

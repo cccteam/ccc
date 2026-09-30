@@ -564,6 +564,17 @@ func (m *Model) byRole(role Role) *Variable {
 	return nil
 }
 
+// ByRoleAtLevel is the variable in the role at the level, or nil.
+func (m *Model) ByRoleAtLevel(role Role, level string) *Variable {
+	for _, v := range m.ByLevel(level) {
+		if v.Role == role {
+			return v
+		}
+	}
+
+	return nil
+}
+
 // ByLevel lists the variables declared at the level, in declaration order.
 func (m *Model) ByLevel(level string) []*Variable {
 	var vars []*Variable

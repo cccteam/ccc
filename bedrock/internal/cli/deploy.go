@@ -27,8 +27,9 @@ cloudbuild.yaml runs them with the bedrock its first step gets: for a release pi
 placement pins (bedrockVersion) downloaded and verified against its checksum (bedrockSha256); for
 a commit pin, that commit built with go install and verified by Go's checksum database. The steps,
 in order: resolve, validate-release, guard-migrations, pr-stack plan, pr-stack guard, pr-stack
-apply, check-release, build-image, migrate, jobs, service, shift-traffic, record and talk-back, with
-hook <stage> where the application commits a hook script. The hourly sweep runs sweep.`,
+apply, check-release, build-image, migrate, jobs, service, shift-traffic, sweep-jobs, record and
+talk-back, with hook <stage> where the application commits a hook script. The hourly sweep runs
+sweep.`,
 	}
 	stack := &cobra.Command{
 		Use:   "pr-stack",
@@ -41,7 +42,7 @@ request's own resources through, apply applies exactly that plan. A tag build sk
 	stack.AddCommand(newDeployStackPlan(d), newDeployStackGuard(d), newDeployStackApply(d))
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), stack, newDeployHook(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
-		newDeployShiftTraffic(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d))
+		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d))
 
 	return cmd
 }
@@ -162,13 +163,19 @@ func newDeployJobs(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
 		Use:   "jobs",
-		Short: "Update the job process's Cloud Run job to this build's image, without running it",
-		Long: `jobs updates the job process's Cloud Run job (cmd/jobs, named by the stack's _JOBS_JOB) to this
-build's image and the pipeline's labels through the Cloud Run API and does not run it: the
-application runs its job process (the site through the Cloud Run API, or a schedule), and the
-pipeline only keeps the job on the image every other process of the build runs. Its variables,
-identity, timeout, retries and resources are the application layer's. The step runs after the
-migrations, so a run the application starts from then on sees the migrated schema.`,
+		Short: "Make this build's job for the job process from the stack's template job, without running it",
+		Long: `jobs makes this build's job for the job process (cmd/jobs): a copy of the template job the stack
+owns (named by the stack's _JOBS_JOB; never run, never deployed to), named <template>-<version key>
+(v0.1.15 gives v0-1-15) and put on this build's image with the pipeline's labels through the Cloud
+Run API. The image the build made names that job to the site (APP_JOBS_JOB), so the revision this
+build deploys starts a job of its own code, and a traffic rollback to an earlier revision starts
+that revision's job. Only the running service starts the job process: the pipeline never runs it,
+a hook never starts it, and a schedule calls an endpoint on the service, which starts it. The
+job's variables, identity, timeout, retries and resources are the template's, the application
+layer's. A build of a version this environment deployed before updates the job it made then. The
+step runs after the migrations, so a run the service starts from then on sees the migrated schema,
+and before the service, so the job stands when its revision serves. sweep-jobs retires the jobs no
+revision runs any more.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.Jobs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
@@ -443,6 +450,28 @@ environment without a deployer app yet, says nothing.`,
 		},
 	}
 	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeploySweepJobs is deploy sweep-jobs.
+func newDeploySweepJobs(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "sweep-jobs",
+		Short: "Delete the job process's jobs that no revision runs any more",
+		Long: `sweep-jobs deletes the jobs deploy jobs made (the copies of the template job, named after it) that
+no revision runs any more: a job stays while a revision serving traffic or one of the five newest
+revisions of the service in the job's region carries its version key (the depth a traffic rollback
+reaches), and while an execution of it is still running; the template stays always. The step runs
+after traffic moved, so the revision that just stopped serving keeps its job for a rollback and the
+ones before it go. A pull request's jobs go with its environment (/gcbrun down, the hourly sweep).`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.SweepJobs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
 
 	return cmd
 }

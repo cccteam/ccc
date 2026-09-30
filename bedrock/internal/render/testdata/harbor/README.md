@@ -106,11 +106,19 @@ from `2-env`'s state.
   (ingress internal and load balancer, 0 to 2 instances, CPU only during
   requests, `allUsers` invoker so the load balancer can forward) and the job
   `imp-<env>-uc1-harbor-migrate` (one task, no retries, 15-minute timeout),
-  and the job `imp-<env>-uc1-harbor-jobs` for the job process
+  and the template job `imp-<env>-uc1-harbor-jobs` for the job process
   (`cmd/jobs`; its timeout, retries and resources are `var.jobs_timeout`,
-  `var.jobs_retries` and `var.jobs_resources`), which the pipeline updates
-  and the application runs: the site holds `roles/run.invoker` on it and
-  `APP_JOBS_JOB` names it; all created with a placeholder image.
+  `var.jobs_retries` and `var.jobs_resources`), never run and never deployed
+  to: each build copies it into a job of its own, named after it with the
+  build's version (`…-jobs-v0-1-15`), on the build's image, and bakes that
+  job's name into the image as the site's `APP_JOBS_JOB`, so a revision starts the
+  job of its own build and a traffic rollback starts the earlier one; the site
+  holds `roles/run.invoker` on the builds' jobs by name prefix, at the project.
+  Only the running service starts the job process: the pipeline never runs
+  it, a hook never starts it, and a schedule calls an endpoint on the service,
+  which starts it. The pipeline retires the builds' jobs no revision runs any
+  more (not serving, not among the five newest revisions, no execution
+  running). All created with a placeholder image.
   From the first deploy on, the image
   and the labels and annotations a deploy stamps are the pipeline's
   (`ignore_changes`); identity, scaling, variables, and secret mounts stay
@@ -150,13 +158,14 @@ above them.
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
 | `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | | |
 | `APP_STAFF_OIDC_GROUP_LOOKUP` | data | `var.staff_oidc_group_lookup` | yes | | |
-| `APP_JOBS_JOB` | site | the job process's Cloud Run job | yes | | |
+| `APP_JOBS_JOB` | site | the job of the build, baked into the image (Dockerfile, `ARG JOBS_JOB`) | yes | | |
 | `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
 The migrate job and the job process carry the hosted domain and group prefix because the session
 library refuses to construct without them. Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
-variables), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
+variables), `APP_JOBS_JOB` (baked into the image the same way, the job of
+that build), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
 sets it), `APP_CONSOLE_DIST and APP_PORTAL_DIST` (where the image put the bundle).
 
 ### Secret versions
@@ -232,10 +241,12 @@ substitutions and this stack's outputs:
   database holding data is seeded only where the placement says so. Output
   `substitutions` is the same map, for a build submitted by hand before the
   triggers exist.
-- The services and the jobs are deployed through the Cloud Run API by
-  `bedrock deploy service`, `deploy migrate` and `deploy jobs`, which
-  change the image and the labels and leave the template's variables, secrets
-  and identity alone: the revision template is this stack's.
+- The services and the migrate job are deployed through the Cloud Run API by
+  `bedrock deploy service` and `deploy migrate`, which change the image and the
+  labels and leave the template's variables, secrets and identity alone: the
+  revision template is this stack's. `deploy jobs` makes each build's job
+  for the job process as a copy of the template job on the build's image, and
+  `deploy sweep-jobs` deletes the builds' jobs no revision runs any more.
 - One image per release and environment in the one repository,
   `harbor:<release>-<env>` (its commit's tag beside it), carrying the site,
   the migrate command and the job process, with `APP_VERSION` baked in at build.
@@ -398,7 +409,8 @@ is declared in files of its own:
   command, the job process, the browser workspace and its bundles, the schema
   directory) and then yours: extra stages, build arguments, private assets.
   `bedrock check` refuses a Dockerfile that builds no binary for a job the
-  stack deploys (`/migrate`, `/jobs`).
+  stack deploys (`/migrate`, `/jobs`), or that drops the lines carrying
+  the build's job to the site (`ARG JOBS_JOB`, `ENV APP_JOBS_JOB="${JOBS_JOB}"`).
 
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
 never an edit to the rendered file.

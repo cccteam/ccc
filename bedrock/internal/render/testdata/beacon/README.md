@@ -188,10 +188,10 @@ substitutions and this stack's outputs:
   database holding data is seeded only where the placement says so. Output
   `substitutions` is the same map, for a build submitted by hand before the
   triggers exist.
-- The services and the job are deployed through the Cloud Run API by
-  `bedrock deploy service` and `deploy migrate`, which
-  change the image and the labels and leave the template's variables, secrets
-  and identity alone: the revision template is this stack's.
+- The services and the migrate job are deployed through the Cloud Run API by
+  `bedrock deploy service` and `deploy migrate`, which change the image and the
+  labels and leave the template's variables, secrets and identity alone: the
+  revision template is this stack's.
 - One image per release and environment in the one repository,
   `beacon:<release>-<env>` (its commit's tag beside it), carrying the site and
   the migrate command, with `APP_VERSION` baked in at build.

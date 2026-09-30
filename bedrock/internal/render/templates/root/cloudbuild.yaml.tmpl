@@ -162,7 +162,9 @@ steps:
 {{- end}}
 {{- if .Jobs}}
 
-  # The job process's Cloud Run job ({{.Jobs.Dir}}) updated to this image, not run.
+  # This build's job for the job process ({{.Jobs.Dir}}): a copy of the stack's template
+  # job on this image, named after the version; not run. Only the running service
+  # starts it.
   - id: DeployJobs
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
@@ -196,6 +198,16 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, shift-traffic]
     timeout: 600s
+{{- if .Jobs}}
+
+  # The job process's jobs no revision runs any more are deleted: not serving, not among
+  # the five newest revisions, no execution running. The template and this build's stay.
+  - id: SweepJobs
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, sweep-jobs]
+    timeout: 600s
+{{- end}}
 {{- if .HasHook "after-traffic"}}
 
   # The application's hook after traffic moved: {{.HookSource "after-traffic"}}. A failing

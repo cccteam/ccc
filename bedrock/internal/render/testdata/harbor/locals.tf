@@ -94,8 +94,9 @@ locals {
   # stack has its own.
   firestore_database_id = local.is_pr ? "${local.pr_name}-fs" : "${local.name}-gbl-${local.app}-fs"
 
-  # The job process's Cloud Run job (cmd/jobs), in the primary region, by name
-  # and as the Cloud Run API names it: what APP_JOBS_JOB tells the site.
+  # The job process's template job (cmd/jobs), in the primary region, by name
+  # and as the Cloud Run API names it; each build's job is named after it with the
+  # build's version, and the image names that job to the site as APP_JOBS_JOB.
   jobs_job_name = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-${local.primary_region_code}-${local.app}-jobs"
   jobs_job      = "projects/${local.project_id}/locations/${local.primary_region}/jobs/${local.jobs_job_name}"
 
@@ -195,11 +196,8 @@ locals {
     APP_STAFF_OIDC_GROUP_LOOKUP = var.staff_oidc_group_lookup
   }
 
-  # siteConfig.JobsJob: the job process's Cloud Run job, which the site runs
-  # through the Cloud Run API (run.invoker on the job, cloud-run.tf).
-  site_jobs_env = {
-    APP_JOBS_JOB = local.jobs_job
-  }
+  # siteConfig.JobsJob is not set here: the image build bakes it in as the job
+  # of that build (Dockerfile, ARG JOBS_JOB), so each revision starts its own.
 
   # dataConfig.AssetsBucket: the assets bucket (storage.tf), for the processes that
   # construct the data level and run the application's own code.
@@ -222,7 +220,7 @@ locals {
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
   # error) and APP_CONSOLE_DIST and APP_PORTAL_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.site_jobs_env, local.assets_env, local.tasks_env, local.firestore_env)
+  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.assets_env, local.tasks_env, local.firestore_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them.
   job_env = merge(local.core_env, local.data_env, {
