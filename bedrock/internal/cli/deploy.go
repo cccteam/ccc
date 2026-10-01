@@ -425,8 +425,10 @@ keeps a deleted database's id unavailable for minutes: the apply step deletes it
 restore from production's backup (RESTORE=production-backup) the step first drops the environment's
 database and restores it under its own name from the most recent backup of production's database on
 the instance they share, as the apply identity; the plan then recreates the memberships the drop took
-with it, and the backup is appended (RESTORE_BACKUP, RESTORE_BACKUP_TIME) for the record. The restore from production's backup is not built yet; the plan stops on it. It runs
-in the OpenTofu image.`,
+with it, and the backup is appended (RESTORE_BACKUP, RESTORE_BACKUP_TIME) for the record. While the
+application is in maintenance (after deploy maintenance on) the plan carries the maintenance
+variable's live value (-var maintenance=1), so that declared and live agree and the apply leaves
+the service alone. It runs in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.PlanEnvironmentStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())

@@ -58,15 +58,18 @@ resource "google_cloud_run_v2_service" "app" {
         }
       }
 
-      # The maintenance switch, first so that it is env[0] below: empty here,
-      # set by the pipeline on a maintenance revision (a restore run, a
-      # breaking release), whose process then serves the maintenance page and
-      # opens no database. The stack declares it so the next apply and the
-      # pipeline do not fight over the variable's presence; its value is the
-      # pipeline's.
+      # The maintenance switch: empty, except on a maintenance revision (a
+      # restore run, a breaking release), which the pipeline deploys with it
+      # set to 1 and whose process then serves the maintenance page and opens
+      # no database. The stack declares it so that it and the pipeline agree on
+      # the variable's presence, and the pipeline passes its live value as
+      # var.maintenance to the plan it makes while the application is in
+      # maintenance, so that the apply leaves the service alone (an env entry
+      # cannot be ignored on its own: the block is a set). The release's own
+      # revision is deployed with it empty again.
       env {
         name  = "APP_MAINTENANCE"
-        value = ""
+        value = var.maintenance
       }
 
       dynamic "env" {
@@ -96,11 +99,9 @@ resource "google_cloud_run_v2_service" "app" {
 
   lifecycle {
     # The pipeline deploys the image and stamps the revision with its own
-    # labels and annotations (commit, build, trigger, client). Those are its,
-    # and so is the maintenance switch's value (the first variable above).
+    # labels and annotations (commit, build, trigger, client). Those are its.
     ignore_changes = [
       template[0].containers[0].image,
-      template[0].containers[0].env[0].value,
       template[0].labels,
       template[0].annotations,
       labels,

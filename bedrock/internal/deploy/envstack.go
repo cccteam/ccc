@@ -128,6 +128,13 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
+	// In maintenance (a restore run, after deploy maintenance on) the service's
+	// maintenance variable is live at 1 on the maintenance revision, and the plan is told
+	// so: declared and live agree, and the apply leaves the service alone while the
+	// database is replaced. An entry of the env set cannot be ignored on its own.
+	if env[maintenanceFact] == trueValue {
+		args = append(args, varFlag, "maintenance="+maintenanceOn)
+	}
 	switch env[restoreFact] {
 	case "":
 	case restoreBackup:

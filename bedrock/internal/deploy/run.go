@@ -22,6 +22,7 @@ const cloudRunAPI = "https://run.googleapis.com"
 // percent and tag, and the resource's name.
 const (
 	keyName     = "name"
+	keyValue    = "value"
 	keyTraffic  = "traffic"
 	keyType     = "type"
 	keyRevision = "revision"

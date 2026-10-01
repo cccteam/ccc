@@ -188,6 +188,17 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
 		},
 		{
+			name:         "a restore run in maintenance tells the plan the maintenance variable's live value, so the apply leaves the service alone",
+			subs:         tstSubs(),
+			pins:         enabledPins(),
+			env:          restoreEnv + "export MAINTENANCE=\"true\"\n",
+			state:        stateList,
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.assets is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -var maintenance=1 -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.assets", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
+		},
+		{
 			name:         "a restore run in a seeded environment says the seed applies afresh too",
 			subs:         seededSubs(),
 			pins:         enabledPins(),

@@ -504,13 +504,13 @@ func deployMaintenanceRevision(ctx context.Context, run Run, name string, doc ma
 	for _, entry := range vars {
 		v, _ := entry.(map[string]any)
 		if text(v, keyName) == derive.MaintenanceVariable {
-			v["value"] = maintenanceOn
+			v[keyValue] = maintenanceOn
 			delete(v, "valueSource")
 			set = true
 		}
 	}
 	if !set {
-		vars = append(vars, map[string]any{keyName: derive.MaintenanceVariable, "value": maintenanceOn})
+		vars = append(vars, map[string]any{keyName: derive.MaintenanceVariable, keyValue: maintenanceOn})
 	}
 	container["env"] = vars
 

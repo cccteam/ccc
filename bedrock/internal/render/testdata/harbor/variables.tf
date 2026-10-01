@@ -82,6 +82,12 @@ variable "placeholder_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+variable "maintenance" {
+  description = "Value of the service's APP_MAINTENANCE variable: empty, the application serving. The pipeline passes 1 to the plan it makes while the application is in maintenance (a restore run), the value its maintenance revision carries, so that the apply leaves the service alone; nothing else sets it."
+  type        = string
+  default     = ""
+}
+
 variable "jobs_timeout" {
   description = "How long one run of the job process (cmd/jobs) may take before Cloud Run stops it, as a duration. Thirty minutes by default."
   type        = string

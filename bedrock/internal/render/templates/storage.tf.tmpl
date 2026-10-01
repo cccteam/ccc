@@ -37,9 +37,9 @@ resource "google_storage_bucket_iam_member" "assets_app" {
 
   depends_on = [google_service_account.app]
 
-  # A recreated bucket (a restore replaces it where the environment is on the
-  # seed list) starts with no members; the membership is recreated with it
-  # rather than believed to exist.
+  # A recreated bucket (a restore of the first environment replaces it)
+  # starts with no members; the membership is recreated with it rather than
+  # believed to exist.
   lifecycle {
     replace_triggered_by = [google_storage_bucket.assets]
   }

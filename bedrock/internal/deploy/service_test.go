@@ -46,7 +46,10 @@ func TestDeploy(t *testing.T) {
 		name string
 		env  string
 		// broken makes the first service inconsistent before the deploy.
-		broken        bool
+		broken bool
+		// maintenance leaves the maintenance variable set on the services, as a
+		// maintenance revision leaves it.
+		maintenance   bool
 		wantOut       []string
 		wantRevisions string
 		// wantTraffic is the traffic the first service was deployed with; wantFields the
@@ -99,6 +102,15 @@ func TestDeploy(t *testing.T) {
 			wantFields:    [][]string{nil},
 		},
 		{
+			name:          "a maintenance revision's variable is cleared on the release's revision",
+			env:           environment,
+			maintenance:   true,
+			wantOut:       []string{"The maintenance revision's APP_MAINTENANCE is cleared on the new revision: it serves the application.", "Revision [harbor-app-00008-new] deployed to [harbor-app] in [us-central1] under the tag [next]"},
+			wantRevisions: "us-central1,harbor-app,harbor-app-00008-new\nus-west3,harbor-app,harbor-app-00008-new\n",
+			wantTraffic:   append(append([]any{}, pinned...), map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"}),
+			wantFields:    [][]string{nil},
+		},
+		{
 			name:    "a workspace without the digest is refused",
 			env:     strings.Replace(environment, "export IMAGE_DIGEST=\"sha256:abc\"\n", "", 1),
 			wantErr: "environment.sh names no image digest (IMAGE, IMAGE_DIGEST): the image build writes it",
@@ -119,6 +131,13 @@ func TestDeploy(t *testing.T) {
 				doc["terminalCondition"] = map[string]any{keyType: "Ready", "state": "CONDITION_FAILED"}
 				doc["traffic"] = []any{map[string]any{keyType: targetLatest, keyPercent: fullTraffic}}
 				doc["latestCreatedRevision"] = central + "/revisions/harbor-app-00007-broken"
+			}
+			if tt.maintenance {
+				for _, name := range []string{central, west} {
+					template, _ := run.resources[name]["template"].(map[string]any)
+					container, _ := firstContainer(template)
+					container["env"] = []any{map[string]any{"name": "APP_MAINTENANCE", "value": "1"}, map[string]any{"name": "APP_OTHER", "value": "kept"}}
+				}
 			}
 			buildFile := build
 			if tt.build != "" {
@@ -173,6 +192,12 @@ func TestDeploy(t *testing.T) {
 			container, _ := firstContainer(template)
 			if container["image"] != "reg/harbor@sha256:abc" {
 				t.Errorf("image = %v, want reg/harbor@sha256:abc", container["image"])
+			}
+			if tt.maintenance {
+				want := []any{map[string]any{"name": "APP_MAINTENANCE", "value": ""}, map[string]any{"name": "APP_OTHER", "value": "kept"}}
+				if diff := cmp.Diff(want, container["env"]); diff != "" {
+					t.Errorf("env mismatch (-want +got):\n%s", diff)
+				}
 			}
 			if text(last, "labels.gcb-build-id") != "b-1" || (tt.build == "" && text(template, "labels.pr-number") != "7") || text(last, "labels.terraform") != "true" {
 				t.Errorf("labels = %v / %v", last["labels"], template["labels"])

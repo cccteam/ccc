@@ -348,7 +348,11 @@ thing one step hands the next. In order:
   on the instance they share, as the apply identity; the plan then recreates the
   memberships the drop took with it, and the migrate job applies whatever production's
   backup predates. The backup and the moment its data is from reach the record
-  (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`).
+  (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`). While the application is in maintenance the
+  plan carries the maintenance variable's live value (`-var maintenance=1`): the stack
+  declares `APP_MAINTENANCE` with `var.maintenance`, empty by default, and an entry of the
+  service's env set cannot be ignored on its own, so declared and live agree and the apply
+  leaves the service alone while the database is replaced.
 - `deploy migrate`: runs this build's migrate job, the copy `deploy jobs` made of the
   template on this image, once to completion, with the seed (`schema/devseed` as data
   migrations after the schema) where `_SEED` is true: every pull request, and a release
@@ -379,7 +383,9 @@ thing one step hands the next. In order:
   traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
   new revision carries the tag `next` (or the pull request's tag), under which the
   stack's next backend serves it at `<app>-<env>-next`; `NEXT_URL` and the per-region
-  `REVISION_URLS` are left in the workspace for the hook before traffic.
+  `REVISION_URLS` are left in the workspace for the hook before traffic. The template is
+  the live service's, so a maintenance revision's `APP_MAINTENANCE` is cleared on the new
+  revision, which serves the application.
 - `deploy shift-traffic`: moves every region to 100 percent on its new revision, keeping
   the tags other revisions carry; a pull-request revision served under its tag alone
   leaves the traffic where it is.

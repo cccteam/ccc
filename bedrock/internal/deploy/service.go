@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
+
 	"github.com/go-playground/errors/v5"
 )
 
@@ -77,6 +79,9 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 		doc, err := repair(ctx, run, name, service, out)
 		if err != nil {
 			return err
+		}
+		if clearMaintenance(doc) {
+			fmt.Fprintf(out, "The maintenance revision's %s is cleared on the new revision: it serves the application.\n", derive.MaintenanceVariable)
 		}
 		fmt.Fprintf(out, "Deploying revision to [%s] without traffic...\n", service)
 		revision, uri, err := deployRevision(ctx, run, name, doc, image, labels, tag)
@@ -195,6 +200,29 @@ func inconsistentLastReady(doc map[string]any) string {
 	}
 
 	return shortName(text(doc, "latestReadyRevision"))
+}
+
+// clearMaintenance empties the maintenance variable in the service's template when a
+// maintenance revision left it set, so that the revision deployed from the template
+// serves the application: the template is the live service's, maintenance revision
+// included. True when it was set.
+func clearMaintenance(doc map[string]any) bool {
+	template, _ := doc[keyTemplate].(map[string]any)
+	container, err := firstContainer(template)
+	if err != nil {
+		return false
+	}
+	vars, _ := container["env"].([]any)
+	cleared := false
+	for _, entry := range vars {
+		v, _ := entry.(map[string]any)
+		if text(v, keyName) == derive.MaintenanceVariable && text(v, keyValue) != "" {
+			v[keyValue] = ""
+			cleared = true
+		}
+	}
+
+	return cleared
 }
 
 // deployRevision sends the service back with the image, the labels and its traffic
