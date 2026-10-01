@@ -18,6 +18,7 @@ func TestScanMigrations(t *testing.T) {
 	}{
 		{name: "a contiguous sequence from 000001 passes", files: []string{"000001_init.up.sql", "000001_init.down.sql", "000002_users.up.sql", "000003_roles.up.sql", "000003_roles.down.sql"}},
 		{name: "a consolidated history starting above 000001 passes", files: []string{"000069_consolidated.up.sql", "000070_next.up.sql"}},
+		{name: "only the sequence is read: whether a file changed since it was committed is the pipeline's rule for the schema, and no rule for a seed", files: []string{"000001_init.up.sql", "000002_users.up.sql"}},
 		{name: "no directory: nothing to check", missing: true},
 		{name: "a gap is reported", files: []string{"000001_init.up.sql", "000002_users.up.sql", "000004_late.up.sql"}, want: []string{": gap: no migration 000003 between 000001 and 000004; the sequence is contiguous so nothing is skipped"}},
 		{name: "two up files on one index are reported", files: []string{"000001_init.up.sql", "000002_a.up.sql", "000002_b.up.sql"}, want: []string{"000002_a.up.sql: index 000002 has 2 up files; one migration per index", "000002_b.up.sql: index 000002 has 2 up files; one migration per index"}},

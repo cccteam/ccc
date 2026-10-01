@@ -288,11 +288,13 @@ func newDeployGuardMigrations(d deps) *cobra.Command {
 		Long: `guard-migrations is the deploy gate for the migration rule bedrock check applies before the
 merge. The schema migrations directory and the seed directory beside it (schema/devseed) must each
 be one sequence: six-digit indexes, one up file each, at most one down, contiguous. In a
-pull-request build, every migration the branch started from must still be in the tree unchanged,
-and the sequence is read together with the default branch's, so an index the default branch took
-since the branch was cut is refused now rather than after the merge. A refusal lists every
-problem, names the fix (bedrock migration renumber, which go generate runs) and is posted on the
-pull request.`,
+pull-request build, every schema migration the branch started from must still be in the tree
+unchanged, and the sequence is read together with the default branch's, so an index the default
+branch took since the branch was cut is refused now rather than after the merge. Seed files are
+development data: a pull request may edit or remove one as long as the directory stays one
+sequence (a removal renumbers the files after it), and a changed seed applies from the start by
+recreating the pull request's database on its next build. A refusal lists every problem, names
+the fix (bedrock migration renumber, which go generate runs) and is posted on the pull request.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.GuardMigrations(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())

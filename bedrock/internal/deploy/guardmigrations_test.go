@@ -9,8 +9,8 @@ import (
 )
 
 // migrationsRepo is the repository the guard reads: the pull request's commit c9
-// branched from c3, whose tree holds 000001; master has moved on to c4, which added
-// 000002.
+// branched from c3, whose tree holds 000001 and three seed files; master has moved on
+// to c4, which added 000002.
 func migrationsRepo() *githubtest.Repo {
 	return &githubtest.Repo{
 		Refs:      map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "c4"}},
@@ -20,9 +20,13 @@ func migrationsRepo() *githubtest.Repo {
 		Files: map[string]string{
 			"t3:schema/migrations/000001_Init.up.sql":   "create a",
 			"t3:schema/devseed/000001_Seed.up.sql":      "insert a",
+			"t3:schema/devseed/000002_More.up.sql":      "insert b",
+			"t3:schema/devseed/000003_Third.up.sql":     "insert c",
 			"t4:schema/migrations/000001_Init.up.sql":   "create a",
 			"t4:schema/migrations/000002_Master.up.sql": "create b",
 			"t4:schema/devseed/000001_Seed.up.sql":      "insert a",
+			"t4:schema/devseed/000002_More.up.sql":      "insert b",
+			"t4:schema/devseed/000003_Third.up.sql":     "insert c",
 		},
 	}
 }
@@ -40,9 +44,12 @@ func TestGuardMigrations(t *testing.T) {
 		env   string
 		subs  map[string]string
 		files map[string]string
+		// repoFiles adds files to the repository's trees, "tree:path".
+		repoFiles map[string]string
 		// deployer registers the deployer app's key, so a refusal is posted as the app.
 		deployer    bool
 		wantOut     []string
+		wantNotOut  []string
 		wantErr     string
 		wantComment string
 		wantCalls   []string
@@ -91,7 +98,7 @@ func TestGuardMigrations(t *testing.T) {
 			wantOut: []string{
 				"schema/migrations: 3 migration(s), 000001 to 000003, read together with master.",
 				"schema/devseed: 1 migration(s), 000001 to 000001, read together with master.",
-				"Guard passed: the migrations form one sequence, unchanged against master.",
+				"Guard passed: the migrations form one sequence, the committed schema migrations unchanged against master.",
 			},
 		},
 		{
@@ -115,13 +122,48 @@ func TestGuardMigrations(t *testing.T) {
 			wantCalls:   []string{"GET /repos/acme/quill/installation", "POST /app/installations/77/access_tokens"},
 		},
 		{
-			name:        "a removed committed migration and a changed seed are refused, the seed's fix recreating the database",
+			name:        "a removed committed schema migration is refused; the changed seed beside it is not",
 			env:         env,
 			subs:        prSubs(),
 			files:       map[string]string{"schema/migrations/000003_Mine.up.sql": "create c", "schema/devseed/000001_Seed.up.sql": "insert b"},
-			wantOut:     []string{"schema/migrations/000001_Init.up.sql: removed or renamed", "schema/devseed/000001_Seed.up.sql: modified; a committed migration never changes, a new one follows it, and /gcbrun reload-db recreates"},
+			wantOut:     []string{"schema/migrations/000001_Init.up.sql: removed or renamed", "schema/devseed: 1 migration(s), 000001 to 000001, read together with master."},
+			wantNotOut:  []string{"000001_Seed.up.sql: modified"},
 			wantErr:     "Build REJECTED",
 			wantComment: "removed or renamed",
+		},
+		{
+			name:       "an edited seed passes: seed files are development data",
+			env:        env,
+			subs:       prSubs(),
+			files:      map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000003_Mine.up.sql": "create c", "schema/devseed/000001_Seed.up.sql": "insert a, edited", "schema/devseed/000002_More.up.sql": "insert b", "schema/devseed/000003_Third.up.sql": "insert c"},
+			wantOut:    []string{"schema/devseed: 3 migration(s), 000001 to 000003, read together with master.", "Guard passed"},
+			wantNotOut: []string{"modified"},
+		},
+		{
+			name:    "a removed seed file passes when the files after it are renumbered",
+			env:     env,
+			subs:    prSubs(),
+			files:   map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000003_Mine.up.sql": "create c", "schema/devseed/000001_Seed.up.sql": "insert a", "schema/devseed/000002_Third.up.sql": "insert c"},
+			wantOut: []string{"schema/devseed: 2 migration(s), 000001 to 000002, read together with master.", "Guard passed"},
+		},
+		{
+			name:        "a removed seed file that leaves a gap is refused",
+			env:         env,
+			subs:        prSubs(),
+			files:       map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000003_Mine.up.sql": "create c", "schema/devseed/000001_Seed.up.sql": "insert a", "schema/devseed/000003_Third.up.sql": "insert c"},
+			wantOut:     []string{"schema/devseed: gap: no migration 000002 between 000001 and 000003"},
+			wantErr:     "Build REJECTED",
+			wantComment: "gap: no migration 000002",
+		},
+		{
+			name:        "a seed index the default branch took since the branch was cut is refused",
+			env:         env,
+			subs:        prSubs(),
+			repoFiles:   map[string]string{"t4:schema/devseed/000004_Late.up.sql": "insert d"},
+			files:       map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000003_Mine.up.sql": "create c", "schema/devseed/000001_Seed.up.sql": "insert a", "schema/devseed/000002_More.up.sql": "insert b", "schema/devseed/000003_Third.up.sql": "insert c", "schema/devseed/000004_Mine.up.sql": "insert mine"},
+			wantOut:     []string{"schema/devseed/000004_Mine.up.sql: index 000004 has 2 up files", "schema/devseed/000004_Late.up.sql (on master, not in this pull request): index 000004 has 2 up files"},
+			wantErr:     "Build REJECTED",
+			wantComment: "000004",
 		},
 	}
 	for _, tt := range tests {
@@ -134,6 +176,9 @@ func TestGuardMigrations(t *testing.T) {
 			}
 			w := workspaceFiles(t, files)
 			repo := migrationsRepo()
+			for name, content := range tt.repoFiles {
+				repo.Files[name] = content
+			}
 			srv, gh := githubStandIn(t, repo)
 			clients := &Clients{GitHub: gh, Secrets: (&fakeSecrets{}).open}
 			if tt.deployer {
@@ -149,6 +194,11 @@ func TestGuardMigrations(t *testing.T) {
 				t.Fatalf("GuardMigrations() error = %v\n%s", err, out.String())
 			}
 			containsAll(t, out.String(), tt.wantOut...)
+			for _, s := range tt.wantNotOut {
+				if strings.Contains(out.String(), s) {
+					t.Errorf("output holds %q, want it absent:\n%s", s, out.String())
+				}
+			}
 			comments := repo.Comments[7]
 			if tt.wantComment == "" && len(comments) > 0 {
 				t.Errorf("posted %q, want nothing", comments[0].Body)

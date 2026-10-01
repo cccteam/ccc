@@ -181,9 +181,12 @@ It also refuses:
 - a schema migrations directory, or the seed directory beside it (`schema/devseed`),
   whose files do not form the sequence the migrate command applies: six-digit indexes, one
   up file per index, at most one down, contiguous from the lowest present. The pipeline
-  repeats that rule on every build and, in a pull-request build, also refuses a migration
-  modified, renamed or removed against the default branch, and an index the default branch
-  has taken since the branch was cut; `bedrock migration renumber` is the fix it names.
+  repeats that rule on every build and, in a pull-request build, also refuses a schema
+  migration modified, renamed or removed against the default branch, and an index the
+  default branch has taken since the branch was cut; `bedrock migration renumber` is the
+  fix it names. Seed files are development data and may be edited or removed, the
+  directory staying one sequence; a changed seed applies from the start by recreating
+  the database, a pull request's on its next build.
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
@@ -275,9 +278,11 @@ thing one step hands the next. In order:
   (a commit with `!` after its type, or a `BREAKING CHANGE:` footer) is a window release,
   recorded as `WINDOW_RELEASE` for the maintenance window.
 - `deploy guard-migrations`: the schema migrations and the seed are each one sequence
-  (the rule `bedrock check` applies), and in a pull-request build every migration the
-  branch started from is still there unchanged and the sequence is read together with
-  the default branch's. A refusal is posted on the pull request and names the fix.
+  (the rule `bedrock check` applies), and in a pull-request build every schema migration
+  the branch started from is still there unchanged and the sequence is read together with
+  the default branch's. Seed files may be edited or removed; the resolve step recreates a
+  pull request's database when a seed its last build applied changed. A refusal is posted
+  on the pull request and names the fix.
 - `deploy plan-environments`: in a pull-request build, plans the stack for every
   environment of the promotion order, each against that environment's state prefix as
   its plan identity (a reader, without the state lock, so a pull-request build in tst

@@ -247,6 +247,26 @@ func TestResolve(t *testing.T) {
 			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
 		},
 		{
+			name:     "a seed file the last build applied changed: the database is recreated so the seed applies from the start",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun"},
+			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a")})},
+			tree:     map[string]string{sitesUp: sitesContent, "schema/devseed/000001_Seed.up.sql": "insert a, edited"},
+			want: withComment(pr, "/gcbrun", func(o *outcome) {
+				o.ReloadDB = true
+				o.ReloadReason = "the database applied schema/devseed/000001_Seed.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
+			}),
+			wantOut: []string{"Reload: the database applied schema/devseed/000001_Seed.up.sql (build b-0)"},
+		},
+		{
+			name:     "a new seed file beside the applied ones changes nothing",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
+			comments: []string{"/gcbrun"},
+			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a")})},
+			tree:     map[string]string{sitesUp: sitesContent, "schema/devseed/000001_Seed.up.sql": "insert a", "schema/devseed/000002_More.up.sql": "insert b"},
+			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
+		},
+		{
 			name:     "the newest record decides, an older one is history",
 			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
 			comments: []string{"/gcbrun"},

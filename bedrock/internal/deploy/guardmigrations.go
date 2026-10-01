@@ -23,14 +23,19 @@ import (
 // GuardMigrations refuses a build whose migrations the migrate command could not apply
 // in order, before anything is touched. The schema migrations directory and the seed
 // directory beside it (schema/devseed) are each one sequence by the rule
-// (migration.Sequence). In a pull-request build two more things hold: every migration
-// the branch started from (the merge base with the default branch) is still in the tree,
-// unchanged, since a committed migration never changes; and the sequence is read over
-// the tree together with the default branch's, so an index the default branch has taken
-// since the branch was cut is refused now, not after the merge. A refusal lists every
-// problem, names the fix (bedrock migration renumber, which go generate runs) and is
-// posted on the pull request. A torn-down environment, a teardown and an application
-// without a schema have nothing to guard.
+// (migration.Sequence). In a pull-request build two more things hold for the schema
+// migrations: every one the branch started from (the merge base with the default branch)
+// is still in the tree, unchanged, since a committed schema migration never changes; and
+// the sequence is read over the tree together with the default branch's, so an index the
+// default branch has taken since the branch was cut is refused now, not after the merge.
+// Seed files are development data: a pull request may edit or remove one, and the seed
+// directory keeps only the sequence rule (a removal renumbers the files after it), read
+// together with the files the default branch added since the branch was cut. A changed
+// seed applies from the start by recreating the database, which the resolve step does
+// for a pull request's on its next build (staleDatabase). A refusal lists every problem,
+// names the fix (bedrock migration renumber, which go generate runs) and is posted on the
+// pull request. A torn-down environment, a teardown and an application without a schema
+// have nothing to guard.
 func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -70,7 +75,7 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 	if len(g.problems) == 0 {
 		against := ""
 		if g.base != "" {
-			against = ", unchanged against " + g.branch
+			against = ", the committed schema migrations unchanged against " + g.branch
 		}
 		fmt.Fprintf(out, "Guard passed: the migrations form one sequence%s.\n", against)
 
@@ -117,10 +122,11 @@ func (g *migrationGuard) branchedFrom(ctx context.Context, clients *Clients, sub
 	return nil
 }
 
-// guard reads one directory: the committed files still there unchanged (a pull request),
-// then the sequence over the tree and, for a pull request, the default branch's names.
-// seed says the directory is the seed's, whose fix for a changed file also recreates the
-// pull request's database.
+// guard reads one directory: for the schema migrations of a pull request, the committed
+// files still there unchanged; then the sequence over the tree and, for a pull request,
+// the default branch's names. seed says the directory is the seed's: its files may change
+// or go, so only the names the default branch added since the merge base join the
+// sequence, not the ones the pull request removed.
 func (g *migrationGuard) guard(ctx context.Context, dir string, seed bool, out io.Writer) error {
 	local := filepath.Join(string(g.w), filepath.FromSlash(dir))
 	info, err := os.Stat(local)
@@ -141,17 +147,30 @@ func (g *migrationGuard) guard(ctx context.Context, dir string, seed bool, out i
 		entries = append(entries, migration.Entry{Name: name})
 	}
 	if g.base != "" {
-		if err := g.unchanged(ctx, dir, local, seed); err != nil {
-			return err
+		if !seed {
+			if err := g.unchanged(ctx, dir, local); err != nil {
+				return err
+			}
 		}
 		committed, err := g.listing(ctx, dir, g.branch)
 		if err != nil {
 			return err
 		}
-		for _, e := range committed {
-			if !slices.Contains(names, e.Name) {
-				entries = append(entries, migration.Entry{Name: e.Name, Note: "on " + g.branch + ", not in this pull request"})
+		removed := map[string]bool{}
+		if seed {
+			atBase, err := g.listing(ctx, dir, g.base)
+			if err != nil {
+				return err
 			}
+			for _, e := range atBase {
+				removed[e.Name] = !slices.Contains(names, e.Name)
+			}
+		}
+		for _, e := range committed {
+			if slices.Contains(names, e.Name) || removed[e.Name] {
+				continue
+			}
+			entries = append(entries, migration.Entry{Name: e.Name, Note: "on " + g.branch + ", not in this pull request"})
 		}
 	}
 	problems, span := migration.Sequence(entries)
@@ -177,16 +196,12 @@ func (g *migrationGuard) guard(ctx context.Context, dir string, seed bool, out i
 	return nil
 }
 
-// unchanged holds every file the pull request branched from against the tree: still
-// there, and the same content (by git's blob name, which the API lists).
-func (g *migrationGuard) unchanged(ctx context.Context, dir, local string, seed bool) error {
+// unchanged holds every schema migration the pull request branched from against the
+// tree: still there, and the same content (by git's blob name, which the API lists).
+func (g *migrationGuard) unchanged(ctx context.Context, dir, local string) error {
 	committed, err := g.listing(ctx, dir, g.base)
 	if err != nil {
 		return err
-	}
-	fix := "a new one follows it"
-	if seed {
-		fix = "a new one follows it, and /gcbrun reload-db recreates the pull request's database so the seed applies from the start"
 	}
 	for _, e := range committed {
 		data, err := os.ReadFile(filepath.Join(local, e.Name))
@@ -196,7 +211,7 @@ func (g *migrationGuard) unchanged(ctx context.Context, dir, local string, seed 
 		case err != nil:
 			return errors.Wrap(err, "os.ReadFile()")
 		case migration.BlobSHA(data) != e.SHA:
-			g.problems = append(g.problems, path.Join(dir, e.Name)+": modified; a committed migration never changes, "+fix)
+			g.problems = append(g.problems, path.Join(dir, e.Name)+": modified; a committed migration never changes, a new one follows it")
 		}
 	}
 
