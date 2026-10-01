@@ -59,6 +59,17 @@ const (
 	revisionTagFact   = "REVISION_TAG"
 	runMigrationsFact = "RUN_MIGRATIONS"
 	prNumberSub       = "_PR_NUMBER"
+	// restoreSub and requesterSub are the restore instruction a release build may carry
+	// (bedrock restore starts the environment's version trigger with them): what the
+	// environment's database is replaced with, and who asked. The facts carry them on.
+	restoreSub    = "_RESTORE"
+	requesterSub  = "_REQUESTER"
+	restoreFact   = "RESTORE"
+	requesterFact = "RESTORE_REQUESTER"
+	// The two restores: an empty database the migrations and the seed then fill (tst,
+	// and an environment on the seed list), and production's most recent backup (stg).
+	restoreEmpty  = "empty"
+	restoreBackup = "production-backup"
 	// projectFact and locationFact are where the build runs, by Cloud Build's own names.
 	projectFact  = "PROJECT_ID"
 	locationFact = "LOCATION"
@@ -258,8 +269,13 @@ type Facts struct {
 	// ReloadReason says why the pull request's database is recreated: the comment
 	// asked (/gcbrun reload-db), or the migrations the last build applied are no longer
 	// in the tree.
-	ReloadReason  string
-	Down          bool
+	ReloadReason string
+	Down         bool
+	// Restore is a release build's restore instruction (empty, or production-backup):
+	// the environment's database is replaced before the release deploys, and Requester
+	// says who asked. Both empty for an ordinary build.
+	Restore       string
+	Requester     string
 	Image         string
 	ImageTag      string
 	CommitTag     string
@@ -345,8 +361,49 @@ func newFacts(data []byte) (*Facts, error) {
 	if f.Services == "" || f.MigrateJob == "" {
 		return nil, errors.New("_SERVICES and _MIGRATE_JOB name the Cloud Run services and the migrate job this build updates; one is empty")
 	}
+	if err := f.restore(); err != nil {
+		return nil, err
+	}
 
 	return f, nil
+}
+
+// restore reads the restore instruction. A restore is a release build's: it replaces the
+// environment's database before the release deploys, so a pull-request build, whose
+// database is its own and recreated on /gcbrun reload-db, carries none; production is
+// never restored by a run; the instruction names one of the two restores, and who asked.
+// An empty database is any environment's but production's; production's backup is
+// restored into stg, the environment on production's instance where its backups are.
+func (f *Facts) restore() error {
+	restore, requester := f.Substitutions[restoreSub], f.Substitutions[requesterSub]
+	if restore == "" {
+		if requester != "" {
+			return errors.Newf("%s names %s but %s is empty: a requester comes with a restore", requesterSub, requester, restoreSub)
+		}
+
+		return nil
+	}
+	if f.Tag == "" {
+		return errors.Newf("%s=%s on a pull-request build: a restore is a release build's instruction; a pull request's own database is recreated with /gcbrun reload-db", restoreSub, restore)
+	}
+	if f.Environment == prdEnvironment {
+		return errors.Newf("%s=%s in %s: production is never restored by a run", restoreSub, restore, prdEnvironment)
+	}
+	switch restore {
+	case restoreEmpty:
+	case restoreBackup:
+		if f.Environment != stgEnvironment {
+			return errors.Newf("%s=%s in %s: production's backup is restored into %s, the environment on production's instance; %s is restored to an empty database (%s=%s)", restoreSub, restore, f.Environment, stgEnvironment, f.Environment, restoreSub, restoreEmpty)
+		}
+	default:
+		return errors.Newf("unknown %s %q (the restores are %s and %s)", restoreSub, restore, restoreEmpty, restoreBackup)
+	}
+	if requester == "" {
+		return errors.Newf("%s=%s names no requester (%s): a restore says who asked for it", restoreSub, restore, requesterSub)
+	}
+	f.Restore, f.Requester = restore, requester
+
+	return nil
 }
 
 // mint takes a GitHub token for the repository from the Cloud Build connection the
@@ -388,6 +445,9 @@ func (f *Facts) trigger(ctx context.Context, comments CommentsFunc, out io.Write
 	if f.Tag != "" {
 		fmt.Fprintf(out, "Triggered by tag %s\n", f.Tag)
 		f.Version, f.Release = f.Tag, f.Tag
+		if f.Restore != "" {
+			fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, asked for by %s.\n", f.Environment, f.Restore, f.Tag, f.Requester)
+		}
 
 		return nil
 	}
@@ -610,6 +670,8 @@ func (f *Facts) environment() string {
 		{reloadDBFact, flag(f.ReloadDB)},
 		{reloadReasonFact, f.ReloadReason},
 		{downFact, flag(f.Down)},
+		{restoreFact, f.Restore},
+		{requesterFact, f.Requester},
 		{skipDeploy, ""},
 		{imageFact, f.Image},
 		{imageTagFact, f.ImageTag},

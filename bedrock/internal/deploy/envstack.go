@@ -121,7 +121,19 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 		return err
 	}
 	plan := filepath.Join(string(w), StackPlanFile)
-	if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-out="+plan, "-var", "environment="+subs[envSub]); err != nil {
+	args := []string{"plan", "-input=false", "-no-color", "-out=" + plan, varFlag, "environment=" + subs[envSub]}
+	env, err := w.Environment()
+	if err != nil {
+		return err
+	}
+	if env[restoreFact] != "" {
+		replace, err := s.replaceForRestore(ctx, subs[appSub], subs[envSub], env, w)
+		if err != nil {
+			return err
+		}
+		args = append(args, replace...)
+	}
+	if err := s.tofu(ctx, args...); err != nil {
 		return err
 	}
 	shown, err := s.tofuOutput(ctx, "show", "-json", plan)
@@ -141,6 +153,47 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	}
 
 	return w.Append(map[string]string{stackPlanFact: p.Summary()})
+}
+
+// restoredFact lists what a restore run's plan replaces, comma-separated, for the record.
+const restoredFact = "RESTORE_REPLACED"
+
+// replaceForRestore is a restore run's -replace of what the environment's database
+// holds: the Spanner database, which the migrations and the seed then fill afresh; the
+// Firestore database, whose documents refer to rows that are gone; and, in tst, the file
+// bucket, whose objects do too (stg's are kept: production's backup predates some of
+// them, and the record says so). Each when the stack has it; what is replaced is noted
+// for the record. The restore from production's backup is a different path, not built
+// yet: the run stops here rather than replacing stg's database with an empty one.
+func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts map[string]string, w Workspace) ([]string, error) {
+	kind, requester := facts[restoreFact], facts[requesterFact]
+	if kind == restoreBackup {
+		return nil, errors.Newf("%s=%s: the restore from production's backup is not built yet; %s keeps its database", restoreSub, kind, env)
+	}
+	listed, err := s.tofuOutput(ctx, "state", "list")
+	if err != nil {
+		return nil, err
+	}
+	addresses := []string{"google_spanner_database." + app + "[0]", "google_firestore_database.firestore"}
+	if env == tstEnvironment {
+		addresses = append(addresses, "google_storage_bucket.assets")
+	}
+	var replace, replaced []string
+	for _, address := range addresses {
+		if hasLine(string(listed), address) {
+			replace = append(replace, "-replace="+address)
+			replaced = append(replaced, address)
+		}
+	}
+	if len(replace) == 0 {
+		return nil, errors.Newf("%s=%s: %s's stack holds no database to replace (nothing of %s in its state)", restoreSub, kind, env, strings.Join(addresses, ", "))
+	}
+	fmt.Fprintf(s.out, "=== Restore (%s, asked for by %s): %s is replaced in %s's stack; the migrations and the seed then apply afresh ===\n", kind, requester, strings.Join(replaced, ", "), env)
+	if err := w.Append(map[string]string{restoredFact: strings.Join(replaced, ",")}); err != nil {
+		return nil, err
+	}
+
+	return replace, nil
 }
 
 // ApplyEnvironmentStack applies the plan PlanEnvironmentStack saved, in a tag build, as the
@@ -209,7 +262,7 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 			return err
 		}
 		plan := filepath.Join(string(w), "environment-"+e+".plan")
-		if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-lock=false", "-out="+plan, "-var", "environment="+e); err != nil {
+		if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-lock=false", "-out="+plan, varFlag, "environment="+e); err != nil {
 			return refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed; the build log says why (build %s).", e, build.ID), err, out)
 		}
 		shown, err := s.tofuOutput(ctx, "show", "-json", plan)

@@ -48,6 +48,19 @@ type Record struct {
 	// applied, made in this build): its counts and changes. Absent in a pull-request
 	// build, which applies no environment's stack, and on a bedrock before the step.
 	Stack *StackPlan `json:"stack,omitempty"`
+	// Restore says the build was a restore run: what the environment's database was
+	// replaced with, who asked, and what the stack replaced. Absent otherwise.
+	Restore *Restore `json:"restore,omitempty"`
+}
+
+// Restore is a restore run as the record keeps it.
+type Restore struct {
+	// Kind is the restore: empty (an empty database, filled by the migrations and the
+	// seed) or production-backup.
+	Kind      string `json:"kind"`
+	Requester string `json:"requester"`
+	// Replaced lists the stack's resources the run replaced, by address.
+	Replaced []string `json:"replaced,omitempty"`
 }
 
 // Migration is one migration file a build applied: its directory (root-relative), its
@@ -142,6 +155,13 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	var restore *Restore
+	if env[restoreFact] != "" {
+		restore = &Restore{Kind: env[restoreFact], Requester: env[requesterFact]}
+		if env[restoredFact] != "" {
+			restore.Replaced = strings.Split(env[restoredFact], ",")
+		}
+	}
 	record := Record{
 		App:        build.Substitutions[appSub],
 		Env:        build.Substitutions[envSub],
@@ -156,6 +176,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Build:      build.ID,
 		Migrations: applied,
 		Stack:      stack,
+		Restore:    restore,
 	}
 
 	return &RecordRequest{

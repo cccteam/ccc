@@ -73,7 +73,11 @@ to tst), the pull request's instruction (the words after its latest /gcbrun comm
 reload-db, down), the image and its tags (<release>-<env> and <commit>-<env>), and whether the
 migrate job runs and traffic shifts. It refuses a build that is neither a tag's nor a pull
 request's, one that names no services or migrate job, a pull-request build with no connection or
-no /gcbrun comment, an unknown option, and shared-db with reload-db. It writes environment.sh (the
+no /gcbrun comment, an unknown option, and shared-db with reload-db. A tag build may carry a
+restore instruction (_RESTORE: empty, or production-backup for the environment on production's
+instance; _REQUESTER names who asked): the environment's database is replaced before the release
+deploys, which the facts carry on (RESTORE, RESTORE_REQUESTER); a pull-request build carries none,
+and production is never restored by a run. It writes environment.sh (the
 facts, then every substitution of the build), build-args.txt (the declared substitutions as the
 image build's arguments, NAME=value lines) and build.json (the build as Cloud Build describes it) to
 the workspace.`,
@@ -259,8 +263,10 @@ func newDeployRecord(d deps) *cobra.Command {
 		Long: `record writes what this build deployed to the records bucket, as <app>/<env>/<release>/<build
 id>.json: the version, the commit, the image and its digest, the regions and the revision each
 runs, the time, and whether traffic shifted to it (live) or not (preview: a pull request's
-revision, serving under its tag). The next environment's gate reads it, since a release reaches
-an environment after it is live in the previous one. It reads the workspace: environment.sh
+revision, serving under its tag), with the plan of the stack the build applied and, in a restore
+run, what replaced the database, who asked and what the stack replaced. The next environment's
+gate reads it, since a release reaches an environment after it is live in the previous one. It
+reads the workspace: environment.sh
 (the facts, with the image digest the build appended), build.json (the substitutions: the
 application, the environment, the records bucket, the commit) and revisions.txt (the revisions
 the deploy step created). A torn-down pull-request environment (SKIP_DEPLOY) records nothing.`,
@@ -410,7 +416,11 @@ leaves the plan (stack.plan) and its JSON (stack-plan.json) in the workspace, pr
 and each change, appends the summary (STACK_PLAN) for the record, and runs the tests: no
 authoritative IAM resource in the stack, and every secret version a planned revision template pins
 exists and is enabled, read as the apply identity. A failing plan or test stops the build with the
-stack unapplied. It runs in the OpenTofu image.`,
+stack unapplied. In a restore run (RESTORE=empty) the plan replaces the Spanner database, the
+Firestore database and, in tst, the file bucket, each when the stack has it (tofu state list),
+so the migrations and the seed apply afresh; what it replaces is appended (RESTORE_REPLACED) for
+the record. The restore from production's backup is not built yet; the plan stops on it. It runs
+in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.PlanEnvironmentStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())

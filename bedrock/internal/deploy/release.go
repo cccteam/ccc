@@ -118,6 +118,11 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	if hotfix == nil {
 		return nil
 	}
+	if env[restoreFact] != "" {
+		fmt.Fprintf(out, "Restore run: %s's database is replaced before %s deploys, so what it holds is not compared with the hotfix.\n", subs[envSub], subs[tagSub])
+
+		return nil
+	}
 
 	return hotfixGate(ctx, clients.Storage, subs, w, hotfix, out)
 }

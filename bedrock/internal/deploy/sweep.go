@@ -99,7 +99,7 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 		if err := deleteBuildJobs(ctx, clients, s, subs, number, out); err != nil {
 			return err
 		}
-		if err := s.tofu(ctx, "destroy", "-auto-approve", "-input=false", "-no-color", "-var", "environment="+subs[envSub], "-var", "pull_request="+number); err != nil {
+		if err := s.tofu(ctx, "destroy", "-auto-approve", "-input=false", "-no-color", varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number); err != nil {
 			return err
 		}
 	}

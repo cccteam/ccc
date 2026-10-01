@@ -279,7 +279,9 @@ substitutions and this stack's outputs:
   (`<env>=<email>`), which a pull-request build plans the stack for every
   environment as; `_APPLY_IDENTITY`, the identity the tag build applies this
   environment's stack as, and the pull-request build a pull request's stack
-  as; `_MIGRATIONS_DIR`, the
+  as; `_RESTORE` and `_REQUESTER`, empty on a tag's own build and set on a
+  restore run (what replaces the environment's database, and who asked);
+  `_MIGRATIONS_DIR`, the
   schema migrations directory, which decides whether `/gcbrun shared-db` is
   allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep;
   `_HOSTNAME`, the environment's canonical hostname (a pull-request stack's

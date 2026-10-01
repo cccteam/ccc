@@ -268,7 +268,11 @@ thing one step hands the next. In order:
   the pull request's instruction (the words after its latest `/gcbrun` comment:
   `shared-db`, `reload-db`, `down`), the image and its tags, whether the migrate job runs
   and traffic shifts, and whether a stale pull-request database is recreated (a migration
-  the last build applied is no longer in the tree).
+  the last build applied is no longer in the tree). A tag build may carry a restore
+  instruction (`_RESTORE`: `empty`, or `production-backup` for the environment on
+  production's instance, with `_REQUESTER` naming who asked): the environment's database
+  is replaced before the release deploys. A pull-request build carries none, and
+  production is never restored by a run.
 - `deploy validate-release`: for a tag build, the tag belongs to a GitHub Release cut by
   an accepted release actor, the tagged commit is on the default branch or at the tip of
   a hotfix line, and the record gate holds: the release is live in the previous
@@ -319,7 +323,11 @@ thing one step hands the next. In order:
   release bundles several pull requests. An infrastructure change must be safe on the
   running service (add first, remove later); one that is not is declared breaking in
   release-please's way and becomes a window release. The first apply of an environment
-  stays by hand, before any release exists there.
+  stays by hand, before any release exists there. In a restore run (`_RESTORE=empty`) the
+  plan replaces the Spanner database, the Firestore database and, in the first
+  environment, the file bucket, each when the stack has it, so the migrations and the seed
+  apply afresh; the environment on production's instance keeps its file bucket. The
+  restore from production's backup is not built yet, and the plan stops on it.
 - `deploy migrate`: runs this build's migrate job, the copy `deploy jobs` made of the
   template on this image, once to completion, with the seed (`schema/devseed` as data
   migrations after the schema) where `_SEED` is true: every pull request, and a release
@@ -355,7 +363,8 @@ thing one step hands the next. In order:
   the tags other revisions carry; a pull-request revision served under its tag alone
   leaves the traffic where it is.
 - `deploy record`: writes the deployment record once traffic has moved, with the plan of
-  the stack the build applied (`stack`: counts and changes).
+  the stack the build applied (`stack`: counts and changes) and, in a restore run, what
+  replaced the database, who asked and what the stack replaced (`restore`).
 - `deploy talk-back`: in a pull-request build, tells the pull request what the build did
   as the deployer app: a GitHub deployment carrying the environment's URL and a comment.
   The app's token is minted from its key when there is something to say, by this step or
@@ -447,8 +456,20 @@ line's latest release before the hotfix. At production's door the hotfix must be
 line production runs; a hotfix from an older line that happens to carry every file
 would roll production's application back. `hotfix start` prints the rule, and warns
 when the release is not the repository's latest, which GitHub can tell; what production
-runs, only its deployment record can. The restore is not built yet: until it is, an
-operator with cloud access replaces the environment's database by hand.
+runs, only its deployment record can.
+
+The restore is a run of the environment's version trigger for the release, carrying the
+instruction `_RESTORE` (`empty`, or `production-backup` for the environment on
+production's instance) and `_REQUESTER`. Everything that changes the environment happens
+inside that run, in the pipeline's order: the release is validated (the record gate
+holds; the hotfix check is skipped, since the database is about to be replaced), the
+image is built, the stack's plan replaces the database (and the Firestore database and,
+in the first environment, the file bucket), the jobs are created, the migrations and the
+seed apply, the revision deploys, traffic moves, and the record carries the reason and
+the requester. The run refuses the instruction in production. Not built yet: the restore
+from production's backup, the maintenance revision that serves while the database is
+away, and the GitHub door that starts the run (`bedrock restore <env> <release>`); until
+the door lands, the operator runs the trigger with the two substitutions.
 
 ## bedrock repository
 

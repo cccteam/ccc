@@ -119,6 +119,15 @@ func tagSubs() map[string]string {
 	return map[string]string{appSub: "quill", envSub: stgEnvironment, projectSub: "p-stg", applyIdentitySub: "quill-apply@p-stg.iam.gserviceaccount.com", commitSub: "c9", repoFullNameSub: "acme/quill"}
 }
 
+// tstSubs are a tag build's substitutions in tst, with stg's identity and project, so
+// the lines a test expects differ from tagSubs's in the environment alone.
+func tstSubs() map[string]string {
+	subs := tagSubs()
+	subs[envSub] = tstEnvironment
+
+	return subs
+}
+
 func TestPlanEnvironmentStack(t *testing.T) {
 	t.Parallel()
 
@@ -127,16 +136,61 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		planLine = "tofu plan -input=false -no-color -out=WS/stack.plan -var environment=stg"
 		showLine = "tofu show -json WS/stack.plan"
 	)
+	const (
+		restoreEnv = "export SKIP_DEPLOY=\"\"\nexport RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
+		stateList  = "google_spanner_database.quill[0]\ngoogle_firestore_database.firestore\ngoogle_storage_bucket.assets\ngoogle_cloud_run_v2_service.app[\"uc1\"]\n"
+	)
 	tests := []struct {
 		name          string
 		subs          map[string]string
 		pins          map[string]string
 		authoritative bool
-		wantOut       []string
-		wantTofu      []string
-		wantFact      string
-		wantErr       string
+		// env is the environment file; state what tofu state list answers.
+		env          string
+		state        string
+		wantOut      []string
+		wantTofu     []string
+		wantFact     string
+		wantReplaced string
+		wantErr      string
 	}{
+		{
+			name:         "a restore run replaces the database, the Firestore database and, in tst, the file bucket",
+			subs:         tstSubs(),
+			pins:         enabledPins(),
+			env:          restoreEnv,
+			state:        stateList,
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_firestore_database.firestore, google_storage_bucket.assets is replaced in tst's stack; the migrations and the seed then apply afresh ===", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_firestore_database.firestore -replace=google_storage_bucket.assets", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0],google_firestore_database.firestore,google_storage_bucket.assets",
+		},
+		{
+			name:         "stg keeps its file bucket through a restore, and a stack without Firestore replaces the database alone",
+			subs:         tagSubs(),
+			pins:         enabledPins(),
+			env:          restoreEnv,
+			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.assets\n",
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0] is replaced in stg's stack"},
+			wantTofu:     []string{initLine, "tofu state list", planLine + " -replace=google_spanner_database.quill[0]", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0]",
+		},
+		{
+			name:     "a restore of a stack without a database is refused",
+			subs:     tagSubs(),
+			env:      restoreEnv,
+			state:    "google_cloud_run_v2_service.app[\"uc1\"]\n",
+			wantTofu: []string{initLine, "tofu state list"},
+			wantErr:  "_RESTORE=empty: stg's stack holds no database to replace (nothing of google_spanner_database.quill[0], google_firestore_database.firestore in its state)",
+		},
+		{
+			name:     "the restore from production's backup is not built yet",
+			subs:     tagSubs(),
+			env:      strings.Replace(restoreEnv, "empty", "production-backup", 1),
+			wantTofu: []string{initLine},
+			wantErr:  "_RESTORE=production-backup: the restore from production's backup is not built yet; stg keeps its database",
+		},
 		{
 			name:     "a tag build plans, tests and appends the summary",
 			subs:     tagSubs(),
@@ -182,7 +236,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n", BuildFile: buildFor(t, tt.subs)})
+			envFile := tt.env
+			if envFile == "" {
+				envFile = "export SKIP_DEPLOY=\"\"\n"
+			}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, tt.subs)})
 			if tt.authoritative {
 				dir := filepath.Join(string(w), stackDir)
 				if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -192,7 +250,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON}}
+			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON, "tofu state": tt.state}}
 			secrets := &fakeSecrets{states: tt.pins}
 			var out strings.Builder
 			err := PlanEnvironmentStack(t.Context(), &Clients{Exec: run, SecretsAs: secrets.openAs}, w, &out)
@@ -214,6 +272,9 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			}
 			if env[stackPlanFact] != tt.wantFact {
 				t.Errorf("%s = %q, want %q", stackPlanFact, env[stackPlanFact], tt.wantFact)
+			}
+			if env[restoredFact] != tt.wantReplaced {
+				t.Errorf("%s = %q, want %q", restoredFact, env[restoredFact], tt.wantReplaced)
 			}
 			if tt.wantFact != "" {
 				if _, err := os.Stat(filepath.Join(string(w), StackPlanJSONFile)); err != nil {

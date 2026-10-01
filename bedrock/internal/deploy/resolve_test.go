@@ -105,7 +105,7 @@ func prBuild(overrides map[string]string) map[string]string {
 }
 
 // known is the stack's contract in these tests.
-var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR"}
+var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_RESTORE", "_REQUESTER"}
 
 func buildFor(t *testing.T, subs map[string]string) string {
 	t.Helper()
@@ -122,7 +122,7 @@ func buildFor(t *testing.T, subs map[string]string) string {
 type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token  string
 	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Notice bool
-	ReloadReason                                                  string
+	ReloadReason, Restore, Requester                              string
 	Declared                                                      []string
 }
 
@@ -130,7 +130,7 @@ func summarize(f *Facts) outcome {
 	return outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Notice: f.Notice != "",
-		ReloadReason: f.ReloadReason, Declared: f.Declared,
+		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, Declared: f.Declared,
 	}
 }
 
@@ -186,6 +186,51 @@ func TestResolve(t *testing.T) {
 			want:      tag,
 			wantOut:   []string{"Triggered by tag v1.2.3", "IMAGE=" + image + " IMAGE_TAG=v1.2.3-tst VERSION=v1.2.3 RELEASE=v1.2.3", "RUN_MIGRATIONS=true SHIFT_TRAFFIC=true REVISION_TAG=", "Declared substitutions for the hooks and the image build: _WIDGET_MODE"},
 			wantAsked: "projects/tst-project/locations/us-central1/connections/imp-tst-github/repositories/harbor",
+		},
+		{
+			name:    "a restore run names what replaces the database and who asked",
+			subs:    tagBuild(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat"}),
+			want:    withComment(tag, "", func(o *outcome) { o.Restore, o.Requester = restoreEmpty, "octocat" }),
+			wantOut: []string{"Restore run: tst's database is replaced (empty) before v1.2.3 deploys, asked for by octocat."},
+		},
+		{
+			name: "production's backup is restored into stg",
+			subs: tagBuild(map[string]string{restoreSub: restoreBackup, requesterSub: "octocat", "_ENV": "stg"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.Restore, o.Requester, o.ImageTag, o.CommitTag = restoreBackup, "octocat", "v1.2.3-stg", "deadbeefcafe-stg"
+			}),
+			wantOut: []string{"Restore run: stg's database is replaced (production-backup) before v1.2.3 deploys, asked for by octocat."},
+		},
+		{
+			name:    "production is never restored by a run",
+			subs:    tagBuild(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_RESTORE=empty in prd: production is never restored by a run",
+		},
+		{
+			name:    "production's backup goes into stg alone",
+			subs:    tagBuild(map[string]string{restoreSub: restoreBackup, requesterSub: "octocat"}),
+			wantErr: "_RESTORE=production-backup in tst: production's backup is restored into stg, the environment on production's instance; tst is restored to an empty database (_RESTORE=empty)",
+		},
+		{
+			name:    "an unknown restore is refused",
+			subs:    tagBuild(map[string]string{restoreSub: "yesterday", requesterSub: "octocat"}),
+			wantErr: `unknown _RESTORE "yesterday" (the restores are empty and production-backup)`,
+		},
+		{
+			name:    "a restore names who asked",
+			subs:    tagBuild(map[string]string{restoreSub: restoreEmpty}),
+			wantErr: "_RESTORE=empty names no requester (_REQUESTER): a restore says who asked for it",
+		},
+		{
+			name:    "a requester without a restore is a mistake",
+			subs:    tagBuild(map[string]string{requesterSub: "octocat"}),
+			wantErr: "_REQUESTER names octocat but _RESTORE is empty: a requester comes with a restore",
+		},
+		{
+			name:     "a pull-request build carries no restore",
+			subs:     prBuild(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat"}),
+			comments: []string{"/gcbrun"},
+			wantErr:  "_RESTORE=empty on a pull-request build: a restore is a release build's instruction; a pull request's own database is recreated with /gcbrun reload-db",
 		},
 		{
 			name:    "a hand-submitted build without a connection skips the GitHub checks",

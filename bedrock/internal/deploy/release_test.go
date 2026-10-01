@@ -237,6 +237,15 @@ func TestValidateRelease(t *testing.T) {
 			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
 		},
 		{
+			name:       "a restore run is not checked: the database is about to be replaced",
+			env:        connected + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n",
+			subs:       map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
+			objects:    map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			files:      map[string]string{first.path(): first.content},
+			wantOut:    []string{"Gate passed: v1.2.4 is live in tst", "Restore run: stg's database is replaced before v1.2.4 deploys, so what it holds is not compared with the hotfix."},
+			wantAbsent: []string{"Hotfix check"},
+		},
+		{
 			name: "the newest live record is the one compared, not a preview or an older release",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},

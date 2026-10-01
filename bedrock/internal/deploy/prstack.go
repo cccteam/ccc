@@ -49,6 +49,9 @@ type stack struct {
 	out io.Writer
 }
 
+// varFlag passes a variable to a tofu plan or destroy.
+const varFlag = "-var"
+
 func newStack(clients *Clients, w Workspace, subs map[string]string, out io.Writer) *stack {
 	return &stack{
 		run: clients.Exec,
@@ -91,14 +94,14 @@ func PlanStack(ctx context.Context, clients *Clients, w Workspace, out io.Writer
 		return err
 	}
 	plan := filepath.Join(string(w), PlanFile)
-	args := []string{"plan", "-input=false", "-no-color", "-out=" + plan, "-var", "environment=" + subs[envSub], "-var", "pull_request=" + subs[prNumberSub]}
+	args := []string{"plan", "-input=false", "-no-color", "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "pull_request=" + subs[prNumberSub]}
 	switch {
 	case env[downFact] == trueValue:
 		fmt.Fprintln(out, "=== /gcbrun down: planning the destroy of the pull request's environment ===")
 		args = append(args, "-destroy")
 	case env[sharedDBFact] == trueValue:
 		fmt.Fprintf(out, "=== /gcbrun shared-db: the site runs against %s's database; no database of its own ===\n", subs[envSub])
-		args = append(args, "-var", "shared_database=true")
+		args = append(args, varFlag, "shared_database=true")
 	case env[reloadDBFact] == trueValue:
 		replace, err := s.replaceDatabase(ctx, subs[appSub], env[reloadReasonFact], w)
 		if err != nil {
