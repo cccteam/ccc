@@ -180,11 +180,15 @@ steps:
   # the migrations (what they need, a template job, a secret container, a bucket, exists
   # first). The plan is this build's own, summarized in the log and the deployment record;
   # the tests run before the apply, and a failure leaves the stack unapplied.
+  # A restore run waits in this step for Spanner to restore the database from the backup,
+  # which takes as long as the backup is large (a quarter of an hour for a database with
+  # almost nothing in it); a plan without a restore takes seconds, so the long timeout costs
+  # nothing, and the build's own timeout stays the cap.
   - id: PlanEnvironmentStack
     name: {{.OpenTofuImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, stack, plan]
-    timeout: 900s
+    timeout: 7200s
 
   - id: ApplyEnvironmentStack
     name: {{.OpenTofuImage}}
