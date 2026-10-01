@@ -39,11 +39,11 @@ Instance level, this layer: creating a database is `spanner.databases.create`
 checked on the instance, so the identity that creates databases, the
 application apply identity in stg and prd, is listed in `database_admins` and
 bound here as database admin, and as backup admin for the backup schedules.
-The application plan identity of the same environments is listed in
-`database_planners` and bound as `spannerPlanReader`, the organization's
-role of the reads a plan needs. That role at instance level reaches every
-database on the instance; bounding it to an application's own databases is a
-open question, and until it is answered the list stays short.
+Database admin at instance level reaches every database on the instance;
+bounding it to an application's own databases is an open question, and until
+it is answered the list stays short. The application plan identity of the
+same environments is listed in `database_planners` and bound as
+`spannerPlanReader`, the organization's role of the reads a plan needs.
 
 Database level, the application layer: `roles/spanner.databaseUser` for each
 runtime identity on its database, `roles/spanner.databaseAdmin` for the
