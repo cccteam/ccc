@@ -115,7 +115,10 @@ again does not, because its pull request is already labeled as tagged.
 - **Release**: a tag `v<major>.<minor>.<patch>` cut by release-please as the release app;
   the pipeline accepts a release from that author only. A **hotfix line** is the branch
   `hotfix/<major>.<minor>.x` on which release-please releases the line's next patch
-  versions while the default branch moves on.
+  versions while the default branch moves on. A feature release advances the minor,
+  below 1.0 too (release-please's `bump-patch-for-minor-pre-major` off; `check` refuses
+  it on), so a feature production does not run yet opens a new line; a fix is a patch on
+  the line, a breaking change advances the minor.
 
 ## bedrock render
 
@@ -188,6 +191,13 @@ It also refuses:
   directory staying one sequence; a changed seed applies from the start by recreating
   the database: a pull request's on its next build, a seeded environment's by the next
   release, as a restore run the release asks for itself.
+- a release-please configuration (`release-please-config.json`) with
+  `bump-patch-for-minor-pre-major` true, at the top level or for a package: below 1.0 a
+  feature release would bump the patch and stay on production's hotfix line
+  (`v<major>.<minor>.x`), so a hotfix of production's release could be neither numbered
+  (the line's next patch is taken) nor passed by the hotfix check (the feature's
+  migrations are what the environment would be restored to). Off, a feature opens a new
+  line, a fix bumps the patch and a breaking change the minor.
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
@@ -489,7 +499,9 @@ move down). Nothing to do prints nothing.
 `hotfix/<major>.<minor>.x` at the release's commit, on which release-please releases
 fixes as the line's next patch versions while the default branch moves on. The pipeline's
 release check accepts a tag at the tip of such a line whose base on the default branch
-carries a release tag of the same line.
+carries a release tag of the same line. The line's next patch must be free for the
+hotfix, so a feature release on the default branch advances the minor, below 1.0 as
+above it: `check` refuses release-please's `bump-patch-for-minor-pre-major`.
 
 A hotfix is based on the release production runs, and it deploys like any release:
 through tst and stg, then prd, each after the one before holds it live. What matters in
