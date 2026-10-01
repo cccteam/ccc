@@ -107,7 +107,9 @@ func TestRenumber(t *testing.T) {
 		setup func(r *repo)
 		dirs  []string
 		// branch is the default branch to read; master when empty.
-		branch      string
+		branch string
+		// editable names the directories whose committed files may move down.
+		editable    []string
 		wantRenames []Rename
 		wantNotes   []string
 		wantFiles   map[string][]string
@@ -215,6 +217,102 @@ func TestRenumber(t *testing.T) {
 			wantFiles:   map[string][]string{migrations: {"000001_Init.up.sql", "000002_Widgets.down.sql", "000002_Widgets.up.sql", "000003_Sites.up.sql", "000009_Orphan.down.sql"}},
 		},
 		{
+			name: "a removed committed seed file leaves no gap: the seed files after it move down and the branch's own follow",
+			setup: func(r *repo) {
+				r.commit("seeds", join(pair(seed, "000001_Marker"), pair(seed, "000002_People"), pair(seed, "000003_Orders"))...)
+				r.git("checkout", "-q", "-b", "feature")
+				r.git("rm", "-q", seed+"/000002_People.up.sql", seed+"/000002_People.down.sql")
+				r.write(pair(seed, "000004_Shipments")...)
+			},
+			dirs:     []string{seed},
+			editable: []string{seed},
+			wantRenames: []Rename{
+				{Dir: seed, From: "000003_Orders", To: "000002_Orders", Files: []string{"up", "down"}},
+				{Dir: seed, From: "000004_Shipments", To: "000003_Shipments", Files: []string{"up", "down"}},
+			},
+			wantFiles:  map[string][]string{seed: {"000001_Marker.down.sql", "000001_Marker.up.sql", "000002_Orders.down.sql", "000002_Orders.up.sql", "000003_Shipments.down.sql", "000003_Shipments.up.sql"}},
+			wantStaged: "R  schema/devseed/000003_Orders.up.sql -> schema/devseed/000002_Orders.up.sql",
+		},
+		{
+			name: "a removed committed schema migration is not closed over: a committed schema migration never moves",
+			setup: func(r *repo) {
+				masterWithTwo(r)
+				r.git("rm", "-q", migrations+"/000001_Init.up.sql", migrations+"/000001_Init.down.sql")
+				r.write(pair(migrations, "000003_Sites")...)
+			},
+			wantFiles: map[string][]string{migrations: {"000002_Widgets.down.sql", "000002_Widgets.up.sql", "000003_Sites.down.sql", "000003_Sites.up.sql"}},
+		},
+		{
+			name: "the branch's own seed files skip the index the default branch took since the branch was cut",
+			setup: func(r *repo) {
+				r.commit("marker", pair(seed, "000001_Marker")...)
+				r.git("checkout", "-q", "-b", "feature")
+				r.git("checkout", "-q", "master")
+				r.commit("audit on master", pair(seed, "000002_Audit")...)
+				r.git("checkout", "-q", "feature")
+				r.write(pair(seed, "000002_People")...)
+			},
+			dirs:        []string{seed},
+			editable:    []string{seed},
+			wantRenames: []Rename{{Dir: seed, From: "000002_People", To: "000003_People", Files: []string{"up", "down"}}},
+			wantFiles:   map[string][]string{seed: {"000001_Marker.down.sql", "000001_Marker.up.sql", "000003_People.down.sql", "000003_People.up.sql"}},
+		},
+		{
+			name: "a committed seed file the default branch's additions would push up is left alone with a note",
+			setup: func(r *repo) {
+				r.commit("seeds", join(pair(seed, "000001_Marker"), pair(seed, "000002_People"), pair(seed, "000003_Orders"))...)
+				r.git("checkout", "-q", "-b", "feature")
+				r.git("checkout", "-q", "master")
+				r.git("rm", "-q", seed+"/000002_People.up.sql", seed+"/000002_People.down.sql")
+				r.git("mv", seed+"/000003_Orders.up.sql", seed+"/000002_Orders.up.sql")
+				r.git("mv", seed+"/000003_Orders.down.sql", seed+"/000002_Orders.down.sql")
+				r.commit("packed on master", pair(seed, "000003_Zones")...)
+				r.git("checkout", "-q", "feature")
+				r.write(pair(seed, "000004_Shipments")...)
+			},
+			dirs:      []string{seed},
+			editable:  []string{seed},
+			wantNotes: []string{"schema/devseed: master added 000003_Zones since the branch was cut, and 000002_People, which the branch was cut with, would move up past it; a committed seed file only moves down. Merge master into the branch, then run the renumber again"},
+			wantFiles: map[string][]string{seed: {"000001_Marker.down.sql", "000001_Marker.up.sql", "000002_People.down.sql", "000002_People.up.sql", "000003_Orders.down.sql", "000003_Orders.up.sql", "000004_Shipments.down.sql", "000004_Shipments.up.sql"}},
+		},
+		{
+			name: "a gap below the seed files the default branch added since the branch was cut is noted; the files above a removed one still move down",
+			setup: func(r *repo) {
+				r.commit("seeds", join(pair(seed, "000001_Marker"), pair(seed, "000002_People"), pair(seed, "000003_Orders"))...)
+				r.git("checkout", "-q", "-b", "feature")
+				r.git("checkout", "-q", "master")
+				r.commit("audit on master", pair(seed, "000004_Audit")...)
+				r.git("checkout", "-q", "feature")
+				r.git("rm", "-q", seed+"/000002_People.up.sql", seed+"/000002_People.down.sql")
+			},
+			dirs:        []string{seed},
+			editable:    []string{seed},
+			wantRenames: []Rename{{Dir: seed, From: "000003_Orders", To: "000002_Orders", Files: []string{"up", "down"}}},
+			wantNotes:   []string{"schema/devseed: a gap stays below 000004_Audit, which master added since the branch was cut; merge master into the branch, then run the renumber again"},
+			wantFiles:   map[string][]string{seed: {"000001_Marker.down.sql", "000001_Marker.up.sql", "000002_Orders.down.sql", "000002_Orders.up.sql"}},
+		},
+		{
+			name: "after the merge, the seed files the default branch added move down behind the branch's, in order",
+			setup: func(r *repo) {
+				r.commit("seeds", join(pair(seed, "000001_Marker"), pair(seed, "000002_People"), pair(seed, "000003_Orders"))...)
+				r.git("checkout", "-q", "-b", "feature")
+				r.git("checkout", "-q", "master")
+				r.commit("audit on master", pair(seed, "000004_Audit")...)
+				r.git("checkout", "-q", "feature")
+				r.git("rm", "-q", seed+"/000002_People.up.sql", seed+"/000002_People.down.sql")
+				r.git("commit", "-q", "-m", "people removed")
+				r.git("merge", "-q", "--no-edit", "master")
+			},
+			dirs:     []string{seed},
+			editable: []string{seed},
+			wantRenames: []Rename{
+				{Dir: seed, From: "000003_Orders", To: "000002_Orders", Files: []string{"up", "down"}},
+				{Dir: seed, From: "000004_Audit", To: "000003_Audit", Files: []string{"up", "down"}},
+			},
+			wantFiles:  map[string][]string{seed: {"000001_Marker.down.sql", "000001_Marker.up.sql", "000002_Orders.down.sql", "000002_Orders.up.sql", "000003_Audit.down.sql", "000003_Audit.up.sql"}},
+			wantStaged: "R  schema/devseed/000004_Audit.up.sql -> schema/devseed/000003_Audit.up.sql",
+		},
+		{
 			name: "a directory that does not exist has nothing to renumber",
 			setup: func(r *repo) {
 				masterWithTwo(r)
@@ -243,7 +341,7 @@ func TestRenumber(t *testing.T) {
 			if branch == "" {
 				branch = "master"
 			}
-			got, err := Renumber(t.Context(), Options{Root: r.root, Dirs: dirs, Branch: branch})
+			got, err := Renumber(t.Context(), Options{Root: r.root, Dirs: dirs, Branch: branch, Editable: tt.editable})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Renumber() error = %v, wantErr %q", err, tt.wantErr)

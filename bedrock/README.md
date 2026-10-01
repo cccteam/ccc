@@ -420,21 +420,29 @@ environment project (by its labels) and the container (by its labels and the var
 ## bedrock migration renumber
 
 `migration renumber` moves the migrations this branch added, up and down files together,
-to follow the default branch's highest index with no gap, keeping their order; the seed
-directory beside the migrations is renumbered the same way against its own sequence. A
+to follow the default branch's highest index with no gap, keeping their order. A schema
 migration the default branch holds is never touched: git says which files are the
 branch's own, and the default branch is read from origin's copy of it when the repository
 has one, else from the local branch, so fetch first. A tracked file moves with `git mv`;
 an untracked one is renamed on disk.
+
+The seed directory beside the migrations is renumbered against its own sequence, and as
+its files are editable, a committed seed file the branch removed leaves no gap: the seed
+files after it move down, and the branch's own follow, around the indexes the default
+branch took since the branch was cut. A committed seed file only moves down: when the
+default branch's additions would push one up, or leave a gap below them, the directory is
+left alone with a note that says to merge the default branch first and run the renumber
+again.
 
 ```sh
 bedrock migration renumber          # by hand
 go generate ./...                   # through the rendered cmd/generate/bedrock.go, before the generators
 ```
 
-It closes the two holes the pipeline's guard refuses a pull request for: an index the
-default branch took since the branch was cut (the branch's migration moves up), and a gap
-(the branch's migration moves down). Nothing to do prints nothing.
+It closes the holes the pipeline's guard refuses a pull request for: an index the
+default branch took since the branch was cut (the branch's migration moves up), a gap
+(the branch's migration moves down), and a removed seed file (the seed files after it
+move down). Nothing to do prints nothing.
 
 ## bedrock hotfix
 

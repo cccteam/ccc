@@ -5,7 +5,9 @@
 // branch took since the branch was cut is refused. A branch opens two holes in that
 // sequence, an index taken twice and a gap, and this closes both: the files the branch
 // added move, up and down together, to follow the default branch's highest index with
-// no gap, keeping their order. A committed migration is never touched.
+// no gap, keeping their order. A committed schema migration is never touched. The seed
+// directory's files are editable, so a committed seed file may be removed: the committed
+// seed files after it move down to close the gap, and the branch's own follow them.
 package migration
 
 import (
@@ -15,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -31,6 +34,10 @@ type Options struct {
 	// follow. Its tree is read from origin's copy of the branch when the repository
 	// has one, else from the local branch.
 	Branch string
+	// Editable names the directories of Dirs whose committed files may move: the seed
+	// directory, whose files are editable, where the files after a removed one move
+	// down to close its gap. A committed file elsewhere is never touched.
+	Editable []string
 }
 
 // Rename is one migration moved: its stem (NNNNNN_name) before and after, in Dir, and
@@ -86,27 +93,40 @@ func (s *stem) files() []string {
 }
 
 // Renumber moves the branch's own migrations in every directory to follow the default
-// branch's. A directory that does not exist has nothing to renumber.
+// branch's, and in an editable directory the files after a removed one down. A directory
+// that does not exist has nothing to renumber.
 func Renumber(ctx context.Context, opts Options) (*Result, error) {
 	ref, commit, err := defaultRef(ctx, opts.Root, opts.Branch)
 	if err != nil {
 		return nil, err
 	}
-	r := &Result{Ref: ref, Commit: commit}
+	base, err := mergeBase(ctx, opts.Root, ref)
+	if err != nil {
+		return nil, err
+	}
+	n := &renumbering{root: opts.Root, ref: ref, base: base, branch: opts.Branch, result: &Result{Ref: ref, Commit: commit}}
 	for _, dir := range opts.Dirs {
-		if err := r.renumberDir(ctx, opts.Root, ref, dir); err != nil {
+		if err := n.dir(ctx, dir, slices.Contains(opts.Editable, dir)); err != nil {
 			return nil, err
 		}
 	}
 
-	return r, nil
+	return n.result, nil
 }
 
-// renumberDir renumbers one directory: the files the working tree holds that the
-// default branch does not are the branch's own; they follow the highest index the
-// default branch holds there, or, when it holds none, their own lowest.
-func (r *Result) renumberDir(ctx context.Context, root, ref, dir string) error {
-	abs := filepath.Join(root, filepath.FromSlash(dir))
+// renumbering is one run: the default branch's ref, the commit the branch was cut from it
+// at, and the result the directories add to.
+type renumbering struct {
+	root, ref, base, branch string
+	result                  *Result
+}
+
+// dir renumbers one directory: the files the working tree holds that the default branch
+// does not are the branch's own; they follow the highest index the default branch holds
+// there, or, when it holds none, their own lowest. An editable directory is packed
+// instead (seedRenames).
+func (n *renumbering) dir(ctx context.Context, dir string, editable bool) error {
+	abs := filepath.Join(n.root, filepath.FromSlash(dir))
 	entries, err := os.ReadDir(abs)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -115,13 +135,130 @@ func (r *Result) renumberDir(ctx context.Context, root, ref, dir string) error {
 
 		return errors.Wrapf(err, "os.ReadDir(): %s", dir)
 	}
-	committed, err := treeFiles(ctx, root, ref, dir)
+	committed, err := treeFiles(ctx, n.root, n.ref, dir)
 	if err != nil {
 		return err
 	}
-	own := map[string]*stem{}
+	own := readStems(entries, func(name string) bool {
+		return !committed[name]
+	})
+	for key, s := range own {
+		if s.up {
+			continue
+		}
+		why := "a down file with no up file"
+		if committed[key+".up.sql"] {
+			why = "a down file added for a committed migration"
+		}
+		n.result.Notes = append(n.result.Notes, fmt.Sprintf("%s: %s, left alone", path.Join(dir, key+".down.sql"), why))
+	}
+	sort.Strings(n.result.Notes)
+	var pending []Rename
+	if editable {
+		pending, err = n.seedRenames(ctx, dir, entries, committed)
+		if err != nil {
+			return err
+		}
+	} else if stems := ordered(withUp(own)); len(stems) > 0 {
+		first := stems[0].idx
+		if highest, found := highestIndex(committed); found {
+			first = highest + 1
+		}
+		pending = packed(dir, stems, first)
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	tracked, err := trackedFiles(ctx, n.root, dir)
+	if err != nil {
+		return err
+	}
+
+	return n.result.apply(ctx, n.root, abs, tracked, pending)
+}
+
+// seedRenames is an editable directory's renames: every file the tree holds, in its order,
+// packed from the lowest index with no gap, around the indexes the default branch took
+// since the branch was cut (its files there that the tree does not hold), so a removed
+// file leaves no gap and the branch's own files follow. A file the branch was cut with
+// moves down only: when the default branch's additions would push one up, the directory
+// is left alone with a note, as it is noted when they leave a gap only a merge closes.
+func (n *renumbering) seedRenames(ctx context.Context, dir string, entries []os.DirEntry, committed map[string]bool) ([]Rename, error) {
+	atBase, err := treeFiles(ctx, n.root, n.base, dir)
+	if err != nil {
+		return nil, err
+	}
+	local := map[string]bool{}
 	for _, e := range entries {
-		if e.IsDir() || committed[e.Name()] {
+		local[e.Name()] = true
+	}
+	taken := map[int]string{}
+	for name := range committed {
+		m := NameRE.FindStringSubmatch(name)
+		if m == nil || local[name] || atBase[name] || m[3] != upKind {
+			continue
+		}
+		idx, _ := strconv.Atoi(m[1])
+		taken[idx] = m[1] + "_" + m[2]
+	}
+	stems := ordered(withUp(readStems(entries, func(string) bool {
+		return true
+	})))
+	if len(stems) == 0 {
+		return nil, nil
+	}
+	var pending []Rename
+	next, pushed := stems[0].idx, ""
+	for _, s := range stems {
+		for taken[next] != "" {
+			pushed = taken[next]
+			next++
+		}
+		if next > s.idx && atBase[s.key()+".up.sql"] {
+			n.result.Notes = append(n.result.Notes, fmt.Sprintf("%s: %s added %s since the branch was cut, and %s, which the branch was cut with, would move up past it; a committed seed file only moves down. Merge %s into the branch, then run the renumber again", dir, n.branch, pushed, s.key(), n.branch))
+
+			return nil, nil
+		}
+		if next != s.idx {
+			pending = append(pending, Rename{Dir: dir, From: s.key(), To: fmt.Sprintf("%06d_%s", next, s.name), Files: s.files()})
+		}
+		next++
+	}
+	above := make([]int, 0, len(taken))
+	for idx := range taken {
+		if idx >= next {
+			above = append(above, idx)
+		}
+	}
+	sort.Ints(above)
+	for i, idx := range above {
+		if idx != next+i {
+			n.result.Notes = append(n.result.Notes, fmt.Sprintf("%s: a gap stays below %s, which %s added since the branch was cut; merge %s into the branch, then run the renumber again", dir, taken[idx], n.branch, n.branch))
+
+			break
+		}
+	}
+
+	return pending, nil
+}
+
+// withUp is the stems that have an up file: the ones that move.
+func withUp(stems map[string]*stem) map[string]*stem {
+	kept := map[string]*stem{}
+	for key, s := range stems {
+		if s.up {
+			kept[key] = s
+		}
+	}
+
+	return kept
+}
+
+// readStems reads the migration files among the entries that keep accepts, by stem.
+func readStems(entries []os.DirEntry, keep func(name string) bool) map[string]*stem {
+	stems := map[string]*stem{}
+	for _, e := range entries {
+		if e.IsDir() || !keep(e.Name()) {
 			continue
 		}
 		m := NameRE.FindStringSubmatch(e.Name())
@@ -129,11 +266,11 @@ func (r *Result) renumberDir(ctx context.Context, root, ref, dir string) error {
 			continue
 		}
 		key := m[1] + "_" + m[2]
-		s, ok := own[key]
+		s, ok := stems[key]
 		if !ok {
 			idx, _ := strconv.Atoi(m[1])
 			s = &stem{idx: idx, name: m[2]}
-			own[key] = s
+			stems[key] = s
 		}
 		if m[3] == upKind {
 			s.up = true
@@ -141,49 +278,37 @@ func (r *Result) renumberDir(ctx context.Context, root, ref, dir string) error {
 			s.down = true
 		}
 	}
-	stems := make([]*stem, 0, len(own))
-	for key, s := range own {
-		if !s.up {
-			why := "a down file with no up file"
-			if committed[key+".up.sql"] {
-				why = "a down file added for a committed migration"
-			}
-			r.Notes = append(r.Notes, fmt.Sprintf("%s: %s, left alone", path.Join(dir, key+".down.sql"), why))
 
-			continue
-		}
-		stems = append(stems, s)
+	return stems
+}
+
+// ordered sorts the stems by index, then name.
+func ordered(stems map[string]*stem) []*stem {
+	list := make([]*stem, 0, len(stems))
+	for _, s := range stems {
+		list = append(list, s)
 	}
-	sort.Slice(stems, func(i, j int) bool {
-		if stems[i].idx != stems[j].idx {
-			return stems[i].idx < stems[j].idx
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].idx != list[j].idx {
+			return list[i].idx < list[j].idx
 		}
 
-		return stems[i].name < stems[j].name
+		return list[i].name < list[j].name
 	})
-	sort.Strings(r.Notes)
-	if len(stems) == 0 {
-		return nil
-	}
-	start := stems[0].idx
-	if base, ok := highestIndex(committed); ok {
-		start = base + 1
-	}
+
+	return list
+}
+
+// packed is the renames that put the stems at start, start+1, ... in their order.
+func packed(dir string, stems []*stem, start int) []Rename {
 	var pending []Rename
 	for i, s := range stems {
 		if want := start + i; s.idx != want {
 			pending = append(pending, Rename{Dir: dir, From: s.key(), To: fmt.Sprintf("%06d_%s", want, s.name), Files: s.files()})
 		}
 	}
-	if len(pending) == 0 {
-		return nil
-	}
-	tracked, err := trackedFiles(ctx, root, dir)
-	if err != nil {
-		return err
-	}
 
-	return r.apply(ctx, root, abs, tracked, pending)
+	return pending
 }
 
 // apply performs the renames in an order that never moves a file onto one still to

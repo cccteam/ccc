@@ -30,7 +30,7 @@ func newMigration(d deps) *cobra.Command {
 sequence the migrate command applies in order: six-digit indexes, one up file each, contiguous,
 and a committed schema migration never changes (a seed file is development data and may). bedrock
 check and the pipeline's guard refuse a directory that is not; renumber moves a branch's own
-migrations back into the sequence.`,
+migrations back into the sequence, and the seed files after a removed one down.`,
 	}
 	cmd.AddCommand(newMigrationRenumber(d))
 
@@ -49,19 +49,25 @@ func newMigrationRenumber(d deps) *cobra.Command {
 		Use:   "renumber [--app <dir>] [--dir <dir>]",
 		Short: "Move the branch's own migrations to follow the default branch's",
 		Long: `renumber moves the migrations this branch added, up and down files together, to follow the
-default branch's highest index with no gap, keeping their order; the seed directory beside the
-migrations (devseed) is renumbered the same way against its own sequence. A migration the
-default branch holds is never touched: git says which files are the branch's own (the ones
-under the directory that the default branch's tree does not hold), and the default branch is
-read from origin's copy of it when the repository has one, else from the local branch, so
-fetch first. A tracked file moves with git mv, staging the rename; an untracked one is renamed
-on disk.
+default branch's highest index with no gap, keeping their order. A schema migration the default
+branch holds is never touched: git says which files are the branch's own (the ones under the
+directory that the default branch's tree does not hold), and the default branch is read from
+origin's copy of it when the repository has one, else from the local branch, so fetch first. A
+tracked file moves with git mv, staging the rename; an untracked one is renamed on disk.
 
-It closes the two holes the pipeline's guard refuses a pull request for: an index the default
-branch took since the branch was cut (the branch's migration moves up), and a gap (the branch's
-migration moves down). Run it from anywhere inside the repository, by hand or through go
-generate: the rendered cmd/generate/bedrock.go runs it before the application's generators, so
-they read the migrations as the pipeline will. Nothing to do prints nothing.
+The seed directory beside the migrations (devseed) is renumbered against its own sequence, and
+as its files are editable, a committed seed file the branch removed leaves no gap: the seed
+files after it move down, up and down together, and the branch's own follow, around the indexes
+the default branch took since the branch was cut. A committed seed file only moves down: when
+the default branch's additions would push one up, or leave a gap below them, the directory is
+left alone with a note that says to merge the default branch first and run the renumber again.
+
+It closes the holes the pipeline's guard refuses a pull request for: an index the default branch
+took since the branch was cut (the branch's migration moves up), a gap (the branch's migration
+moves down), and a removed seed file (the seed files after it move down). Run it from anywhere
+inside the repository, by hand or through go generate: the rendered cmd/generate/bedrock.go runs
+it before the application's generators, so they read the migrations as the pipeline will.
+Nothing to do prints nothing.
 
 The stack directory and the application are found the way check finds them; --app, --dir and
 --placement override. The placement names the default branch.`,
@@ -134,11 +140,16 @@ func renumberOptions(appDir, branch string) (*migration.Options, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "filepath.Rel()")
 	}
-	if rel != "." {
-		for i, dir := range dirs {
-			dirs[i] = path.Join(filepath.ToSlash(rel), dir)
+	var editable []string
+	for i, dir := range dirs {
+		if rel != "." {
+			dir = path.Join(filepath.ToSlash(rel), dir)
+			dirs[i] = dir
+		}
+		if path.Base(dir) == derive.SeedDir {
+			editable = append(editable, dir)
 		}
 	}
 
-	return &migration.Options{Root: root, Dirs: dirs, Branch: branch}, nil
+	return &migration.Options{Root: root, Dirs: dirs, Branch: branch, Editable: editable}, nil
 }

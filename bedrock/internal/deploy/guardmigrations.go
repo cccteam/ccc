@@ -99,7 +99,7 @@ type migrationGuard struct {
 // The guard's refusal, and its fix, as the log and the pull request read them.
 const (
 	sequenceRule   = "the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous; a committed schema migration never changes)"
-	renumberFixFmt = "The fix for an index %[1]s has taken, or a gap: `bedrock migration renumber` on the branch (`go generate ./...` runs it) moves the pull request's own migrations, up and down together, to follow %[1]s's highest index with no gap; a committed migration is never renumbered."
+	renumberFixFmt = "The fix for an index %[1]s has taken, or a gap: `bedrock migration renumber` on the branch (`go generate ./...` runs it) moves the pull request's own migrations, up and down together, to follow %[1]s's highest index with no gap, and the seed files after a removed one down; a committed schema migration is never renumbered."
 )
 
 // branchedFrom finds the commit the pull request branched from, through the GitHub API

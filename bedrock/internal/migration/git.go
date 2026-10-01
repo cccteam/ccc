@@ -85,3 +85,21 @@ func gitMove(ctx context.Context, root, from, to string) error {
 
 	return err
 }
+
+// mergeBase is the commit the working tree's branch was cut from the ref at: where the
+// committed files it still holds are told from the ones the default branch added since.
+// A tree with no history in common with the ref (git says so with exit status 1 and
+// nothing else) is read at the ref.
+func mergeBase(ctx context.Context, root, ref string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "merge-base", "HEAD", ref)
+	out, err := cmd.Output()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 && len(exit.Stderr) == 0 {
+		return ref, nil
+	}
+	if err != nil {
+		return "", errors.Wrapf(err, "git merge-base HEAD %s", ref)
+	}
+
+	return strings.TrimSpace(string(out)), nil
+}
