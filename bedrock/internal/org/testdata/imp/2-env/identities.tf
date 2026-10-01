@@ -144,12 +144,25 @@ resource "google_storage_bucket_iam_member" "apply_state_upstream" {
   }
 }
 
-# Create-only on the deployment records: a record is written once.
+# Create and read on the deployment records. A record is written once: the
+# identity cannot overwrite or delete one (neither role allows it), and the
+# bucket's versioning keeps the history. The deploy reads its own environment's
+# records too: the newest record of a pull request, for the stale-database check
+# of a pull-request build that migrates, and the environment's newest live
+# record, where its live version is.
 resource "google_storage_bucket_iam_member" "deploy_records" {
   for_each = local.apps
 
   bucket = google_storage_bucket.records.name
   role   = "roles/storage.objectCreator"
+  member = google_service_account.deploy[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "deploy_records_viewer" {
+  for_each = local.apps
+
+  bucket = google_storage_bucket.records.name
+  role   = "roles/storage.objectViewer"
   member = google_service_account.deploy[each.key].member
 }
 

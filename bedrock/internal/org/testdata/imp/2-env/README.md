@@ -106,7 +106,11 @@ project: `roles/serviceusage.serviceUsageConsumer`, `roles/run.developer`,
 `runJobPolicyAdmin` (`1-org`'s custom role: reads and sets the IAM policy of
 Cloud Run jobs, so `bedrock deploy jobs` can copy the template job's grant onto
 the job it makes for each build of an application's job process). Bounded grants:
-`roles/storage.objectCreator` on the records bucket;
+`roles/storage.objectCreator` and `roles/storage.objectViewer` on its own
+environment's records bucket (a record is written once: neither role lets the
+identity overwrite or delete one, and the deploy reads the environment's records
+for the stale-database check of a pull-request build and for the environment's
+live version);
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
 `var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; in tst
 only, `roles/spanner.databaseAdmin` on the tst instance for pull-request

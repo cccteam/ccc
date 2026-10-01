@@ -145,6 +145,50 @@ func TestRenderTiers(t *testing.T) {
 	}
 }
 
+// TestDeployRecordsGrants pins the deploy identity's two grants on its own environment's
+// records bucket: it creates records (write-once: neither role overwrites or deletes)
+// and reads them (the stale-database check of a pull-request build, the environment's
+// live version), each for every application.
+func TestDeployRecordsGrants(t *testing.T) {
+	t.Parallel()
+
+	files, err := Render(testPlacement(t))
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	var identities string
+	for _, f := range files {
+		if f.Path == "2-env/identities.tf" {
+			identities = string(f.Content)
+		}
+	}
+	if identities == "" {
+		t.Fatal("2-env/identities.tf is not rendered")
+	}
+	tests := []struct {
+		name     string
+		resource string
+		role     string
+	}{
+		{name: "creates records", resource: "deploy_records", role: "roles/storage.objectCreator"},
+		{name: "reads records", resource: "deploy_records_viewer", role: "roles/storage.objectViewer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := "resource \"google_storage_bucket_iam_member\" \"" + tt.resource + "\" {\n" +
+				"  for_each = local.apps\n\n" +
+				"  bucket = google_storage_bucket.records.name\n" +
+				"  role   = \"" + tt.role + "\"\n" +
+				"  member = google_service_account.deploy[each.key].member\n}\n"
+			if !strings.Contains(identities, want) {
+				t.Errorf("2-env/identities.tf lacks the grant:\n%s", want)
+			}
+		})
+	}
+}
+
 func TestLabelsBlock(t *testing.T) {
 	t.Parallel()
 

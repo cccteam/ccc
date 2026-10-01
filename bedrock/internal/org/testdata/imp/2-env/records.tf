@@ -6,7 +6,7 @@
 # Environments chain by these records rather than by one environment's
 # identity holding build-create in the next, so the bucket is the seam
 # between the tst deploy and the stg pipeline. Deploy identities may only
-# create objects (identities.tf): a record is written once and never
+# create and read objects (identities.tf): a record is written once and never
 # rewritten, and versioning keeps the history if one ever is.
 #
 # The name carries a random four-hex suffix because bucket names are global
