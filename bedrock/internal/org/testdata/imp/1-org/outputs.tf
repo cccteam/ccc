@@ -96,3 +96,8 @@ output "run_job_policy_admin_role" {
   description = "Full name of the runJobPolicyAdmin custom organization role: reads and sets the IAM policy of Cloud Run jobs, nothing else. 2-env grants it on the environment project to each application's deploy identity."
   value       = google_organization_iam_custom_role.run_job_policy_admin.id
 }
+
+output "spanner_plan_reader_role" {
+  description = "Full name of the spannerPlanReader custom organization role: reads an instance's databases, their IAM policies and their backup schedules, nothing of their data. 2-spn grants it on the shared instance and 2-env on an environment's own instance to each application's plan identity."
+  value       = google_organization_iam_custom_role.spanner_plan_reader.id
+}

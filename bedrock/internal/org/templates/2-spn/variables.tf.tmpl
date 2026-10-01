@@ -26,6 +26,25 @@ variable "database_admins" {
   }
 }
 
+variable "database_planners" {
+  description = <<-EOT
+    IAM members granted the organization's spannerPlanReader role on the
+    instance: a pull-request build plans each environment's application stack
+    as that environment's plan identity, which refreshes the stack's database,
+    its grants and its backup schedules here and may write nothing. The
+    application plan identity of each application in stg and prd, which the
+    environment layers create, added after they have run for it, like
+    database_admins.
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for m in var.database_planners : can(regex("^(serviceAccount|user|group|principal|principalSet):", m))])
+    error_message = "Every database planner must be a full IAM member, such as serviceAccount:name@project.iam.gserviceaccount.com."
+  }
+}
+
 variable "edition" {
   description = <<-EOT
     Spanner edition. Left unset, it follows the configuration: a regional

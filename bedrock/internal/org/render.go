@@ -67,6 +67,12 @@ func (v *view) ApplyIdentity(env, app string) string {
 	return "serviceAccount:" + v.Prefix + "-" + env + "-gbl-" + app + "-tofu@" + v.Project(env) + ".iam.gserviceaccount.com"
 }
 
+// PlanIdentity is the application's plan identity in the environment as a member,
+// 2-env's reader for the pull-request build's plan of that environment.
+func (v *view) PlanIdentity(env, app string) string {
+	return "serviceAccount:" + v.Prefix + "-" + env + "-gbl-" + app + "-plan@" + v.Project(env) + ".iam.gserviceaccount.com"
+}
+
 // Backend is the application's backend service in the environment, as the load
 // balancer names it; PullRequestBackend the wildcard one in the first environment.
 func (v *view) Backend(env, app string) string {

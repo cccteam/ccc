@@ -77,3 +77,27 @@ resource "google_organization_iam_custom_role" "run_job_policy_admin" {
     "run.jobs.setIamPolicy",
   ]
 }
+
+# A pull-request build plans each environment's application stack as that
+# environment's plan identity, a reader, and the stack's database, its grants
+# and its backup schedules live on a Spanner instance: the environment's own,
+# or the shared one in 2-spn's project, which the environment project's reader
+# roles do not reach. Reading a database, its IAM policy and its backup
+# schedules is spread over roles that also write (databaseAdmin, backupAdmin)
+# or read the data (databaseReader), so a role of the reads alone, granted on
+# the instance to each application's plan identity by 2-spn (the shared
+# instance) and 2-env (an environment's own).
+resource "google_organization_iam_custom_role" "spanner_plan_reader" {
+  org_id      = local.org_id
+  role_id     = "spannerPlanReader"
+  title       = "Spanner Plan Reader"
+  description = "Reads an instance's databases, their IAM policies and their backup schedules, and nothing of their data."
+  permissions = [
+    "spanner.instances.get",
+    "spanner.databases.get",
+    "spanner.databases.list",
+    "spanner.databases.getIamPolicy",
+    "spanner.backupSchedules.get",
+    "spanner.backupSchedules.list",
+  ]
+}

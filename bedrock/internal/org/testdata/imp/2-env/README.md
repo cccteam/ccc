@@ -119,7 +119,10 @@ read) and `roles/serviceusage.serviceUsageConsumer`. On the state bucket:
 `roles/storage.legacyBucketReader` unconditionally, and
 `roles/storage.objectViewer` on `3-app/<app>/<env>/` and on the upstream
 states the apply identity reads; no write, so the plan runs without the state
-lock. tst's deploy identity of the same application may impersonate it
+lock. On the Spanner instance the application's database lives on, the
+organization's `spannerPlanReader` role (the database, its IAM policy and its
+backup schedules, nothing of the data): on the tst instance from this layer,
+on the shared instance from `2-spn`'s `database_planners`. tst's deploy identity of the same application may impersonate it
 (`roles/iam.serviceAccountTokenCreator`, read from tst's `2-env` state; tst's
 own in tst), since tst's Cloud Build runs the pull-request builds; nothing
 else may.
@@ -242,7 +245,7 @@ the layers that publish them:
 
 | Layer | Output | Used for |
 |---|---|---|
-| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role`, `run_job_policy_admin_role` | everything |
+| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role`, `run_job_policy_admin_role`, `spanner_plan_reader_role` | everything |
 | `2-shr` | `repository_names` | map of application code to repository ID; the `repositories_registered` warning |
 | `2-spn` | `project_id`, `instance_name` | the shared instance for stg and prd (project falls back to `1-org`'s) |
 | `2-net` | `shared_vpc_id` | null today; gates `compute.networkUser` |

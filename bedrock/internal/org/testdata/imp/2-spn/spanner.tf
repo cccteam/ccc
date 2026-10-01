@@ -80,3 +80,15 @@ resource "google_spanner_instance_iam_member" "backup_admin" {
   role     = "roles/spanner.backupAdmin"
   member   = each.value
 }
+
+# The plan identities read the databases, their IAM policies and their backup
+# schedules when a pull-request build plans the environment's stack, and write
+# nothing: the organization's spannerPlanReader role (1-org).
+resource "google_spanner_instance_iam_member" "plan_reader" {
+  for_each = toset(var.database_planners)
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = local.org.spanner_plan_reader_role
+  member   = each.value
+}

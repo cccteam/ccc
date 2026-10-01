@@ -47,6 +47,18 @@ the boot project as `{{.Prefix}}-org-gbl-tofu`.
   role, granted on each environment project by `2-env` (`secret_operators`):
   an operator creates a container ahead of the release that first reads it
   (`bedrock secret add`) and the application stack adopts it.
+- The custom organization role `spannerPlanReader`: reads an instance's
+  databases, their IAM policies and their backup schedules
+  (`spanner.instances.get`, `spanner.databases.get`, `spanner.databases.list`,
+  `spanner.databases.getIamPolicy`, `spanner.backupSchedules.get`,
+  `spanner.backupSchedules.list`) and nothing of their data. A pull-request
+  build plans each environment's application stack as that environment's
+  plan identity, a reader, and the stack's database, its grants and its
+  backup schedules live on a Spanner instance that the environment project's
+  reader roles do not reach; the predefined roles that read them also write
+  (`databaseAdmin`, `backupAdmin`) or read the data (`databaseReader`).
+  `2-spn` grants it on the shared instance and `2-env` on an environment's
+  own instance to each application's plan identity.
 - The custom organization role `runJobPolicyAdmin`: reads and sets the IAM
   policy of Cloud Run jobs (`run.jobs.getIamPolicy`, `run.jobs.setIamPolicy`)
   and nothing else. `2-env` grants it to each application's deploy identity
@@ -217,3 +229,4 @@ bucket, prefix `1-org`.
 | `secret_container_admin_role` | Full name of the `secretContainerAdmin` role. |
 | `secret_operator_role` | Full name of the `secretOperator` role. |
 | `run_job_policy_admin_role` | Full name of the `runJobPolicyAdmin` role. |
+| `spanner_plan_reader_role` | Full name of the `spannerPlanReader` role. |

@@ -15,3 +15,17 @@ database_admins = [
 {{- end}}
 {{- end}}
 ]
+
+# Each application's plan identity in the same environments: the organization's
+# spannerPlanReader role on the instance, since a pull-request build plans the
+# environment's stack as it and refreshes the database, its grants and its
+# backup schedules here.
+database_planners = [
+{{- range $app := .Applications}}
+{{- range $env := $.Environments}}
+{{- if ne $env (index $.Environments 0)}}
+  "{{$.PlanIdentity $env $app}}", # {{$app}}'s {{$env}} plan identity (2-env {{$env}})
+{{- end}}
+{{- end}}
+{{- end}}
+]

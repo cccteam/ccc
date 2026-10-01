@@ -253,6 +253,19 @@ resource "google_project_iam_member" "plan" {
   member  = google_service_account.plan[each.value.app].member
 }
 
+# On the environment's own instance, the plan identity reads the application's
+# database, its grants and its backup schedules with the organization's
+# spannerPlanReader role; on the shared instance the same grant is 2-spn's,
+# from its database_planners.
+resource "google_spanner_instance_iam_member" "plan_spanner_reader" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = local.org.spanner_plan_reader_role
+  member   = google_service_account.plan[each.key].member
+}
+
 resource "google_storage_bucket_iam_member" "plan_state_list" {
   for_each = local.apps
 

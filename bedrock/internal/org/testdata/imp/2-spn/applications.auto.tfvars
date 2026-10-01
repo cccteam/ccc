@@ -12,3 +12,14 @@ database_admins = [
   "serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com", # beacon's stg apply identity (2-env stg)
   "serviceAccount:imp-prd-gbl-beacon-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com", # beacon's prd apply identity (2-env prd)
 ]
+
+# Each application's plan identity in the same environments: the organization's
+# spannerPlanReader role on the instance, since a pull-request build plans the
+# environment's stack as it and refreshes the database, its grants and its
+# backup schedules here.
+database_planners = [
+  "serviceAccount:imp-stg-gbl-harbor-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com", # harbor's stg plan identity (2-env stg)
+  "serviceAccount:imp-prd-gbl-harbor-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com", # harbor's prd plan identity (2-env prd)
+  "serviceAccount:imp-stg-gbl-beacon-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com", # beacon's stg plan identity (2-env stg)
+  "serviceAccount:imp-prd-gbl-beacon-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com", # beacon's prd plan identity (2-env prd)
+]

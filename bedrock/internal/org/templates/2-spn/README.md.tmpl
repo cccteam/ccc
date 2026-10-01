@@ -18,6 +18,11 @@ Cloud Build in the boot project as `{{.Prefix}}-spn-gbl-tofu`.
   does not read), rendered into `applications.auto.tfvars` from
   `placement.json` and bound only after the environment layers have created
   the application apply identities.
+- The organization's `spannerPlanReader` role (`1-org`) on the instance for
+  each member of `database_planners`, the application plan identities of the
+  same environments: a pull-request build plans the environment's stack as
+  the plan identity and refreshes the database, its grants and its backup
+  schedules here, writing nothing.
 
 Not created here: databases. Each application's layer creates its own
 databases on this instance, one for stg and one for prd, named within the 30
@@ -33,7 +38,10 @@ Two levels, two owners.
 Instance level, this layer: creating a database is `spanner.databases.create`
 checked on the instance, so the identity that creates databases, the
 application apply identity in stg and prd, is listed in `database_admins` and
-bound here as database admin, and as backup admin for the backup schedules. That role at instance level reaches every
+bound here as database admin, and as backup admin for the backup schedules.
+The application plan identity of the same environments is listed in
+`database_planners` and bound as `spannerPlanReader`, the organization's
+role of the reads a plan needs. That role at instance level reaches every
 database on the instance; bounding it to an application's own databases is a
 open question, and until it is answered the list stays short.
 
@@ -72,6 +80,7 @@ Build runner is wired, the bootstrap administrator applies this layer.
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `database_admins` | Members granted database admin on the instance. | `list(string)` | `[]` | no |
+| `database_planners` | Members granted the organization's `spannerPlanReader` role on the instance. | `list(string)` | `[]` | no |
 | `edition` | Spanner edition. | `string` | `"STANDARD"` | no |
 | `processing_units` | Compute capacity; 100 or 200. | `number` | `100` | no |
 | `spanner_config` | Instance configuration. | `string` | `"{{.Spanner.Config}}"` | no |
