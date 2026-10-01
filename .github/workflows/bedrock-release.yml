@@ -24,6 +24,12 @@
 #
 # Started by hand with a tag, the workflow finishes a draft that a failed run left behind:
 # rerunning release-please cannot, because its pull request is already labeled as tagged.
+# A lab pre-release (bedrock/v0.0.0-lab.N: a pin for the lab's applications, cut on a
+# feature branch, never a release of ccc) has no release-please run behind it: a member of
+# the repository tags the branch, makes a draft on the tag marked as a pre-release, with
+# the tag's commit as its target, and starts this workflow with the tag. The draft's author
+# is not checked for a lab tag; it is for every other tag, since the release app cuts
+# every release of this repository.
 name: bedrock release
 
 on:
@@ -103,7 +109,14 @@ jobs:
             echo "release ${id} on ${TAG} is published already; only a draft is finished"
             exit 1
           fi
-          if [ "$author" != "$RELEASE_AUTHOR" ]; then
+          prerelease=$(jq -r .prerelease <<<"$release")
+          if [[ "$TAG" =~ ^bedrock/v0\.0\.0-lab\.[0-9]+$ ]]; then
+            # A lab pin, cut by hand on a feature branch (see the top of this file).
+            if [ "$prerelease" != true ]; then
+              echo "release ${id} on ${TAG} is not marked as a pre-release; a lab pin is one"
+              exit 1
+            fi
+          elif [ "$author" != "$RELEASE_AUTHOR" ]; then
             echo "release ${id} on ${TAG} was made by ${author}, not ${RELEASE_AUTHOR}"
             exit 1
           fi
