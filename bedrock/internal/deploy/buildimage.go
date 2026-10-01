@@ -66,7 +66,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	}
 	args := []string{"buildx", "build", "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
 	if env[jobsJobFact] != "" {
-		_, job, err := buildJob(build.Substitutions[projectSub], env)
+		_, job, err := buildJob(build.Substitutions[projectSub], env, jobsJobFact)
 		if err != nil {
 			return err
 		}

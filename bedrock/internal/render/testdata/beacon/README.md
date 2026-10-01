@@ -75,8 +75,10 @@ from `2-env`'s state.
   identity holds no accessor.
 - **Cloud Run**: the service `imp-<env>-<region>-beacon-app` in both regions (`uc1|uw3`)
   (ingress internal and load balancer, 0 to 2 instances, CPU only during
-  requests, `allUsers` invoker so the load balancer can forward) and the job
-  `imp-<env>-uc1-beacon-migrate` (one task, no retries, 15-minute timeout),
+  requests, `allUsers` invoker so the load balancer can forward) and the template job
+  `imp-<env>-uc1-beacon-migrate` (one task, no retries, 15-minute timeout;
+  never run: each build copies it into a job of its own on the build's image,
+  which the pipeline runs once and deletes),
   both created with a placeholder image.
   From the first deploy on, the image
   and the labels and annotations a deploy stamps are the pipeline's
@@ -188,10 +190,13 @@ substitutions and this stack's outputs:
   database holding data is seeded only where the placement says so. Output
   `substitutions` is the same map, for a build submitted by hand before the
   triggers exist.
-- The services and the migrate job are deployed through the Cloud Run API by
-  `bedrock deploy service` and `deploy migrate`, which change the image and the
-  labels and leave the template's variables, secrets and identity alone: the
-  revision template is this stack's.
+- The services are deployed through the Cloud Run API by `bedrock deploy
+  service`, which changes the image and the labels and leaves the template's
+  variables, secrets and identity alone: the revision template is this stack's.
+  `deploy jobs` makes each build's jobs as copies of the template jobs on the
+  build's image: the migrate job, which `deploy migrate` runs once and
+  deletes;
+  `deploy sweep-jobs` deletes the builds' jobs nothing runs any more.
 - One image per release and environment in the one repository,
   `beacon:<release>-<env>` (its commit's tag beside it), carrying the site and
   the migrate command, with `APP_VERSION` baked in at build.
@@ -241,7 +246,7 @@ applies it as the tst apply identity before it deploys, and destroys it on
 Shared mode. `/gcbrun shared-db` applies the stack with `shared_database`
 true: no database of its own, the app identity granted database user on
 tst's database (an additive membership naming the pull request's own
-account), the migrate job present but never run. The pipeline refuses it when
+account), the migrate template present, no migrate job made. The pipeline refuses it when
 the pull request changes anything under `schema/migrations` against its
 base, because a migration on the shared database would change tst before
 any release. A later plain `/gcbrun` switches back: the pull request's own

@@ -60,13 +60,14 @@ func target(fact, pair string) (region, name string, err error) {
 	return region, name, nil
 }
 
-// Migrate runs the migrate job with this build's image: the job is updated to the
-// image and the pipeline's labels (its variables, identity, resources and retry policy
-// are the application layer's), then run to completion, with the seed (schema/devseed as
-// data migrations after the schema) where _SEED is true: every pull request, its
-// database being new, and a release build only in the environments the placement's
-// seed list names. A seeded database takes nothing twice. A build that runs no
-// migrations (shared-db) skips the job.
+// Migrate runs this build's migrate job, the copy of the template job that deploy jobs made
+// on this image (<template>-<version key>), once to completion, with the seed (schema/devseed
+// as data migrations after the schema) where _SEED is true: every pull request, its database
+// being new, and a release build only in the environments the placement's seed list names.
+// A seeded database takes nothing twice. The job is deleted at the end of the step whether
+// the execution succeeded or failed: its logs stay in Cloud Logging, and the deployment record
+// lists the migrations applied. A build that runs no migrations (shared-db) has no job to
+// run; a failed execution stops the build and names itself.
 func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -86,33 +87,42 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 	if err != nil {
 		return err
 	}
-	image, err := builtImage(env)
-	if err != nil {
-		return err
-	}
 	run, err := clients.Run(ctx)
 	if err != nil {
 		return err
 	}
-	name, err := updateJob(ctx, run, build, migrateJobFact, env[migrateJobFact], image, env[versionFact], out)
+	_, name, err := buildJob(build.Substitutions[projectSub], env, migrateJobFact)
 	if err != nil {
 		return err
 	}
 	jobName := shortName(name)
-	fmt.Fprintf(out, "=== Running job [%s] ===\n", jobName)
+	if _, err := run.Get(ctx, name); err != nil {
+		if isNotFound(err) {
+			return errors.Newf("this build's migrate job %s does not exist: deploy jobs makes it right after the image build", jobName)
+		}
+
+		return err
+	}
+	fmt.Fprintf(out, "=== Running job [%s] once ===\n", jobName)
 	var args []string
 	if build.Substitutions[seedSub] == trueValue {
 		args = []string{seedArg}
 		fmt.Fprintln(out, "Seeding: the migrate job applies schema/devseed as data migrations.")
 	}
-	execution, err := run.RunJob(ctx, name, args)
-	if err != nil {
-		return err
+	execution, runErr := run.RunJob(ctx, name, args)
+	if err := run.Delete(ctx, name); err != nil {
+		fmt.Fprintf(out, "Job %s was not deleted (%v): deploy sweep-jobs deletes it.\n", jobName, err)
+	} else {
+		fmt.Fprintf(out, "Job %s deleted: its execution's logs stay in Cloud Logging.\n", jobName)
 	}
+	if runErr != nil {
+		return runErr
+	}
+	executionName := shortName(text(execution, keyName))
 	if failed, _ := execution["failedCount"].(float64); failed > 0 {
-		return errors.Newf("the migrate job failed: execution %s has %d failed task(s); its logs say why", shortName(text(execution, "name")), int(failed))
+		return errors.Newf("the migrate job failed: execution %s has %d failed task(s); its logs say why (Cloud Logging: resource.type=\"cloud_run_job\" AND labels.\"run.googleapis.com/execution_name\"=\"%s\")", executionName, int(failed), executionName)
 	}
-	fmt.Fprintf(out, "Migrate job done: execution %s succeeded.\n", shortName(text(execution, "name")))
+	fmt.Fprintf(out, "Migrate job done: execution %s succeeded.\n", executionName)
 
 	return nil
 }
@@ -125,34 +135,4 @@ func builtImage(env map[string]string) (string, error) {
 	}
 
 	return env[imageFact] + "@" + env[digestFact], nil
-}
-
-// updateJob updates a Cloud Run job to the image and the pipeline's labels for the
-// build of the version, the one change a deploy makes to the migrate job (its variables,
-// identity, resources and retry policy are the application layer's), and answers the
-// job's resource name. fact and pair name the job the way the stack's substitutions do,
-// region=name.
-func updateJob(ctx context.Context, run Run, build *Build, fact, pair, image, version string, out io.Writer) (string, error) {
-	region, jobName, err := target(fact, pair)
-	if err != nil {
-		return "", err
-	}
-	name := "projects/" + build.Substitutions[projectSub] + "/locations/" + region + "/jobs/" + jobName
-	fmt.Fprintf(out, "=== Updating job [%s] in [%s] to this image ===\n", jobName, region)
-	job, err := run.Get(ctx, name)
-	if err != nil {
-		return "", err
-	}
-	task, _ := field(job, "template.template").(map[string]any)
-	container, err := firstContainer(task)
-	if err != nil {
-		return "", errors.Wrapf(err, "job %s", jobName)
-	}
-	container["image"] = image
-	setLabels(job, pipelineLabels(build, version))
-	if _, err := run.Patch(ctx, name, job); err != nil {
-		return "", err
-	}
-
-	return name, nil
 }

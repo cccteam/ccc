@@ -191,23 +191,29 @@ func TestMigrate(t *testing.T) {
 	t.Parallel()
 
 	const (
-		jobName     = "projects/tst-project/locations/us-central1/jobs/harbor-migrate"
-		environment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport MIGRATE_JOB=\"us-central1=harbor-migrate\"\nexport IMAGE=\"reg/harbor\"\nexport IMAGE_DIGEST=\"sha256:abc\"\n"
+		template    = "projects/tst-project/locations/us-central1/jobs/harbor-migrate"
+		jobName     = template + "-v1-2-3"
+		environment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport MIGRATE_JOB=\"us-central1=harbor-migrate\"\nexport VERSION=\"v1.2.3\"\n"
 	)
 	build := func(seed, pr string) string {
 		return fmt.Sprintf(`{"id": "b-1", "substitutions": {"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_SEED": %q, "_PR_NUMBER": %q}}`, seed, pr)
 	}
+	made := func() map[string]map[string]any {
+		doc := jobDoc()
+		doc[keyName] = jobName
+
+		return map[string]map[string]any{jobName: doc}
+	}
 	tests := []struct {
-		name      string
-		env       string
-		build     string
-		run       *fakeRun
-		wantOut   []string
-		wantImage string
-		// wantLabels are the job's labels after the update; wantArgs the run's arguments.
-		wantLabels map[string]any
-		wantArgs   []string
-		wantErr    string
+		name    string
+		env     string
+		build   string
+		run     *fakeRun
+		wantOut []string
+		// wantArgs are the run's arguments; wantDeleted says the build's job was deleted.
+		wantArgs    []string
+		wantDeleted bool
+		wantErr     string
 	}{
 		{
 			name:    "a torn-down environment does nothing",
@@ -217,69 +223,69 @@ func TestMigrate(t *testing.T) {
 			wantOut: []string{tornDown},
 		},
 		{
-			name:    "a build without migrations skips the job",
+			name:    "a build without migrations has no job to run",
 			env:     strings.Replace(environment, `RUN_MIGRATIONS="true"`, `RUN_MIGRATIONS="false"`, 1),
 			build:   build("true", "7"),
 			run:     newFakeRun(map[string]map[string]any{}),
 			wantOut: []string{"Skipping the migrate job: this build does not run migrations."},
 		},
 		{
-			name:       "a pull request's build seeds its new database",
-			env:        environment,
-			build:      build("true", "7"),
-			run:        newFakeRun(map[string]map[string]any{jobName: jobDoc()}),
-			wantOut:    []string{"=== Updating job [harbor-migrate] in [us-central1] to this image ===", "Seeding: the migrate job applies schema/devseed as data migrations.", "Migrate job done: execution harbor-migrate-abc succeeded."},
-			wantImage:  "reg/harbor@sha256:abc",
-			wantLabels: map[string]any{"terraform": "true", managedByLabel: managedByValue, commitLabel: "deadbeef", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst", prNumberLabel: "7"},
-			wantArgs:   []string{seedArg},
+			name:        "a pull request's build seeds its new database, and the job is deleted after",
+			env:         environment,
+			build:       build("true", "7"),
+			run:         newFakeRun(made()),
+			wantOut:     []string{"=== Running job [harbor-migrate-v1-2-3] once ===", "Seeding: the migrate job applies schema/devseed as data migrations.", "Job harbor-migrate-v1-2-3 deleted: its execution's logs stay in Cloud Logging.", "Migrate job done: execution harbor-migrate-v1-2-3-abc succeeded."},
+			wantArgs:    []string{seedArg},
+			wantDeleted: true,
 		},
 		{
-			name:       "a release build runs the schema alone and drops a stale pull-request label",
-			env:        environment,
-			build:      build("false", ""),
-			run:        newFakeRun(map[string]map[string]any{jobName: jobDoc()}),
-			wantOut:    []string{"=== Running job [harbor-migrate] ==="},
-			wantImage:  "reg/harbor@sha256:abc",
-			wantLabels: map[string]any{"terraform": "true", managedByLabel: managedByValue, commitLabel: "deadbeef", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst"},
-			wantArgs:   []string{},
+			name:        "a release build runs the schema alone",
+			env:         environment,
+			build:       build("false", ""),
+			run:         newFakeRun(made()),
+			wantOut:     []string{"=== Running job [harbor-migrate-v1-2-3] once ===", "Migrate job done"},
+			wantArgs:    []string{},
+			wantDeleted: true,
 		},
 		{
-			name:  "a failed execution stops the build",
+			name:  "a failed execution stops the build, the job deleted all the same",
 			env:   environment,
 			build: build("false", ""),
 			run: func() *fakeRun {
-				r := newFakeRun(map[string]map[string]any{jobName: jobDoc()})
-				r.execution = map[string]any{"name": jobName + "/executions/harbor-migrate-xyz", "failedCount": float64(1)}
+				r := newFakeRun(made())
+				r.execution = map[string]any{"name": jobName + "/executions/harbor-migrate-v1-2-3-xyz", "failedCount": float64(1)}
 
 				return r
 			}(),
-			wantErr: "the migrate job failed: execution harbor-migrate-xyz has 1 failed task(s); its logs say why",
+			wantDeleted: true,
+			wantErr:     "the migrate job failed: execution harbor-migrate-v1-2-3-xyz has 1 failed task(s); its logs say why",
 		},
 		{
-			name:  "a run the API refused stops the build",
+			name:  "a run the API refused stops the build, the job deleted all the same",
 			env:   environment,
 			build: build("false", ""),
 			run: func() *fakeRun {
-				r := newFakeRun(map[string]map[string]any{jobName: jobDoc()})
+				r := newFakeRun(made())
 				r.runErr = errors.New("Cloud Run operation x failed: task timed out")
 
 				return r
 			}(),
-			wantErr: "Cloud Run operation x failed: task timed out",
+			wantDeleted: true,
+			wantErr:     "Cloud Run operation x failed: task timed out",
 		},
 		{
-			name:    "a job the project lacks is refused",
+			name:    "a build whose job was not made is refused",
 			env:     environment,
 			build:   build("false", ""),
-			run:     newFakeRun(map[string]map[string]any{}),
-			wantErr: "Cloud Run answered HTTP 404 to GET /v2/" + jobName,
+			run:     newFakeRun(map[string]map[string]any{template: jobDoc()}),
+			wantErr: "this build's migrate job harbor-migrate-v1-2-3 does not exist: deploy jobs makes it right after the image build",
 		},
 		{
-			name:    "a workspace without the digest is refused",
-			env:     strings.Replace(environment, "export IMAGE_DIGEST=\"sha256:abc\"\n", "", 1),
+			name:    "a build without a version is refused",
+			env:     strings.Replace(environment, "export VERSION=\"v1.2.3\"\n", "", 1),
 			build:   build("false", ""),
-			run:     newFakeRun(map[string]map[string]any{}),
-			wantErr: "environment.sh names no image digest (IMAGE, IMAGE_DIGEST): the image build writes it",
+			run:     newFakeRun(made()),
+			wantErr: "environment.sh names no version (VERSION): the resolve step writes it",
 		},
 		{
 			name:    "a migrate job that is not region=name is refused",
@@ -296,6 +302,13 @@ func TestMigrate(t *testing.T) {
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: tt.build})
 			var out strings.Builder
 			err := Migrate(t.Context(), &Clients{Run: tt.run.open}, w, &out)
+			var wantDeleted []string
+			if tt.wantDeleted {
+				wantDeleted = []string{jobName}
+			}
+			if diff := cmp.Diff(wantDeleted, tt.run.deleted); diff != "" {
+				t.Errorf("deleted mismatch (-want +got):\n%s", diff)
+			}
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Migrate() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out.String())
@@ -311,19 +324,11 @@ func TestMigrate(t *testing.T) {
 					t.Errorf("output lacks %q:\n%s", want, out.String())
 				}
 			}
-			if tt.wantImage == "" {
+			if len(tt.run.patched) != 0 {
+				t.Errorf("the step changed a job: %v", tt.run.patched)
+			}
+			if tt.wantArgs == nil {
 				return
-			}
-			patched := tt.run.patched[jobName]
-			if got := text(patched, "template.template.containers"); patched == nil || got != "" {
-				container, _ := field(patched, "template.template").(map[string]any)
-				c, err := firstContainer(container)
-				if err != nil || c["image"] != tt.wantImage {
-					t.Errorf("job image = %v, want %s (patched %v)", c["image"], tt.wantImage, patched != nil)
-				}
-			}
-			if diff := cmp.Diff(tt.wantLabels, patched["labels"]); diff != "" {
-				t.Errorf("labels mismatch (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantArgs, tt.run.ran[jobName]); diff != "" {
 				t.Errorf("run arguments mismatch (-want +got):\n%s", diff)

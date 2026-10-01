@@ -104,24 +104,40 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 	return nil
 }
 
-// deleteBuildJobs deletes the jobs the pull request's builds made for the job process (the
-// copies of its template job, which its stack never owned), in the template's region: an
-// application without a job process has none.
+// deleteBuildJobs deletes the jobs the pull request's builds made (the copies of its
+// template jobs, which its stack never owned), in the templates' region: the migrate jobs a
+// run that did not finish left, and the job process's jobs where the application has one.
 func deleteBuildJobs(ctx context.Context, clients *Clients, subs map[string]string, number string, out io.Writer) error {
-	if subs["_JOBS_JOB"] == "" {
-		return nil
+	project := subs[projectSub]
+	var prefixes []string
+	var region string
+	if subs["_MIGRATE_JOB"] != "" {
+		r, template, err := target(migrateJobFact, subs["_MIGRATE_JOB"])
+		if err != nil {
+			return err
+		}
+		region = r
+		prefixes = append(prefixes, jobPrefix(project, region, template))
 	}
-	region, template, err := target(jobsJobFact, subs["_JOBS_JOB"])
-	if err != nil {
-		return err
+	if subs["_JOBS_JOB"] != "" {
+		jobsRegion, jobsTemplate, err := target(jobsJobFact, subs["_JOBS_JOB"])
+		if err != nil {
+			return err
+		}
+		prefixes = append(prefixes, jobPrefix(project, jobsRegion, jobsTemplate))
+		if region == "" {
+			region = jobsRegion
+		}
+	}
+	if len(prefixes) == 0 {
+		return nil
 	}
 	run, err := clients.Run(ctx)
 	if err != nil {
 		return err
 	}
-	prefix := "projects/" + subs[projectSub] + "/locations/" + region + "/jobs/" + template + "-"
 
-	return deletePullRequestJobs(ctx, run, subs[projectSub], region, prefix, subs[appSub], number, out)
+	return deletePullRequestJobs(ctx, run, project, region, prefixes, subs[appSub], number, out)
 }
 
 // pullRequestEnvironments are the numbers of the pull requests whose services stand, in

@@ -142,12 +142,14 @@ func newDeployMigrate(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Run the migrate job with this build's image",
-		Long: `migrate updates the migrate job to this build's image and the pipeline's labels (its variables,
-identity, resources and retry policy are the application layer's) and runs it to completion through
-the Cloud Run API, with the seed (schema/devseed as data migrations after the schema) where _SEED is
-true: every pull request, its database being new, and a release build only in the environments the
-placement's seed list names. A seeded database takes nothing twice. A build that runs no migrations
-(shared-db) skips the job; a failed execution stops the build and names itself.`,
+		Long: `migrate runs this build's migrate job, the copy deploy jobs made of the stack's template job on this
+image (<template>-<version key>), once to completion through the Cloud Run API, with the seed
+(schema/devseed as data migrations after the schema) where _SEED is true: every pull request, its
+database being new, and a release build only in the environments the placement's seed list names. A
+seeded database takes nothing twice. The job is deleted at the end of the step whether the execution
+succeeded or failed: its logs stay in Cloud Logging, and the deployment record lists the migrations
+applied. A build that runs no migrations (shared-db) has no job to run; a failed execution stops the
+build and names itself.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
@@ -164,20 +166,20 @@ func newDeployJobs(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "jobs",
 		Short: "Make this build's job for the job process from the stack's template job, without running it",
-		Long: `jobs makes this build's job for the job process (cmd/jobs): a copy of the template job the stack
-owns (named by the stack's _JOBS_JOB; never run, never deployed to), named <template>-<version key>
-(v0.1.15 gives v0-1-15) and put on this build's image with the pipeline's labels through the Cloud
-Run API, under the template's IAM policy (the stack grants the site's identity run.invoker on the
-template; the copy is what lets the site start this job). The image the build made names that job
-to the site (APP_JOBS_JOB), so the revision this
-build deploys starts a job of its own code, and a traffic rollback to an earlier revision starts
-that revision's job. Only the running service starts the job process: the pipeline never runs it,
-a hook never starts it, and a schedule calls an endpoint on the service, which starts it. The
-job's variables, identity, timeout, retries and resources are the template's, the application
-layer's. A build of a version this environment deployed before updates the job it made then. The
-step runs after the migrations, so a run the service starts from then on sees the migrated schema,
-and before the service, so the job stands when its revision serves. sweep-jobs retires the jobs no
-revision runs any more.`,
+		Long: `jobs makes this build's jobs right after the image build: copies of the template jobs the stack owns
+(named by the stack's _MIGRATE_JOB and _JOBS_JOB; never run, never deployed to), each named
+<template>-<version key> (v0.1.15 gives v0-1-15) and put on this build's image with the pipeline's
+labels through the Cloud Run API. The migrate job, made when the build runs migrations, is what
+deploy migrate runs once and deletes. The job process's job (cmd/jobs) takes the template's IAM
+policy too (the stack grants the site's identity run.invoker on the template; the copy is what lets
+the site start this job): the image the build made names it to the site (APP_JOBS_JOB), so the
+revision this build deploys starts a job of its own code, and a traffic rollback to an earlier
+revision starts that revision's job. Only the running service starts the job process: the pipeline
+never runs it, a hook never starts it, and a schedule calls an endpoint on the service, which starts
+it. The jobs' variables, identity, timeout, retries and resources are the templates', the application
+layer's. A build of a version this environment deployed before updates the jobs it made then. The
+step runs before the migrations: making a job touches no data, so a failure here stops the run with
+the database untouched. A torn-down pull-request environment has nothing to make.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.Jobs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
@@ -462,12 +464,14 @@ func newDeploySweepJobs(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sweep-jobs",
 		Short: "Delete the job process's jobs that no revision runs any more",
-		Long: `sweep-jobs deletes the jobs deploy jobs made (the copies of the template job, named after it) that
-no revision runs any more: a job stays while a revision serving traffic or one of the five newest
-revisions of the service in the job's region carries its version key (the depth a traffic rollback
-reaches), and while an execution of it is still running; the template stays always. The step runs
-after traffic moved, so the revision that just stopped serving keeps its job for a rollback and the
-ones before it go. A pull request's jobs go with its environment (/gcbrun down, the hourly sweep).`,
+		Long: `sweep-jobs deletes the builds' jobs nothing runs any more: a job of the job process (a copy of the
+template job, named after it) whose version key no revision of the service in any region carries,
+since a revision that exists can take a traffic rollback and then starts the job of its own build;
+and a migrate job a run that did not finish left behind (a run that finished deleted its own). A job
+with an execution still running stays, and so does one made in the last three hours, since its build
+may still be running; the templates stay always. Nothing retires a revision: that is Cloud Run's own
+ceiling of revisions per service. The step runs after traffic moved. A pull request's jobs go with
+its environment (/gcbrun down, the hourly sweep).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.SweepJobs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())

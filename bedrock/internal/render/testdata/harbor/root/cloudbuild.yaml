@@ -19,10 +19,11 @@
 #   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit and pushed (deploy build-image)
-#   RunMigrations             the migrate command as a Cloud Run job, run to completion (deploy migrate)
-#   DeployJobs                this build's job for the job process, from the template on this image, not run (deploy jobs)
+#   CreateJobs                this build's jobs from the stack's template jobs on this image: the migrate job and the job process's; not run (deploy jobs)
+#   RunMigrations             this build's migrate job, run once to completion and deleted (deploy migrate)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
 #   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
+#   SweepJobs                 the builds' jobs nothing runs any more are deleted (deploy sweep-jobs)
 #   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
 #   TalkBack                  the pull request is told what the build did (deploy talk-back)
 #   Hook*                     the application's own hooks, one step per stage it implements (deploy hook <stage>)
@@ -117,8 +118,19 @@ steps:
     args: [deploy, build-image]
     timeout: 1800s
 
-  # The migrate job on this image, run to completion; with the seed in a pull request and
-  # in the environments the placement's seed list names.
+  # This build's jobs, made from the stack's template jobs on this image and named after the
+  # version: the migrate job, which RunMigrations runs once and deletes, and the job
+  # process's job (cmd/jobs), which only the running service starts. Made before the
+  # migrations: a failure here leaves the database untouched.
+  - id: CreateJobs
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
+    args: [deploy, jobs]
+    timeout: 600s
+
+  # This build's migrate job, run once to completion and then deleted (its execution's logs
+  # stay in Cloud Logging); with the seed in a pull request and in the environments the
+  # placement's seed list names.
   - id: RunMigrations
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
@@ -131,15 +143,6 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, hook, after-migrate]
     timeout: 900s
-
-  # This build's job for the job process (cmd/jobs): a copy of the stack's template
-  # job on this image, named after the version; not run. Only the running service
-  # starts it.
-  - id: DeployJobs
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: /builder/home/bedrock
-    args: [deploy, jobs]
-    timeout: 600s
 
   # A new revision in every region, receiving no traffic yet, tagged "next" (or the pull
   # request's tag) so it can be reached before traffic moves.
@@ -166,8 +169,10 @@ steps:
     args: [deploy, shift-traffic]
     timeout: 600s
 
-  # The job process's jobs no revision runs any more are deleted: not serving, not among
-  # the five newest revisions, no execution running. The template and this build's stay.
+  # The builds' jobs nothing runs any more are deleted: a job of the job process whose
+  # version no revision in any region carries, and a migrate job a run that did not finish
+  # left behind. A job with an execution running, or made in the last three hours, stays;
+  # the templates always stay.
   - id: SweepJobs
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock

@@ -1,4 +1,5 @@
-// sweepjobs.go retires the job process's jobs that no revision runs any more.
+// sweepjobs.go deletes the builds' jobs that nothing runs any more: the job process's jobs
+// whose version no revision carries, and the migrate jobs a run that did not finish left.
 
 package deploy
 
@@ -8,21 +9,25 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 )
 
-// keptRevisions is how many of the service's newest revisions keep their job: the depth a
-// traffic rollback can reach and still start the job of the revision it lands on.
-const keptRevisions = 5
+// youngJob is how long a build's job stays whatever its state: the longest a run takes,
+// so the job of a build still running, or one that just failed and is being looked at,
+// is never swept from under it.
+const youngJob = 3 * time.Hour
 
-// SweepJobs deletes the job process's jobs that no revision runs any more: the copies
-// deploy jobs made, named after the template job. A job stays while a revision serving
-// traffic or one of the five newest revisions of the service in the job's region carries
-// its version key, and while an execution of it is still running; the template stays
-// always. After traffic moved, so the revision that just stopped serving keeps its job
-// for a rollback and the ones before it go. A torn-down pull-request environment has
-// nothing to sweep.
+// SweepJobs deletes the jobs deploy jobs made that nothing runs any more. A job of the job
+// process stays while a revision of the service, in any region, carries its version key: a
+// revision that exists can take a traffic rollback, and then starts the job of its own
+// build. A build's migrate job is deleted by deploy migrate at the end of its step; one a
+// run that did not finish left behind goes here. Any job stays while an execution of it is
+// still running, and while it is younger than three hours, since its build may still be
+// running; the templates always stay. Nothing here retires a revision: that is Cloud Run's
+// own ceiling of revisions per service. A torn-down pull-request environment has nothing to
+// sweep.
 func SweepJobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -33,23 +38,12 @@ func SweepJobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer
 
 		return nil
 	}
-	if env[jobsJobFact] == "" {
-		return errors.Newf("%s names no job: the stack's substitutions carry _JOBS_JOB when the application has a job process (cmd/jobs), which this step is for; render and apply the stack", jobsJobFact)
-	}
 	build, err := w.Build()
 	if err != nil {
 		return err
 	}
 	project := build.Substitutions[projectSub]
-	template, _, err := buildJob(project, env)
-	if err != nil {
-		return err
-	}
-	region, _, err := target(jobsJobFact, env[jobsJobFact])
-	if err != nil {
-		return err
-	}
-	service, err := serviceIn(project, region, env[services])
+	region, migrateTemplate, err := target(migrateJobFact, env[migrateJobFact])
 	if err != nil {
 		return err
 	}
@@ -57,45 +51,60 @@ func SweepJobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer
 	if err != nil {
 		return err
 	}
-	kept, err := keptKeys(ctx, run, service)
-	if err != nil {
-		return err
-	}
 	jobs, err := run.Jobs(ctx, project, region)
 	if err != nil {
 		return err
 	}
-	deleted, err := sweepBuildJobs(ctx, run, jobs, template+"-", kept, out)
+	now := time.Now()
+	deleted, err := sweepLeftovers(ctx, run, jobs, jobPrefix(project, region, migrateTemplate), now, out)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Swept the jobs of %s: %d deleted.\n", shortName(template), deleted)
+	if env[jobsJobFact] != "" {
+		jobsRegion, jobsTemplate, err := target(jobsJobFact, env[jobsJobFact])
+		if err != nil {
+			return err
+		}
+		if jobsRegion != region {
+			if jobs, err = run.Jobs(ctx, project, jobsRegion); err != nil {
+				return err
+			}
+		}
+		kept, err := keptKeys(ctx, run, project, env[services])
+		if err != nil {
+			return err
+		}
+		n, err := sweepBuildJobs(ctx, run, jobs, jobPrefix(project, jobsRegion, jobsTemplate), kept, now, out)
+		if err != nil {
+			return err
+		}
+		deleted += n
+	}
+	fmt.Fprintf(out, "Swept the builds' jobs: %d deleted.\n", deleted)
 
 	return nil
 }
 
-// sweepBuildJobs deletes the jobs under the prefix whose version key is not kept and
-// which have no execution running, saying why each stays or goes, and answers how many
-// went.
-func sweepBuildJobs(ctx context.Context, run Run, jobs []map[string]any, prefix string, kept map[string]string, out io.Writer) (int, error) {
+// sweepBuildJobs deletes the job process's jobs under the prefix whose version key no
+// revision carries, unless an execution is running or the job is young, saying why each
+// stays or goes, and answers how many went.
+func sweepBuildJobs(ctx context.Context, run Run, jobs []map[string]any, prefix string, kept map[string]string, now time.Time, out io.Writer) (int, error) {
 	deleted := 0
 	for _, job := range sortedByName(jobs) {
 		name := text(job, keyName)
 		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
-		key := strings.TrimPrefix(name, prefix)
-		if by, ok := kept[key]; ok {
-			fmt.Fprintf(out, "Job %s stays: revision %s runs it.\n", shortName(name), by)
+		if by, ok := kept[strings.TrimPrefix(name, prefix)]; ok {
+			fmt.Fprintf(out, "Job %s stays: revision %s carries its version.\n", shortName(name), by)
 
 			continue
 		}
-		running, err := runningExecution(ctx, run, name)
-		if err != nil {
-			return deleted, err
-		}
-		if running != "" {
-			fmt.Fprintf(out, "Job %s stays: execution %s is still running.\n", shortName(name), running)
+		stays, err := stays(ctx, run, job, now, out)
+		if err != nil || stays {
+			if err != nil {
+				return deleted, err
+			}
 
 			continue
 		}
@@ -103,63 +112,89 @@ func sweepBuildJobs(ctx context.Context, run Run, jobs []map[string]any, prefix 
 			return deleted, err
 		}
 		deleted++
-		fmt.Fprintf(out, "Job %s deleted: no revision runs it.\n", shortName(name))
+		fmt.Fprintf(out, "Job %s deleted: no revision carries its version.\n", shortName(name))
 	}
 
 	return deleted, nil
 }
 
-// serviceIn is the resource name of the service in the region, from the services the
-// stack's substitutions name (region=name pairs).
-func serviceIn(project, region, pairs string) (string, error) {
-	for _, pair := range strings.Split(pairs, ",") {
-		r, name, err := target(services, pair)
-		if err != nil {
-			return "", err
-		}
-		if r == region {
-			return serviceName(project, region, name), nil
-		}
-	}
-
-	return "", errors.Newf("%s names no service in %s, the job process's region", services, region)
-}
-
-// keptKeys are the version keys of the revisions whose jobs stay, each with the revision
-// that keeps it: the revisions serving traffic and the newest keptRevisions, by their
-// version-key label. A revision without the label (deployed before the label existed)
-// keeps nothing, since no job was made for it.
-func keptKeys(ctx context.Context, run Run, service string) (map[string]string, error) {
-	doc, err := run.Get(ctx, service)
-	if err != nil {
-		return nil, err
-	}
-	revisions, err := run.Revisions(ctx, service)
-	if err != nil {
-		return nil, err
-	}
-	sort.SliceStable(revisions, func(i, j int) bool {
-		return text(revisions[i], "createTime") > text(revisions[j], "createTime")
-	})
-	serving := map[string]bool{}
-	statuses, _ := doc["trafficStatuses"].([]any)
-	for _, entry := range statuses {
-		status, _ := entry.(map[string]any)
-		if percent, _ := status[keyPercent].(float64); percent > 0 {
-			serving[text(status, keyRevision)] = true
-		}
-	}
-	kept := map[string]string{}
-	for i, revision := range revisions {
-		name := shortName(text(revision, keyName))
-		if i >= keptRevisions && !serving[name] {
+// sweepLeftovers deletes the migrate jobs under the prefix, the ones a run that did not
+// finish left behind (a run that finished deleted its own), unless an execution is running
+// or the job is young, and answers how many went.
+func sweepLeftovers(ctx context.Context, run Run, jobs []map[string]any, prefix string, now time.Time, out io.Writer) (int, error) {
+	deleted := 0
+	for _, job := range sortedByName(jobs) {
+		name := text(job, keyName)
+		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
-		if key := text(revision, "labels."+versionLabel); key != "" {
+		stays, err := stays(ctx, run, job, now, out)
+		if err != nil || stays {
+			if err != nil {
+				return deleted, err
+			}
+
+			continue
+		}
+		if err := run.Delete(ctx, name); err != nil {
+			return deleted, err
+		}
+		deleted++
+		fmt.Fprintf(out, "Job %s deleted: a migrate job of a run that did not finish.\n", shortName(name))
+	}
+
+	return deleted, nil
+}
+
+// stays says whether a job that nothing names any more stays anyway: it is younger than
+// youngJob, or an execution of it is still running; it says why.
+func stays(ctx context.Context, run Run, job map[string]any, now time.Time, out io.Writer) (bool, error) {
+	name := text(job, keyName)
+	if created, err := time.Parse(time.RFC3339Nano, text(job, "createTime")); err == nil && now.Sub(created) < youngJob {
+		fmt.Fprintf(out, "Job %s stays: made %s ago, its build may still be running.\n", shortName(name), now.Sub(created).Round(time.Minute))
+
+		return true, nil
+	}
+	running, err := runningExecution(ctx, run, name)
+	if err != nil {
+		return false, err
+	}
+	if running != "" {
+		fmt.Fprintf(out, "Job %s stays: execution %s is still running.\n", shortName(name), running)
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// keptKeys are the version keys the revisions that exist carry, in every region the
+// stack's substitutions name a service in (region=name pairs), each with one revision
+// that carries it. A revision without the label (deployed before the label existed) keeps
+// nothing, since no job was made for it.
+func keptKeys(ctx context.Context, run Run, project, pairs string) (map[string]string, error) {
+	kept := map[string]string{}
+	for _, pair := range strings.Split(pairs, ",") {
+		region, name, err := target(services, pair)
+		if err != nil {
+			return nil, err
+		}
+		revisions, err := run.Revisions(ctx, serviceName(project, region, name))
+		if err != nil {
+			return nil, err
+		}
+		for _, revision := range revisions {
+			key := text(revision, "labels."+versionLabel)
+			if key == "" {
+				continue
+			}
 			if _, ok := kept[key]; !ok {
-				kept[key] = name
+				kept[key] = shortName(text(revision, keyName)) + " (" + region + ")"
 			}
 		}
+	}
+	if len(kept) == 0 && pairs == "" {
+		return nil, errors.Newf("%s names no service: the stack's substitutions carry _SERVICES", services)
 	}
 
 	return kept, nil
@@ -192,17 +227,17 @@ func sortedByName(docs []map[string]any) []map[string]any {
 }
 
 // deletePullRequestJobs deletes the jobs deploy jobs made for the pull request's builds
-// (the ones named under the template's prefix and carrying the application, its number
-// and a version key; never the template or the migrate job, which the stack owns) in the
-// region, when its environment goes.
-func deletePullRequestJobs(ctx context.Context, run Run, project, region, prefix, app, number string, out io.Writer) error {
+// (the ones named under the templates' prefixes and carrying the application, its number
+// and a version key; never a template, which the stack owns) in the region, when its
+// environment goes.
+func deletePullRequestJobs(ctx context.Context, run Run, project, region string, prefixes []string, app, number string, out io.Writer) error {
 	jobs, err := run.Jobs(ctx, project, region)
 	if err != nil {
 		return err
 	}
 	for _, job := range sortedByName(jobs) {
 		name := text(job, keyName)
-		if !strings.HasPrefix(name, prefix) || text(job, "labels."+applicationLabel) != app || text(job, "labels."+pullRequestLabel) != number || text(job, "labels."+versionLabel) == "" {
+		if !underAny(name, prefixes) || text(job, "labels."+applicationLabel) != app || text(job, "labels."+pullRequestLabel) != number || text(job, "labels."+versionLabel) == "" {
 			continue
 		}
 		if err := run.Delete(ctx, name); err != nil {
@@ -212,4 +247,15 @@ func deletePullRequestJobs(ctx context.Context, run Run, project, region, prefix
 	}
 
 	return nil
+}
+
+// underAny says whether the name starts with one of the prefixes.
+func underAny(name string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+
+	return false
 }

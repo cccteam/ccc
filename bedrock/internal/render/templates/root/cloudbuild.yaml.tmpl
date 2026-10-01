@@ -19,12 +19,11 @@
 #   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit and pushed (deploy build-image)
-#   RunMigrations             the migrate command as a Cloud Run job, run to completion (deploy migrate)
-{{- if .Jobs}}
-#   DeployJobs                this build's job for the job process, from the template on this image, not run (deploy jobs)
-{{- end}}
+#   CreateJobs                this build's jobs from the stack's template jobs on this image: the migrate job{{if .Jobs}} and the job process's{{end}}; not run (deploy jobs)
+#   RunMigrations             this build's migrate job, run once to completion and deleted (deploy migrate)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
 #   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
+#   SweepJobs                 the builds' jobs nothing runs any more are deleted (deploy sweep-jobs)
 #   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
 #   TalkBack                  the pull request is told what the build did (deploy talk-back)
 #   Hook*                     the application's own hooks, one step per stage it implements (deploy hook <stage>)
@@ -134,6 +133,16 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, build-image{{if .HookProgram}}, --hooks{{end}}]
     timeout: 1800s
+
+  # This build's jobs, made from the stack's template jobs on this image and named after the
+  # version: the migrate job, which RunMigrations runs once and deletes{{if .Jobs}}, and the job
+  # process's job ({{.Jobs.Dir}}), which only the running service starts{{end}}. Made before the
+  # migrations: a failure here leaves the database untouched.
+  - id: CreateJobs
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, jobs]
+    timeout: 600s
 {{- if .HasHook "before-migrate"}}
 
   # The application's hook before the migrations: {{.HookSource "before-migrate"}}.
@@ -144,8 +153,9 @@ steps:
     timeout: 900s
 {{- end}}
 
-  # The migrate job on this image, run to completion; with the seed in a pull request and
-  # in the environments the placement's seed list names.
+  # This build's migrate job, run once to completion and then deleted (its execution's logs
+  # stay in Cloud Logging); with the seed in a pull request and in the environments the
+  # placement's seed list names.
   - id: RunMigrations
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
@@ -159,17 +169,6 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, hook, after-migrate{{if .HookByProgram "after-migrate"}}, --program{{end}}]
     timeout: 900s
-{{- end}}
-{{- if .Jobs}}
-
-  # This build's job for the job process ({{.Jobs.Dir}}): a copy of the stack's template
-  # job on this image, named after the version; not run. Only the running service
-  # starts it.
-  - id: DeployJobs
-    name: {{.GcloudImage}}
-    entrypoint: /builder/home/bedrock
-    args: [deploy, jobs]
-    timeout: 600s
 {{- end}}
 
   # A new revision in every region, receiving no traffic yet, tagged "next" (or the pull
@@ -198,16 +197,16 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, shift-traffic]
     timeout: 600s
-{{- if .Jobs}}
 
-  # The job process's jobs no revision runs any more are deleted: not serving, not among
-  # the five newest revisions, no execution running. The template and this build's stay.
+  # The builds' jobs nothing runs any more are deleted: a job of the job process whose
+  # version no revision in any region carries, and a migrate job a run that did not finish
+  # left behind. A job with an execution running, or made in the last three hours, stays;
+  # the templates always stay.
   - id: SweepJobs
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, sweep-jobs]
     timeout: 600s
-{{- end}}
 {{- if .HasHook "after-traffic"}}
 
   # The application's hook after traffic moved: {{.HookSource "after-traffic"}}. A failing

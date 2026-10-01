@@ -1,5 +1,6 @@
-// jobs.go makes each build's job for the job process: a copy of the stack's template job on
-// this build's image, named after the build's version, which the running service starts.
+// jobs.go makes each build's jobs from the stack's template jobs: the migrate job of this
+// build and, for an application with a job process, the job of this build's revision, right
+// after the image build and before anything touches the database.
 
 package deploy
 
@@ -13,18 +14,19 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// Jobs creates this build's job for the job process (cmd/jobs): a copy of the template
-// job the stack owns (named by _JOBS_JOB, never run, never deployed to), named
+// Jobs creates this build's jobs: copies of the template jobs the stack owns (named by the
+// substitutions _MIGRATE_JOB and _JOBS_JOB; never run, never deployed to), each named
 // <template>-<version key> and put on this build's image with the pipeline's labels. The
-// image the build made names that job to the site (APP_JOBS_JOB), so the revision this
-// build deploys starts a job of its own code, and a traffic rollback to an earlier
-// revision starts that revision's job. The pipeline never runs it: only the running
-// service starts the job process. A build of a version this environment deployed before
-// updates the job it made then, the same code. The template's IAM policy goes with it:
-// the stack grants the site's identity run.invoker on the template, and the copy is what
-// lets the site start the build's job. After the migrations, so a run the service starts
-// from here on sees the migrated schema; before the service, so the job stands when its
-// revision serves. A torn-down pull-request environment has nothing to make.
+// migrate job, made when this build runs migrations, is what deploy migrate runs once and
+// deletes at the end of its step. The job process's job (cmd/jobs) takes the template's IAM
+// policy too: the image the build made names it to the site (APP_JOBS_JOB), so the revision
+// this build deploys starts a job of its own code, and a traffic rollback to an earlier
+// revision starts that revision's job; only the running service starts it, the pipeline
+// never does. The step runs right after the image build, before the migrations and before
+// anything the run waits for: making a job touches no data, so a failure here stops the run
+// with the database untouched. A build of a version this environment deployed before updates
+// the jobs it made then, the same code. A torn-down pull-request environment has nothing to
+// make.
 func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -35,9 +37,6 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 
 		return nil
 	}
-	if env[jobsJobFact] == "" {
-		return errors.Newf("%s names no job: the stack's substitutions carry _JOBS_JOB when the application has a job process (cmd/jobs), which this step is for; render and apply the stack", jobsJobFact)
-	}
 	build, err := w.Build()
 	if err != nil {
 		return err
@@ -46,36 +45,36 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 	if err != nil {
 		return err
 	}
-	template, name, err := buildJob(build.Substitutions[projectSub], env)
-	if err != nil {
-		return err
-	}
 	run, err := clients.Run(ctx)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "=== Making job [%s] from [%s] on this image ===\n", shortName(name), shortName(template))
-	doc, err := run.Get(ctx, template)
+	project := build.Substitutions[projectSub]
+	labels := pipelineLabels(build, env[versionFact])
+	if env[runMigrationsFact] == trueValue {
+		template, name, err := buildJob(project, env, migrateJobFact)
+		if err != nil {
+			return err
+		}
+		verb, err := makeJob(ctx, run, template, name, image, labels, out)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Job %s %s: deploy migrate runs it once and deletes it.\n", shortName(name), verb)
+	} else {
+		fmt.Fprintln(out, "No migrate job: this build does not run migrations.")
+	}
+	if env[jobsJobFact] == "" {
+		fmt.Fprintln(out, "No job for a job process: the stack's substitutions name no template (_JOBS_JOB), the application having no cmd/jobs.")
+
+		return nil
+	}
+	template, name, err := buildJob(project, env, jobsJobFact)
 	if err != nil {
 		return err
 	}
-	job, err := jobFromTemplate(doc, image, pipelineLabels(build, env[versionFact]))
+	verb, err := makeJob(ctx, run, template, name, image, labels, out)
 	if err != nil {
-		return errors.Wrapf(err, "template job %s", shortName(template))
-	}
-	verb := "updated"
-	switch _, err := run.Get(ctx, name); {
-	case err == nil:
-		if _, err := run.Patch(ctx, name, job); err != nil {
-			return err
-		}
-	case isNotFound(err):
-		verb = "created"
-		parent, id := parentAndID(name)
-		if _, err := run.CreateJob(ctx, parent, id, job); err != nil {
-			return err
-		}
-	default:
 		return err
 	}
 	fmt.Fprintf(out, "Job %s %s: the revision this build deploys starts it through the Cloud Run API; the pipeline does not run it.\n", shortName(name), verb)
@@ -92,45 +91,41 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 	return nil
 }
 
-// copyPolicy puts the template job's IAM policy on the build's job, bindings and version,
-// under the etag of the job's own policy, and answers who holds what on it (role by role,
-// its members), or empty when the template grants nothing.
-func copyPolicy(ctx context.Context, run Run, template, name string) (string, error) {
-	source, err := run.GetIamPolicy(ctx, template)
+// makeJob creates or updates the build's job from the template on the image with the
+// labels, and answers which it did.
+func makeJob(ctx context.Context, run Run, template, name, image string, labels map[string]string, out io.Writer) (string, error) {
+	fmt.Fprintf(out, "=== Making job [%s] from [%s] on this image ===\n", shortName(name), shortName(template))
+	doc, err := run.Get(ctx, template)
 	if err != nil {
 		return "", err
 	}
-	current, err := run.GetIamPolicy(ctx, name)
+	job, err := jobFromTemplate(doc, image, labels)
 	if err != nil {
-		return "", err
+		return "", errors.Wrapf(err, "template job %s", shortName(template))
 	}
-	bindings, _ := source[keyBindings].([]any)
-	policy := map[string]any{keyBindings: bindings, keyEtag: current[keyEtag]}
-	if version, ok := source["version"]; ok {
-		policy["version"] = version
-	}
-	if _, err := run.SetIamPolicy(ctx, name, policy); err != nil {
-		return "", err
-	}
-	var holders []string
-	for _, entry := range bindings {
-		binding, _ := entry.(map[string]any)
-		members, _ := binding["members"].([]any)
-		names := make([]string, 0, len(members))
-		for _, member := range members {
-			names = append(names, fmt.Sprint(member))
+	switch _, err := run.Get(ctx, name); {
+	case err == nil:
+		if _, err := run.Patch(ctx, name, job); err != nil {
+			return "", err
 		}
-		holders = append(holders, strings.Join(names, ", ")+" ("+text(binding, "role")+")")
-	}
 
-	return strings.Join(holders, "; "), nil
+		return "updated", nil
+	case isNotFound(err):
+		parent, id := parentAndID(name)
+		if _, err := run.CreateJob(ctx, parent, id, job); err != nil {
+			return "", err
+		}
+
+		return "created", nil
+	default:
+		return "", err
+	}
 }
 
-// buildJob names the template job and this build's job, as the Cloud Run API names them,
-// from the template the stack's substitutions name (_JOBS_JOB, region=name) and the
-// build's version.
-func buildJob(project string, env map[string]string) (template, name string, err error) {
-	region, templateName, err := target(jobsJobFact, env[jobsJobFact])
+// buildJob names the template job the fact's substitution names (region=name) and this
+// build's copy of it, as the Cloud Run API names them.
+func buildJob(project string, env map[string]string, fact string) (template, name string, err error) {
+	region, templateName, err := target(fact, env[fact])
 	if err != nil {
 		return "", "", err
 	}
@@ -138,9 +133,15 @@ func buildJob(project string, env map[string]string) (template, name string, err
 	if key == "" {
 		return "", "", errors.Newf("%s names no version (VERSION): the resolve step writes it", EnvironmentFile)
 	}
-	parent := "projects/" + project + "/locations/" + region
+	prefix := jobPrefix(project, region, templateName)
 
-	return parent + "/jobs/" + templateName, parent + "/jobs/" + templateName + "-" + key, nil
+	return strings.TrimSuffix(prefix, "-"), prefix + key, nil
+}
+
+// jobPrefix is what the names of a template job's copies start with: the template's
+// resource name and a hyphen.
+func jobPrefix(project, region, template string) string {
+	return "projects/" + project + "/locations/" + region + "/jobs/" + template + "-"
 }
 
 // versionKey is the build's version as a name: lowercase, every run of characters
@@ -210,4 +211,38 @@ func deepCopy(value any) (any, error) {
 	}
 
 	return copied, nil
+}
+
+// copyPolicy puts the template job's IAM policy on the build's job, bindings and version,
+// under the etag of the job's own policy, and answers who holds what on it (role by role,
+// its members), or empty when the template grants nothing.
+func copyPolicy(ctx context.Context, run Run, template, name string) (string, error) {
+	source, err := run.GetIamPolicy(ctx, template)
+	if err != nil {
+		return "", err
+	}
+	current, err := run.GetIamPolicy(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	bindings, _ := source[keyBindings].([]any)
+	policy := map[string]any{keyBindings: bindings, keyEtag: current[keyEtag]}
+	if version, ok := source["version"]; ok {
+		policy["version"] = version
+	}
+	if _, err := run.SetIamPolicy(ctx, name, policy); err != nil {
+		return "", err
+	}
+	var holders []string
+	for _, entry := range bindings {
+		binding, _ := entry.(map[string]any)
+		members, _ := binding["members"].([]any)
+		names := make([]string, 0, len(members))
+		for _, member := range members {
+			names = append(names, fmt.Sprint(member))
+		}
+		holders = append(holders, strings.Join(names, ", ")+" ("+text(binding, "role")+")")
+	}
+
+	return strings.Join(holders, "; "), nil
 }

@@ -138,7 +138,8 @@ directory; `--app` overrides.
 What the stack carries comes from declarations in the code: a config variable tagged as
 a secret becomes a Secret Manager container mounted at a pinned version; a directory auth
 becomes the registration variables, the redirect output and the hand steps in the README;
-a main package under `cmd/deployment/migrate` becomes the migrate job; a main package
+a main package under `cmd/deployment/migrate` becomes the migrate job's template (never
+run; each build copies it into a job of its own, runs it once and deletes it); a main package
 under `cmd/jobs` becomes the job process: a template Cloud Run job in the primary
 region (never run, never deployed to; each build copies it into a job of its own, named
 after it with the build's version, on the build's image), its runtime identity with the
@@ -288,20 +289,28 @@ thing one step hands the next. In order:
   under its two tags, with the build arguments and the declared build secrets (read as
   the deploy identity into memory and passed as BuildKit secrets, never build
   arguments); the digest goes to `environment.sh`.
-- `deploy migrate`: updates the migrate job to this build's image and runs it to
-  completion, with the seed (`schema/devseed` as data migrations after the schema) where
-  `_SEED` is true: every pull request, and a release build only in the environments the
-  placement's seed list names.
-- `deploy jobs`: makes this build's job for the job process (`cmd/jobs`): a copy of the
-  stack's template job (`_JOBS_JOB`) named after it with the build's version, on this
-  build's image with the pipeline's labels and the template's IAM policy (the site's
-  `run.invoker`), and does not run it; the image the build made
-  names that job to the site (`APP_JOBS_JOB`), so the revision starts the job of its own
-  build and a traffic rollback starts the earlier one. Rendered into the pipeline only
-  when the application has a job process, after the migrations.
-- `deploy sweep-jobs`: deletes the builds' jobs no revision runs any more (not serving,
-  not among the five newest revisions, no execution running); the template stays. After
-  traffic moved, so the revision that just stopped serving keeps its job for a rollback.
+- `deploy migrate`: runs this build's migrate job, the copy `deploy jobs` made of the
+  template on this image, once to completion, with the seed (`schema/devseed` as data
+  migrations after the schema) where `_SEED` is true: every pull request, and a release
+  build only in the environments the placement's seed list names; then deletes the job,
+  whether the execution succeeded or failed (its logs stay in Cloud Logging, and the
+  deployment record lists the migrations applied).
+- `deploy jobs`: makes this build's jobs right after the image build, before the
+  migrations, as copies of the stack's template jobs (`_MIGRATE_JOB`, `_JOBS_JOB`) named
+  after them with the build's version, on this build's image with the pipeline's labels:
+  the migrate job, when the build runs migrations, and the job process's job (`cmd/jobs`)
+  with the template's IAM policy (the site's `run.invoker`). It runs neither; the image the
+  build made names the job process's job to the site (`APP_JOBS_JOB`), so the revision
+  starts the job of its own build and a traffic rollback starts the earlier one. Made
+  before the migrations so that a failure here leaves the database untouched.
+- `deploy sweep-jobs`: after the traffic shift, deletes the builds' jobs nothing runs any
+  more: a job of the job process whose version no revision in any region carries (a
+  revision that exists can take a rollback, and then starts its own build's job), and a
+  migrate job a run that did not finish left behind. A job with an execution running, or
+  made in the last three hours (its build may still be running), stays; the templates
+  always stay. Nothing retires a revision: that is Cloud Run's own ceiling. Jobs are
+  deleted because Cloud Run allows 1,000 per project and region, shared by every
+  application and pull-request environment.
 - `deploy service`: puts a new revision of the service in every region, receiving no
   traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
   new revision carries the tag `next` (or the pull request's tag), under which the

@@ -110,8 +110,10 @@ from `2-env`'s state.
   identity holds no accessor.
 - **Cloud Run**: the service `{{.Prefix}}-<env>-<region>-{{.App}}-app` in both regions (`{{.RegionCodes}}`)
   (ingress internal and load balancer, 0 to 2 instances, CPU only during
-  requests, `allUsers` invoker so the load balancer can forward) and the job
-  `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-migrate` (one task, no retries, 15-minute timeout),
+  requests, `allUsers` invoker so the load balancer can forward) and the template job
+  `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-migrate` (one task, no retries, 15-minute timeout;
+  never run: each build copies it into a job of its own on the build's image,
+  which the pipeline runs once and deletes),
 {{- if .Jobs}}
   and the template job `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-jobs` for the job process
   (`{{.Jobs.Dir}}`; its timeout, retries and resources are `var.jobs_timeout`,
@@ -124,9 +126,19 @@ from `2-env`'s state.
   each build's job with the template's settings{{end}}.
   Only the running service starts the job process: the pipeline never runs
   it, a hook never starts it, and a schedule calls an endpoint on the service,
-  which starts it. The pipeline retires the builds' jobs no revision runs any
-  more (not serving, not among the five newest revisions, no execution
-  running). All created with a placeholder image.
+  which starts it. The job process ends what it is doing on SIGTERM within
+  Cloud Run's grace: an ordinary release cancels nothing, and a breaking one
+  cancels the old build's running executions. A build's job lives as long as a
+  revision carrying its version exists in any region (that revision can take a
+  traffic rollback), and the pipeline deletes the rest after the traffic shift;
+  a job with an execution running, or made in the last three hours, stays.
+  Revisions are retired by Cloud Run alone (its ceiling of 1,000 per service;
+  idle ones cost nothing), and bedrock keeps none of its own. Jobs are deleted
+  because every build makes them and Cloud Run allows 1,000 jobs per project
+  and region, shared by every application and pull-request environment. How
+  far back a rollback reaches is the registry's keep count: Cloud Run keeps an
+  image only while a serving revision uses it, and an old revision needs the
+  shared registry's copy to start again. All created with a placeholder image.
 {{- else}}
   both created with a placeholder image.
 {{- end}}
@@ -262,13 +274,13 @@ substitutions and this stack's outputs:
   database holding data is seeded only where the placement says so. Output
   `substitutions` is the same map, for a build submitted by hand before the
   triggers exist.
-- The services and the migrate job are deployed through the Cloud Run API by
-  `bedrock deploy service` and `deploy migrate`, which change the image and the
-  labels and leave the template's variables, secrets and identity alone: the
-  revision template is this stack's.{{if .Jobs}} `deploy jobs` makes each build's job
-  for the job process as a copy of the template job on the build's image, with
-  the template's IAM policy, and `deploy sweep-jobs` deletes the builds' jobs no
-  revision runs any more.{{end}}
+- The services are deployed through the Cloud Run API by `bedrock deploy
+  service`, which changes the image and the labels and leaves the template's
+  variables, secrets and identity alone: the revision template is this stack's.
+  `deploy jobs` makes each build's jobs as copies of the template jobs on the
+  build's image: the migrate job, which `deploy migrate` runs once and
+  deletes{{if .Jobs}}, and the job process's job, with the template's IAM policy{{end}};
+  `deploy sweep-jobs` deletes the builds' jobs nothing runs any more.
 - One image per release and environment in the one repository,
   `{{.App}}:<release>-<env>` (its commit's tag beside it), carrying the site{{if .Jobs}},
   the migrate command and the job process{{else}} and
@@ -318,7 +330,7 @@ applies it as the {{.Integration}} apply identity before it deploys, and destroy
 Shared mode. `/gcbrun shared-db` applies the stack with `shared_database`
 true: no database of its own, the app identity granted database user on
 {{.Integration}}'s database (an additive membership naming the pull request's own
-account), the migrate job present but never run. The pipeline refuses it when
+account), the migrate template present, no migrate job made. The pipeline refuses it when
 the pull request changes anything under `{{.Schema.MigrationsDir}}` against its
 base, because a migration on the shared database would change {{.Integration}} before
 any release. A later plain `/gcbrun` switches back: the pull request's own

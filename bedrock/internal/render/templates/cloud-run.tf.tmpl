@@ -147,9 +147,14 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
 }
 
 # ---------------------------------------------------------------------------
-# The migration job: {{.Migrate.Dir}}, run by the pipeline before a
-# release's revisions take traffic. One task, no retries (a migration that
-# failed is looked at, not rerun blind), a generous timeout for a long DDL.
+# The migration job's template: {{.Migrate.Dir}}. This job is never run and
+# never deployed to. Each build copies it (bedrock deploy jobs) into a job of
+# its own, named after this one with the build's version, on the build's
+# image; the pipeline runs that copy once before the release's revisions take
+# traffic and deletes it at the end of the step, so no migrate job of a build
+# remains. One task, no retries (a migration that failed is looked at, not
+# rerun blind), a generous timeout for a long DDL: the stack keeps the job's
+# identity, variables, timeout, retries and resources here.
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_job" "migrate" {
@@ -225,8 +230,8 @@ resource "google_cloud_run_v2_job" "migrate" {
 # the job process; the pipeline never runs it and a schedule calls an endpoint
 # on the service. The stack keeps the jobs' variables, secrets, identity,
 # timeout, retries and resources here (var.jobs_timeout, var.jobs_retries,
-# var.jobs_resources), and the pipeline retires the builds' jobs no revision
-# runs any more (bedrock deploy sweep-jobs).
+# var.jobs_resources), and the pipeline deletes a build's job once no revision
+# in any region carries its version (bedrock deploy sweep-jobs).
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_job" "jobs" {
