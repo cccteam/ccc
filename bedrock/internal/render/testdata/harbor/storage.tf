@@ -35,6 +35,13 @@ resource "google_storage_bucket_iam_member" "assets_app" {
   member = local.app_member
 
   depends_on = [google_service_account.app]
+
+  # A recreated bucket (a restore replaces it where the environment is on the
+  # seed list) starts with no members; the membership is recreated with it
+  # rather than believed to exist.
+  lifecycle {
+    replace_triggered_by = [google_storage_bucket.assets]
+  }
 }
 
 resource "google_storage_bucket_iam_member" "assets_jobs" {
@@ -43,4 +50,8 @@ resource "google_storage_bucket_iam_member" "assets_jobs" {
   member = local.jobs_member
 
   depends_on = [google_service_account.jobs]
+
+  lifecycle {
+    replace_triggered_by = [google_storage_bucket.assets]
+  }
 }
