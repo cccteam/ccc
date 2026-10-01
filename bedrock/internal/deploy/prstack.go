@@ -1,6 +1,7 @@
 // prstack.go is a pull request's own environment: the application's stack applied into
 // the pull request's state prefix as the apply identity (2-env grants the deploy identity
-// the right to impersonate it, in the first environment only). Three steps, each its own
+// the right to impersonate it in every environment; a tag build applies the environment's
+// stack as it, envstack.go). Three steps, each its own
 // command: the plan is saved, the guard reads it and lets only the pull request's own
 // resources through, and the apply applies exactly that plan. bedrock runs tofu for each,
 // in the OpenTofu image, from the stack directory of the checkout.

@@ -178,7 +178,9 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 // change another environment. Each plan runs the tests; one comment on the pull request
 // carries every summary; a failing plan or test stops the build, which is the required
 // check, and is said on the pull request. A tag build plans its own environment later
-// instead (deploy stack plan).
+// instead (deploy stack plan). Triggers that carry no promotion order (a stack not yet
+// applied with a bedrock that writes it, which the first release on it does) plan
+// nothing, with a notice: the pull request that moves an application here builds.
 func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, build, ok, err := pullRequestStep(w, out)
 	if err != nil || !ok {
@@ -187,6 +189,11 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 	subs := build.Substitutions
 	if env[downFact] == trueValue {
 		fmt.Fprintln(out, "/gcbrun down: nothing to plan for the environments.")
+
+		return nil
+	}
+	if subs[environmentsSub] == "" {
+		fmt.Fprintf(out, "The triggers carry no %s: the stack has not been applied with this bedrock yet, which the first release on it does; the environments' plans wait for it.\n", environmentsSub)
 
 		return nil
 	}
@@ -259,7 +266,7 @@ func planIdentities(subs map[string]string) (map[string]string, error) {
 	}
 	for _, e := range strings.Split(subs[environmentsSub], ",") {
 		if e == "" {
-			return nil, errors.Newf("%s names no environment (%s): the stack's triggers carry the promotion order", BuildFile, environmentsSub)
+			return nil, errors.Newf("%s names an empty environment in %s: the stack's triggers carry the promotion order", BuildFile, environmentsSub)
 		}
 		if identities[e] == "" {
 			return nil, errors.Newf("%s names no plan identity for %s (%s): apply 2-env for %s with this bedrock, which makes one per application, then the application's stack, whose triggers carry it", BuildFile, e, planIdentitiesSub, e)

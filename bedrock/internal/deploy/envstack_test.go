@@ -383,6 +383,11 @@ func TestPlanEnvironments(t *testing.T) {
 			wantOut: []string{"/gcbrun down: nothing to plan for the environments."},
 		},
 		{
+			name:    "triggers without the promotion order plan nothing, with a notice",
+			subs:    stackSubs(),
+			wantOut: []string{"The triggers carry no _ENVIRONMENTS: the stack has not been applied with this bedrock yet, which the first release on it does; the environments' plans wait for it."},
+		},
+		{
 			name:    "a tag build does nothing here",
 			subs:    tagSubs(),
 			wantOut: []string{tagBuildNotice},
