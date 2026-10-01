@@ -4,8 +4,9 @@
 // variable, which version the environment mounts (secret_versions). The command writes
 // that pin, asking Secret Manager first, when it is told which project to ask, that the
 // version exists and is enabled; nothing is rolled out here. The pull request's plan for
-// the environment shows the change to the service configuration, and the run of that commit there
-// after the apply to move traffic to the new revision.
+// the environment shows the change to the service's configuration (Cloud Run's revision
+// template) and nothing elsewhere, and the pin promotes as a release: the tag build that
+// carries the commit applies the stack in that environment, deploys and moves traffic.
 package secret
 
 import (
