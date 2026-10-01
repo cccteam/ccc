@@ -113,6 +113,9 @@ type Clients struct {
 	// FirestoreAs opens Firestore as the apply identity, for the documents a restore run
 	// deletes.
 	FirestoreAs FirestoreAsFunc
+	// SpannerAs opens Spanner as the apply identity, for the restore from production's
+	// backup.
+	SpannerAs SpannerAsFunc
 	// Secrets opens Secret Manager, for the build secrets and the deployer app's key.
 	Secrets SecretsFunc
 	// SecretsAs opens Secret Manager as an impersonated identity, for the tests of a
@@ -127,7 +130,7 @@ func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
 		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
-		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs,
+		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs,
 	}
 }
 

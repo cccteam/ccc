@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -126,7 +128,13 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
-	if env[restoreFact] != "" {
+	switch env[restoreFact] {
+	case "":
+	case restoreBackup:
+		if err := s.restoreFromBackup(ctx, subs, env, w); err != nil {
+			return err
+		}
+	default:
 		replace, err := s.replaceForRestore(ctx, subs[appSub], subs[envSub], env, subs[seedSub] == trueValue, w)
 		if err != nil {
 			return err
@@ -165,7 +173,68 @@ const (
 	// firestoreAddress is the database's address in the stack.
 	firestoreOutput  = "firestore_database"
 	firestoreAddress = "google_firestore_database.firestore"
+	// backupFact and backupTimeFact are the backup a production-backup restore restored
+	// from and the moment its data is from, for the record.
+	backupFact     = "RESTORE_BACKUP"
+	backupTimeFact = "RESTORE_BACKUP_TIME"
 )
+
+// stateAttribute reads one attribute of a resource as tofu state show prints it
+// (name = "value").
+var stateAttribute = regexp.MustCompile(`(?m)^\s*(project|instance|name)\s*=\s*"([^"]*)"`)
+
+// restoreFromBackup is a production-backup restore: before the plan, the environment's
+// database is dropped and restored, under its own name, from the most recent backup of
+// production's database on the instance the two share, as the apply identity (which holds
+// database admin on that instance). The database's address keeps its state entry, so the
+// plan then finds the restored database and recreates the memberships the drop took with
+// it; the migrate job applies whatever production's backup predates. The backup and the
+// moment its data is from are appended for the record (RESTORE_BACKUP, RESTORE_BACKUP_TIME).
+func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]string, w Workspace) error {
+	app, env, requester := subs[appSub], subs[envSub], facts[requesterFact]
+	address := "google_spanner_database." + app + "[0]"
+	shown, err := s.tofuOutput(ctx, "state", "show", address)
+	if err != nil {
+		return errors.Newf("%s=%s: %s's stack holds no database to restore (%s is not in its state)", restoreSub, restoreBackup, env, address)
+	}
+	attributes := map[string]string{}
+	for _, m := range stateAttribute.FindAllStringSubmatch(string(shown), -1) {
+		attributes[m[1]] = m[2]
+	}
+	if attributes["project"] == "" || attributes["instance"] == "" || attributes["name"] == "" {
+		return errors.Newf("%s=%s: the database %s could not be read from the state (project, instance, name)", restoreSub, restoreBackup, address)
+	}
+	environments := strings.Split(subs[environmentsSub], ",")
+	production := environments[len(environments)-1]
+	productionDB := strings.Replace(attributes["name"], "-"+env+"-", "-"+production+"-", 1)
+	if productionDB == attributes["name"] || production == "" || production == env {
+		return errors.Newf("%s=%s: production's database cannot be named from %s's (%s): the environments are %s", restoreSub, restoreBackup, env, attributes["name"], subs[environmentsSub])
+	}
+	instance := "projects/" + attributes["project"] + "/instances/" + attributes["instance"]
+	database := instance + "/databases/" + attributes["name"]
+	store, err := s.clients.SpannerAs(ctx, s.identity)
+	if err != nil {
+		return err
+	}
+	backup, err := store.LatestBackup(ctx, instance, instance+"/databases/"+productionDB)
+	if err != nil {
+		return errors.Wrapf(err, "listing the backups of %s", productionDB)
+	}
+	if backup == nil {
+		return errors.Newf("%s=%s: %s has no READY backup of production's database %s; %s keeps its database", restoreSub, restoreBackup, attributes["instance"], productionDB, env)
+	}
+	fmt.Fprintf(s.out, "=== Restore (%s, asked for by %s): %s's database %s is dropped and restored from production's backup %s (data as of %s); the migrations production's backup predates then apply ===\n", restoreBackup, requester, env, attributes["name"], path.Base(backup.Name), backup.VersionTime)
+	if err := store.DropDatabase(ctx, database); err != nil {
+		return errors.Wrapf(err, "dropping %s", database)
+	}
+	fmt.Fprintf(s.out, "Dropped %s.\n", attributes["name"])
+	if err := store.RestoreDatabase(ctx, instance, attributes["name"], backup.Name); err != nil {
+		return errors.Wrapf(err, "restoring %s from %s", attributes["name"], backup.Name)
+	}
+	fmt.Fprintf(s.out, "Restored %s from %s; the plan recreates its memberships.\n", attributes["name"], path.Base(backup.Name))
+
+	return w.Append(map[string]string{restoredFact: address, backupFact: backup.Name, backupTimeFact: backup.VersionTime})
+}
 
 // replaceForRestore is a restore run's -replace of what the environment's database
 // holds: the Spanner database, which the migrations (and the seed, in an environment the
@@ -175,13 +244,10 @@ const (
 // rows too, is not replaced: Firestore keeps a deleted database's id unavailable for
 // minutes, so the apply step deletes its documents instead (clearFirestore). Each when
 // the stack has it; what is replaced is noted
-// for the record. The restore from production's backup is a different path, not built
-// yet: the run stops here rather than replacing stg's database with an empty one.
+// for the record. The restore from production's backup is a different path
+// (restoreFromBackup): the database is dropped and restored before the plan, not replaced.
 func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts map[string]string, seeded bool, w Workspace) ([]string, error) {
 	kind, requester := facts[restoreFact], facts[requesterFact]
-	if kind == restoreBackup {
-		return nil, errors.Newf("%s=%s: the restore from production's backup is not built yet; %s keeps its database", restoreSub, kind, env)
-	}
 	listed, err := s.tofuOutput(ctx, "state", "list")
 	if err != nil {
 		return nil, err

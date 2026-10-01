@@ -421,7 +421,11 @@ stack unapplied. In a restore run (RESTORE=empty) the plan replaces the Spanner 
 in tst, the file bucket, each when the stack has it (tofu state list), so the migrations apply
 afresh (and the seed, where the placement's seed list names the environment); what it replaces is
 appended (RESTORE_REPLACED) for the record. The Firestore database is not replaced, since Firestore
-keeps a deleted database's id unavailable for minutes: the apply step deletes its documents. The restore from production's backup is not built yet; the plan stops on it. It runs
+keeps a deleted database's id unavailable for minutes: the apply step deletes its documents. In a
+restore from production's backup (RESTORE=production-backup) the step first drops the environment's
+database and restores it under its own name from the most recent backup of production's database on
+the instance they share, as the apply identity; the plan then recreates the memberships the drop took
+with it, and the backup is appended (RESTORE_BACKUP, RESTORE_BACKUP_TIME) for the record. The restore from production's backup is not built yet; the plan stops on it. It runs
 in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

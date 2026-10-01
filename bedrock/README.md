@@ -341,8 +341,14 @@ thing one step hands the next. In order:
   seed list names the environment; the environment on production's instance keeps its file
   bucket. The Firestore database is not replaced (Firestore keeps a deleted database's id
   unavailable for minutes): after the apply, the step deletes its documents as the apply
-  identity, since they refer to rows the restore replaced (`RESTORE_CLEARED`). The
-  restore from production's backup is not built yet, and the plan stops on it.
+  identity, since they refer to rows the restore replaced (`RESTORE_CLEARED`). In a
+  restore from production's backup (`_RESTORE=production-backup`, the environment on
+  production's instance) the plan step first drops the environment's database and
+  restores it, under its own name, from the most recent backup of production's database
+  on the instance they share, as the apply identity; the plan then recreates the
+  memberships the drop took with it, and the migrate job applies whatever production's
+  backup predates. The backup and the moment its data is from reach the record
+  (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`).
 - `deploy migrate`: runs this build's migrate job, the copy `deploy jobs` made of the
   template on this image, once to completion, with the seed (`schema/devseed` as data
   migrations after the schema) where `_SEED` is true: every pull request, and a release
@@ -501,7 +507,11 @@ release's own image serves the maintenance page with all traffic while the datab
 away, the task queue is paused and purged, and the serving build's job executions are
 canceled; the queue resumes once the release serves (`deploy maintenance off`). The run
 refuses the instruction in production. `bedrock restore` starts it from GitHub (below).
-Not built yet: the restore from production's backup.
+For the environment on production's instance the database is not emptied but restored
+from production's most recent backup, at production's schema: the plan step drops it
+and restores it under its own name as the apply identity, and the migrations production's
+backup predates then apply. The environment's file objects are kept, and its Firestore
+documents are deleted as in every restore.
 
 ## bedrock restore
 

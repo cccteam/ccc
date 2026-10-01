@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,6 +130,14 @@ func tstSubs() map[string]string {
 	return subs
 }
 
+// promotedSubs is stg with the promotion order the triggers carry, which names production.
+func promotedSubs() map[string]string {
+	subs := tagSubs()
+	subs[environmentsSub] = "tst,stg,prd"
+
+	return subs
+}
+
 // seededSubs is tst on the placement's seed list: _SEED is true.
 func seededSubs() map[string]string {
 	subs := tstSubs()
@@ -154,14 +163,18 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		subs          map[string]string
 		pins          map[string]string
 		authoritative bool
-		// env is the environment file; state what tofu state list answers.
-		env          string
-		state        string
+		// env is the environment file; state what tofu state list (or state show) answers.
+		env   string
+		state string
+		// backup is the backup of production's database the instance holds; nil when none.
+		backup       *Backup
 		wantOut      []string
 		wantTofu     []string
 		wantFact     string
 		wantReplaced string
-		wantErr      string
+		// wantBackup is the backup fact a production-backup restore leaves.
+		wantBackup string
+		wantErr    string
 	}{
 		{
 			name:         "a restore run replaces the database, the Firestore database and, in tst, the file bucket",
@@ -205,11 +218,26 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantErr:  "_RESTORE=empty: stg's stack holds no database to replace (nothing of google_spanner_database.quill[0] in its state)",
 		},
 		{
-			name:     "the restore from production's backup is not built yet",
-			subs:     tagSubs(),
+			name:         "a restore from production's backup drops stg's database and restores it from the newest backup before the plan",
+			subs:         promotedSubs(),
+			pins:         enabledPins(),
+			env:          strings.Replace(restoreEnv, "empty", "production-backup", 1),
+			state:        "# google_spanner_database.quill[0]:\nresource \"google_spanner_database\" \"quill\" {\n    database_dialect = \"GOOGLE_STANDARD_SQL\"\n    instance         = \"shared-spanner\"\n    name             = \"p-stg-gbl-quill-db\"\n    project          = \"p-spn\"\n}\n",
+			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z"},
+			wantOut:      []string{"=== Restore (production-backup, asked for by octocat): stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-20261001 (data as of 2026-10-01T02:00:00Z); the migrations production's backup predates then apply ===", "Dropped p-stg-gbl-quill-db.", "Restored p-stg-gbl-quill-db from p-prd-gbl-quill-db-20261001; the plan recreates its memberships.", "Tests passed"},
+			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", planLine, showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0]",
+			wantBackup:   "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001",
+		},
+		{
+			name:     "a restore from production's backup is refused when production's database has no backup",
+			subs:     promotedSubs(),
+			pins:     enabledPins(),
 			env:      strings.Replace(restoreEnv, "empty", "production-backup", 1),
-			wantTofu: []string{initLine},
-			wantErr:  "_RESTORE=production-backup: the restore from production's backup is not built yet; stg keeps its database",
+			state:    "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
+			wantTofu: []string{initLine, "tofu state show google_spanner_database.quill[0]"},
+			wantErr:  "_RESTORE=production-backup: shared-spanner has no READY backup of production's database p-prd-gbl-quill-db; stg keeps its database",
 		},
 		{
 			name:     "a tag build plans, tests and appends the summary",
@@ -272,8 +300,9 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON, "tofu state": tt.state}}
 			secrets := &fakeSecrets{states: tt.pins}
+			spanner := &fakeSpanner{backup: tt.backup}
 			var out strings.Builder
-			err := PlanEnvironmentStack(t.Context(), &Clients{Exec: run, SecretsAs: secrets.openAs}, w, &out)
+			err := PlanEnvironmentStack(t.Context(), &Clients{Exec: run, SecretsAs: secrets.openAs, SpannerAs: spanner.open}, w, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("PlanEnvironmentStack() error = %v, want %q; output:\n%s", err, tt.wantErr, out.String())
@@ -295,6 +324,12 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			}
 			if env[restoredFact] != tt.wantReplaced {
 				t.Errorf("%s = %q, want %q", restoredFact, env[restoredFact], tt.wantReplaced)
+			}
+			if env[backupFact] != tt.wantBackup {
+				t.Errorf("%s = %q, want %q", backupFact, env[backupFact], tt.wantBackup)
+			}
+			if tt.wantBackup != "" && (spanner.dropped != "projects/p-spn/instances/shared-spanner/databases/p-stg-gbl-quill-db" || spanner.restored != "p-stg-gbl-quill-db from "+tt.wantBackup) {
+				t.Errorf("dropped %q, restored %q", spanner.dropped, spanner.restored)
 			}
 			if tt.wantFact != "" {
 				if _, err := os.Stat(filepath.Join(string(w), StackPlanJSONFile)); err != nil {
@@ -416,6 +451,37 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fakeSpanner answers the one backup it holds and records the drop and the restore.
+type fakeSpanner struct {
+	backup   *Backup
+	dropped  string
+	restored string
+}
+
+func (f *fakeSpanner) open(context.Context, string) (Spanner, error) {
+	return f, nil
+}
+
+func (f *fakeSpanner) LatestBackup(_ context.Context, _, database string) (*Backup, error) {
+	if f.backup == nil || !strings.HasSuffix(f.backup.Name, "/backups/"+path.Base(database)+"-20261001") {
+		return nil, nil
+	}
+
+	return f.backup, nil
+}
+
+func (f *fakeSpanner) DropDatabase(_ context.Context, database string) error {
+	f.dropped = database
+
+	return nil
+}
+
+func (f *fakeSpanner) RestoreDatabase(_ context.Context, _, databaseID, backup string) error {
+	f.restored = databaseID + " from " + backup
+
+	return nil
 }
 
 // fakeFirestore records the database whose documents were deleted, and the identity asked for.

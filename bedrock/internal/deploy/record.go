@@ -83,6 +83,43 @@ type Restore struct {
 	// Cleared lists what the run emptied instead of replacing: the Firestore database
 	// whose documents it deleted.
 	Cleared []string `json:"cleared,omitempty"`
+	// Backup is the backup of production's database a production-backup restore restored
+	// from, and BackupTime the moment its data is from.
+	Backup     string `json:"backup,omitempty"`
+	BackupTime string `json:"backupTime,omitempty"`
+}
+
+// maintenanceOf reads the maintenance a run went through from its facts; nil when it
+// served throughout.
+func maintenanceOf(env map[string]string) *Maintenance {
+	if env[maintenanceFact] != trueValue {
+		return nil
+	}
+	m := &Maintenance{Revisions: map[string]string{}, Queue: env[maintenanceQueueFact], Purged: env[maintenancePurgedFact] == trueValue, Waited: env[maintenanceWaitedFact]}
+	m.Canceled, _ = strconv.Atoi(env[maintenanceCanceledFact])
+	for _, pair := range strings.Split(env[maintenanceRevisionsFact], ",") {
+		if region, revision, ok := strings.Cut(pair, "="); ok {
+			m.Revisions[region] = revision
+		}
+	}
+
+	return m
+}
+
+// restoreOf reads a restore run's note from its facts; nil for any other run.
+func restoreOf(env map[string]string) *Restore {
+	if env[restoreFact] == "" {
+		return nil
+	}
+	r := &Restore{Kind: env[restoreFact], Requester: env[requesterFact], Backup: env[backupFact], BackupTime: env[backupTimeFact]}
+	if env[restoredFact] != "" {
+		r.Replaced = strings.Split(env[restoredFact], ",")
+	}
+	if env[clearedFact] != "" {
+		r.Cleared = strings.Split(env[clearedFact], ",")
+	}
+
+	return r
 }
 
 // Migration is one migration file a build applied: its directory (root-relative), its
@@ -177,26 +214,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	var maintenance *Maintenance
-	if env[maintenanceFact] == trueValue {
-		maintenance = &Maintenance{Revisions: map[string]string{}, Queue: env[maintenanceQueueFact], Purged: env[maintenancePurgedFact] == trueValue, Waited: env[maintenanceWaitedFact]}
-		maintenance.Canceled, _ = strconv.Atoi(env[maintenanceCanceledFact])
-		for _, pair := range strings.Split(env[maintenanceRevisionsFact], ",") {
-			if region, revision, ok := strings.Cut(pair, "="); ok {
-				maintenance.Revisions[region] = revision
-			}
-		}
-	}
-	var restore *Restore
-	if env[restoreFact] != "" {
-		restore = &Restore{Kind: env[restoreFact], Requester: env[requesterFact]}
-		if env[restoredFact] != "" {
-			restore.Replaced = strings.Split(env[restoredFact], ",")
-		}
-		if env[clearedFact] != "" {
-			restore.Cleared = strings.Split(env[clearedFact], ",")
-		}
-	}
+	maintenance, restore := maintenanceOf(env), restoreOf(env)
 	record := Record{
 		App:         build.Substitutions[appSub],
 		Env:         build.Substitutions[envSub],

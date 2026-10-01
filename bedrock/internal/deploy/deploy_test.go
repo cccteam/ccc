@@ -116,11 +116,11 @@ func TestNewRecordRequest(t *testing.T) {
 		},
 		{
 			name:        "a restore run records what replaced the database and who asked",
-			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0],google_storage_bucket.assets\"\nexport RESTORE_CLEARED=\"google_firestore_database.firestore\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0],google_storage_bucket.assets\"\nexport RESTORE_CLEARED=\"google_firestore_database.firestore\"\nexport RESTORE_BACKUP=\"projects/p/instances/i/backups/b-20261001\"\nexport RESTORE_BACKUP_TIME=\"2026-10-01T02:00:00Z\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
 			wantObject:  "harbor/tst/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
-			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_storage_bucket.assets"}, Cleared: []string{"google_firestore_database.firestore"}},
+			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_storage_bucket.assets"}, Cleared: []string{"google_firestore_database.firestore"}, Backup: "projects/p/instances/i/backups/b-20261001", BackupTime: "2026-10-01T02:00:00Z"},
 		},
 		{
 			name: "a build that ran migrations lists what it applied, the seed included when it ran",
