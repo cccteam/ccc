@@ -60,6 +60,10 @@ type Result struct {
 	Skipped string
 	// Next is the version release-please will give the line's first hotfix.
 	Next string
+	// Latest is the repository's latest release by version, among its v<major>.<minor>.
+	// <patch> tags: when it is not Tag, the hotfix may not be based on the release
+	// production runs, which GitHub cannot tell.
+	Latest string
 }
 
 // Branch is the hotfix branch of the tag's release line: hotfix/<major>.<minor>.x.
@@ -115,7 +119,11 @@ func Start(ctx context.Context, client *github.Client, req Request) (*Result, er
 
 		return nil, errors.Wrapf(err, "resolving tag %s", req.Tag)
 	}
-	result := &Result{Tag: req.Tag, Commit: commit, Branch: branch}
+	tags, err := client.Tags(ctx, req.Owner, req.Repo)
+	if err != nil {
+		return nil, errors.Wrap(err, "listing tags")
+	}
+	result := &Result{Tag: req.Tag, Commit: commit, Branch: branch, Latest: latestRelease(tags, base).String()}
 	ref, err := client.Ref(ctx, req.Owner, req.Repo, "heads/"+branch)
 	if err == nil {
 		result.Existed, result.BranchCommit = true, ref.Object.SHA
@@ -128,10 +136,7 @@ func Start(ctx context.Context, client *github.Client, req Request) (*Result, er
 	if err := onDefaultBranch(ctx, client, req, commit); err != nil {
 		return nil, err
 	}
-	highest, err := highestPatch(ctx, client, req, base)
-	if err != nil {
-		return nil, err
-	}
+	highest := highestPatch(tags, base)
 	tip := commit
 	result.Next = version{major: base.major, minor: base.minor, patch: highest.patch + 1}.String()
 	if highest.patch > base.patch {
@@ -163,11 +168,7 @@ func onDefaultBranch(ctx context.Context, client *github.Client, req Request, co
 
 // highestPatch is the line's highest patch among the repository's tags, the base
 // itself when none is higher.
-func highestPatch(ctx context.Context, client *github.Client, req Request, base version) (version, error) {
-	tags, err := client.Tags(ctx, req.Owner, req.Repo)
-	if err != nil {
-		return version{}, errors.Wrap(err, "listing tags")
-	}
+func highestPatch(tags []github.Tag, base version) version {
 	highest := base
 	for _, tag := range tags {
 		v, err := parse(tag.Name)
@@ -179,7 +180,24 @@ func highestPatch(ctx context.Context, client *github.Client, req Request, base 
 		}
 	}
 
-	return highest, nil
+	return highest
+}
+
+// latestRelease is the highest release among the repository's tags, the base itself
+// when none is higher.
+func latestRelease(tags []github.Tag, base version) version {
+	latest := base
+	for _, tag := range tags {
+		v, err := parse(tag.Name)
+		if err != nil {
+			continue
+		}
+		if v.major > latest.major || (v.major == latest.major && (v.minor > latest.minor || (v.minor == latest.minor && v.patch > latest.patch))) {
+			latest = v
+		}
+	}
+
+	return latest
 }
 
 // manifestCommit makes a commit on the release's commit that sets the manifest's root

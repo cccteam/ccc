@@ -469,6 +469,14 @@ func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string
 // newestRecord reads the records under the prefix and returns the newest that lists
 // migrations, or nil.
 func newestRecord(ctx context.Context, store Store, bucket, prefix string) (*Record, error) {
+	return newestRecordWhere(ctx, store, bucket, prefix, func(r *Record) bool {
+		return len(r.Migrations) > 0
+	})
+}
+
+// newestRecordWhere reads the records under the prefix and returns the newest, by its
+// timestamp, that keep accepts, or nil.
+func newestRecordWhere(ctx context.Context, store Store, bucket, prefix string, keep func(*Record) bool) (*Record, error) {
 	names, err := store.List(ctx, bucket, prefix)
 	if err != nil {
 		return nil, err
@@ -483,7 +491,7 @@ func newestRecord(ctx context.Context, store Store, bucket, prefix string) (*Rec
 		if err := json.Unmarshal(data, &r); err != nil {
 			return nil, errors.Wrapf(err, "json.Unmarshal(): gs://%s/%s", bucket, name)
 		}
-		if len(r.Migrations) == 0 {
+		if !keep(&r) {
 			continue
 		}
 		if newest == nil || r.Timestamp > newest.Timestamp {

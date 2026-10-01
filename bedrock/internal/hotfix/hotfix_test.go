@@ -102,19 +102,19 @@ func TestStart(t *testing.T) {
 		{
 			name: "the first hotfix of the latest line",
 			tag:  "v0.1.21",
-			want: hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Next: "v0.1.22"},
+			want: hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Next: "v0.1.22"},
 		},
 		{
 			name:  "master has moved to the next minor: the line's next patch, nothing to tell release-please",
 			later: []string{"v0.2.0"},
 			tag:   "v0.1.21",
-			want:  hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Next: "v0.1.22"},
+			want:  hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Next: "v0.1.22"},
 		},
 		{
 			name:         "master has cut the line's next patch already: the branch starts with the manifest at it, so the hotfix is the one after",
 			later:        []string{"v0.1.22"},
 			tag:          "v0.1.21",
-			want:         hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Skipped: "v0.1.22", Next: "v0.1.23"},
+			want:         hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Skipped: "v0.1.22", Next: "v0.1.23"},
 			wantManifest: "{\n  \".\": \"0.1.22\"\n}\n",
 			wantMessage:  "chore(hotfix): the 0.1 line continues after v0.1.22, which master has already cut",
 		},
@@ -122,7 +122,7 @@ func TestStart(t *testing.T) {
 			name:     "an existing line is reported, not recreated",
 			existing: "c21",
 			tag:      "v0.1.21",
-			want:     hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Existed: true, BranchCommit: "c21"},
+			want:     hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c21"},
 		},
 		{
 			name:    "a release off the default branch is refused",

@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -95,8 +98,9 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	} else {
 		fmt.Fprintf(out, "This tag build runs bedrock %s.\n", bedrock)
 	}
+	var hotfix *hotfixLine
 	if token := env["GITHUB_TOKEN"]; token != "" {
-		window, err := validateTag(ctx, clients.GitHub(token), subs, out)
+		window, line, err := validateTag(ctx, clients.GitHub(token), subs, out)
 		if err != nil {
 			return err
 		}
@@ -106,9 +110,78 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 				return err
 			}
 		}
+		hotfix = line
+	}
+	if err := gate(ctx, clients.Storage, subs, out); err != nil {
+		return err
+	}
+	if hotfix == nil {
+		return nil
 	}
 
-	return gate(ctx, clients.Storage, subs, out)
+	return hotfixGate(ctx, clients.Storage, subs, w, hotfix, out)
+}
+
+// hotfixLine is what the tag check learned of a hotfix: its release line and the
+// release an environment ahead of the line is restored to, the line's latest release
+// before the hotfix.
+type hotfixLine struct {
+	tag, line, restoreTo string
+}
+
+// hotfixGate is the database check a hotfix passes in every environment, and at
+// production's door the line check. A hotfix is built from production's release, so an
+// environment that ran a later release may hold a migration or seed file the hotfix does
+// not carry, or one whose content differs; the hotfix's migrate job would fail on it,
+// and the hotfix is refused with the restore named instead. The environment's newest
+// live deployment record lists what its database holds, each file with its content's
+// hash, and the build's checkout carries the hotfix's files. In production, the
+// hotfix's line (major.minor) must be the line production runs, read from the same
+// record; a hotfix from an older line that happens to carry every file would roll the
+// application back. An environment with no live record holds nothing to compare.
+func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w Workspace, h *hotfixLine, out io.Writer) error {
+	env, bucket, app := subs[envSub], subs[recordsBucket], subs[appSub]
+	store, err := open(ctx)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	live, err := newestRecordWhere(ctx, store, bucket, app+"/"+env+"/", func(r *Record) bool {
+		return r.Status == Live
+	})
+	if err != nil {
+		return err
+	}
+	if live == nil {
+		fmt.Fprintf(out, "Hotfix check: %s has no live deployment record; nothing for %s to be behind.\n", env, h.tag)
+
+		return nil
+	}
+	for _, m := range live.Migrations {
+		hash, err := hashFile(filepath.Join(string(w), filepath.FromSlash(m.Dir), m.Name))
+		if err != nil {
+			return err
+		}
+		file := path.Join(m.Dir, m.Name)
+		switch {
+		case hash == "":
+			return errors.Newf("%s%s's database holds %s (applied by %s), which hotfix %s does not carry; restore %s to %s first.", rejected, env, file, live.Version, h.tag, env, h.restoreTo)
+		case hash != m.Hash:
+			return errors.Newf("%s%s's database holds %s as %s applied it, with other content than hotfix %s carries; restore %s to %s first.", rejected, env, file, live.Version, h.tag, env, h.restoreTo)
+		}
+	}
+	if env == prdEnvironment {
+		m := hotfixLineRE.FindStringSubmatch(live.Version)
+		if m == nil {
+			return errors.Newf("%sproduction's live record names %s, not a v<major>.<minor>.<patch> release, so the line hotfix %s is on cannot be checked against it.", rejected, live.Version, h.tag)
+		}
+		if line := m[1] + "." + m[2]; line != h.line {
+			return errors.Newf("%sproduction runs %s, line %s; hotfix %s is on line %s. A hotfix is based on the release production runs.", rejected, live.Version, line, h.tag, h.line)
+		}
+	}
+	fmt.Fprintf(out, "Hotfix check passed: %s's database holds nothing %s does not carry (%d file(s) recorded by %s, build %s)\n", env, h.tag, len(live.Migrations), live.Version, live.Build)
+
+	return nil
 }
 
 // windowReleaseFact says the release is a window release: its notes carry release-please's
@@ -132,42 +205,43 @@ func windowRelease(notes string) bool {
 
 // validateTag is the two GitHub checks: the release and its actor, then the commit's
 // place on the default branch or a hotfix line. It answers whether the release notes
-// designate a window release.
-func validateTag(ctx context.Context, gh *github.Client, subs map[string]string, out io.Writer) (window bool, err error) {
+// designate a window release, and the hotfix's line when the tag is a hotfix.
+func validateTag(ctx context.Context, gh *github.Client, subs map[string]string, out io.Writer) (window bool, line *hotfixLine, err error) {
 	owner, repo, err := splitRepo(subs[repoFullNameSub])
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	tag, commit, branch := subs[tagSub], subs[commitSub], subs[defaultBranchSub]
 	cut, err := gh.Release(ctx, owner, repo, tag)
 	if err != nil {
 		var apiErr *github.Error
 		if errors.As(err, &apiErr) {
-			return false, errors.Newf("%stag %s has no GitHub Release (HTTP %d); a release is cut by release-please as the release app, never by a tag alone.", rejected, tag, apiErr.Status)
+			return false, nil, errors.Newf("%stag %s has no GitHub Release (HTTP %d); a release is cut by release-please as the release app, never by a tag alone.", rejected, tag, apiErr.Status)
 		}
 
-		return false, err
+		return false, nil, err
 	}
 	actors := strings.Split(subs[releaseActorsSub], ",")
 	if !slices.Contains(actors, cut.Author.Login) {
-		return false, errors.Newf("%sthe GitHub Release for %s was made by %s, not by an accepted release actor (%s).", rejected, tag, cut.Author.Login, subs[releaseActorsSub])
+		return false, nil, errors.Newf("%sthe GitHub Release for %s was made by %s, not by an accepted release actor (%s).", rejected, tag, cut.Author.Login, subs[releaseActorsSub])
 	}
 	fmt.Fprintf(out, "Release %s validated: cut by %s\n", tag, cut.Author.Login)
 	window = windowRelease(cut.Body)
 	comparison, err := gh.Compare(ctx, owner, repo, commit, branch)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	if comparison.Status == statusAhead || comparison.Status == statusIdentical {
 		fmt.Fprintf(out, "Tag %s validated: its commit is on %s\n", tag, branch)
 
-		return window, nil
+		return window, nil, nil
 	}
-	if err := validateHotfix(ctx, gh, &hotfixCandidate{owner: owner, repo: repo, tag: tag, commit: commit, branch: branch, status: comparison.Status}, out); err != nil {
-		return false, err
+	line, err = validateHotfix(ctx, gh, &hotfixCandidate{owner: owner, repo: repo, tag: tag, commit: commit, branch: branch, status: comparison.Status}, out)
+	if err != nil {
+		return false, nil, err
 	}
 
-	return window, nil
+	return window, line, nil
 }
 
 // hotfixCandidate is a tag whose commit is not on the default branch.
@@ -177,33 +251,34 @@ type hotfixCandidate struct {
 
 // validateHotfix accepts the tag as a hotfix release: a v<major>.<minor>.<patch> tag at
 // the tip of hotfix/<major>.<minor>.x, a branch whose base on the default branch carries
-// a v<major>.<minor>.* release tag.
-func validateHotfix(ctx context.Context, gh *github.Client, c *hotfixCandidate, out io.Writer) error {
+// a v<major>.<minor>.* release tag. It answers the line, with the release an environment
+// ahead of it is restored to: the line's latest release before the hotfix.
+func validateHotfix(ctx context.Context, gh *github.Client, c *hotfixCandidate, out io.Writer) (*hotfixLine, error) {
 	m := hotfixLineRE.FindStringSubmatch(c.tag)
 	if m == nil {
-		return errors.Newf("%stag %s is not on %s (compare status: %s) and is not a v<major>.<minor>.<patch> tag a hotfix line could carry.", rejected, c.tag, c.branch, c.status)
+		return nil, errors.Newf("%stag %s is not on %s (compare status: %s) and is not a v<major>.<minor>.<patch> tag a hotfix line could carry.", rejected, c.tag, c.branch, c.status)
 	}
 	line := m[1] + "." + m[2]
 	hotfixBranch := "hotfix/" + line + ".x"
 	ref, err := gh.Ref(ctx, c.owner, c.repo, "heads/"+hotfixBranch)
 	if err != nil {
 		if github.NotFound(err) {
-			return errors.Newf("%stag %s is not on %s (compare status: %s) and there is no branch %s it could be a hotfix of.", rejected, c.tag, c.branch, c.status, hotfixBranch)
+			return nil, errors.Newf("%stag %s is not on %s (compare status: %s) and there is no branch %s it could be a hotfix of.", rejected, c.tag, c.branch, c.status, hotfixBranch)
 		}
 
-		return err
+		return nil, err
 	}
 	if ref.Object.SHA != c.commit {
-		return errors.Newf("%stag %s (commit %s) is not at the tip of %s (%s); a hotfix release is the branch's tip.", rejected, c.tag, c.commit, hotfixBranch, ref.Object.SHA)
+		return nil, errors.Newf("%stag %s (commit %s) is not at the tip of %s (%s); a hotfix release is the branch's tip.", rejected, c.tag, c.commit, hotfixBranch, ref.Object.SHA)
 	}
 	comparison, err := gh.Compare(ctx, c.owner, c.repo, c.branch, c.commit)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	base := comparison.MergeBaseCommit.SHA
 	tags, err := gh.Tags(ctx, c.owner, c.repo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	baseTag := ""
 	for _, t := range tags {
@@ -214,11 +289,41 @@ func validateHotfix(ctx context.Context, gh *github.Client, c *hotfixCandidate, 
 		}
 	}
 	if baseTag == "" {
-		return errors.Newf("%s%s branches from %s on %s, which carries no v%s.* release tag; a hotfix line starts at a release.", rejected, hotfixBranch, base, c.branch, line)
+		return nil, errors.Newf("%s%s branches from %s on %s, which carries no v%s.* release tag; a hotfix line starts at a release.", rejected, hotfixBranch, base, c.branch, line)
 	}
 	fmt.Fprintf(out, "Tag %s validated as a hotfix: the tip of %s, branched from release %s on %s\n", c.tag, hotfixBranch, baseTag, c.branch)
 
-	return nil
+	return &hotfixLine{tag: c.tag, line: line, restoreTo: previousOnLine(tags, line, c.tag, baseTag)}, nil
+}
+
+// previousOnLine is the line's latest release before the tag among the repository's
+// tags, the base tag when the line has released nothing else: what an environment
+// ahead of the hotfix is restored to.
+func previousOnLine(tags []github.Tag, line, tag, baseTag string) string {
+	patchOf := func(name string) (int, bool) {
+		if !hotfixLineRE.MatchString(name) || !strings.HasPrefix(name, "v"+line+".") {
+			return 0, false
+		}
+		patch, err := strconv.Atoi(strings.TrimPrefix(name, "v"+line+"."))
+		if err != nil {
+			return 0, false
+		}
+
+		return patch, true
+	}
+	own, ok := patchOf(tag)
+	if !ok {
+		return baseTag
+	}
+	previous, best := baseTag, -1
+	for _, t := range tags {
+		patch, ok := patchOf(t.Name)
+		if ok && patch < own && patch > best {
+			previous, best = t.Name, patch
+		}
+	}
+
+	return previous
 }
 
 // gate is the record gate: the previous environment's records bucket holds a live record

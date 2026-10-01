@@ -111,9 +111,14 @@ the tagged commit is on the default branch, or it is a hotfix, the tip of hotfix
 whose base on the default branch carries a release tag of the same line. Then the record gate:
 this environment follows the previous one in the promotion order (_PREVIOUS_ENV, empty in the
 first), and a release runs here only after the previous environment holds a live deployment
-record of it. A refusal starts with "Build REJECTED" and says why. A tag build's log first names
-the bedrock running it, and says when that is a commit pin, which it does not refuse. It reads
-environment.sh and build.json from the workspace.`,
+record of it. A hotfix passes one more check: this environment's newest live record lists the
+migration and seed files its database holds, each with its hash, and the hotfix is refused when
+the database holds a file it does not carry, or one whose content differs, naming the file and
+the release the environment is restored to first (the line's latest release before the hotfix);
+in prd the hotfix must also be on the line production runs. A refusal starts with "Build
+REJECTED" and says why. A tag build's log first names the bedrock running it, and says when that
+is a commit pin, which it does not refuse. It reads environment.sh and build.json from the
+workspace, and the migration files from the checkout.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), d.running().version, cmd.OutOrStdout())

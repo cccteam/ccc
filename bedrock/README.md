@@ -276,7 +276,13 @@ thing one step hands the next. In order:
   names the bedrock running it, and says when that is a commit pin; a release may deploy
   with a commit pin. A release whose notes carry release-please's breaking-changes section
   (a commit with `!` after its type, or a `BREAKING CHANGE:` footer) is a window release,
-  recorded as `WINDOW_RELEASE` for the maintenance window.
+  recorded as `WINDOW_RELEASE` for the maintenance window. A hotfix passes one more check
+  in every environment: the environment's newest live deployment record lists the
+  migration and seed files its database holds, each with its hash, and the hotfix is
+  refused when the database holds a file the hotfix does not carry, or one whose content
+  differs, naming the file and the release the environment is restored to first (the
+  line's latest release before the hotfix); at production's door the hotfix must also be
+  on the line production runs, read from the same record.
 - `deploy guard-migrations`: the schema migrations and the seed are each one sequence
   (the rule `bedrock check` applies), and in a pull-request build every schema migration
   the branch started from is still there unchanged and the sequence is read together with
@@ -428,6 +434,21 @@ default branch took since the branch was cut (the branch's migration moves up), 
 fixes as the line's next patch versions while the default branch moves on. The pipeline's
 release check accepts a tag at the tip of such a line whose base on the default branch
 carries a release tag of the same line.
+
+A hotfix is based on the release production runs, and it deploys like any release:
+through tst and stg, then prd, each after the one before holds it live. What matters in
+an environment that ran a later release is its database. When the later release applied
+no migration and no seed file, the hotfix deploys into that environment as it is: its
+migrate job finds a database at a version it knows, and the environment runs the hotfix
+until the held-up release resumes. When the later release did move the database, the
+environment holds a file the hotfix does not carry, and the release check refuses the
+hotfix there, naming the file and the release the environment is restored to first, the
+line's latest release before the hotfix. At production's door the hotfix must be on the
+line production runs; a hotfix from an older line that happens to carry every file
+would roll production's application back. `hotfix start` prints the rule, and warns
+when the release is not the repository's latest, which GitHub can tell; what production
+runs, only its deployment record can. The restore is not built yet: until it is, an
+operator with cloud access replaces the environment's database by hand.
 
 ## bedrock repository
 

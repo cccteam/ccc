@@ -1,6 +1,8 @@
 package deploy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -16,6 +18,7 @@ func releaseBuild(t *testing.T, overrides map[string]string) string {
 	subs := map[string]string{
 		tagSub: "v1.2.3", commitSub: "c3", repoFullNameSub: "acme/quill", releaseActorsSub: "release-app[bot],other",
 		defaultBranchSub: "master", appSub: "quill", envSub: stgEnvironment, previousEnvSub: tstEnvironment, previousRecordsSub: "tst-records",
+		recordsBucket: "stg-records", migrationsSub: "schema/migrations",
 	}
 	for name, value := range overrides {
 		if value == "" {
@@ -27,6 +30,23 @@ func releaseBuild(t *testing.T, overrides map[string]string) string {
 	}
 
 	return buildFor(t, subs)
+}
+
+// migrationFile is a migration file as a record lists it and a checkout carries it.
+type migrationFile struct {
+	dir, name, content string
+}
+
+// path is the file's root-relative path.
+func (m migrationFile) path() string {
+	return m.dir + "/" + m.name
+}
+
+// hash is the content's hash as a record carries it.
+func (m migrationFile) hash() string {
+	sum := sha256.Sum256([]byte(m.content))
+
+	return hex.EncodeToString(sum[:8])
 }
 
 // quillRepo is the repository the release checks read: master at c4 over c3, c2, c1;
@@ -61,13 +81,30 @@ func TestValidateRelease(t *testing.T) {
 		previewOnly = `{"app": "quill", "env": "tst", "version": "v1.2.3", "status": "preview", "timestamp": "2026-09-27T05:00:00Z", "build": "b-9"}`
 	)
 	live := map[string]string{"gs://tst-records/quill/tst/v1.2.3/b-0.json": liveRecord, "gs://tst-records/quill/tst/v1.2.3/b-9.json": previewOnly}
+	// hotfixLive is the hotfix v1.2.4 live in tst, for the gate; first and refits are two
+	// migration files the environment's records may list, as the build may carry them.
+	hotfixLive := strings.Replace(liveRecord, "v1.2.3", "v1.2.4", 1)
+	first := migrationFile{dir: "schema/migrations", name: "000001_Init.up.sql", content: "create table t"}
+	refits := migrationFile{dir: "schema/migrations", name: "000002_Refits.up.sql", content: "alter table t"}
+	// stgLive is stg's live record of a release, listing the files its build applied.
+	stgLive := func(version string, applied ...migrationFile) string {
+		var list []string
+		for _, m := range applied {
+			list = append(list, `{"dir": "`+m.dir+`", "name": "`+m.name+`", "hash": "`+m.hash()+`"}`)
+		}
+
+		return `{"app": "quill", "env": "stg", "version": "` + version + `", "status": "live", "timestamp": "2026-09-28T05:30:00Z", "build": "b-5", "migrations": [` + strings.Join(list, ", ") + `]}`
+	}
 	tests := []struct {
 		name string
 		env  string
 		subs map[string]string
-		// repo changes the repository; objects the previous environment's records.
+		// repo changes the repository; objects the records (the previous environment's,
+		// and this environment's for a hotfix); files the migration files the checkout
+		// carries.
 		repo    func(r *githubtest.Repo)
 		objects map[string]string
+		files   map[string]string
 		// bedrock is the running bedrock's version; empty, a release.
 		bedrock    string
 		wantOut    []string
@@ -169,11 +206,91 @@ func TestValidateRelease(t *testing.T) {
 			wantErr: "Build REJECTED: the GitHub Release for v1.2.3 was made by mallory, not by an accepted release actor (release-app[bot],other).",
 		},
 		{
-			name:    "a hotfix at the tip of its line is validated",
+			name:    "a hotfix at the tip of its line is validated, and an environment without a live record has nothing to be behind",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": strings.Replace(liveRecord, "v1.2.3", "v1.2.4", 1)},
-			wantOut: []string{"Tag v1.2.4 validated as a hotfix: the tip of hotfix/1.2.x, branched from release v1.2.3 on master", "Gate passed: v1.2.4 is live in tst"},
+			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive},
+			wantOut: []string{"Tag v1.2.4 validated as a hotfix: the tip of hotfix/1.2.x, branched from release v1.2.3 on master", "Gate passed: v1.2.4 is live in tst", "Hotfix check: stg has no live deployment record; nothing for v1.2.4 to be behind."},
+		},
+		{
+			name:    "a hotfix is refused where the database holds a migration it does not carry, naming the restore",
+			env:     connected,
+			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
+			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			files:   map[string]string{first.path(): first.content},
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.3 first.",
+		},
+		{
+			name:    "a hotfix is refused where a migration's content differs from what the database applied",
+			env:     connected,
+			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
+			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
+			files:   map[string]string{first.path(): "create table other"},
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000001_Init.up.sql as v1.3.0 applied it, with other content than hotfix v1.2.4 carries; restore stg to v1.2.3 first.",
+		},
+		{
+			name:    "a hotfix deploys where every applied file is in it, whatever release the environment runs",
+			env:     connected,
+			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
+			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
+			files:   map[string]string{first.path(): first.content, refits.path(): refits.content},
+			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
+		},
+		{
+			name: "the newest live record is the one compared, not a preview or an older release",
+			env:  connected,
+			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
+			objects: map[string]string{
+				"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive,
+				"gs://stg-records/quill/stg/v1.2.3/b-3.json": strings.Replace(stgLive("v1.2.3", first, refits), "2026-09-28", "2026-09-20", 1),
+				"gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first),
+				"gs://stg-records/quill/stg/v1.4.0/b-7.json": strings.Replace(strings.Replace(stgLive("v1.4.0", first, refits), "2026-09-28", "2026-09-29", 1), Live, Preview, 1),
+			},
+			files:   map[string]string{first.path(): first.content},
+			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
+		},
+		{
+			name: "the restore named is the line's latest release before the hotfix",
+			env:  connected,
+			subs: map[string]string{tagSub: "v1.2.5", commitSub: "h2"},
+			repo: func(r *githubtest.Repo) {
+				r.Refs["refs/heads/hotfix/1.2.x"] = github.Object{Type: "commit", SHA: "h2"}
+				r.Refs["refs/tags/v1.2.5"] = github.Object{Type: "commit", SHA: "h2"}
+				r.Releases["v1.2.5"] = github.Release{TagName: "v1.2.5", Author: github.User{Login: "release-app[bot]"}}
+			},
+			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.5/b-1.json": strings.Replace(hotfixLive, "v1.2.4", "v1.2.5", 1), "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			files:   map[string]string{first.path(): first.content},
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.5 does not carry; restore stg to v1.2.4 first.",
+		},
+		{
+			name:       "a release on the default branch is not checked against the environment's database",
+			env:        connected,
+			objects:    map[string]string{"gs://tst-records/quill/tst/v1.2.3/b-0.json": liveRecord, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			files:      map[string]string{first.path(): first.content},
+			wantOut:    []string{"Tag v1.2.3 validated: its commit is on master", "Gate passed: v1.2.3 is live in tst"},
+			wantAbsent: []string{"Hotfix check"},
+		},
+		{
+			name: "a hotfix from a line production does not run is refused at production's door",
+			env:  connected,
+			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
+			objects: map[string]string{
+				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first), `"env": "stg"`, `"env": "prd"`, 1),
+			},
+			files:   map[string]string{first.path(): first.content},
+			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; hotfix v1.2.4 is on line 1.2. A hotfix is based on the release production runs.",
+		},
+		{
+			name: "a hotfix on production's line passes its door",
+			env:  connected,
+			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
+			objects: map[string]string{
+				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/v1.2.3/b-5.json": strings.Replace(stgLive("v1.2.3", first), `"env": "stg"`, `"env": "prd"`, 1),
+			},
+			files:   map[string]string{first.path(): first.content},
+			wantOut: []string{"Hotfix check passed: prd's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.2.3, build b-5)"},
 		},
 		{
 			name:    "a tag off the branch that is not a version is refused",
@@ -237,7 +354,11 @@ func TestValidateRelease(t *testing.T) {
 			clients := &Clients{Storage: store.open, GitHub: func(string) *github.Client {
 				return srv.Client()
 			}}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: releaseBuild(t, tt.subs)})
+			files := map[string]string{EnvironmentFile: tt.env, BuildFile: releaseBuild(t, tt.subs)}
+			for name, content := range tt.files {
+				files[name] = content
+			}
+			w := workspaceFiles(t, files)
 			bedrock := tt.bedrock
 			if bedrock == "" {
 				bedrock = "v0.4.0"
