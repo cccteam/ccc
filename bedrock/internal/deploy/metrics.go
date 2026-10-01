@@ -39,7 +39,7 @@ func NewCloudMonitoring(ctx context.Context) (Metrics, error) {
 		return nil, errors.Wrap(err, "google.DefaultClient()")
 	}
 
-	return &cloudMonitoring{cloudRun: &cloudRun{http: client, base: monitoringAPI, poll: time.Second}, now: time.Now}, nil
+	return &cloudMonitoring{cloudRun: &cloudRun{http: client, base: monitoringAPI, poll: time.Second, service: "Cloud Monitoring"}, now: time.Now}, nil
 }
 
 // cloudMonitoring is Metrics over the v3 API.

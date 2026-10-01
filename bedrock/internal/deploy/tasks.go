@@ -40,7 +40,7 @@ func NewCloudTasks(ctx context.Context) (Tasks, error) {
 		return nil, errors.Wrap(err, "google.DefaultClient()")
 	}
 
-	return &cloudTasks{cloudRun: &cloudRun{http: client, base: cloudTasksAPI, poll: time.Second}}, nil
+	return &cloudTasks{cloudRun: &cloudRun{http: client, base: cloudTasksAPI, poll: time.Second, service: "Cloud Tasks"}}, nil
 }
 
 // cloudTasks is Tasks over the v2 API; it reuses the Cloud Run client's calling, since

@@ -55,7 +55,7 @@ func NewSpannerAs(ctx context.Context, identity string) (Spanner, error) {
 		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
 	}
 
-	return &spanner{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: spannerAPI, poll: 10 * time.Second}}, nil
+	return &spanner{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: spannerAPI, poll: 10 * time.Second, service: "Spanner"}}, nil
 }
 
 // spanner is Spanner over the v1 API; it reuses the Cloud Run client's calling.

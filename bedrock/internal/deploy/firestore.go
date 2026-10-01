@@ -39,7 +39,7 @@ func NewFirestoreAs(ctx context.Context, identity string) (Firestore, error) {
 		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
 	}
 
-	return &firestore{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: firestoreAPI, poll: 5 * time.Second}}, nil
+	return &firestore{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: firestoreAPI, poll: 5 * time.Second, service: "Firestore"}}, nil
 }
 
 // firestore is Firestore over the v1 API; it reuses the Cloud Run client's calling.

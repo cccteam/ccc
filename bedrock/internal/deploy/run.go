@@ -72,13 +72,21 @@ type Run interface {
 
 // apiError is an answer outside 2xx from the API, with its status.
 type apiError struct {
+	// service is the API that answered, as its messages name it (Cloud Run, Cloud Tasks,
+	// Firestore, Spanner, Cloud Monitoring): the client is shared by all of them.
+	service      string
 	status       int
 	method, path string
 	message      string
 }
 
 func (e *apiError) Error() string {
-	return fmt.Sprintf("Cloud Run answered HTTP %d to %s %s: %s", e.status, e.method, e.path, e.message)
+	service := e.service
+	if service == "" {
+		service = "Cloud Run"
+	}
+
+	return fmt.Sprintf("%s answered HTTP %d to %s %s: %s", service, e.status, e.method, e.path, e.message)
 }
 
 // isNotFound reports an error that is the API answering 404.
@@ -107,6 +115,18 @@ type cloudRun struct {
 	http *http.Client
 	base string
 	poll time.Duration
+	// service names the API in messages; Cloud Run when empty, since the other clients
+	// (Cloud Tasks, Firestore, Spanner, Cloud Monitoring) reuse this one's calling.
+	service string
+}
+
+// name is the API's name for messages.
+func (c *cloudRun) name() string {
+	if c.service == "" {
+		return "Cloud Run"
+	}
+
+	return c.service
 }
 
 func (c *cloudRun) Get(ctx context.Context, name string) (map[string]any, error) {
@@ -278,7 +298,7 @@ func (c *cloudRun) call(ctx context.Context, method, path string, body map[strin
 		return nil, errors.Wrap(err, "io.ReadAll()")
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
-		return nil, errors.Wrap(&apiError{status: resp.StatusCode, method: method, path: path, message: apiMessage(data)}, "cloudRun.call()")
+		return nil, errors.Wrap(&apiError{service: c.name(), status: resp.StatusCode, method: method, path: path, message: apiMessage(data)}, "cloudRun.call()")
 	}
 	answer := map[string]any{}
 	if len(data) > 0 {
