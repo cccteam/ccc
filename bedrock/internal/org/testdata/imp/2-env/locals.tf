@@ -149,11 +149,16 @@ locals {
 
   # The application plan identity plans the application's stack for this
   # environment on a pull request and writes nothing: viewer on the project to
-  # refresh what the stack manages, and serviceUsageConsumer to use the project
-  # as its quota project, the same as the apply identity.
+  # refresh what the stack manages, securityReviewer to read the IAM policies
+  # the stack's grants are refreshed from (viewer reads a bucket's and a
+  # queue's objects but not their policies: the first plan as this identity
+  # was refused storage.buckets.getIamPolicy and cloudtasks.queues.getIamPolicy),
+  # and serviceUsageConsumer to use the project as its quota project, the same
+  # as the apply identity.
   plan_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
     "roles/viewer",
+    "roles/iam.securityReviewer",
   ]
 
   # app x role pairs, so for_each can grant several roles per identity.
