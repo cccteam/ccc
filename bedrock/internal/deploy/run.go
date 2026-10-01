@@ -165,9 +165,14 @@ func (c *cloudRun) CancelExecution(ctx context.Context, name string) error {
 // key.
 func (c *cloudRun) list(ctx context.Context, path, key string) ([]map[string]any, error) {
 	var all []map[string]any
+	// The path may carry a query of its own (a filter): the page size joins it.
+	join := "?"
+	if strings.Contains(path, "?") {
+		join = "&"
+	}
 	token := ""
 	for {
-		page := path + "?pageSize=100"
+		page := path + join + "pageSize=100"
 		if token != "" {
 			page += "&pageToken=" + url.QueryEscape(token)
 		}
