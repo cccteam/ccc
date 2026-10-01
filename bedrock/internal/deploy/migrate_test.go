@@ -205,10 +205,11 @@ func TestMigrate(t *testing.T) {
 		return map[string]map[string]any{jobName: doc}
 	}
 	tests := []struct {
-		name    string
-		env     string
-		build   string
-		run     *fakeRun
+		name  string
+		env   string
+		build string
+		run   *fakeRun
+		// wantOut are lines the output carries, in this order.
 		wantOut []string
 		// wantArgs are the run's arguments; wantDeleted says the build's job was deleted.
 		wantArgs    []string
@@ -234,7 +235,7 @@ func TestMigrate(t *testing.T) {
 			env:         environment,
 			build:       build("true", "7"),
 			run:         newFakeRun(made()),
-			wantOut:     []string{"=== Running job [harbor-migrate-v1-2-3] once ===", "Seeding: the migrate job applies schema/devseed as data migrations.", "Job harbor-migrate-v1-2-3 deleted: its execution's logs stay in Cloud Logging.", "Migrate job done: execution harbor-migrate-v1-2-3-abc succeeded."},
+			wantOut:     []string{"=== Running job [harbor-migrate-v1-2-3] once ===", "Seeding: the migrate job applies schema/devseed as data migrations.", "Migrate job done: execution harbor-migrate-v1-2-3-abc succeeded.", "Job harbor-migrate-v1-2-3 deleted: its execution's logs stay in Cloud Logging."},
 			wantArgs:    []string{seedArg},
 			wantDeleted: true,
 		},
@@ -319,10 +320,15 @@ func TestMigrate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Migrate() error = %v; output:\n%s", err, out.String())
 			}
+			at := 0
 			for _, want := range tt.wantOut {
-				if !strings.Contains(out.String(), want) {
-					t.Errorf("output lacks %q:\n%s", want, out.String())
+				i := strings.Index(out.String()[at:], want)
+				if i < 0 {
+					t.Errorf("output lacks %q in its turn:\n%s", want, out.String())
+
+					continue
 				}
+				at += i + len(want)
 			}
 			if len(tt.run.patched) != 0 {
 				t.Errorf("the step changed a job: %v", tt.run.patched)

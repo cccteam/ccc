@@ -110,11 +110,23 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 		fmt.Fprintln(out, "Seeding: the migrate job applies schema/devseed as data migrations.")
 	}
 	execution, runErr := run.RunJob(ctx, name, args)
+	outcome := executionOutcome(execution, runErr)
+	if outcome == nil {
+		fmt.Fprintf(out, "Migrate job done: execution %s succeeded.\n", shortName(text(execution, keyName)))
+	}
 	if err := run.Delete(ctx, name); err != nil {
 		fmt.Fprintf(out, "Job %s was not deleted (%v): deploy sweep-jobs deletes it.\n", jobName, err)
 	} else {
 		fmt.Fprintf(out, "Job %s deleted: its execution's logs stay in Cloud Logging.\n", jobName)
 	}
+
+	return outcome
+}
+
+// executionOutcome is nil when the execution succeeded, else why the migrations failed:
+// the run the API refused, or the execution's failed tasks, named with the Cloud Logging
+// query that finds its logs, which outlive the job.
+func executionOutcome(execution map[string]any, runErr error) error {
 	if runErr != nil {
 		return runErr
 	}
@@ -122,7 +134,6 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 	if failed, _ := execution["failedCount"].(float64); failed > 0 {
 		return errors.Newf("the migrate job failed: execution %s has %d failed task(s); its logs say why (Cloud Logging: resource.type=\"cloud_run_job\" AND labels.\"run.googleapis.com/execution_name\"=\"%s\")", executionName, int(failed), executionName)
 	}
-	fmt.Fprintf(out, "Migrate job done: execution %s succeeded.\n", executionName)
 
 	return nil
 }
