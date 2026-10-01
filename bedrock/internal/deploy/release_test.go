@@ -86,6 +86,7 @@ func TestValidateRelease(t *testing.T) {
 	hotfixLive := strings.Replace(liveRecord, "v1.2.3", "v1.2.4", 1)
 	first := migrationFile{dir: "schema/migrations", name: "000001_Init.up.sql", content: "create table t"}
 	refits := migrationFile{dir: "schema/migrations", name: "000002_Refits.up.sql", content: "alter table t"}
+	refitsDown := migrationFile{dir: "schema/migrations", name: "000002_Refits.down.sql", content: "alter table t drop"}
 	// stgLive is stg's live record of a release, listing the files its build applied.
 	stgLive := func(version string, applied ...migrationFile) string {
 		var list []string
@@ -227,6 +228,26 @@ func TestValidateRelease(t *testing.T) {
 			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
 			files:   map[string]string{first.path(): "create table other"},
 			wantErr: "Build REJECTED: stg's database holds schema/migrations/000001_Init.up.sql as v1.3.0 applied it, with other content than hotfix v1.2.4 carries; restore stg to v1.2.3 first.",
+		},
+		{
+			name: "a pull request's live record under the environment is its own environment's, not the release stg runs",
+			env:  connected,
+			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
+			objects: map[string]string{
+				"gs://tst-records/quill/tst/v1.2.4/b-1.json":      hotfixLive,
+				"gs://stg-records/quill/stg/v1.3.0/b-5.json":      stgLive("v1.3.0", first, refits),
+				"gs://stg-records/quill/stg/pr9-abc0123/b-8.json": strings.NewReplacer("v1.3.0", "pr9@abc0123", "2026-09-28", "2026-09-29", "b-5", "b-8").Replace(stgLive("v1.3.0", first)),
+			},
+			files:   map[string]string{first.path(): first.content},
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.3 first.",
+		},
+		{
+			name:    "the refusal names the up file, whatever order the record lists the files in",
+			env:     connected,
+			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
+			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refitsDown, refits)},
+			files:   map[string]string{first.path(): first.content},
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.3 first.",
 		},
 		{
 			name:    "a hotfix deploys where every applied file is in it, whatever release the environment runs",

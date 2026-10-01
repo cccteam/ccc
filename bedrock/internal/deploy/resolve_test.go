@@ -425,6 +425,16 @@ func TestResolve(t *testing.T) {
 			want: tag,
 		},
 		{
+			name: "a pull request's live record under the environment is its own environment's, not the release the environment runs",
+			subs: seededTag(nil),
+			records: map[string]string{
+				"gs://records/harbor/tst/v1.2.2/b-0.json":      liveSeeded["gs://records/harbor/tst/v1.2.2/b-0.json"],
+				"gs://records/harbor/tst/pr9-abc0123/b-8.json": liveRecordWith("tst", "pr9@abc0123", "b-8", "2026-09-28T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, the pull request's")}),
+			},
+			tree: map[string]string{sitesUp: sitesContent, seedUp: seedContent},
+			want: tag,
+		},
+		{
 			name:    "production is never restored by a run: its seed is not compared",
 			subs:    seededTag(map[string]string{"_ENV": "prd"}),
 			records: map[string]string{"gs://records/harbor/prd/v1.2.2/b-0.json": liveRecordWith("prd", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},

@@ -159,7 +159,7 @@ func TestMaintenanceOn(t *testing.T) {
 			subs:       subs,
 			answers:    []probeAnswer{{status: http.StatusOK}, {status: http.StatusServiceUnavailable, marker: "1"}},
 			executions: []map[string]any{running, ended},
-			records:    map[string]string{"gs://tst-records/harbor/tst/v0.2.1/b-0.json": live},
+			records:    map[string]string{"gs://tst-records/harbor/tst/v0.2.1/b-0.json": live, "gs://tst-records/harbor/tst/pr5-abc0123/b-8.json": strings.NewReplacer("v0.2.1", "pr5@abc0123", "b-0", "b-8", "10:00:00Z", "11:00:00Z").Replace(live)},
 			counts:     map[string][]int{"harbor-app-00007-prev": {2, 0}},
 			wantOut: []string{
 				"=== Maintenance on: tst's database is replaced (empty) before v0.2.2 deploys",

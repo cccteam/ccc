@@ -401,9 +401,7 @@ func (m *maintenance) cancelExecutions(ctx context.Context) (int, error) {
 	}
 	defer store.Close()
 	subs := m.build.Substitutions
-	live, err := newestRecordWhere(ctx, store, subs[recordsBucket], subs[appSub]+"/"+subs[envSub]+"/", func(r *Record) bool {
-		return r.Status == Live
-	})
+	live, err := newestLiveRelease(ctx, store, subs[recordsBucket], subs[appSub], subs[envSub])
 	if err != nil {
 		return 0, err
 	}

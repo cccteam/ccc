@@ -151,9 +151,7 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 		return err
 	}
 	defer store.Close()
-	live, err := newestRecordWhere(ctx, store, bucket, app+"/"+env+"/", func(r *Record) bool {
-		return r.Status == Live
-	})
+	live, err := newestLiveRelease(ctx, store, bucket, app, env)
 	if err != nil {
 		return err
 	}
@@ -162,7 +160,7 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 
 		return nil
 	}
-	for _, m := range live.Migrations {
+	for _, m := range upFirst(live.Migrations) {
 		hash, err := hashFile(filepath.Join(string(w), filepath.FromSlash(m.Dir), m.Name))
 		if err != nil {
 			return err
@@ -187,6 +185,26 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 	fmt.Fprintf(out, "Hotfix check passed: %s's database holds nothing %s does not carry (%d file(s) recorded by %s, build %s)\n", env, h.tag, len(live.Migrations), live.Version, live.Build)
 
 	return nil
+}
+
+// upFirst orders a record's migrations so that up files come before down files: the
+// hotfix check names the first file the hotfix does not carry, and the up file is the one
+// the database applied; a down file beside it is in the same case and would be named
+// first only by its name's order.
+func upFirst(migrations []Migration) []Migration {
+	ordered := make([]Migration, 0, len(migrations))
+	for _, m := range migrations {
+		if !strings.HasSuffix(m.Name, ".down.sql") {
+			ordered = append(ordered, m)
+		}
+	}
+	for _, m := range migrations {
+		if strings.HasSuffix(m.Name, ".down.sql") {
+			ordered = append(ordered, m)
+		}
+	}
+
+	return ordered
 }
 
 // windowReleaseFact says the release is a window release: its notes carry release-please's

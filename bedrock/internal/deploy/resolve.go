@@ -567,8 +567,9 @@ func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string
 // migrate job applies, and recreates nothing. A pull-request build has its own rule
 // (staleDatabase); a restore asked for already replaces the database; an environment off
 // the seed list never applied the seed, so a changed seed is nothing to it; production is
-// never on the list, and is never restored by a run. Only a live record counts: a preview
-// is a build whose traffic never shifted.
+// never on the list, and is never restored by a run. Only a live record of a release
+// counts: a preview is a build whose traffic never shifted, and a pull request's record is
+// its own environment's.
 func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
 	if f.Tag == "" || f.Restore != "" || !f.RunMigrations || f.Environment == prdEnvironment || f.Substitutions[seedSub] != trueValue {
 		return nil
@@ -583,9 +584,7 @@ func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, 
 		return err
 	}
 	defer store.Close()
-	live, err := newestRecordWhere(ctx, store, bucket, app+"/"+f.Environment+"/", func(r *Record) bool {
-		return r.Status == Live
-	})
+	live, err := newestLiveRelease(ctx, store, bucket, app, f.Environment)
 	if err != nil {
 		return err
 	}
@@ -620,6 +619,16 @@ func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, 
 func newestRecord(ctx context.Context, store Store, bucket, prefix string) (*Record, error) {
 	return newestRecordWhere(ctx, store, bucket, prefix, func(r *Record) bool {
 		return len(r.Migrations) > 0
+	})
+}
+
+// newestLiveRelease is the environment's newest live record of a release: what the
+// environment runs. A pull request's records lie under the same prefix
+// (<app>/<env>/pr<N>-<commit>/) and are live too, for the pull request's own environment;
+// they are not the environment's release and are left out.
+func newestLiveRelease(ctx context.Context, store Store, bucket, app, env string) (*Record, error) {
+	return newestRecordWhere(ctx, store, bucket, app+"/"+env+"/", func(r *Record) bool {
+		return r.Status == Live && strings.HasPrefix(r.Version, "v")
 	})
 }
 
