@@ -12,12 +12,14 @@ Cloud Build in the boot project as `{{.Prefix}}-spn-gbl-tofu`.
   {{.ExtraLabelKeys}}{{end}}. No autoscaler. `force_destroy` is off and the resource
   carries `prevent_destroy`, so neither a plan nor a stray destroy can take
   the databases with it.
-- `roles/spanner.databaseAdmin` and `roles/spanner.backupAdmin` on the
-  instance for each member of `database_admins` (the second for the backup
-  schedules a production stack makes on its database, which `databaseAdmin`
-  does not read), rendered into `applications.auto.tfvars` from
-  `placement.json` and bound only after the environment layers have created
-  the application apply identities.
+- `roles/spanner.databaseAdmin`, `roles/spanner.backupAdmin` and
+  `roles/spanner.restoreAdmin` on the instance for each member of
+  `database_admins` (the second for the backup schedules a production stack
+  makes on its database, which `databaseAdmin` does not read; the third for the
+  restore of an environment's database from production's backup, which adds
+  `spanner.backups.restoreDatabase` alone), rendered into
+  `applications.auto.tfvars` from `placement.json` and bound only after the
+  environment layers have created the application apply identities.
 - The organization's `spannerPlanReader` role (`1-org`) on the instance for
   each member of `database_planners`, the application plan identities of the
   same environments: a pull-request build plans the environment's stack as
@@ -38,7 +40,8 @@ Two levels, two owners.
 Instance level, this layer: creating a database is `spanner.databases.create`
 checked on the instance, so the identity that creates databases, the
 application apply identity in stg and prd, is listed in `database_admins` and
-bound here as database admin, and as backup admin for the backup schedules.
+bound here as database admin, as backup admin for the backup schedules, and
+as restore admin for the restore from production's backup.
 Database admin at instance level reaches every database on the instance;
 bounding it to an application's own databases is an open question, and until
 it is answered the list stays short. The application plan identity of the

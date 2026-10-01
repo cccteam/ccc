@@ -81,6 +81,20 @@ resource "google_spanner_instance_iam_member" "backup_admin" {
   member   = each.value
 }
 
+# A restore from production's backup creates the environment's database afresh
+# from a backup of production's, on this instance, as the environment's apply
+# identity: spanner.backups.restoreDatabase, which neither databaseAdmin nor
+# backupAdmin carries and restoreAdmin adds alone (its other permissions the
+# two already hold).
+resource "google_spanner_instance_iam_member" "restore_admin" {
+  for_each = toset(var.database_admins)
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = "roles/spanner.restoreAdmin"
+  member   = each.value
+}
+
 # The plan identities read the databases, their IAM policies and their backup
 # schedules when a pull-request build plans the environment's stack, and write
 # nothing: the organization's spannerPlanReader role (1-org).
