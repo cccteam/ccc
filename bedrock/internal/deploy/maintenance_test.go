@@ -162,7 +162,7 @@ func TestMaintenanceOn(t *testing.T) {
 			records:    map[string]string{"gs://tst-records/harbor/tst/v0.2.1/b-0.json": live},
 			counts:     map[string][]int{"harbor-app-00007-prev": {2, 0}},
 			wantOut: []string{
-				"=== Maintenance on: empty is replaced before v0.2.2 deploys",
+				"=== Maintenance on: tst's database is replaced (empty) before v0.2.2 deploys",
 				"Maintenance revision [harbor-app-00008-new] deployed to [harbor-app] in [us-central1] under the tag [next], with APP_MAINTENANCE=1 and no traffic.",
 				"Probe passed: https://harbor-tst-next.example.dev/ answered 503 with X-Maintenance: 1 from the maintenance revision.",
 				"Traffic in [us-central1] moved to the maintenance revision",

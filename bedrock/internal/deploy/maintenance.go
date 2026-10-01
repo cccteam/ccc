@@ -125,7 +125,7 @@ func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, out io.Wr
 	if err := m.open(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "=== Maintenance on: %s is replaced before %s deploys, so the application serves its maintenance page meanwhile ===\n", env[restoreFact], env[versionFact])
+	fmt.Fprintf(out, "=== Maintenance on: %s's database is replaced (%s) before %s deploys, so the application serves its maintenance page meanwhile ===\n", subs[envSub], env[restoreFact], env[versionFact])
 	revisions, previous, err := m.deployRevisions(ctx, env[imageFact]+"@"+env[digestFact], pipelineLabels(build, env[versionFact]))
 	if err != nil {
 		return err
