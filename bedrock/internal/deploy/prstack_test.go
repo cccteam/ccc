@@ -196,21 +196,34 @@ func TestApplyStack(t *testing.T) {
 	t.Parallel()
 
 	const substitutions = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_JOB": "us-central1=quill-pr7-migrate", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_ENV": "tst"}`
+	const oneChange = `{"resource_changes": [{"address": "google_cloud_run_v2_service.site[\"us-central1\"]", "type": "google_cloud_run_v2_service", "change": {"actions": ["create"], "after": {"name": "quill-pr7"}}}]}`
 	tests := []struct {
-		name        string
-		env         string
+		name string
+		env  string
+		// plan is the plan's JSON; one change when empty.
+		plan        string
 		output      string
 		applyErr    error
 		deployer    bool
 		wantFacts   map[string]string
 		wantDeleted []string
 		wantComment string
+		wantOut     []string
+		wantApplied bool
 		wantErr     string
 	}{
 		{
-			name:      "the stack's output names what the steps after deploy",
+			name:        "the stack's output names what the steps after deploy",
+			output:      substitutions,
+			wantFacts:   map[string]string{services: "us-central1=quill-pr7", migrateJobFact: "us-central1=quill-pr7-migrate", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev"},
+			wantApplied: true,
+		},
+		{
+			name:      "a plan with nothing to apply is not applied, and the state names what deploys",
+			plan:      `{"resource_changes": [{"address": "google_spanner_instance.shared", "type": "google_spanner_instance", "change": {"actions": ["no-op"], "after": {"name": "tst-shared"}}}]}`,
 			output:    substitutions,
-			wantFacts: map[string]string{services: "us-central1=quill-pr7", migrateJobFact: "us-central1=quill-pr7-migrate", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev"},
+			wantFacts: map[string]string{services: "us-central1=quill-pr7", migrateJobFact: "us-central1=quill-pr7-migrate"},
+			wantOut:   []string{"Nothing to apply: the pull request's stack matches the code."},
 		},
 		{
 			name:        "after a destroy nothing deploys, the pull request's builds' jobs deleted first",
@@ -218,11 +231,13 @@ func TestApplyStack(t *testing.T) {
 			output:      substitutions,
 			wantFacts:   map[string]string{skipDeploy: trueValue},
 			wantDeleted: []string{"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-c9"},
+			wantApplied: true,
 		},
 		{
-			name:      "a destroy of a stack with no output deletes no job",
-			env:       "export DOWN=\"true\"\n",
-			wantFacts: map[string]string{skipDeploy: trueValue},
+			name:        "a destroy of a stack with no output deletes no job",
+			env:         "export DOWN=\"true\"\n",
+			wantFacts:   map[string]string{skipDeploy: trueValue},
+			wantApplied: true,
 		},
 		{
 			name:    "an output naming no services is refused",
@@ -241,13 +256,15 @@ func TestApplyStack(t *testing.T) {
 			deployer:    true,
 			wantFacts:   map[string]string{services: "us-central1=quill-pr7"},
 			wantComment: "The pull request's database is recreated this build: the database applied schema/migrations/000002_A.up.sql",
+			wantApplied: true,
 		},
 		{
-			name:      "a recreate the comment asked for is not repeated",
-			env:       "export REPLACE_DATABASE=\"true\"\nexport RELOAD_DB=\"true\"\nexport RELOAD_DB_REASON=\"/gcbrun reload-db\"\n",
-			output:    substitutions,
-			deployer:  true,
-			wantFacts: map[string]string{services: "us-central1=quill-pr7"},
+			name:        "a recreate the comment asked for is not repeated",
+			env:         "export REPLACE_DATABASE=\"true\"\nexport RELOAD_DB=\"true\"\nexport RELOAD_DB_REASON=\"/gcbrun reload-db\"\n",
+			output:      substitutions,
+			deployer:    true,
+			wantFacts:   map[string]string{services: "us-central1=quill-pr7"},
+			wantApplied: true,
 		},
 	}
 	for _, tt := range tests {
@@ -259,7 +276,11 @@ func TestApplyStack(t *testing.T) {
 			if tt.deployer {
 				subs, secrets = deployerSubs(subs), deployerSecrets(t)
 			}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n" + tt.env, BuildFile: buildFor(t, subs)})
+			plan := tt.plan
+			if plan == "" {
+				plan = oneChange
+			}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n" + tt.env, BuildFile: buildFor(t, subs), PlanJSONFile: plan})
 			run := &fakeRunner{outputs: map[string]string{"tofu output": tt.output}, fail: map[string]error{"tofu apply": tt.applyErr}}
 			repo := &githubtest.Repo{}
 			_, gh := githubStandIn(t, repo)
@@ -279,6 +300,16 @@ func TestApplyStack(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ApplyStack() error = %v\n%s", err, out.String())
 			}
+			applied := false
+			for _, line := range run.lines() {
+				if strings.HasPrefix(line, "tofu apply") {
+					applied = true
+				}
+			}
+			if applied != tt.wantApplied {
+				t.Errorf("applied %t, want %t:\n%s", applied, tt.wantApplied, strings.Join(run.lines(), "\n"))
+			}
+			containsAll(t, out.String(), tt.wantOut...)
 			env, err := w.Environment()
 			if err != nil {
 				t.Fatal(err)

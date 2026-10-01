@@ -147,10 +147,12 @@ func (s *stack) replaceDatabase(ctx context.Context, app, reason string, w Works
 	return []string{"-replace=" + address}, nil
 }
 
-// ApplyStack applies the saved plan. After a destroy nothing deploys (SKIP_DEPLOY); else
-// the stack's substitutions output names the pull request's services and jobs and its
-// hostname, which go to the environment file for the steps after, and a database the
-// build recreated without being asked is said on the pull request.
+// ApplyStack applies the saved plan, unless it holds no change (a build after another of
+// the same tree): then there is nothing to apply and the state is read as it is. After a
+// destroy nothing deploys (SKIP_DEPLOY); else the stack's substitutions output names the
+// pull request's services and jobs and its hostname, which go to the environment file for
+// the steps after, and a database the build recreated without being asked is said on the
+// pull request.
 func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, build, ok, err := pullRequestStep(w, out)
 	if err != nil || !ok {
@@ -163,7 +165,17 @@ func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Write
 			return err
 		}
 	}
-	if err := s.tofu(ctx, "apply", "-input=false", "-no-color", filepath.Join(string(w), PlanFile)); err != nil {
+	data, err := os.ReadFile(filepath.Join(string(w), PlanJSONFile))
+	if err != nil {
+		return errors.Wrapf(err, "os.ReadFile(): %s (deploy pr-stack plan writes it)", PlanJSONFile)
+	}
+	p, err := stackPlan(data)
+	if err != nil {
+		return err
+	}
+	if len(p.Changes) == 0 {
+		fmt.Fprintln(out, "Nothing to apply: the pull request's stack matches the code.")
+	} else if err := s.tofu(ctx, "apply", "-input=false", "-no-color", filepath.Join(string(w), PlanFile)); err != nil {
 		return err
 	}
 	if env[downFact] == trueValue {
