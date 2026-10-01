@@ -23,6 +23,24 @@ func testPlacement(t *testing.T) *Placement {
 	return p
 }
 
+// renderedFile renders the fixture organization and returns one file's text.
+func renderedFile(t *testing.T, path string) string {
+	t.Helper()
+
+	files, err := Render(testPlacement(t))
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	for _, f := range files {
+		if f.Path == path {
+			return string(f.Content)
+		}
+	}
+	t.Fatalf("%s is not rendered", path)
+
+	return ""
+}
+
 func TestPlacementValidate(t *testing.T) {
 	t.Parallel()
 
@@ -155,19 +173,7 @@ func TestRenderTiers(t *testing.T) {
 func TestDeployRecordsGrants(t *testing.T) {
 	t.Parallel()
 
-	files, err := Render(testPlacement(t))
-	if err != nil {
-		t.Fatalf("Render() error = %v", err)
-	}
-	var identities string
-	for _, f := range files {
-		if f.Path == "2-env/identities.tf" {
-			identities = string(f.Content)
-		}
-	}
-	if identities == "" {
-		t.Fatal("2-env/identities.tf is not rendered")
-	}
+	identities := renderedFile(t, "2-env/identities.tf")
 	tests := []struct {
 		name     string
 		resource string
@@ -187,6 +193,109 @@ func TestDeployRecordsGrants(t *testing.T) {
 				"  member = google_service_account.deploy[each.key].member\n}\n"
 			if !strings.Contains(identities, want) {
 				t.Errorf("2-env/identities.tf lacks the grant:\n%s", want)
+			}
+		})
+	}
+}
+
+// TestDeployProjectRoles pins the deploy identity's roles on the environment project: what
+// a build needs and no bundle. roles/cloudbuild.builds.builder reaches every bucket in the
+// project (the deployment records, the applications' file stores), so the identity reads
+// the build it runs in through cloudBuildBuildReader and, in tst alone, runs the sweep
+// trigger through cloudBuildTriggerRunner.
+func TestDeployProjectRoles(t *testing.T) {
+	t.Parallel()
+
+	locals := renderedFile(t, "2-env/locals.tf")
+	tests := []struct {
+		name   string
+		text   string
+		absent bool
+	}{
+		{
+			name: "the roles a build needs",
+			text: "  deploy_project_roles = concat([\n" +
+				"    \"roles/serviceusage.serviceUsageConsumer\",\n" +
+				"    \"roles/run.developer\",\n" +
+				"    \"roles/logging.logWriter\",\n" +
+				"    \"roles/monitoring.viewer\",\n" +
+				"    local.org.run_job_policy_admin_role,\n" +
+				"    local.org.cloud_build_build_reader_role,\n" +
+				"  ], local.is_tst ? [local.org.cloud_build_trigger_runner_role] : [])\n",
+		},
+		{name: "no builder bundle", text: "\"roles/cloudbuild.builds.builder\"", absent: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			found := strings.Contains(locals, tt.text)
+			switch {
+			case tt.absent && found:
+				t.Errorf("2-env/locals.tf grants %s", tt.text)
+			case !tt.absent && !found:
+				t.Errorf("2-env/locals.tf lacks:\n%s", tt.text)
+			}
+		})
+	}
+}
+
+// TestCustomRolePermissions pins what 1-org's custom roles carry: each is the exact
+// permissions one identity needs where the cloud's own roles carry more.
+func TestCustomRolePermissions(t *testing.T) {
+	t.Parallel()
+
+	roles := renderedFile(t, "1-org/custom-roles.tf")
+	tests := []struct {
+		name        string
+		resource    string
+		roleID      string
+		permissions []string
+	}{
+		{
+			name:        "reads a build",
+			resource:    "cloud_build_build_reader",
+			roleID:      "cloudBuildBuildReader",
+			permissions: []string{"cloudbuild.builds.get"},
+		},
+		{
+			name:     "runs a trigger",
+			resource: "cloud_build_trigger_runner",
+			roleID:   "cloudBuildTriggerRunner",
+			permissions: []string{
+				"cloudbuild.builds.create", "cloudbuild.builds.get", "cloudbuild.builds.list",
+				"cloudbuild.triggers.get", "cloudbuild.triggers.list",
+			},
+		},
+		{
+			name:        "sets a job's policy",
+			resource:    "run_job_policy_admin",
+			roleID:      "runJobPolicyAdmin",
+			permissions: []string{"run.jobs.getIamPolicy", "run.jobs.setIamPolicy"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			header := "resource \"google_organization_iam_custom_role\" \"" + tt.resource + "\" {\n" +
+				"  org_id      = local.org_id\n" +
+				"  role_id     = \"" + tt.roleID + "\"\n"
+			start := strings.Index(roles, header)
+			if start < 0 {
+				t.Fatalf("1-org/custom-roles.tf lacks the role %s", tt.roleID)
+			}
+			block, _, closed := strings.Cut(roles[start:], "\n}\n")
+			if !closed {
+				t.Fatalf("1-org/custom-roles.tf: the role %s has no closing brace", tt.roleID)
+			}
+			want := "  permissions = [\n"
+			for _, p := range tt.permissions {
+				want += "    \"" + p + "\",\n"
+			}
+			want += "  ]"
+			if !strings.Contains(block, want) {
+				t.Errorf("role %s carries other permissions than:\n%s\nin:\n%s", tt.roleID, want, block)
 			}
 		})
 	}

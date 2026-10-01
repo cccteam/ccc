@@ -87,6 +87,11 @@ output "cloud_build_trigger_runner_role" {
   value       = google_organization_iam_custom_role.cloud_build_trigger_runner.id
 }
 
+output "cloud_build_build_reader_role" {
+  description = "Full name of the cloudBuildBuildReader custom organization role: reads Cloud Build builds, nothing else. 2-env grants it on the environment project to each application's deploy identity, which reads the build it runs in, in place of roles/cloudbuild.builds.builder."
+  value       = google_organization_iam_custom_role.cloud_build_build_reader.id
+}
+
 output "cloud_tasks_queue_operator_role" {
   description = "Full name of the cloudTasksQueueOperator custom organization role: pauses, resumes and purges a Cloud Tasks queue, nothing else. An application's stack grants it on the application's own queue to its deploy identity, for the maintenance a restore run or a breaking release puts the application into."
   value       = google_organization_iam_custom_role.cloud_tasks_queue_operator.id

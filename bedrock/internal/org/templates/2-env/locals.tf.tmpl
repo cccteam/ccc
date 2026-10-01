@@ -130,20 +130,26 @@ locals {
   # 1-org's custom role, since run.developer cannot set a job's policy). Its
   # monitoring.viewer reads the metrics a maintenance step waits on (the old
   # revision's active instances, before the database is replaced or
-  # migrated). Its bounded grants (records bucket creator and viewer,
-  # build-time secrets, tst database admin) are
-  # separate resources in identities.tf; writer on its image repository is
-  # 2-shr's grant (var.pushers there), and Service Account User on the
-  # runtime identities is granted where they are created, in the application
-  # stack.
-  deploy_project_roles = [
+  # migrated). cloudBuildBuildReader, 1-org's custom role, reads the build it
+  # runs in (the pipeline's first step), which is all a build needs of Cloud
+  # Build: roles/cloudbuild.builds.builder, the cloud's bundle for a build's
+  # service account, would carry every object of every bucket in the project
+  # with it, the deployment records and the applications' file stores among
+  # them. In tst, Cloud Scheduler runs each application's sweep trigger as its
+  # deploy identity, so there it also holds cloudBuildTriggerRunner. Its
+  # bounded grants (records bucket creator and viewer, build-time secrets,
+  # tst database admin) are separate resources in identities.tf; writer on its
+  # image repository is 2-shr's grant (var.pushers there), and Service Account
+  # User on the runtime identities is granted where they are created, in the
+  # application stack.
+  deploy_project_roles = concat([
     "roles/serviceusage.serviceUsageConsumer",
     "roles/run.developer",
     "roles/logging.logWriter",
-    "roles/cloudbuild.builds.builder",
     "roles/monitoring.viewer",
     local.org.run_job_policy_admin_role,
-  ]
+    local.org.cloud_build_build_reader_role,
+  ], local.is_tst ? [local.org.cloud_build_trigger_runner_role] : [])
 
   # The application plan identity plans the application's stack for this
   # environment on a pull request and writes nothing: viewer on the project to

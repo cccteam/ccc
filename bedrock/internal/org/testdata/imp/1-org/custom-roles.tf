@@ -146,3 +146,26 @@ resource "google_organization_iam_custom_role" "cloud_tasks_queue_operator" {
     "cloudtasks.queues.purge",
   ]
 }
+
+# The pipeline's first step reads the build it runs in (bedrock deploy resolve:
+# the trigger's kind, the tag or the pull request, the restore instruction and
+# who asked for it) through the Cloud Build API, and that is all a build needs
+# of Cloud Build. roles/cloudbuild.builds.builder, the cloud's bundle for a
+# build's service account, carries that read together with every object of
+# every bucket in the project (list, read, overwrite, delete): in an
+# environment project the deployment records and the applications' file
+# stores, so with it a record is not written once and an application's
+# uploaded files are the build's to delete. The deploy identity holds this
+# role instead and reaches Cloud Storage through its bucket grants alone
+# (2-env: creator and viewer on the records bucket). In tst, where Cloud
+# Scheduler runs each application's sweep trigger as its deploy identity,
+# 2-env grants cloudBuildTriggerRunner beside it.
+resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
+  org_id      = local.org_id
+  role_id     = "cloudBuildBuildReader"
+  title       = "Cloud Build Build Reader"
+  description = "Reads Cloud Build builds, and nothing else."
+  permissions = [
+    "cloudbuild.builds.get",
+  ]
+}

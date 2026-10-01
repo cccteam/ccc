@@ -57,6 +57,8 @@ the boot project as `{{.Prefix}}-org-gbl-tofu`.
   backup schedules live on a Spanner instance that the environment project's
   reader roles do not reach; the predefined roles that read them also write
   (`databaseAdmin`, `backupAdmin`) or read the data (`databaseReader`).
+  `2-spn` grants it on the shared instance and `2-env` on an environment's
+  own instance to each application's plan identity.
 - The custom organization role `cloudBuildTriggerRunner`: runs Cloud Build
   triggers and reads the builds they start (`cloudbuild.builds.create`,
   `cloudbuild.builds.get`, `cloudbuild.builds.list`, `cloudbuild.triggers.get`,
@@ -67,8 +69,15 @@ the boot project as `{{.Prefix}}-org-gbl-tofu`.
   does the work as the deploy identity. `2-env` grants the role on each
   environment project to each application's operations identity, in every
   environment but production.
-  `2-spn` grants it on the shared instance and `2-env` on an environment's
-  own instance to each application's plan identity.
+- The custom organization role `cloudBuildBuildReader`: reads Cloud Build
+  builds (`cloudbuild.builds.get`) and nothing else. The pipeline's first step
+  reads the build it runs in (the trigger's kind, the tag or the pull request,
+  the restore instruction and who asked for it). `2-env` grants it on each
+  environment project to each application's deploy identity in place of
+  `roles/cloudbuild.builds.builder`, the cloud's bundle for a build's service
+  account, which carries that read together with every object of every bucket
+  in the project: with it a deployment record is not written once and an
+  application's uploaded files are the build's to delete.
 - The custom organization role `cloudTasksQueueOperator`: pauses, resumes and
   purges a Cloud Tasks queue, and reads it, nothing else. An application's stack
   grants it on the application's own queue to its deploy identity: a release that
@@ -248,4 +257,5 @@ bucket, prefix `1-org`.
 | `run_job_policy_admin_role` | Full name of the `runJobPolicyAdmin` role. |
 | `spanner_plan_reader_role` | Full name of the `spannerPlanReader` role. |
 | `cloud_build_trigger_runner_role` | Full name of the `cloudBuildTriggerRunner` role. |
+| `cloud_build_build_reader_role` | Full name of the `cloudBuildBuildReader` role. |
 | `cloud_tasks_queue_operator_role` | Full name of the `cloudTasksQueueOperator` role. |
