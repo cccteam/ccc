@@ -28,8 +28,9 @@ func newMigration(d deps) *cobra.Command {
 		Short: "The schema migrations, as one sequence the pipeline applies in order",
 		Long: `migration holds what keeps the schema migrations, and the seed migrations beside them, one
 sequence the migrate command applies in order: six-digit indexes, one up file each, contiguous,
-never changed once committed. bedrock check and the pipeline's guard refuse a directory that is
-not; renumber moves a branch's own migrations back into the sequence.`,
+and a committed schema migration never changes (a seed file is development data and may). bedrock
+check and the pipeline's guard refuse a directory that is not; renumber moves a branch's own
+migrations back into the sequence.`,
 	}
 	cmd.AddCommand(newMigrationRenumber(d))
 
