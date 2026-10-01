@@ -145,9 +145,10 @@ resource "google_storage_bucket_iam_member" "apply_state_upstream" {
 }
 
 # Create and read on the deployment records. The deploy writes its record once
-# and reads its own environment's records: the newest record of a pull request,
-# for the stale-database check of a pull-request build that migrates, and the
-# environment's newest live record, where its live version is. The bucket's own
+# and reads its own environment's records: today the newest record of a pull
+# request, for the stale-database check of a pull-request build that migrates;
+# the environment's newest live record, where its live version is, once a step
+# needs it. The bucket's own
 # grants are these two, neither of which overwrites or deletes a record, and the
 # bucket's versioning keeps the history. roles/cloudbuild.builds.builder, granted
 # on the project (locals.tf), reaches every bucket in the project too, these

@@ -147,8 +147,8 @@ func TestRenderTiers(t *testing.T) {
 
 // TestDeployRecordsGrants pins the deploy identity's two grants on its own environment's
 // records bucket: it creates records and reads them (the stale-database check of a
-// pull-request build, the environment's live version), each for every application;
-// neither role overwrites or deletes a record.
+// pull-request build today; the environment's live version once a step needs it), each
+// for every application; neither role overwrites or deletes a record.
 func TestDeployRecordsGrants(t *testing.T) {
 	t.Parallel()
 
