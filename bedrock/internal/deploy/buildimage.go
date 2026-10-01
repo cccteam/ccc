@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -25,6 +26,12 @@ const (
 	// buildSecretsSub lists the declared build secrets: NAME=<secret version>, comma
 	// separated.
 	buildSecretsSub = "_BUILD_SECRETS"
+	// cacheTagPrefix is the registry tag under which a build exports its layer cache,
+	// followed by the commit: cache-<commit>. The layers are content-addressed, so a cache
+	// changes nothing in what a build produces; it spares the work whose inputs are
+	// unchanged (the dependency downloads, the browser build of an untouched web tree,
+	// and for the environments after the first the whole image).
+	cacheTagPrefix = "cache-"
 )
 
 // BuildImage builds the application's image from the checkout's Dockerfile and pushes
@@ -82,11 +89,21 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	}
 	metadata := filepath.Join(string(w), MetadataFile)
 	args = append(args, secretArgs...)
+	sources, err := cacheSources(ctx, clients.Storage, build)
+	if err != nil {
+		return err
+	}
+	for _, commit := range sources {
+		args = append(args, "--cache-from", "type=registry,ref="+env[imageFact]+":"+cacheTagPrefix+commit)
+	}
+	exported := env[imageFact] + ":" + cacheTagPrefix + build.Substitutions[commitSub]
+	args = append(args, "--cache-to", "type=registry,ref="+exported+",mode=max,ignore-error=true")
+	fmt.Fprintf(out, "Layer cache: read from %s, written to %s (a tag the registry already holds is left as it is).\n", cacheTagPrefix+strings.Join(sources, ", "+cacheTagPrefix), exported)
 	args = append(args,
 		"--tag", env[imageFact]+":"+env[commitTagFact],
 		"--tag", env[imageFact]+":"+env[imageTagFact],
 		"--metadata-file", metadata,
-		"--file", "Dockerfile", "--no-cache", "--push", ".")
+		"--file", "Dockerfile", "--push", ".")
 	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: args}, out); err != nil {
 		return err
 	}
@@ -100,6 +117,51 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	fmt.Fprintf(out, "Built and pushed %s@%s\n", env[imageFact], digest)
 
 	return takeHooks(ctx, clients, env[imageFact]+"@"+digest, hooks, out)
+}
+
+// cacheSources lists the commits whose layer caches the build reads, this commit's first:
+// its own (another environment built this commit already, or the pull request's earlier
+// build pushed it), the commit the environment runs live (the previous release's layers,
+// most of which an ordinary change keeps), and in a pull-request build the pull request's
+// last build. A cache the registry lacks is skipped by docker. The records are read
+// through the records bucket; a build without one reads only its own commit's cache.
+func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]string, error) {
+	commit := build.Substitutions[commitSub]
+	sources := []string{commit}
+	add := func(c string) {
+		if c != "" && !slices.Contains(sources, c) {
+			sources = append(sources, c)
+		}
+	}
+	bucket, app, env := build.Substitutions[recordsBucket], build.Substitutions[appSub], build.Substitutions[envSub]
+	if bucket == "" || app == "" || env == "" {
+		return sources, nil
+	}
+	store, err := open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
+	if pr := build.Substitutions[prNumberSub]; pr != "" {
+		last, err := newestRecordWhere(ctx, store, bucket, app+"/"+env+"/pr"+pr+"-", func(*Record) bool {
+			return true
+		})
+		if err != nil {
+			return nil, err
+		}
+		if last != nil {
+			add(last.Commit)
+		}
+	}
+	live, err := newestLiveRelease(ctx, store, bucket, app, env)
+	if err != nil {
+		return nil, err
+	}
+	if live != nil {
+		add(live.Commit)
+	}
+
+	return sources, nil
 }
 
 // hooksInImage is where the image carries the hooks program, and dockerProgram the program

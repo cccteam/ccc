@@ -40,8 +40,9 @@ func TestBuildImage(t *testing.T) {
 			wantArgs: []string{
 				"--build-arg VERSION=v1.2.3", "--build-arg COMMIT=c9", "--build-arg _WIDGET_MODE=on", "--build-arg FRONTEND_VERSION=4.1",
 				"--secret id=NPM_TOKEN,src=SECRETS/NPM_TOKEN", "--tag reg/quill:c9-tst", "--tag reg/quill:v1.2.3-tst", "--push .",
+				"--cache-from type=registry,ref=reg/quill:cache-c9", "--cache-to type=registry,ref=reg/quill:cache-c9,mode=max,ignore-error=true",
 			},
-			wantOut:   []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Built and pushed reg/quill@sha256:new"},
+			wantOut:   []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Layer cache: read from cache-c9, written to reg/quill:cache-c9", "Built and pushed reg/quill@sha256:new"},
 			wantBuilt: true,
 		},
 		{
@@ -130,6 +131,9 @@ func TestBuildImage(t *testing.T) {
 					t.Errorf("docker %s lacks %q", line, want)
 				}
 			}
+			if strings.Contains(line, "--no-cache") {
+				t.Errorf("docker %s builds without the layer cache", line)
+			}
 			if secretSeen != "s3cret" {
 				t.Errorf("the build saw the secret as %q", secretSeen)
 			}
@@ -142,6 +146,67 @@ func TestBuildImage(t *testing.T) {
 			}
 			if !slices.Contains(run.ran[0].Args, "buildx") || run.ran[0].Dir != string(w) {
 				t.Errorf("ran %v in %s", run.ran[0].Args, run.ran[0].Dir)
+			}
+		})
+	}
+}
+
+func TestCacheSources(t *testing.T) {
+	t.Parallel()
+
+	record := func(env, version, commit, build, status, timestamp string) string {
+		return `{"app":"harbor","env":"` + env + `","version":"` + version + `","commit":"` + commit + `","status":"` + status + `","build":"` + build + `","timestamp":"` + timestamp + `"}`
+	}
+	tagged := map[string]string{commitSub: "c9", "_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst"}
+	tests := []struct {
+		name    string
+		subs    map[string]string
+		records map[string]string
+		want    []string
+	}{
+		{name: "a build without a records bucket reads its own commit's cache alone", subs: map[string]string{commitSub: "c9"}, want: []string{"c9"}},
+		{name: "an environment without a record reads its own commit's cache alone", subs: tagged, want: []string{"c9"}},
+		{
+			name:    "a tag build reads its own commit's cache, then the live release's",
+			subs:    tagged,
+			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": record("tst", "v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
+			want:    []string{"c9", "c8"},
+		},
+		{
+			name: "a pull-request build reads its last build's cache before the live release's",
+			subs: map[string]string{commitSub: "c9", "_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst", prNumberSub: "7"},
+			records: map[string]string{
+				"gs://records/harbor/tst/pr7-c7/b-3.json": record("tst", "pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"),
+				"gs://records/harbor/tst/v1.2.2/b-0.json": record("tst", "v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z"),
+				"gs://records/harbor/tst/pr8-c6/b-4.json": record("tst", "pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z"),
+				"gs://records/harbor/tst/v1.2.1/b-9.json": record("tst", "v1.2.1", "c5", "b-9", Preview, "2026-09-29T06:00:00Z"),
+			},
+			want: []string{"c9", "c7", "c8"},
+		},
+		{
+			name:    "another pull request's live record is not the environment's release",
+			subs:    tagged,
+			records: map[string]string{"gs://records/harbor/tst/pr8-c6/b-4.json": record("tst", "pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z")},
+			want:    []string{"c9"},
+		},
+		{
+			name:    "a commit is listed once",
+			subs:    tagged,
+			records: map[string]string{"gs://records/harbor/tst/v1.2.3/b-1.json": record("tst", "v1.2.3", "c9", "b-1", Live, "2026-09-27T05:00:00Z")},
+			want:    []string{"c9"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &memoryStore{objects: tt.records}
+			got, err := cacheSources(t.Context(), store.open, &Build{ID: "b-1", Substitutions: tt.subs})
+			if err != nil {
+				t.Fatalf("cacheSources() error = %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("cacheSources() = %v, want %v", got, tt.want)
 			}
 		})
 	}
