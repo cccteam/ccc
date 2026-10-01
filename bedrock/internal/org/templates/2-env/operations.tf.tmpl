@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Operations from GitHub
+# Operations started from GitHub
 #
 # A restore of this environment to a release (bedrock restore <env> <release>)
 # is started from GitHub: the application's operations workflow runs the

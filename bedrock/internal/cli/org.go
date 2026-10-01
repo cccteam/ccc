@@ -259,7 +259,7 @@ func applicationProjects(p *org.Placement, app string) string {
 	block, missing := p.ApplicationProjects()
 	var b strings.Builder
 	if block != "" {
-		fmt.Fprintf(&b, "\nRecord in %s's placement.json (infrastructure/placement.json), for the operations workflow that restores an environment from GitHub:\n%s\n", app, block)
+		fmt.Fprintf(&b, "\nRecord in %s's placement.json (infrastructure/placement.json), for the operations workflow that starts a restore of an environment from GitHub:\n%s\n", app, block)
 	}
 	if len(missing) > 0 {
 		fmt.Fprintf(&b, "\nThe operations workflow cannot be wired for %s yet: record 1-org's project_ids and project_numbers in placement.json (projects, projectNumbers), then run org register's print again with org render.\n", strings.Join(missing, ", "))

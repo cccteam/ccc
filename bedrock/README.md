@@ -554,7 +554,7 @@ documents are deleted as in every restore.
 
 ## bedrock restore
 
-`restore <env> <release>` restores an environment to a release, through GitHub:
+`restore <env> <release>` restores an environment to a release, started from GitHub:
 developers authenticate to GitHub and nowhere else, and nobody sets up a cloud tool to
 operate an environment. The command checks that the environment is not production, that
 the release exists, and that the placement records the environment's project
@@ -627,7 +627,7 @@ decides. Once `placement.json` records the environment projects' ids and numbers
 (`projects` and `projectNumbers`, from 1-org's `project_ids` and `project_numbers`
 outputs), `org register` and `org render` print the `projects` block an application's
 placement records for the operations workflow, which starts a restore of an
-environment from GitHub (`bedrock restore`); production is left out of it.
+environment, started from GitHub (`bedrock restore`); production is left out of it.
 
 ## The application's pipeline
 

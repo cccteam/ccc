@@ -28,7 +28,7 @@ func newRestore(d deps) *cobra.Command {
 	var dirFlag, placementFlag string
 	cmd := &cobra.Command{
 		Use:   restoreUse + " <env> <release>",
-		Short: "Restore an environment to a release, through GitHub",
+		Short: "Restore an environment to a release, started from GitHub",
 		Long: `restore starts the operations workflow of the application's repository for the environment and the
 release: the workflow's job, in the GitHub Environment named after the environment, exchanges its
 GitHub token for the environment's operations identity and runs the environment's version trigger
