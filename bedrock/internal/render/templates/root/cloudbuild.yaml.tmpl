@@ -16,9 +16,11 @@
 #   ResolveDeploymentTarget   what is deployed and where (deploy resolve)
 #   ValidateRelease           whether this release may deploy here (deploy validate-release)
 #   GuardMigrations           the migrations are one sequence, unchanged once committed (deploy guard-migrations)
+#   PlanEnvironments          a pull request's preview: the stack planned and tested for every environment, as each one's plan identity (deploy plan-environments)
 #   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit and pushed (deploy build-image)
+#   *EnvironmentStack         a tag build's apply of the environment's stack: planned, tested and applied as the apply identity (deploy stack)
 #   CreateJobs                this build's jobs from the stack's template jobs on this image: the migrate job{{if .Jobs}} and the job process's{{end}}; not run (deploy jobs)
 #   RunMigrations             this build's migrate job, run once to completion and deleted (deploy migrate)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
@@ -77,6 +79,16 @@ steps:
     args: [deploy, guard-migrations]
     timeout: 300s
 
+  # A pull-request build only: the stack planned for every environment, each as that
+  # environment's plan identity (a reader, without the state lock), with the tests a tag
+  # build runs before its apply; the summaries go on the pull request, and a failing plan
+  # or test fails the build. The plan the reviewer approves is each environment's.
+  - id: PlanEnvironments
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, plan-environments]
+    timeout: 1800s
+
   # A pull-request build only: the stack applied into the pull request's own prefix as the
   # apply identity. The plan is saved, the guard lets only the pull request's own resources
   # through, and the apply applies exactly that plan (a destroy on /gcbrun down).
@@ -132,6 +144,23 @@ steps:
     name: {{.DockerImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, build-image{{if .HookProgram}}, --hooks{{end}}]
+    timeout: 1800s
+
+  # A tag build only: the environment's stack planned and applied as the apply identity,
+  # after the image build (a failed build changes no infrastructure) and before the jobs and
+  # the migrations (what they need, a template job, a secret container, a bucket, exists
+  # first). The plan is this build's own, summarized in the log and the deployment record;
+  # the tests run before the apply, and a failure leaves the stack unapplied.
+  - id: PlanEnvironmentStack
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, stack, plan]
+    timeout: 900s
+
+  - id: ApplyEnvironmentStack
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, stack, apply]
     timeout: 1800s
 
   # This build's jobs, made from the stack's template jobs on this image and named after the

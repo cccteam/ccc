@@ -107,6 +107,8 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 const (
 	hooksInImage  = "/hooks"
 	dockerProgram = "docker"
+	// dockerCreate makes a container from an image without starting it, to copy a file out.
+	dockerCreate = "create"
 )
 
 // takeHooks copies the hooks program out of the image to dst, when dst is set: a
@@ -116,7 +118,7 @@ func takeHooks(ctx context.Context, clients *Clients, image, dst string, out io.
 	if dst == "" {
 		return nil
 	}
-	created, err := clients.Exec.Output(ctx, Command{Name: dockerProgram, Args: []string{"create", image}}, out)
+	created, err := clients.Exec.Output(ctx, Command{Name: dockerProgram, Args: []string{dockerCreate, image}}, out)
 	if err != nil {
 		return err
 	}

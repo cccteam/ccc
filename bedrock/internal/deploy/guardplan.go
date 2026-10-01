@@ -108,12 +108,22 @@ type planChange struct {
 // must appear.
 var identifying = []string{keyName, "account_id", "service", "job", "database", "parent", "secret_id", "service_account_id"}
 
+// planDocument is a plan as tofu show -json gives it: its resource changes.
+type planDocument struct {
+	ResourceChanges []planChange `json:"resource_changes"`
+}
+
+// The actions a planned change carries.
+const (
+	actionCreate = "create"
+	actionUpdate = "update"
+	actionDelete = "delete"
+)
+
 // planOffenders reads the plan's changes and answers the ones that are not the pull
 // request's ("address (actions)"), and how many changes the plan makes in all.
 func planOffenders(data []byte, name string) (offenders []string, count int, err error) {
-	var plan struct {
-		ResourceChanges []planChange `json:"resource_changes"`
-	}
+	var plan planDocument
 	if err := json.Unmarshal(data, &plan); err != nil {
 		return nil, 0, errors.Wrapf(err, "json.Unmarshal(): %s", PlanJSONFile)
 	}

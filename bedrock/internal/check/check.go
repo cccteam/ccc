@@ -168,6 +168,13 @@ func migrationDirs(m *derive.Model) []string {
 // block: resource "<type>_iam_binding" "<name>" or resource "<type>_iam_policy" "<name>".
 var authoritativeResource = regexp.MustCompile(`^\s*resource\s+"([A-Za-z0-9_]+_iam_(?:binding|policy))"\s+"([^"]+)"`)
 
+// ScanAuthoritative finds the authoritative IAM resources in every .tf file of the
+// directory, a person's files included: what check refuses, and what the pipeline's test
+// of a stack's plan refuses before the apply.
+func ScanAuthoritative(dir string) ([]Authoritative, error) {
+	return scanAuthoritative(dir)
+}
+
 // scanAuthoritative finds the authoritative IAM resources in every .tf file of the
 // directory, a person's files included.
 func scanAuthoritative(dir string) ([]Authoritative, error) {

@@ -1,13 +1,14 @@
 # ---------------------------------------------------------------------------
 # Per-application identities
 #
-# Two service accounts per application, in the environment project, mirroring
+# Three service accounts per application, in the environment project, mirroring
 # 1-org's layer/plan pair one level down:
 #
 #   imp-<env>-gbl-<app>-tofu    applies the application's stack (state slot 3-app/<app>) for this environment
 #   imp-<env>-gbl-<app>-deploy  runs every build and deploy of the application
+#   imp-<env>-gbl-<app>-plan    plans the application's stack for this environment on a pull request; reads, never writes
 #
-# Neither has keys (org policy forbids them); both run from Cloud Build. The
+# None has keys (org policy forbids them); all run from Cloud Build. The
 # design brief's "Who may do what" table is the source of each role set, and
 # every set is a starting hypothesis to tighten by reading denials.
 # ---------------------------------------------------------------------------
@@ -28,6 +29,15 @@ resource "google_service_account" "deploy" {
   account_id   = "${local.name}-gbl-${each.key}-deploy"
   display_name = "Deploy SA - ${local.name}-gbl-${each.key}"
   description  = "Deploy identity for ${each.key} in ${var.environment}. Runs the application's Cloud Build triggers; never writes infrastructure."
+}
+
+resource "google_service_account" "plan" {
+  for_each = local.apps
+
+  project      = local.project_id
+  account_id   = "${local.name}-gbl-${each.key}-plan"
+  display_name = "Plan SA - ${local.name}-gbl-${each.key}"
+  description  = "Plan identity for ${each.key} in ${var.environment}. Plans 3-app/${each.key} for this environment on a pull request, from tst's Cloud Build; reads, never writes."
 }
 
 # ---------------------------------------------------------------------------
@@ -170,13 +180,16 @@ resource "google_storage_bucket_iam_member" "deploy_records_viewer" {
   member = google_service_account.deploy[each.key].member
 }
 
-# In tst only: the deploy identity may act as the apply identity, because the
-# pull-request build applies the application's pull-request stack (its own
+# The deploy identity may act as the apply identity: a release's tag build
+# applies the environment's application stack (plan, tests, apply, as the
+# apply identity) after the image build and before the migrations, and in tst
+# the pull-request build applies the application's pull-request stack (its own
 # state prefix, short names) before it deploys into it, and destroys it on
-# /gcbrun down or when the pull request closes. Nowhere else does a deploy
-# touch infrastructure.
+# /gcbrun down or when the pull request closes. The deploy identity itself
+# never applies: everything that touches infrastructure runs as the apply
+# identity.
 resource "google_service_account_iam_member" "deploy_impersonates_apply" {
-  for_each = local.is_tst ? local.apps : toset([])
+  for_each = local.apps
 
   service_account_id = google_service_account.apply[each.key].name
   role               = "roles/iam.serviceAccountTokenCreator"
@@ -205,6 +218,57 @@ resource "google_storage_bucket_iam_member" "next_deploy_records_viewer" {
   bucket = google_storage_bucket.records.name
   role   = "roles/storage.objectViewer"
   member = each.value
+}
+
+# ---------------------------------------------------------------------------
+# Application plan identity
+#
+# A pull-request build plans the application's stack for every environment, so
+# the plan a reviewer approves is the plan of each environment, and it does so
+# as that environment's plan identity: a reader. roles/viewer on the project
+# refreshes what the stack manages; on the state bucket, the list and a read of
+# the application's own state prefix and of the upstream states, the same
+# prefixes the apply identity reads, and no write (the plan runs without the
+# state lock). tst's deploy identity of the same application may impersonate
+# it, since tst's Cloud Build runs the pull-request builds; nothing else may.
+# ---------------------------------------------------------------------------
+
+resource "google_project_iam_member" "plan" {
+  for_each = local.plan_grants
+
+  project = local.project_id
+  role    = each.value.role
+  member  = google_service_account.plan[each.value.app].member
+}
+
+resource "google_storage_bucket_iam_member" "plan_state_list" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.legacyBucketReader"
+  member = google_service_account.plan[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "plan_state_read" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.plan[each.key].member
+
+  condition {
+    title       = "${local.name}-${each.key}-plan-state"
+    description = "The application's own state prefix in ${var.environment} and the upstream states its stack reads."
+    expression  = join(" || ", concat(["resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/3-app/${each.key}/${var.environment}/\")"], [for p in local.upstream_state_prefixes : "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/${p}/\")"]))
+  }
+}
+
+resource "google_service_account_iam_member" "tst_deploy_impersonates_plan" {
+  for_each = local.tst_deploy_members
+
+  service_account_id = google_service_account.plan[each.key].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = each.value
 }
 
 # Accessor on the named build-time secrets only (var.build_time_secrets),

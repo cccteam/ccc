@@ -28,15 +28,23 @@ locals {
   # first), whose 2-env state an application stack reads for the record gate.
   previous_environment = one([for k, v in var.next_environment : k if v == var.environment])
 
+  # tst's deploy identities (by application): they run every pull-request
+  # build, which plans each environment's application stack as that
+  # environment's plan identity, so each of them may impersonate this
+  # environment's plan identity of its own application. Read from tst's 2-env
+  # state; in tst they are this layer's own.
+  tst_deploy_members = local.is_tst ? { for app in var.applications : app => google_service_account.deploy[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.deploy_identity_member }, {})
+
   # The upstream states an application stack reads outputs from (its
-  # initialize.tf): the foundation, this environment, the previous one, and
-  # 2-shr. The apply identity gets object read on exactly these.
-  upstream_state_prefixes = compact([
-    "1-org",
-    "2-env/${var.environment}",
-    local.previous_environment == null ? "" : "2-env/${local.previous_environment}",
-    "2-shr",
-  ])
+  # initialize.tf): the foundation, every environment (the plan identities a
+  # pull-request build impersonates, the previous environment's records bucket
+  # for the record gate), and 2-shr. The apply and plan identities get object
+  # read on exactly these.
+  upstream_state_prefixes = concat(
+    ["1-org"],
+    [for env in sort(keys(var.next_environment)) : "2-env/${env}"],
+    ["2-shr"],
+  )
 
 {{.LabelsBlock "2-env" "var.environment"}}
 
@@ -128,9 +136,22 @@ locals {
     local.org.run_job_policy_admin_role,
   ]
 
+  # The application plan identity plans the application's stack for this
+  # environment on a pull request and writes nothing: viewer on the project to
+  # refresh what the stack manages, and serviceUsageConsumer to use the project
+  # as its quota project, the same as the apply identity.
+  plan_project_roles = [
+    "roles/serviceusage.serviceUsageConsumer",
+    "roles/viewer",
+  ]
+
   # app x role pairs, so for_each can grant several roles per identity.
   apply_grants = {
     for pair in setproduct(var.applications, local.apply_project_roles) :
+    "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
+  }
+  plan_grants = {
+    for pair in setproduct(var.applications, local.plan_project_roles) :
     "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
   }
 

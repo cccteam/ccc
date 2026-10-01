@@ -26,11 +26,23 @@ thing, and appends what it learned for the steps after it; no step installs anyt
 cloudbuild.yaml runs them with the bedrock its first step gets: for a release pin, the release the
 placement pins (bedrockVersion) downloaded and verified against its checksum (bedrockSha256); for
 a commit pin, that commit built with go install and verified by Go's checksum database. The steps,
-in order: resolve, validate-release, guard-migrations, pr-stack plan, pr-stack guard, pr-stack
-apply, check-release, build-image, migrate, jobs, service, shift-traffic, sweep-jobs, record and
-talk-back, with hook <stage> where the application commits a hook script. The hourly sweep runs
-sweep.`,
+in order: resolve, validate-release, guard-migrations, plan-environments, pr-stack plan, pr-stack
+guard, pr-stack apply, check-release, build-image, stack plan, stack apply, jobs, migrate, service,
+shift-traffic, sweep-jobs, record and talk-back, with hook <stage> where the application commits a
+hook script. The hourly sweep runs sweep.`,
 	}
+	envStack := &cobra.Command{
+		Use:   "stack",
+		Short: "The environment's stack in a tag build: plan, apply",
+		Long: `stack holds the two steps of a tag build that apply the environment's application stack, after the
+image build and before the migrations, as the apply identity: plan runs tofu init on the
+environment's state prefix (3-app/<app>/<env>), saves the plan with its JSON, prints and appends its
+summary and runs the tests; apply applies exactly that plan. The plan is this build's own: the one a
+reviewer approved on the pull request was bound to the state of that moment, and a release bundles
+several pull requests. A pull-request build skips both and plans every environment earlier
+(plan-environments).`,
+	}
+	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d))
 	stack := &cobra.Command{
 		Use:   "pr-stack",
 		Short: "A pull request's own environment: plan, guard, apply",
@@ -40,8 +52,8 @@ sweep.`,
 request's own resources through, apply applies exactly that plan. A tag build skips all three.`,
 	}
 	stack.AddCommand(newDeployStackPlan(d), newDeployStackGuard(d), newDeployStackApply(d))
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), stack, newDeployHook(d),
-		newDeployCheckRelease(d), newDeployBuildImage(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), stack, newDeployHook(d),
+		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
 		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d))
 
 	return cmd
@@ -347,6 +359,72 @@ longer in the tree) is said on the pull request. It runs in the OpenTofu image.`
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.ApplyStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployPlanEnvironments is deploy plan-environments.
+func newDeployPlanEnvironments(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "plan-environments",
+		Short: "Plan and test the stack for every environment on a pull request, as each one's plan identity",
+		Long: `plan-environments runs, in a pull-request build, tofu init and tofu plan in the checkout's
+infrastructure directory once per environment of the promotion order (_ENVIRONMENTS), against
+that environment's state prefix (3-app/<app>/<env>) as its plan identity (_PLAN_IDENTITIES: a
+reader, so the plan runs without the state lock and a pull-request build in tst can change no
+environment). Each plan runs the tests a tag build runs before its apply: no authoritative IAM
+resource in the stack, and every secret version a planned revision template pins exists and is
+enabled. One comment on the pull request carries every environment's summary; a failing plan or
+test stops the build, which is the required check, and is said on the pull request. A tag build
+plans its own environment later (stack plan). It runs in the OpenTofu image.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.PlanEnvironments(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployEnvStackPlan is deploy stack plan.
+func newDeployEnvStackPlan(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "plan",
+		Short: "Plan the environment's stack in a tag build, save the plan and run the tests",
+		Long: `plan runs, in a tag build, tofu init and tofu plan in the checkout's infrastructure directory
+against the environment's state prefix (3-app/<app>/<env>) as the apply identity (_APPLY_IDENTITY),
+leaves the plan (stack.plan) and its JSON (stack-plan.json) in the workspace, prints the summary
+and each change, appends the summary (STACK_PLAN) for the record, and runs the tests: no
+authoritative IAM resource in the stack, and every secret version a planned revision template pins
+exists and is enabled, read as the apply identity. A failing plan or test stops the build with the
+stack unapplied. It runs in the OpenTofu image.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.PlanEnvironmentStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployEnvStackApply is deploy stack apply.
+func newDeployEnvStackApply(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "apply",
+		Short: "Apply the saved plan of the environment's stack in a tag build",
+		Long: `apply applies, in a tag build, exactly the plan stack plan saved, as the apply identity, and says
+what it did; a plan with no change applies nothing. It runs in the OpenTofu image.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.ApplyEnvironmentStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)

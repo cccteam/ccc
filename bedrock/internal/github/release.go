@@ -5,10 +5,11 @@ import (
 	"net/http"
 )
 
-// Release is a GitHub Release: the tag it names and who cut it.
+// Release is a GitHub Release: the tag it names, who cut it, and its notes.
 type Release struct {
 	TagName string `json:"tag_name"`
 	Author  User   `json:"author"`
+	Body    string `json:"body"`
 }
 
 // User is an account, by its login.

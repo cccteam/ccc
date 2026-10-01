@@ -96,47 +96,78 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 		fmt.Fprintf(out, "This tag build runs bedrock %s.\n", bedrock)
 	}
 	if token := env["GITHUB_TOKEN"]; token != "" {
-		if err := validateTag(ctx, clients.GitHub(token), subs, out); err != nil {
+		window, err := validateTag(ctx, clients.GitHub(token), subs, out)
+		if err != nil {
 			return err
+		}
+		if window {
+			fmt.Fprintf(out, "Window release: the release notes of %s carry a breaking-changes section (a commit with ! after its type, or a BREAKING CHANGE footer), the designation for a change that is not safe on the running service; it is recorded (%s) for the maintenance window.\n", subs[tagSub], windowReleaseFact)
+			if err := w.Append(map[string]string{windowReleaseFact: trueValue}); err != nil {
+				return err
+			}
 		}
 	}
 
 	return gate(ctx, clients.Storage, subs, out)
 }
 
+// windowReleaseFact says the release is a window release: its notes carry release-please's
+// breaking-changes section, the one designation an application repository has for a
+// change that is not safe on the running service, so the release deploys only inside the
+// environment's maintenance window once that feature lands.
+const windowReleaseFact = "WINDOW_RELEASE"
+
+// windowRelease reads the release notes for release-please's breaking-changes heading.
+func windowRelease(notes string) bool {
+	for _, line := range strings.Split(notes, "\n") {
+		heading := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "#"))
+		heading = strings.TrimSpace(strings.TrimPrefix(heading, "⚠"))
+		if strings.HasPrefix(strings.ToUpper(heading), "BREAKING CHANGES") {
+			return true
+		}
+	}
+
+	return false
+}
+
 // validateTag is the two GitHub checks: the release and its actor, then the commit's
-// place on the default branch or a hotfix line.
-func validateTag(ctx context.Context, gh *github.Client, subs map[string]string, out io.Writer) error {
+// place on the default branch or a hotfix line. It answers whether the release notes
+// designate a window release.
+func validateTag(ctx context.Context, gh *github.Client, subs map[string]string, out io.Writer) (window bool, err error) {
 	owner, repo, err := splitRepo(subs[repoFullNameSub])
 	if err != nil {
-		return err
+		return false, err
 	}
 	tag, commit, branch := subs[tagSub], subs[commitSub], subs[defaultBranchSub]
 	cut, err := gh.Release(ctx, owner, repo, tag)
 	if err != nil {
 		var apiErr *github.Error
 		if errors.As(err, &apiErr) {
-			return errors.Newf("%stag %s has no GitHub Release (HTTP %d); a release is cut by release-please as the release app, never by a tag alone.", rejected, tag, apiErr.Status)
+			return false, errors.Newf("%stag %s has no GitHub Release (HTTP %d); a release is cut by release-please as the release app, never by a tag alone.", rejected, tag, apiErr.Status)
 		}
 
-		return err
+		return false, err
 	}
 	actors := strings.Split(subs[releaseActorsSub], ",")
 	if !slices.Contains(actors, cut.Author.Login) {
-		return errors.Newf("%sthe GitHub Release for %s was made by %s, not by an accepted release actor (%s).", rejected, tag, cut.Author.Login, subs[releaseActorsSub])
+		return false, errors.Newf("%sthe GitHub Release for %s was made by %s, not by an accepted release actor (%s).", rejected, tag, cut.Author.Login, subs[releaseActorsSub])
 	}
 	fmt.Fprintf(out, "Release %s validated: cut by %s\n", tag, cut.Author.Login)
+	window = windowRelease(cut.Body)
 	comparison, err := gh.Compare(ctx, owner, repo, commit, branch)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if comparison.Status == statusAhead || comparison.Status == statusIdentical {
 		fmt.Fprintf(out, "Tag %s validated: its commit is on %s\n", tag, branch)
 
-		return nil
+		return window, nil
+	}
+	if err := validateHotfix(ctx, gh, &hotfixCandidate{owner: owner, repo: repo, tag: tag, commit: commit, branch: branch, status: comparison.Status}, out); err != nil {
+		return false, err
 	}
 
-	return validateHotfix(ctx, gh, &hotfixCandidate{owner: owner, repo: repo, tag: tag, commit: commit, branch: branch, status: comparison.Status}, out)
+	return window, nil
 }
 
 // hotfixCandidate is a tag whose commit is not on the default branch.

@@ -890,7 +890,7 @@ func TestSecretPin(t *testing.T) {
 	pinned3 := []string{
 		"Pinned APP_COOKIE_KEY to version 3 for quill in tst: secret_versions.tst in",
 		"Secret Manager confirms version 3 of imp-tst-gbl-quill-cookie-key in project lab-tst-1 is enabled.",
-		"Next: commit the change to the values file and open the pull request; the plan for tst shows the change to the service's configuration (Cloud Run's revision template) and nothing in the other environments. After the merge, the run of that commit in tst applies it, builds the release, deploys it and moves traffic.",
+		"Next: commit the change to the values file with a releasable type (fix(tst): …) and open the pull request; its plans show the change to the service's configuration (Cloud Run's revision template) in tst and nothing in the other environments. The release that carries the commit applies it in tst, deploys and moves traffic.",
 	}
 	file3 := []string{`APP_COOKIE_KEY = "3"`, "stg = {}", "prd = {}"}
 	tests := []struct {
@@ -927,7 +927,7 @@ func TestSecretPin(t *testing.T) {
 			wantOut: []string{
 				"Pinned UI_LICENSE to version 2 for quill in tst: build_secrets.tst in",
 				"Secret Manager confirms version 2 of imp-tst-gbl-quill-ui-license in project lab-tst-1 is enabled.",
-				"the plan for tst shows the change to the triggers' substitutions (the image build reads the new version)",
+				"its plans show the change to the triggers' substitutions in tst (the image build reads the new version)",
 			},
 			wantFile: []string{`UI_LICENSE = "2"`, `APP_COOKIE_KEY = "2"`},
 		},

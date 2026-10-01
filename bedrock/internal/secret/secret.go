@@ -518,11 +518,11 @@ func (r *Result) Write(w io.Writer) {
 		fmt.Fprintln(w, "The version was not verified: without --project, Secret Manager is not asked whether it exists and is enabled.")
 	}
 	if r.key() == buildKey {
-		fmt.Fprintf(w, "Next: commit the change to the values file and open the pull request; the plan for %s shows the change to the triggers' substitutions (the image build reads the new version) and nothing in the other environments. After the merge, the run of that commit in %s applies it, builds the release with the new version, deploys it and moves traffic.\n", r.Env, r.Env)
+		fmt.Fprintf(w, "Next: commit the change to the values file with a releasable type (fix(%s): …) and open the pull request; its plans show the change to the triggers' substitutions in %s (the image build reads the new version) and nothing in the other environments. The release that carries the commit applies it in %s, builds with the new version, deploys and moves traffic.\n", r.Env, r.Env, r.Env)
 
 		return
 	}
-	fmt.Fprintf(w, "Next: commit the change to the values file and open the pull request; the plan for %s shows the change to the service's configuration (Cloud Run's revision template) and nothing in the other environments. After the merge, the run of that commit in %s applies it, builds the release, deploys it and moves traffic.\n", r.Env, r.Env)
+	fmt.Fprintf(w, "Next: commit the change to the values file with a releasable type (fix(%s): …) and open the pull request; its plans show the change to the service's configuration (Cloud Run's revision template) in %s and nothing in the other environments. The release that carries the commit applies it in %s, deploys and moves traffic.\n", r.Env, r.Env, r.Env)
 }
 
 // versionWord names a version in a sentence: "version 3", or "latest".

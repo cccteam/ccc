@@ -73,6 +73,9 @@ linters:
             # Build REST API with the process's default credentials.
             - golang.org/x/oauth2/google
             - google.golang.org/api/option
+            # The tests of a stack's plan read a secret version's state as the identity
+            # the plan ran as, impersonated with the deploy identity's credentials.
+            - google.golang.org/api/impersonate
             - github.com/hashicorp/hcl/v2
             - github.com/zclconf/go-cty
             # secret pin asks Secret Manager whether the version it pins exists and is

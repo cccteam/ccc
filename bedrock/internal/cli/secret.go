@@ -66,8 +66,9 @@ func newSecretPin(d deps) *cobra.Command {
 		Long: `pin writes the version of a secret an environment runs into the application layer's
 terraform.tfvars under secret_versions.<env>.<VARIABLE>. The layer's cloud-run.tf mounts the
 pinned version in the environment's revision template; nothing is rolled out here. The pull
-request's plan for that environment shows the template change and nothing elsewhere, and
-after the apply the release is re-run in the environment to move traffic to the new revision.
+request's plan for that environment shows the template change and nothing elsewhere, and the
+pin promotes as a release: a commit with a releasable type (fix(<env>): rotate the mail key),
+whose tag build applies the stack in that environment and deploys.
 
 Run from anywhere inside the repository, it finds the rest: the infrastructure root (the
 repository root, or its infrastructure directory; --dir overrides), the application (the

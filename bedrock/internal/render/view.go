@@ -351,8 +351,9 @@ const (
 	releaseFetchSeconds = 120
 	commitFetchSeconds  = 600
 	// pipelineAfterFetchSeconds is the pipeline's time after FetchBedrock: the image
-	// build and the migrate job are the long steps.
-	pipelineAfterFetchSeconds = 5280
+	// build, the environment stack's plan and apply, and the migrate job are the long
+	// steps.
+	pipelineAfterFetchSeconds = 7980
 	// sweepAfterFetchSeconds is the sweep's time after FetchBedrock: the sweep step's
 	// own timeout and 480 seconds for pulling the images and starting the steps.
 	sweepAfterFetchSeconds = sweepStepSeconds + 480

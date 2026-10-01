@@ -91,6 +91,9 @@ type Clients struct {
 	Run RunFunc
 	// Secrets opens Secret Manager, for the build secrets and the deployer app's key.
 	Secrets SecretsFunc
+	// SecretsAs opens Secret Manager as an impersonated identity, for the tests of a
+	// stack's plan.
+	SecretsAs SecretsAsFunc
 	// Exec runs the programs a step drives: tofu, docker, a hook's script.
 	Exec Runner
 }
@@ -100,6 +103,7 @@ func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
 		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
+		SecretsAs: NewSecretManagerAs,
 	}
 }
 

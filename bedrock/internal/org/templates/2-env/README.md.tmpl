@@ -96,7 +96,27 @@ bucket (the boot project's): `roles/storage.legacyBucketReader` unconditionally
 (a list is a request on the bucket and cannot be conditioned by object name),
 `roles/storage.objectUser` on `3-app/<app>/<env>/` (the pull-request stacks
 sit below it), and `roles/storage.objectViewer` on the upstream states its
-stack reads: `1-org/`, `2-env/<env>/`, `2-env/<previous env>/`, `2-shr/`.
+stack reads: `1-org/`, every `2-env/<env>/` (the plan identities a
+pull-request build impersonates, the previous environment's records bucket),
+`2-shr/`. The deploy identity of the same application may impersonate it
+(`roles/iam.serviceAccountTokenCreator` on the account): a release's tag build
+applies the environment's stack as it, and in tst the pull-request build
+applies the pull request's stack as it.
+
+### Application plan identity `{{.Prefix}}-<env>-gbl-<app>-plan`
+
+Plans the application's stack for this environment on a pull request, from
+tst's Cloud Build, and writes nothing: the plan a reviewer approves is the
+plan of every environment, each made as that environment's plan identity. On
+the environment project: `roles/viewer` (refreshing what the stack manages)
+and `roles/serviceusage.serviceUsageConsumer`. On the state bucket:
+`roles/storage.legacyBucketReader` unconditionally, and
+`roles/storage.objectViewer` on `3-app/<app>/<env>/` and on the upstream
+states the apply identity reads; no write, so the plan runs without the state
+lock. tst's deploy identity of the same application may impersonate it
+(`roles/iam.serviceAccountTokenCreator`, read from tst's `2-env` state; tst's
+own in tst), since tst's Cloud Build runs the pull-request builds; nothing
+else may.
 
 ### Application deploy identity `{{.Prefix}}-<env>-gbl-<app>-deploy`
 

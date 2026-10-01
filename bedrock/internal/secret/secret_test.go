@@ -453,7 +453,7 @@ func TestResultWrite(t *testing.T) {
 			want: []string{
 				"Pinned APP_COOKIE_KEY to version 3 for quill in tst: secret_versions.tst in 3-app/quill/terraform.tfvars.",
 				"Secret Manager confirms version 3 of imp-tst-gbl-quill-cookie-key in project lab-tst-1 is enabled.",
-				"Next: commit the change to the values file and open the pull request; the plan for tst shows the change to the service's configuration (Cloud Run's revision template) and nothing in the other environments. After the merge, the run of that commit in tst applies it, builds the release, deploys it and moves traffic.",
+				"Next: commit the change to the values file with a releasable type (fix(tst): …) and open the pull request; its plans show the change to the service's configuration (Cloud Run's revision template) in tst and nothing in the other environments. The release that carries the commit applies it in tst, deploys and moves traffic.",
 			},
 			wantNot: []string{"not verified", "today"},
 		},
@@ -463,7 +463,7 @@ func TestResultWrite(t *testing.T) {
 			want: []string{
 				"Pinned APP_MAIL_API_KEY to version 1 for quill in stg: secret_versions.stg in 3-app/quill/terraform.tfvars.",
 				"The version was not verified: without --project, Secret Manager is not asked whether it exists and is enabled.",
-				"the plan for stg shows the change to the service's configuration (Cloud Run's revision template) and nothing in the other environments. After the merge, the run of that commit in stg",
+				"its plans show the change to the service's configuration (Cloud Run's revision template) in stg and nothing in the other environments. The release that carries the commit applies it in stg",
 			},
 			wantNot: []string{"confirms"},
 		},

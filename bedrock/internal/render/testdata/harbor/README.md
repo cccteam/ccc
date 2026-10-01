@@ -24,9 +24,25 @@ pipeline").
 
 ## Applying
 
-Same shape as `2-env`: no workspaces, one state prefix per environment
-(`3-app/harbor/<env>`, the stack's slot in the organization's state bucket),
-supplied at init, with a backend cache per environment:
+The first apply of an environment is by hand, before any release exists there;
+every later apply is the pipeline's. A release's tag build plans the stack for
+its environment as the apply identity after the image build and before the
+migrations, runs the tests (no authoritative IAM resource; every secret version
+a revision template pins exists and is enabled), applies on a pass, and writes
+the plan's summary to the build log and the deployment record, under the
+release's own approval. A pull-request build plans the stack for every
+environment as that environment's plan identity, a reader, and posts the
+summaries on the pull request: the plan the reviewer approves. So a change to
+this directory or to `terraform.tfvars` (a secret pin, a value for one
+environment) is a commit with a releasable type, and promotes as a release.
+An infrastructure change must be safe on the running service: add first,
+remove later; a change that is not is declared breaking in release-please's
+own way (`!` after the commit type, or a `BREAKING CHANGE:` footer), which the
+tag build reads as a window release.
+
+By hand, the same shape as `2-env`: no workspaces, one state prefix per
+environment (`3-app/harbor/<env>`, the stack's slot in the organization's
+state bucket), supplied at init, with a backend cache per environment:
 
 ```bash
 cd infrastructure
@@ -238,8 +254,12 @@ substitutions and this stack's outputs:
   connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
   check accepts (the release app as `<slug>[bot]`); `_PREVIOUS_ENV` and
   `_PREVIOUS_RECORDS_BUCKET`, the environment before this one and its records
-  bucket, empty in the first environment; `_APPLY_IDENTITY`, the identity the
-  pull-request build applies a pull request's stack as; `_MIGRATIONS_DIR`, the
+  bucket, empty in the first environment; `_ENVIRONMENTS`, the promotion
+  order, and `_PLAN_IDENTITIES`, each environment's plan identity
+  (`<env>=<email>`), which a pull-request build plans the stack for every
+  environment as; `_APPLY_IDENTITY`, the identity the tag build applies this
+  environment's stack as, and the pull-request build a pull request's stack
+  as; `_MIGRATIONS_DIR`, the
   schema migrations directory, which decides whether `/gcbrun shared-db` is
   allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep;
   `_HOSTNAME`, the environment's canonical hostname (a pull-request stack's
@@ -268,9 +288,9 @@ substitutions and this stack's outputs:
   user-specified service account.
 - The deploy identity writes one object per run into `_RECORDS_BUCKET`, at
   `<app>/<env>/<release>/<build>.json`, and can never overwrite one; a
-  release that runs again in an environment (a re-run activates a placement
-  change with the same image) adds a record, and the newest under the
-  release's prefix is its current one.
+  release that runs again in an environment adds a record, and the newest
+  under the release's prefix is its current one. A record carries the plan
+  of this stack the build applied (`stack`: counts and changes).
 
 ## Hostnames and the net layer
 

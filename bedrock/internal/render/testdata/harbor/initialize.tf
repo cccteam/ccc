@@ -86,6 +86,20 @@ data "terraform_remote_state" "previous_env" {
   }
 }
 
+# Every environment's 2-env state, for the plan identities: a pull-request
+# build plans this stack for every environment, each as that environment's
+# plan identity, and the triggers' substitutions name them (_PLAN_IDENTITIES).
+# An environment whose 2-env is not applied yet names none.
+data "terraform_remote_state" "envs" {
+  for_each = toset(["tst", "stg", "prd"])
+
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-env/${each.key}"
+  }
+}
+
 data "terraform_remote_state" "shr" {
   backend = "gcs"
   config = {

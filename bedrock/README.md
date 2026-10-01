@@ -271,11 +271,20 @@ thing one step hands the next. In order:
   a hotfix line, and the record gate holds: the release is live in the previous
   environment. A refusal starts with `Build REJECTED` and says why. A tag build's log first
   names the bedrock running it, and says when that is a commit pin; a release may deploy
-  with a commit pin.
+  with a commit pin. A release whose notes carry release-please's breaking-changes section
+  (a commit with `!` after its type, or a `BREAKING CHANGE:` footer) is a window release,
+  recorded as `WINDOW_RELEASE` for the maintenance window.
 - `deploy guard-migrations`: the schema migrations and the seed are each one sequence
   (the rule `bedrock check` applies), and in a pull-request build every migration the
   branch started from is still there unchanged and the sequence is read together with
   the default branch's. A refusal is posted on the pull request and names the fix.
+- `deploy plan-environments`: in a pull-request build, plans the stack for every
+  environment of the promotion order, each against that environment's state prefix as
+  its plan identity (a reader, without the state lock, so a pull-request build in tst
+  can change no environment), and runs the tests a tag build runs before its apply. One
+  comment on the pull request carries every summary; a failing plan or test stops the
+  build, which is the required check. The plan the reviewer approves is each
+  environment's.
 - `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
   applied into its own state prefix as the apply identity. The plan is saved, the guard
   lets only the pull request's own resources through, the apply applies exactly that
@@ -289,6 +298,17 @@ thing one step hands the next. In order:
   under its two tags, with the build arguments and the declared build secrets (read as
   the deploy identity into memory and passed as BuildKit secrets, never build
   arguments); the digest goes to `environment.sh`.
+- `deploy stack plan`, `apply`: in a tag build, the environment's stack planned and
+  applied as the apply identity, after the image build (a failed build changes no
+  infrastructure) and before the jobs and the migrations (what they need exists first).
+  `plan` saves the plan with its JSON, prints and appends the summary (`STACK_PLAN`), and
+  runs the tests: no authoritative IAM resource in the stack, and every secret version a
+  planned revision template pins exists and is enabled. `apply` applies exactly that plan.
+  The plan is the build's own: a saved plan is bound to the state it was made from, and a
+  release bundles several pull requests. An infrastructure change must be safe on the
+  running service (add first, remove later); one that is not is declared breaking in
+  release-please's way and becomes a window release. The first apply of an environment
+  stays by hand, before any release exists there.
 - `deploy migrate`: runs this build's migrate job, the copy `deploy jobs` made of the
   template on this image, once to completion, with the seed (`schema/devseed` as data
   migrations after the schema) where `_SEED` is true: every pull request, and a release
@@ -323,7 +343,8 @@ thing one step hands the next. In order:
 - `deploy shift-traffic`: moves every region to 100 percent on its new revision, keeping
   the tags other revisions carry; a pull-request revision served under its tag alone
   leaves the traffic where it is.
-- `deploy record`: writes the deployment record once traffic has moved.
+- `deploy record`: writes the deployment record once traffic has moved, with the plan of
+  the stack the build applied (`stack`: counts and changes).
 - `deploy talk-back`: in a pull-request build, tells the pull request what the build did
   as the deployer app: a GitHub deployment carrying the environment's URL and a comment.
   The app's token is minted from its key when there is something to say, by this step or
@@ -368,9 +389,9 @@ pinned or rolled out; the command prints the pin to make.
 `secret pin` writes the version an environment runs into the application layer's
 `terraform.tfvars` under `secret_versions.<env>.<VARIABLE>`, after asking Secret Manager
 whether the version exists and is enabled. The pull request's plan shows the revision
-template change and nothing elsewhere; after the apply the release is re-run in the
-environment to move traffic to the new revision. An argument left out is asked for at
-the terminal with the choices listed.
+template change in that environment and nothing elsewhere; the pin promotes as a release
+(a commit with a releasable type, `fix(<env>): …`), whose tag build applies the stack and
+deploys. An argument left out is asked for at the terminal with the choices listed.
 
 Both find the rest from where they run: the infrastructure root, the application, the
 environment project (by its labels) and the container (by its labels and the variable);

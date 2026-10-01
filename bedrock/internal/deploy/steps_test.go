@@ -77,6 +77,21 @@ func (r *fakeRunner) lines() []string {
 // fakeSecrets is Secrets in tests: payloads by version name.
 type fakeSecrets struct {
 	payloads map[string]string
+	// states are the versions that exist, by name, with their state.
+	states map[string]string
+}
+
+func (s *fakeSecrets) openAs(context.Context, string) (Secrets, error) {
+	return s, nil
+}
+
+func (s *fakeSecrets) State(_ context.Context, version string) (string, error) {
+	state, ok := s.states[version]
+	if !ok {
+		return "", errors.Newf("NotFound: %s", version)
+	}
+
+	return state, nil
 }
 
 func (s *fakeSecrets) open(context.Context) (Secrets, error) {

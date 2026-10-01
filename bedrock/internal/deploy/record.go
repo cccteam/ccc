@@ -44,6 +44,10 @@ type Record struct {
 	// renumbered or changed since and recreate the database. Absent when no migration
 	// ran.
 	Migrations []Migration `json:"migrations,omitempty"`
+	// Stack is what the tag build's apply of the environment's stack did (the plan it
+	// applied, made in this build): its counts and changes. Absent in a pull-request
+	// build, which applies no environment's stack, and on a bedrock before the step.
+	Stack *StackPlan `json:"stack,omitempty"`
 }
 
 // Migration is one migration file a build applied: its directory (root-relative), its
@@ -134,6 +138,10 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 			return nil, err
 		}
 	}
+	stack, err := stackPlanOf(w)
+	if err != nil {
+		return nil, err
+	}
 	record := Record{
 		App:        build.Substitutions[appSub],
 		Env:        build.Substitutions[envSub],
@@ -147,6 +155,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Status:     status,
 		Build:      build.ID,
 		Migrations: applied,
+		Stack:      stack,
 	}
 
 	return &RecordRequest{
@@ -322,4 +331,18 @@ func WriteRecord(ctx context.Context, open StoreFunc, req *RecordRequest, out io
 	}
 
 	return nil
+}
+
+// stackPlanOf reads the plan the tag build applied (deploy stack plan writes its JSON to
+// the workspace), or nil when the build applied none.
+func stackPlanOf(w Workspace) (*StackPlan, error) {
+	data, err := os.ReadFile(filepath.Join(string(w), StackPlanJSONFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errors.Wrapf(err, "os.ReadFile(): %s", StackPlanJSONFile)
+	}
+
+	return stackPlan(data)
 }

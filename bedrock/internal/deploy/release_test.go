@@ -72,7 +72,9 @@ func TestValidateRelease(t *testing.T) {
 		bedrock    string
 		wantOut    []string
 		wantAbsent []string
-		wantErr    string
+		// wantFact is WINDOW_RELEASE after the step: true for a window release, else empty.
+		wantFact string
+		wantErr  string
 	}{
 		{
 			name:       "a pull-request build has no release to validate",
@@ -103,6 +105,25 @@ func TestValidateRelease(t *testing.T) {
 			name:    "a torn-down environment does nothing",
 			env:     "export SKIP_DEPLOY=\"true\"\n",
 			wantOut: []string{tornDown},
+		},
+		{
+			name: "a release whose notes carry a breaking-changes section is a window release",
+			env:  connected,
+			repo: func(r *githubtest.Repo) {
+				r.Releases["v1.2.3"] = github.Release{TagName: "v1.2.3", Author: github.User{Login: "release-app[bot]"}, Body: "## [1.2.3](https://example.test) (2026-10-01)\n\n### ⚠ BREAKING CHANGES\n\n* **storage:** the uploads bucket is replaced\n\n### Features\n\n* **storage:** replace the uploads bucket\n"}
+			},
+			objects:  live,
+			wantOut:  []string{"Release v1.2.3 validated: cut by release-app[bot]", "Window release: the release notes of v1.2.3 carry a breaking-changes section", "Gate passed: v1.2.3 is live in tst"},
+			wantFact: trueValue,
+		},
+		{
+			name: "a release whose notes mention breaking changes in prose is not one",
+			env:  connected,
+			repo: func(r *githubtest.Repo) {
+				r.Releases["v1.2.3"] = github.Release{TagName: "v1.2.3", Author: github.User{Login: "release-app[bot]"}, Body: "### Features\n\n* no breaking changes this time\n"}
+			},
+			objects:    live,
+			wantAbsent: []string{"Window release"},
 		},
 		{
 			name:    "a release on the default branch, live in the previous environment",
@@ -242,6 +263,13 @@ func TestValidateRelease(t *testing.T) {
 				if strings.Contains(out.String(), absent) {
 					t.Errorf("output has %q:\n%s", absent, out.String())
 				}
+			}
+			facts, err := w.Environment()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if facts[windowReleaseFact] != tt.wantFact {
+				t.Errorf("%s = %q, want %q", windowReleaseFact, facts[windowReleaseFact], tt.wantFact)
 			}
 		})
 	}

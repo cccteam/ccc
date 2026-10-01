@@ -34,9 +34,9 @@ const (
 	replaceDatabaseFact = "REPLACE_DATABASE"
 	// prHostnameFact is the pull request's hostname, from its stack's output.
 	prHostnameFact = "PR_HOSTNAME"
-	// tagBuildNotice is a step's answer in a tag build, whose environment's stack is applied
-	// on its own rhythm.
-	tagBuildNotice = "Tag build: the environment's stack is applied on its own rhythm, not here."
+	// tagBuildNotice is a pull-request step's answer in a tag build, whose environment's
+	// stack the stack steps plan and apply after the image build.
+	tagBuildNotice = "Tag build: no pull-request stack; the environment's stack is planned and applied after the image build (deploy stack)."
 )
 
 // stack is the pull request's stack in the checkout, driven through tofu as the apply

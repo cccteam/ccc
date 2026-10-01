@@ -99,3 +99,16 @@ data "terraform_remote_state" "next_env" {
     prefix = "2-env/${local.next_environment}"
   }
 }
+
+# tst's 2-env state, for its deploy identities: they run every pull-request
+# build, which plans this environment's application stacks as this
+# environment's plan identities (identities.tf). tst reads its own.
+data "terraform_remote_state" "tst_env" {
+  count = local.is_tst ? 0 : 1
+
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-env/tst"
+  }
+}

@@ -96,8 +96,10 @@ func TestNewRecordRequest(t *testing.T) {
 		wantObject  string
 		wantStatus  string
 		wantRegions string
-		// wantMigrations is the applied listing a build that ran migrations leaves.
+		// wantMigrations is the applied listing a build that ran migrations leaves;
+		// wantStack the plan a tag build applied.
 		wantMigrations []Migration
+		wantStack      *StackPlan
 		wantErr        string
 	}{
 		{
@@ -129,6 +131,14 @@ func TestNewRecordRequest(t *testing.T) {
 			wantObject:  "harbor/tst/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
+		},
+		{
+			name:        "a tag build's apply of the environment's stack is recorded from its saved plan",
+			files:       map[string]string{EnvironmentFile: liveEnvironment, BuildFile: buildJSON, RevisionsFile: revisionsLines, StackPlanJSONFile: `{"resource_changes": [{"address": "google_storage_bucket.assets", "type": "google_storage_bucket", "change": {"actions": ["create"], "after": {}}}]}`},
+			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:  Live,
+			wantRegions: "us-central1,us-west3",
+			wantStack:   &StackPlan{Add: 1, Changes: []StackChange{{Address: "google_storage_bucket.assets", Actions: []string{actionCreate}}}},
 		},
 		{
 			name:        "a pull request's revision under its tag is a preview",
@@ -193,6 +203,9 @@ func TestNewRecordRequest(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantMigrations, r.Migrations); diff != "" {
 				t.Errorf("Migrations mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantStack, r.Stack); diff != "" {
+				t.Errorf("Stack mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
