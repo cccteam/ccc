@@ -68,6 +68,16 @@ type view struct {
 	// SeedList is the HCL list of the environments whose migrate job applies the
 	// development seed.
 	SeedList string
+	// Operations are the environments a restore may be started for from GitHub, every
+	// one but production, with what the operations workflow needs of each; an
+	// environment the placement records no project for is listed unwired.
+	// OperationsProse spells them. AuthAction and GcloudAction are the pinned GitHub
+	// Actions the workflow uses; PrimaryRegion is where the version triggers are.
+	Operations      []operationsEnv
+	OperationsProse string
+	AuthAction      string
+	GcloudAction    string
+	PrimaryRegion   string
 	// Image is what the seeded Dockerfile derives from the code.
 	Image imageView
 	// SubstitutionNames are the pipeline's own substitutions, space separated: the keys
@@ -488,6 +498,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.regions()
 	v.secrets()
 	v.blocks()
+	v.operations()
 
 	names, err := SubstitutionNames()
 	if err != nil {
@@ -630,6 +641,44 @@ func (v *view) environments() {
 	}
 	v.HostnamesProse = all[0] + ",\n" + strings.Join(all[1:], ", ")
 	v.IntegrationHost = v.Environments[0].Hostnames[0]
+}
+
+// operationsEnv is one environment as the operations workflow addresses it: its
+// project, the workload identity provider and the operations identity (both named
+// after the project, as 2-env creates them), the version trigger, and the restore a run
+// makes there. Wired is false for an environment the placement records no project for.
+type operationsEnv struct {
+	Env      string
+	Wired    bool
+	Project  string
+	Provider string
+	Identity string
+	Trigger  string
+	Restore  string
+}
+
+// The pinned GitHub Actions the operations workflow uses, by commit, with the release
+// each commit is.
+const (
+	authAction   = "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3"
+	gcloudAction = "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+)
+
+// operations lists the environments the operations workflow may restore.
+func (v *view) operations() {
+	v.AuthAction, v.GcloudAction = authAction, gcloudAction
+	v.PrimaryRegion = v.P.Regions[0].Name
+	for _, env := range v.P.Restorable() {
+		o := operationsEnv{Env: env, Restore: v.P.RestoreKind(env), Trigger: v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-version"}
+		if project, ok := v.P.Project(env); ok {
+			o.Wired = true
+			o.Project = project.ID
+			o.Provider = "projects/" + project.Number + "/locations/global/workloadIdentityPools/" + v.Prefix + "-" + env + "-github/providers/github"
+			o.Identity = v.Prefix + "-" + env + "-gbl-" + v.App + "-ops@" + project.ID + ".iam.gserviceaccount.com"
+		}
+		v.Operations = append(v.Operations, o)
+	}
+	v.OperationsProse = joinOr(v.P.Restorable())
 }
 
 // regions spells the regions.

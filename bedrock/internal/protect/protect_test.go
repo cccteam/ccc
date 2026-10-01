@@ -272,3 +272,48 @@ func sorted(list []string) []string {
 
 	return out
 }
+
+func TestEnvironments(t *testing.T) {
+	t.Parallel()
+
+	server := githubtest.New(t)
+	server.Installations["acme"] = []github.Installation{{AppID: 5080645, AppSlug: "acme-release"}}
+	repo := server.AddRepo("acme", "quill", &githubtest.Repo{})
+	req := protect.Request{Owner: "acme", Repo: "quill", DefaultBranch: "master", ReleaseApp: "acme-release", Environments: []string{"tst", "stg"}}
+	result, err := protect.Apply(t.Context(), server.Client(), req)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	var got []string
+	for _, o := range result.Environments {
+		got = append(got, o.Name+"="+o.Action)
+	}
+	if want := "tst=created stg=created"; strings.Join(got, " ") != want {
+		t.Errorf("environments = %v, want %s", got, want)
+	}
+	for _, env := range []string{"tst", "stg"} {
+		e, ok := repo.Environments[env]
+		if !ok {
+			t.Fatalf("environment %s not put in place", env)
+		}
+		if e.Setting == nil || !e.Setting.CustomBranchPolicies || e.Setting.ProtectedBranches {
+			t.Errorf("environment %s setting = %+v, want custom branch policies", env, e.Setting)
+		}
+		if len(e.Policies) != 1 || e.Policies[0].Name != "master" {
+			t.Errorf("environment %s policies = %+v, want master alone", env, e.Policies)
+		}
+	}
+	// A second run keeps them: the environment and its policy exist.
+	again, err := protect.Apply(t.Context(), server.Client(), req)
+	if err != nil {
+		t.Fatalf("second Apply() error = %v", err)
+	}
+	for _, o := range again.Environments {
+		if o.Action != protect.Unchanged {
+			t.Errorf("second Apply(): environment %s = %s, want unchanged", o.Name, o.Action)
+		}
+	}
+	if len(repo.Environments["tst"].Policies) != 1 {
+		t.Errorf("second Apply() added a policy: %+v", repo.Environments["tst"].Policies)
+	}
+}

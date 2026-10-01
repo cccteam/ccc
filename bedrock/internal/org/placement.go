@@ -8,6 +8,7 @@ package org
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"slices"
@@ -25,10 +26,11 @@ const (
 )
 
 var (
-	prefixRE      = regexp.MustCompile(`^[a-z][a-z0-9]{1,3}$`)
-	regionCodeRE  = regexp.MustCompile(`^[a-z][a-z0-9]{2}$`)
-	applicationRE = regexp.MustCompile(`^[a-z][a-z0-9]{0,5}$`)
-	labelRE       = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
+	prefixRE        = regexp.MustCompile(`^[a-z][a-z0-9]{1,3}$`)
+	regionCodeRE    = regexp.MustCompile(`^[a-z][a-z0-9]{2}$`)
+	applicationRE   = regexp.MustCompile(`^[a-z][a-z0-9]{0,5}$`)
+	labelRE         = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
+	projectNumberRE = regexp.MustCompile(`^\d+$`)
 )
 
 // Placement is what the organization decided before any layer exists: its naming
@@ -76,6 +78,11 @@ type Placement struct {
 	// and backends are named under. Absent until 1-org has run; REPLACEME is rendered
 	// in their place.
 	Projects map[string]string `json:"projects,omitempty"`
+	// ProjectNumbers are the environment projects' numbers by environment, from 1-org's
+	// project_numbers output, recorded beside Projects. An application's placement
+	// records its environments' ids and numbers together (bedrock org register prints
+	// the block), for the operations workflow that starts a restore from GitHub.
+	ProjectNumbers map[string]string `json:"projectNumbers,omitempty"`
 	// Labels are the labels every project and bucket carries beyond the model's own.
 	Labels map[string]string `json:"labels"`
 }
@@ -151,6 +158,14 @@ func (p *Placement) Validate() error {
 			return errors.Newf("projects.%s is empty", env)
 		}
 	}
+	for env, number := range p.ProjectNumbers {
+		if !slices.Contains(Environments, env) {
+			return errors.Newf("projectNumbers names %q, which is not one of %s", env, strings.Join(Environments, ", "))
+		}
+		if !projectNumberRE.MatchString(number) {
+			return errors.Newf("projectNumbers.%s %q is not a project number (digits)", env, number)
+		}
+	}
 	for _, d := range p.ContactDomains {
 		if !strings.HasPrefix(d, "@") || len(d) < 3 {
 			return errors.Newf("contact domain %q is not @<domain>", d)
@@ -221,6 +236,31 @@ func (p *Placement) ProjectsMissing() []string {
 	}
 
 	return missing
+}
+
+// ApplicationProjects is the block an application's placement records for its
+// environments' projects (id and number, as 1-org's project_ids and project_numbers
+// outputs name them), for the environments this placement records both of, and the
+// environments it does not. Production is left out: it is never restored by a run.
+func (p *Placement) ApplicationProjects() (block string, missing []string) {
+	var lines []string
+	for _, env := range Environments {
+		if env == prdEnvironment {
+			continue
+		}
+		id, number := p.Projects[env], p.ProjectNumbers[env]
+		if id == "" || number == "" {
+			missing = append(missing, env)
+
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("    %q: {\"id\": %q, \"number\": %q}", env, id, number))
+	}
+	if len(lines) == 0 {
+		return "", missing
+	}
+
+	return "  \"projects\": {\n" + strings.Join(lines, ",\n") + "\n  }", missing
 }
 
 // Register adds an application to the placement: a code of one to six lowercase

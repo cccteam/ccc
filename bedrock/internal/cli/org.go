@@ -126,6 +126,9 @@ seeds the files that are absent. Run from the repository root, or name it with -
 			if len(written.Seeded) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s.\n", strings.Join(written.Seeded, ", "))
 			}
+			if len(p.Applications) > 0 {
+				fmt.Fprint(cmd.OutOrStdout(), applicationProjects(p, "each application"))
+			}
 
 			return nil
 		},
@@ -237,6 +240,7 @@ placement records no environment projects and the rendered values carry REPLACEM
 				fmt.Fprintf(out, "The placement records no project for %s: the rendered values carry REPLACEME there until 1-org's project_ids are recorded in placement.json (projects) and org render runs.\n", strings.Join(missing, ", "))
 			}
 			fmt.Fprint(out, applySequence(app))
+			fmt.Fprint(out, applicationProjects(p, app))
 
 			return nil
 		},
@@ -245,6 +249,23 @@ placement records no environment projects and the rendered values carry REPLACEM
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// applicationProjects is the block the application's placement records for the
+// operations workflow (a restore started from GitHub names the environment's identity
+// provider and operations identity by the project's id and number), or what the
+// organization's placement still lacks for it.
+func applicationProjects(p *org.Placement, app string) string {
+	block, missing := p.ApplicationProjects()
+	var b strings.Builder
+	if block != "" {
+		fmt.Fprintf(&b, "\nRecord in %s's placement.json (infrastructure/placement.json), for the operations workflow that restores an environment from GitHub:\n%s\n", app, block)
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "\nThe operations workflow cannot be wired for %s yet: record 1-org's project_ids and project_numbers in placement.json (projects, projectNumbers), then run org register's print again with org render.\n", strings.Join(missing, ", "))
+	}
+
+	return b.String()
 }
 
 // applySequence says what to apply after an application was registered, in order.

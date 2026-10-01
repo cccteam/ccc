@@ -57,6 +57,16 @@ the boot project as `imp-org-gbl-tofu`.
   backup schedules live on a Spanner instance that the environment project's
   reader roles do not reach; the predefined roles that read them also write
   (`databaseAdmin`, `backupAdmin`) or read the data (`databaseReader`).
+- The custom organization role `cloudBuildTriggerRunner`: runs Cloud Build
+  triggers and reads the builds they start (`cloudbuild.builds.create`,
+  `cloudbuild.builds.get`, `cloudbuild.builds.list`, `cloudbuild.triggers.get`,
+  `cloudbuild.triggers.list`) and nothing else. A restore of an environment to
+  a release is started from GitHub: the application's operations workflow
+  exchanges its token for the environment's operations identity and runs the
+  environment's version trigger with the restore instruction, and the pipeline
+  does the work as the deploy identity. `2-env` grants the role on each
+  environment project to each application's operations identity, in every
+  environment but production.
   `2-spn` grants it on the shared instance and `2-env` on an environment's
   own instance to each application's plan identity.
 - The custom organization role `runJobPolicyAdmin`: reads and sets the IAM
@@ -230,3 +240,4 @@ bucket, prefix `1-org`.
 | `secret_operator_role` | Full name of the `secretOperator` role. |
 | `run_job_policy_admin_role` | Full name of the `runJobPolicyAdmin` role. |
 | `spanner_plan_reader_role` | Full name of the `spannerPlanReader` role. |
+| `cloud_build_trigger_runner_role` | Full name of the `cloudBuildTriggerRunner` role. |

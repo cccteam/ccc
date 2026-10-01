@@ -41,6 +41,9 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a long application", mutate: func(p *Placement) { p.Applications = []string{"lighthouse"} }, wantErr: `application "lighthouse"`},
 		{name: "a label without a value", mutate: func(p *Placement) { p.Labels = map[string]string{"team": ""} }, wantErr: "label"},
 		{name: "no spanner config", mutate: func(p *Placement) { p.Spanner.Config = "" }, wantErr: "spanner.config is empty"},
+		{name: "project numbers for the environments", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "123456789012"} }},
+		{name: "a project number in an unknown environment", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"qa": "1"} }, wantErr: `projectNumbers names "qa", which is not one of tst, stg, prd`},
+		{name: "a project number that is not a number", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "imp-tst"} }, wantErr: `projectNumbers.tst "imp-tst" is not a project number (digits)`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -440,6 +443,48 @@ func TestPlacementProjects(t *testing.T) {
 			}
 			if got := strings.Join(p.ProjectsMissing(), ","); got != tt.wantMissing {
 				t.Errorf("ProjectsMissing() = %q, want %q", got, tt.wantMissing)
+			}
+		})
+	}
+}
+
+func TestApplicationProjects(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		projects    map[string]string
+		numbers     map[string]string
+		wantBlock   string
+		wantMissing string
+	}{
+		{
+			name:      "both recorded for every environment: the block for tst and stg, never prd",
+			projects:  map[string]string{"tst": "imp-tst-gbl-core-b241", "stg": "imp-stg-gbl-core-0fa7", "prd": "imp-prd-gbl-core-abe8"},
+			numbers:   map[string]string{"tst": "1", "stg": "2", "prd": "3"},
+			wantBlock: "  \"projects\": {\n    \"tst\": {\"id\": \"imp-tst-gbl-core-b241\", \"number\": \"1\"},\n    \"stg\": {\"id\": \"imp-stg-gbl-core-0fa7\", \"number\": \"2\"}\n  }",
+		},
+		{
+			name:        "a number missing leaves its environment out and names it",
+			projects:    map[string]string{"tst": "imp-tst-gbl-core-b241", "stg": "imp-stg-gbl-core-0fa7"},
+			numbers:     map[string]string{"tst": "1"},
+			wantBlock:   "  \"projects\": {\n    \"tst\": {\"id\": \"imp-tst-gbl-core-b241\", \"number\": \"1\"}\n  }",
+			wantMissing: "stg",
+		},
+		{name: "nothing recorded", wantMissing: "tst,stg"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.Projects, p.ProjectNumbers = tt.projects, tt.numbers
+			block, missing := p.ApplicationProjects()
+			if block != tt.wantBlock {
+				t.Errorf("block = %q, want %q", block, tt.wantBlock)
+			}
+			if got := strings.Join(missing, ","); got != tt.wantMissing {
+				t.Errorf("missing = %q, want %q", got, tt.wantMissing)
 			}
 		})
 	}

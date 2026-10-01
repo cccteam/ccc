@@ -306,6 +306,12 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "seed in an unknown environment", mutate: func(p *Placement) { p.Seed = []string{"qa"} }, wantErr: `seed names "qa", which is not one of the environments (tst, prd)`},
 		{name: "seed in production", mutate: func(p *Placement) { p.Seed = []string{"prd"} }, wantErr: `seed names "prd", the production environment, which is never seeded`},
 		{name: "seed in the first environment", mutate: func(p *Placement) { p.Seed = []string{"tst"} }},
+		{name: "projects for a known environment", mutate: func(p *Placement) {
+			p.Projects = map[string]Project{"tst": {ID: "imp-tst-gbl-core-b241", Number: "123456789012"}}
+		}},
+		{name: "projects in an unknown environment", mutate: func(p *Placement) { p.Projects = map[string]Project{"qa": {ID: "p", Number: "1"}} }, wantErr: `projects names "qa", which is not one of the environments (tst, prd)`},
+		{name: "a project without an id", mutate: func(p *Placement) { p.Projects = map[string]Project{"tst": {Number: "1"}} }, wantErr: "projects.tst.id is empty"},
+		{name: "a project number that is not a number", mutate: func(p *Placement) { p.Projects = map[string]Project{"tst": {ID: "p", Number: "p-123"}} }, wantErr: `projects.tst.number "p-123" is not a project number (digits)`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -575,6 +581,38 @@ func TestJobsJob(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("jobsJob() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestPlacementRestore(t *testing.T) {
+	t.Parallel()
+
+	p := Placement{Environments: []string{"tst", "stg", "prd"}, Seed: []string{"stg"}, Projects: map[string]Project{"tst": {ID: "p-tst", Number: "1"}}}
+	tests := []struct {
+		name     string
+		p        Placement
+		env      string
+		wantKind string
+		wantWire bool
+	}{
+		{name: "the first environment is restored empty", p: p, env: "tst", wantKind: RestoreEmpty, wantWire: true},
+		{name: "a seeded environment on production's instance is restored empty, and is not wired", p: p, env: "stg", wantKind: RestoreEmpty},
+		{name: "an unseeded environment on production's instance takes production's backup", p: Placement{Environments: []string{"tst", "stg", "prd"}}, env: "stg", wantKind: RestoreBackup},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.p.RestoreKind(tt.env); got != tt.wantKind {
+				t.Errorf("RestoreKind(%s) = %q, want %q", tt.env, got, tt.wantKind)
+			}
+			if _, wired := tt.p.Project(tt.env); wired != tt.wantWire {
+				t.Errorf("Project(%s) wired = %t, want %t", tt.env, wired, tt.wantWire)
+			}
+			if got := strings.Join(tt.p.Restorable(), ","); got != "tst,stg" {
+				t.Errorf("Restorable() = %q, want tst,stg", got)
 			}
 		})
 	}

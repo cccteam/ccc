@@ -56,9 +56,13 @@ type Request struct {
 	// as it); it alone may create, move or delete a release tag. No one else bypasses
 	// the tag ruleset, the repository's admins included.
 	ReleaseApp string
+	// Environments are the GitHub Environments the operations workflow runs in, one per
+	// environment a restore may be started for: each deploys from the default branch
+	// alone, so the workflow file a restore runs is the committed one.
+	Environments []string
 }
 
-// Outcome is what happened to one ruleset.
+// Outcome is what happened to one ruleset, or one environment.
 type Outcome struct {
 	Name   string
 	Action string
@@ -71,9 +75,11 @@ type Outcome struct {
 type Result struct {
 	ReleaseAppID int64
 	Rulesets     []Outcome
+	Environments []Outcome
 }
 
-// Apply puts the three rulesets on the repository, creating or updating each by name.
+// Apply puts the three rulesets on the repository, creating or updating each by name,
+// and the environments with their branch restriction.
 func Apply(ctx context.Context, client *github.Client, req Request) (*Result, error) {
 	if err := req.validate(); err != nil {
 		return nil, err
@@ -99,8 +105,55 @@ func Apply(ctx context.Context, client *github.Client, req Request) (*Result, er
 		}
 		result.Rulesets = append(result.Rulesets, outcome)
 	}
+	for _, env := range req.Environments {
+		outcome, err := applyEnvironment(ctx, client, req, env)
+		if err != nil {
+			return nil, err
+		}
+		result.Environments = append(result.Environments, outcome)
+	}
 
 	return result, nil
+}
+
+// applyEnvironment puts the environment in place with custom branch policies, and the
+// policy naming the default branch when the environment lacks it. An environment that
+// exists is kept, with its reviewers and the rest of its settings; only the branch
+// restriction is set.
+func applyEnvironment(ctx context.Context, client *github.Client, req Request, env string) (Outcome, error) {
+	outcome := Outcome{Name: env, Effect: "deploys from " + req.DefaultBranch + " alone; a reviewer is the repository's setting to add"}
+	action := Unchanged
+	if _, err := client.Environment(ctx, req.Owner, req.Repo, env); err != nil {
+		if !github.NotFound(err) {
+			return outcome, errors.Wrapf(err, "reading environment %q", env)
+		}
+		action = Created
+	}
+	e := &github.Environment{Name: env, DeploymentBranchPolicy: &github.BranchPolicySetting{CustomBranchPolicies: true}}
+	if err := client.PutEnvironment(ctx, req.Owner, req.Repo, e); err != nil {
+		return outcome, errors.Wrapf(err, "putting environment %q in place", env)
+	}
+	policies, err := client.DeploymentBranchPolicies(ctx, req.Owner, req.Repo, env)
+	if err != nil {
+		return outcome, errors.Wrapf(err, "reading environment %q's branch policies", env)
+	}
+	named := false
+	for _, p := range policies {
+		if p.Name == req.DefaultBranch {
+			named = true
+		}
+	}
+	if !named {
+		if _, err := client.CreateDeploymentBranchPolicy(ctx, req.Owner, req.Repo, env, &github.BranchPolicy{Name: req.DefaultBranch}); err != nil {
+			return outcome, errors.Wrapf(err, "restricting environment %q to %s", env, req.DefaultBranch)
+		}
+		if action == Unchanged {
+			action = Updated
+		}
+	}
+	outcome.Action = action
+
+	return outcome, nil
 }
 
 func (req Request) validate() error {

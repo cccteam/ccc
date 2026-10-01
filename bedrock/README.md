@@ -466,10 +466,36 @@ holds; the hotfix check is skipped, since the database is about to be replaced),
 image is built, the stack's plan replaces the database (and the Firestore database and,
 in the first environment, the file bucket), the jobs are created, the migrations and the
 seed apply, the revision deploys, traffic moves, and the record carries the reason and
-the requester. The run refuses the instruction in production. Not built yet: the restore
-from production's backup, the maintenance revision that serves while the database is
-away, and the GitHub door that starts the run (`bedrock restore <env> <release>`); until
-the door lands, the operator runs the trigger with the two substitutions.
+the requester. The run refuses the instruction in production. `bedrock restore` starts
+it from GitHub (below). Not built yet: the restore from production's backup, and the
+maintenance revision that serves while the database is away.
+
+## bedrock restore
+
+`restore <env> <release>` restores an environment to a release, through GitHub:
+developers authenticate to GitHub and nowhere else, and nobody sets up a cloud tool to
+operate an environment. The command checks that the environment is not production, that
+the release exists, and that the placement records the environment's project
+(`projects`, the id and the number, which `bedrock org register` prints), then
+dispatches the repository's operations workflow (`.github/workflows/operations.yml`,
+rendered and owned by bedrock) as the person signed in to gh, and prints where to watch
+it; the Run workflow button on the Actions tab starts the same job. The job runs in the
+GitHub Environment named after the target environment, which `bedrock repository protect`
+puts in place so that it deploys from the default branch alone (the workflow file a
+restore runs is the committed one; a reviewer for an environment is the repository's
+setting to add). It holds no key: it exchanges GitHub's short-lived token for the
+environment's operations identity through the environment's workload identity pool
+(`2-env`), whose provider trusts tokens of the organization's repositories alone, from
+the operations workflow file, run in that Environment, and whose binding on the identity
+narrows that to the application's own repository. With that identity, which may start
+the environment's triggers and read the builds they start and nothing else (`1-org`'s
+`cloudBuildTriggerRunner`), the job runs the environment's version trigger for the
+release with `_RESTORE` and `_REQUESTER`, and waits for the build to its end, an
+approval in Cloud Build included. The build does the work as the deploy identity, as
+for any release; the GitHub side never holds a deploy right. The workflow run names who
+started it, Cloud Build records the operations identity, and the deployment record
+carries the requester and the restore. An environment the placement records no project
+for is not wired: the job stops before touching anything and says what to record.
 
 ## bedrock repository
 
@@ -477,7 +503,10 @@ the door lands, the operator runs the trigger with the two substitutions.
 repository, the one the command runs in, addressed through its origin remote: the
 default branch and the hotfix lines change by pull request only, and a `v*` or `*/v*`
 tag is created, moved or deleted by the release app alone, with no bypass for the
-repository's admins, which is what makes the pipeline's tag check sound.
+repository's admins, which is what makes the pipeline's tag check sound. It also puts
+in place the GitHub Environments the operations workflow runs in, one per environment a
+restore may be started for (every one but production), each deploying from the default
+branch alone.
 
 ## bedrock domain
 
@@ -512,7 +541,11 @@ every environment, then for every environment but the last again (each grants th
 environment's deploy identity read on its records bucket, from state the first pass did
 not have), then 2-shr and 2-spn, then the application's own stack per environment, then
 2-net. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
-decides.
+decides. Once `placement.json` records the environment projects' ids and numbers
+(`projects` and `projectNumbers`, from 1-org's `project_ids` and `project_numbers`
+outputs), `org register` and `org render` print the `projects` block an application's
+placement records for the operations workflow, which starts a restore of an
+environment from GitHub (`bedrock restore`); production is left out of it.
 
 ## The application's pipeline
 

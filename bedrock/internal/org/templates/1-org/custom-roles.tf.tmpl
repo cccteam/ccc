@@ -101,3 +101,26 @@ resource "google_organization_iam_custom_role" "spanner_plan_reader" {
     "spanner.backupSchedules.list",
   ]
 }
+
+# A restore of an environment to a release is started from GitHub: the
+# application's operations workflow exchanges its token for the environment's
+# operations identity and runs the environment's version trigger with the
+# restore instruction, and the pipeline does the work as the deploy identity.
+# That identity starts a trigger's build and reads how it went, and nothing
+# else: roles/cloudbuild.builds.editor would also cancel and retry builds and
+# write every trigger. Granted on the environment project to each
+# application's operations identity by 2-env, in every environment but
+# production, which is never restored by a run.
+resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
+  org_id      = local.org_id
+  role_id     = "cloudBuildTriggerRunner"
+  title       = "Cloud Build Trigger Runner"
+  description = "Runs Cloud Build triggers and reads the builds they start, and nothing else."
+  permissions = [
+    "cloudbuild.builds.create",
+    "cloudbuild.builds.get",
+    "cloudbuild.builds.list",
+    "cloudbuild.triggers.get",
+    "cloudbuild.triggers.list",
+  ]
+}

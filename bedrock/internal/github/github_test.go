@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -72,6 +73,64 @@ func TestClient(t *testing.T) {
 				return strings.Join(out, ","), nil
 			},
 			want: "acme-release=77,acme-deployer=78",
+		},
+		{
+			name: "the token's user",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				return c.User(ctx)
+			},
+			want: "octocat",
+		},
+		{
+			name: "a workflow is dispatched on a branch with its inputs",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				err := c.DispatchWorkflow(ctx, "acme", "quill", "operations.yml", "main", map[string]string{"environment": "tst", "release": "v0.1.1"})
+
+				return "dispatched", err
+			},
+			want: "dispatched",
+		},
+		{
+			name: "a workflow dispatched on a branch the repository lacks is refused",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				return "", c.DispatchWorkflow(ctx, "acme", "quill", "operations.yml", "nowhere", nil)
+			},
+			wantErr: "answered 422: No ref found for: nowhere",
+		},
+		{
+			name: "an absent environment is not found",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				_, err := c.Environment(ctx, "acme", "quill", "tst")
+
+				return "", err
+			},
+			wantErr: "answered 404: Not Found", notFound: true,
+		},
+		{
+			name: "an environment is put in place with its branch restriction and a policy",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				if err := c.PutEnvironment(ctx, "acme", "quill", &github.Environment{Name: "tst", DeploymentBranchPolicy: &github.BranchPolicySetting{CustomBranchPolicies: true}}); err != nil {
+					return "", err
+				}
+				if _, err := c.CreateDeploymentBranchPolicy(ctx, "acme", "quill", "tst", &github.BranchPolicy{Name: "main"}); err != nil {
+					return "", err
+				}
+				e, err := c.Environment(ctx, "acme", "quill", "tst")
+				if err != nil {
+					return "", err
+				}
+				policies, err := c.DeploymentBranchPolicies(ctx, "acme", "quill", "tst")
+				if err != nil {
+					return "", err
+				}
+				var names []string
+				for _, p := range policies {
+					names = append(names, p.Name)
+				}
+
+				return e.Name + " custom=" + strconv.FormatBool(e.DeploymentBranchPolicy.CustomBranchPolicies) + " " + strings.Join(names, ","), nil
+			},
+			want: "tst custom=true main",
 		},
 		{
 			name: "the tags list every tag with its commit",

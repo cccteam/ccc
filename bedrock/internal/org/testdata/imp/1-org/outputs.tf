@@ -82,6 +82,11 @@ output "secondary_region_code" {
   value       = local.secondary_region_code
 }
 
+output "cloud_build_trigger_runner_role" {
+  description = "Full name of the cloudBuildTriggerRunner custom organization role: runs Cloud Build triggers and reads the builds they start, nothing else. 2-env grants it on the environment project to each application's operations identity."
+  value       = google_organization_iam_custom_role.cloud_build_trigger_runner.id
+}
+
 output "secret_container_admin_role" {
   description = "Full name of the secretContainerAdmin custom organization role, for layers that grant it to further identities."
   value       = google_organization_iam_custom_role.secret_container_admin.id

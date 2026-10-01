@@ -57,7 +57,9 @@ func TestRepositoryProtectAndHotfixStart(t *testing.T) {
 		prepare func(server *githubtest.Server, repo *githubtest.Repo)
 		args    []string
 		wantOut []string
-		wantErr string
+		// wantDispatch is the workflow_dispatch event the run leaves: file, ref and inputs.
+		wantDispatch string
+		wantErr      string
 	}{
 		{
 			name:   "protect creates the three rulesets",
@@ -69,6 +71,48 @@ func TestRepositoryProtectAndHotfixStart(t *testing.T) {
 				"master branch    created (id 1001): changes to refs/heads/master arrive by pull request; no force push, no deletion",
 				"hotfix branches  created (id 1002): changes to refs/heads/hotfix/** arrive by pull request; no force push, no deletion",
 			},
+		},
+		{
+			name:   "protect puts the environments in place, deploying from the default branch alone",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"repository", "protect", "--placement", placement},
+			wantOut: []string{
+				"environment tst  created: deploys from master alone; a reviewer is the repository's setting to add",
+				"environment stg  created: deploys from master alone; a reviewer is the repository's setting to add",
+			},
+		},
+		{
+			name:   "restore dispatches the operations workflow for a wired environment",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"restore", "tst", "v0.1.4", "--placement", placement},
+			wantOut: []string{
+				"Asked, as octocat, for tst to be restored to v0.1.4: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). The run replaces tst's database (empty), deploys v0.1.4, and its record names you.",
+			},
+			wantDispatch: "operations.yml master environment=tst release=v0.1.4",
+		},
+		{
+			name:    "restore refuses production",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"restore", "prd", "v0.1.4", "--placement", placement},
+			wantErr: "prd is production, which is never restored by a run",
+		},
+		{
+			name:    "restore refuses a release that does not exist",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"restore", "tst", "v0.9.9", "--placement", placement},
+			wantErr: "no release v0.9.9 in impulseframework/harbor: an environment is restored to a release that exists",
+		},
+		{
+			name:    "restore refuses a tag of the wrong shape",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"restore", "tst", "0.1.4", "--placement", placement},
+			wantErr: `"0.1.4" is not a release tag`,
+		},
+		{
+			name:    "restore refuses an environment the placement does not list",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"restore", "qa", "v0.1.4", "--placement", placement},
+			wantErr: `"qa" is not one of the environments (tst, stg, prd)`,
 		},
 		{
 			name:   "protect refuses when the release app is not installed",
@@ -147,6 +191,15 @@ func TestRepositoryProtectAndHotfixStart(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			if tt.wantDispatch != "" {
+				if len(repo.Dispatches) != 1 {
+					t.Fatalf("dispatches = %+v, want one", repo.Dispatches)
+				}
+				d := repo.Dispatches[0]
+				if got := d.File + " " + d.Ref + " environment=" + d.Inputs["environment"] + " release=" + d.Inputs["release"]; got != tt.wantDispatch {
+					t.Errorf("dispatch = %q, want %q", got, tt.wantDispatch)
+				}
 			}
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {

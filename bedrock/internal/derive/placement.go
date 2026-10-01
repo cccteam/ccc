@@ -71,6 +71,13 @@ type Placement struct {
 	// approval in Cloud Build before a release runs there. Absent, every environment
 	// but the first.
 	Approvals []string `json:"approvals,omitempty"`
+	// Projects are the environment projects by environment, as the organization's
+	// apply chose them: the id and the number (bedrock org register prints the block
+	// once the organization's placement records both). The operations workflow, which
+	// starts a restore of an environment from GitHub, names the environment's workload
+	// identity provider and operations identity by them; an environment without an
+	// entry is not wired for it. Production needs none: it is never restored by a run.
+	Projects map[string]Project `json:"projects,omitempty"`
 }
 
 // Region is one Cloud Run region with the code that names its regional resources.
@@ -79,11 +86,26 @@ type Region struct {
 	Code string `json:"code"`
 }
 
+// Project is an environment project: its id and its number.
+type Project struct {
+	ID     string `json:"id"`
+	Number string `json:"number"`
+}
+
 var (
 	prefixRE = regexp.MustCompile(`^[a-z][a-z0-9]{0,7}$`)
 	envRE    = regexp.MustCompile(`^[a-z][a-z0-9]{1,7}$`)
 	codeRE   = regexp.MustCompile(`^[a-z][a-z0-9]{1,3}$`)
 	sha256RE = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	numberRE = regexp.MustCompile(`^\d+$`)
+)
+
+// The two restores a run makes: an empty database the migrations and the seed then
+// fill, and production's most recent backup, for the environment on production's
+// instance whose database is not seeded.
+const (
+	RestoreEmpty  = "empty"
+	RestoreBackup = "production-backup"
 )
 
 // ReadPlacement reads a placement from its JSON file.
@@ -144,6 +166,17 @@ func (p *Placement) Validate() error {
 		}
 		if env == p.Production() {
 			return errors.Newf("seed names %q, the production environment, which is never seeded", env)
+		}
+	}
+	for env, project := range p.Projects {
+		if !slices.Contains(p.Environments, env) {
+			return errors.Newf("projects names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
+		}
+		if strings.TrimSpace(project.ID) == "" {
+			return errors.Newf("projects.%s.id is empty: the environment project's id", env)
+		}
+		if !numberRE.MatchString(project.Number) {
+			return errors.Newf("projects.%s.number %q is not a project number (digits)", env, project.Number)
 		}
 	}
 	for name, value := range map[string]string{
@@ -210,6 +243,38 @@ func WritePlacement(file string, p *Placement) error {
 // the placement's seed list, none by default.
 func (p *Placement) SeedEnvironments() []string {
 	return p.Seed
+}
+
+// Restorable lists the environments a run may restore: every one but production.
+func (p *Placement) Restorable() []string {
+	var envs []string
+	for _, env := range p.Environments {
+		if env != p.Production() {
+			envs = append(envs, env)
+		}
+	}
+
+	return envs
+}
+
+// RestoreKind is what a restore run replaces env's database with: production's most
+// recent backup for an environment on production's instance (every one above the
+// first) whose database is not seeded, an empty database otherwise, which the
+// migrations and the seed then fill.
+func (p *Placement) RestoreKind(env string) string {
+	if env != p.Integration() && !slices.Contains(p.Seed, env) {
+		return RestoreBackup
+	}
+
+	return RestoreEmpty
+}
+
+// Project is the environment's project as the placement records it, and whether it
+// records one.
+func (p *Placement) Project(env string) (Project, bool) {
+	project, ok := p.Projects[env]
+
+	return project, ok
 }
 
 // ApprovalEnvironments are the environments a release waits for approval in: Approvals

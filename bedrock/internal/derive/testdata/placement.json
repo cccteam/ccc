@@ -26,5 +26,15 @@
   "bedrockSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "labels": {
     "bedrock-lab": "true"
+  },
+  "projects": {
+    "tst": {
+      "id": "imp-tst-gbl-core-b241",
+      "number": "123456789012"
+    },
+    "stg": {
+      "id": "imp-stg-gbl-core-0fa7",
+      "number": "234567890123"
+    }
   }
 }

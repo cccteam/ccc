@@ -54,6 +54,23 @@ type Repo struct {
 	PullStates map[int]string
 	// Deployments made through the API, oldest first, with their statuses.
 	Deployments []*Deployment
+	// Environments by name, as put in place through the API, with their custom branch
+	// policies; Dispatches the workflow_dispatch events started, oldest first.
+	Environments map[string]*Environment
+	Dispatches   []Dispatch
+}
+
+// Environment is one deployment environment and its custom branch policies.
+type Environment struct {
+	Setting  *github.BranchPolicySetting
+	Policies []github.BranchPolicy
+}
+
+// Dispatch is one workflow_dispatch event: the workflow file, the ref and the inputs.
+type Dispatch struct {
+	File   string
+	Ref    string
+	Inputs map[string]string
 }
 
 // Deployment is one deployment made through the API and the statuses added to it.
@@ -80,6 +97,8 @@ type Server struct {
 	// messages of commits made through the API.
 	Calls    []string
 	Messages []string
+	// Login is who the token belongs to, as /user answers; octocat by default.
+	Login string
 }
 
 var (
@@ -104,6 +123,10 @@ var (
 	statusesRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments/(\d+)/statuses$`)
 	repoInstRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/installation$`)
 	tokensRE     = regexp.MustCompile(`^/app/installations/(\d+)/access_tokens$`)
+	userRE       = regexp.MustCompile(`^/user$`)
+	dispatchRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/workflows/([^/]+)/dispatches$`)
+	envRE        = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/environments/([^/]+)$`)
+	policiesRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/environments/([^/]+)/deployment-branch-policies$`)
 	rulesetIDMin = int64(1000)
 )
 
@@ -245,6 +268,121 @@ var routes = []route{
 		id, _ := strconv.ParseInt(m[3], 10, 64)
 		s.deploymentStatus(w, r, m[1]+"/"+m[2], id)
 	}},
+	{userRE, func(s *Server, w http.ResponseWriter, _ *http.Request, _ []string) {
+		login := s.Login
+		if login == "" {
+			login = "octocat"
+		}
+		reply(w, http.StatusOK, map[string]string{"login": login})
+	}},
+	{dispatchRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.dispatch(w, r, m[1]+"/"+m[2], m[3])
+	}},
+	{policiesRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.branchPolicies(w, r, m[1]+"/"+m[2], m[3])
+	}},
+	{envRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.environment(w, r, m[1]+"/"+m[2], m[3])
+	}},
+}
+
+// dispatch records a workflow_dispatch event; the workflow file must be one the
+// repository could carry (a name), and the ref a branch the repository has.
+func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, key, file string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
+
+		return
+	}
+	var body struct {
+		Ref    string            `json:"ref"`
+		Inputs map[string]string `json:"inputs"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
+
+		return
+	}
+	if _, ok := repo.Refs["refs/heads/"+body.Ref]; !ok {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "No ref found for: " + body.Ref})
+
+		return
+	}
+	repo.Dispatches = append(repo.Dispatches, Dispatch{File: file, Ref: body.Ref, Inputs: body.Inputs})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// environment reads or puts a deployment environment.
+func (s *Server) environment(w http.ResponseWriter, r *http.Request, key, name string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		if _, ok := repo.Environments[name]; !ok {
+			reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+
+			return
+		}
+		reply(w, http.StatusOK, map[string]any{"name": name, "deployment_branch_policy": repo.Environments[name].Setting})
+	case http.MethodPut:
+		var body struct {
+			Setting *github.BranchPolicySetting `json:"deployment_branch_policy"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
+
+			return
+		}
+		if repo.Environments == nil {
+			repo.Environments = map[string]*Environment{}
+		}
+		e, ok := repo.Environments[name]
+		if !ok {
+			e = &Environment{}
+			repo.Environments[name] = e
+		}
+		e.Setting = body.Setting
+		reply(w, http.StatusOK, map[string]any{"name": name, "deployment_branch_policy": e.Setting})
+	default:
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
+	}
+}
+
+// branchPolicies lists or adds an environment's custom branch policies.
+func (s *Server) branchPolicies(w http.ResponseWriter, r *http.Request, key, name string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	e, ok := repo.Environments[name]
+	if !ok {
+		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		reply(w, http.StatusOK, map[string]any{"total_count": len(e.Policies), "branch_policies": e.Policies})
+	case http.MethodPost:
+		p := github.BranchPolicy{}
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
+
+			return
+		}
+		p.ID = s.nextID
+		s.nextID++
+		e.Policies = append(e.Policies, p)
+		reply(w, http.StatusOK, p)
+	default:
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
+	}
 }
 
 // appRoutes are served to the app's JWT, before the token check the others take.

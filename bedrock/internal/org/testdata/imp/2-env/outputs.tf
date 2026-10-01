@@ -3,20 +3,27 @@
 # Anything that can read the bucket can read these, so keep secrets out.
 
 output "applications" {
-  description = "Per application: the apply, deploy and plan identities (email, member, and the deploy identity's full resource name for Cloud Build triggers) and the Cloud Build repository link (ID and name)."
+  description = "Per application: the apply, deploy, plan and operations identities (email, member, and the deploy identity's full resource name for Cloud Build triggers; the operations identity null in production) and the Cloud Build repository link (ID and name)."
   value = {
     for app in var.applications : app => {
-      apply_identity_email   = google_service_account.apply[app].email
-      apply_identity_member  = google_service_account.apply[app].member
-      deploy_identity_email  = google_service_account.deploy[app].email
-      deploy_identity_member = google_service_account.deploy[app].member
-      deploy_identity_id     = google_service_account.deploy[app].name
-      plan_identity_email    = google_service_account.plan[app].email
-      plan_identity_member   = google_service_account.plan[app].member
-      repository_id          = try(google_cloudbuildv2_repository.app[app].id, null)
-      repository_name        = try(google_cloudbuildv2_repository.app[app].name, null)
+      apply_identity_email       = google_service_account.apply[app].email
+      apply_identity_member      = google_service_account.apply[app].member
+      deploy_identity_email      = google_service_account.deploy[app].email
+      deploy_identity_member     = google_service_account.deploy[app].member
+      deploy_identity_id         = google_service_account.deploy[app].name
+      plan_identity_email        = google_service_account.plan[app].email
+      plan_identity_member       = google_service_account.plan[app].member
+      operations_identity_email  = try(google_service_account.operations[app].email, null)
+      operations_identity_member = try(google_service_account.operations[app].member, null)
+      repository_id              = try(google_cloudbuildv2_repository.app[app].id, null)
+      repository_name            = try(google_cloudbuildv2_repository.app[app].name, null)
     }
   }
+}
+
+output "github_identity_provider" {
+  description = "Full resource name of the workload identity pool provider GitHub's operations workflow exchanges its token through (projects/<number>/locations/global/workloadIdentityPools/<prefix>-<env>-github/providers/github); null in production, which is never restored by a run."
+  value       = try(google_iam_workload_identity_pool_provider.github[0].name, null)
 }
 
 output "connection_id" {

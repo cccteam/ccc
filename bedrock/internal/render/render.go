@@ -113,13 +113,19 @@ var placed = map[string]func(v *view) string{
 	releaseWorkflow: func(*view) string {
 		return path.Join(workflowsDir, releaseWorkflow)
 	},
+	OperationsWorkflow: func(*view) string {
+		return path.Join(workflowsDir, OperationsWorkflow)
+	},
 }
 
-// The GitHub workflows bedrock renders at the application root.
+// The GitHub workflows bedrock renders at the application root: the infrastructure
+// check, the release workflow, and the operations workflow, which starts a restore of an
+// environment (bedrock restore dispatches it by this name).
 const (
 	workflowsDir           = ".github/workflows"
 	infrastructureWorkflow = "infrastructure.yml"
 	releaseWorkflow        = "release-please.yml"
+	OperationsWorkflow     = "operations.yml"
 )
 
 // Render renders every file of the application's stack.

@@ -1,0 +1,90 @@
+# beacon's operations: a restore of an environment to a release, started from GitHub and run by
+# the environment's pipeline. Rendered by bedrock and owned by it (bedrock render rewrites this
+# file, bedrock check compares it). The job runs in the GitHub Environment named after the target
+# environment, which deploys from master alone (bedrock repository protect), exchanges
+# its GitHub token for the environment's operations identity through Workload Identity Federation
+# (no key exists anywhere; the environment's provider trusts tokens of this repository, this
+# workflow file and that Environment alone), and runs the environment's version trigger for the
+# release with the restore instruction. Everything that changes the environment happens inside
+# that run, as the deploy identity, as for any release: the database is replaced (an empty one,
+# which the migrations and the seed then fill, or production's most recent backup), the release's
+# jobs are created, the migrations run, the revision deploys, traffic moves, and the record names
+# the requester. The identity here starts the trigger and reads how the build went, and nothing
+# else. Production is never restored by a run. Started by bedrock restore <env> <release>, or by
+# the Run workflow button; a release waits for its approval in Cloud Build as any release does.
+name: operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment to restore (tst or stg)
+        type: choice
+        required: true
+        options:
+          - tst
+          - stg
+      release:
+        description: The release to restore the environment to (v<major>.<minor>.<patch>, one that exists)
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  restore:
+    name: restore ${{ inputs.environment }} to ${{ inputs.release }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+    steps:
+      # The environment's values, from the placement's projects: an environment the placement
+      # records no project for is not wired, and the run stops before touching anything.
+      - name: The environment's project, identity, trigger and restore
+        id: target
+        run: |
+          case "$RELEASE" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger restore; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The version trigger's build with the restore instruction, waited for to its end: a
+      # release in an environment that waits for an approval in Cloud Build waits here too.
+      - name: Run the version trigger with the restore instruction
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          RESTORE: ${{ steps.target.outputs.restore }}
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "_RESTORE=$RESTORE,_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT restores it to $RELEASE ($RESTORE), asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $RELEASE on its restored database."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
