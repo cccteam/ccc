@@ -130,10 +130,6 @@ func firstDiff(want, got []byte) string {
 	return "(same lines, different bytes)"
 }
 
-// TestGoImage holds the Go image a commit pin is built in to bedrock: its Go is at least
-// the go line of bedrock's go.mod, since the builds run with GOTOOLCHAIN=local and a newer
-// go line would fail every pipeline pinned to that commit, and it is the image the seeded
-// Dockerfile builds the application in, so bedrock names one Go digest.
 func TestFormatted(t *testing.T) {
 	t.Parallel()
 
@@ -173,6 +169,10 @@ func TestFormatted(t *testing.T) {
 	}
 }
 
+// TestGoImage holds the Go image a commit pin is built in to bedrock: its Go is at least
+// the go line of bedrock's go.mod, since the builds run with GOTOOLCHAIN=local and a newer
+// go line would fail every pipeline pinned to that commit, and it is the image the seeded
+// Dockerfile builds the application in, so bedrock names one Go digest.
 func TestGoImage(t *testing.T) {
 	t.Parallel()
 
