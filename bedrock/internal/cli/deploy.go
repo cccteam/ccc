@@ -650,7 +650,8 @@ MAINTENANCE_WAITED) reach the record. A pull-request build never goes into maint
 		Long: `off takes the application out of maintenance after traffic moved to the release's revision: the
 task queue paused by maintenance on is resumed, against the new release. The maintenance revisions
 stay, with no traffic, as any old revision does. A run that was not in maintenance has nothing to
-end.`,
+end, except a queue an earlier run's maintenance left paused (a restore run that failed after
+maintenance on), which it resumes: the release this run deployed serves now.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.MaintenanceOff(cmd.Context(), d.deploy, deploy.Workspace(offWorkspace), cmd.OutOrStdout())

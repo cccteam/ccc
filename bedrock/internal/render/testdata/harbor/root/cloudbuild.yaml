@@ -211,7 +211,9 @@ steps:
     timeout: 600s
 
   # Maintenance over, when the run was in it: the task queue is resumed against the new
-  # release. The maintenance revisions stay, with no traffic, as any old revision does.
+  # release. The maintenance revisions stay, with no traffic, as any old revision does. A
+  # run that was not in maintenance still resumes a queue an earlier run's maintenance
+  # left paused (a restore run that failed after maintenance on): the release serves now.
   - id: MaintenanceOff
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock

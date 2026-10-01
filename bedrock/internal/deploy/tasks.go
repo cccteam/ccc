@@ -26,6 +26,8 @@ type Tasks interface {
 	Purge(ctx context.Context, queue string) (string, error)
 	// Resume lets the queue dispatch again.
 	Resume(ctx context.Context, queue string) (string, error)
+	// State is the queue's state (RUNNING, PAUSED, DISABLED).
+	State(ctx context.Context, queue string) (string, error)
 }
 
 // TasksFunc opens Tasks.
@@ -57,6 +59,16 @@ func (c *cloudTasks) Purge(ctx context.Context, queue string) (string, error) {
 
 func (c *cloudTasks) Resume(ctx context.Context, queue string) (string, error) {
 	return c.verb(ctx, queue, "resume")
+}
+
+// State reads the queue and answers its state.
+func (c *cloudTasks) State(ctx context.Context, queue string) (string, error) {
+	doc, err := c.call(ctx, http.MethodGet, "/v2/"+queue, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return text(doc, "state"), nil
 }
 
 // verb posts one of the queue's verbs and answers the queue's state.

@@ -511,7 +511,9 @@ deploys, traffic moves, and the record carries the reason and the requester. Bef
 database goes, the application is put into maintenance (`deploy maintenance on`): the
 release's own image serves the maintenance page with all traffic while the database is
 away, the task queue is paused and purged, and the serving build's job executions are
-canceled; the queue resumes once the release serves (`deploy maintenance off`). The run
+canceled; the queue resumes once the release serves (`deploy maintenance off`, which also
+resumes a queue an earlier run's maintenance left paused, so a restore run that failed
+after maintenance on is healed by the next release that deploys). The run
 refuses the instruction in production. `bedrock restore` starts it from GitHub (below).
 For the environment on production's instance the database is not emptied but restored
 from production's most recent backup, at production's schema: the plan step drops it

@@ -47,8 +47,13 @@ type firestore struct {
 	*cloudRun
 }
 
+// DeleteAllDocuments deletes every document of the database: the bulk delete is asked for
+// the default namespace, the only one a Firestore database has, since it refuses an empty
+// filter ("Empty entity filter. To delete all entities, Use database deletion instead."),
+// and deleting the database is what a restore cannot do (its id stays unavailable for
+// minutes).
 func (f *firestore) DeleteAllDocuments(ctx context.Context, database string) error {
-	op, err := f.call(ctx, http.MethodPost, "/v1/"+database+":bulkDeleteDocuments", map[string]any{})
+	op, err := f.call(ctx, http.MethodPost, "/v1/"+database+":bulkDeleteDocuments", map[string]any{"namespaceIds": []string{""}})
 	if err != nil {
 		return err
 	}

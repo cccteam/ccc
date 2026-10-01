@@ -16,6 +16,17 @@ import (
 type fakeTasks struct {
 	verbs []string
 	fail  error
+	// state is what State answers; RUNNING when unset.
+	state string
+}
+
+func (f *fakeTasks) State(_ context.Context, queue string) (string, error) {
+	f.verbs = append(f.verbs, "state "+shortName(queue))
+	if f.state == "" {
+		return "RUNNING", nil
+	}
+
+	return f.state, nil
 }
 
 func (f *fakeTasks) open(context.Context) (Tasks, error) {
@@ -271,8 +282,11 @@ func TestMaintenanceOff(t *testing.T) {
 
 	const queue = "projects/tst-project/locations/us-central1/queues/harbor-tasks"
 	tests := []struct {
-		name      string
-		env       string
+		name string
+		env  string
+		// queue is the queue the build's stack names (_TASKS_QUEUE); state what it is in.
+		queue     string
+		state     string
 		wantOut   []string
 		wantVerbs []string
 	}{
@@ -280,6 +294,21 @@ func TestMaintenanceOff(t *testing.T) {
 			name:    "a run that was not in maintenance has nothing to end",
 			env:     "export MAINTENANCE=\"\"\nexport VERSION=\"v0.2.2\"\n",
 			wantOut: []string{"No maintenance to end: the application served throughout."},
+		},
+		{
+			name:      "a run that was not in maintenance leaves a delivering queue alone",
+			env:       "export MAINTENANCE=\"\"\nexport VERSION=\"v0.2.2\"\n",
+			queue:     queue,
+			wantOut:   []string{"No maintenance to end: the application served throughout."},
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name:      "a run that was not in maintenance resumes a queue an earlier run's maintenance left paused",
+			env:       "export MAINTENANCE=\"\"\nexport VERSION=\"v0.2.4\"\n",
+			queue:     queue,
+			state:     "PAUSED",
+			wantOut:   []string{"Queue harbor-tasks was left paused by an earlier run's maintenance; resumed (RUNNING): tasks are delivered again, to v0.2.4.", "No maintenance to end: the application served throughout."},
+			wantVerbs: []string{"state harbor-tasks", "resume harbor-tasks"},
 		},
 		{
 			name:      "the queue is resumed and maintenance is over",
@@ -296,8 +325,12 @@ func TestMaintenanceOff(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, map[string]string{"_PROJECT": "tst-project", "_ENV": "tst"})})
-			tasks := &fakeTasks{}
+			subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst"}
+			if tt.queue != "" {
+				subs["_TASKS_QUEUE"] = tt.queue
+			}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, subs)})
+			tasks := &fakeTasks{state: tt.state}
 			var out strings.Builder
 			if err := MaintenanceOff(t.Context(), &Clients{Tasks: tasks.open}, w, &out); err != nil {
 				t.Fatalf("MaintenanceOff() error = %v", err)

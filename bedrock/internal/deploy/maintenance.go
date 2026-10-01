@@ -33,6 +33,8 @@ const (
 	tasksQueueSub = "_TASKS_QUEUE"
 	// maintenanceOn is the value the maintenance variable takes on a maintenance revision.
 	maintenanceOn = "1"
+	// queuePaused is the state of a Cloud Tasks queue that holds its tasks.
+	queuePaused = "PAUSED"
 	// maintenanceHeader is the marker a maintenance answer carries, as the framework's
 	// maintenance package sets it; the probe requires it.
 	maintenanceHeader      = "X-Maintenance"
@@ -183,14 +185,20 @@ func MaintenanceOff(ctx context.Context, clients *Clients, w Workspace, out io.W
 	if err != nil {
 		return err
 	}
-	if env[maintenanceFact] != trueValue {
-		fmt.Fprintln(out, "No maintenance to end: the application served throughout.")
-
-		return nil
-	}
 	build, err := w.Build()
 	if err != nil {
 		return err
+	}
+	if env[maintenanceFact] != trueValue {
+		// A run that was not in maintenance still ends one an earlier run began and did
+		// not end (a restore run that failed after maintenance on): the release this run
+		// deployed serves now, and the queue must deliver again.
+		if err := resumeLeftPaused(ctx, clients, build.Substitutions[tasksQueueSub], env[versionFact], out); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "No maintenance to end: the application served throughout.")
+
+		return nil
 	}
 	if queue := env[maintenanceQueueFact]; queue != "" {
 		tasks, err := clients.Tasks(ctx)
@@ -204,6 +212,32 @@ func MaintenanceOff(ctx context.Context, clients *Clients, w Workspace, out io.W
 		fmt.Fprintf(out, "Queue %s resumed (%s): tasks are delivered again, to %s.\n", shortName(queue), state, env[versionFact])
 	}
 	fmt.Fprintf(out, "=== Maintenance off: %s serves %s; the maintenance revision(s) %s take no traffic ===\n", build.Substitutions[envSub], env[versionFact], env[maintenanceRevisionsFact])
+
+	return nil
+}
+
+// resumeLeftPaused resumes the application's queue when an earlier run's maintenance
+// left it paused; a queue the stack does not name, or one that delivers, is left alone.
+func resumeLeftPaused(ctx context.Context, clients *Clients, queue, version string, out io.Writer) error {
+	if queue == "" {
+		return nil
+	}
+	tasks, err := clients.Tasks(ctx)
+	if err != nil {
+		return err
+	}
+	state, err := tasks.State(ctx, queue)
+	if err != nil {
+		return errors.Wrapf(err, "reading the queue %s", queue)
+	}
+	if state != queuePaused {
+		return nil
+	}
+	state, err = tasks.Resume(ctx, queue)
+	if err != nil {
+		return errors.Wrapf(err, "resuming the queue %s", queue)
+	}
+	fmt.Fprintf(out, "Queue %s was left paused by an earlier run's maintenance; resumed (%s): tasks are delivered again, to %s.\n", shortName(queue), state, version)
 
 	return nil
 }
