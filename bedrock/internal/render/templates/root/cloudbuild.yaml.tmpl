@@ -243,6 +243,8 @@ steps:
   # release. The maintenance revisions stay, with no traffic, as any old revision does. A
   # run that was not in maintenance still resumes a queue an earlier run's maintenance
   # left paused (a restore run that failed after maintenance on): the release serves now.
+  # A pull-request build leaves the queue as it is: it is the environment's, not the pull
+  # request's, and a restore of the environment may be in maintenance meanwhile.
   - id: MaintenanceOff
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock

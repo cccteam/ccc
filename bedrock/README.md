@@ -513,8 +513,9 @@ release's own image serves the maintenance page with all traffic while the datab
 away, the task queue is paused and purged, and the serving build's job executions are
 canceled; the queue resumes once the release serves (`deploy maintenance off`, which also
 resumes a queue an earlier run's maintenance left paused, so a restore run that failed
-after maintenance on is healed by the next release that deploys). The run
-refuses the instruction in production. `bedrock restore` starts it from GitHub (below).
+after maintenance on is healed by the next release that deploys; a pull-request build
+leaves the environment's queue as it is, since a restore may be in maintenance while
+the pull request builds). The run refuses the instruction in production. `bedrock restore` starts it from GitHub (below).
 For the environment on production's instance the database is not emptied but restored
 from production's most recent backup, at production's schema: the plan step drops it
 and restores it under its own name as the apply identity, and the migrations production's

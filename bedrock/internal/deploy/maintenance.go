@@ -192,6 +192,15 @@ func MaintenanceOff(ctx context.Context, clients *Clients, w Workspace, out io.W
 		return err
 	}
 	if env[maintenanceFact] != trueValue {
+		// The queue the trigger names is the environment's, which a pull-request build
+		// shares with the release the environment serves. A pull-request build has its own
+		// stack and never goes into maintenance, so the queue is not its to resume: a
+		// restore of the environment may be in maintenance while the pull request builds.
+		if build.Substitutions[prNumberSub] != "" {
+			fmt.Fprintln(out, "No maintenance to end: a pull-request build never goes into maintenance, and the environment's queue is left as it is.")
+
+			return nil
+		}
 		// A run that was not in maintenance still ends one an earlier run began and did
 		// not end (a restore run that failed after maintenance on): the release this run
 		// deployed serves now, and the queue must deliver again.

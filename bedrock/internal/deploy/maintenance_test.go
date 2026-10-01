@@ -285,15 +285,25 @@ func TestMaintenanceOff(t *testing.T) {
 		name string
 		env  string
 		// queue is the queue the build's stack names (_TASKS_QUEUE); state what it is in.
-		queue     string
-		state     string
-		wantOut   []string
-		wantVerbs []string
+		queue string
+		state string
+		// pullRequest is the build's _PR_NUMBER: set, the build is a pull request's.
+		pullRequest string
+		wantOut     []string
+		wantVerbs   []string
 	}{
 		{
 			name:    "a run that was not in maintenance has nothing to end",
 			env:     "export MAINTENANCE=\"\"\nexport VERSION=\"v0.2.2\"\n",
 			wantOut: []string{"No maintenance to end: the application served throughout."},
+		},
+		{
+			name:        "a pull-request build leaves the environment's paused queue alone",
+			env:         "export MAINTENANCE=\"\"\nexport VERSION=\"pr70@a6c3d70\"\n",
+			queue:       queue,
+			state:       "PAUSED",
+			pullRequest: "70",
+			wantOut:     []string{"No maintenance to end: a pull-request build never goes into maintenance, and the environment's queue is left as it is."},
 		},
 		{
 			name:      "a run that was not in maintenance leaves a delivering queue alone",
@@ -328,6 +338,9 @@ func TestMaintenanceOff(t *testing.T) {
 			subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst"}
 			if tt.queue != "" {
 				subs["_TASKS_QUEUE"] = tt.queue
+			}
+			if tt.pullRequest != "" {
+				subs["_PR_NUMBER"] = tt.pullRequest
 			}
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, subs)})
 			tasks := &fakeTasks{state: tt.state}
