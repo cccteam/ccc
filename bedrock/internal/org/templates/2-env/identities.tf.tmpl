@@ -68,6 +68,18 @@ resource "google_spanner_instance_iam_member" "apply_database_admin" {
   member   = google_service_account.apply[each.key].member
 }
 
+# The backup schedules a production stack makes on its database are read and
+# changed with spanner.backupSchedules.*, which databaseAdmin does not carry
+# (2-spn grants the same on the shared instance).
+resource "google_spanner_instance_iam_member" "apply_backup_admin" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = "roles/spanner.backupAdmin"
+  member   = google_service_account.apply[each.key].member
+}
+
 # Only when 2-net publishes a shared VPC: a stack that attaches a Cloud Run
 # service to it needs the apply identity to use the network. This organization runs
 # without one (no connector, no NAT), so this is normally empty.

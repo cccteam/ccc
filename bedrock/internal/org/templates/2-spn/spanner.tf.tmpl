@@ -67,3 +67,16 @@ resource "google_spanner_instance_iam_member" "database_admin" {
   role     = "roles/spanner.databaseAdmin"
   member   = each.value
 }
+
+# The backup schedules a production stack makes on its database are read and
+# changed with spanner.backupSchedules.*, which databaseAdmin does not carry:
+# the first tag build that planned a production stack as its apply identity
+# was refused the schedule's read. backupAdmin carries them, and the backups.
+resource "google_spanner_instance_iam_member" "backup_admin" {
+  for_each = toset(var.database_admins)
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = "roles/spanner.backupAdmin"
+  member   = each.value
+}

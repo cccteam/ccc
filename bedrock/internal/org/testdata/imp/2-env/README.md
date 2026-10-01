@@ -92,8 +92,10 @@ which the stack makes in this project and a tag build's plan reads),
 `secretContainerAdmin` from `1-org` (secrets as containers, never payloads). `roles/compute.networkUser` on the environment
 project only when `2-net` publishes a shared VPC (it publishes null). In tst,
 `roles/spanner.databaseAdmin` on the tst instance, enough to create the
-application's database and set its policy; in stg and prd the same grant on
-the shared instance is `2-spn`'s, from its `database_admins`. On the state
+application's database and set its policy, and `roles/spanner.backupAdmin`
+there, for the backup schedules a production stack makes on its database,
+which `databaseAdmin` does not read; in stg and prd the same grants on the
+shared instance are `2-spn`'s, from its `database_admins`. On the state
 bucket (the boot project's): `roles/storage.legacyBucketReader` unconditionally
 (a list is a request on the bucket and cannot be conditioned by object name),
 `roles/storage.objectUser` on `3-app/<app>/<env>/` (the pull-request stacks
