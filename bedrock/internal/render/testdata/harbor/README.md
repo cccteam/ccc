@@ -527,8 +527,11 @@ revision here can pull its image with nothing further.
 - Outlier detection with serverless NEGs on an external managed backend
   service validates against the provider schema; whether the API accepts this
   exact parameter set is confirmed at the first apply.
-- The application apply identity's role set is a hypothesis (design brief):
-  creating a second-generation trigger, and building as a user-specified
-  service account from a second-generation repository, may want
-  `cloudbuild.repositories.get` or similar. The first apply and first build
-  read the denials.
+- The application apply identity's role set is read from the denials of the
+  first apply and the first builds. The first tag build's plan of an
+  environment's stack was refused the serverless network endpoint groups
+  (`compute.regionNetworkEndpointGroups.get`), which a pull request's stack
+  never makes; `roles/compute.loadBalancerAdmin` on the environment project
+  covers them and the backend services. Creating a second-generation trigger,
+  and building as a user-specified service account from a second-generation
+  repository, may still want `cloudbuild.repositories.get` or similar.

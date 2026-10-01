@@ -81,13 +81,15 @@ and a `shared_vpc_id` that is null.
 
 Applies the application's stack (its repository's `infrastructure/`, state slot `3-app/<app>`) for this environment. On the environment project:
 `roles/serviceusage.serviceUsageConsumer` (it uses the environment project
-as its quota project), `roles/run.admin`, `roles/iam.serviceAccountAdmin`,
-`roles/iam.serviceAccountUser`, `roles/storage.admin`,
-`roles/cloudscheduler.admin`, `roles/cloudtasks.queueAdmin`,
-`roles/cloudbuild.builds.editor`, `roles/logging.admin`,
-`roles/monitoring.admin`, `roles/resourcemanager.projectIamAdmin`, and the
-custom organization role `secretContainerAdmin` from `1-org` (secrets as
-containers, never payloads). `roles/compute.networkUser` on the environment
+as its quota project), `roles/run.admin`, `roles/compute.loadBalancerAdmin`
+(the application's serverless network endpoint groups and backend services,
+which the stack makes in this project and a tag build's plan reads),
+`roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`,
+`roles/storage.admin`, `roles/cloudscheduler.admin`,
+`roles/cloudtasks.queueAdmin`, `roles/cloudbuild.builds.editor`,
+`roles/logging.admin`, `roles/monitoring.admin`,
+`roles/resourcemanager.projectIamAdmin`, and the custom organization role
+`secretContainerAdmin` from `1-org` (secrets as containers, never payloads). `roles/compute.networkUser` on the environment
 project only when `2-net` publishes a shared VPC (it publishes null). In tst,
 `roles/spanner.databaseAdmin` on the tst instance, enough to create the
 application's database and set its policy; in stg and prd the same grant on

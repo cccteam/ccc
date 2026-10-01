@@ -96,14 +96,19 @@ locals {
 
   # The application apply identity applies the application's stack as itself: it shapes
   # Cloud Run, identities, buckets, schedules, queues, secrets (as containers,
-  # never payloads), triggers, and monitoring for its own application. Its
-  # database admin grant is on the Spanner instance (identities.tf), not here.
-  # serviceUsageConsumer is what lets it use the environment project as its
-  # quota project (user_project_override in the stack), since nothing in this
-  # layer can grant it that on the boot project.
+  # never payloads), triggers, monitoring, and the load balancer's application
+  # side (the serverless network endpoint groups and backend services the
+  # stack makes in this project for its own application: loadBalancerAdmin,
+  # which a tag build's plan of the environment's stack needs to read them)
+  # for its own application. Its database admin grant is on the Spanner
+  # instance (identities.tf), not here. serviceUsageConsumer is what lets it
+  # use the environment project as its quota project (user_project_override
+  # in the stack), since nothing in this layer can grant it that on the boot
+  # project.
   apply_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
     "roles/run.admin",
+    "roles/compute.loadBalancerAdmin",
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountUser",
     "roles/storage.admin",
