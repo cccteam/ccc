@@ -310,7 +310,11 @@ thing one step hands the next. In order:
   made in the last three hours (its build may still be running), stays; the templates
   always stay. Nothing retires a revision: that is Cloud Run's own ceiling. Jobs are
   deleted because Cloud Run allows 1,000 per project and region, shared by every
-  application and pull-request environment.
+  application and pull-request environment. How far back a rollback reaches is the shared
+  registry's keep count: Cloud Run keeps an image only while a serving revision uses it,
+  so an older revision needs the registry's copy to start again. The job process's part
+  of the contract: end what it is doing on SIGTERM, the signal Cloud Run sends a job's
+  container when its execution is cancelled, within Cloud Run's grace.
 - `deploy service`: puts a new revision of the service in every region, receiving no
   traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
   new revision carries the tag `next` (or the pull request's tag), under which the
