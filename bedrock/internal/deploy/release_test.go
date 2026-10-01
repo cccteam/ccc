@@ -219,7 +219,7 @@ func TestValidateRelease(t *testing.T) {
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.3 first.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name:    "a hotfix is refused where a migration's content differs from what the database applied",
@@ -227,7 +227,7 @@ func TestValidateRelease(t *testing.T) {
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
 			files:   map[string]string{first.path(): "create table other"},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000001_Init.up.sql as v1.3.0 applied it, with other content than hotfix v1.2.4 carries; restore stg to v1.2.3 first.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000001_Init.up.sql as v1.3.0 applied it, with other content than hotfix v1.2.4 carries; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name: "a pull request's live record under the environment is its own environment's, not the release stg runs",
@@ -239,7 +239,7 @@ func TestValidateRelease(t *testing.T) {
 				"gs://stg-records/quill/stg/pr9-abc0123/b-8.json": strings.NewReplacer("v1.3.0", "pr9@abc0123", "2026-09-28", "2026-09-29", "b-5", "b-8").Replace(stgLive("v1.3.0", first)),
 			},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.3 first.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name:    "the refusal names the up file, whatever order the record lists the files in",
@@ -247,7 +247,7 @@ func TestValidateRelease(t *testing.T) {
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refitsDown, refits)},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.3 first.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name:    "a hotfix deploys where every applied file is in it, whatever release the environment runs",
@@ -280,7 +280,7 @@ func TestValidateRelease(t *testing.T) {
 			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
 		},
 		{
-			name: "the restore named is the line's latest release before the hotfix",
+			name: "the restore named is the hotfix itself",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.5", commitSub: "h2"},
 			repo: func(r *githubtest.Repo) {
@@ -290,7 +290,7 @@ func TestValidateRelease(t *testing.T) {
 			},
 			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.5/b-1.json": strings.Replace(hotfixLive, "v1.2.4", "v1.2.5", 1), "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.5 does not carry; restore stg to v1.2.4 first.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which hotfix v1.2.5 does not carry; restore stg to v1.2.5 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name:       "a release on the default branch is not checked against the environment's database",

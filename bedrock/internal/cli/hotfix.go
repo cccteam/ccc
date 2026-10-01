@@ -13,7 +13,7 @@ const hotfixUse = "hotfix"
 
 // hotfixRule is what every hotfix is told at its start: how it deploys, and what an
 // environment ahead of it costs.
-const hotfixRule = `A hotfix deploys through the environments like any release: tst, then stg, then prd, each after the one before holds it live. An environment that ran a later release may hold a migration or seed file the hotfix does not carry: the pipeline's release check refuses the hotfix there, names the file, and names the release the environment is restored to first, the line's latest release before the hotfix. At production's door the hotfix must be on the line production runs. The restore is bedrock restore <env> <release>, run from GitHub.`
+const hotfixRule = `A hotfix deploys through the environments like any release: tst, then stg, then prd, each after the one before holds it live. An environment that ran a later release may hold a migration or seed file the hotfix does not carry: the pipeline's release check refuses the hotfix there and names the file; the environment is restored to the hotfix first, from an empty database or from production's backup, since a restore run replaces the database and skips the check. At production's door the hotfix must be on the line production runs. The restore is bedrock restore <env> <release>, run from GitHub.`
 
 // newHotfix is the command group over hotfix lines.
 func newHotfix(d deps) *cobra.Command {

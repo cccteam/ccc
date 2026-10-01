@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -127,11 +126,9 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	return hotfixGate(ctx, clients.Storage, subs, w, hotfix, out)
 }
 
-// hotfixLine is what the tag check learned of a hotfix: its release line and the
-// release an environment ahead of the line is restored to, the line's latest release
-// before the hotfix.
+// hotfixLine is what the tag check learned of a hotfix: its tag and its release line.
 type hotfixLine struct {
-	tag, line, restoreTo string
+	tag, line string
 }
 
 // hotfixGate is the database check a hotfix passes in every environment, and at
@@ -168,9 +165,9 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 		file := path.Join(m.Dir, m.Name)
 		switch {
 		case hash == "":
-			return errors.Newf("%s%s's database holds %s (applied by %s), which hotfix %s does not carry; restore %s to %s first.", rejected, env, file, live.Version, h.tag, env, h.restoreTo)
+			return errors.Newf("%s%s's database holds %s (applied by %s), which hotfix %s does not carry; restore %s to %s first: a restore run replaces the database and skips this check.", rejected, env, file, live.Version, h.tag, env, h.tag)
 		case hash != m.Hash:
-			return errors.Newf("%s%s's database holds %s as %s applied it, with other content than hotfix %s carries; restore %s to %s first.", rejected, env, file, live.Version, h.tag, env, h.restoreTo)
+			return errors.Newf("%s%s's database holds %s as %s applied it, with other content than hotfix %s carries; restore %s to %s first: a restore run replaces the database and skips this check.", rejected, env, file, live.Version, h.tag, env, h.tag)
 		}
 	}
 	if env == prdEnvironment {
@@ -274,8 +271,7 @@ type hotfixCandidate struct {
 
 // validateHotfix accepts the tag as a hotfix release: a v<major>.<minor>.<patch> tag at
 // the tip of hotfix/<major>.<minor>.x, a branch whose base on the default branch carries
-// a v<major>.<minor>.* release tag. It answers the line, with the release an environment
-// ahead of it is restored to: the line's latest release before the hotfix.
+// a v<major>.<minor>.* release tag. It answers the tag and its line.
 func validateHotfix(ctx context.Context, gh *github.Client, c *hotfixCandidate, out io.Writer) (*hotfixLine, error) {
 	m := hotfixLineRE.FindStringSubmatch(c.tag)
 	if m == nil {
@@ -316,37 +312,7 @@ func validateHotfix(ctx context.Context, gh *github.Client, c *hotfixCandidate, 
 	}
 	fmt.Fprintf(out, "Tag %s validated as a hotfix: the tip of %s, branched from release %s on %s\n", c.tag, hotfixBranch, baseTag, c.branch)
 
-	return &hotfixLine{tag: c.tag, line: line, restoreTo: previousOnLine(tags, line, c.tag, baseTag)}, nil
-}
-
-// previousOnLine is the line's latest release before the tag among the repository's
-// tags, the base tag when the line has released nothing else: what an environment
-// ahead of the hotfix is restored to.
-func previousOnLine(tags []github.Tag, line, tag, baseTag string) string {
-	patchOf := func(name string) (int, bool) {
-		if !hotfixLineRE.MatchString(name) || !strings.HasPrefix(name, "v"+line+".") {
-			return 0, false
-		}
-		patch, err := strconv.Atoi(strings.TrimPrefix(name, "v"+line+"."))
-		if err != nil {
-			return 0, false
-		}
-
-		return patch, true
-	}
-	own, ok := patchOf(tag)
-	if !ok {
-		return baseTag
-	}
-	previous, best := baseTag, -1
-	for _, t := range tags {
-		patch, ok := patchOf(t.Name)
-		if ok && patch < own && patch > best {
-			previous, best = t.Name, patch
-		}
-	}
-
-	return previous
+	return &hotfixLine{tag: c.tag, line: line}, nil
 }
 
 // gate is the record gate: the previous environment's records bucket holds a live record

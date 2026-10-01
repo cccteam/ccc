@@ -302,9 +302,9 @@ thing one step hands the next. In order:
   in every environment: the environment's newest live deployment record lists the
   migration and seed files its database holds, each with its hash, and the hotfix is
   refused when the database holds a file the hotfix does not carry, or one whose content
-  differs, naming the file and the release the environment is restored to first (the
-  line's latest release before the hotfix); at production's door the hotfix must also be
-  on the line production runs, read from the same record.
+  differs, naming the file; the environment is restored to the hotfix first (a restore
+  run replaces the database and skips this check); at production's door the hotfix must
+  also be on the line production runs, read from the same record.
 - `deploy guard-migrations`: the schema migrations and the seed are each one sequence
   (the rule `bedrock check` applies), and in a pull-request build every schema migration
   the branch started from is still there unchanged and the sequence is read together with
@@ -520,8 +520,9 @@ no migration and no seed file, the hotfix deploys into that environment as it is
 migrate job finds a database at a version it knows, and the environment runs the hotfix
 until the held-up release resumes. When the later release did move the database, the
 environment holds a file the hotfix does not carry, and the release check refuses the
-hotfix there, naming the file and the release the environment is restored to first, the
-line's latest release before the hotfix. At production's door the hotfix must be on the
+hotfix there, naming the file; the environment is restored to the hotfix first, from an
+empty database or from production's backup, since a restore run replaces the database
+and skips the check. At production's door the hotfix must be on the
 line production runs; a hotfix from an older line that happens to carry every file
 would roll production's application back. `hotfix start` prints the rule, and warns
 when the release is not the repository's latest, which GitHub can tell; what production
