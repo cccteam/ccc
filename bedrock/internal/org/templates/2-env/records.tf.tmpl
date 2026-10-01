@@ -5,9 +5,10 @@
 # release, the image digests, the migration outcome, the approval decision.
 # Environments chain by these records rather than by one environment's
 # identity holding build-create in the next, so the bucket is the seam
-# between the tst deploy and the stg pipeline. Deploy identities may only
-# create and read objects (identities.tf): a record is written once and never
-# rewritten, and versioning keeps the history if one ever is.
+# between the tst deploy and the stg pipeline. The bucket's own grants let a
+# deploy identity create and read objects (identities.tf): a record is written
+# once and never rewritten, and versioning keeps the history if one ever is;
+# the builder role on the project reaches the bucket too, for now.
 #
 # The name carries a random four-hex suffix because bucket names are global
 # and permanent, as with the state bucket. US multi-region, since nothing

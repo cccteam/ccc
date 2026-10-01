@@ -107,10 +107,12 @@ project: `roles/serviceusage.serviceUsageConsumer`, `roles/run.developer`,
 Cloud Run jobs, so `bedrock deploy jobs` can copy the template job's grant onto
 the job it makes for each build of an application's job process). Bounded grants:
 `roles/storage.objectCreator` and `roles/storage.objectViewer` on its own
-environment's records bucket (a record is written once: neither role lets the
-identity overwrite or delete one, and the deploy reads the environment's records
-for the stale-database check of a pull-request build and for the environment's
-live version);
+environment's records bucket (a record is written once and read back: the
+stale-database check of a pull-request build reads the pull request's newest
+record, and the environment's live version is in its newest live record;
+neither role overwrites or deletes a record, but `roles/cloudbuild.builds.builder`
+on the project reaches the bucket too, so the records are write-once only once
+that role gives way to what a build needs);
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
 `var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; in tst
 only, `roles/spanner.databaseAdmin` on the tst instance for pull-request

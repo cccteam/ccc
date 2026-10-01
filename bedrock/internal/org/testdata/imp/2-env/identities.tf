@@ -144,12 +144,15 @@ resource "google_storage_bucket_iam_member" "apply_state_upstream" {
   }
 }
 
-# Create and read on the deployment records. A record is written once: the
-# identity cannot overwrite or delete one (neither role allows it), and the
-# bucket's versioning keeps the history. The deploy reads its own environment's
-# records too: the newest record of a pull request, for the stale-database check
-# of a pull-request build that migrates, and the environment's newest live
-# record, where its live version is.
+# Create and read on the deployment records. The deploy writes its record once
+# and reads its own environment's records: the newest record of a pull request,
+# for the stale-database check of a pull-request build that migrates, and the
+# environment's newest live record, where its live version is. The bucket's own
+# grants are these two, neither of which overwrites or deletes a record, and the
+# bucket's versioning keeps the history. roles/cloudbuild.builds.builder, granted
+# on the project (locals.tf), reaches every bucket in the project too, these
+# records included: the records are write-once only once that role gives way to
+# what a build needs.
 resource "google_storage_bucket_iam_member" "deploy_records" {
   for_each = local.apps
 
