@@ -134,6 +134,45 @@ func firstDiff(want, got []byte) string {
 // the go line of bedrock's go.mod, since the builds run with GOTOOLCHAIN=local and a newer
 // go line would fail every pipeline pinned to that commit, and it is the image the seeded
 // Dockerfile builds the application in, so bedrock names one Go digest.
+func TestFormatted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		content string
+		want    string
+	}{
+		{
+			name:    "a .tf file's assignments and trailing comments align as tofu fmt writes them",
+			file:    "cloud-build.tf",
+			content: "locals {\n  a = 1 # one\n  bbb = \"two\"   # two\n}\n",
+			want:    "locals {\n  a   = 1     # one\n  bbb = \"two\" # two\n}\n",
+		},
+		{
+			name:    "a .tfvars file too",
+			file:    "terraform.tfvars",
+			content: "a=1\n",
+			want:    "a = 1\n",
+		},
+		{
+			name:    "any other file as it is",
+			file:    "cloudbuild.yaml",
+			content: "steps:\n  - name:   x\n",
+			want:    "steps:\n  - name:   x\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := string(Formatted(tt.file, []byte(tt.content))); got != tt.want {
+				t.Errorf("Formatted() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGoImage(t *testing.T) {
 	t.Parallel()
 

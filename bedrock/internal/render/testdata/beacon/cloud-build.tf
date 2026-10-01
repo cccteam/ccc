@@ -45,8 +45,8 @@ locals {
     _RELEASE_ACTORS          = "impulseframework-release[bot]"                                                               # the logins whose GitHub Releases the tag check accepts, comma-separated: release-please runs as the release app
     _PREVIOUS_ENV            = local.previous_environment                                                                    # the environment whose live deployment record a release needs first; empty in the first environment
     _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                                 # that environment's records bucket, which 2-env there lets this deploy identity read
-    _ENVIRONMENTS            = join(",", ["tst", "stg", "prd"])                                                                     # the promotion order; a pull-request build plans the stack for each
-    _PLAN_IDENTITIES         = join(",", [for env in ["tst", "stg", "prd"] : "${env}=${try(data.terraform_remote_state.envs[env].outputs.applications[local.app].plan_identity_email, "")}"]) # env=identity; the reader a pull-request build plans each environment as
+    _ENVIRONMENTS            = join(",", local.environments)                                                                 # the promotion order; a pull-request build plans the stack for each
+    _PLAN_IDENTITIES         = local.plan_identities                                                                         # env=identity; the reader a pull-request build plans each environment as
     _APPLY_IDENTITY          = local.identities.apply_identity_email                                                         # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
     # The schema migrations, root-relative: /gcbrun shared-db is refused when a
     # pull request changes anything under it. The repository as GitHub names it

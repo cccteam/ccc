@@ -24,6 +24,7 @@ import (
 	"text/template"
 
 	"github.com/go-playground/errors/v5"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
@@ -178,10 +179,23 @@ func renderDir(dir string, root bool, v *view) ([]File, error) {
 		if seeded[name] {
 			tier = Seeded
 		}
-		files = append(files, File{Path: name, Tier: tier, Root: root, Content: content})
+		files = append(files, File{Path: name, Tier: tier, Root: root, Content: Formatted(name, content)})
 	}
 
 	return files, nil
+}
+
+// Formatted returns content as tofu fmt writes it when name is an HCL file (.tf or
+// .tfvars), so that a rendered file passes the infrastructure check's tofu fmt -check
+// whatever a template's own spacing: a block's trailing comments align on its longest
+// line, which a value of varying width (an environment list, a release actor) moves.
+// Any other file is returned as it is.
+func Formatted(name string, content []byte) []byte {
+	if ext := path.Ext(name); ext != ".tf" && ext != ".tfvars" {
+		return content
+	}
+
+	return hclwrite.Format(content)
 }
 
 // renderOne executes one embedded template.

@@ -91,7 +91,7 @@ data "terraform_remote_state" "previous_env" {
 # plan identity, and the triggers' substitutions name them (_PLAN_IDENTITIES).
 # An environment whose 2-env is not applied yet names none.
 data "terraform_remote_state" "envs" {
-  for_each = toset({{.EnvList}})
+  for_each = toset(local.environments)
 
   backend = "gcs"
   config = {

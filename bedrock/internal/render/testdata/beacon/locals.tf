@@ -13,6 +13,12 @@ locals {
 
   is_prd = var.environment == "prd"
 
+  # The promotion order, and for each environment the plan identity a pull-request
+  # build plans that environment's stack as (env=identity), read from its 2-env
+  # state; empty until 2-env there makes it. The triggers pass both to every build.
+  environments    = ["tst", "stg", "prd"]
+  plan_identities = join(",", [for env in local.environments : "${env}=${try(data.terraform_remote_state.envs[env].outputs.applications[local.app].plan_identity_email, "")}"])
+
   # A pull-request stack: this code in tst with var.pull_request set, into
   # its own state. Its resources carry the short name beacon-pr<N> (2-env's wildcard
   # backend picks the Cloud Run service by that name from the hostname), and it

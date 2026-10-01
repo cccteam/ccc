@@ -288,7 +288,7 @@ func renderDir(dir, prefix string, v *view) ([]render.File, error) {
 		if seeded[name] {
 			tier = render.Seeded
 		}
-		files = append(files, render.File{Path: prefix + name, Tier: tier, Content: buf.Bytes()})
+		files = append(files, render.File{Path: prefix + name, Tier: tier, Content: render.Formatted(name, buf.Bytes())})
 	}
 
 	return files, nil
