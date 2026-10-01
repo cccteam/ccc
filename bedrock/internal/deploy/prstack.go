@@ -149,12 +149,12 @@ func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Write
 		return err
 	}
 	subs := build.Substitutions
+	s := newStack(clients, w, subs, out)
 	if env[downFact] == trueValue {
-		if err := deleteBuildJobs(ctx, clients, subs, subs[prNumberSub], out); err != nil {
+		if err := deleteBuildJobs(ctx, clients, s, subs, subs[prNumberSub], out); err != nil {
 			return err
 		}
 	}
-	s := newStack(clients, w, subs, out)
 	if err := s.tofu(ctx, "apply", "-input=false", "-no-color", filepath.Join(string(w), PlanFile)); err != nil {
 		return err
 	}
@@ -163,11 +163,7 @@ func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Write
 
 		return w.Append(map[string]string{skipDeploy: trueValue})
 	}
-	data, err := s.tofuOutput(ctx, "output", "-json", "substitutions")
-	if err != nil {
-		return err
-	}
-	facts, err := stackFacts(data)
+	facts, err := s.facts(ctx)
 	if err != nil {
 		return err
 	}
@@ -188,6 +184,17 @@ func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Write
 	}
 
 	return pr.comment(ctx, fmt.Sprintf("The pull request's database is recreated this build: %s (build %s).", env[reloadReasonFact], build.ID), out)
+}
+
+// facts reads the stack's substitutions output from its state into the facts the deploy
+// steps read (stackFacts).
+func (s *stack) facts(ctx context.Context) (map[string]string, error) {
+	data, err := s.tofuOutput(ctx, "output", "-json", "substitutions")
+	if err != nil {
+		return nil, err
+	}
+
+	return stackFacts(data)
 }
 
 // stackFacts reads the stack's substitutions output (a map of the trigger's

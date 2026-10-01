@@ -26,6 +26,9 @@ type SweepRequest struct {
 	BuildID, Project, Location string
 }
 
+// closedState is a pull request's state on GitHub once it is closed or merged.
+const closedState = "closed"
+
 // Sweep destroys the environments of closed pull requests. A pull request has an
 // environment while its services stand (the pull_request label on the application's
 // services, in every region of _SERVICES); GitHub says which of those pull requests are
@@ -80,20 +83,20 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 			fmt.Fprintf(out, "Notice: GitHub did not answer for pull request %s (%v); its environment stays.\n", number, err)
 
 			continue
-		case state != "closed":
+		case state != closedState:
 			fmt.Fprintf(out, "Pull request %s is %s: its environment stays.\n", number, state)
 
 			continue
 		}
 		fmt.Fprintf(out, "Pull request %s is closed: its environment goes.\n", number)
-		if err := deleteBuildJobs(ctx, clients, subs, number, out); err != nil {
-			return err
-		}
 		// Each pull request's stack is initialized afresh against its own prefix.
 		if err := os.RemoveAll(filepath.Join(s.dir, ".terraform")); err != nil {
 			return errors.Wrap(err, "os.RemoveAll()")
 		}
 		if err := s.init(ctx, subs, number); err != nil {
+			return err
+		}
+		if err := deleteBuildJobs(ctx, clients, s, subs, number, out); err != nil {
 			return err
 		}
 		if err := s.tofu(ctx, "destroy", "-auto-approve", "-input=false", "-no-color", "-var", "environment="+subs[envSub], "-var", "pull_request="+number); err != nil {
@@ -104,33 +107,32 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 	return nil
 }
 
-// deleteBuildJobs deletes the jobs the pull request's builds made (the copies of its
-// template jobs, which its stack never owned), in the templates' region: the migrate jobs a
-// run that did not finish left, and the job process's jobs where the application has one.
-func deleteBuildJobs(ctx context.Context, clients *Clients, subs map[string]string, number string, out io.Writer) error {
-	project := subs[projectSub]
-	var prefixes []string
-	var region string
-	if subs["_MIGRATE_JOB"] != "" {
-		r, template, err := target(migrateJobFact, subs["_MIGRATE_JOB"])
-		if err != nil {
-			return err
-		}
-		region = r
-		prefixes = append(prefixes, jobPrefix(project, region, template))
+// deleteBuildJobs deletes the jobs the pull request's builds made: the copies of its
+// stack's template jobs, named under those templates' prefixes. The templates' names come
+// from the stack's substitutions output, where a pull request's build learns them: the
+// trigger's substitutions name the environment's templates, which no copy of a pull
+// request's is under. It runs with the stack initialized and before it is destroyed,
+// since the output lives in its state; a stack whose output cannot be read, one never
+// applied, names no jobs, and nothing is deleted.
+func deleteBuildJobs(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number string, out io.Writer) error {
+	facts, err := s.facts(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "Notice: pull request %s's stack names no jobs (%v); none of its builds' jobs is deleted.\n", number, err)
+
+		return nil
 	}
-	if subs["_JOBS_JOB"] != "" {
-		jobsRegion, jobsTemplate, err := target(jobsJobFact, subs["_JOBS_JOB"])
+	project := subs[projectSub]
+	region, template, err := target(migrateJobFact, facts[migrateJobFact])
+	if err != nil {
+		return err
+	}
+	prefixes := []string{jobPrefix(project, region, template)}
+	if facts[jobsJobFact] != "" {
+		jobsRegion, jobsTemplate, err := target(jobsJobFact, facts[jobsJobFact])
 		if err != nil {
 			return err
 		}
 		prefixes = append(prefixes, jobPrefix(project, jobsRegion, jobsTemplate))
-		if region == "" {
-			region = jobsRegion
-		}
-	}
-	if len(prefixes) == 0 {
-		return nil
 	}
 	run, err := clients.Run(ctx)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
@@ -16,7 +17,7 @@ import (
 // stackSubs are a pull request's substitutions for its stack.
 func stackSubs() map[string]string {
 	return map[string]string{
-		prNumberSub: "7", appSub: "quill", envSub: tstEnvironment, applyIdentitySub: "quill-apply@p.iam.gserviceaccount.com",
+		prNumberSub: "7", appSub: "quill", envSub: tstEnvironment, projectSub: "p", applyIdentitySub: "quill-apply@p.iam.gserviceaccount.com",
 		repoFullNameSub: "acme/quill", defaultBranchSub: "master", commitSub: "c9", migrationsSub: "schema/migrations",
 	}
 }
@@ -202,6 +203,7 @@ func TestApplyStack(t *testing.T) {
 		applyErr    error
 		deployer    bool
 		wantFacts   map[string]string
+		wantDeleted []string
 		wantComment string
 		wantErr     string
 	}{
@@ -211,7 +213,14 @@ func TestApplyStack(t *testing.T) {
 			wantFacts: map[string]string{services: "us-central1=quill-pr7", migrateJobFact: "us-central1=quill-pr7-migrate", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev"},
 		},
 		{
-			name:      "after a destroy nothing deploys",
+			name:        "after a destroy nothing deploys, the pull request's builds' jobs deleted first",
+			env:         "export DOWN=\"true\"\n",
+			output:      substitutions,
+			wantFacts:   map[string]string{skipDeploy: trueValue},
+			wantDeleted: []string{"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-c9"},
+		},
+		{
+			name:      "a destroy of a stack with no output deletes no job",
 			env:       "export DOWN=\"true\"\n",
 			wantFacts: map[string]string{skipDeploy: trueValue},
 		},
@@ -254,8 +263,12 @@ func TestApplyStack(t *testing.T) {
 			run := &fakeRunner{outputs: map[string]string{"tofu output": tt.output}, fail: map[string]error{"tofu apply": tt.applyErr}}
 			repo := &githubtest.Repo{}
 			_, gh := githubStandIn(t, repo)
+			cloudRun := newFakeRun(map[string]map[string]any{
+				"projects/p/locations/us-central1/jobs/quill-pr7-jobs":        {"name": "projects/p/locations/us-central1/jobs/quill-pr7-jobs", "labels": map[string]any{applicationLabel: "quill", pullRequestLabel: "7"}},
+				"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-c9": {"name": "projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-c9", "labels": map[string]any{applicationLabel: "quill", pullRequestLabel: "7", versionLabel: "pr7-c9"}},
+			})
 			var out strings.Builder
-			err := ApplyStack(t.Context(), &Clients{Exec: run, GitHub: gh, Secrets: secrets.open}, w, &out)
+			err := ApplyStack(t.Context(), &Clients{Exec: run, GitHub: gh, Secrets: secrets.open, Run: cloudRun.open}, w, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("ApplyStack() error = %v, want %q", err, tt.wantErr)
@@ -274,6 +287,9 @@ func TestApplyStack(t *testing.T) {
 				if env[name] != want {
 					t.Errorf("%s = %q, want %q", name, env[name], want)
 				}
+			}
+			if diff := cmp.Diff(tt.wantDeleted, cloudRun.deleted, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("deleted (-want +got):\n%s\noutput:\n%s", diff, out.String())
 			}
 			comments := repo.Comments[7]
 			if tt.wantComment == "" && len(comments) > 0 {

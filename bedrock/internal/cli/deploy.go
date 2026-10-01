@@ -165,7 +165,7 @@ func newDeployJobs(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
 		Use:   "jobs",
-		Short: "Make this build's job for the job process from the stack's template job, without running it",
+		Short: "Make this build's jobs from the stack's template jobs, without running them",
 		Long: `jobs makes this build's jobs right after the image build: copies of the template jobs the stack owns
 (named by the stack's _MIGRATE_JOB and _JOBS_JOB; never run, never deployed to), each named
 <template>-<version key> (v0.1.15 gives v0-1-15) and put on this build's image with the pipeline's
@@ -463,7 +463,7 @@ func newDeploySweepJobs(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
 		Use:   "sweep-jobs",
-		Short: "Delete the job process's jobs that no revision runs any more",
+		Short: "Delete the builds' jobs that nothing runs any more",
 		Long: `sweep-jobs deletes the builds' jobs nothing runs any more: a job of the job process (a copy of the
 template job, named after it) whose version key no revision of the service in any region carries,
 since a revision that exists can take a traffic rollback and then starts the job of its own build;
