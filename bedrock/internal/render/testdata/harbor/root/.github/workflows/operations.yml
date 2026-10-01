@@ -6,8 +6,9 @@
 # (no key exists anywhere; the environment's provider trusts tokens of this repository, this
 # workflow file and that Environment alone), and runs the environment's version trigger for the
 # release with the restore instruction. Everything that changes the environment happens inside
-# that run, as the deploy identity, as for any release: the database is replaced (an empty one,
-# which the migrations and the seed then fill, or production's most recent backup), the release's
+# that run, as the deploy identity, as for any release: the application goes into maintenance,
+# the database is replaced (an empty one, which the migrations then fill, and the seed where the
+# placement's seed list names the environment, or production's most recent backup), the release's
 # jobs are created, the migrations run, the revision deploys, traffic moves, and the record names
 # the requester. The identity here starts the trigger and reads how the build went, and nothing
 # else. Production is never restored by a run. Started by bedrock restore <env> <release>, or by

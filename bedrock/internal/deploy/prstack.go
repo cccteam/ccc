@@ -47,6 +47,10 @@ type stack struct {
 	dir string
 	env []string
 	out io.Writer
+	// clients and identity are set for an environment's stack: what the apply step opens
+	// beyond tofu (Firestore, as the apply identity) in a restore run.
+	clients  *Clients
+	identity string
 }
 
 // varFlag passes a variable to a tofu plan or destroy.

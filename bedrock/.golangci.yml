@@ -76,6 +76,10 @@ linters:
             # The tests of a stack's plan read a secret version's state as the identity
             # the plan ran as, impersonated with the deploy identity's credentials.
             - google.golang.org/api/impersonate
+            # A restore run deletes a Firestore database's documents through the Firestore
+            # REST API as the apply identity, impersonated the same way; the token source
+            # becomes the HTTP client that calls it.
+            - golang.org/x/oauth2
             - github.com/hashicorp/hcl/v2
             - github.com/zclconf/go-cty
             # secret pin asks Secret Manager whether the version it pins exists and is

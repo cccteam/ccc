@@ -124,3 +124,25 @@ resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
     "cloudbuild.triggers.list",
   ]
 }
+
+# The task queue operator: pauses, resumes and purges a Cloud Tasks queue, and
+# reads it, nothing else. Granted on an application's own queue, in the
+# application's stack, to its deploy identity: a release that puts the
+# application into maintenance (a restore run, a breaking release) pauses the
+# queue while the database is replaced or migrated and resumes it after
+# traffic moves, so no task is delivered to a server that cannot take it; a
+# restore purges it too, since every queued task refers to rows that are about
+# to disappear. It is a custom role because the cloud's own
+# roles/cloudtasks.queueAdmin would also create, change and delete queues.
+resource "google_organization_iam_custom_role" "cloud_tasks_queue_operator" {
+  org_id      = local.org_id
+  role_id     = "cloudTasksQueueOperator"
+  title       = "Cloud Tasks Queue Operator"
+  description = "Pauses, resumes and purges a Cloud Tasks queue, and reads it, and nothing else."
+  permissions = [
+    "cloudtasks.queues.get",
+    "cloudtasks.queues.pause",
+    "cloudtasks.queues.resume",
+    "cloudtasks.queues.purge",
+  ]
+}

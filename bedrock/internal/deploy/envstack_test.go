@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -128,6 +129,14 @@ func tstSubs() map[string]string {
 	return subs
 }
 
+// seededSubs is tst on the placement's seed list: _SEED is true.
+func seededSubs() map[string]string {
+	subs := tstSubs()
+	subs[seedSub] = trueValue
+
+	return subs
+}
+
 func TestPlanEnvironmentStack(t *testing.T) {
 	t.Parallel()
 
@@ -160,10 +169,21 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:         enabledPins(),
 			env:          restoreEnv,
 			state:        stateList,
-			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_firestore_database.firestore, google_storage_bucket.assets is replaced in tst's stack; the migrations and the seed then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_firestore_database.firestore -replace=google_storage_bucket.assets", showLine},
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.assets is replaced in tst's stack; the migrations then apply afresh ===", "The Firestore database stays (Firestore keeps a deleted database's id unavailable for minutes); the apply deletes its documents instead.", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.assets", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
-			wantReplaced: "google_spanner_database.quill[0],google_firestore_database.firestore,google_storage_bucket.assets",
+			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
+		},
+		{
+			name:         "a restore run in a seeded environment says the seed applies afresh too",
+			subs:         seededSubs(),
+			pins:         enabledPins(),
+			env:          restoreEnv,
+			state:        stateList,
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.assets is replaced in tst's stack; the migrations and the seed then apply afresh ===", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.assets", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
 		},
 		{
 			name:         "stg keeps its file bucket through a restore, and a stack without Firestore replaces the database alone",
@@ -182,7 +202,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:      restoreEnv,
 			state:    "google_cloud_run_v2_service.app[\"uc1\"]\n",
 			wantTofu: []string{initLine, "tofu state list"},
-			wantErr:  "_RESTORE=empty: stg's stack holds no database to replace (nothing of google_spanner_database.quill[0], google_firestore_database.firestore in its state)",
+			wantErr:  "_RESTORE=empty: stg's stack holds no database to replace (nothing of google_spanner_database.quill[0] in its state)",
 		},
 		{
 			name:     "the restore from production's backup is not built yet",
@@ -285,6 +305,9 @@ func TestPlanEnvironmentStack(t *testing.T) {
 	}
 }
 
+// applyRestoreEnv is a restore run's environment file as the apply step reads it.
+const applyRestoreEnv = "export SKIP_DEPLOY=\"\"\nexport RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
+
 func TestApplyEnvironmentStack(t *testing.T) {
 	t.Parallel()
 
@@ -292,10 +315,33 @@ func TestApplyEnvironmentStack(t *testing.T) {
 		name     string
 		subs     map[string]string
 		planJSON string
+		// env replaces the environment file; outputs are what tofu output answers.
+		env      string
+		outputs  map[string]string
 		wantOut  []string
 		wantTofu []string
-		wantErr  string
+		// wantCleared is the Firestore database whose documents a restore run deleted.
+		wantCleared string
+		wantErr     string
 	}{
+		{
+			name:        "a restore run deletes the Firestore database's documents after the apply, as the apply identity",
+			subs:        tstSubs(),
+			planJSON:    stackPlanJSON,
+			env:         applyRestoreEnv,
+			outputs:     map[string]string{"tofu output": "quill-fs\n"},
+			wantOut:     []string{"Applied tst's stack: 2 added, 1 changed, 1 destroyed.", "Restore: every document of the Firestore database quill-fs is deleted; its documents referred to rows the restore replaced."},
+			wantTofu:    []string{"tofu apply -input=false -no-color WS/stack.plan", "tofu output -raw firestore_database"},
+			wantCleared: "projects/p-stg/databases/quill-fs",
+		},
+		{
+			name:     "a restore run of a stack without a Firestore database clears nothing",
+			subs:     tstSubs(),
+			planJSON: stackPlanJSON,
+			env:      applyRestoreEnv,
+			wantOut:  []string{"No Firestore database to clear: the stack has no firestore_database output"},
+			wantTofu: []string{"tofu apply -input=false -no-color WS/stack.plan", "tofu output -raw firestore_database"},
+		},
 		{
 			name:     "the saved plan is applied as the apply identity",
 			subs:     tagSubs(),
@@ -325,13 +371,21 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			t.Parallel()
 
 			files := map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n", BuildFile: buildFor(t, tt.subs)}
+			if tt.env != "" {
+				files[EnvironmentFile] = tt.env
+			}
 			if tt.planJSON != "" {
 				files[StackPlanJSONFile] = tt.planJSON
 			}
 			w := workspaceFiles(t, files)
-			run := &fakeRunner{}
+			run := &fakeRunner{outputs: tt.outputs}
+			if run.outputs == nil {
+				run.outputs = map[string]string{}
+				run.fail = map[string]error{"tofu output": errors.New("no output")}
+			}
+			store := &fakeFirestore{}
 			var out strings.Builder
-			err := ApplyEnvironmentStack(t.Context(), &Clients{Exec: run}, w, &out)
+			err := ApplyEnvironmentStack(t.Context(), &Clients{Exec: run, FirestoreAs: store.open}, w, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("ApplyEnvironmentStack() error = %v, want %q", err, tt.wantErr)
@@ -354,8 +408,32 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			if env[environmentApplied] != "" {
 				t.Errorf("the apply appended %s", environmentApplied)
 			}
+			if store.database != tt.wantCleared {
+				t.Errorf("cleared %q, want %q", store.database, tt.wantCleared)
+			}
+			if tt.wantCleared != "" && env[clearedFact] != firestoreAddress {
+				t.Errorf("%s = %q, want %q", clearedFact, env[clearedFact], firestoreAddress)
+			}
 		})
 	}
+}
+
+// fakeFirestore records the database whose documents were deleted, and the identity asked for.
+type fakeFirestore struct {
+	identity string
+	database string
+}
+
+func (f *fakeFirestore) open(_ context.Context, identity string) (Firestore, error) {
+	f.identity = identity
+
+	return f, nil
+}
+
+func (f *fakeFirestore) DeleteAllDocuments(_ context.Context, database string) error {
+	f.database = database
+
+	return nil
 }
 
 // environmentApplied is a fact the apply never writes: the record reads the plan's JSON.

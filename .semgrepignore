@@ -27,6 +27,10 @@ resource/semantic_differential_test.go
 bedrock/internal/render/render.go
 bedrock/internal/org/render.go
 bedrock/internal/github/githubtest/server.go
+# The maintenance handler writes the maintenance page, embedded at compile time, to every
+# navigation; no request data reaches it, so the direct-write audit (an HTML page writing
+# user data) does not apply.
+resource/maintenance/maintenance.go
 # The migration renumber runs git with the repository's own paths (the default branch's
 # tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
 # not apply to it.

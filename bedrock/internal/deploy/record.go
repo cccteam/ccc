@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,24 @@ type Record struct {
 	// Restore says the build was a restore run: what the environment's database was
 	// replaced with, who asked, and what the stack replaced. Absent otherwise.
 	Restore *Restore `json:"restore,omitempty"`
+	// Maintenance says the run put the application into maintenance before the database
+	// was replaced: the maintenance revisions, the queue paused, whether it was purged,
+	// the job executions canceled and how the wait for the old revision's requests
+	// ended. Absent otherwise.
+	Maintenance *Maintenance `json:"maintenance,omitempty"`
+}
+
+// Maintenance is a run's maintenance as the record keeps it.
+type Maintenance struct {
+	// Revisions are the maintenance revisions by region.
+	Revisions map[string]string `json:"revisions"`
+	// Queue is the task queue paused, in full; empty when the application has none.
+	Queue  string `json:"queue,omitempty"`
+	Purged bool   `json:"purged,omitempty"`
+	// Canceled is how many running executions of the serving build's job were canceled.
+	Canceled int `json:"canceled"`
+	// Waited says how the wait for the old revision's requests in flight ended.
+	Waited string `json:"waited"`
 }
 
 // Restore is a restore run as the record keeps it.
@@ -61,6 +80,9 @@ type Restore struct {
 	Requester string `json:"requester"`
 	// Replaced lists the stack's resources the run replaced, by address.
 	Replaced []string `json:"replaced,omitempty"`
+	// Cleared lists what the run emptied instead of replacing: the Firestore database
+	// whose documents it deleted.
+	Cleared []string `json:"cleared,omitempty"`
 }
 
 // Migration is one migration file a build applied: its directory (root-relative), its
@@ -155,28 +177,42 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	var maintenance *Maintenance
+	if env[maintenanceFact] == trueValue {
+		maintenance = &Maintenance{Revisions: map[string]string{}, Queue: env[maintenanceQueueFact], Purged: env[maintenancePurgedFact] == trueValue, Waited: env[maintenanceWaitedFact]}
+		maintenance.Canceled, _ = strconv.Atoi(env[maintenanceCanceledFact])
+		for _, pair := range strings.Split(env[maintenanceRevisionsFact], ",") {
+			if region, revision, ok := strings.Cut(pair, "="); ok {
+				maintenance.Revisions[region] = revision
+			}
+		}
+	}
 	var restore *Restore
 	if env[restoreFact] != "" {
 		restore = &Restore{Kind: env[restoreFact], Requester: env[requesterFact]}
 		if env[restoredFact] != "" {
 			restore.Replaced = strings.Split(env[restoredFact], ",")
 		}
+		if env[clearedFact] != "" {
+			restore.Cleared = strings.Split(env[clearedFact], ",")
+		}
 	}
 	record := Record{
-		App:        build.Substitutions[appSub],
-		Env:        build.Substitutions[envSub],
-		Version:    env[versionFact],
-		Commit:     build.Substitutions[commitSub],
-		Image:      env[imageFact] + "@" + env[digestFact],
-		Digest:     env[digestFact],
-		Regions:    regions,
-		Revisions:  revisions,
-		Timestamp:  now.UTC().Format(time.RFC3339),
-		Status:     status,
-		Build:      build.ID,
-		Migrations: applied,
-		Stack:      stack,
-		Restore:    restore,
+		App:         build.Substitutions[appSub],
+		Env:         build.Substitutions[envSub],
+		Version:     env[versionFact],
+		Commit:      build.Substitutions[commitSub],
+		Image:       env[imageFact] + "@" + env[digestFact],
+		Digest:      env[digestFact],
+		Regions:     regions,
+		Revisions:   revisions,
+		Timestamp:   now.UTC().Format(time.RFC3339),
+		Status:      status,
+		Build:       build.ID,
+		Migrations:  applied,
+		Stack:       stack,
+		Restore:     restore,
+		Maintenance: maintenance,
 	}
 
 	return &RecordRequest{

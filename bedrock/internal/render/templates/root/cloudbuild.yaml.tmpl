@@ -146,6 +146,18 @@ steps:
     args: [deploy, build-image{{if .HookProgram}}, --hooks{{end}}]
     timeout: 1800s
 
+  # A run that replaces the database (a restore run) puts the application into maintenance
+  # first: the release's image starts as a revision with the maintenance variable set, in
+  # every region, is probed for its 503 with the marker, and takes all traffic; the task queue
+  # is paused (and purged, since its tasks refer to rows about to go), the serving build's
+  # job executions are canceled, and the old revision's requests in flight finish. Any
+  # other run keeps the application serving, and the step does nothing.
+  - id: MaintenanceOn
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, maintenance, on]
+    timeout: 900s
+
   # A tag build only: the environment's stack planned and applied as the apply identity,
   # after the image build (a failed build changes no infrastructure) and before the jobs and
   # the migrations (what they need, a template job, a secret container, a bucket, exists
@@ -226,6 +238,14 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, shift-traffic]
     timeout: 600s
+
+  # Maintenance over, when the run was in it: the task queue is resumed against the new
+  # release. The maintenance revisions stay, with no traffic, as any old revision does.
+  - id: MaintenanceOff
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, maintenance, off]
+    timeout: 300s
 
   # The builds' jobs nothing runs any more are deleted: a job of the job process whose
   # version no revision in any region carries, and a migrate job a run that did not finish

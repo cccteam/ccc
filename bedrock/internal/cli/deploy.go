@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
@@ -54,7 +55,7 @@ request's own resources through, apply applies exactly that plan. A tag build sk
 	stack.AddCommand(newDeployStackPlan(d), newDeployStackGuard(d), newDeployStackApply(d))
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), stack, newDeployHook(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
-		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d))
+		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployMaintenance(d))
 
 	return cmd
 }
@@ -416,10 +417,11 @@ leaves the plan (stack.plan) and its JSON (stack-plan.json) in the workspace, pr
 and each change, appends the summary (STACK_PLAN) for the record, and runs the tests: no
 authoritative IAM resource in the stack, and every secret version a planned revision template pins
 exists and is enabled, read as the apply identity. A failing plan or test stops the build with the
-stack unapplied. In a restore run (RESTORE=empty) the plan replaces the Spanner database, the
-Firestore database and, in tst, the file bucket, each when the stack has it (tofu state list),
-so the migrations and the seed apply afresh; what it replaces is appended (RESTORE_REPLACED) for
-the record. The restore from production's backup is not built yet; the plan stops on it. It runs
+stack unapplied. In a restore run (RESTORE=empty) the plan replaces the Spanner database and,
+in tst, the file bucket, each when the stack has it (tofu state list), so the migrations apply
+afresh (and the seed, where the placement's seed list names the environment); what it replaces is
+appended (RESTORE_REPLACED) for the record. The Firestore database is not replaced, since Firestore
+keeps a deleted database's id unavailable for minutes: the apply step deletes its documents. The restore from production's backup is not built yet; the plan stops on it. It runs
 in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -438,7 +440,10 @@ func newDeployEnvStackApply(d deps) *cobra.Command {
 		Use:   "apply",
 		Short: "Apply the saved plan of the environment's stack in a tag build",
 		Long: `apply applies, in a tag build, exactly the plan stack plan saved, as the apply identity, and says
-what it did; a plan with no change applies nothing. It runs in the OpenTofu image.`,
+what it did; a plan with no change applies nothing. In a restore run it then deletes every document
+of the environment's Firestore database (the stack's firestore_database output), as the apply
+identity, since they refer to rows the restore replaced; what it cleared is appended
+(RESTORE_CLEARED) for the record. It runs in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.ApplyEnvironmentStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
@@ -598,6 +603,55 @@ environment nobody took down goes away. It runs in the OpenTofu image.`,
 		},
 	}
 	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployMaintenance is deploy maintenance on|off.
+func newDeployMaintenance(d deps) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "maintenance",
+		Short: "Put the application into maintenance before its database is replaced, and take it out after",
+		Long: `maintenance holds the two steps around a run that replaces or interrupts the application's database
+(a restore run): on, after the image build and before the environment's stack is applied, and off,
+after traffic moved to the release's revision. Any other run keeps the application serving, and
+both steps do nothing.`,
+	}
+	var onWorkspace, offWorkspace string
+	on := &cobra.Command{
+		Use:   "on",
+		Short: "Start the release's image as a maintenance revision and move all traffic to it",
+		Long: `on puts the application into maintenance when the run needs it (RESTORE is set): the release's own
+image starts as a revision with ` + derive.MaintenanceVariable + `=1 in every region, under the tag next and
+with no traffic; the revision is probed through the load balancer's next hostname and must answer
+503 with the marker header X-Maintenance: 1, else the step stops the run with nothing moved and
+names the application's missing switch (impulse check maintenance-switch); then all traffic moves
+to it, the application's task queue (_TASKS_QUEUE) is paused and, on a restore, purged, the running
+executions of the serving build's job are canceled, and the old revision's requests in flight are
+let finish: its active instances are read from Cloud Monitoring until none is, or until the
+service's request timeout has passed since traffic moved. The facts it appends (MAINTENANCE,
+MAINTENANCE_REVISIONS, MAINTENANCE_QUEUE, MAINTENANCE_PURGED, MAINTENANCE_CANCELED,
+MAINTENANCE_WAITED) reach the record. A pull-request build never goes into maintenance.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.MaintenanceOn(cmd.Context(), d.deploy, deploy.Workspace(onWorkspace), cmd.OutOrStdout())
+		},
+	}
+	on.Flags().StringVar(&onWorkspace, "workspace", "/workspace", "the directory the build's steps share")
+	off := &cobra.Command{
+		Use:   "off",
+		Short: "Resume the task queue once the release's revision serves",
+		Long: `off takes the application out of maintenance after traffic moved to the release's revision: the
+task queue paused by maintenance on is resumed, against the new release. The maintenance revisions
+stay, with no traffic, as any old revision does. A run that was not in maintenance has nothing to
+end.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.MaintenanceOff(cmd.Context(), d.deploy, deploy.Workspace(offWorkspace), cmd.OutOrStdout())
+		},
+	}
+	off.Flags().StringVar(&offWorkspace, "workspace", "/workspace", "the directory the build's steps share")
+	cmd.AddCommand(on, off)
 
 	return cmd
 }

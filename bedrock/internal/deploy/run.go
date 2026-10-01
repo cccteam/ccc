@@ -54,6 +54,9 @@ type Run interface {
 	Revisions(ctx context.Context, service string) ([]map[string]any, error)
 	// Executions lists the job's executions, every page.
 	Executions(ctx context.Context, job string) ([]map[string]any, error)
+	// CancelExecution cancels a running execution of a job and waits for the
+	// cancellation: Cloud Run sends the task SIGTERM and kills it after its grace.
+	CancelExecution(ctx context.Context, name string) error
 	// CreateJob creates the job under the parent (projects/<p>/locations/<r>) with the id
 	// and waits for it; it answers the job as it settled.
 	CreateJob(ctx context.Context, parent, id string, job map[string]any) (map[string]any, error)
@@ -123,6 +126,18 @@ func (c *cloudRun) Revisions(ctx context.Context, service string) ([]map[string]
 
 func (c *cloudRun) Executions(ctx context.Context, job string) ([]map[string]any, error) {
 	return c.list(ctx, "/v2/"+job+"/executions", "executions")
+}
+
+func (c *cloudRun) CancelExecution(ctx context.Context, name string) error {
+	op, err := c.call(ctx, http.MethodPost, "/v2/"+name+":cancel", map[string]any{})
+	if err != nil {
+		return err
+	}
+	if _, err := c.wait(ctx, op); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // list reads every page of the collection at path, whose items the answer carries under

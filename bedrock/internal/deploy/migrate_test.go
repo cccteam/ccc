@@ -34,6 +34,8 @@ type fakeRun struct {
 	// resources SetIamPolicy set, in order.
 	policies   map[string]map[string]any
 	policySets []string
+	// canceled are the executions CancelExecution took, in order.
+	canceled []string
 }
 
 func newFakeRun(resources map[string]map[string]any) *fakeRun {
@@ -117,6 +119,17 @@ func (r *fakeRun) Revisions(_ context.Context, service string) ([]map[string]any
 
 func (r *fakeRun) Executions(_ context.Context, job string) ([]map[string]any, error) {
 	return r.listed(job + "/executions/"), nil
+}
+
+func (r *fakeRun) CancelExecution(_ context.Context, name string) error {
+	doc, ok := r.resources[name]
+	if !ok {
+		return errors.Wrap(&apiError{status: 404, method: "POST", path: "/v2/" + name + ":cancel", message: "not found"}, "fakeRun.CancelExecution()")
+	}
+	doc["completionTime"] = "canceled"
+	r.canceled = append(r.canceled, name)
+
+	return nil
 }
 
 // listed is the resources whose names start with prefix and go no deeper (a job, not

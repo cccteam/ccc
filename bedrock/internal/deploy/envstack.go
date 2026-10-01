@@ -127,7 +127,7 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 		return err
 	}
 	if env[restoreFact] != "" {
-		replace, err := s.replaceForRestore(ctx, subs[appSub], subs[envSub], env, w)
+		replace, err := s.replaceForRestore(ctx, subs[appSub], subs[envSub], env, subs[seedSub] == trueValue, w)
 		if err != nil {
 			return err
 		}
@@ -156,16 +156,28 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 }
 
 // restoredFact lists what a restore run's plan replaces, comma-separated, for the record.
-const restoredFact = "RESTORE_REPLACED"
+const (
+	restoredFact = "RESTORE_REPLACED"
+	// clearedFact lists what the restore run emptied instead of replacing: the Firestore
+	// database whose documents the apply step deleted.
+	clearedFact = "RESTORE_CLEARED"
+	// firestoreOutput is the stack's output naming the Firestore database, when it has one;
+	// firestoreAddress is the database's address in the stack.
+	firestoreOutput  = "firestore_database"
+	firestoreAddress = "google_firestore_database.firestore"
+)
 
 // replaceForRestore is a restore run's -replace of what the environment's database
-// holds: the Spanner database, which the migrations and the seed then fill afresh; the
-// Firestore database, whose documents refer to rows that are gone; and, in tst, the file
-// bucket, whose objects do too (stg's are kept: production's backup predates some of
-// them, and the record says so). Each when the stack has it; what is replaced is noted
+// holds: the Spanner database, which the migrations (and the seed, in an environment the
+// placement's seed list names) then fill afresh, and, in tst, the file bucket, whose
+// objects refer to rows that are gone (stg's are kept: production's backup predates some
+// of them, and the record says so). The Firestore database, whose documents refer to those
+// rows too, is not replaced: Firestore keeps a deleted database's id unavailable for
+// minutes, so the apply step deletes its documents instead (clearFirestore). Each when
+// the stack has it; what is replaced is noted
 // for the record. The restore from production's backup is a different path, not built
 // yet: the run stops here rather than replacing stg's database with an empty one.
-func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts map[string]string, w Workspace) ([]string, error) {
+func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts map[string]string, seeded bool, w Workspace) ([]string, error) {
 	kind, requester := facts[restoreFact], facts[requesterFact]
 	if kind == restoreBackup {
 		return nil, errors.Newf("%s=%s: the restore from production's backup is not built yet; %s keeps its database", restoreSub, kind, env)
@@ -174,7 +186,7 @@ func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts ma
 	if err != nil {
 		return nil, err
 	}
-	addresses := []string{"google_spanner_database." + app + "[0]", "google_firestore_database.firestore"}
+	addresses := []string{"google_spanner_database." + app + "[0]"}
 	if env == tstEnvironment {
 		addresses = append(addresses, "google_storage_bucket.assets")
 	}
@@ -188,7 +200,14 @@ func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts ma
 	if len(replace) == 0 {
 		return nil, errors.Newf("%s=%s: %s's stack holds no database to replace (nothing of %s in its state)", restoreSub, kind, env, strings.Join(addresses, ", "))
 	}
-	fmt.Fprintf(s.out, "=== Restore (%s, asked for by %s): %s is replaced in %s's stack; the migrations and the seed then apply afresh ===\n", kind, requester, strings.Join(replaced, ", "), env)
+	refill := "the migrations then apply afresh"
+	if seeded {
+		refill = "the migrations and the seed then apply afresh"
+	}
+	fmt.Fprintf(s.out, "=== Restore (%s, asked for by %s): %s is replaced in %s's stack; %s ===\n", kind, requester, strings.Join(replaced, ", "), env, refill)
+	if hasLine(string(listed), firestoreAddress) {
+		fmt.Fprintf(s.out, "The Firestore database stays (Firestore keeps a deleted database's id unavailable for minutes); the apply deletes its documents instead.\n")
+	}
 	if err := w.Append(map[string]string{restoredFact: strings.Join(replaced, ",")}); err != nil {
 		return nil, err
 	}
@@ -221,8 +240,41 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 		return err
 	}
 	fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
+	env, err := w.Environment()
+	if err != nil {
+		return err
+	}
+	if env[restoreFact] == "" {
+		return nil
+	}
 
-	return nil
+	return s.clearFirestore(ctx, subs, w)
+}
+
+// clearFirestore deletes every document of the environment's Firestore database in a
+// restore run, as the apply identity, which owns the environment's data stores: the
+// documents refer to rows the restore replaced. The database itself stays, since Firestore
+// keeps a deleted database's id unavailable for minutes. A stack without a Firestore
+// database (no firestore_database output) has nothing to clear. What was cleared is
+// appended (RESTORE_CLEARED) for the record.
+func (s *stack) clearFirestore(ctx context.Context, subs map[string]string, w Workspace) error {
+	name, err := s.tofuOutput(ctx, "output", "-raw", firestoreOutput)
+	if err != nil {
+		fmt.Fprintf(s.out, "No Firestore database to clear: the stack has no %s output (%v).\n", firestoreOutput, errors.Cause(err))
+
+		return nil
+	}
+	database := "projects/" + subs[projectSub] + "/databases/" + strings.TrimSpace(string(name))
+	store, err := s.clients.FirestoreAs(ctx, s.identity)
+	if err != nil {
+		return err
+	}
+	if err := store.DeleteAllDocuments(ctx, database); err != nil {
+		return errors.Wrapf(err, "deleting the documents of %s", database)
+	}
+	fmt.Fprintf(s.out, "Restore: every document of the Firestore database %s is deleted; its documents referred to rows the restore replaced.\n", strings.TrimSpace(string(name)))
+
+	return w.Append(map[string]string{clearedFact: firestoreAddress})
 }
 
 // PlanEnvironments plans the stack for every environment in a pull-request build, each as
@@ -366,10 +418,12 @@ func tagBuildStep(w Workspace, out io.Writer) (subs map[string]string, ok bool, 
 // pull-request build).
 func newEnvironmentStack(clients *Clients, w Workspace, identity string, out io.Writer) *stack {
 	return &stack{
-		run: clients.Exec,
-		dir: filepath.Join(string(w), stackDir),
-		env: []string{"GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=" + identity},
-		out: out,
+		run:      clients.Exec,
+		dir:      filepath.Join(string(w), stackDir),
+		env:      []string{"GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=" + identity},
+		out:      out,
+		clients:  clients,
+		identity: identity,
 	}
 }
 

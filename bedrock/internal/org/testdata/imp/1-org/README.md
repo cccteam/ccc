@@ -69,6 +69,13 @@ the boot project as `imp-org-gbl-tofu`.
   environment but production.
   `2-spn` grants it on the shared instance and `2-env` on an environment's
   own instance to each application's plan identity.
+- The custom organization role `cloudTasksQueueOperator`: pauses, resumes and
+  purges a Cloud Tasks queue, and reads it, nothing else. An application's stack
+  grants it on the application's own queue to its deploy identity: a release that
+  puts the application into maintenance (a restore run, a breaking release) pauses
+  the queue while the database is replaced or migrated and resumes it after traffic
+  moves; a restore purges it too. The cloud's own `roles/cloudtasks.queueAdmin`
+  would also create, change and delete queues.
 - The custom organization role `runJobPolicyAdmin`: reads and sets the IAM
   policy of Cloud Run jobs (`run.jobs.getIamPolicy`, `run.jobs.setIamPolicy`)
   and nothing else. `2-env` grants it to each application's deploy identity
@@ -241,3 +248,4 @@ bucket, prefix `1-org`.
 | `run_job_policy_admin_role` | Full name of the `runJobPolicyAdmin` role. |
 | `spanner_plan_reader_role` | Full name of the `spannerPlanReader` role. |
 | `cloud_build_trigger_runner_role` | Full name of the `cloudBuildTriggerRunner` role. |
+| `cloud_tasks_queue_operator_role` | Full name of the `cloudTasksQueueOperator` role. |

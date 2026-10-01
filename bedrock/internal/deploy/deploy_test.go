@@ -100,17 +100,27 @@ func TestNewRecordRequest(t *testing.T) {
 		// wantStack the plan a tag build applied.
 		wantMigrations []Migration
 		wantStack      *StackPlan
-		// wantRestore is the restore note a restore run leaves.
-		wantRestore *Restore
-		wantErr     string
+		// wantRestore is the restore note a restore run leaves; wantMaintenance the
+		// maintenance the run went through.
+		wantRestore     *Restore
+		wantMaintenance *Maintenance
+		wantErr         string
 	}{
 		{
+			name:            "a run in maintenance records its revisions, queue, canceled executions and wait",
+			files:           map[string]string{EnvironmentFile: liveEnvironment + "export MAINTENANCE=\"true\"\nexport MAINTENANCE_REVISIONS=\"us-central1=harbor-app-00008-maint,us-west3=harbor-app-00008-maint\"\nexport MAINTENANCE_QUEUE=\"projects/p/locations/us-central1/queues/harbor-tasks\"\nexport MAINTENANCE_PURGED=\"true\"\nexport MAINTENANCE_CANCELED=\"2\"\nexport MAINTENANCE_WAITED=\"4s: no active instance\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			wantObject:      "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:      Live,
+			wantRegions:     "us-central1,us-west3",
+			wantMaintenance: &Maintenance{Revisions: map[string]string{"us-central1": "harbor-app-00008-maint", "us-west3": "harbor-app-00008-maint"}, Queue: "projects/p/locations/us-central1/queues/harbor-tasks", Purged: true, Canceled: 2, Waited: "4s: no active instance"},
+		},
+		{
 			name:        "a restore run records what replaced the database and who asked",
-			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0],google_firestore_database.firestore\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0],google_storage_bucket.assets\"\nexport RESTORE_CLEARED=\"google_firestore_database.firestore\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
 			wantObject:  "harbor/tst/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
-			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_firestore_database.firestore"}},
+			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_storage_bucket.assets"}, Cleared: []string{"google_firestore_database.firestore"}},
 		},
 		{
 			name: "a build that ran migrations lists what it applied, the seed included when it ran",
@@ -216,6 +226,9 @@ func TestNewRecordRequest(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantStack, r.Stack); diff != "" {
 				t.Errorf("Stack mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantMaintenance, r.Maintenance); diff != "" {
+				t.Errorf("Maintenance mismatch (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantRestore, r.Restore); diff != "" {
 				t.Errorf("Restore mismatch (-want +got):\n%s", diff)

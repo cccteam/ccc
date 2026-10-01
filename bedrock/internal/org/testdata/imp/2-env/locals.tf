@@ -134,8 +134,10 @@ locals {
   # makes per build from the stack's template jobs (the migrate job, and the job
   # process's job, whose IAM policy it copies from its template: runJobPolicyAdmin,
   # 1-org's custom role, since run.developer cannot set a job's policy). Its
-  # bounded grants (records bucket creator and viewer, build-time secrets, tst
-  # database admin) are
+  # monitoring.viewer reads the metrics a maintenance step waits on (the old
+  # revision's active instances, before the database is replaced or
+  # migrated). Its bounded grants (records bucket creator and viewer,
+  # build-time secrets, tst database admin) are
   # separate resources in identities.tf; writer on its image repository is
   # 2-shr's grant (var.pushers there), and Service Account User on the
   # runtime identities is granted where they are created, in the application
@@ -145,6 +147,7 @@ locals {
     "roles/run.developer",
     "roles/logging.logWriter",
     "roles/cloudbuild.builds.builder",
+    "roles/monitoring.viewer",
     local.org.run_job_policy_admin_role,
   ]
 

@@ -6,3 +6,8 @@
 lowering_property_test.go
 differential_property_test.go
 semantic_differential_test.go
+
+# The maintenance handler writes the maintenance page, embedded at compile time, to every
+# navigation; no request data reaches it, so the direct-write audit (an HTML page writing
+# user data) does not apply.
+maintenance/maintenance.go

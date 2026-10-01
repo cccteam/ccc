@@ -87,6 +87,11 @@ output "cloud_build_trigger_runner_role" {
   value       = google_organization_iam_custom_role.cloud_build_trigger_runner.id
 }
 
+output "cloud_tasks_queue_operator_role" {
+  description = "Full name of the cloudTasksQueueOperator custom organization role: pauses, resumes and purges a Cloud Tasks queue, nothing else. An application's stack grants it on the application's own queue to its deploy identity, for the maintenance a restore run or a breaking release puts the application into."
+  value       = google_organization_iam_custom_role.cloud_tasks_queue_operator.id
+}
+
 output "secret_container_admin_role" {
   description = "Full name of the secretContainerAdmin custom organization role, for layers that grant it to further identities."
   value       = google_organization_iam_custom_role.secret_container_admin.id

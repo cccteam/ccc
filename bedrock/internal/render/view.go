@@ -114,13 +114,16 @@ type view struct {
 	ServiceName    *derive.Variable
 	LoggingProject *derive.Variable
 	Version        *derive.Variable
-	Port           *derive.Variable
-	ClientID       *derive.Variable
-	ClientSecret   *derive.Variable
-	RedirectURL    *derive.Variable
-	HostedDomain   *derive.Variable
-	GroupPrefix    *derive.Variable
-	GroupLookup    *derive.Variable
+	// MaintenanceVariable is the variable the pipeline sets on a maintenance revision,
+	// declared empty on the service by the stack.
+	MaintenanceVariable string
+	Port                *derive.Variable
+	ClientID            *derive.Variable
+	ClientSecret        *derive.Variable
+	RedirectURL         *derive.Variable
+	HostedDomain        *derive.Variable
+	GroupPrefix         *derive.Variable
+	GroupLookup         *derive.Variable
 	// CookieKeySecret and ClientSecretSecret are the secrets by role.
 	CookieKeySecret    *derive.Secret
 	ClientSecretSecret *derive.Secret
@@ -486,6 +489,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.GoImage = goImage
 	v.GcloudImage, v.OpenTofuImage, v.DockerImage = gcloudImage, openTofuImage, dockerImage
 	v.Auth = &m.Auths[0]
+	v.MaintenanceVariable = derive.MaintenanceVariable
 	v.Directory = v.Auth.OIDC()
 	v.AuthVar = v.Auth.VariablePrefix()
 	if v.Directory {

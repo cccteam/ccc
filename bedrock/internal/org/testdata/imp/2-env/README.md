@@ -131,7 +131,9 @@ else may.
 
 Runs every build and deploy; never writes infrastructure. On the environment
 project: `roles/serviceusage.serviceUsageConsumer`, `roles/run.developer`,
-`roles/logging.logWriter`, `roles/cloudbuild.builds.builder`, and
+`roles/logging.logWriter`, `roles/cloudbuild.builds.builder`,
+`roles/monitoring.viewer` (reads the metrics a maintenance step waits on: the
+old revision's active instances before the database is replaced or migrated), and
 `runJobPolicyAdmin` (`1-org`'s custom role: reads and sets the IAM policy of
 Cloud Run jobs, so `bedrock deploy jobs` can copy the template job's grant onto
 the job it makes for each build of an application's job process). Bounded grants:

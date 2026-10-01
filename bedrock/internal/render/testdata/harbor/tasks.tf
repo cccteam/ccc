@@ -43,6 +43,23 @@ resource "google_cloud_tasks_queue_iam_member" "tasks_app" {
   depends_on = [google_cloud_tasks_queue.tasks, google_service_account.app]
 }
 
+# The deploy identity pauses the queue while a maintenance revision serves (a
+# restore run, a breaking release: the database is replaced or migrated under
+# it), resumes it after traffic moves, and purges it on a restore: 1-org's
+# cloudTasksQueueOperator, on this queue alone. The environment's stack grants
+# it; a pull-request stack, which never goes into maintenance, binds nothing.
+resource "google_cloud_tasks_queue_iam_member" "tasks_deploy" {
+  count = local.is_pr ? 0 : 1
+
+  project  = local.project_id
+  location = local.primary_region
+  name     = local.tasks_queue_name
+  role     = local.org.cloud_tasks_queue_operator_role
+  member   = local.identities.deploy_identity_member
+
+  depends_on = [google_cloud_tasks_queue.tasks]
+}
+
 # A task calls the application back with an OIDC token of the identity that
 # enqueued it, which takes Service Account User on that identity's own account.
 resource "google_service_account_iam_member" "app_acts_as_itself" {

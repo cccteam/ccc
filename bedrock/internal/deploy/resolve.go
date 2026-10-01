@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/oauth2/google"
@@ -66,7 +67,8 @@ const (
 	requesterSub  = "_REQUESTER"
 	restoreFact   = "RESTORE"
 	requesterFact = "RESTORE_REQUESTER"
-	// The two restores: an empty database the migrations and the seed then fill (tst,
+	// The two restores: an empty database the migrations then fill, and the seed where
+	// the placement's seed list names the environment (tst,
 	// and an environment on the seed list), and production's most recent backup (stg).
 	restoreEmpty  = "empty"
 	restoreBackup = "production-backup"
@@ -100,6 +102,17 @@ type Clients struct {
 	Registry RegistryFunc
 	// Run opens Cloud Run, for the migrate job and the services.
 	Run RunFunc
+	// Tasks opens Cloud Tasks, for the queue a maintenance step pauses and resumes.
+	Tasks TasksFunc
+	// Metrics opens Cloud Monitoring, for the active instances a maintenance step waits on.
+	Metrics MetricsFunc
+	// HTTP is the client a maintenance step probes the maintenance revision with.
+	HTTP *http.Client
+	// Sleep waits between a maintenance step's tries; nil waits for real.
+	Sleep SleepFunc
+	// FirestoreAs opens Firestore as the apply identity, for the documents a restore run
+	// deletes.
+	FirestoreAs FirestoreAsFunc
 	// Secrets opens Secret Manager, for the build secrets and the deployer app's key.
 	Secrets SecretsFunc
 	// SecretsAs opens Secret Manager as an impersonated identity, for the tests of a
@@ -114,7 +127,7 @@ func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
 		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
-		SecretsAs: NewSecretManagerAs,
+		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs,
 	}
 }
 

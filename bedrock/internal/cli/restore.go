@@ -35,8 +35,8 @@ GitHub token for the environment's operations identity and runs the environment'
 for the release with the restore instruction. Everything that changes the environment happens
 inside that run, in the pipeline's order, as the deploy identity: the environment's database is
 replaced (an empty database for the first environment and for a seeded one, which the migrations
-and the seed then fill; production's most recent backup for the environment on production's
-instance), the release's jobs are created, the migrations run, the revision deploys, traffic moves
+then fill, and the seed where the placement's seed list names the environment; production's most
+recent backup for the environment on production's instance), the release's jobs are created, the migrations run, the revision deploys, traffic moves
 and the record carries the reason and who asked. The command itself changes nothing: it checks that
 the environment is not production, that the release exists, and that the placement records the
 environment's project (projects, which bedrock org register prints), then dispatches the workflow

@@ -313,6 +313,18 @@ thing one step hands the next. In order:
   under its two tags, with the build arguments and the declared build secrets (read as
   the deploy identity into memory and passed as BuildKit secrets, never build
   arguments); the digest goes to `environment.sh`.
+- `deploy maintenance on`: in a run that replaces the database (a restore run), puts the
+  application into maintenance before the stack is applied: the release's own image starts
+  as a revision with `APP_MAINTENANCE=1` in every region, under the tag `next` and with no
+  traffic; the revision is probed through the load balancer's next hostname and must answer
+  503 with `X-Maintenance: 1`, else the run stops with nothing moved and names the
+  application's missing switch (`impulse check maintenance-switch`); then all traffic
+  moves to it, the task queue (`_TASKS_QUEUE`) is paused and, on a restore, purged, the
+  running executions of the serving build's job are canceled, and the old revision's
+  requests in flight are let finish (its active instances read from Cloud Monitoring
+  until none is, or the service's request timeout). Any other run keeps the application
+  serving. The facts (`MAINTENANCE`, `MAINTENANCE_REVISIONS`, `MAINTENANCE_QUEUE`,
+  `MAINTENANCE_PURGED`, `MAINTENANCE_CANCELED`, `MAINTENANCE_WAITED`) reach the record.
 - `deploy stack plan`, `apply`: in a tag build, the environment's stack planned and
   applied as the apply identity, after the image build (a failed build changes no
   infrastructure) and before the jobs and the migrations (what they need exists first).
@@ -324,9 +336,12 @@ thing one step hands the next. In order:
   running service (add first, remove later); one that is not is declared breaking in
   release-please's way and becomes a window release. The first apply of an environment
   stays by hand, before any release exists there. In a restore run (`_RESTORE=empty`) the
-  plan replaces the Spanner database, the Firestore database and, in the first
-  environment, the file bucket, each when the stack has it, so the migrations and the seed
-  apply afresh; the environment on production's instance keeps its file bucket. The
+  plan replaces the Spanner database and, in the first environment, the file bucket, each
+  when the stack has it, so the migrations apply afresh, and the seed where the placement's
+  seed list names the environment; the environment on production's instance keeps its file
+  bucket. The Firestore database is not replaced (Firestore keeps a deleted database's id
+  unavailable for minutes): after the apply, the step deletes its documents as the apply
+  identity, since they refer to rows the restore replaced (`RESTORE_CLEARED`). The
   restore from production's backup is not built yet, and the plan stops on it.
 - `deploy migrate`: runs this build's migrate job, the copy `deploy jobs` made of the
   template on this image, once to completion, with the seed (`schema/devseed` as data
@@ -353,7 +368,7 @@ thing one step hands the next. In order:
   registry's keep count: Cloud Run keeps an image only while a serving revision uses it,
   so an older revision needs the registry's copy to start again. The job process's part
   of the contract: end what it is doing on SIGTERM, the signal Cloud Run sends a job's
-  container when its execution is cancelled, within Cloud Run's grace.
+  container when its execution is canceled, within Cloud Run's grace.
 - `deploy service`: puts a new revision of the service in every region, receiving no
   traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
   new revision carries the tag `next` (or the pull request's tag), under which the
@@ -362,9 +377,14 @@ thing one step hands the next. In order:
 - `deploy shift-traffic`: moves every region to 100 percent on its new revision, keeping
   the tags other revisions carry; a pull-request revision served under its tag alone
   leaves the traffic where it is.
+- `deploy maintenance off`: after traffic moved in a run that was in maintenance, resumes
+  the task queue against the new release; the maintenance revisions stay, with no
+  traffic, as any old revision does.
 - `deploy record`: writes the deployment record once traffic has moved, with the plan of
   the stack the build applied (`stack`: counts and changes) and, in a restore run, what
-  replaced the database, who asked and what the stack replaced (`restore`).
+  replaced the database, who asked and what the stack replaced (`restore`), and the
+  maintenance the run went through (`maintenance`: the revisions, the queue, the
+  executions canceled, how the wait ended).
 - `deploy talk-back`: in a pull-request build, tells the pull request what the build did
   as the deployer app: a GitHub deployment carrying the environment's URL and a comment.
   The app's token is minted from its key when there is something to say, by this step or
@@ -471,12 +491,17 @@ instruction `_RESTORE` (`empty`, or `production-backup` for the environment on
 production's instance) and `_REQUESTER`. Everything that changes the environment happens
 inside that run, in the pipeline's order: the release is validated (the record gate
 holds; the hotfix check is skipped, since the database is about to be replaced), the
-image is built, the stack's plan replaces the database (and the Firestore database and,
-in the first environment, the file bucket), the jobs are created, the migrations and the
-seed apply, the revision deploys, traffic moves, and the record carries the reason and
-the requester. The run refuses the instruction in production. `bedrock restore` starts
-it from GitHub (below). Not built yet: the restore from production's backup, and the
-maintenance revision that serves while the database is away.
+image is built, the stack's plan replaces the database (and, in the first environment,
+the file bucket) and the apply deletes the Firestore database's documents, the jobs are
+created, the migrations apply
+(and the seed, where the placement's seed list names the environment), the revision
+deploys, traffic moves, and the record carries the reason and the requester. Before the
+database goes, the application is put into maintenance (`deploy maintenance on`): the
+release's own image serves the maintenance page with all traffic while the database is
+away, the task queue is paused and purged, and the serving build's job executions are
+canceled; the queue resumes once the release serves (`deploy maintenance off`). The run
+refuses the instruction in production. `bedrock restore` starts it from GitHub (below).
+Not built yet: the restore from production's backup.
 
 ## bedrock restore
 
@@ -566,11 +591,19 @@ it down on `/gcbrun down` or by the hourly sweep once the pull request closes. T
 talks back on the pull request: a deployment the sidebar shows, a comment with the release
 and the database mode, the guard's refusals.
 
-The guards run before anything deploys: the migration guard (the sequence, never
-modified, no gaps, and against the default branch for a pull request; a refusal names
-`bedrock migration renumber` as the fix, and for a modified committed seed file a new
-file after it with `/gcbrun reload-db`), and the plan guard (a pull-request stack may only
-create and change what carries its own number).
+The guards run before anything deploys: the migration guard (the sequence, one up file
+each, no gaps; a committed schema migration never changes, a seed file may; against the
+default branch for a pull request; a refusal names `bedrock migration renumber` as the
+fix), and the plan guard (a pull-request stack may only create and change what carries
+its own number).
+
+A run that replaces the database (a restore run) puts the application into maintenance
+first: the release's own image starts as a revision with `APP_MAINTENANCE` set, which
+the framework's `maintenance` package turns into a maintenance page and 503 answers
+with no database opened; the pipeline probes it for the marker before any traffic moves,
+then the task queue is paused, the serving build's job executions are canceled, the old
+revision's requests finish, and only then is the database replaced. The queue resumes
+once the release's revision serves.
 
 ## Development
 

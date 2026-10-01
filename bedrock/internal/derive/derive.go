@@ -248,9 +248,15 @@ const (
 
 // The well-known variables every skeleton declares.
 const (
-	varServiceName      = "APP_SERVICE_NAME"
-	varLoggingProject   = "GOOGLE_CLOUD_LOGGING_PROJECT"
-	varVersion          = "APP_VERSION"
+	varServiceName    = "APP_SERVICE_NAME"
+	varLoggingProject = "GOOGLE_CLOUD_LOGGING_PROJECT"
+	varVersion        = "APP_VERSION"
+	// varMaintenance is the variable the pipeline sets on a maintenance revision, whose
+	// process then serves the maintenance page and opens no database; the stack
+	// declares it empty on the service. It is not a declared variable of the
+	// application: the framework's maintenance package reads it before the configuration
+	// is built.
+	varMaintenance      = "APP_MAINTENANCE"
 	varDatabaseProject  = "GOOGLE_CLOUD_SPANNER_PROJECT"
 	varDatabaseInstance = "GOOGLE_CLOUD_SPANNER_INSTANCE_ID"
 	varDatabaseName     = "GOOGLE_CLOUD_SPANNER_DATABASE_NAME"
@@ -273,6 +279,10 @@ const (
 	// on that database alone.
 	varFirestoreDatabase = "APP_FIRESTORE_DATABASE"
 )
+
+// MaintenanceVariable is the variable the pipeline sets on a maintenance revision, which
+// the stack declares empty on the service (see varMaintenance).
+const MaintenanceVariable = varMaintenance
 
 // wellKnown are the well-known variables by name.
 var wellKnown = map[string]Role{
