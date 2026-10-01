@@ -108,6 +108,7 @@ checks:
   tenancy-wired
   outlet-wired
   sites-wired
+  maintenance-switch
   session-tables
   auths-wired
   conditions-proven

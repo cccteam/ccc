@@ -58,8 +58,8 @@ github.com/cccteam/ccc/cache v0.1.8-0.20260928033352-026459e32084 h1:h1wF4TEU7C3
 github.com/cccteam/ccc/cache v0.1.8-0.20260928033352-026459e32084/go.mod h1:/k4vhq5Nmj4/DbidzIreBpWg0xJk2BwhfuOtC6Hs1XY=
 github.com/cccteam/ccc/pkg v0.1.4 h1:5KI2fUTSFXyUZsBE0+KUqZ9fFpCaI8oneralVyUPVlI=
 github.com/cccteam/ccc/pkg v0.1.4/go.mod h1:ByFJXBFztIob5Fn/rAJUu/XtyIsK4cYJyko/nAY/Gls=
-github.com/cccteam/ccc/resource v0.10.7-0.20260928050122-b8fa8fb4ac3b h1://WkpqbU3HViWJjXFZOtVxlIaSKfGPEjIDPkb2QCobE=
-github.com/cccteam/ccc/resource v0.10.7-0.20260928050122-b8fa8fb4ac3b/go.mod h1:J7xa2r/JBrmmdAJDID8m+tldB2CclntfNWMJilc6Jcc=
+github.com/cccteam/ccc/resource v0.10.7-0.20261001130606-91621a4392c8 h1:KZs6uKkY3qKDPKMBm0Citilb4M4t9xIr3mFWs2Zs7Vk=
+github.com/cccteam/ccc/resource v0.10.7-0.20261001130606-91621a4392c8/go.mod h1:J7xa2r/JBrmmdAJDID8m+tldB2CclntfNWMJilc6Jcc=
 github.com/cccteam/ccc/securehash v0.0.13 h1:UhoslRb/VKE+OFRcUBuF7SSn+1g0quaKqrWwxujYIUY=
 github.com/cccteam/ccc/securehash v0.0.13/go.mod h1:Nz+2cTjI8QIRcyBaHATC0xXnYBW3AEGCiv3CbnPRX94=
 github.com/cccteam/ccc/tracer v0.1.7 h1:U7WNVmMgiX2l3ihx/VbF/C2on5K6vY5BrlcrbNqKbQ4=

@@ -143,6 +143,7 @@ func All() []Check {
 		tenancyWired{},
 		outletWired{},
 		sitesWired{},
+		maintenanceSwitch{},
 		sessionTables{},
 		authsWired{},
 		conditionsProven{},
