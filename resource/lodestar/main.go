@@ -13,6 +13,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/config"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
+	"github.com/cccteam/ccc/resource/maintenance"
 	"github.com/go-playground/errors/v5"
 	"github.com/jtwatson/server"
 )
@@ -26,6 +27,13 @@ func main() {
 func Main() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+
+	// A maintenance revision serves the maintenance page in place of the application: no
+	// database, no sessions, no secrets are opened. The deploy pipeline starts one before
+	// a release that replaces or interrupts the database.
+	if maintenance.Requested() {
+		return maintenance.Serve(ctx)
+	}
 
 	conf, err := config.NewSiteConfiguration(ctx)
 	if err != nil {

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60">
+<title>Down for maintenance</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: Canvas; color: CanvasText; }
+  main { max-width: 32rem; padding: 2rem 1.5rem; text-align: center; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 .75rem; }
+  p { margin: 0 0 .5rem; opacity: .85; }
+  .quiet { font-size: .9rem; opacity: .6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Down for maintenance</h1>
+  <p>This application is being updated and is not available right now.</p>
+  <p class="quiet">This page checks back on its own and returns to the application when it answers again.</p>
+</main>
+<script>
+  (function () {
+    var every = 15000;
+    function check() {
+      fetch(location.href, { method: "HEAD", cache: "no-store", credentials: "same-origin" })
+        .then(function (r) {
+          if (r.status !== 503 || r.headers.get("X-Maintenance") !== "1") { location.reload(); return; }
+          setTimeout(check, every);
+        })
+        .catch(function () { setTimeout(check, every); });
+    }
+    setTimeout(check, every);
+  })();
+</script>
+</body>
+</html>
