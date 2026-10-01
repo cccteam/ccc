@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/check"
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 const (
@@ -128,12 +130,24 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
-	// In maintenance (a restore run, after deploy maintenance on) the service's
-	// maintenance variable is live at 1 on the maintenance revision, and the plan is told
-	// so: declared and live agree, and the apply leaves the service alone while the
-	// database is replaced. An entry of the env set cannot be ignored on its own.
-	if env[maintenanceFact] == trueValue {
-		args = append(args, varFlag, "maintenance="+maintenanceOn)
+	// The plan is told the maintenance variable's live value, so that declared and live
+	// agree and the apply never starts an application revision from the template while
+	// the application is in maintenance: in this run (a restore run, after deploy
+	// maintenance on), or from an earlier run that failed after its maintenance on, whose
+	// database may hold no tables until the migrations run (a revision started then
+	// cannot come up, and the apply waits on it). An entry of the env set cannot be
+	// ignored on its own; the release's own revision is deployed with the variable
+	// cleared, after the migrations.
+	build, err := w.Build()
+	if err != nil {
+		return err
+	}
+	live, err := liveMaintenance(ctx, clients, build, env, out)
+	if err != nil {
+		return err
+	}
+	if live != "" {
+		args = append(args, varFlag, "maintenance="+live)
 	}
 	switch env[restoreFact] {
 	case "":
@@ -168,6 +182,53 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	}
 
 	return w.Append(map[string]string{stackPlanFact: p.Summary()})
+}
+
+// liveMaintenance is the value the plan declares for the maintenance variable: 1 in a
+// run that is in maintenance, else what the first service the stack names carries live
+// (1 when an earlier run's maintenance was never ended), else "", the default. A service
+// the stack does not name or that is not deployed yet answers "".
+func liveMaintenance(ctx context.Context, clients *Clients, build *Build, env map[string]string, out io.Writer) (string, error) {
+	if env[maintenanceFact] == trueValue {
+		return maintenanceOn, nil
+	}
+	entries := build.Substitutions[servicesSub]
+	if entries == "" || clients.Run == nil {
+		return "", nil
+	}
+	region, service, err := target(servicesSub, strings.Split(entries, ",")[0])
+	if err != nil {
+		return "", err
+	}
+	run, err := clients.Run(ctx)
+	if err != nil {
+		return "", err
+	}
+	doc, err := run.Get(ctx, serviceName(build.Substitutions[projectSub], region, service))
+	if err != nil {
+		var apiErr *apiError
+		if errors.As(err, &apiErr) && apiErr.status == http.StatusNotFound {
+			return "", nil
+		}
+
+		return "", errors.Wrapf(err, "reading the service %s for its maintenance variable", service)
+	}
+	template, _ := doc[keyTemplate].(map[string]any)
+	containers, _ := template["containers"].([]any)
+	if len(containers) == 0 {
+		return "", nil
+	}
+	container, _ := containers[0].(map[string]any)
+	vars, _ := container["env"].([]any)
+	for _, entry := range vars {
+		if v, _ := entry.(map[string]any); text(v, keyName) == derive.MaintenanceVariable && text(v, keyValue) == maintenanceOn {
+			fmt.Fprintf(out, "%s is in maintenance from an earlier run (%s=%s on the service): the plan keeps it so, and the release's revision clears it after the migrations.\n", service, derive.MaintenanceVariable, maintenanceOn)
+
+			return maintenanceOn, nil
+		}
+	}
+
+	return "", nil
 }
 
 // restoredFact lists what a restore run's plan replaces, comma-separated, for the record.

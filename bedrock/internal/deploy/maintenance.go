@@ -31,6 +31,8 @@ const (
 	// tasksQueueSub is the application's task queue, named in full by the stack when the
 	// application declares one.
 	tasksQueueSub = "_TASKS_QUEUE"
+	// servicesSub names the application's services per region (region=name, comma-separated).
+	servicesSub = "_SERVICES"
 	// maintenanceOn is the value the maintenance variable takes on a maintenance revision.
 	maintenanceOn = "1"
 	// queuePaused is the state of a Cloud Tasks queue that holds its tasks.

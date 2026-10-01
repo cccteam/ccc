@@ -167,7 +167,10 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		env   string
 		state string
 		// backup is the backup of production's database the instance holds; nil when none.
-		backup       *Backup
+		backup *Backup
+		// live is the maintenance variable's value on the live service the stack names
+		// (_SERVICES is set with it); "" leaves the service out.
+		live         string
 		wantOut      []string
 		wantTofu     []string
 		wantFact     string
@@ -197,6 +200,24 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -var maintenance=1 -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.assets", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
+		},
+		{
+			name:     "a run that was not in maintenance keeps a service an earlier run's maintenance left so, until the release's revision clears it",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			live:     "1",
+			wantOut:  []string{"quill-app is in maintenance from an earlier run (APP_MAINTENANCE=1 on the service): the plan keeps it so, and the release's revision clears it after the migrations.", "Tests passed"},
+			wantTofu: []string{initLine, planLine + " -var maintenance=1", showLine},
+			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
+		{
+			name:     "a service that serves leaves the plan's maintenance variable at its default",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			live:     "",
+			wantOut:  []string{"Tests passed"},
+			wantTofu: []string{initLine, planLine, showLine},
+			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
 		},
 		{
 			name:         "a restore run in a seeded environment says the seed applies afresh too",
@@ -299,7 +320,15 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			if envFile == "" {
 				envFile = "export SKIP_DEPLOY=\"\"\n"
 			}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, tt.subs)})
+			subs := tt.subs
+			if tt.live != "" || strings.Contains(tt.name, "serves") {
+				subs = map[string]string{}
+				for k, v := range tt.subs {
+					subs[k] = v
+				}
+				subs["_SERVICES"] = "us-central1=quill-app"
+			}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs)})
 			if tt.authoritative {
 				dir := filepath.Join(string(w), stackDir)
 				if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -312,8 +341,20 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON, "tofu state": tt.state}}
 			secrets := &fakeSecrets{states: tt.pins}
 			spanner := &fakeSpanner{backup: tt.backup}
+			clients := &Clients{Exec: run, SecretsAs: secrets.openAs, SpannerAs: spanner.open}
+			if tt.live != "" || strings.Contains(tt.name, "serves") {
+				// The stack names one service, deployed, carrying the maintenance variable at
+				// the live value.
+				const name = "projects/p-stg/locations/us-central1/services/quill-app"
+				doc := serviceDoc(name)
+				template, _ := doc["template"].(map[string]any)
+				container, _ := firstContainer(template)
+				container["env"] = []any{map[string]any{"name": "APP_MAINTENANCE", "value": tt.live}}
+				services := newFakeRun(map[string]map[string]any{name: doc})
+				clients.Run = services.open
+			}
 			var out strings.Builder
-			err := PlanEnvironmentStack(t.Context(), &Clients{Exec: run, SecretsAs: secrets.openAs, SpannerAs: spanner.open}, w, &out)
+			err := PlanEnvironmentStack(t.Context(), clients, w, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("PlanEnvironmentStack() error = %v, want %q; output:\n%s", err, tt.wantErr, out.String())
