@@ -71,7 +71,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	if err != nil {
 		return err
 	}
-	args := []string{"buildx", "build", "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
+	args := []string{dockerBuildx, "build", "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
 	if env[jobsJobFact] != "" {
 		_, job, err := buildJob(build.Substitutions[projectSub], env, jobsJobFact)
 		if err != nil {
@@ -113,7 +113,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	// export is not supported for the docker driver"). A builder of that driver is created
 	// for this build and used; its BuildKit runs in a container beside the step's daemon,
 	// pulling and pushing with the step's registry credentials.
-	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: []string{"buildx", "create", "--driver", "docker-container", "--use"}}, out); err != nil {
+	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: []string{dockerBuildx, "create", "--driver", "docker-container", "--use"}}, out); err != nil {
 		return err
 	}
 	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: args}, out); err != nil {
@@ -181,6 +181,8 @@ func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]string, 
 const (
 	hooksInImage  = "/hooks"
 	dockerProgram = "docker"
+	// dockerBuildx is docker's buildx plugin, which creates the builder and builds.
+	dockerBuildx = "buildx"
 	// dockerCreate makes a container from an image without starting it, to copy a file out.
 	dockerCreate = "create"
 )
