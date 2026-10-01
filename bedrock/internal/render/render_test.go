@@ -169,6 +169,62 @@ func TestFormatted(t *testing.T) {
 	}
 }
 
+// TestPipelineFlowItems reads the rendered Cloud Build configurations and refuses a bare
+// item of a flow sequence that YAML 1.1, which Cloud Build reads, takes for a boolean or
+// null: on, off, yes, no, y, n, true, false and null, in any case, and ~. A step's args
+// are strings, and "cannot unmarshal bool into Go value of type string" stopped a pipeline
+// at its first step once over args: [deploy, maintenance, on]. Such a word is quoted.
+func TestPipelineFlowItems(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		file string
+	}{
+		{name: "harbor's pipeline", file: "testdata/harbor/root/cloudbuild.yaml"},
+		{name: "harbor's sweep", file: "testdata/harbor/root/cloudbuild-sweep.yaml"},
+		{name: "beacon's pipeline", file: "testdata/beacon/root/cloudbuild.yaml"},
+		{name: "beacon's sweep", file: "testdata/beacon/root/cloudbuild-sweep.yaml"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content, err := os.ReadFile(tt.file)
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			for i, line := range strings.Split(string(content), "\n") {
+				if word := bareYAMLBool(line); word != "" {
+					t.Errorf("%s:%d: %q is a YAML 1.1 boolean or null in a flow sequence; quote it: %s", tt.file, i+1, word, strings.TrimSpace(line))
+				}
+			}
+		})
+	}
+}
+
+// bareYAMLBool is the first unquoted item of a flow sequence on the line that YAML 1.1
+// reads as a boolean or null, or "".
+func bareYAMLBool(line string) string {
+	open := strings.Index(line, "[")
+	if open < 0 || strings.HasPrefix(strings.TrimSpace(line), "#") {
+		return ""
+	}
+	closing := strings.LastIndex(line, "]")
+	if closing < open {
+		return ""
+	}
+	for _, item := range strings.Split(line[open+1:closing], ",") {
+		item = strings.TrimSpace(item)
+		switch strings.ToLower(item) {
+		case "y", "n", "yes", "no", "on", "off", "true", "false", "null", "~":
+			return item
+		}
+	}
+
+	return ""
+}
+
 // TestGoImage holds the Go image a commit pin is built in to bedrock: its Go is at least
 // the go line of bedrock's go.mod, since the builds run with GOTOOLCHAIN=local and a newer
 // go line would fail every pipeline pinned to that commit, and it is the image the seeded

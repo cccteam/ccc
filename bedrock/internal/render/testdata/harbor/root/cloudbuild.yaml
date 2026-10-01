@@ -139,7 +139,7 @@ steps:
   - id: MaintenanceOn
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
-    args: [deploy, maintenance, on]
+    args: [deploy, maintenance, "on"]
     timeout: 900s
 
   # A tag build only: the environment's stack planned and applied as the apply identity,
@@ -215,7 +215,7 @@ steps:
   - id: MaintenanceOff
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
-    args: [deploy, maintenance, off]
+    args: [deploy, maintenance, "off"]
     timeout: 300s
 
   # The builds' jobs nothing runs any more are deleted: a job of the job process whose
