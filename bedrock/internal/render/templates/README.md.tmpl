@@ -391,12 +391,18 @@ pull request's own migrations, up and down together, to follow
 the pipeline will; a committed schema migration is never renumbered. Seed files
 are development data and may be edited or removed, the directory staying one
 sequence (a removal renumbers the files after it, in their own sequence). A
-changed seed applies from the start by recreating the database: a pull
-request's is recreated on its next build, since the build's record lists the
-seed files it applied and their content; an environment on the placement's
-`seed` list keeps its database until it is recreated, which bedrock does not
-do yet, so until then a changed seed reaches an existing seeded environment
-only through a new database. `bedrock check` applies the sequence rule
+changed seed applies from the start by recreating the database, since every
+build's record lists the seed files it applied and their content: a pull
+request's database is recreated on its next build, and an environment on the
+placement's `seed` list is restored by the next release whose tree no longer
+carries a seed file as the environment's live release applied it (edited,
+renumbered or removed). That release runs as a restore run the release itself
+asks for: the application serves its maintenance page while the database (and
+the file bucket) is replaced and the Firestore documents are deleted, the
+migrations and the seed apply from the start, and the record carries the
+reason. A seed file added beside the applied ones is applied as a new data
+migration and recreates nothing; an environment off the list never applied the
+seed and is not touched; production is never on the list. `bedrock check` applies the sequence rule
 locally; the schema-protection workflow in the application's CI is the merge
 gate for the unchanged rule.
 

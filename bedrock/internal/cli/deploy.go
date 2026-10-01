@@ -78,7 +78,12 @@ no /gcbrun comment, an unknown option, and shared-db with reload-db. A tag build
 restore instruction (_RESTORE: empty, or production-backup for the environment on production's
 instance; _REQUESTER names who asked): the environment's database is replaced before the release
 deploys, which the facts carry on (RESTORE, RESTORE_REQUESTER); a pull-request build carries none,
-and production is never restored by a run. It writes environment.sh (the
+and production is never restored by a run. In an environment on the placement's seed list (_SEED
+true) a tag build decides a restore itself when the tree no longer carries a seed file as the
+environment's live release applied it (the release's record lists the seed files with their
+hashes): the release is the requester and the reason is a fact of its own (RESTORE_REASON), on the
+record; a restore asked for takes precedence, and a seed file added beside the applied ones
+recreates nothing. It writes environment.sh (the
 facts, then every substitution of the build), build-args.txt (the declared substitutions as the
 image build's arguments, NAME=value lines) and build.json (the build as Cloud Build describes it) to
 the workspace.`,

@@ -186,7 +186,8 @@ It also refuses:
   default branch has taken since the branch was cut; `bedrock migration renumber` is the
   fix it names. Seed files are development data and may be edited or removed, the
   directory staying one sequence; a changed seed applies from the start by recreating
-  the database, a pull request's on its next build.
+  the database: a pull request's on its next build, a seeded environment's by the next
+  release, as a restore run the release asks for itself.
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
@@ -272,7 +273,12 @@ thing one step hands the next. In order:
   instruction (`_RESTORE`: `empty`, or `production-backup` for the environment on
   production's instance, with `_REQUESTER` naming who asked): the environment's database
   is replaced before the release deploys. A pull-request build carries none, and
-  production is never restored by a run.
+  production is never restored by a run. In an environment on the placement's seed list
+  (`_SEED` true), a tag build decides a restore itself when the tree no longer carries a
+  seed file as the environment's live release applied it (its record lists the seed files
+  with their hashes; edited, renumbered or removed since): the release is the requester,
+  the reason goes on the record (`RESTORE_REASON`), and a restore asked for takes
+  precedence. A seed file added beside the applied ones recreates nothing.
 - `deploy validate-release`: for a tag build, the tag belongs to a GitHub Release cut by
   an accepted release actor, the tagged commit is on the default branch or at the tip of
   a hotfix line, and the record gate holds: the release is live in the previous
@@ -291,7 +297,8 @@ thing one step hands the next. In order:
   (the rule `bedrock check` applies), and in a pull-request build every schema migration
   the branch started from is still there unchanged and the sequence is read together with
   the default branch's. Seed files may be edited or removed; the resolve step recreates a
-  pull request's database when a seed its last build applied changed. A refusal is posted
+  pull request's database when a seed its last build applied changed, and restores a
+  seeded environment's when a seed its live release applied changed. A refusal is posted
   on the pull request and names the fix.
 - `deploy plan-environments`: in a pull-request build, plans the stack for every
   environment of the promotion order, each against that environment's state prefix as

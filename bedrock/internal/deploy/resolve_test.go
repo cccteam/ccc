@@ -105,7 +105,7 @@ func prBuild(overrides map[string]string) map[string]string {
 }
 
 // known is the stack's contract in these tests.
-var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_RESTORE", "_REQUESTER"}
+var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_SEED", "_RESTORE", "_REQUESTER"}
 
 func buildFor(t *testing.T, subs map[string]string) string {
 	t.Helper()
@@ -122,7 +122,7 @@ func buildFor(t *testing.T, subs map[string]string) string {
 type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token  string
 	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Notice bool
-	ReloadReason, Restore, Requester                              string
+	ReloadReason, Restore, Requester, RestoreReason               string
 	Declared                                                      []string
 }
 
@@ -130,7 +130,7 @@ func summarize(f *Facts) outcome {
 	return outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Notice: f.Notice != "",
-		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, Declared: f.Declared,
+		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
 	}
 }
 
@@ -149,6 +149,47 @@ func recordWith(build, timestamp string, applied ...Migration) string {
 
 	return string(data)
 }
+
+// liveRecordWith is a release's live record in env: what the environment runs, with the
+// migration and seed files its build applied. The seed-change cases compare the tree
+// with it.
+func liveRecordWith(env, version, build, timestamp string, applied ...Migration) string {
+	data, err := json.Marshal(Record{App: "harbor", Env: env, Version: version, Build: build, Timestamp: timestamp, Status: Live, Migrations: applied})
+	if err != nil {
+		panic(err)
+	}
+
+	return string(data)
+}
+
+// The seed the seed-change cases use: the environment's live release v1.2.2 applied
+// 000001_Seed with "insert a", and the tree either still carries it so or changed it.
+const (
+	seedUp      = "schema/devseed/000001_Seed.up.sql"
+	seedContent = "insert a"
+	// seedChangedReason is the reason the build gives when the live release's seed is
+	// no longer in the tree as applied.
+	seedChangedReason = "the seed changed since v1.2.2 applied it (build b-0): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start"
+)
+
+// seededTag is a tag build in an environment on the placement's seed list, with the
+// records bucket and the migrations directory the comparison reads.
+func seededTag(overrides map[string]string) map[string]string {
+	subs := tagBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations", seedSub: trueValue})
+	for name, value := range overrides {
+		if value == "" {
+			delete(subs, name)
+
+			continue
+		}
+		subs[name] = value
+	}
+
+	return subs
+}
+
+// liveSeeded is tst's live record of v1.2.2 with the seed applied.
+var liveSeeded = map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})}
 
 func TestResolve(t *testing.T) {
 	t.Parallel()
@@ -309,6 +350,93 @@ func TestResolve(t *testing.T) {
 			comments: []string{"/gcbrun"},
 			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a")})},
 			tree:     map[string]string{sitesUp: sitesContent, "schema/devseed/000001_Seed.up.sql": "insert a", "schema/devseed/000002_More.up.sql": "insert b"},
+			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
+		},
+		{
+			name:    "a seed file the environment's live release applied changed: the release restores the database so the seed applies from the start",
+			subs:    seededTag(nil),
+			records: liveSeeded,
+			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want: withComment(tag, "", func(o *outcome) {
+				o.Restore, o.Requester, o.RestoreReason = restoreEmpty, "release v1.2.3", seedChangedReason
+			}),
+			wantOut: []string{"Restore run: tst's database is replaced (empty) before v1.2.3 deploys, " + seedChangedReason + "."},
+		},
+		{
+			name:    "a seed file the live release applied is gone from the tree: the same case",
+			subs:    seededTag(nil),
+			records: liveSeeded,
+			tree:    map[string]string{sitesUp: sitesContent},
+			want: withComment(tag, "", func(o *outcome) {
+				o.Restore, o.Requester, o.RestoreReason = restoreEmpty, "release v1.2.3", seedChangedReason
+			}),
+		},
+		{
+			name:    "the tree carries the seed as the live release applied it: nothing is restored",
+			subs:    seededTag(nil),
+			records: liveSeeded,
+			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent},
+			want:    tag,
+		},
+		{
+			name:    "a new seed file beside the applied ones is a data migration the migrate job applies: nothing is restored",
+			subs:    seededTag(nil),
+			records: liveSeeded,
+			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent, "schema/devseed/000002_More.up.sql": "insert b"},
+			want:    tag,
+		},
+		{
+			name:    "a changed schema migration is the hotfix check's concern, not the seed comparison's",
+			subs:    seededTag(nil),
+			records: liveSeeded,
+			tree:    map[string]string{sitesUp: sitesContent + ", edited", seedUp: seedContent},
+			want:    tag,
+		},
+		{
+			name:    "an environment off the seed list never applied the seed: a changed seed is nothing to it",
+			subs:    seededTag(map[string]string{seedSub: "false"}),
+			records: liveSeeded,
+			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want:    tag,
+		},
+		{
+			name:    "a restore asked for already replaces the database: the seed comparison yields to it",
+			subs:    seededTag(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat"}),
+			records: liveSeeded,
+			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want:    withComment(tag, "", func(o *outcome) { o.Restore, o.Requester = restoreEmpty, "octocat" }),
+			wantOut: []string{"Restore run: tst's database is replaced (empty) before v1.2.3 deploys, asked for by octocat."},
+		},
+		{
+			name:    "only a live record counts: a preview is a build whose traffic never shifted",
+			subs:    seededTag(nil),
+			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
+			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want:    tag,
+		},
+		{
+			name: "the newest live record decides: the seed as the latest release applied it",
+			subs: seededTag(nil),
+			records: map[string]string{
+				"gs://records/harbor/tst/v1.2.1/b-9.json": liveRecordWith("tst", "v1.2.1", "b-9", "2026-09-26T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, old")}),
+				"gs://records/harbor/tst/v1.2.2/b-0.json": liveSeeded["gs://records/harbor/tst/v1.2.2/b-0.json"],
+			},
+			tree: map[string]string{sitesUp: sitesContent, seedUp: seedContent},
+			want: tag,
+		},
+		{
+			name:    "production is never restored by a run: its seed is not compared",
+			subs:    seededTag(map[string]string{"_ENV": "prd"}),
+			records: map[string]string{"gs://records/harbor/prd/v1.2.2/b-0.json": liveRecordWith("prd", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
+			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want:    withComment(tag, "", func(o *outcome) { o.ImageTag, o.CommitTag = "v1.2.3-prd", "deadbeefcafe-prd" }),
+		},
+		{
+			name:     "a pull-request build compares the tree with its own records, not with the environment's live release",
+			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations", seedSub: trueValue}),
+			comments: []string{"/gcbrun"},
+			records:  liveSeeded,
+			tree:     map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
 			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
 		},
 		{

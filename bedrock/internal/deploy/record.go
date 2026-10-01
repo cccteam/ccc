@@ -78,6 +78,10 @@ type Restore struct {
 	// seed) or production-backup.
 	Kind      string `json:"kind"`
 	Requester string `json:"requester"`
+	// Reason is why the build restored the database on its own: the seed changed in an
+	// environment on the placement's seed list, and the release is the requester. Empty
+	// for a restore a person asked for.
+	Reason string `json:"reason,omitempty"`
 	// Replaced lists the stack's resources the run replaced, by address.
 	Replaced []string `json:"replaced,omitempty"`
 	// Cleared lists what the run emptied instead of replacing: the Firestore database
@@ -111,7 +115,7 @@ func restoreOf(env map[string]string) *Restore {
 	if env[restoreFact] == "" {
 		return nil
 	}
-	r := &Restore{Kind: env[restoreFact], Requester: env[requesterFact], Backup: env[backupFact], BackupTime: env[backupTimeFact]}
+	r := &Restore{Kind: env[restoreFact], Requester: env[requesterFact], Reason: env[restoreReasonFact], Backup: env[backupFact], BackupTime: env[backupTimeFact]}
 	if env[restoredFact] != "" {
 		r.Replaced = strings.Split(env[restoredFact], ",")
 	}

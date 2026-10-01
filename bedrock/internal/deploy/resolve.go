@@ -18,6 +18,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/oauth2/google"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 )
 
@@ -67,6 +68,10 @@ const (
 	requesterSub  = "_REQUESTER"
 	restoreFact   = "RESTORE"
 	requesterFact = "RESTORE_REQUESTER"
+	// restoreReasonFact says why a release build restores the environment's database
+	// without being asked: the seed changed since the environment's live release applied
+	// it (seedChanged). The record carries it beside the restore.
+	restoreReasonFact = "RESTORE_REASON"
 	// The two restores: an empty database the migrations then fill, and the seed where
 	// the placement's seed list names the environment (tst,
 	// and an environment on the seed list), and production's most recent backup (stg).
@@ -290,8 +295,12 @@ type Facts struct {
 	// Restore is a release build's restore instruction (empty, or production-backup):
 	// the environment's database is replaced before the release deploys, and Requester
 	// says who asked. Both empty for an ordinary build.
-	Restore       string
-	Requester     string
+	Restore   string
+	Requester string
+	// RestoreReason is set with Restore when the build decided the restore itself (the
+	// seed changed in an environment on the placement's seed list); empty for a restore
+	// a person asked for.
+	RestoreReason string
 	Image         string
 	ImageTag      string
 	CommitTag     string
@@ -341,6 +350,9 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 		return nil, err
 	}
 	if err := f.staleDatabase(ctx, clients.Storage, req.Source, out); err != nil {
+		return nil, err
+	}
+	if err := f.seedChanged(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
 	f.tags(req.Known)
@@ -542,6 +554,67 @@ func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string
 	return nil
 }
 
+// seedChanged decides whether a release build restores the environment's database
+// without being asked, because the seed changed. An environment on the placement's seed
+// list (_SEED is true on its version trigger) holds the development seed its live release
+// applied, and that release's record lists the seed files by name and content; when the
+// tree no longer carries one of them as it was applied (edited, renumbered or removed
+// since), the database holds data the seed no longer describes, and the migrate job would
+// apply none of it again (a seeded database takes nothing twice). So the build restores
+// the environment to an empty database, as a restore run asked for by the release itself
+// (RESTORE=empty), and the migrations and the seed apply from the start; the reason goes
+// on the record. A seed file added beside the applied ones is a new data migration the
+// migrate job applies, and recreates nothing. A pull-request build has its own rule
+// (staleDatabase); a restore asked for already replaces the database; an environment off
+// the seed list never applied the seed, so a changed seed is nothing to it; production is
+// never on the list, and is never restored by a run. Only a live record counts: a preview
+// is a build whose traffic never shifted.
+func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
+	if f.Tag == "" || f.Restore != "" || !f.RunMigrations || f.Environment == prdEnvironment || f.Substitutions[seedSub] != trueValue {
+		return nil
+	}
+	bucket, app, dir := f.Substitutions[recordsBucket], f.Substitutions[appSub], f.Substitutions[migrationsSub]
+	if bucket == "" || app == "" || dir == "" {
+		return nil
+	}
+	seedDir := path.Join(path.Dir(dir), derive.SeedDir)
+	store, err := open(ctx)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	live, err := newestRecordWhere(ctx, store, bucket, app+"/"+f.Environment+"/", func(r *Record) bool {
+		return r.Status == Live
+	})
+	if err != nil {
+		return err
+	}
+	if live == nil {
+		return nil
+	}
+	var gone []string
+	for _, m := range live.Migrations {
+		if m.Dir != seedDir {
+			continue
+		}
+		hash, err := hashFile(filepath.Join(source, filepath.FromSlash(m.Dir), m.Name))
+		if err != nil {
+			return err
+		}
+		if hash != m.Hash {
+			gone = append(gone, path.Join(m.Dir, m.Name))
+		}
+	}
+	if len(gone) == 0 {
+		return nil
+	}
+	f.Restore, f.Requester = restoreEmpty, "release "+f.Tag
+	f.RestoreReason = fmt.Sprintf("the seed changed since %s applied it (build %s): %s, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start", live.Version, live.Build, strings.Join(gone, ", "))
+	fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, %s.\n", f.Environment, f.Restore, f.Tag, f.RestoreReason)
+
+	return nil
+}
+
 // newestRecord reads the records under the prefix and returns the newest that lists
 // migrations, or nil.
 func newestRecord(ctx context.Context, store Store, bucket, prefix string) (*Record, error) {
@@ -688,6 +761,7 @@ func (f *Facts) environment() string {
 		{downFact, flag(f.Down)},
 		{restoreFact, f.Restore},
 		{requesterFact, f.Requester},
+		{restoreReasonFact, f.RestoreReason},
 		{skipDeploy, ""},
 		{imageFact, f.Image},
 		{imageTagFact, f.ImageTag},

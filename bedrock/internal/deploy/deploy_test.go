@@ -123,6 +123,14 @@ func TestNewRecordRequest(t *testing.T) {
 			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_storage_bucket.assets"}, Cleared: []string{"google_firestore_database.firestore"}, Backup: "projects/p/instances/i/backups/b-20261001", BackupTime: "2026-10-01T02:00:00Z"},
 		},
 		{
+			name:        "a release that restored a seeded environment on its own records the reason beside the restore",
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"release v1.2.3\"\nexport RESTORE_REASON=\"the seed changed since v1.2.2 applied it (build b-0): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0]\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:  Live,
+			wantRegions: "us-central1,us-west3",
+			wantRestore: &Restore{Kind: "empty", Requester: "release v1.2.3", Reason: "the seed changed since v1.2.2 applied it (build b-0): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start", Replaced: []string{"google_spanner_database.harbor[0]"}},
+		},
+		{
 			name: "a build that ran migrations lists what it applied, the seed included when it ran",
 			files: map[string]string{
 				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "true"}}`, RevisionsFile: revisionsLines,
