@@ -103,7 +103,19 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 		"--tag", env[imageFact]+":"+env[commitTagFact],
 		"--tag", env[imageFact]+":"+env[imageTagFact],
 		"--metadata-file", metadata,
+		// The build pushes a plain image, the manifest the metadata file's digest names
+		// and Cloud Run deploys; with attestations on, the container driver would push an
+		// image index with an attestation manifest beside it.
+		"--provenance=false", "--sbom=false",
 		"--file", "Dockerfile", "--push", ".")
+	// Exporting a cache to the registry takes buildx's docker-container driver: the docker
+	// driver a Cloud Build step starts with builds and pushes but exports no cache ("Cache
+	// export is not supported for the docker driver"). A builder of that driver is created
+	// for this build and used; its BuildKit runs in a container beside the step's daemon,
+	// pulling and pushing with the step's registry credentials.
+	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: []string{"buildx", "create", "--driver", "docker-container", "--use"}}, out); err != nil {
+		return err
+	}
 	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: args}, out); err != nil {
 		return err
 	}

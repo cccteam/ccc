@@ -524,8 +524,9 @@ reuse. The build arguments are VERSION and COMMIT, the declared substitutions an
 before the build added (build-args.txt, NAME=value lines). Each declared build secret
 (_BUILD_SECRETS) is read as the deploy identity by its pinned version into --secret-dir (memory
 backed, gone with the step) and passed as a BuildKit secret the Dockerfile mounts; it is never a
-build argument, which the image would keep. The build reads a layer cache from the registry and
-writes its own there (cache-<commit>): this commit's, the commit the environment runs live, and in a
+build argument, which the image would keep. The build runs in a BuildKit container (buildx's
+docker-container driver, created for the build: the one driver that exports a cache) and pushes a
+plain image. It reads a layer cache from the registry and writes its own there (cache-<commit>): this commit's, the commit the environment runs live, and in a
 pull-request build the pull request's last build; layers are content-addressed, so the cache changes
 nothing in what the build produces. The digest the push answered is appended to
 environment.sh (IMAGE_DIGEST). With --hooks, the application's hooks program (/hooks in the image)

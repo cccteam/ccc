@@ -77,7 +77,7 @@ func TestBuildImage(t *testing.T) {
 				hooks = filepath.Join(t.TempDir(), "hooks")
 			}
 			run := &fakeRunner{outputs: map[string]string{"docker create": "cid-1\n"}, effect: func(c Command) error {
-				if c.Args[0] != "buildx" {
+				if c.Args[0] != "buildx" || c.Args[1] != "build" {
 					return nil
 				}
 				for _, arg := range c.Args {
@@ -98,11 +98,18 @@ func TestBuildImage(t *testing.T) {
 			} else if err != nil {
 				t.Fatalf("BuildImage() error = %v\n%s", err, out.String())
 			}
-			var built bool
+			var built, builder bool
 			var taken []string
+			buildLine := ""
 			for _, line := range run.lines() {
-				if strings.HasPrefix(line, "docker buildx") {
+				switch {
+				case strings.HasPrefix(line, "docker buildx create --driver docker-container --use"):
+					builder = true
+
+					continue
+				case strings.HasPrefix(line, "docker buildx build "):
 					built = true
+					buildLine = line
 
 					continue
 				}
@@ -116,8 +123,8 @@ func TestBuildImage(t *testing.T) {
 				said = strings.ReplaceAll(said, hooks, "HOOKS")
 			}
 			containsAll(t, said, tt.wantOut...)
-			if built != tt.wantBuilt {
-				t.Fatalf("ran %v, want a build %t", run.lines(), tt.wantBuilt)
+			if built != tt.wantBuilt || builder != tt.wantBuilt {
+				t.Fatalf("ran %v, want a build %t with a docker-container builder created before it", run.lines(), tt.wantBuilt)
 			}
 			if strings.Join(taken, "|") != strings.Join(tt.wantHooks, "|") {
 				t.Errorf("took the hooks program with %q, want %q", taken, tt.wantHooks)
@@ -125,7 +132,7 @@ func TestBuildImage(t *testing.T) {
 			if !tt.wantBuilt || tt.wantErr != "" || tt.secrets == nil {
 				return
 			}
-			line := strings.ReplaceAll(run.lines()[0], secretDir, "SECRETS")
+			line := strings.ReplaceAll(buildLine, secretDir, "SECRETS")
 			for _, want := range tt.wantArgs {
 				if !strings.Contains(line, want) {
 					t.Errorf("docker %s lacks %q", line, want)
@@ -144,8 +151,15 @@ func TestBuildImage(t *testing.T) {
 			if env[digestFact] != "sha256:new" {
 				t.Errorf("IMAGE_DIGEST = %q", env[digestFact])
 			}
-			if !slices.Contains(run.ran[0].Args, "buildx") || run.ran[0].Dir != string(w) {
-				t.Errorf("ran %v in %s", run.ran[0].Args, run.ran[0].Dir)
+			for _, c := range run.ran[:2] {
+				if !slices.Contains(c.Args, "buildx") || c.Dir != string(w) {
+					t.Errorf("ran %v in %s, want the builder and the build in the workspace", c.Args, c.Dir)
+				}
+			}
+			for _, want := range []string{"--provenance=false", "--sbom=false", "--push"} {
+				if !strings.Contains(line, want) {
+					t.Errorf("docker %s lacks %q", line, want)
+				}
 			}
 		})
 	}

@@ -331,7 +331,9 @@ thing one step hands the next. In order:
 - `deploy build-image`: builds the checkout's Dockerfile with docker and pushes the image
   under its two tags, with the build arguments and the declared build secrets (read as
   the deploy identity into memory and passed as BuildKit secrets, never build
-  arguments); the digest goes to `environment.sh`. The build reads a layer cache from the
+  arguments); the digest goes to `environment.sh`. The build runs in a BuildKit container
+  (buildx's docker-container driver, created for the build: the one driver that
+  exports a cache) and pushes a plain image. It reads a layer cache from the
   registry and writes its own there (`cache-<commit>`): this commit's, the commit the
   environment runs live, and in a pull-request build the pull request's last build. Layers
   are content-addressed, so the cache changes nothing in what a build produces; it spares
