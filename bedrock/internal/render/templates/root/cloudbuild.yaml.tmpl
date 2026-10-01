@@ -19,7 +19,7 @@
 #   PlanEnvironments          a pull request's preview: the stack planned and tested for every environment, as each one's plan identity (deploy plan-environments)
 #   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
-#   BuildImage                one image per environment, built fresh from the commit and pushed (deploy build-image)
+#   BuildImage                one image per environment, built from the commit with the registry's layer cache and pushed (deploy build-image)
 #   *EnvironmentStack         a tag build's apply of the environment's stack: planned, tested and applied as the apply identity (deploy stack)
 #   CreateJobs                this build's jobs from the stack's template jobs on this image: the migrate job{{if .Jobs}} and the job process's{{end}}; not run (deploy jobs)
 #   RunMigrations             this build's migrate job, run once to completion and deleted (deploy migrate)
@@ -38,7 +38,9 @@
 # a release tag; and the pull-request trigger for {{.Integration}}, started by a "/gcbrun" comment,
 # which stands the pull request's own environment up (or down, on "/gcbrun down").
 #
-# The steps run in the order written: a step with no waitFor waits for every step before it.
+# The steps run in the order written, a step with no waitFor waiting for every step before it,
+# except for two lanes that run side by side: the pull request's stack (its plan, guard and
+# apply) and the image (the release check and the build), joined again at the maintenance step.
 
 steps:
 {{- if .CommitPin}}
@@ -88,6 +90,7 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, plan-environments]
     timeout: 1800s
+    waitFor: [GuardMigrations]
 
   # A pull-request build only: the stack applied into the pull request's own prefix as the
   # apply identity. The plan is saved, the guard lets only the pull request's own resources
@@ -97,18 +100,21 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, pr-stack, plan]
     timeout: 900s
+    waitFor: [PlanEnvironments]
 
   - id: GuardPullRequestPlan
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, pr-stack, guard]
     timeout: 300s
+    waitFor: [PlanPullRequestStack]
 
   - id: ApplyPullRequestStack
     name: {{.OpenTofuImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, pr-stack, apply]
     timeout: 1800s
+    waitFor: [GuardPullRequestPlan]
 {{- if .HasHook "after-down"}}
 
   # The application's hook after a teardown: {{.HookSource "after-down"}}.
@@ -117,8 +123,14 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, hook, after-down]
     timeout: 900s
+    waitFor: [ApplyPullRequestStack]
 {{- end}}
 
+  # The image lane runs beside the pull request's stack: from the pull request's plan on
+  # (which marks a teardown, so no image is built for one), the release check and the
+  # image build take their time while the guard and the apply take theirs, and the
+  # maintenance step waits for both lanes. In a tag build the stack steps say so and end
+  # at once, so the lane costs nothing there.
   # Whether the image build runs: a release already built from this commit is reused, and
   # a release tag naming another build is refused.
   - id: CheckRelease
@@ -126,6 +138,7 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, check-release]
     timeout: 300s
+    waitFor: [PlanPullRequestStack]
 {{- if .HasHook "before-build"}}
 
   # The application's hook before the image build: {{.HookSource "before-build"}}. Build
@@ -135,16 +148,19 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, hook, before-build]
     timeout: 900s
+    waitFor: [CheckRelease]
 {{- end}}
 
-  # The image, built fresh from the commit's Dockerfile with the declared build arguments
-  # and build secrets, pushed under <release>-<env> and <commit>-<env>.{{if .HookProgram}} The hooks
+  # The image, built from the commit's Dockerfile with the declared build arguments and
+  # build secrets, reading the registry's layer cache (this commit's, the live release's)
+  # and writing its own, pushed under <release>-<env> and <commit>-<env>.{{if .HookProgram}} The hooks
   # program (/hooks) is taken out of it for the hook steps after it.{{end}}
   - id: BuildImage
     name: {{.DockerImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, build-image{{if .HookProgram}}, --hooks{{end}}]
     timeout: 1800s
+    waitFor: [{{if .HasHook "before-build"}}HookBeforeBuild{{else}}CheckRelease{{end}}]
 
   # A run that replaces the database (a restore run) puts the application into maintenance
   # first: the release's image starts as a revision with the maintenance variable set, in
@@ -157,6 +173,7 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, maintenance, "on"]
     timeout: 900s
+    waitFor: [BuildImage, {{if .HasHook "after-down"}}HookAfterDown{{else}}ApplyPullRequestStack{{end}}]
 
   # A tag build only: the environment's stack planned and applied as the apply identity,
   # after the image build (a failed build changes no infrastructure) and before the jobs and

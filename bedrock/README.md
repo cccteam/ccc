@@ -101,7 +101,9 @@ again does not, because its pull request is already labeled as tagged.
   `/gcbrun` comment and on a release tag. Every step but the image build is a `bedrock
   deploy` command run by the pinned bedrock release; the application customizes it
   through hooks, build secrets, declared substitutions and its Dockerfile, never by editing
-  the file.
+  the file. The steps run in order, except that in a pull-request build the image lane
+  (the release check and the image build) runs beside the pull request's stack lane (its
+  plan, guard and apply), the two joining before the application deploys.
 - **Hook**: a shell script the application commits at `infrastructure/hooks/<stage>.sh`,
   run at that stage of the pipeline as the deploy identity with the build's facts in its
   environment: `before-build`, `before-migrate`, `after-migrate`, `before-traffic`,
@@ -329,7 +331,13 @@ thing one step hands the next. In order:
 - `deploy build-image`: builds the checkout's Dockerfile with docker and pushes the image
   under its two tags, with the build arguments and the declared build secrets (read as
   the deploy identity into memory and passed as BuildKit secrets, never build
-  arguments); the digest goes to `environment.sh`.
+  arguments); the digest goes to `environment.sh`. The build reads a layer cache from the
+  registry and writes its own there (`cache-<commit>`): this commit's, the commit the
+  environment runs live, and in a pull-request build the pull request's last build. Layers
+  are content-addressed, so the cache changes nothing in what a build produces; it spares
+  the work whose inputs are unchanged, and the environments after the first rebuild the
+  same commit from the cache alone. Every environment still builds its own image from the
+  commit; nothing is promoted between environments.
 - `deploy maintenance on`: in a run that replaces the database (a restore run), puts the
   application into maintenance before the stack is applied: the release's own image starts
   as a revision with `APP_MAINTENANCE=1` in every region, under the tag `next` and with no

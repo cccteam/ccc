@@ -348,7 +348,10 @@ Every step after it is one `bedrock deploy` command run in the image whose tool
 it drives: gcloud's for most, OpenTofu's for the pull request's stack, docker's
 for the image build. The steps share the checkout as their workspace: each
 reads the facts (`environment.sh`) and the build (`build.json`), does one thing
-and appends what it learned, and none installs anything. `bedrock deploy
+and appends what it learned, and none installs anything. They run in order,
+but for two lanes side by side in a pull-request build: the pull request's
+stack (its plan, guard and apply) and the image (the release check and the
+build), joined again before the application deploys. `bedrock deploy
 <command> --help` says what each does in full. The version appears in that one
 place; `bedrock upgrade` moves the pin and re-renders. What an application adds
 is declared in files of its own:
