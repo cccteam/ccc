@@ -2,6 +2,7 @@ package transition
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -305,6 +306,20 @@ func TestSiteApplyPromotes(t *testing.T) {
 		t.Errorf(".envrc.template = %q", env)
 	}
 
+	// The CI workflow is rewritten from the code with a browser job per site.
+	workflow := read(t, a, ".github/workflows/ci.yml")
+	for _, want := range []string{"\n  angular-console:\n", "\n  angular-portal:\n", "working-directory: apps/console/web\n", "working-directory: apps/portal/web\n"} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("ci.yml lacks %q", want)
+		}
+	}
+	if strings.Contains(workflow, "angular-web:") {
+		t.Errorf("ci.yml still carries the flat workspace's job:\n%s", workflow)
+	}
+	if !slices.Contains(ch.Did, ".github/workflows/ci.yml: rewritten from the code (an angular-portal job for apps/portal/web)") {
+		t.Errorf("Did lacks the workflow rewrite: %q", ch.Did)
+	}
+
 	// The profile reads two sites.
 	after, err := app.Discover(a.Root)
 	if err != nil {
@@ -365,6 +380,12 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	}
 	if got := read(t, promoted, "apps/kiosk/web/bun.lock"); !strings.Contains(got, `"name": "beacon-kiosk-web"`) {
 		t.Errorf("kiosk bun.lock is not named for the site:\n%s", got)
+	}
+	if got := read(t, promoted, ".github/workflows/ci.yml"); !strings.Contains(got, "\n  angular-kiosk:\n") || !strings.Contains(got, "working-directory: apps/kiosk/web\n") {
+		t.Errorf("ci.yml lacks the kiosk site's job:\n%s", got)
+	}
+	if !slices.Contains(ch.Did, ".github/workflows/ci.yml: rewritten from the code (an angular-kiosk job for apps/kiosk/web)") {
+		t.Errorf("Did lacks the workflow rewrite: %q", ch.Did)
 	}
 	p := (mustDiscover(t, a.Root)).Profile()
 	names := siteNames(p)

@@ -4,10 +4,11 @@ package cli
 import (
 	"fmt"
 	"os"
-	"runtime/debug"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
+
+	"github.com/cccteam/ccc/impulse/internal/check"
 )
 
 // Main runs the tool with the arguments and returns the process exit code.
@@ -51,13 +52,10 @@ func newRoot() *cobra.Command {
 	return root
 }
 
+// version is what impulse --version prints: the running impulse's version from its build
+// information, the same value the pins check compares go.mod's impulse pin with.
 func version() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok || info.Main.Version == "" {
-		return "(devel)"
-	}
-
-	return info.Main.Version
+	return check.RunningVersion()
 }
 
 // exitError carries a process exit code out of a command without printing anything.

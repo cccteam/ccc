@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/ci"
 	"github.com/cccteam/ccc/impulse/internal/names"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 )
@@ -25,20 +26,41 @@ func newRender() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "render <candidate> <dir>",
-		Short: "Render one embedded skeleton into a directory (developer command)",
-		Long: `render copies one of the embedded skeleton templates into a new or empty directory
-under the module path you name, rewriting every import and go.mod to it. It is the
-primitive impulse new builds on, and the way the templates are validated: render one,
-then build, test, and check the result. The placeholder auth (staff) is kept; new renames it.
-The application is named after the module path's last segment unless --name says otherwise.
+		Use:   "render [<candidate> <dir>]",
+		Short: "Write the owned files from the code, or render one embedded skeleton into a directory (developer form)",
+		Long: `render has two forms; the arguments decide which.
 
-With --dev-root, render also writes a go.work that uses every framework module the
+With no arguments, inside an application (a go.mod at the working directory), render writes
+the files impulse owns from the application's code: today the CI workflow,
+.github/workflows/ci.yml, with one browser job per workspace and the action and tool pins
+this impulse carries. impulse check compares the committed file with the same rendering and
+fails a hand edit, so this is the command that brings the file back into agreement after a
+change to the code, and the second step of moving the impulse pin:
+go get -tool github.com/cccteam/ccc/impulse@<version>, then go tool impulse render, then
+go tool impulse check.
+
+With a candidate and a directory, render copies one of the embedded skeleton templates into
+a new or empty directory under the module path --module names, rewriting every import and
+go.mod to it. It is the primitive impulse new builds on, and the way the templates are
+validated: render one, then build, test, and check the result. The placeholder auth (staff)
+is kept; new renames it. The application is named after the module path's last segment
+unless --name says otherwise.
+
+With --dev-root, that form also writes a go.work that uses every framework module the
 application requires directly and that has a checkout under that directory (laid out by
 repository: <root>/ccc/resource, <root>/session, ...), so the application builds against
 local framework work instead of the pins. Do not commit that go.work.`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			switch len(args) {
+			case 0:
+				return renderOwned(cmd.OutOrStdout(), ".")
+			case 1:
+				return errors.Newf("render takes no arguments inside an application (it writes the owned files from the code), or a candidate and a directory (impulse render <candidate> <dir> --module <path>); %q alone is neither", args[0])
+			}
+			if modulePath == "" {
+				return errors.New("--module is required to render a candidate: the module path of the rendered application")
+			}
 			appName, err := appName(name, modulePath)
 			if err != nil {
 				return err
@@ -68,12 +90,34 @@ local framework work instead of the pins. Do not commit that go.work.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&modulePath, "module", "", "module path of the rendered application (required)")
+	cmd.Flags().StringVar(&modulePath, "module", "", "module path of the rendered application (required with a candidate)")
 	cmd.Flags().StringVar(&name, "name", "", "the application's name: "+nameUse+" (default: the module path's last segment)")
 	cmd.Flags().StringVar(&devRoot, "dev-root", "", "directory of cccteam checkouts to build against instead of the pins")
-	_ = cmd.MarkFlagRequired("module")
 
 	return cmd
+}
+
+// renderOwned writes the files impulse owns from the code of the application at dir, and
+// says for each whether it was written or already read as the code renders.
+func renderOwned(w io.Writer, dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		return errors.Newf("no go.mod at %s: run render with no arguments from an application root, or name a candidate and a directory to render a skeleton (impulse render <candidate> <dir> --module <path>)", dir)
+	}
+	a, err := app.Discover(dir)
+	if err != nil {
+		return err
+	}
+	outcome, err := ci.Write(a)
+	if err != nil {
+		return err
+	}
+	state := "unchanged"
+	if outcome.Written {
+		state = "written"
+	}
+	fmt.Fprintf(w, "Rendered the owned files from the code: %s %s.\n", ci.File, state)
+
+	return nil
 }
 
 var (

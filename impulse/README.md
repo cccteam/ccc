@@ -13,6 +13,10 @@ application already depends on: the generator program, `go.mod`, the browser app
 go install github.com/cccteam/ccc/impulse@latest
 ```
 
+Inside an application, impulse is the `tool github.com/cccteam/ccc/impulse` directive in
+`go.mod`, and `go tool impulse <command>` runs it at the version go.mod pins; the
+installed binary is for creating applications and for development.
+
 ## Vocabulary
 
 The words the tool uses on the command line, in check reports, in handoff briefs, and in
@@ -113,19 +117,57 @@ impulse new ./harbor --module example.com/harbor --auth staff --tenancy --outlet
 impulse new ./fleet --module example.com/fleet --auth crew --site console --site portal
 ```
 
-The application ships its CI: `.github/workflows/ci.yml` wires the shared workflows of
-cccteam/github-workflows on every pull request (the semantic title, the Go build, vet,
-lint, Semgrep and tests with and without the `skipAuth` tag, an Angular job per browser
-workspace, the image build and scan once bedrock has seeded a Dockerfile, CodeQL over the
-Go, the TypeScript and the workflows with `.github/codeql-config.yml`, secret scanning,
-and schema protection over `schema/migrations`), every `uses:` line pinned at one version
-with its tag in the comment. `impulse check` (`ci-workflow`) fails when the file is
-missing and warns when a pin is behind the skeleton's. A directory-flavored first auth
-under the `directory` authority with Google is born with lowercase role names: the
-directory's groups assign roles by name and `session.GoogleRoleSync` lowercases every
-derived name, so the base's `Administrator_Global` becomes `administrator_global` in the
-role file, the bootstrap identities, the environment template and the tests, and every
-new role is named in lowercase; `auths-wired` refuses one that is not.
+The application ships its CI, and impulse owns it. `.github/workflows/ci.yml` is rendered
+from the code: `impulse new` writes it at creation, `impulse render` (with no arguments,
+inside the application) rewrites it, `impulse add site` and `impulse remove site` rewrite
+it as part of their change since the browser workspaces change, and `impulse check`
+(`ci-workflow`) compares the committed file with the same rendering, so a hand edit fails
+the check. The file is one workflow of plain jobs on every pull request. No job calls a
+reusable workflow of another repository, and each job's id is the check name the pull
+request reports, so a repository rule can require them by name (bedrock reads the names
+from impulse's `ci` package):
+
+- `title`: the pull request's title is a conventional commit line, the one the squash
+  merge carries and release-please reads.
+- `go`: the module builds, vets and passes its tests under the race detector, without tags
+  and with `skipAuth` (the tag that simulates the directory an OIDC auth signs in through);
+  then, each step reporting on its own, golangci-lint at the version the skeleton's
+  `.golangci.yml` is written for (with and without the tag), govulncheck, Semgrep over the
+  findings the pull request introduces (its baseline is the pull request's base branch, so
+  a hotfix-line pull request diffs against its own base), `go tool impulse check` with its
+  regeneration (the generators start the Spanner emulator in a container, which the runner
+  has), and a tree the checks left clean.
+- `angular-<workspace>`, one per browser workspace (`angular-web` for the flat workspace,
+  `angular-<site>` for a site's at `apps/<site>/web`): Bun at the version that wrote
+  `bun.lock` installs from the lockfile exactly (`bun ci`), then the package scripts build,
+  lint and test.
+- `image`: once the application has a Dockerfile (bedrock seeds it), hadolint over it, the
+  build, and Grype over the built image, failing on a high or critical vulnerability.
+  Without a Dockerfile the job passes with nothing to build, so the check exists on every
+  pull request.
+- `secrets`: TruffleHog over the whole history reachable from the pull request's head; a
+  secret confirmed live, or one whose check could not finish, fails.
+- `migrations`: against the base branch, `schema/migrations` gains files only; a committed
+  migration is never modified or deleted.
+
+Every action is pinned by commit with its tag in a comment, and every tool version is a
+constant in impulse, so the pins travel with impulse releases: a bump is an impulse
+release, never an edit to the file, and dependabot must not run over the workflow files
+impulse or bedrock own. The impulse an application runs is the `tool
+github.com/cccteam/ccc/impulse` directive in `go.mod`, which `impulse check` (`pins`)
+holds: CI runs `go tool impulse check` at that pin, verified by Go's checksum database, and
+no version is written into the workflow. Moving the pin is three commands: `go get -tool
+github.com/cccteam/ccc/impulse@<version>`, then `go tool impulse render` (the owned files
+follow the new impulse), then `go tool impulse check`. Run the check locally before
+pushing; the pull request is the one gate. CodeQL and the rest of GitHub's Code Security
+are optional and not rendered.
+
+A directory-flavored first auth under the `directory` authority with Google is born with
+lowercase role names: the directory's groups assign roles by name and
+`session.GoogleRoleSync` lowercases every derived name, so the base's `Administrator_Global`
+becomes `administrator_global` in the role file, the bootstrap identities, the environment
+template and the tests, and every new role is named in lowercase; `auths-wired` refuses one
+that is not.
 
 ## impulse check
 
@@ -158,12 +200,12 @@ impulse check --list
 | `package-manager` | Every browser app carries the same kind of lockfile (bun, npm, yarn, or pnpm), and the process files and package scripts invoke that tool and no other. Two tools in one repository means two lockfiles drifting apart. |
 | `registry-pins` | Every browser app installs its packages from the registry: a committed `file:.yalc/<package>` spec (or a lockfile recording one) is a local yalc attachment that a clean checkout cannot install, so the pipeline's install fails. `ccclib.sh restore` puts the registry pins back. |
 | `test-runner` | Every browser application project runs its component specs on Angular's unit-test builder, the runner `ng new` scaffolds (`@angular/build:unit-test`: Vitest under jsdom in Node, no browser): a `test` target on that builder, the spec tsconfig it reads (named in the target, or `tsconfig.spec.json` in the project root), and a package script running `ng test <project>`, so `bun run test` runs every project's specs once. A project with no `*.spec.ts` under its source root warns: the runner is wired and nothing runs on it yet. |
-| `ci-workflow` | The shared CI runs on every pull request: `.github/workflows/ci.yml` wires the workflows of cccteam/github-workflows (semantic titles, the Go checks, an Angular job per browser workspace, the image build and scan once a Dockerfile exists, CodeQL, secret scanning, schema protection), every `uses:` line pinned at the version the skeleton carries. A missing file fails: the pull requests run no checks at all. An older pin warns. |
+| `ci-workflow` | The committed `.github/workflows/ci.yml` equals what impulse renders from the code: one browser job per workspace, and the action and tool pins this impulse carries. A missing file fails: the pull requests run no checks at all. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it; tests and specs are not read, since a spec describes the server's answer (whose page state carries an `offset` field) as often as a request. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
 | `sites-generators` | In the sites layout, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
 | `env-template` | Every `env` struct tag without a default appears in the development environment template (`.envrc.template`, `.env.template`, or `.env.example`). `--fix` adds the missing lines. |
-| `pins` | Framework pins in `go.mod` are released versions. Pseudo-versions and local replaces warn but do not fail. |
+| `pins` | Framework pins in `go.mod` are released versions; pseudo-versions and local replaces warn but do not fail. `go.mod` carries the `tool github.com/cccteam/ccc/impulse` directive and a require of impulse, or the check fails with the commands that add it (`go get -tool github.com/cccteam/ccc/impulse@<version>`, `go tool impulse render`, `go tool impulse check`). When the running impulse was built from a module version (`go tool impulse`, `go install github.com/cccteam/ccc/impulse@<version>`) and that version is not the pin, the check fails with the same three commands to move the pin; an impulse built from a checkout is a development build, noted and not compared. |
 | `gowork-off` | `GOWORK=off go build ./...` and `go vet ./...` succeed, so the pins in `go.mod` resolve without the workspace. |
 | `regen` | `go generate ./...` reproduces the generated files on disk (content compared before and after, so it holds in untracked trees too). The `Warning:` lines the generate programs printed are listed under the result and counted in its summary; they never fail the check, since the program's warnings test is what gates the accepted set. Needs the Spanner emulator and rewrites the working tree; `--skip-generate` leaves it out. |
 
@@ -241,12 +283,26 @@ input.
 
 ## impulse render
 
-`render` copies one embedded skeleton into a new or empty directory under the module
-path you name, rewriting every import and `go.mod` to it. It is the primitive `new`
-builds on and the way the templates are validated: render one, then build, test, and
-`impulse check` the result. The templates carry `staff` as their placeholder auth; `new`
-renames it, `render` keeps it. Both name the application after the module path's last
-segment unless `--name` says otherwise.
+`render` has two forms, and the arguments decide which.
+
+With no arguments, inside an application, `render` writes the files impulse owns from the
+application's code: today the CI workflow, `.github/workflows/ci.yml`, with one browser
+job per workspace and the pins this impulse carries. It says for each file whether it was
+written or already read as the code renders. `impulse check` compares the committed file
+with the same rendering, so this is the command that brings the file back into agreement
+after a change to the code, and the second step of moving the impulse pin.
+
+```sh
+go tool impulse render          # inside the application, at the pin go.mod names
+impulse render                  # the same, with the installed impulse
+```
+
+With a candidate and a directory, `render` copies one embedded skeleton into a new or
+empty directory under the module path `--module` names, rewriting every import and
+`go.mod` to it. It is the primitive `new` builds on and the way the templates are
+validated: render one, then build, test, and `impulse check` the result. The templates
+carry `staff` as their placeholder auth; `new` renames it, `render` keeps it. Both name the
+application after the module path's last segment unless `--name` says otherwise.
 
 ```sh
 impulse render solo ../beacon --module example.com/acme/beacon
@@ -420,7 +476,9 @@ layout to sites, the one non-additive transition: the existing site moves under
 per site process, inline in the Procfile, as `PORT` is), the deployment's collection
 becomes the union of the sites' router collections (`access.UnionCollection`, which
 refuses sites that declare a shared resource differently), and a shared generator is laid
-in over an empty `pkg/sharedresources`.
+in over an empty `pkg/sharedresources`. The CI workflow is rewritten from the code, since
+impulse owns it: an `angular-<name>` job builds, lints and tests the new site's browser
+workspace, and on a promotion the existing site's job becomes `angular-<existing>`.
 `--existing` names what the existing site becomes and is asked when not given, never
 defaulted, since the name is the site's directory for good. Everything existing belongs to
 that site. The new site's resources, its place in the integration suite, its browser
@@ -487,8 +545,9 @@ it). The auth the outlet was bound to stays. There is no data consequence.
 
 `remove site <name>` removes a site from an application in the sites layout: `apps/<name>/` is
 deleted with its generator program and directive, its TypeScript target leaves the shared
-generator, its router collection leaves the union the roles are reconciled against, and
-its processes leave the Procfile. The remaining sites stay where they are: an application
+generator, its router collection leaves the union the roles are reconciled against, its
+processes leave the Procfile, and the CI workflow is rewritten from the code without the
+site's browser job. The remaining sites stay where they are: an application
 left with one site keeps the sites layout, with the site under `apps/`, the
 shared generator emitting into it, and a union of one element; nothing moves back to the
 root. The application's last site is not removed. The integration suite that served the
@@ -518,7 +577,11 @@ database ids in `.envrc.template`, and the README heading — and rendering puts
 application's name there; everywhere else the prose says "the application", since the
 candidate names are English words.
 The templates are therefore validated by rendering them and running the rendered
-application's build, tests, and `impulse check`, never in place. Their browser workspaces
+application's build, tests, and `impulse check`, never in place, and under a module path
+outside `github.com/cccteam/ccc/impulse` (ccc's CI renders them as
+`example.com/ci/<candidate>`): the placeholder path lies inside impulse's module, which the
+`tool` directive puts in the application's module graph, so under the placeholder path
+every package of the rendered candidate would be an ambiguous import. Their browser workspaces
 use bun, with `bun.lock` committed. Two yalc-era settings travel with them until
 `@cccteam/resource` is published: an `overrides` entry in package.json that points
 @cccteam/resource-angular's peer dependency on the client at the yalc link, and `peer = false` in

@@ -1,7 +1,11 @@
-# The application's CI on every pull request: the shared workflows of cccteam/github-workflows,
-# pinned to one version (the commit and its tag in the comment; every uses: line carries the
-# same pin, and impulse check compares it with the skeleton's). The infrastructure workflow
-# beside this one checks the stack; release-please cuts the releases.
+# The application's CI on every pull request, rendered by impulse and owned by it: impulse
+# render rewrites this file from the code, and impulse check compares the committed file
+# with what it renders, so a hand edit fails the check. To change a check, change the code
+# the jobs read, or move the impulse pin (go get -tool github.com/cccteam/ccc/impulse@<version>,
+# then go tool impulse render); never this file. Every action is pinned by commit with its
+# tag in a comment, and the pins move with impulse releases, so dependabot must not run over
+# this file. The jobs' ids are the check names a repository rule requires: title, go, one
+# angular-<workspace> job per browser workspace, image, secrets and migrations.
 name: CI
 
 on:
@@ -9,85 +13,190 @@ on:
     types: [opened, synchronize, reopened]
 
 concurrency:
-  group: ${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 permissions: {}
 
 jobs:
-  semantic-titles:
-    # The pull request's title is a conventional commit line, the one the squash merge
-    # carries and release-please reads.
-    uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+  # The pull request's title is a conventional commit line: the one the squash merge carries and release-please reads.
+  title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: read
-  golang-ci:
-    # Build, vet, lint (golangci-lint over .golangci.yml), Semgrep and the tests, once
-    # without tags and once with skipAuth, the tag that simulates the directory so the
-    # login tests run.
-    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    with:
-      build-tags: '["", "skipAuth"]'
-      golangci-lint-version: "v2.12.2"
-  angular-ci:
-    # The browser workspace at web: bun install with the lockfile frozen, then the
-    # package scripts build, lint and test (the component specs on Angular's unit-test
-    # builder). Bun 1.4.0 is the one that wrote bun.lock.
-    uses: cccteam/github-workflows/.github/workflows/angular-ci.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
-    permissions:
-      contents: read
-    with:
-      working-directory: ./web
-      bun-version: "1.4.0"
-      commands: '["build", "lint", "test"]'
-  dockerfile:
-    # The image is built and scanned once the application has a Dockerfile, which bedrock
-    # seeds with the stack; until then the scan has nothing to build.
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            feature
+            fix
+            perf
+            revert
+            docs
+            deps
+            style
+            chore
+            refactor
+            cleanup
+            test
+            build
+            ci
+            upgrade
+            infra
+            config
+
+  # The Go module builds, vets and passes its tests under the race detector, without tags and with skipAuth (the tag that simulates the directory an OIDC auth signs in through); then, each reporting on its own, golangci-lint, govulncheck, Semgrep against the pull request's base, impulse check (which regenerates; the generators start the Spanner emulator in a container) and a tree the checks left clean.
+  go:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
-    outputs:
-      present: ${{ steps.look.outputs.present }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: look
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go build
         run: |
-          if [ -f Dockerfile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
-  docker-build-and-scan:
-    needs: dockerfile
-    if: needs.dockerfile.outputs.present == 'true'
-    uses: cccteam/github-workflows/.github/workflows/docker-build-and-scan.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+          go build ./...
+          go build -tags skipAuth ./...
+      - name: go vet
+        run: |
+          go vet ./...
+          go vet -tags skipAuth ./...
+      - name: go test
+        run: |
+          go test -race -timeout 20m ./...
+          go test -race -timeout 20m -tags skipAuth ./...
+      - name: golangci-lint
+        if: ${{ !cancelled() }}
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          args: --timeout 5m
+      - name: golangci-lint (skipAuth)
+        if: ${{ !cancelled() }}
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          args: --timeout 5m --build-tags skipAuth
+      - name: govulncheck
+        if: ${{ !cancelled() }}
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -tags skipAuth ./...
+      - name: Semgrep, the findings this pull request introduces
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          docker run --rm -v "$PWD:/src" semgrep/semgrep@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b \
+            semgrep ci --config auto --max-target-bytes 500000 --baseline-commit "$(git merge-base HEAD "origin/$BASE_REF")" # 1.179.0
+      - name: impulse check
+        if: ${{ !cancelled() }}
+        run: go tool impulse check
+      - name: The tree is clean
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The checks changed the tree: what follows was regenerated or rewritten and is not committed. Run go generate ./... and go tool impulse render, then commit the result."
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+
+  # The browser workspace at web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.
+  angular-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-      security-events: write
-      actions: read
-    with:
-      dockerfile: Dockerfile
-      execute-grype-scan: true
-  codeql:
-    # Code scanning over the Go, the TypeScript and the workflows themselves, with the
-    # configuration in .github/codeql-config.yml.
-    uses: cccteam/github-workflows/.github/workflows/codeql.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
-    permissions:
-      security-events: write
-      packages: read
-      actions: read
-      contents: read
-    with:
-      languages: '["go", "javascript-typescript", "actions"]'
-  secrets-scanning:
-    uses: cccteam/github-workflows/.github/workflows/secrets-scanning.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
-    permissions:
-      contents: read
-  schema-protection:
-    # A committed migration is never modified: the pipeline's guard refuses it too, and
-    # bedrock migration renumber moves a branch's own migrations when the sequence collides.
-    uses: cccteam/github-workflows/.github/workflows/schema-protection.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - run: bun ci
+      - run: bun run build
+      - run: bun run lint
+      - run: bun run test
+
+  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-    with:
-      migrations_path: schema/migrations
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Is there a Dockerfile
+        id: dockerfile
+        run: echo "present=${{ hashFiles('Dockerfile') != '' }}" >> "$GITHUB_OUTPUT"
+      - name: hadolint
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: info
+      - name: docker build
+        if: steps.dockerfile.outputs.present == 'true'
+        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" -t application:ci .
+      - name: Grype
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: application:ci
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+  # TruffleHog over the whole history reachable from the pull request's head: a secret confirmed live, or one whose check could not finish, fails.
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@f446421baf832d6356c42c1743d99abff52ff334 # v3.95.7
+        with:
+          version: 3.95.7
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --results=verified,unknown
+
+  # A committed migration is never modified or deleted: against the pull request's base, schema/migrations gains files only.
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: No committed migration is modified or deleted
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASE_REF"
+          changed="$(git diff --no-renames --diff-filter=MD --name-only "origin/$BASE_REF...HEAD" -- schema/migrations/)"
+          if [ -n "$changed" ]; then
+            echo "A committed migration is never modified or deleted; write a new migration instead. Modified or deleted against $BASE_REF:"
+            echo "$changed"
+            exit 1
+          fi
+          echo "schema/migrations: no committed migration is modified or deleted against $BASE_REF"

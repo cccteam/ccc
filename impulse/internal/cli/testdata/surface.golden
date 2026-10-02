@@ -86,9 +86,9 @@ impulse remove site <name>
   --agent-command string (default claude)
   --app string (default .)
   --skip-generate bool
-impulse render <candidate> <dir>
+impulse render [<candidate> <dir>]
   --dev-root string
-  --module string (required)
+  --module string
   --name string
 impulse swap
 impulse swap auth <name>

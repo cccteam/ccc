@@ -97,6 +97,7 @@ func (r RemoveSite) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 		return nil, err
 	}
 	r.removeProcesses(a, site.Dir, ch)
+	writeCI(a, ch, fmt.Sprintf("without the angular-%s job", r.Name))
 	if err := r.noteImports(a, modulePath, site.Dir, ch); err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func (r RemoveSite) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 		}
 	}
 	ch.skipf("test/integration served the %s site beside the others; take its server, its logins, and the cross-site assertions that named it out of the harness", r.Name)
-	ch.skipf("deployment configuration outside the repository (Cloud Build path filters, Cloud Run source directories, CI paths) still builds %s and serves a host for the %s site; retire them", site.Dir, r.Name)
+	ch.skipf("deployment configuration outside the repository (Cloud Build path filters, Cloud Run source directories) still builds %s and serves a host for the %s site; retire them", site.Dir, r.Name)
 	if len(declarations) > 0 {
 		ch.skipf("the %s site's resource declarations went with it (%s); a table only they declared is still in the schema: declare the resource in the site that serves it now, or write a migration dropping the table", r.Name, strings.Join(declarations, ", "))
 	}
@@ -337,7 +338,7 @@ func (r RemoveSite) Meaning() string {
 	items := []string{
 		fmt.Sprintf("The integration suite: `test/integration` served the %s site beside the others over the shared database; take its server, its logins, and the cross-site assertions that named it out of the harness, and any other file that still imports `apps/%s/...` (the brief lists them).", r.Name, r.Name),
 		fmt.Sprintf("The tables only the %s site declared: its resource declarations went with its tree, but the schema still holds their tables. For each, declare the resource in the site that serves it now, or write a migration dropping the table.", r.Name),
-		fmt.Sprintf("The deployment outside the repository: the build (Cloud Build path filters, Cloud Run source directories, CI paths) and the host that served the %s site.", r.Name),
+		fmt.Sprintf("The deployment outside the repository: the build (Cloud Build path filters, Cloud Run source directories) and the host that served the %s site. The CI workflow needs nothing: it is rendered from the code, without the site's browser job.", r.Name),
 		fmt.Sprintf("The words: the README and the Procfile comments that describe the %s site, and its people's roles in the auths' role files when no remaining site's permissions need them.", r.Name),
 	}
 	for i, item := range items {

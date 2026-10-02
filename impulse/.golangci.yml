@@ -152,6 +152,12 @@ linters:
           - gosec
         path: internal/transition/.*\.go
         text: G30[16]
+      # The owned CI workflow is a project file a person reads and commits: 0755 for
+      # .github/workflows and 0644 for the file are the conventional modes.
+      - linters:
+          - gosec
+        path: ci/.*\.go
+        text: G30[16]
       # The agent executable is the --agent-command flag: launching what the user named is
       # the command's purpose, and the brief goes to it on standard input.
       - linters:

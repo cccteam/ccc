@@ -13,6 +13,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/ci"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
 	"github.com/cccteam/ccc/impulse/internal/names"
@@ -146,6 +147,12 @@ func renderBase(cmd *cobra.Command, dir, modulePath, name, authName, devRoot str
 	if err != nil {
 		return err
 	}
+	// The owned files are written from the code before the first commit, so the
+	// application owns them from its first commit; the base's committed workflow equals
+	// the rendering, and a composed option that changes the workspaces rewrites it.
+	if err := writeOwned(dir); err != nil {
+		return err
+	}
 	gitNote, committed := "", false
 	if !skipGit {
 		gitNote, committed = initRepo(cmd.Context(), dir, modulePath, authName)
@@ -171,6 +178,19 @@ func renderBase(cmd *cobra.Command, dir, modulePath, name, authName, devRoot str
 		styled: isTerminal(cmd.OutOrStdout()),
 	}
 	report.write(cmd.OutOrStdout())
+
+	return nil
+}
+
+// writeOwned writes the files impulse owns from the code of the application at dir.
+func writeOwned(dir string) error {
+	a, err := app.Discover(dir)
+	if err != nil {
+		return err
+	}
+	if _, err := ci.Write(a); err != nil {
+		return err
+	}
 
 	return nil
 }

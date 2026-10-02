@@ -75,6 +75,7 @@ func TestRemoveSiteApply(t *testing.T) {
 		"cmd/generate/sharedgenerator/generator.go: no longer emits the shared TypeScript into the portal site",
 		"pkg/config/data.go: the portal site's router collection is out of the union",
 		"Procfile: removed the portal and portal-web process(es); the comments that describe them are still there",
+		".github/workflows/ci.yml: rewritten from the code (without the angular-portal job)",
 		"ran go generate ./...: every remaining site's generated code at its place, without the portal site's",
 	}
 	if strings.Join(ch.Did, "\n") != strings.Join(wantDid, "\n") {
@@ -104,6 +105,9 @@ func TestRemoveSiteApply(t *testing.T) {
 	procfile := read(t, a, "Procfile")
 	if strings.Contains(procfile, "apps/portal") || !strings.Contains(procfile, "go run ./apps/console'") || !strings.Contains(procfile, "kiosk-web: ") {
 		t.Errorf("Procfile = %q", procfile)
+	}
+	if workflow := read(t, a, ".github/workflows/ci.yml"); strings.Contains(workflow, "angular-portal:") || !strings.Contains(workflow, "\n  angular-console:\n") || !strings.Contains(workflow, "\n  angular-kiosk:\n") {
+		t.Errorf("ci.yml = %q", workflow)
 	}
 	p := mustDiscover(t, a.Root).Profile()
 	if p.Layout != app.LayoutSites || siteNames(p) != "console, kiosk" {

@@ -21,6 +21,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/ci"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/names"
 )
@@ -174,9 +175,10 @@ func (s Site) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change
 	if err := s.copySite(a, &first, ch); err != nil {
 		return nil, err
 	}
+	writeCI(a, ch, fmt.Sprintf("an angular-%s job for %s", s.Name, path.Join(sitesDir, s.Name, "web")))
 	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", fmt.Sprintf("ran go generate ./...: the %s site's generated code, and every site's at its place", s.Name))
 	ch.skipf("test/integration serves the %s site only; serve the %s site beside it over the same database, as the reference's harness does, and prove that a login on one site opens the other only where the auth is shared", first.Name, s.Name)
-	ch.skipf("deployment configuration outside the repository (Cloud Build path filters, Cloud Run source directories, CI paths) now has %s/%s to build and a host for the %s site to serve", sitesDir, s.Name, s.Name)
+	ch.skipf("deployment configuration outside the repository (Cloud Build path filters, Cloud Run source directories) now has %s/%s to build and a host for the %s site to serve", sitesDir, s.Name, s.Name)
 
 	return ch, nil
 }
@@ -1243,62 +1245,32 @@ func (s Site) copyWorkspace(a *app.App, from, to string, ch *Change) (project st
 		project = s.Name
 	}
 	ch.didf("%s: the %s site's browser workspace, a copy of %s with its project named %s on port %d; its titles and API prefix still say what the %s site's do", to, s.Name, from, project, port, old.Name)
-	s.extendCI(a, to, ch)
 
 	return project, port
 }
 
-// extendCI gives the new site's browser workspace its Angular job in the CI workflow,
-// beside the first site's, so the workspace is built, linted and tested on every pull
-// request; the ci-workflow check holds every workspace to one. A workflow the
-// application does not carry is left alone (the check names it).
-func (s Site) extendCI(a *app.App, webDir string, ch *Change) {
-	src, mode, err := readFile(a, check.CIWorkflowFile)
+// writeCI rewrites the CI workflow from the code once the browser workspaces changed: the
+// file is impulse's, rendered with one job per workspace (angular-<site> for a site's
+// workspace at apps/<site>/web), so no job is edited into it. The application is read
+// again first, since the workspaces moved or appeared on disk after it was read. A tree the
+// workflow cannot be written in is the agent's, and the ci-workflow check names it. The
+// other transitions (add outlet, remove outlet, add auth, swap auth, add tenancy) change no
+// workspace, so they do not call it; the command flow writes the owned files once more
+// before the check either way.
+func writeCI(a *app.App, ch *Change, note string) {
+	fresh, err := rediscover(a)
 	if err != nil {
-		return
-	}
-	text := string(src)
-	if strings.Contains(text, "working-directory: ./"+webDir+"\n") {
-		return
-	}
-	pin := ""
-	if m := ciUsesRE.FindStringSubmatch(text); m != nil {
-		pin = m[1]
-	}
-	if pin == "" {
-		ch.skipf("%s: no shared workflow pin found, so the %s site's Angular job was not added; add one like the first site's", check.CIWorkflowFile, s.Name)
+		ch.skipf("%s: not rewritten (%v); run impulse render", ci.File, err)
 
 		return
 	}
-	job := fmt.Sprintf(`  angular-%[1]s:
-    # The browser workspace at %[2]s: bun install with the lockfile frozen, then the
-    # package scripts build, lint and test (the component specs on Angular's unit-test
-    # builder). Bun 1.4.0 is the one that wrote bun.lock.
-    uses: cccteam/github-workflows/.github/workflows/angular-ci.yml@%[3]s
-    permissions:
-      contents: read
-    with:
-      working-directory: ./%[2]s
-      bun-version: "1.4.0"
-      commands: '["build", "lint", "test"]'
-`, s.Name, webDir, pin)
-	anchor := "  dockerfile:\n"
-	if i := strings.Index(text, anchor); i >= 0 {
-		text = text[:i] + job + text[i:]
-	} else {
-		text = strings.TrimRight(text, "\n") + "\n" + job
-	}
-	if err := os.WriteFile(a.Abs(check.CIWorkflowFile), []byte(text), mode); err != nil {
-		ch.skipf("%s: not written (%v); add the %s site's Angular job by hand", check.CIWorkflowFile, err, s.Name)
+	if _, err := ci.Write(fresh); err != nil {
+		ch.skipf("%s: not rewritten (%v); run impulse render", ci.File, err)
 
 		return
 	}
-	ch.didf("%s: an angular-%s job builds, lints and tests the %s workspace beside the first site's", check.CIWorkflowFile, s.Name, webDir)
+	ch.didf("%s: rewritten from the code (%s)", ci.File, note)
 }
-
-// ciUsesRE captures the pin (the ref with its version comment) of a shared workflow's
-// uses: line, so a new job carries the same one.
-var ciUsesRE = regexp.MustCompile(`uses: cccteam/github-workflows/\.github/workflows/[a-z-]+\.yml@(\S+(?: # \S+)?)`)
 
 // nameWorkspace gives the promoted site's browser workspace the site's name the way the
 // sites skeleton spells it: <app>-web becomes <app>-<site>-web in package.json and bun.lock,
@@ -1558,7 +1530,7 @@ func (s Site) Meaning() string {
 		fmt.Sprintf("Give the %s site its resources. Declare what it serves in `apps/%s/pkg/resources` (a resource another site serves too is declared identically in both; a type every site's pages spell the same way moves to `pkg/sharedresources`), and regenerate.", s.Name, s.Name),
 		fmt.Sprintf("Serve it in the integration suite: `test/integration` serves the first site only; serve the %s site beside it over the same database, as the reference's harness does, and prove that a login on one site opens the other only where the auth is shared.", s.Name),
 		fmt.Sprintf("Make the %s site's browser application its own: its titles, its pages, and the API prefix it proxies still say what the first site's do.", s.Name),
-		fmt.Sprintf("Register it outside the repository: the deployment's build (Cloud Build path filters, Cloud Run source directories, CI paths) has `apps/%s` to build and a host for the %s site to serve%s.", s.Name, s.Name, s.deployNote()),
+		fmt.Sprintf("Register it outside the repository: the deployment's build (Cloud Build path filters, Cloud Run source directories) has `apps/%s` to build and a host for the %s site to serve%s. The CI workflow needs nothing: it is rendered from the code, and its `angular-%s` job builds, lints and tests the site's browser workspace.", s.Name, s.Name, s.deployNote(), s.Name),
 	}
 	for i, item := range items {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, item)

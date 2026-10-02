@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/ci"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 )
 
@@ -176,6 +181,122 @@ func TestAppName(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("appName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderOwned runs the form without arguments: inside an application it writes the
+// owned files from the code and says which it wrote; outside one it refuses.
+func TestRenderOwned(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// dir builds the directory the command runs in.
+		dir     func(t *testing.T) string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "a rendered application missing its workflow gets it written",
+			dir: func(t *testing.T) string {
+				t.Helper()
+				dir := renderSolo(t)
+				if err := os.Remove(filepath.Join(dir, ci.File)); err != nil {
+					t.Fatal(err)
+				}
+
+				return dir
+			},
+			want: "Rendered the owned files from the code: .github/workflows/ci.yml written.\n",
+		},
+		{
+			name: "a rendered application whose workflow is current is left unchanged",
+			dir:  renderSolo,
+			want: "Rendered the owned files from the code: .github/workflows/ci.yml unchanged.\n",
+		},
+		{
+			name:    "a directory without go.mod is no application",
+			dir:     func(t *testing.T) string { t.Helper(); return t.TempDir() },
+			wantErr: "no go.mod at",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := tt.dir(t)
+			var b strings.Builder
+			err := renderOwned(&b, dir)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("renderOwned() error = %v, want containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("renderOwned() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, b.String()); diff != "" {
+				t.Errorf("output mismatch (-want +got):\n%s", diff)
+			}
+			if d, err := ci.Compare(mustDiscover(t, dir)); err != nil || d != nil {
+				t.Errorf("Compare() after renderOwned() = %v, %v; want nil, nil", d, err)
+			}
+		})
+	}
+}
+
+// renderSolo renders the base skeleton into a temporary directory.
+func renderSolo(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	if _, err := skeleton.Render(&skeleton.Options{Candidate: skeleton.Base, Dir: dir, ModulePath: "example.com/acme/beacon"}); err != nil {
+		t.Fatalf("skeleton.Render() error = %v", err)
+	}
+
+	return dir
+}
+
+func mustDiscover(t *testing.T, dir string) *app.App {
+	t.Helper()
+
+	a, err := app.Discover(dir)
+	if err != nil {
+		t.Fatalf("app.Discover() error = %v", err)
+	}
+
+	return a
+}
+
+// TestRenderArguments pins the two forms' argument rules: none inside an application, a
+// candidate and a directory with --module, and nothing in between.
+func TestRenderArguments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "one argument is neither form", args: []string{"solo"}, wantErr: `"solo" alone is neither`},
+		{name: "three arguments are too many", args: []string{"solo", "dir", "extra"}, wantErr: "accepts between 0 and 2 arg(s)"},
+		{name: "a candidate without --module", args: []string{"solo", "dir"}, wantErr: "--module is required to render a candidate"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := newRender()
+			cmd.SetArgs(tt.args)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("Execute(%q) error = %v, want containing %q", tt.args, err, tt.wantErr)
 			}
 		})
 	}

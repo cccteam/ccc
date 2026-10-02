@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/ci"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
@@ -384,6 +385,16 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	a, err := app.Discover(f.appDir)
 	if err != nil {
 		return err
+	}
+	// The owned files follow the code: a transition that changed the browser workspaces
+	// rewrote the CI workflow as part of its change, and this leaves every flow, impulse
+	// new's composed options included, with the owned files current before the check.
+	owned, err := ci.Write(a)
+	if err != nil {
+		return err
+	}
+	if owned.Written {
+		fmt.Fprintf(out, "Rewrote %s from the code.\n\n", ci.File)
 	}
 	env := &check.Env{App: a, Exec: exec, SkipGenerate: f.skipGenerate, Fix: true, Out: cmd.ErrOrStderr()}
 	results := check.Run(ctx, env, check.All())

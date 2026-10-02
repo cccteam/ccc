@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,20 +279,28 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no env tags declared",
 		},
 		{
-			name: "pins released", fixture: "flat", check: pins{},
-			wantStatus: Pass, wantSummary: "3 framework pin(s) are released versions",
+			// The test binary is a development build, so the pin is noted, not compared.
+			name: "pins released with the impulse tool directive", fixture: "flat", check: pins{},
+			wantStatus: Pass, wantSummary: "4 framework pin(s) are released versions; go.mod holds the impulse tool directive",
+			wantDetails: []string{
+				"go.mod holds the impulse tool directive, pinned at v0.4.0; the running impulse is a development build ((devel), built from a checkout), so the pin is not compared with it",
+			},
 		},
 		{
-			name: "pins unreleased", fixture: "sites", check: pins{},
-			wantStatus: Warn, wantSummary: "2 framework pin(s) point at unreleased code",
+			name: "pins unreleased and no tool directive", fixture: "sites", check: pins{},
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)",
 			wantDetails: []string{
+				"go.mod has no tool directive for github.com/cccteam/ccc/impulse, so CI's go tool impulse check has nothing to run: run go get -tool github.com/cccteam/ccc/impulse@<version>, then go tool impulse render, then go tool impulse check",
 				"github.com/cccteam/session is pinned to pseudo-version v0.11.2-0.20260903182144-ffa51dacf20e",
 				"github.com/cccteam/ccc/resource is replaced by local path ../resource",
 			},
 		},
 		{
-			name: "pins none", fixture: "badprogram", check: pins{},
-			wantStatus: Skip, wantSummary: "go.mod requires no github.com/cccteam/* module",
+			name: "pins none and no tool directive", fixture: "badprogram", check: pins{},
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)",
+			wantDetails: []string{
+				"go.mod has no tool directive for github.com/cccteam/ccc/impulse, so CI's go tool impulse check has nothing to run: run go get -tool github.com/cccteam/ccc/impulse@<version>, then go tool impulse render, then go tool impulse check",
+			},
 		},
 		{
 			name: "paging offset in Go", fixture: "badprogram", check: paging{},
@@ -584,33 +593,75 @@ func TestIgnored(t *testing.T) {
 func TestPinsFromGoMod(t *testing.T) {
 	t.Parallel()
 
+	const (
+		held        = "module x\n\ngo 1.26.6\n\nrequire (\n\tgithub.com/cccteam/ccc/impulse v0.4.0\n\tgithub.com/cccteam/httpio v0.7.17\n)\n\ntool github.com/cccteam/ccc/impulse\n"
+		moveAdvice  = "go.mod pins impulse at v0.4.0 and the running impulse is v0.5.0: move the pin with go get -tool github.com/cccteam/ccc/impulse@v0.5.0, then go tool impulse render, then go tool impulse check"
+		develNote   = "go.mod holds the impulse tool directive, pinned at v0.4.0; the running impulse is a development build ((devel), built from a checkout), so the pin is not compared with it"
+		noDirective = "go.mod has no tool directive for github.com/cccteam/ccc/impulse, so CI's go tool impulse check has nothing to run: run go get -tool github.com/cccteam/ccc/impulse@%s, then go tool impulse render, then go tool impulse check"
+	)
+	atPin := Build{Version: "v0.4.0", FromModule: true}
+	devel := Build{Version: "(devel)"}
+
 	tests := []struct {
-		name       string
-		gomod      string
-		wantStatus Status
-		wantDetail string
+		name        string
+		gomod       string
+		build       Build
+		wantStatus  Status
+		wantSummary string
+		wantDetails []string
 	}{
 		{
-			name:       "released",
-			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n",
-			wantStatus: Pass,
+			name: "released, the directive held, a module build at the pin", gomod: held, build: atPin,
+			wantStatus: Pass, wantSummary: "2 framework pin(s) are released versions; go.mod holds the impulse tool directive at the running impulse's version",
 		},
 		{
-			name:       "pseudo-version",
-			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.18-0.20260901000000-0123456789ab\n",
-			wantStatus: Warn,
-			wantDetail: "github.com/cccteam/httpio is pinned to pseudo-version v0.7.18-0.20260901000000-0123456789ab",
+			name: "released, the directive held, a development build", gomod: held, build: devel,
+			wantStatus: Pass, wantSummary: "2 framework pin(s) are released versions; go.mod holds the impulse tool directive",
+			wantDetails: []string{develNote},
 		},
 		{
-			name:       "versioned replace",
-			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n\nreplace github.com/cccteam/httpio => github.com/someone/httpio v0.7.17\n",
-			wantStatus: Warn,
-			wantDetail: "github.com/cccteam/httpio is replaced by github.com/someone/httpio v0.7.17",
+			name: "a checkout build stamped by version control is a development build", gomod: held, build: Build{Version: "v0.0.0-20261002133432-cef21637387c+dirty"},
+			wantStatus: Pass, wantSummary: "2 framework pin(s) are released versions; go.mod holds the impulse tool directive",
+			wantDetails: []string{"go.mod holds the impulse tool directive, pinned at v0.4.0; the running impulse is a development build (v0.0.0-20261002133432-cef21637387c+dirty, built from a checkout), so the pin is not compared with it"},
 		},
 		{
-			name:       "non-framework replace is ignored",
-			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n\nreplace github.com/golang-migrate/migrate/v4 => github.com/other/migrate/v4 v4.19.2\n",
-			wantStatus: Pass,
+			name: "a module build at another version", gomod: held, build: Build{Version: "v0.5.0", FromModule: true},
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)", wantDetails: []string{moveAdvice},
+		},
+		{
+			name: "no directive, a module build names its version", gomod: "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n", build: Build{Version: "v0.5.0", FromModule: true},
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)", wantDetails: []string{fmt.Sprintf(noDirective, "v0.5.0")},
+		},
+		{
+			name: "no directive, a development build leaves the version to fill", gomod: "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n", build: devel,
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)", wantDetails: []string{fmt.Sprintf(noDirective, "<version>")},
+		},
+		{
+			name: "the require without the tool line", gomod: "module x\n\nrequire github.com/cccteam/ccc/impulse v0.4.0\n", build: atPin,
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)", wantDetails: []string{fmt.Sprintf(noDirective, "v0.4.0")},
+		},
+		{
+			name:  "pseudo-version",
+			gomod: "module x\n\nrequire (\n\tgithub.com/cccteam/ccc/impulse v0.4.0\n\tgithub.com/cccteam/httpio v0.7.18-0.20260901000000-0123456789ab\n)\n\ntool github.com/cccteam/ccc/impulse\n", build: atPin,
+			wantStatus: Warn, wantSummary: "1 framework pin(s) point at unreleased code",
+			wantDetails: []string{"github.com/cccteam/httpio is pinned to pseudo-version v0.7.18-0.20260901000000-0123456789ab"},
+		},
+		{
+			name:  "a pseudo-version and a development build carry the note too",
+			gomod: "module x\n\nrequire (\n\tgithub.com/cccteam/ccc/impulse v0.4.0\n\tgithub.com/cccteam/httpio v0.7.18-0.20260901000000-0123456789ab\n)\n\ntool github.com/cccteam/ccc/impulse\n", build: devel,
+			wantStatus: Warn, wantSummary: "1 framework pin(s) point at unreleased code",
+			wantDetails: []string{"github.com/cccteam/httpio is pinned to pseudo-version v0.7.18-0.20260901000000-0123456789ab", develNote},
+		},
+		{
+			name:  "versioned replace",
+			gomod: held + "\nreplace github.com/cccteam/httpio => github.com/someone/httpio v0.7.17\n", build: atPin,
+			wantStatus: Warn, wantSummary: "1 framework pin(s) point at unreleased code",
+			wantDetails: []string{"github.com/cccteam/httpio is replaced by github.com/someone/httpio v0.7.17"},
+		},
+		{
+			name:  "non-framework replace is ignored",
+			gomod: held + "\nreplace github.com/golang-migrate/migrate/v4 => github.com/other/migrate/v4 v4.19.2\n", build: atPin,
+			wantStatus: Pass, wantSummary: "2 framework pin(s) are released versions; go.mod holds the impulse tool directive at the running impulse's version",
 		},
 	}
 
@@ -622,12 +673,10 @@ func TestPinsFromGoMod(t *testing.T) {
 			if err != nil {
 				t.Fatalf("modfile.Parse() error = %v", err)
 			}
-			got := pins{}.Run(context.Background(), &Env{App: &app.App{GoMod: mod}})
-			if got.Status != tt.wantStatus {
-				t.Errorf("Status = %s, want %s (%s)", got.Status, tt.wantStatus, got.Summary)
-			}
-			if tt.wantDetail != "" && (len(got.Details) != 1 || got.Details[0] != tt.wantDetail) {
-				t.Errorf("Details = %v, want [%q]", got.Details, tt.wantDetail)
+			got := pins{build: func() Build { return tt.build }}.Run(context.Background(), &Env{App: &app.App{GoMod: mod}})
+			want := Result{Name: pins{}.Name(), Status: tt.wantStatus, Summary: tt.wantSummary, Details: tt.wantDetails}
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Errorf("Run() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

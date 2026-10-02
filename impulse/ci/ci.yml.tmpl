@@ -79,27 +79,27 @@ jobs:
         if: ${{ !cancelled() }}
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: [[.GolangciLint]]
           args: --timeout 5m
       - name: golangci-lint (skipAuth)
         if: ${{ !cancelled() }}
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: [[.GolangciLint]]
           args: --timeout 5m --build-tags skipAuth
       - name: govulncheck
         if: ${{ !cancelled() }}
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
-          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -tags skipAuth ./...
+          go run golang.org/x/vuln/cmd/govulncheck@[[.Govulncheck]] ./...
+          go run golang.org/x/vuln/cmd/govulncheck@[[.Govulncheck]] -tags skipAuth ./...
       - name: Semgrep, the findings this pull request introduces
         if: ${{ !cancelled() }}
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
           git fetch origin "$BASE_REF"
-          docker run --rm -v "$PWD:/src" semgrep/semgrep@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b \
-            semgrep ci --config auto --max-target-bytes 500000 --baseline-commit "$(git merge-base HEAD "origin/$BASE_REF")" # 1.179.0
+          docker run --rm -v "$PWD:/src" semgrep/semgrep@[[.SemgrepDigest]] \
+            semgrep ci --config auto --max-target-bytes 500000 --baseline-commit "$(git merge-base HEAD "origin/$BASE_REF")" # [[.Semgrep]]
       - name: impulse check
         if: ${{ !cancelled() }}
         run: go tool impulse check
@@ -112,25 +112,27 @@ jobs:
             git diff
             exit 1
           fi
+[[- range .Workspaces]]
 
-  # The browser workspace at web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.
-  angular-web:
+  # The browser workspace at [[.Dir]]: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.
+  [[.Job]]:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
     defaults:
       run:
-        working-directory: web
+        working-directory: [[.Dir]]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.0
+          bun-version: [[$.Bun]]
       - run: bun ci
       - run: bun run build
       - run: bun run lint
       - run: bun run test
+[[- end]]
 
   # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
   image:
@@ -173,7 +175,7 @@ jobs:
           fetch-depth: 0
       - uses: trufflesecurity/trufflehog@f446421baf832d6356c42c1743d99abff52ff334 # v3.95.7
         with:
-          version: 3.95.7
+          version: [[.TruffleHog]]
           head: ${{ github.event.pull_request.head.sha }}
           extra_args: --results=verified,unknown
 

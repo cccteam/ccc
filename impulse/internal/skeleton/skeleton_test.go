@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/mod/modfile"
 )
 
 const modulePrefix = "github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/"
@@ -36,9 +37,10 @@ func TestFS(t *testing.T) {
 
 	// A template is a complete application minus its build products: these files must
 	// be present in every candidate, and nothing from these directories may be embedded.
-	required := []string{ModFile, "go.sum", ".gitignore", ".golangci.yml", ".envrc.template", "Procfile", "README.md", "pkg/auth/staff/roles.json", "pkg/auth/staff/staff.go"}
+	required := []string{ModFile, "go.sum", ".gitignore", ".golangci.yml", ".envrc.template", "Procfile", "README.md", "pkg/auth/staff/roles.json", "pkg/auth/staff/staff.go", ".github/workflows/ci.yml"}
 	forbiddenDirs := []string{"node_modules", ".angular", "dist", ".ccc-cache", ".yalc", ".git"}
-	forbiddenFiles := []string{"go.mod", "go.work", "go.work.sum", ".envrc", ".overmind.sock", "yalc.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
+	// codeql-config.yml left with the CodeQL job: nothing reads it.
+	forbiddenFiles := []string{"go.mod", "go.work", "go.work.sum", ".envrc", ".overmind.sock", "yalc.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "codeql-config.yml"}
 
 	tests := []struct {
 		name    string
@@ -99,6 +101,56 @@ func TestFS(t *testing.T) {
 			})
 			if err != nil {
 				t.Fatalf("fs.WalkDir() error = %v", err)
+			}
+		})
+	}
+}
+
+// TestModFileCarriesTheImpulseTool pins the impulse pin's home: every candidate's go.mod
+// carries the tool directive for impulse and a require of it, so a rendered application
+// runs go tool impulse check at a version go.mod names and Go's checksum database verifies.
+func TestModFileCarriesTheImpulseTool(t *testing.T) {
+	t.Parallel()
+
+	const impulseModule = "github.com/cccteam/ccc/impulse"
+	tests := []struct {
+		name string
+	}{
+		{name: "solo"}, {name: "tenanted"}, {name: "outlets"}, {name: "sites"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sub, err := FS(tt.name)
+			if err != nil {
+				t.Fatalf("FS() error = %v", err)
+			}
+			data, err := fs.ReadFile(sub, ModFile)
+			if err != nil {
+				t.Fatalf("fs.ReadFile(%s) error = %v", ModFile, err)
+			}
+			mod, err := modfile.Parse(ModFile, data, nil)
+			if err != nil {
+				t.Fatalf("modfile.Parse() error = %v", err)
+			}
+			held := false
+			for _, tool := range mod.Tool {
+				if tool.Path == impulseModule {
+					held = true
+				}
+			}
+			if !held {
+				t.Errorf("%s: no tool directive for %s", tt.name, impulseModule)
+			}
+			pinned := ""
+			for _, r := range mod.Require {
+				if r.Mod.Path == impulseModule {
+					pinned = r.Mod.Version
+				}
+			}
+			if pinned == "" {
+				t.Errorf("%s: no require of %s", tt.name, impulseModule)
 			}
 		})
 	}
