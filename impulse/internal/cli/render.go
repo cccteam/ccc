@@ -70,7 +70,7 @@ local framework work instead of the pins. Do not commit that go.work.`,
 				return err
 			}
 
-			port, emulator := templatePorts(args[1])
+			port, emulator, firestore := templatePorts(args[1])
 			goProcs, err := goProcesses(args[1])
 			if err != nil {
 				return err
@@ -81,7 +81,7 @@ local framework work instead of the pins. Do not commit that go.work.`,
 			}
 			report := renderReport{
 				candidate: args[0], dir: args[1], modulePath: modulePath, name: appName, devRoot: devRoot,
-				rendered: got, port: port, emulator: emulator, goProcs: goProcs, web: web,
+				rendered: got, port: port, emulator: emulator, firestore: firestore, goProcs: goProcs, web: web,
 				styled: isTerminal(cmd.OutOrStdout()),
 			}
 			report.write(cmd.OutOrStdout())
@@ -121,8 +121,9 @@ func renderOwned(w io.Writer, dir string) error {
 }
 
 var (
-	portLine     = regexp.MustCompile(`(?m)^export PORT=(\d+)`)
-	emulatorLine = regexp.MustCompile(`(?m)^export SPANNER_EMULATOR_PORT=(\d+)`)
+	portLine      = regexp.MustCompile(`(?m)^export PORT=(\d+)`)
+	emulatorLine  = regexp.MustCompile(`(?m)^export SPANNER_EMULATOR_PORT=(\d+)`)
+	firestoreLine = regexp.MustCompile(`(?m)^export FIRESTORE_EMULATOR_PORT=(\d+)`)
 	// packageManagerWord marks a Procfile command as a browser-app process.
 	packageManagerWord = regexp.MustCompile(`(?:^|[\s;&|(])(?:npm|npx|bun|bunx|yarn|pnpm)\s`)
 )
@@ -131,10 +132,10 @@ var (
 // development environment template names, or empty strings when it has none. A taken
 // port is the first thing a fresh application trips on, and the failure hides in a
 // process pane, so the ports are worth stating up front.
-func templatePorts(dir string) (port, emulator string) {
+func templatePorts(dir string) (port, emulator, firestore string) {
 	data, err := os.ReadFile(filepath.Join(dir, ".envrc.template"))
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	if m := portLine.FindSubmatch(data); m != nil {
 		port = string(m[1])
@@ -142,8 +143,11 @@ func templatePorts(dir string) (port, emulator string) {
 	if m := emulatorLine.FindSubmatch(data); m != nil {
 		emulator = string(m[1])
 	}
+	if m := firestoreLine.FindSubmatch(data); m != nil {
+		firestore = string(m[1])
+	}
 
-	return port, emulator
+	return port, emulator, firestore
 }
 
 // renderReport is what the render command tells the user: what it did in a few lines,
@@ -157,9 +161,12 @@ type renderReport struct {
 
 	candidate, dir, modulePath, devRoot string
 	// name is the application's name when the rendering set one.
-	name           string
-	rendered       *skeleton.Rendered
-	port, emulator string
+	name     string
+	rendered *skeleton.Rendered
+	// port, emulator and firestore are the server's, the Spanner emulator's and the
+	// Firestore emulator's ports from the environment template; firestore is empty for
+	// a template that starts no Firestore emulator.
+	port, emulator, firestore string
 	// goProcs are the Procfile processes that run without the browser apps installed.
 	goProcs []string
 	// web lists the browser workspaces and the ng serve ports of their projects.
@@ -210,10 +217,7 @@ func (r *renderReport) write(w io.Writer) {
 			fmt.Fprintf(w, "No checkout for %s; those pins stay in force.\n", strings.Join(r.rendered.DevMissing, ", "))
 		}
 	}
-	if r.port != "" {
-		fmt.Fprintf(w, "\n%s the server listens on :%s and the Spanner emulator on :%s.\n", bold("Ports:"), r.port, r.emulator)
-		fmt.Fprintf(w, "       Both are set in .envrc.template; change them there if either is taken.\n")
-	}
+	r.writePorts(w, bold)
 
 	fmt.Fprintf(w, "\n%s\n", bold("Next steps"))
 	step := 0
@@ -257,6 +261,20 @@ func (r *renderReport) write(w io.Writer) {
 		note("Everything, with ng serve for the %s.", strings.Join(urls, " and the "))
 	}
 	r.optionsStep(next, note)
+}
+
+// writePorts states the development ports the environment template names: the server's
+// and the Spanner emulator's, and the Firestore emulator's when the template starts one.
+// Nothing is written for a template that names no server port.
+func (r *renderReport) writePorts(w io.Writer, bold func(string) string) {
+	switch {
+	case r.port != "" && r.firestore != "":
+		fmt.Fprintf(w, "\n%s the server listens on :%s, the Spanner emulator on :%s and the Firestore emulator on :%s.\n", bold("Ports:"), r.port, r.emulator, r.firestore)
+		fmt.Fprintf(w, "       All three are set in .envrc.template; change them there if one is taken.\n")
+	case r.port != "":
+		fmt.Fprintf(w, "\n%s the server listens on :%s and the Spanner emulator on :%s.\n", bold("Ports:"), r.port, r.emulator)
+		fmt.Fprintf(w, "       Both are set in .envrc.template; change them there if either is taken.\n")
+	}
 }
 
 // optionsStep names the options an application takes on afterwards, when the report is

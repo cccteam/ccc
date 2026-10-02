@@ -41,6 +41,28 @@ type (
 	Announcement struct{}
 )
 `
+	// wiredApp hands the generated handlers the live service the configuration opened.
+	wiredApp = `package app
+
+import "github.com/cccteam/ccc/resource/live"
+
+type App struct{ live live.Service }
+
+func (a *App) LiveService() live.Service {
+	return a.live
+}
+`
+	// unwiredApp answers the accessor with nil: no outlet serves live pages.
+	unwiredApp = `package app
+
+import "github.com/cccteam/ccc/resource/live"
+
+type App struct{}
+
+func (a *App) LiveService() live.Service {
+	return nil
+}
+`
 )
 
 func TestOutletWired(t *testing.T) {
@@ -75,6 +97,36 @@ func TestOutletWired(t *testing.T) {
 			wantStatus:  Pass,
 			wantSummary: "3 outlet(s) mounted: default (/api), portal (/portal/api, sessions), machines (/machines)",
 			wantDetails: []string{"outlet machines has no @outlet(machines) members yet"},
+		},
+		{
+			name: "an App wiring the live service makes every session outlet live",
+			files: map[string]string{
+				"cmd/generate/main.go":           declared,
+				"app/app.go":                     wiredApp,
+				"pkg/router/router.go":           fullRouter,
+				"pkg/resources/announcements.go": outletMembers,
+				"web/angular.json":               outletAngularJSON,
+				"web/console/proxy.conf.js":      consoleProxy,
+				"web/portal/proxy.conf.js":       portalProxy,
+			},
+			wantStatus:  Pass,
+			wantSummary: "3 outlet(s) mounted: default (/api, live), portal (/portal/api, sessions, live), machines (/machines)",
+			wantDetails: []string{"outlet machines has no @outlet(machines) members yet"},
+		},
+		{
+			name: "an App wiring no live service is noted, not failed",
+			files: map[string]string{
+				"cmd/generate/main.go":           declared,
+				"app/app.go":                     unwiredApp,
+				"pkg/router/router.go":           fullRouter,
+				"pkg/resources/announcements.go": outletMembers,
+			},
+			wantStatus:  Pass,
+			wantSummary: "3 outlet(s) mounted: default (/api), portal (/portal/api, sessions), machines (/machines)",
+			wantDetails: []string{
+				"app/app.go:7: the App's LiveService returns nil, so no outlet serves live pages and a request carrying X-Subscribe is refused; hand it the live service the data level opens to serve them",
+				"outlet machines has no @outlet(machines) members yet",
+			},
 		},
 		{
 			name: "unmounted outlet, clientless session outlet, and a proxy that misses the prefix",

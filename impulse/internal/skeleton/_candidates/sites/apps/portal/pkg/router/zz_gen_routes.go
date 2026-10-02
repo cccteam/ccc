@@ -6,6 +6,7 @@ package router
 import (
 	"net/http"
 
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
 )
@@ -21,6 +22,17 @@ type GeneratedHandlers interface {
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 
+	// LiveService is the application's live service (resource/live): the subscription
+	// record the list and read handlers register in, the publisher the mutations write
+	// to, and the browser's identity. Nil serves no live pages, and a request carrying
+	// X-Subscribe is refused.
+	LiveService() live.Service
+	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
+	// outlet's prefix: a tab's subscriptions renewed against the user's grants, a tab
+	// or a logout leaving, and how the browser connects to its change set.
+	LiveRenew() http.HandlerFunc
+	LiveUnsubscribe() http.HandlerFunc
+	LiveToken() http.HandlerFunc
 	// PermissionDigest serves the session user's per-scope permission digest:
 	// advisory grant structure for the UI (resource → permission → granted or
 	// conditional, denied targets absent), with the scope taken from the request
@@ -38,10 +50,17 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
+	// Every route below runs under the subscribe middleware: a request carrying
+	// X-Subscribe is noted on its request log line and refused when the application
+	// serves no live pages.
+	r = r.With(live.Subscribing(h.LiveService()))
 	domainGuard := h.DomainGuard()
 
 	r.Get("/api/permission-digest", h.PermissionDigest())
 	r.Get("/api/user-domains", h.UserDomains())
+	r.Post("/api/live/renew", h.LiveRenew())
+	r.Post("/api/live/unsubscribe", h.LiveUnsubscribe())
+	r.Get("/api/live/token", h.LiveToken())
 
 	announcementsHandler := domainGuard(h.Announcements())
 	r.Get("/api/tenants/{domain}/announcements", announcementsHandler)

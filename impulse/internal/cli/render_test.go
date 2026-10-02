@@ -26,20 +26,20 @@ func TestRenderReport(t *testing.T) {
 			name: "one workspace, plain",
 			report: renderReport{
 				candidate: "solo", dir: "../beacon", modulePath: "example.com/acme/beacon", name: "beacon",
-				rendered: &skeleton.Rendered{Files: 90}, port: "8090", emulator: "9014",
-				goProcs: []string{"spanner", "server"},
+				rendered: &skeleton.Rendered{Files: 90}, port: "8090", emulator: "9014", firestore: "9024",
+				goProcs: []string{"spanner", "firestore", "server"},
 				web:     []webWorkspace{{Dir: "web", Projects: []webProject{{Name: "console", Port: 4300, Path: "/"}}}},
 			},
 			want: `Rendered solo into ../beacon as example.com/acme/beacon (90 files).
 Named beacon: the web package, APP_SERVICE_NAME, and the development database carry it.
 
-Ports: the server listens on :8090 and the Spanner emulator on :9014.
-       Both are set in .envrc.template; change them there if either is taken.
+Ports: the server listens on :8090, the Spanner emulator on :9014 and the Firestore emulator on :9024.
+       All three are set in .envrc.template; change them there if one is taken.
 
 Next steps
   1. cd ../beacon
   2. cp .envrc.template .envrc && direnv allow
-  3. overmind start -l spanner,server
+  3. overmind start -l spanner,firestore,server
      The Go side alone. The first run compiles and bootstraps before it listens; wait for
      "Starting Server", then sign in against the API as admin with the password "password".
   4. (cd web && ./ccclib.sh local)

@@ -7,15 +7,21 @@ import (
 	"net/http"
 
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 )
 
 // resourceApp is the application surface every generated resource handler draws on.
 // CursorKey is the one key that seals list cursors (resource.NewCursorKey over the
 // application's cookie key); every generated query decoder is wired with it.
+// LiveService is the live service (resource/live) the list and read handlers register
+// a subscribing request in before the query and the mutations publish their committed
+// rows through; nil serves no live pages, and a request carrying X-Subscribe is
+// refused.
 type resourceApp interface {
 	UserPermissions(r *http.Request) resource.UserPermissions
 	ResourceClient() resource.Client
 	CursorKey() *resource.CursorKey
+	LiveService() live.Service
 }
 
 var _ resourceApp = (*App)(nil)

@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/resources"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
@@ -38,6 +39,10 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 		)
 		userPermissions := a.UserPermissions(r)
 
+		// The rows the transaction writes are collected for the live pages, published
+		// once the commit lands and before the answer, each under the domain its
+		// operation was decoded in.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
 			r, err := resource.CloneRequest(r)
@@ -109,6 +114,7 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 		}); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		live.Publish(ctx, a.LiveService(), "", touched)
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})

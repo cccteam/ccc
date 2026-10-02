@@ -5,6 +5,7 @@ import { ApiDescriptor, Client, ClientOptions, createClient } from '@cccteam/res
 export const apiDescriptor: ApiDescriptor = {
   permissionDigestRoute: 'permission-digest',
   userDomainsRoute: 'user-domains',
+  live: { renewRoute: 'live/renew', unsubscribeRoute: 'live/unsubscribe', tokenRoute: 'live/token' },
   resources: {
   },
   methods: {

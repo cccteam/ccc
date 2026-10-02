@@ -35,6 +35,11 @@ type App struct {
 	// EmulatorHarnesses are the Spanner emulator versions requested by test harnesses
 	// through initiator.NewSpannerContainer.
 	EmulatorHarnesses []EmulatorRef
+	// FirestoreEmulatorImages are the Firestore emulator versions named by process files
+	// and test harnesses through the Cloud SDK emulators image tag
+	// (google-cloud-cli:<version>-emulators): the emulator the live pages run on in
+	// development.
+	FirestoreEmulatorImages []EmulatorRef
 	// EnvTags are the env struct tags declared by the application's Go code.
 	EnvTags []EnvTag
 	// EnvTemplate is the root-relative path of the development environment template
@@ -176,7 +181,7 @@ type WebApp struct {
 	Dir string
 }
 
-// EmulatorRef is one place a Spanner emulator version is named.
+// EmulatorRef is one place an emulator version is named.
 type EmulatorRef struct {
 	File    string
 	Line    int

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
@@ -13,6 +14,8 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/router"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
+	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -42,9 +45,59 @@ func (s SpannerSettings) DatabasePath() string {
 	return fmt.Sprintf("projects/%s/instances/%s/databases/%s", s.ProjectID, s.InstanceID, s.DatabaseName)
 }
 
+// FirestoreSettings identifies the Firestore database the live pages run on, beside the
+// Spanner database: the subscriptions the generated handlers register and the change
+// sets the browser listens to. The database id is how a deployment hands the database to
+// the application (APP_FIRESTORE_DATABASE); the emulator host is how the development
+// stack does. Neither set, the application serves no live pages.
+type FirestoreSettings struct {
+	// ProjectID is the Google Cloud project the database belongs to. Empty, the Spanner
+	// project is used: the database lives beside the Spanner database in the
+	// application's project unless this says otherwise.
+	ProjectID string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
+	// DatabaseID is the Firestore database, by id.
+	DatabaseID string `env:"APP_FIRESTORE_DATABASE"`
+	// APIKey is the Firebase web API key the browser initializes the SDK with; unused
+	// against the emulator.
+	APIKey string `env:"APP_FIREBASE_API_KEY"`
+	// EmulatorHost is the Firestore emulator's host:port, the development stack's.
+	EmulatorHost string `env:"FIRESTORE_EMULATOR_HOST"`
+}
+
+// Enabled reports whether live pages are served: a database is named, or the emulator
+// is.
+func (s FirestoreSettings) Enabled() bool {
+	return s.DatabaseID != "" || s.EmulatorHost != ""
+}
+
+// firebaseOrigins are the hosts the Firebase JS SDK reaches in production: Firestore's
+// endpoint, which the change feed listens through, and Firebase Auth's two, which the
+// custom token is signed in through and refreshed at.
+var firebaseOrigins = []string{
+	"https://firestore.googleapis.com",
+	"https://identitytoolkit.googleapis.com",
+	"https://securetoken.googleapis.com",
+}
+
+// BrowserOrigins returns the origins the browser connects to for the change feed, which
+// the content security policy's connect-src must name beside the application itself:
+// the emulator over plain HTTP in development (the token route hands the browser the
+// same host), Firebase's hosts in production, none when live pages are not served.
+func (s FirestoreSettings) BrowserOrigins() []string {
+	switch {
+	case s.EmulatorHost != "":
+		return []string{"http://" + s.EmulatorHost}
+	case s.DatabaseID != "":
+		return slices.Clone(firebaseOrigins)
+	default:
+		return nil
+	}
+}
+
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the resource client over it, and the staff auth (its
-// permission engine and session manager).
+// owns the Spanner client, the resource client over it, the staff auth (its
+// permission engine and session manager), and the live service when a Firestore
+// database is configured.
 type DataConfiguration struct {
 	*coreConfiguration
 	env            *dataConfig
@@ -52,6 +105,7 @@ type DataConfiguration struct {
 	resourceClient *resource.SpannerClient
 	cursorKey      *resource.CursorKey
 	staff          *staff.Auth
+	live           *livefirestore.Service
 }
 
 // NewDataConfiguration loads the core and data levels and opens their clients. The
@@ -91,18 +145,54 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
 
-	return &DataConfiguration{
+	conf := &DataConfiguration{
 		coreConfiguration: core,
 		env:               env,
 		spannerClient:     spannerClient,
 		resourceClient:    resource.NewSpannerClient(spannerClient),
 		cursorKey:         cursorKey,
 		staff:             staffAuth,
-	}, nil
+	}
+	if err := conf.openLive(ctx); err != nil {
+		return nil, errors.Wrap(err, "openLive()")
+	}
+
+	return conf, nil
+}
+
+// openLive opens the live service over the Firestore database the configuration names,
+// or the emulator; with neither the application serves no live pages and the service
+// stays nil.
+func (c *DataConfiguration) openLive(ctx context.Context) error {
+	if !c.env.Firestore.Enabled() {
+		return nil
+	}
+
+	project := c.env.Firestore.ProjectID
+	if project == "" {
+		project = c.env.Spanner.ProjectID
+	}
+	service, err := livefirestore.New(ctx, livefirestore.Config{
+		ProjectID:    project,
+		DatabaseID:   c.env.Firestore.DatabaseID,
+		APIKey:       c.env.Firestore.APIKey,
+		EmulatorHost: c.env.Firestore.EmulatorHost,
+	})
+	if err != nil {
+		return errors.Wrap(err, "firestore.New()")
+	}
+	c.live = service
+
+	return nil
 }
 
 // Close releases the level's clients, then the levels below it.
 func (c *DataConfiguration) Close() {
+	if c.live != nil {
+		if err := c.live.Close(); err != nil {
+			log.Print(errors.Wrap(err, "firestore.Service.Close()"))
+		}
+	}
 	if err := c.staff.Close(); err != nil {
 		log.Print(errors.Wrap(err, "staff.Auth.Close()"))
 	}
@@ -142,6 +232,25 @@ func (c *DataConfiguration) Staff() *staff.Auth {
 	return c.staff
 }
 
+// Live returns the live service the generated handlers subscribe through and publish
+// to: the Firestore service when a Firestore database or the emulator is configured,
+// nil otherwise. A nil interface is what the App's accessor hands the generated code,
+// never a typed nil.
+func (c *DataConfiguration) Live() live.Service {
+	if c.live == nil {
+		return nil
+	}
+
+	return c.live
+}
+
+// LiveOrigins returns the origins the browser reaches the change feed at, for the
+// content security policy: the Firestore emulator in development, Firebase's hosts in
+// production, none when no live pages are served.
+func (c *DataConfiguration) LiveOrigins() []string {
+	return c.env.Firestore.BrowserOrigins()
+}
+
 // cookieKey returns the configured session cookie key, or an ephemeral one when none is
 // configured. An ephemeral key means sessions do not survive a restart.
 func cookieKey(configured string) (string, error) {
@@ -159,7 +268,8 @@ func cookieKey(configured string) (string, error) {
 
 // dataConfig holds the environment every database-opening process reads.
 type dataConfig struct {
-	Spanner SpannerSettings
+	Spanner   SpannerSettings
+	Firestore FirestoreSettings
 
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration `env:"APP_DEFAULT_SESSION_TIMEOUT,default=10m"`

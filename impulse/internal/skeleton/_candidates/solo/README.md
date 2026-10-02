@@ -79,9 +79,9 @@ applies the rest.
 ## Running it
 
     cp .envrc.template .envrc && direnv allow
-    overmind start -l spanner,server
+    overmind start -l spanner,firestore,server
 
-That starts a fresh emulator, bootstraps it (schema, roles, the `admin` / `password`
+That starts fresh Spanner and Firestore emulators, bootstraps the database (schema, roles, the `admin` / `password`
 login), and serves the API on `$PORT` (:8090). The first run compiles and bootstraps
 before it listens; wait for "Starting Server" in the server pane.
 
@@ -118,6 +118,35 @@ permission digest over a scripted client from `@cccteam/resource-angular/testing
 (`provideResourceTesting` puts the generated client on a transport that records every
 request and answers from the test), and the login page, header, top bar, footer, and shell
 have creation specs with the same providers.
+
+## Live pages
+
+A list page or a record page can stay current without polling. A request the page asked
+to be live carries `X-Subscribe: <tab>`; a permitted list or read registers the page's
+interest (who, which tab, which resource, which row or which tenant, until when) before
+the query runs, every commit publishes the rows it touched into its subscribers' change
+sets, and the browser refetches with `_v=<the change's timestamp>`, an answer the browser
+caches for five minutes (`Cache-Control: private, max-age=300`). Nothing is polled and
+the server holds no connection open.
+
+The server side is wired. The data level opens the live service over the Firestore
+database the configuration names: `APP_FIRESTORE_DATABASE` in a deployment, the emulator
+through `FIRESTORE_EMULATOR_HOST` in development (`pkg/config`, `FirestoreSettings`;
+the project defaults to the Spanner project). The App hands it to the generated handlers
+through `LiveService()`, and the generated router serves the live routes on the session outlet (`/api/live/renew`, `/api/live/unsubscribe`, `/api/live/token`). With neither a database nor the emulator configured the
+application serves no live pages, and a request carrying the header answers 400. The
+content security policy the App sends names the change feed's origins beside the
+application (the emulator in development, Firebase's hosts in production), since the
+browser's feed connects to them directly rather than through the API.
+`schema/firestore` holds the rules the browser's reads run under and the indexes and
+time-to-live policies the subscription record needs; the Procfile's emulator runs the
+rules, and a deployment applies both files to the database.
+
+The browser side is the client packages' live option: a list view or record view opting
+in (`live: true` in its view configuration) with the Firestore change feed provided at
+the application root, started after login and stopped at logout. It follows the client
+packages' release that carries the option; until then the pages read as they do today.
+The resource package's README describes the design (section 14, "Live pages").
 
 ## Checks
 

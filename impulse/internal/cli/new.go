@@ -161,7 +161,7 @@ func renderBase(cmd *cobra.Command, dir, modulePath, name, authName, devRoot str
 		return errors.Newf("the base was rendered but not committed (%s), so the options were not added; commit it and add them with impulse add", gitNote)
 	}
 
-	port, emulator := templatePorts(dir)
+	port, emulator, firestore := templatePorts(dir)
 	goProcs, err := goProcesses(dir)
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ func renderBase(cmd *cobra.Command, dir, modulePath, name, authName, devRoot str
 		headline: fmt.Sprintf("Created %s at %s with the %s auth (%d files).", modulePath, dir, authName, got.Files),
 		gitNote:  gitNote, options: !composing,
 		candidate: skeleton.Base, dir: dir, modulePath: modulePath, name: name, devRoot: devRoot,
-		rendered: got, port: port, emulator: emulator, goProcs: goProcs, web: web,
+		rendered: got, port: port, emulator: emulator, firestore: firestore, goProcs: goProcs, web: web,
 		styled: isTerminal(cmd.OutOrStdout()),
 	}
 	report.write(cmd.OutOrStdout())

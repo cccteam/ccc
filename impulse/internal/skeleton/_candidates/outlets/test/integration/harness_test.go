@@ -22,6 +22,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -122,6 +123,17 @@ func (c *servedConfigurer) ConsoleDist() string { return "" }
 func (c *servedConfigurer) PortalDist() string { return "" }
 
 func (c *servedConfigurer) MachinesAPIKey() string { return machinesAPIKey }
+
+// Live serves no live pages in the suites: nothing here subscribes, and a request
+// carrying X-Subscribe is refused.
+func (c *servedConfigurer) Live() live.Service {
+	return nil
+}
+
+// LiveOrigins names no change feed origin: the suites serve no live pages.
+func (c *servedConfigurer) LiveOrigins() []string {
+	return nil
+}
 
 // served is one running instance of the application under test.
 type served struct {

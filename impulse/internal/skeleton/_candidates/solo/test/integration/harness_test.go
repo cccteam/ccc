@@ -19,6 +19,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/router"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -64,6 +65,17 @@ func (c *servedConfigurer) Validator() *validator.Validate { return validator.Ne
 func (c *servedConfigurer) LogExporter() logger.Exporter { return logger.NewConsoleExporter() }
 
 func (c *servedConfigurer) ConsoleDist() string { return "" }
+
+// Live serves no live pages in the suites: nothing here subscribes, and a request
+// carrying X-Subscribe is refused.
+func (c *servedConfigurer) Live() live.Service {
+	return nil
+}
+
+// LiveOrigins names no change feed origin: the suites serve no live pages.
+func (c *servedConfigurer) LiveOrigins() []string {
+	return nil
+}
 
 // served is one running instance of the application under test.
 type served struct {

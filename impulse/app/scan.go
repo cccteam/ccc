@@ -31,7 +31,10 @@ var skippedDirs = map[string]bool{
 var (
 	emulatorImageRE   = regexp.MustCompile(`cloud-spanner-emulator/emulator:(\d[A-Za-z0-9.\-]*)`)
 	emulatorHarnessRE = regexp.MustCompile(`NewSpannerContainer\(\s*[^,()]+,\s*"([^"]+)"`)
-	processFileRE     = regexp.MustCompile(`^(Procfile.*|process-compose.*\.ya?ml)$`)
+	// firestoreImageRE matches the Cloud SDK emulators image tag the Firestore emulator
+	// runs from, in a process file's command or a test harness's image constant.
+	firestoreImageRE = regexp.MustCompile(`cloudsdktool/google-cloud-cli:(\d[A-Za-z0-9.]*)-emulators`)
+	processFileRE    = regexp.MustCompile(`^(Procfile.*|process-compose.*\.ya?ml)$`)
 )
 
 // scan walks the tree once and records every declaration the checks read.
@@ -72,12 +75,14 @@ func (a *App) scanFile(abs, name string) error {
 			return errors.Wrap(err, "os.ReadFile()")
 		}
 		a.EmulatorImages = append(a.EmulatorImages, findRefs(rel, data, emulatorImageRE)...)
+		a.FirestoreEmulatorImages = append(a.FirestoreEmulatorImages, findRefs(rel, data, firestoreImageRE)...)
 	case strings.HasSuffix(name, "_test.go"):
 		data, err := os.ReadFile(abs)
 		if err != nil {
 			return errors.Wrap(err, "os.ReadFile()")
 		}
 		a.EmulatorHarnesses = append(a.EmulatorHarnesses, findRefs(rel, data, emulatorHarnessRE)...)
+		a.FirestoreEmulatorImages = append(a.FirestoreEmulatorImages, findRefs(rel, data, firestoreImageRE)...)
 		if bytes.Contains(data, []byte(validateRolesFunc+"(")) {
 			validations, err := parseRoleValidations(rel, data)
 			if err != nil {

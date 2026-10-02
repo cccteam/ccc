@@ -13,6 +13,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session/sessioninfo"
@@ -106,6 +107,17 @@ func (c *testConfigurer) PortalDist() string { return "" }
 // MachinesAPIKey is unused by these suites: the matrix drives the bare test router,
 // which carries no outlet middleware.
 func (c *testConfigurer) MachinesAPIKey() string { return "authz-machines-key" }
+
+// Live serves no live pages in the suites: nothing here subscribes, and a request
+// carrying X-Subscribe is refused.
+func (c *testConfigurer) Live() live.Service {
+	return nil
+}
+
+// LiveOrigins names no change feed origin: the suites serve no live pages.
+func (c *testConfigurer) LiveOrigins() []string {
+	return nil
+}
 
 // Domains lists the scripted roster: the generated matrix's one domain value, which
 // resource.SessionPermissions filters by the case's grants.

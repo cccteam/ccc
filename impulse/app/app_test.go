@@ -20,6 +20,7 @@ func TestDiscover(t *testing.T) {
 		wantWebApps       []WebApp
 		wantImages        []EmulatorRef
 		wantHarnesses     []EmulatorRef
+		wantFirestore     []EmulatorRef
 		wantEnvTemplate   string
 		wantEnvTagNames   []string
 		wantSiteFiles     []string
@@ -36,6 +37,7 @@ func TestDiscover(t *testing.T) {
 			wantWebApps:     []WebApp{{Dir: "web/console"}, {Dir: "web/portal"}},
 			wantImages:      []EmulatorRef{{File: "Procfile", Line: 1, Version: "1.5.56"}},
 			wantHarnesses:   []EmulatorRef{{File: "test/integration/main_test.go", Line: 12, Version: "1.5.56"}},
+			wantFirestore:   []EmulatorRef{{File: "Procfile", Line: 2, Version: "562.0.0"}},
 			wantEnvTemplate: ".envrc.template",
 			wantEnvTagNames: []string{
 				"LIGHTHOUSE_PROJECT_ID", "LIGHTHOUSE_SPANNER_INSTANCE_ID", "LIGHTHOUSE_SPANNER_DATABASE",
@@ -112,6 +114,9 @@ func TestDiscover(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantHarnesses, a.EmulatorHarnesses, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("EmulatorHarnesses mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantFirestore, a.FirestoreEmulatorImages, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("FirestoreEmulatorImages mismatch (-want +got):\n%s", diff)
 			}
 			if a.EnvTemplate != tt.wantEnvTemplate {
 				t.Errorf("EnvTemplate = %q, want %q", a.EnvTemplate, tt.wantEnvTemplate)

@@ -157,21 +157,21 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "emulator-version flat", fixture: "flat", check: emulatorVersion{},
-			wantStatus: Pass, wantSummary: "3 reference(s) agree on 1.5.56",
+			wantStatus: Pass, wantSummary: "Spanner: 3 reference(s) agree on 1.5.56; Firestore: 1 reference(s) agree on 562.0.0",
 		},
 		{
 			name: "emulator-version sites", fixture: "sites", check: emulatorVersion{},
-			wantStatus: Fail, wantSummary: "2 different emulator versions in use",
+			wantStatus: Fail, wantSummary: "Spanner: 2 different versions in use; Firestore: no emulator named",
 			wantDetails: []string{
-				"1.5.43     process-compose.yaml:3",
-				"1.5.44     cmd/generate/resourcegenerator_pilots/main.go",
-				"1.5.44     cmd/generate/resourcegenerator_shared/main.go",
-				"1.5.44     cmd/generate/resourcegenerator_tugs/main.go",
+				"Spanner   1.5.43     process-compose.yaml:3",
+				"Spanner   1.5.44     cmd/generate/resourcegenerator_pilots/main.go",
+				"Spanner   1.5.44     cmd/generate/resourcegenerator_shared/main.go",
+				"Spanner   1.5.44     cmd/generate/resourcegenerator_tugs/main.go",
 			},
 		},
 		{
 			name: "emulator-version none", fixture: "badprogram", check: emulatorVersion{},
-			wantStatus: Skip, wantSummary: "no Spanner emulator version is named anywhere",
+			wantStatus: Skip, wantSummary: "no emulator version is named anywhere",
 		},
 		{
 			name: "prettier-ignore flat", fixture: "flat", check: prettierIgnore{},

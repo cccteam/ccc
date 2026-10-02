@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -141,6 +142,18 @@ func generatedRouterTests() []*generatedRouterTest {
 			handlerFunc: "UserDomains",
 		},
 		{
+			url: "/api/live/renew", method: http.MethodPost,
+			handlerFunc: "LiveRenew",
+		},
+		{
+			url: "/api/live/unsubscribe", method: http.MethodPost,
+			handlerFunc: "LiveUnsubscribe",
+		},
+		{
+			url: "/api/live/token", method: http.MethodGet,
+			handlerFunc: "LiveToken",
+		},
+		{
 			url: "/api/tenants/testDomain/announcements", method: http.MethodGet,
 			handlerFunc: "Announcements",
 			parameters:  map[string]string{"tenantID": "testDomain"},
@@ -206,6 +219,24 @@ func (s *generatedHandlersStub) PermissionDigest() http.HandlerFunc {
 
 func (s *generatedHandlersStub) UserDomains() http.HandlerFunc {
 	return s.record("UserDomains")
+}
+
+// LiveService serves no live pages in the routing tests: nothing here subscribes, and
+// the live routes dispatch to their recording handlers like every other route.
+func (s *generatedHandlersStub) LiveService() live.Service {
+	return nil
+}
+
+func (s *generatedHandlersStub) LiveRenew() http.HandlerFunc {
+	return s.record("LiveRenew")
+}
+
+func (s *generatedHandlersStub) LiveUnsubscribe() http.HandlerFunc {
+	return s.record("LiveUnsubscribe")
+}
+
+func (s *generatedHandlersStub) LiveToken() http.HandlerFunc {
+	return s.record("LiveToken")
 }
 
 // DomainGuard passes requests through unchecked: the routing tests exercise dispatch,

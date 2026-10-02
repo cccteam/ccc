@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/console/pkg/router"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session/sessioninfo"
@@ -97,6 +98,17 @@ func (c *testConfigurer) LogExporter() logger.Exporter {
 }
 
 func (c *testConfigurer) Dist() string { return "" }
+
+// Live serves no live pages in the suites: nothing here subscribes, and a request
+// carrying X-Subscribe is refused.
+func (c *testConfigurer) Live() live.Service {
+	return nil
+}
+
+// LiveOrigins names no change feed origin: the suites serve no live pages.
+func (c *testConfigurer) LiveOrigins() []string {
+	return nil
+}
 
 // Domains lists the scripted roster: the generated matrix's one domain value, which
 // resource.SessionPermissions filters by the case's grants.

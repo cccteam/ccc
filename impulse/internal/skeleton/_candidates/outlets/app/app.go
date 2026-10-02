@@ -17,6 +17,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -27,20 +28,28 @@ import (
 )
 
 const (
-	// cspPolicy allows the console's own assets plus the Google Fonts hosts
-	// index.html links for the Roboto and Material Icons faces, and lets no page frame
-	// the application (frame-ancestors 'none'; X-Frame-Options DENY says the same to
-	// browsers that predate it), so its pages cannot be overlaid or clickjacked.
-	cspPolicy = "default-src 'self'; worker-src 'self'; connect-src 'self'; " +
-		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-		"font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; " +
-		"frame-ancestors 'none'"
-
 	hstsPolicy          = "max-age=31536000; includeSubDomains"
 	referrerPolicy      = "no-referrer"
 	xContentTypeOptions = "nosniff"
 	xFrameOptions       = "DENY"
 )
+
+// cspPolicy writes the content security policy: the console's own assets plus the
+// Google Fonts hosts index.html links for the Roboto and Material Icons faces;
+// connections to the application itself and to the origins the live change feed is
+// reached at (the Firestore emulator in development, Firebase's hosts in production,
+// nothing more when no live pages are served), since the browser's feed connects to
+// them directly rather than through the API; and no page may frame the application
+// (frame-ancestors 'none'; X-Frame-Options DENY says the same to browsers that predate
+// it), so its pages cannot be overlaid or clickjacked.
+func cspPolicy(liveOrigins []string) string {
+	connect := strings.Join(append([]string{"'self'"}, liveOrigins...), " ")
+
+	return "default-src 'self'; worker-src 'self'; connect-src " + connect + "; " +
+		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+		"font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; " +
+		"frame-ancestors 'none'"
+}
 
 // Configurer carries the dependencies for an App: the database client, the permission
 // engine the handlers check against, the tenancy seam, the session manager, the request
@@ -66,6 +75,15 @@ type Configurer interface {
 	// Members returns the auth the portal outlet binds to: the members auth, whose
 	// session manager the App hands the router for the portal's session group.
 	Members() *members.Auth
+	// Live is the live service the generated handlers subscribe through and publish to
+	// (LiveService): the Firestore service when a Firestore database or the emulator is
+	// configured, nil otherwise, which serves no live pages. One service serves both
+	// browser outlets; the machines outlet refuses a subscribing request.
+	Live() live.Service
+	// LiveOrigins are the origins the browser reaches the change feed at, which the
+	// content security policy names in connect-src: the Firestore emulator in
+	// development, Firebase's hosts in production, none when no live pages are served.
+	LiveOrigins() []string
 	Validator() *validator.Validate
 	LogExporter() logger.Exporter
 	ConsoleDist() string
@@ -97,6 +115,8 @@ type App struct {
 	consoleDist    string
 	portalDist     string
 	machinesAPIKey string
+	live           live.Service
+	csp            string
 }
 
 // New constructs an App from its dependencies.
@@ -113,6 +133,8 @@ func New(cfg Configurer) *App {
 		consoleDist:    cfg.ConsoleDist(),
 		portalDist:     cfg.PortalDist(),
 		machinesAPIKey: cfg.MachinesAPIKey(),
+		live:           cfg.Live(),
+		csp:            cspPolicy(cfg.LiveOrigins()),
 	}
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
@@ -165,7 +187,7 @@ func (a *App) LoggerMiddleware() func(http.Handler) http.Handler {
 // SecurityHeaders is a middleware that sets security-related headers on the response.
 func (a *App) SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", cspPolicy)
+		w.Header().Set("Content-Security-Policy", a.csp)
 		w.Header().Set("Strict-Transport-Security", hstsPolicy)
 		w.Header().Set("Referrer-Policy", referrerPolicy)
 		w.Header().Set("X-Content-Type-Options", xContentTypeOptions)
@@ -284,4 +306,15 @@ func (a *App) ResourceClient() resource.Client {
 // CursorKey returns the key that seals the cursors the generated list handlers issue.
 func (a *App) CursorKey() *resource.CursorKey {
 	return a.cursorKey
+}
+
+// LiveService is the live service the generated handlers draw on (resource/live): the
+// list and read handlers register a subscribing request's interest in it before the
+// query, the mutations publish their committed rows through it, and the generated live
+// routes on the console and the portal renew, unsubscribe and mint the browser's
+// identity against it; the machines outlet refuses a request carrying X-Subscribe. Nil
+// when no Firestore database and no emulator is configured: the application then
+// serves no live pages and every outlet refuses the header.
+func (a *App) LiveService() live.Service {
+	return a.live
 }

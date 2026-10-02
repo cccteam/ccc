@@ -53,6 +53,7 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 
 	var details, notes []string
 	mounted := 0
+	live := make([]liveWiring, len(p.Sites))
 	for i := range p.Sites {
 		site := &p.Sites[i]
 		g := site.Generator
@@ -60,7 +61,14 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 		if routesDir == "" {
 			continue // the options check reports handlers without routes
 		}
-		var err error
+		wiring, pos, err := liveWiringOf(a, g.HandlersDir())
+		if err != nil {
+			return fail(c.Name(), err.Error())
+		}
+		live[i] = wiring
+		if wiring == liveUnwired {
+			notes = append(notes, fmt.Sprintf("%s: the App's %s returns nil, so no outlet serves live pages and a request carrying X-Subscribe is refused; hand it the live service the data level opens to serve them", pos, liveMethod))
+		}
 		// The generated router mounts every declared outlet by construction and the
 		// regeneration check holds it to the program; a hand-written router is read.
 		called := map[string]bool{}
@@ -105,7 +113,83 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 		return fail(c.Name(), fmt.Sprintf("%d outlet wiring problem(s)", len(details)), append(details, notes...)...)
 	}
 
-	return passWithDetails(c.Name(), fmt.Sprintf("%d outlet(s) mounted: %s", mounted, strings.Join(outletList(p), "; ")), notes...)
+	return passWithDetails(c.Name(), fmt.Sprintf("%d outlet(s) mounted: %s", mounted, strings.Join(outletList(p, live), "; ")), notes...)
+}
+
+// liveWiring is how a site's App answers LiveService, the accessor the generated
+// handlers draw the live service from: absent (no such method; the application's
+// resource pin predates live pages), unwired (the method returns a bare nil, so no
+// outlet serves live pages), or wired. The generated router mounts the live routes on
+// every session outlet, so a wired App makes every session outlet live.
+type liveWiring int
+
+const (
+	liveAbsent liveWiring = iota
+	liveUnwired
+	liveWired
+)
+
+// liveMethod is the App accessor the generated handlers draw the live service from.
+const liveMethod = "LiveService"
+
+// liveWiringOf reads the hand-written Go files of the handlers directory for the App's
+// LiveService method and says how it answers; pos is the method's file and line when it
+// is found. No handlers directory, or none with the method, is absent.
+func liveWiringOf(a *app.App, handlersDir string) (wiring liveWiring, pos string, err error) {
+	if handlersDir == "" {
+		return liveAbsent, "", nil
+	}
+	entries, err := os.ReadDir(a.Abs(handlersDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return liveAbsent, "", nil // the options check reports the missing directory
+	}
+	if err != nil {
+		return liveAbsent, "", errors.Wrap(err, "os.ReadDir()")
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || strings.HasPrefix(name, "zz_gen_") {
+			continue
+		}
+		rel := path.Join(handlersDir, name)
+		src, err := os.ReadFile(a.Abs(rel))
+		if err != nil {
+			return liveAbsent, "", errors.Wrap(err, "os.ReadFile()")
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+		if err != nil {
+			return liveAbsent, "", errors.Wrap(err, "parser.ParseFile()")
+		}
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv == nil || fn.Name.Name != liveMethod {
+				continue
+			}
+			pos = fmt.Sprintf("%s:%d", rel, fset.Position(fn.Pos()).Line)
+			if returnsNil(fn.Body) {
+				return liveUnwired, pos, nil
+			}
+
+			return liveWired, pos, nil
+		}
+	}
+
+	return liveAbsent, "", nil
+}
+
+// returnsNil reports a body that is one bare return of nil.
+func returnsNil(body *ast.BlockStmt) bool {
+	if body == nil || len(body.List) != 1 {
+		return false
+	}
+	ret, ok := body.List[0].(*ast.ReturnStmt)
+	if !ok || len(ret.Results) != 1 {
+		return false
+	}
+	id, ok := ret.Results[0].(*ast.Ident)
+
+	return ok && id.Name == "nil"
 }
 
 // outletSurfaces lists a site's outlets with their generated mount functions: the
@@ -196,8 +280,11 @@ func proxyFinding(a *app.App, t app.TSTarget, o *outletSurface) (string, error) 
 	return fmt.Sprintf("%s does not forward /%s, the %s outlet's prefix, so ng serve for %s cannot reach it", proxyRel, o.Prefix, o.Name, project.Name), nil
 }
 
-// outletList renders each site's outlets for the summary.
-func outletList(p app.Profile) []string {
+// outletList renders each site's outlets for the summary: each with its prefix, a
+// session outlet other than the default saying so, and every session outlet saying
+// "live" when the site's App wires the live service, since the generated router mounts
+// the live routes on each of them.
+func outletList(p app.Profile, live []liveWiring) []string {
 	var parts []string
 	for i := range p.Sites {
 		site := &p.Sites[i]
@@ -206,6 +293,9 @@ func outletList(p app.Profile) []string {
 			desc := fmt.Sprintf("%s (/%s", o.Name, o.Prefix)
 			if o.ServesSessions && !o.Default {
 				desc += ", sessions"
+			}
+			if o.ServesSessions && live[i] == liveWired {
+				desc += ", live"
 			}
 			outlets = append(outlets, desc+")")
 		}

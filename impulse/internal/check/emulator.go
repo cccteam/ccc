@@ -4,41 +4,71 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// emulatorVersion verifies that every place naming a Spanner emulator version agrees:
-// the generator option, the process files' image tags, and the test harnesses.
+// emulatorVersion verifies that every place naming an emulator version agrees, emulator
+// by emulator: the Spanner emulator's version in the generator option, the process
+// files' image tags, and the test harnesses; the Firestore emulator's in the process
+// files and test harnesses that start it from the Cloud SDK emulators image. An
+// application naming no Firestore emulator serves no live pages in development, which
+// the summary says and nothing fails on.
 type emulatorVersion struct{}
 
 func (emulatorVersion) Name() string { return "emulator-version" }
 
 func (emulatorVersion) Describe() string {
-	return "generator, process files, and test harnesses name one Spanner emulator version"
+	return "generator, process files, and test harnesses name one Spanner emulator version and one Firestore emulator version"
+}
+
+// emulatorRefs is every place one emulator's version is named.
+type emulatorRefs struct {
+	name string
+	refs []app.EmulatorRef
 }
 
 func (c emulatorVersion) Run(_ context.Context, env *Env) Result {
 	a := env.App
-	var refs []app.EmulatorRef
+	var spanner []app.EmulatorRef
 	for _, g := range a.Generators {
 		if v := g.EmulatorVersion(); v != "" {
-			refs = append(refs, app.EmulatorRef{File: g.File, Version: v})
+			spanner = append(spanner, app.EmulatorRef{File: g.File, Version: v})
 		}
 	}
-	refs = append(refs, a.EmulatorImages...)
-	refs = append(refs, a.EmulatorHarnesses...)
+	spanner = append(spanner, a.EmulatorImages...)
+	spanner = append(spanner, a.EmulatorHarnesses...)
+	if len(spanner) == 0 && len(a.FirestoreEmulatorImages) == 0 {
+		return skip(c.Name(), "no emulator version is named anywhere")
+	}
 
-	if len(refs) == 0 {
-		return skip(c.Name(), "no Spanner emulator version is named anywhere")
+	var summaries, details []string
+	for _, e := range []emulatorRefs{{name: "Spanner", refs: spanner}, {name: "Firestore", refs: a.FirestoreEmulatorImages}} {
+		summary, lines := agreement(e)
+		summaries = append(summaries, e.name+": "+summary)
+		details = append(details, lines...)
+	}
+	if len(details) > 0 {
+		return fail(c.Name(), strings.Join(summaries, "; "), details...)
+	}
+
+	return pass(c.Name(), strings.Join(summaries, "; "))
+}
+
+// agreement says whether one emulator's references name one version: the summary
+// clause, and for a disagreement one detail line per reference, grouped by version.
+func agreement(e emulatorRefs) (summary string, details []string) {
+	if len(e.refs) == 0 {
+		return "no emulator named", nil
 	}
 
 	byVersion := map[string][]app.EmulatorRef{}
-	for _, r := range refs {
+	for _, r := range e.refs {
 		byVersion[r.Version] = append(byVersion[r.Version], r)
 	}
 	if len(byVersion) == 1 {
-		return pass(c.Name(), fmt.Sprintf("%d reference(s) agree on %s", len(refs), refs[0].Version))
+		return fmt.Sprintf("%d reference(s) agree on %s", len(e.refs), e.refs[0].Version), nil
 	}
 
 	versions := make([]string, 0, len(byVersion))
@@ -46,15 +76,13 @@ func (c emulatorVersion) Run(_ context.Context, env *Env) Result {
 		versions = append(versions, v)
 	}
 	sort.Strings(versions)
-
-	var details []string
 	for _, v := range versions {
 		for _, r := range byVersion[v] {
-			details = append(details, fmt.Sprintf("%-10s %s", v, refPos(r)))
+			details = append(details, fmt.Sprintf("%-9s %-10s %s", e.name, v, refPos(r)))
 		}
 	}
 
-	return fail(c.Name(), fmt.Sprintf("%d different emulator versions in use", len(versions)), details...)
+	return fmt.Sprintf("%d different versions in use", len(versions)), details
 }
 
 func refPos(r app.EmulatorRef) string {
