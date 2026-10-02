@@ -150,6 +150,29 @@ func TestValidateRelease(t *testing.T) {
 			wantOut: []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.2.3, line 1.2; this hotfix is on hotfix/1.1.x. A hotfix is based on the release production runs."},
 		},
 		{
+			name: "production holding files the line lacks is still answered at the door first, never with a restore",
+			env:  connected,
+			subs: map[string]string{
+				tagSub: "", prNumberSub: "7", baseBranchSub: "hotfix/1.2.x", environmentsSub: "prd",
+				planIdentitiesSub: "prd=plan-prd@x.iam", recordsBucketsSub: "prd=prd-records",
+			},
+			objects:    map[string]string{"gs://prd-records/quill/prd/v1.3.0/b-7.json": strings.Replace(stgLive("v1.3.0", first, refits), `"env": "stg"`, `"env": "prd"`, 1)},
+			files:      map[string]string{first.path(): first.content},
+			wantOut:    []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.3.0, line 1.3; this hotfix is on hotfix/1.2.x. A hotfix is based on the release production runs."},
+			wantAbsent: []string{"restore prd"},
+		},
+		{
+			name: "a pull request behind production on its own line is told to start the line from production's release",
+			env:  connected,
+			subs: map[string]string{
+				tagSub: "", prNumberSub: "7", baseBranchSub: "hotfix/1.2.x", environmentsSub: "prd",
+				planIdentitiesSub: "prd=plan-prd@x.iam", recordsBucketsSub: "prd=prd-records",
+			},
+			objects: map[string]string{"gs://prd-records/quill/prd/v1.2.5/b-7.json": strings.Replace(stgLive("v1.2.5", first, refits), `"env": "stg"`, `"env": "prd"`, 1)},
+			files:   map[string]string{first.path(): first.content},
+			wantOut: []string{"prd: WILL REFUSE the hotfix: prd's database holds schema/migrations/000002_Refits.up.sql (applied by v1.2.5), which this pull request does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5."},
+		},
+		{
 			name: "a pull request against a hotfix line whose environment's records cannot be read is told so and goes on",
 			env:  connected,
 			subs: map[string]string{
@@ -354,6 +377,28 @@ func TestValidateRelease(t *testing.T) {
 			},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; hotfix v1.2.4 is on line 1.2. A hotfix is based on the release production runs.",
+		},
+		{
+			name: "a hotfix from another line is refused at production's door before production's files are compared",
+			env:  connected,
+			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
+			objects: map[string]string{
+				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
+			},
+			files:   map[string]string{first.path(): first.content},
+			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; hotfix v1.2.4 is on line 1.2. A hotfix is based on the release production runs.",
+		},
+		{
+			name: "a hotfix behind production on its own line is refused with production's release named, never a restore",
+			env:  connected,
+			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
+			objects: map[string]string{
+				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/v1.2.5/b-5.json": strings.Replace(stgLive("v1.2.5", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
+			},
+			files:   map[string]string{first.path(): first.content},
+			wantErr: "Build REJECTED: prd's database holds schema/migrations/000002_Refits.up.sql (applied by v1.2.5), which hotfix v1.2.4 does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5.",
 		},
 		{
 			name: "a hotfix on production's line passes its door",

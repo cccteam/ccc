@@ -534,8 +534,10 @@ environment holds a file the hotfix does not carry, and the release check refuse
 hotfix there, naming the file; the environment is restored to the hotfix first, from an
 empty database or from production's backup, since a restore run replaces the database
 and skips the check. At production's door the hotfix must be on the
-line production runs; a hotfix from an older line that happens to carry every file
-would roll production's application back. `hotfix start` prints the rule, and warns
+line production runs, and that is checked first; a hotfix from an older line that
+happens to carry every file would roll production's application back. Production is
+never restored by a run, so a hotfix behind production's release on its own line is
+told to start the line from the release production runs. `hotfix start` prints the rule, and warns
 when the release is not the repository's latest, which GitHub can tell; what production
 runs, only its deployment record can.
 

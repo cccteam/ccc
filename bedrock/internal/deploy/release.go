@@ -145,16 +145,17 @@ type hotfixLine struct {
 	tag, line string
 }
 
-// hotfixGate is the database check a hotfix passes in every environment, and at
-// production's door the line check. A hotfix is built from production's release, so an
+// hotfixGate is the line check at production's door, then the database check a hotfix
+// passes in every environment. A hotfix is built from production's release, so an
 // environment that ran a later release may hold a migration or seed file the hotfix does
 // not carry, or one whose content differs; the hotfix's migrate job would fail on it,
 // and the hotfix is refused with the restore named instead. The environment's newest
 // live deployment record lists what its database holds, each file with its content's
 // hash, and the build's checkout carries the hotfix's files. In production, the
 // hotfix's line (major.minor) must be the line production runs, read from the same
-// record; a hotfix from an older line that happens to carry every file would roll the
-// application back. An environment with no live record holds nothing to compare.
+// record, and that comes first: a hotfix from another line is refused for its line,
+// whatever production's files, since production is never restored by a run. An
+// environment with no live record holds nothing to compare.
 func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w Workspace, h *hotfixLine, out io.Writer) error {
 	env, bucket, app := subs[envSub], subs[recordsBucket], subs[appSub]
 	store, err := open(ctx)
@@ -171,21 +172,21 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 
 		return nil
 	}
+	if env == prdEnvironment {
+		line, problem := productionLine(live)
+		if problem != "" {
+			return errors.Newf("%s%s, so the line hotfix %s is on cannot be checked against it.", rejected, problem, h.tag)
+		}
+		if line != h.line {
+			return errors.Newf("%sproduction runs %s, line %s; hotfix %s is on line %s. A hotfix is based on the release production runs.", rejected, live.Version, line, h.tag, h.line)
+		}
+	}
 	behind, err := behindRecord(w, live, env, "hotfix "+h.tag, h.tag)
 	if err != nil {
 		return err
 	}
 	if behind != "" {
 		return errors.Newf("%s%s", rejected, behind)
-	}
-	if env == prdEnvironment {
-		m := hotfixLineRE.FindStringSubmatch(live.Version)
-		if m == nil {
-			return errors.Newf("%sproduction's live record names %s, not a v<major>.<minor>.<patch> release, so the line hotfix %s is on cannot be checked against it.", rejected, live.Version, h.tag)
-		}
-		if line := m[1] + "." + m[2]; line != h.line {
-			return errors.Newf("%sproduction runs %s, line %s; hotfix %s is on line %s. A hotfix is based on the release production runs.", rejected, live.Version, line, h.tag, h.line)
-		}
 	}
 	fmt.Fprintf(out, "Hotfix check passed: %s's database holds nothing %s does not carry (%d file(s) recorded by %s, build %s)\n", env, h.tag, len(live.Migrations), live.Version, live.Build)
 
@@ -195,8 +196,10 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 // behindRecord says what the environment's database holds, by its live record, that the
 // files under the workspace do not carry: the refusal's sentence, or nothing. what names
 // the candidate ("hotfix v1.2.4", "this pull request") and restoreTo what the environment
-// is restored to ("v1.2.4", "the hotfix").
+// is restored to ("v1.2.4", "the hotfix"); production, never restored by a run, is told
+// to start the line from the release it runs instead.
 func behindRecord(w Workspace, live *Record, env, what, restoreTo string) (string, error) {
+	advice := restoreAdvice(env, restoreTo, live.Version)
 	for _, m := range upFirst(live.Migrations) {
 		hash, err := hashFile(filepath.Join(string(w), filepath.FromSlash(m.Dir), m.Name))
 		if err != nil {
@@ -205,13 +208,35 @@ func behindRecord(w Workspace, live *Record, env, what, restoreTo string) (strin
 		file := path.Join(m.Dir, m.Name)
 		switch {
 		case hash == "":
-			return fmt.Sprintf("%s's database holds %s (applied by %s), which %s does not carry; restore %s to %s first: a restore run replaces the database and skips this check.", env, file, live.Version, what, env, restoreTo), nil
+			return fmt.Sprintf("%s's database holds %s (applied by %s), which %s does not carry; %s", env, file, live.Version, what, advice), nil
 		case hash != m.Hash:
-			return fmt.Sprintf("%s's database holds %s as %s applied it, with other content than %s carries; restore %s to %s first: a restore run replaces the database and skips this check.", env, file, live.Version, what, env, restoreTo), nil
+			return fmt.Sprintf("%s's database holds %s as %s applied it, with other content than %s carries; %s", env, file, live.Version, what, advice), nil
 		}
 	}
 
 	return "", nil
+}
+
+// restoreAdvice is the sentence a refusal ends with: the restore of the environment to
+// restoreTo, or, for production, which no run restores, the line started from the
+// release production runs.
+func restoreAdvice(env, restoreTo, production string) string {
+	if env == prdEnvironment {
+		return "production is never restored by a run: a hotfix is based on the release production runs, so start the line from " + production + "."
+	}
+
+	return "restore " + env + " to " + restoreTo + " first: a restore run replaces the database and skips this check."
+}
+
+// productionLine is the release line (major.minor) production runs, from its live
+// record's version, or the problem when the version is not a release.
+func productionLine(live *Record) (line, problem string) {
+	m := hotfixLineRE.FindStringSubmatch(live.Version)
+	if m == nil {
+		return "", fmt.Sprintf("production's live record names %s, not a v<major>.<minor>.<patch> release", live.Version)
+	}
+
+	return m[1] + "." + m[2], ""
 }
 
 // hotfixPreview is a pull-request build's look ahead for a fix on a hotfix line: what
@@ -260,21 +285,21 @@ func previewEnvironment(ctx context.Context, open StoreAsFunc, w Workspace, app,
 	if live == nil {
 		return env + ": no live deployment record; nothing to be behind.", nil
 	}
+	if env == prdEnvironment {
+		l, problem := productionLine(live)
+		if problem != "" {
+			return fmt.Sprintf("%s: %s, so the line cannot be checked against it.", env, problem), nil
+		}
+		if "hotfix/"+l+".x" != line {
+			return fmt.Sprintf("%s: WILL REFUSE the hotfix at production's door: production runs %s, line %s; this hotfix is on %s. A hotfix is based on the release production runs.", env, live.Version, l, line), nil
+		}
+	}
 	behind, err := behindRecord(w, live, env, "this pull request", "the hotfix")
 	if err != nil {
 		return "", err
 	}
 	if behind != "" {
 		return env + ": WILL REFUSE the hotfix: " + behind, nil
-	}
-	if env == prdEnvironment {
-		m := hotfixLineRE.FindStringSubmatch(live.Version)
-		if m == nil {
-			return fmt.Sprintf("%s: production's live record names %s, not a v<major>.<minor>.<patch> release, so the line cannot be checked against it.", env, live.Version), nil
-		}
-		if l := m[1] + "." + m[2]; "hotfix/"+l+".x" != line {
-			return fmt.Sprintf("%s: WILL REFUSE the hotfix at production's door: production runs %s, line %s; this hotfix is on %s. A hotfix is based on the release production runs.", env, live.Version, l, line), nil
-		}
 	}
 
 	return fmt.Sprintf("%s: would take the hotfix; its database holds nothing this pull request does not carry (%d file(s) recorded by %s, build %s).", env, len(live.Migrations), live.Version, live.Build), nil
