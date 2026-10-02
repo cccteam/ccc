@@ -137,28 +137,35 @@ func TestService_signals(t *testing.T) {
 			want: []int{0, 1, 0},
 		},
 		{
-			name: "the state at the start is not a signal; a subscription made after it hears the signals after it",
+			name: "a subscription made before the first snapshot is woken once for a kind the document holds; one made after hears only the signals after it",
 			run: func(t *testing.T, first, second *livefirestore.Service) []int {
 				t.Helper()
 				// Written before either instance listens: the state at the start.
 				signal(t, first, live.KindPolicy)
+				// The first instance's listener opens here; its first snapshot holds the
+				// policy kind, so the subscription made before it wakes once.
 				firstPolicy := subscribe(t, first, live.KindPolicy)
+				firstPolicy.waitFor(t, "the first instance's policy subscription, at the start", 1)
 				signal(t, first, live.KindPolicy)
-				firstPolicy.waitFor(t, "the first instance's policy subscription", 1)
-				// The second instance starts listening now, with one signal in the past.
+				firstPolicy.waitFor(t, "the first instance's policy subscription", 2)
+				// The second instance starts listening now, with two signals in the past:
+				// one wake, not two.
 				secondPolicy := subscribe(t, second, live.KindPolicy)
+				secondPolicy.waitFor(t, "the second instance's policy subscription, at the start", 1)
+				// A subscription made after the first instance's listener began hears
+				// nothing of the past.
 				late := subscribe(t, first, live.KindPolicy)
-				if got := settled(secondPolicy, late); got[0] != 0 || got[1] != 0 {
-					t.Fatalf("subscriptions made after a signal heard %v, want nothing: the past is not a signal", got)
+				if got := settled(secondPolicy, late); got[0] != 1 || got[1] != 0 {
+					t.Fatalf("after the start: second instance %d (want one wake), late subscription %d (want none): the past is one nudge at most", got[0], got[1])
 				}
 				signal(t, second, live.KindPolicy)
-				firstPolicy.waitFor(t, "the first instance's policy subscription", 2)
-				secondPolicy.waitFor(t, "the second instance's policy subscription", 1)
+				firstPolicy.waitFor(t, "the first instance's policy subscription", 3)
+				secondPolicy.waitFor(t, "the second instance's policy subscription", 2)
 				late.waitFor(t, "the late subscription", 1)
 
 				return settled(firstPolicy, secondPolicy, late)
 			},
-			want: []int{2, 1, 1},
+			want: []int{3, 2, 1},
 		},
 		{
 			name: "a stopped subscription hears nothing more; the others go on",

@@ -30,9 +30,11 @@ server's instances signal each other through. It has a field per kind (`features
 writing instance>}`; a `Signal` of a kind sets that kind's field alone (a merge write
 on the field path), so two kinds never clobber each other, and one snapshot after
 quick signals of different kinds carries both. Every instance holds one snapshot
-listener on the document (`Subscribe`): the snapshot it starts from seeds each kind's
-time and signals nothing, and each later snapshot wakes the subscriptions of every
-kind whose `at` advanced. A listener Firestore ends is reopened with backoff, and the
+listener on the document (`Subscribe`, which opens it and waits on nothing): each
+snapshot wakes the subscriptions of every kind whose `at` advanced past the last seen,
+the first snapshot against no time seen, so a subscription made before it is woken
+once for the kinds the document already holds and misses nothing written after it was
+made, and a subscription made after it hears only the signals after it. A listener Firestore ends is reopened with backoff, and the
 reopened listener's first snapshot is compared the same way, so a kind that advanced
 while the listener was down wakes once. The features kind carries the feature flag
 flips. No client reads it; the rules deny everything outside the change sets, and the

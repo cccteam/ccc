@@ -163,11 +163,16 @@ func (s *Service) writeSignal(ctx context.Context, kind live.Kind) error {
 
 // Subscribe runs onSignal on every signal of the kind from now on, on the listener's
 // goroutine. The first Subscribe opens this instance's one listener on the signals
-// document and reads its first snapshot before returning, so the state at the start is
-// never a signal and a signal after Subscribe returns is never missed; a Subscribe
-// that failed to open the listener is retried by the next. A subscription made later
-// joins the running listener. stop ends this subscription alone; the listener lives
-// until Close.
+// document and returns without waiting for it: nothing here waits on the network, so
+// a backend that is slow to answer never holds a caller, the signals mutex or a
+// consumer's shutdown. The listener's first snapshot is handled like every later one,
+// against times not seen yet, so a subscription made before it arrives is woken once
+// for each kind the document already holds (the state at the start, which the
+// subscription cannot tell from a signal written just after it was made; a wake is a
+// nudge to reread, never a fact) and no signal after Subscribe returns is missed; a
+// subscription made after the first snapshot hears the signals after it alone. A
+// subscription made later joins the running listener. stop ends this subscription
+// alone; the listener lives until Close.
 func (s *Service) Subscribe(kind live.Kind, onSignal func()) (func(), error) {
 	if err := s.startListening(); err != nil {
 		return nil, err
@@ -188,8 +193,9 @@ func (s *Service) Subscribe(kind live.Kind, onSignal func()) (func(), error) {
 	}, nil
 }
 
-// startListening opens the listener once: the first snapshot seeds each kind's time
-// without firing, and the loop takes over from there.
+// startListening opens the listener once and hands it to the loop, which reads its
+// snapshots; it blocks on nothing, so the first snapshot seeds each kind's time and
+// wakes the subscriptions already made, on the loop's goroutine.
 func (s *Service) startListening() error {
 	s.signals.mu.Lock()
 	defer s.signals.mu.Unlock()
@@ -200,16 +206,6 @@ func (s *Service) startListening() error {
 		return nil
 	}
 	snapshots, end := s.openListener()
-	snapshot, err := snapshots.Next()
-	if err != nil {
-		snapshots.Stop()
-		end()
-
-		return errors.Wrap(err, "firestore.DocumentSnapshotIterator.Next()")
-	}
-	for kind, at := range signalTimes(snapshot) {
-		s.signals.seen[kind] = at
-	}
 	s.signals.listening = true
 	s.signals.endListener = end
 	go s.listen(snapshots, end)
@@ -225,10 +221,12 @@ func (s *Service) openListener() (*cloudfirestore.DocumentSnapshotIterator, cont
 	return s.signalsDoc().Snapshots(ctx), end
 }
 
-// listen is the listener's loop: every snapshot fires the kinds whose time advanced;
-// a listener that ends while the service lives is logged and reopened after the
-// backoff, and the reopened listener's first snapshot is handled like any other, so
-// every kind whose time advanced while the listener was down fires once.
+// listen is the listener's loop: every snapshot fires the kinds whose time advanced
+// past the last seen, the first snapshot of all against no time seen (so it wakes the
+// subscriptions made before it for the kinds the document holds); a listener that
+// ends while the service lives is logged and reopened after the backoff, and the
+// reopened listener's first snapshot is handled like any other, so every kind whose
+// time advanced while the listener was down fires once.
 func (s *Service) listen(snapshots *cloudfirestore.DocumentSnapshotIterator, end context.CancelFunc) {
 	delay := s.signals.reopenFirst
 	for {

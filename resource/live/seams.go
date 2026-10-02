@@ -89,8 +89,10 @@ type Signaler interface {
 // Subscriber delivers the signals to this instance's consumers: one subscriber per
 // instance holds the one listener on the signals document and runs, for every kind
 // whose time advanced since it last looked, the onSignal of each subscription to the
-// kind. The state at the start is not a signal; a subscription made after the listener
-// began receives every signal after it was made; a listener the backend ends on its
+// kind. Subscribe waits on nothing: a subscription made before the listener's first
+// snapshot may be woken once for a kind the document already holds and misses no
+// signal after it was made; one made after the listener began receives the signals
+// after it was made alone; a listener the backend ends on its
 // own is logged and reopened with backoff by the subscriber, and on the reopen every
 // kind whose time advanced while it was down is signaled once.
 type Subscriber interface {

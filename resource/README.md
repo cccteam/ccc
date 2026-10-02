@@ -1193,9 +1193,11 @@ each other that something shared changed. One document per application,
 so two kinds never clobber each other, and one snapshot after quick signals of two
 kinds carries both. Each instance holds one snapshot listener on the document
 (`Subscribe(kind, onSignal)`, several subscriptions per kind, a subscription made
-after the listener began included): the snapshot it starts from is the state at the
-start and signals nothing, and every later snapshot wakes the subscriptions of each
-kind whose `at` advanced. A listener Firestore ends on its own is logged and reopened
+after the listener began included; `Subscribe` waits on nothing): every snapshot
+wakes the subscriptions of each kind whose `at` advanced past the last seen, the first
+snapshot against no time seen, so a subscription made before it is woken once for the
+kinds the document already holds (a nudge to reread, never a fact) and misses nothing
+written after it was made, while one made after it hears only the signals after it. A listener Firestore ends on its own is logged and reopened
 with backoff by the subscriber, the one place that owns reconnection, and on the
 reopen every kind that advanced while it was down wakes once. A signal carries nothing
 but the fact of a change, so the signaler coalesces: while a write of a kind is in
