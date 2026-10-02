@@ -106,12 +106,16 @@ type consolidatedPatchData struct {
 	// GlobalCases and DomainCases split Resources by permission scope: global cases
 	// dispatch on the operation path's first segment, domain cases dispatch under the
 	// domain route segment's descent case with the domain bound from the path.
-	// SegmentCase is the tenant-record pattern: a global resource named like the
-	// domain route segment, sharing the descent case and branching on path depth
-	// (set only when DomainCases exist; otherwise it is an ordinary global case).
-	GlobalCases         []consolidatedCaseData
-	DomainCases         []consolidatedCaseData
-	SegmentCase         *consolidatedCaseData
+	// SegmentCase is the tenant record (@tenant), whose route name is the domain route
+	// segment: it shares the descent case and branches on path depth (set only when
+	// DomainCases exist; otherwise it is an ordinary global case).
+	GlobalCases []consolidatedCaseData
+	DomainCases []consolidatedCaseData
+	SegmentCase *consolidatedCaseData
+	// HasTenant says the tenant record is among the cases: the dispatcher then collects
+	// the tenants its transaction creates and deletes, hands them to the roster after
+	// the commit, and signals the tenants kind.
+	HasTenant           bool
 	DomainRouteSegment  string
 	DomainPatternPrefix string // "/stations/{stationID}" — the chi pattern the descent case prefix-matches
 	Package             string
@@ -121,8 +125,8 @@ type consolidatedPatchData struct {
 	// HandlerName is the dispatcher method's name: PatchResources on the default
 	// outlet, Patch<Suffix>Resources on an extra outlet's dispatcher.
 	HandlerName string
-	// ConcealedDomains swaps the descent's question from DomainExists to
-	// DomainVisible (WithConcealedDomains).
+	// ConcealedDomains adds the caller's foothold (HasGrants) to the descent's
+	// question after the roster (WithConcealedDomains).
 	ConcealedDomains bool
 }
 
@@ -204,8 +208,8 @@ type routerFileData struct {
 	// wrap, and an unused guard variable would not compile.
 	HasDomainScopedRoutes bool
 	// DomainRouteParam is the Domain const's value: the route parameter name of the
-	// domain segment pair (default "domain", derived from the tenant-record resource
-	// when one matches the segment — see deriveDomainRouteParam).
+	// domain segment pair, the tenant record's key parameter (resolveTenantRecord;
+	// "domain" while nothing is domain-scoped).
 	DomainRouteParam  string
 	RoutePrefix       string
 	ConsolidatedRoute string
@@ -329,8 +333,8 @@ type domainGuardData struct {
 	LocalPackageImports string
 	ApplicationName     string
 	ReceiverName        string
-	// ConcealedDomains swaps the guard's question from DomainExists to
-	// DomainVisible, collapsing "unauthorized" into "nonexistent"
+	// ConcealedDomains adds the caller's foothold (HasGrants) to the guard's question
+	// after the roster, collapsing "unauthorized" into "nonexistent"
 	// (WithConcealedDomains).
 	ConcealedDomains bool
 }
@@ -375,8 +379,9 @@ type appContractData struct {
 	// @file route opens a stored file from it.
 	HasFileStore bool
 	HasComputed  bool
-	// ConcealedDomains swaps the domain-scoped contract method from
-	// DomainExists to DomainVisible (WithConcealedDomains).
+	// ConcealedDomains says the domain-scoped surface asks the caller's foothold after
+	// the roster (WithConcealedDomains); the contract's methods are the same either way,
+	// and the comment says which question the guard asks.
 	ConcealedDomains bool
 }
 

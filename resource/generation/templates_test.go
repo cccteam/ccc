@@ -204,15 +204,16 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				"var _ resourceApp = (*App)(nil)",
 				"Validator() resource.ValidatorFunc",
 				"var _ validatorApp = (*App)(nil)",
-				"DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error)",
+				"Tenants() *resource.TenantRoster",
 				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
 				"var _ domainScopedApp = (*App)(nil)",
 				"var _ = (*App).RPCClient",
 				"var _ = (*App).ComputedClient",
 			},
+			wantNotContains: []string{"DomainExists", "DomainVisible"},
 		},
 		{
-			name: "concealed domains swap the contract method to DomainVisible",
+			name: "concealed domains keep the same contract: the roster, then the foothold the guard asks itself",
 			data: appContractData{
 				Package:          "app",
 				ApplicationName:  "App",
@@ -220,11 +221,12 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				ConcealedDomains: true,
 			},
 			wantContains: []string{
-				"DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)",
+				"Tenants() *resource.TenantRoster",
 				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
 				"var _ domainScopedApp = (*App)(nil)",
+				"generation.WithConcealedDomains",
 			},
-			wantNotContains: []string{"DomainExists"},
+			wantNotContains: []string{"DomainExists", "DomainVisible"},
 		},
 		{
 			name: "query-only app asserts the resource surface alone",

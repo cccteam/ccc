@@ -18,9 +18,10 @@ import (
 // rather than a concealing 404; the picker and the guard can never disagree.
 // The global scope is never a domain. The answer reports grants, not
 // tenants: a domain the application has since removed still lists while
-// grants in it remain, and existence stays the application's DomainExists
-// seam. Structural and non-folding, so it caches cleanly per user. The
-// payload is always a JSON array — an empty membership is [], never null.
+// grants in it remain, and existence is the tenant roster's
+// (TenantRoster.Has). Structural and non-folding, so it caches cleanly per
+// user. The payload is always a JSON array — an empty membership is [],
+// never null.
 func UserDomainsHandler(userPermissions func(r *http.Request) UserPermissions) http.HandlerFunc {
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

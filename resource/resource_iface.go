@@ -96,9 +96,10 @@ type RolePermissions interface {
 }
 
 // DomainRoster lists the application's tenant domains: the roster the tenant
-// picker is filtered from, read from wherever the application keeps its
-// tenants. An application without tenants passes nil to SessionPermissions,
-// and its sessions list no domain.
+// picker is filtered from. A tenanted application passes its TenantRoster's
+// Domains, which has this signature and answers from the roster's set; an
+// application without tenants passes nil to SessionPermissions, and its
+// sessions list no domain.
 type DomainRoster func(ctx context.Context) ([]accesstypes.Domain, error)
 
 // Client is an interface for the supported database Client's to implement. It is not intended

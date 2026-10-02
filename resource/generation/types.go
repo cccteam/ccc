@@ -216,9 +216,12 @@ const (
 )
 
 const (
-	resourceInterfaceOutputName   = "resources_iface"
-	resourceEnumsFileName         = "enums"
-	domainGuardOutputName         = "domain_guard"
+	resourceInterfaceOutputName = "resources_iface"
+	resourceEnumsFileName       = "enums"
+	domainGuardOutputName       = "domain_guard"
+	// tenantsOutputName names the handler package's file carrying the tenant record's
+	// roster constructor (New<Record>Roster).
+	tenantsOutputName             = "tenants"
 	permissionsOutputName         = "permissions"
 	liveOutputName                = "live"
 	decodersOutputName            = "decoders"
@@ -1022,6 +1025,12 @@ type resourceInfo struct {
 	// Feature is the resource's @feature: the flag its routes, its digest entries and
 	// its consolidated arm are gated behind; nil when the resource is not gated.
 	Feature *featureGate
+
+	// IsTenant marks the tenant record (@tenant): the global, table-backed resource
+	// whose rows are the tenants. Its route name is the domain route segment, its key's
+	// route parameter the domain route parameter, and its generated write paths keep
+	// the application's TenantRoster current after their commit.
+	IsTenant bool
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -1890,6 +1899,7 @@ const (
 	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
 	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field])]; on a keyed @computed struct, @file[(segment)] rendered by <Name><Segment>
 	featureKeyword              string = "feature"              // Gates a resource, a field or an RPC method behind a feature flag, by the flag's constant: @feature(Debriefs)
+	tenantKeyword               string = "tenant"               // Declares the tenant record: the global, table-backed @resource whose rows are the tenants and whose key is the domain in every tenant-scoped URL
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1925,6 +1935,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		typescriptKeyword:           {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
 		featureKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		tenantKeyword:               {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 	}
 }
 

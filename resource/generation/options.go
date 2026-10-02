@@ -358,11 +358,12 @@ func WebApp(mountPath string) OutletOption {
 // Pascal-cased generated identifiers are unambiguous.
 var outletNamePattern = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
 
-// Default route segment for domain-scoped resources (see WithDomainRoute):
-// /{prefix}/{defaultDomainRouteSegment}/{param}/... . The parameter defaults to
-// defaultDomainRouteParam and is re-derived after parsing when a resource's route
-// name equals the segment (deriveDomainRouteParam). Generated code references the
-// parameter name as the router package's Domain const value.
+// The route segment pair domain-scoped resources are served under,
+// /{prefix}/{segment}/{param}/..., derives from the tenant record (@tenant) once the
+// package is parsed (resolveTenantRecord): the segment is the record's route name, the
+// parameter its key's route parameter. These defaults stand only while nothing is
+// domain-scoped, where no route reads them. Generated code references the parameter
+// name as the router package's Domain const value.
 const (
 	defaultDomainRouteSegment = "domains"
 	defaultDomainRouteParam   = "domain"
@@ -372,41 +373,14 @@ const (
 // ApplicationName option is not used.
 const defaultApplicationName = "App"
 
-// WithDomainRoute customizes the static path segment that domain-scoped resources
-// (@permissionScope(domain)) are served under: WithDomainRoute("organizations")
-// serves domain-scoped resources and RPC methods at
-// /{prefix}/organizations/{param}/... . The default segment is "domains".
-//
-// The route parameter name is derived, never configured. When a resource's route
-// name equals the segment (the tenant-record pattern) the parameter must be that
-// resource's read-route parameter — chi permits one wildcard name per tree
-// position — so it is ToGoCamel(name+pkName). With no matching resource the name
-// is a cosmetic pattern label: the default "domain". The generated router const
-// is always named Domain; the derived parameter is its value.
-func WithDomainRoute(segment string) ResourceOption {
-	return resourceOption(func(r *resourceGenerator) error {
-		if segment == "" {
-			return errors.New("WithDomainRoute() requires a non-empty segment")
-		}
-		if strings.ContainsAny(segment, "/{}") {
-			return errors.Newf("WithDomainRoute(%q) must not contain '/', '{', or '}'", segment)
-		}
-
-		r.domainRouteSegment = segment
-
-		return nil
-	})
-}
-
 // WithConcealedDomains makes "unauthorized" indistinguishable from "nonexistent" on
-// every surface that names a domain (ABAC design plan §06, the existence oracle): the
-// generated DomainGuard and the consolidated dispatcher consult the application's
-// DomainVisible(ctx, user, domain) — the domain exists AND the caller holds at least
-// one grant in it — instead of DomainExists, answering the same not-found either way.
-// A caller with any foothold in the domain still receives ordinary 403s for the
-// specific permissions they lack. Off by default: most applications' tenant lists are
-// not secret, and the distinct errors are better DX; opt in when tenant existence is
-// itself sensitive (e.g. a client list).
+// every surface that names a domain (ABAC design plan §06, the existence oracle): after
+// the tenant roster, the generated DomainGuard and the consolidated dispatcher ask the
+// caller's foothold in the domain (HasGrants) and answer a caller without one exactly
+// as an unknown domain is answered. A caller with any foothold in the domain still
+// receives ordinary 403s for the specific permissions they lack. Off by default: most
+// applications' tenant lists are not secret, and the distinct errors are better DX; opt
+// in when tenant existence is itself sensitive (e.g. a client list).
 func WithConcealedDomains() ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.concealedDomains = true

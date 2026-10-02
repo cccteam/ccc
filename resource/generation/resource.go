@@ -30,14 +30,16 @@ type resourceGenerator struct {
 	receiverName    string
 	// domainRouteSegment/domainRouteParam form the route segment pair domain-scoped
 	// resources are served under: /{prefix}/{domainRouteSegment}/{domainRouteParam}/...
-	// Defaults: "domains"/"domain"; customized via WithDomainRoute.
+	// Both derive from the tenant record (resolveTenantRecord): the segment is its route
+	// name, the parameter its key's route parameter. The defaults ("domains"/"domain")
+	// stand only while nothing is domain-scoped, where no route reads them.
 	domainRouteSegment string
 	domainRouteParam   string
 	// concealedDomains collapses "unauthorized" into "nonexistent" on every
-	// domain-naming surface (WithConcealedDomains): the DomainGuard and the
-	// consolidated dispatcher ask DomainVisible — does the domain exist AND
-	// does the caller hold any grant in it — instead of DomainExists, so a
-	// prober cannot confirm a tenant exists from the rejection shape.
+	// domain-naming surface (WithConcealedDomains): after the roster, the DomainGuard
+	// and the consolidated dispatcher ask the caller's foothold in the domain
+	// (HasGrants) and answer a caller without one exactly as an unknown domain is
+	// answered, so a prober cannot confirm a tenant exists from the rejection shape.
 	concealedDomains bool
 	// defaultOutlet is the outlet GenerateRoutes declares, with the outlet options it
 	// carries for the generated router; every resource is on it unless @outlet says
@@ -313,27 +315,9 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
-	// A field-scope @enumerate may name a computed resource, so the declarations
-	// resolve only once every kind is extracted.
-	if err := r.resolveFieldEnumerations(r.resources, r.computedResources); err != nil {
+	if err := r.resolveCrossKindDeclarations(); err != nil {
 		return err
 	}
-
-	// A picker over a bounded source reads the chosen row by key, so the source
-	// must serve a read; checked once the declarations and every @page are known.
-	if err := r.validatePickerSources(r.resources, r.computedResources); err != nil {
-		return err
-	}
-
-	// A view's @rowsOf names a table-backed resource and is refused a view of either
-	// kind, so it too resolves only once every kind is extracted.
-	if err := r.resolveRowsOf(r.resources, r.computedResources); err != nil {
-		return err
-	}
-
-	// The domain route parameter is derived from the parsed resources (tenant-record
-	// pattern), so it must resolve before anything renders a domain route.
-	r.deriveDomainRouteParam()
 
 	// The schema findings read the extracted resources against the table map, so they
 	// are known before anything renders and survive a failure further down; the audit
@@ -402,6 +386,30 @@ func (r *resourceGenerator) Generate() error {
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
+}
+
+// resolveCrossKindDeclarations resolves the declarations that read across the table,
+// view and computed kinds, so they run once every one of those is extracted and before
+// anything renders: a field-scope @enumerate may name a computed resource; a picker
+// over a bounded source reads the chosen row by key, so the source must serve a read,
+// checked once the declarations and every @page are known; a view's @rowsOf names a
+// table-backed resource and is refused a view of either kind; and the domain route
+// segment and parameter derive from the tenant record (@tenant), with a tenant-scoped
+// resource and no record refused, so the record resolves before any domain route
+// renders. (The RPC methods are extracted later and checked against the record then:
+// requireTenantRecordForMethods.)
+func (r *resourceGenerator) resolveCrossKindDeclarations() error {
+	if err := r.resolveFieldEnumerations(r.resources, r.computedResources); err != nil {
+		return err
+	}
+	if err := r.validatePickerSources(r.resources, r.computedResources); err != nil {
+		return err
+	}
+	if err := r.resolveRowsOf(r.resources, r.computedResources); err != nil {
+		return err
+	}
+
+	return r.resolveTenantRecord()
 }
 
 // finishGeneration closes the run once everything is written. The previous run's
@@ -484,6 +492,11 @@ func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*package
 		return err
 	}
 	if err := r.validateRPCPickerSources(r.rpcMethods); err != nil {
+		return err
+	}
+	// A tenant-scoped method is served under the tenant record's segment, so the
+	// record must exist; the methods are extracted after the record resolved.
+	if err := r.requireTenantRecordForMethods(); err != nil {
 		return err
 	}
 

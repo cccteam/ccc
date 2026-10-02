@@ -23,6 +23,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateDomainGuard()")
 	}
 
+	if err := r.generateTenants(); err != nil {
+		return errors.Wrap(err, "generateTenants()")
+	}
+
 	if err := r.generateDecoders(); err != nil {
 		return errors.Wrap(err, "generateDecoders()")
 	}
@@ -66,10 +70,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		}
 	}
 
-	consolidatedResources, err := r.consolidatedPatchResources()
-	if err != nil {
-		return err
-	}
+	consolidatedResources := r.consolidatedPatchResources()
 
 	// One consolidated dispatcher per outlet with members: each outlet's bundle
 	// carries exactly the consolidated resources attached to it.
@@ -93,15 +94,11 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 
 // consolidatedPatchResources returns the resources served by the consolidated patch
 // handler. Domain-scoped resources participate with domain-embedded operation paths
-// (/{segment}/{domain}/{resource}/...); a global resource named like the domain route
-// segment (the tenant-record pattern) shares the dispatcher's descent case, branching
-// on path depth — its structural requirements are enforced by
-// validateDomainSegmentResources.
-func (r *resourceGenerator) consolidatedPatchResources() ([]*resourceInfo, error) {
-	if err := r.validateDomainSegmentResources(); err != nil {
-		return nil, err
-	}
-
+// (/{segment}/{domain}/{resource}/...); the tenant record (@tenant), whose route name is
+// the domain route segment, shares the dispatcher's descent case, branching on path
+// depth: its single key (checked at capture) keeps its operations at depth 2 or less
+// and the descents at depth 3 or more.
+func (r *resourceGenerator) consolidatedPatchResources() []*resourceInfo {
 	var consolidated []*resourceInfo
 	for _, res := range r.resources {
 		if !res.IsConsolidated {
@@ -110,57 +107,14 @@ func (r *resourceGenerator) consolidatedPatchResources() ([]*resourceInfo, error
 		consolidated = append(consolidated, res)
 	}
 
-	return consolidated, nil
-}
-
-// validateDomainSegmentResources checks every resource whose route name equals the
-// domain route segment — the tenant-record pattern, where /api/organizations lists the
-// tenants and /api/organizations/{organizationID}/... serves tenant-scoped routes. The
-// pattern is supported, with one structural requirement: the resource must have a
-// single primary key, so its operation paths (depth ≤ 2) can never be ambiguous with
-// domain descents (depth ≥ 3) in the consolidated handler, and its read route cannot
-// shadow the segment pair's children. (The read-route parameter needs no validation:
-// deriveDomainRouteParam makes the domain route parameter equal it by construction.)
-//
-// Only enforced when domain-scoped routes exist; without the segment pair there is
-// nothing to interact with.
-func (r *resourceGenerator) validateDomainSegmentResources() error {
-	if !r.hasDomainScoped() {
-		return nil
-	}
-
-	var errs []error
-	check := func(name string, domainScoped, compoundPK bool) {
-		if strcase.ToKebab(r.pluralize(name)) != r.domainRouteSegment {
-			return
-		}
-		if domainScoped {
-			// Served under the segment pair itself; it shares no position with it.
-			return
-		}
-		if compoundPK {
-			errs = append(errs, errors.Newf("resource %s: its route name %q equals the domain route segment, so it must have a single primary key — multi-segment keys are ambiguous with domain-scoped paths", name, r.domainRouteSegment))
-		}
-	}
-
-	for _, res := range r.resources {
-		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey())
-	}
-	for _, res := range r.computedResources {
-		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey())
-	}
-
-	if len(errs) != 0 {
-		return errors.Wrap(errors.Join(errs...), "domain route segment resource error")
-	}
-
-	return nil
+	return consolidated
 }
 
 // generateDomainGuard emits the application's DomainGuard middleware whenever anything
-// is domain-scoped — same gate as the router's Domain const. Emission does not depend
-// on routing suppression: an application that registers a domain-scoped handler
-// manually wraps it in DomainGuard itself.
+// is domain-scoped — same gate as the router's Domain const, and the tenant record is
+// then declared (resolveTenantRecord), so the roster the guard asks exists. Emission
+// does not depend on routing suppression: an application that registers a
+// domain-scoped handler manually wraps it in DomainGuard itself.
 func (r *resourceGenerator) generateDomainGuard() error {
 	if !r.hasDomainScoped() {
 		return nil
@@ -456,10 +410,10 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutle
 		case res.IsDomainScoped():
 			c.DomainPatternPrefix = domainPatternPrefix
 			domainCases = append(domainCases, c)
-		case strcase.ToKebab(r.pluralize(res.Name())) == r.domainRouteSegment:
-			// The tenant-record pattern: this global resource shares the descent
-			// case's name, so its case branches on path depth (validated single-PK,
-			// keeping resource operations at depth ≤ 2 and descents at depth ≥ 3).
+		case res.IsTenant:
+			// The tenant record shares the descent case's name, so its case branches
+			// on path depth (one key, checked at capture, keeps its operations at
+			// depth 2 or less and the descents at depth 3 or more).
 			segmentCase = &c
 		default:
 			globalCases = append(globalCases, c)
@@ -479,6 +433,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutle
 		GlobalCases:         globalCases,
 		DomainCases:         domainCases,
 		SegmentCase:         segmentCase,
+		HasTenant:           slices.ContainsFunc(resources, func(res *resourceInfo) bool { return res.IsTenant }),
 		DomainRouteSegment:  r.domainRouteSegment,
 		DomainPatternPrefix: domainPatternPrefix,
 		Package:             r.handler.Package(),

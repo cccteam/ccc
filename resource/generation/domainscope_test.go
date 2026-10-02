@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"go/format"
 	"strings"
 	"testing"
 
@@ -64,13 +65,13 @@ func Test_resourceGenerator_routeBasePaths(t *testing.T) {
 			wantTestURL:  "/api/domains/testDomain/widgets",
 		},
 		{
-			name:          "WithDomainRoute customizes the segment pair",
+			name:          "the tenant record names the segment pair",
 			resourceName:  "Widget",
 			domainScoped:  true,
-			domainSegment: "organization",
+			domainSegment: "organizations",
 			domainParam:   "organizationID",
-			wantPath:      "/api/organization/{organizationID}/widgets",
-			wantTestURL:   "/api/organization/testDomain/widgets",
+			wantPath:      "/api/organizations/{organizationID}/widgets",
+			wantTestURL:   "/api/organizations/testDomain/widgets",
 		},
 	}
 
@@ -180,116 +181,6 @@ func Test_generatedRoute_prependDomainTestParam(t *testing.T) {
 	}
 }
 
-func Test_WithDomainRoute(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		segment     string
-		wantSegment string
-		wantErr     bool
-	}{
-		{
-			name:        "custom segment",
-			segment:     "organizations",
-			wantSegment: "organizations",
-		},
-		{name: "empty segment errors", segment: "", wantErr: true},
-		{name: "slash in segment errors", segment: "org/unit", wantErr: true},
-		{name: "braces in segment errors", segment: "{organizations}", wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			r := &resourceGenerator{client: &client{}}
-			err := resolveOptions(r, []option{WithDomainRoute(tt.segment)})
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("WithDomainRoute() expected an error, got nil")
-				}
-
-				return
-			}
-			if err != nil {
-				t.Fatalf("WithDomainRoute() error = %v", err)
-			}
-			if r.domainRouteSegment != tt.wantSegment {
-				t.Errorf("domainRouteSegment = %q, want %q", r.domainRouteSegment, tt.wantSegment)
-			}
-			if r.domainRouteParam != defaultDomainRouteParam {
-				t.Errorf("domainRouteParam = %q, want the pre-derivation default %q: the option never configures it", r.domainRouteParam, defaultDomainRouteParam)
-			}
-		})
-	}
-}
-
-// Test_deriveDomainRouteParam pins the domain route parameter's derivation: a global,
-// single-key resource whose route name equals the domain route segment (the
-// tenant-record pattern) forces the parameter to its read-route parameter — chi
-// permits one wildcard name per tree position — and every other configuration keeps
-// the default "domain".
-func Test_deriveDomainRouteParam(t *testing.T) {
-	t.Parallel()
-
-	structs := fixtureStructs(loadCollectionFixture(t))
-
-	tests := []struct {
-		name      string
-		resources []*resourceInfo
-		want      string
-	}{
-		{
-			name:      "tenant-record resource derives its read-route parameter",
-			resources: []*resourceInfo{fixtureResource(t, structs, "Station", nil)},
-			want:      "stationID",
-		},
-		{
-			name:      "no resource matches the segment: default",
-			resources: []*resourceInfo{fixtureResource(t, structs, "Vault", nil)},
-			want:      "domain",
-		},
-		{
-			name: "a domain-scoped match lives under the segment pair: default",
-			resources: []*resourceInfo{
-				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
-					res.PermissionScope = accesstypes.DomainPermissionScope
-				}),
-			},
-			want: "domain",
-		},
-		{
-			name: "a compound-key match is rejected elsewhere: default",
-			resources: []*resourceInfo{
-				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
-					res.PkCount = 2
-					res.Fields[1].IsPrimaryKey = true
-				}),
-			},
-			want: "domain",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			r := &resourceGenerator{
-				client:             &client{},
-				domainRouteSegment: "stations",
-				domainRouteParam:   "domain",
-			}
-			r.resources = tt.resources
-
-			r.deriveDomainRouteParam()
-			if r.domainRouteParam != tt.want {
-				t.Errorf("domainRouteParam = %q, want %q", r.domainRouteParam, tt.want)
-			}
-		})
-	}
-}
-
 func Test_validateDomainParamCollision(t *testing.T) {
 	t.Parallel()
 
@@ -335,10 +226,9 @@ func Test_consolidatedPatchResources(t *testing.T) {
 	structs := fixtureStructs(loadCollectionFixture(t))
 
 	tests := []struct {
-		name            string
-		resources       []*resourceInfo
-		wantNames       []string
-		wantErrContains string
+		name      string
+		resources []*resourceInfo
+		wantNames []string
 	}{
 		{
 			name: "non-consolidated resources are excluded",
@@ -365,10 +255,11 @@ func Test_consolidatedPatchResources(t *testing.T) {
 			wantNames: []string{"Vault"},
 		},
 		{
-			name: "segment-named consolidated resource passes alongside domain-scoped ones (tenant-record pattern)",
+			name: "the consolidated tenant record passes alongside domain-scoped ones",
 			resources: []*resourceInfo{
 				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
 					res.IsConsolidated = true
+					res.IsTenant = true
 				}),
 				fixtureResource(t, structs, "Vault", func(res *resourceInfo) {
 					res.IsConsolidated = true
@@ -389,17 +280,7 @@ func Test_consolidatedPatchResources(t *testing.T) {
 				domainRouteParam:   "stationID",
 			}
 			r.resources = tt.resources
-			got, err := r.consolidatedPatchResources()
-			if tt.wantErrContains != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
-					t.Fatalf("consolidatedPatchResources() error = %v, want error containing %q", err, tt.wantErrContains)
-				}
-
-				return
-			}
-			if err != nil {
-				t.Fatalf("consolidatedPatchResources() error = %v", err)
-			}
+			got := r.consolidatedPatchResources()
 
 			gotNames := make([]string, 0, len(got))
 			for _, res := range got {
@@ -626,64 +507,79 @@ func Test_routesTemplate_domainGuard(t *testing.T) {
 }
 
 // Test_domainGuardTemplate pins the generated DomainGuard middleware body: resolve the
-// domain route parameter, 404 unknown domains via the application's DomainExists, and
-// only then run the wrapped handler.
+// domain route parameter, answer 404 when the application's tenant roster does not
+// hold it, then, under concealment alone, answer the same 404 when the caller holds no
+// grant in it, and only then run the wrapped handler. The roster is asked first in
+// both modes, and the application's own seam (DomainExists, DomainVisible) is gone.
 func Test_domainGuardTemplate(t *testing.T) {
 	t.Parallel()
 
-	c := &client{}
-	out, err := c.generateTemplateOutput("domainGuardTemplate", domainGuardTemplate, &domainGuardData{
-		Source:          "resources",
-		Package:         "app",
-		ApplicationName: "App",
-		ReceiverName:    "a",
-	})
-	if err != nil {
-		t.Fatalf("generateTemplateOutput() error = %v", err)
+	tests := []struct {
+		name            string
+		concealed       bool
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "the roster alone answers",
+			wantContains: []string{
+				"func (a *App) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {",
+				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
+				"if !a.Tenants().Has(domain) {",
+				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
+				"next.ServeHTTP(w, r)",
+			},
+			wantNotContains: []string{"HasGrants", "DomainExists", "DomainVisible"},
+		},
+		{
+			name:      "concealed domains ask the roster, then the caller's foothold",
+			concealed: true,
+			wantContains: []string{
+				"if !a.Tenants().Has(domain) {",
+				"if ok, err := a.UserPermissions(r).HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {",
+				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
+			},
+			wantNotContains: []string{"DomainExists", "DomainVisible"},
+		},
 	}
 
-	for _, want := range []string{
-		"func (a *App) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {",
-		"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
-		"if ok, err := a.DomainExists(ctx, domain); err != nil {",
-		`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
-		"next.ServeHTTP(w, r)",
-	} {
-		if !strings.Contains(string(out), want) {
-			t.Errorf("domainGuardTemplate output missing %q:\n%s", want, out)
-		}
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// Test_domainGuardTemplate_concealed pins the concealed variant
-// (WithConcealedDomains): the guard asks DomainVisible with the caller's
-// identity — "unauthorized" answers exactly like "nonexistent" — and the
-// default-mode DomainExists never appears.
-func Test_domainGuardTemplate_concealed(t *testing.T) {
-	t.Parallel()
+			c := &client{}
+			out, err := c.generateTemplateOutput("domainGuardTemplate", domainGuardTemplate, &domainGuardData{
+				Source:           "resources",
+				Package:          "app",
+				ApplicationName:  "App",
+				ReceiverName:     "a",
+				ConcealedDomains: tt.concealed,
+			})
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+			if _, err := format.Source(out); err != nil {
+				t.Fatalf("the rendered guard does not parse: %v\n%s", err, out)
+			}
 
-	c := &client{}
-	out, err := c.generateTemplateOutput("domainGuardTemplate", domainGuardTemplate, &domainGuardData{
-		Source:           "resources",
-		Package:          "app",
-		ApplicationName:  "App",
-		ReceiverName:     "a",
-		ConcealedDomains: true,
-	})
-	if err != nil {
-		t.Fatalf("generateTemplateOutput() error = %v", err)
-	}
-
-	for _, want := range []string{
-		"if ok, err := a.DomainVisible(ctx, a.UserPermissions(r).User(), domain); err != nil {",
-		`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
-	} {
-		if !strings.Contains(string(out), want) {
-			t.Errorf("domainGuardTemplate output missing %q:\n%s", want, out)
-		}
-	}
-	if strings.Contains(string(out), "DomainExists") {
-		t.Errorf("concealed domainGuardTemplate must not consult DomainExists:\n%s", out)
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("domainGuardTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("domainGuardTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+			if tt.concealed {
+				s := string(out)
+				roster, foothold := strings.Index(s, "a.Tenants().Has(domain)"), strings.Index(s, "HasGrants(ctx")
+				if roster < 0 || foothold < 0 || roster > foothold {
+					t.Errorf("the guard must ask the roster before the foothold (roster at %d, foothold at %d):\n%s", roster, foothold, out)
+				}
+			}
+		})
 	}
 }
 
@@ -696,6 +592,7 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 	t.Parallel()
 
 	structs := fixtureStructs(loadCollectionFixture(t))
+	tenantStructs := fixtureStructs(loadFixture(t, "tenantfixture"))
 
 	globalCase := consolidatedCaseData{
 		resourceInfo:    fixtureResource(t, structs, "Fossil", func(res *resourceInfo) { res.IsConsolidated = true }),
@@ -730,49 +627,60 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				ResourcePackage:     "resources",
 				ApplicationName:     "App",
 				ReceiverName:        "a",
+				HandlerName:         "PatchResources",
 			},
 			wantContains: []string{
 				`userPermissions := a.UserPermissions(r)`,
 				`case "stations":`,
 				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
 				`domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)`,
-				`if ok, err := a.DomainExists(ctx, domain); err != nil {`,
+				`if !a.Tenants().Has(domain) {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
 				`fossilDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())`,
 				`vaultDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))`,
 				`op.ReqWithPattern("/stations/{stationID}/{resource}/{id}"`,
 				`unknown domain-scoped resource %q in operation path`,
 			},
-			wantNotContains: []string{"batchDomain", "UserPermissions(op.Req)"},
+			wantNotContains: []string{"batchDomain", "UserPermissions(op.Req)", "HasGrants", "DomainExists", "DomainVisible", "tenantsAdded"},
 		},
 		{
-			name: "segment-named resource shares the descent case, branching on path depth",
+			name: "the tenant record shares the descent case, branching on path depth, and feeds the roster after the commit",
 			data: consolidatedPatchData{
 				Resources: []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
 				SegmentCase: &consolidatedCaseData{
-					resourceInfo:    fixtureResource(t, structs, "Station", nil),
+					resourceInfo:    fixtureResource(t, tenantStructs, "Sector", func(res *resourceInfo) { res.IsTenant = true }),
 					ResourcePackage: "resources",
 					ReceiverName:    "a",
 				},
+				HasTenant:           true,
 				DomainCases:         []consolidatedCaseData{domainCase},
-				DomainRouteSegment:  "stations",
-				DomainPatternPrefix: "/stations/{stationID}",
+				DomainRouteSegment:  "sectors",
+				DomainPatternPrefix: "/sectors/{sectorID}",
 				Package:             "app",
 				ResourcePackage:     "resources",
 				ApplicationName:     "App",
 				ReceiverName:        "a",
+				HandlerName:         "PatchResources",
 			},
 			wantContains: []string{
-				`case "stations":`,
+				`case "sectors":`,
 				`if op.PathDepth() <= 2 {`,
-				`stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())`,
+				`sectorDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())`,
 				`continue`,
-				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
+				`op, err := op.WithPrefixPattern("/sectors/{sectorID}/{resource}")`,
 				`vaultDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))`,
+				"var tenantsAdded, tenantsRemoved []accesstypes.Domain",
+				"tenantsAdded, tenantsRemoved = nil, nil",
+				"tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))",
+				"tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))",
+				"a.Tenants().Add(domain)",
+				"a.Tenants().Remove(domain)",
+				"if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {",
+				"logger.FromCtx(ctx).Errorf(",
 			},
 		},
 		{
-			name: "concealed domains ask DomainVisible with the caller's identity",
+			name: "concealed domains ask the roster, then the caller's foothold",
 			data: consolidatedPatchData{
 				Resources:           []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
 				GlobalCases:         []consolidatedCaseData{globalCase},
@@ -783,13 +691,15 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				ResourcePackage:     "resources",
 				ApplicationName:     "App",
 				ReceiverName:        "a",
+				HandlerName:         "PatchResources",
 				ConcealedDomains:    true,
 			},
 			wantContains: []string{
-				`if ok, err := a.DomainVisible(ctx, userPermissions.User(), domain); err != nil {`,
+				`if !a.Tenants().Has(domain) {`,
+				`if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
 			},
-			wantNotContains: []string{"DomainExists"},
+			wantNotContains: []string{"DomainExists", "DomainVisible"},
 		},
 		{
 			name: "all-global consolidation has no descent case",
@@ -802,8 +712,9 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				ResourcePackage:     "resources",
 				ApplicationName:     "App",
 				ReceiverName:        "a",
+				HandlerName:         "PatchResources",
 			},
-			wantNotContains: []string{`case "stations":`, "WithPrefixPattern", "DomainExists", "router.Domain"},
+			wantNotContains: []string{`case "stations":`, "WithPrefixPattern", "Tenants()", "router.Domain"},
 		},
 	}
 
@@ -816,6 +727,9 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("generateTemplateOutput() error = %v", err)
 			}
+			if _, err := format.Source(out); err != nil {
+				t.Fatalf("the rendered dispatcher does not parse: %v\n%s", err, out)
+			}
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(string(out), want) {
@@ -826,93 +740,6 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				if strings.Contains(string(out), notWant) {
 					t.Errorf("consolidatedPatchTemplate output must not contain %q:\n%s", notWant, out)
 				}
-			}
-		})
-	}
-}
-
-// Test_validateDomainSegmentResources pins the tenant-record pattern's structural
-// requirement: a resource named like the domain route segment must have a single
-// primary key; the validation only applies when domain-scoped routes exist at all.
-// (Read-route parameter alignment is unrepresentable: deriveDomainRouteParam derives
-// the domain route parameter from the matching resource.)
-func Test_validateDomainSegmentResources(t *testing.T) {
-	t.Parallel()
-
-	structs := fixtureStructs(loadCollectionFixture(t))
-
-	domainScopedVault := func() *resourceInfo {
-		return fixtureResource(t, structs, "Vault", func(res *resourceInfo) {
-			res.PermissionScope = accesstypes.DomainPermissionScope
-		})
-	}
-
-	tests := []struct {
-		name            string
-		domainParam     string
-		resources       []*resourceInfo
-		wantErrContains string
-	}{
-		{
-			name:        "tenant-record resource with single key and matching param passes",
-			domainParam: "stationID",
-			resources: []*resourceInfo{
-				fixtureResource(t, structs, "Station", nil),
-				domainScopedVault(),
-			},
-		},
-		{
-			name:        "compound primary key is a generation error",
-			domainParam: "stationID",
-			resources: []*resourceInfo{
-				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
-					res.PkCount = 2
-					res.Fields[1].IsPrimaryKey = true
-				}),
-				domainScopedVault(),
-			},
-			wantErrContains: "single primary key",
-		},
-		{
-			name:        "a domain-scoped resource named like the segment shares no position with it",
-			domainParam: "stationID",
-			resources: []*resourceInfo{
-				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
-					res.PermissionScope = accesstypes.DomainPermissionScope
-				}),
-				domainScopedVault(),
-			},
-		},
-		{
-			name:        "without domain-scoped routes the validation does not apply",
-			domainParam: "orgID",
-			resources: []*resourceInfo{
-				fixtureResource(t, structs, "Station", nil),
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			r := &resourceGenerator{
-				client:             &client{},
-				domainRouteSegment: "stations",
-				domainRouteParam:   tt.domainParam,
-			}
-			r.resources = tt.resources
-
-			err := r.validateDomainSegmentResources()
-			if tt.wantErrContains == "" {
-				if err != nil {
-					t.Fatalf("validateDomainSegmentResources() error = %v, want nil", err)
-				}
-
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
-				t.Fatalf("validateDomainSegmentResources() error = %v, want error containing %q", err, tt.wantErrContains)
 			}
 		})
 	}

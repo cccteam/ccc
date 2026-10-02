@@ -99,8 +99,8 @@ func (r *resourceGenerator) testRelativeMigrationSources() ([]string, error) {
 // authzMatrixCases derives the authorization cases for every generated route — every
 // route, without exception: an endpoint the matrix cannot cover is a generation error,
 // never a silent skip. Domain-scoped routes use the router test's domain value, which
-// the application's newTestHandler must recognize in its DomainExists (the generated
-// suite documents this contract).
+// the application's newTestHandler adds to the test application's tenant roster (the
+// generated suite documents this contract).
 //
 // Query routes expand to a denied/granted pair. Mutation routes (patch operations,
 // consolidated dispatch arms, RPC methods) expand to denied-only cases: every

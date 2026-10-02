@@ -20,7 +20,7 @@ type Demonstration struct {
 // expected to prove, seeded from the Lodestar design plan's coverage matrix.
 var Demonstrations = []Demonstration{
 	// Tenancy.
-	{"tenancy.tenant-record", "The tenant-record pattern: a table whose rows are the permission domains, read into a roster at startup; WithDomainRoute derives the route parameter from its key."},
+	{"tenancy.tenant-record", "The tenant record (@tenant): a table whose rows are the permission domains, read into a roster that keeps up without a restart; the route segment and parameter derive from the record and its key, and a tenant created at run time is served by every instance at once."},
 	{"tenancy.concealed", "WithConcealedDomains: a domain the caller holds no grant in answers exactly like one that does not exist."},
 	{"tenancy.user-domains", "The generated user-domains endpoint: the domains where the session holds at least one grant, on the same foothold predicate as concealed tenancy."},
 	{"star-chart", "A picker drawn from user-domains, with a labeled bypass of the digest-first rule so a concealed refusal can be shown in a browser."},
