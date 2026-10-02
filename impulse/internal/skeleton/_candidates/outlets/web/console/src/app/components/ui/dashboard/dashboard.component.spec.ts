@@ -31,8 +31,8 @@ const stranger: Grants = { domains: [], global: {}, tenants: {} };
 
 /**
  * The server as the spec plays it: the session, the digest of the tenant asked for (the
- * global one when none is), and the user's domains. Anything else is a 404 the request log
- * would show.
+ * global one when none is), the user's domains, and the enabled feature flags (none here).
+ * Anything else is a 404 the request log would show.
  */
 function server(grants: Grants): (request: TransportRequest) => TransportResponse {
   return (request) => {
@@ -46,6 +46,8 @@ function server(grants: Grants): (request: TransportRequest) => TransportRespons
       }
       case `${environment.apiUrl}/user-domains`:
         return { status: 200, body: grants.domains };
+      case `${environment.apiUrl}/features`:
+        return { status: 200, body: { enabled: [] } };
       default:
         return { status: 404, body: { message: `unscripted ${request.method} ${request.url}` } };
     }
@@ -59,9 +61,9 @@ describe('DashboardComponent', () => {
    * Signs in against the scripted server and renders the dashboard. The client is the
    * application's generated one over the scripted transport, so the component reads the
    * digests exactly as it does in the browser: checkUserSession is what a login runs once
-   * it is accepted (the session, the global digest, the domains), and the tenant service
-   * loads the selected tenant's digest, here loaded ahead so the card renders from it at
-   * once.
+   * it is accepted (the session, the global digest, the domains, the enabled feature flags),
+   * and the tenant service loads the selected tenant's digest, here loaded ahead so the card
+   * renders from it at once.
    */
   async function render(grants: Grants): Promise<ComponentFixture<DashboardComponent>> {
     transport = scriptedTransport(server(grants));
@@ -100,10 +102,11 @@ describe('DashboardComponent', () => {
     expect(states(rows[1])).toEqual(['granted', 'granted', 'absent', 'absent', 'absent', 'absent']);
 
     const asked = transport.requests.map((request) => `${request.method} ${request.url}`);
-    expect(asked.slice(0, 4)).toEqual([
+    expect(asked.slice(0, 5)).toEqual([
       `GET ${environment.apiUrl}/user/session`,
       `GET ${environment.apiUrl}/permission-digest`,
       `GET ${environment.apiUrl}/user-domains`,
+      `GET ${environment.apiUrl}/features`,
       `GET ${environment.apiUrl}/permission-digest?domain=north`,
     ]);
   });

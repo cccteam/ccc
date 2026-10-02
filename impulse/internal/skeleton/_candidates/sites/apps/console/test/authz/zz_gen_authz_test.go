@@ -36,7 +36,11 @@ type grants map[accesstypes.Permission]bool
 // route is open to anyone signed in and carries one case: 200 without a grant.
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
-// with the schema on every regeneration.
+// with the schema on every regeneration. When the application declares feature flags,
+// the suite puts every one of them on in its database first: a route or field gated
+// behind a flag (@feature) is absent while the flag is off, answering 404 before the
+// permission gate this suite pins, and the generated gate tests drive both states of
+// each flag on a database of their own.
 //
 // Conditional grants are outside this suite. The matrix pins the endpoint gate, which
 // rejects only a Denied decision: a granted case proves the request passed the gate

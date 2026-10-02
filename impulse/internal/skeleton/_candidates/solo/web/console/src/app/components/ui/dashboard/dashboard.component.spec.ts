@@ -20,7 +20,8 @@ const digest: PermissionDigest = {
 };
 
 /**
- * The server as the spec plays it: the three routes a sign-in touches, answered from the
+ * The server as the spec plays it: the four routes a sign-in touches (the session, the
+ * digest, the user's domains, and the enabled feature flags, none here), answered from the
  * test. Anything else is a 404 the assertions on the request log would show.
  */
 function server(answer: PermissionDigest): (request: TransportRequest) => TransportResponse {
@@ -32,6 +33,8 @@ function server(answer: PermissionDigest): (request: TransportRequest) => Transp
         return { status: 200, body: answer };
       case `${environment.apiUrl}/user-domains`:
         return { status: 200, body: [] };
+      case `${environment.apiUrl}/features`:
+        return { status: 200, body: { enabled: [] } };
       default:
         return { status: 404, body: { message: `unscripted ${request.method} ${request.url}` } };
     }
@@ -45,7 +48,8 @@ describe('DashboardComponent', () => {
    * Signs in against the scripted server and renders the dashboard. The client is the
    * application's generated one over the scripted transport, so the component reads the
    * digest exactly as it does in the browser; checkUserSession is what the login page runs
-   * once the credentials are accepted, and it loads the digest and the domains.
+   * once the credentials are accepted, and it loads the digest, the domains, and the
+   * enabled feature flags.
    */
   async function render(answer: PermissionDigest): Promise<ComponentFixture<DashboardComponent>> {
     transport = scriptedTransport(server(answer));
@@ -77,6 +81,7 @@ describe('DashboardComponent', () => {
       `GET ${environment.apiUrl}/user/session`,
       `GET ${environment.apiUrl}/permission-digest`,
       `GET ${environment.apiUrl}/user-domains`,
+      `GET ${environment.apiUrl}/features`,
     ]);
   });
 
