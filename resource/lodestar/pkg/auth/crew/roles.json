@@ -611,6 +611,9 @@
                 "squadronName",
                 "wingName"
               ]
+            },
+            {
+              "resource": "RoleMemberships"
             }
           ],
           "Read": [
@@ -874,6 +877,9 @@
                 "transcript",
                 "position"
               ]
+            },
+            {
+              "resource": "RoleMemberships"
             }
           ],
           "Update": [
@@ -1010,6 +1016,9 @@
             },
             {
               "resource": "DistressCalls"
+            },
+            {
+              "resource": "RoleMemberships"
             }
           ],
           "Execute": [

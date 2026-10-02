@@ -82,6 +82,11 @@ type Settings struct {
 	// the resources, fields and conditions the release declares. The router package
 	// generates it and imports this one, so the configuration passes it in.
 	Collection access.PermissionCollection
+	// ChangeSignal carries the engine's policy-change hints between the application's
+	// instances (auth.PolicySignal over the live service): the engine announces after
+	// every policy write it makes (the directory sync's at login) and rereads on every
+	// hint it receives, the heartbeat left as the backstop. Required.
+	ChangeSignal access.ChangeSignal
 }
 
 // Directory is the application's OpenID Connect registration with Google: the client
@@ -115,13 +120,17 @@ type Auth struct {
 // New opens the auth's permission store and session manager over the database. The
 // permission engine validates the role file against the collection and refuses to start
 // on a file that does not parse or grants what the release does not declare; it then
-// blocks until its first policy snapshot is loaded.
+// blocks until its first policy snapshot is loaded. It announces its policy writes and
+// watches the other instances' through the change signal, which is required.
 func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Auth, error) {
+	if settings.ChangeSignal == nil {
+		return nil, errors.New("members.Settings.ChangeSignal is required: the engine announces and watches policy changes through it")
+	}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
 	}
-	accessClient, err := access.New(store, access.WithDefaultRoles(settings.Collection, Roles()))
+	accessClient, err := access.New(store, access.WithDefaultRoles(settings.Collection, Roles()), access.WithChangeSignal(settings.ChangeSignal))
 	if err != nil {
 		return nil, errors.Wrap(err, "access.New()")
 	}

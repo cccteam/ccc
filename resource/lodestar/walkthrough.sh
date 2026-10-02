@@ -427,9 +427,9 @@ fi
 # through SetFeature, and the desk answers, the digest carries it, and Pax's card counts his
 # citations. A second server process on another port against the same emulators, built from
 # this tree and started before the flip, serves the desk at its next request with no restart:
-# the flip is signaled through the live service's application topic. Off again, both refuse.
-# The second process is skipped when the stack runs without the Firestore emulator (the
-# five-minute backstop alone would carry the flip then). Demonstrates: @feature, @feature.field.
+# the flip is signaled on the features kind of the live service's signals document. Off again,
+# both refuse. The second process is skipped when the stack runs without the Firestore emulator
+# (the five-minute backstop alone would carry the flip then). Demonstrates: @feature, @feature.field.
 SECOND_PORT=${LODESTAR_SECOND_PORT:-8091}
 B2=http://127.0.0.1:$SECOND_PORT
 API2=$B2/console/api
@@ -486,7 +486,7 @@ r=$(req pilot GET "$API/pilot-cards?columns=userId,commendations"); assert_py "t
 r=$(req cadet GET "$API/commendations"); check "the cadet holds no desk: the flag opens the route, the grant still decides" 403 "$r"
 if [ -n "$SECOND_PID" ]; then
   tries=0; for i in $(seq 1 40); do tries=$i; r=$(req adjutant.2 GET "$API2/commendations"); [ "${r##*$'\n'}" = 200 ] && break; sleep 0.25; done
-  check "the second instance serves the desk at its next request, no restart (the topic's signal; answered on try $tries)" 200 "$r"
+  check "the second instance serves the desk at its next request, no restart (the features kind's signal; answered on try $tries)" 200 "$r"
   assert_py "with the four citations" "$r" "len(rows)==4"
   r=$(req adjutant.2 GET "$API2/features"); assert_py "its features route lists the flag" "$r" "rows=={'enabled':['commendations']}"
 fi
@@ -496,6 +496,38 @@ r=$(req pilot GET "$API/pilot-cards?columns=userId,commendations"); check "and t
 if [ -n "$SECOND_PID" ]; then
   tries=0; for i in $(seq 1 40); do tries=$i; r=$(req adjutant.2 GET "$API2/commendations"); [ "${r##*$'\n'}" = 404 ] && break; sleep 0.25; done
   check "and on the second instance at its next request (try $tries)" 404 "$r"
+fi
+
+# ---- one channel: a seat change reaches the second process ----
+# The signals document that carried the flip carries the permission policy too. The marshal
+# seats the cadet as a harbormaster at Anvil through the console's role-membership route (the
+# access library's user-management handlers behind Create on RoleMemberships in the sector,
+# held by SectorMarshal): the crew engine that wrote announces the policy kind, the second
+# process's engine rereads its policy on the signal, and the cadet's next request there is
+# served with no restart and without the engine's one-minute heartbeat; unseated, both refuse
+# again. On the way the border holds: the cadet cannot seat herself, and Bastion does not
+# exist for the marshal. Demonstrates: live.signals, auth.user-management.
+r=$(req cadet GET "$ANVIL/ships"); check "the cadet holds no List on Ships" 403 "$r"
+r=$(req marshal GET "$ANVIL/roles/Harbormaster/users"); check "the marshal lists who holds Harbormaster at Anvil (List on RoleMemberships)" 200 "$r"
+assert_py "Hollis alone" "$r" "rows==['harbormaster']"
+r=$(req cadet POST "$ANVIL/roles/Harbormaster/users" '{"users":["cadet"]}'); check "the cadet cannot seat herself: no Create on RoleMemberships" 403 "$r"
+r=$(req marshal POST "$API/sectors/bastion/roles/Harbormaster/users" '{"users":["cadet"]}'); check "Bastion does not exist for the marshal: the concealed-sector guard" 404 "$r"
+if [ -n "$SECOND_PID" ]; then
+  login_second cadet
+  r=$(req cadet.2 GET "$API2/sectors/anvil/ships"); check "nor on the second instance" 403 "$r"
+fi
+r=$(req marshal POST "$ANVIL/roles/Harbormaster/users" '{"users":["cadet"]}'); check "the marshal seats the cadet as a harbormaster at Anvil" 200 "$r"
+r=$(req marshal GET "$ANVIL/roles/Harbormaster/users"); assert_py "the role's roster carries her" "$r" "sorted(rows)==['cadet','harbormaster']"
+r=$(req cadet GET "$ANVIL/ships"); check "the instance that wrote serves her the fleet board at once" 200 "$r"
+if [ -n "$SECOND_PID" ]; then
+  tries=0; for i in $(seq 1 40); do tries=$i; r=$(req cadet.2 GET "$API2/sectors/anvil/ships"); [ "${r##*$'\n'}" = 200 ] && break; sleep 0.25; done
+  check "the second instance serves her the fleet board at its next request: the policy kind's signal, not the one-minute heartbeat (answered on try $tries)" 200 "$r"
+fi
+r=$(req marshal DELETE "$ANVIL/roles/Harbormaster/users" '{"users":["cadet"]}'); check "the marshal unseats her" 200 "$r"
+r=$(req cadet GET "$ANVIL/ships"); check "refused again on the instance that wrote" 403 "$r"
+if [ -n "$SECOND_PID" ]; then
+  tries=0; for i in $(seq 1 40); do tries=$i; r=$(req cadet.2 GET "$API2/sectors/anvil/ships"); [ "${r##*$'\n'}" = 403 ] && break; sleep 0.25; done
+  check "and on the second instance at its next request (try $tries)" 403 "$r"
   kill "$SECOND_PID" 2>/dev/null; wait "$SECOND_PID" 2>/dev/null; SECOND_PID=
 fi
 

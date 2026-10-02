@@ -29,9 +29,11 @@ cp .envrc.template .envrc && direnv allow
 overmind start
 ```
 
-That starts a fresh Spanner emulator and a fresh Firestore emulator (the live pages'
-subscription record and change sets, [below](#live-pages); Firestore needs no schema, so
-the bootstrap leaves it alone), bootstraps the database (schema, the demo world, the
+That starts a fresh Spanner emulator and a fresh Firestore emulator (the live service: the
+live pages' subscription record and change sets, [below](#live-pages), and the signals
+document the instances notify each other through,
+[further below](#one-channel-between-instances); Firestore needs no schema, so the
+bootstrap leaves it alone), bootstraps the database (schema, the demo world, the
 personas, the droid account; the roles need no step, since each auth's role file rides in
 the binary and the bootstrap only checks the store against it; a database that already
 holds data is refused unless the bootstrap runs with `-reset`, which empties the data and
@@ -110,8 +112,10 @@ How it is wired:
   `APP_FIREBASE_API_KEY` the browser's key; the composite indexes and the time-to-live
   policies the live package's README lists are the infrastructure's to apply.
 - The server. `pkg/config/data.go` reads the Firestore settings at the data level and
-  constructs the live service (`resource/live/firestore`) once, when a database or the
-  emulator is configured; `app.LiveService()` hands it to the generated handlers, which
+  constructs the live service (`resource/live/firestore`) once; every application wires
+  one (the generated handlers, the feature flags and both permission engines ride it,
+  [below](#one-channel-between-instances)), so a configuration naming neither a database
+  nor the emulator does not start; `app.LiveService()` hands it to the generated handlers, which
   register a subscribing request's interest before the query runs, publish a commit's
   touched rows after the commit and before the answer, and send
   `Cache-Control: private, max-age=300` on a list or read answer whose request carried
@@ -178,12 +182,12 @@ How it is wired:
   the `commendations` field since the feature shipped: while the flag is off the digest
   hides it, so turning the flag on needs no role change.
 - The instances. `app.New` loads the application's copy of the table and `App.Start`
-  follows it (`FeatureSet.Follow`): on every signal the live service's application topic
-  delivers on `features`, and every five minutes regardless. `SetFeature` writes the row
-  and its change record in one transaction, broadcasts on the topic after the commit,
-  reloads its own copy and answers the flag as written. With the Firestore emulator
-  running, a second server process on another port sees the flip at its next request;
-  without one, at the backstop.
+  follows it (`FeatureSet.Follow`): on every signal of the `features` kind on the live
+  service's signals document ([below](#one-channel-between-instances)), and every five
+  minutes regardless. `SetFeature` writes the row and its change record in one
+  transaction, signals the kind after the commit, reloads its own copy and answers the
+  flag as written. A second server process on another port sees the flip at its next
+  request; should a signal be missed, at the backstop.
 - The checks. The walkthrough's "feature flags" section drives the scenario by curl, a
   second server process built from the tree included;
   [`feature_flags_test.go`](test/integration/feature_flags_test.go) pins it over two
@@ -195,6 +199,50 @@ How it is wired:
   the header's "Feature flags" link opens the library's dialog; `header.component.spec.ts`
   covers the link, the dialog and the card in both states, and the headless check in the
   walkthrough's feature-flags section drives the flip through the dialog.
+
+## One channel between instances
+
+Every instance holds one listener on one document. The live service keeps a signals
+document per application (`application/signals` in Firestore, a field per kind), and a
+signal carries nothing but which kind of shared state changed: a feature flip signals
+`features`, a change of the tenant roster `tenants`, a role, grant or membership write
+`policy`. The instance that wrote signals its kind through the service, every other
+instance rereads that kind at once, and each reader's own periodic reread is the backstop
+should a signal be missed: five minutes for the flags, the permission engines' one-minute
+heartbeat for the policy. Nothing polls between instances and no instance connects to
+another.
+
+To see the policy kind: sign in as `marshal` and seat `cadet` as a harbormaster at Anvil
+(`POST /console/api/sectors/anvil/roles/Harbormaster/users` with `{"users":["cadet"]}`);
+a second server process built from the tree (the walkthrough starts one on
+`LODESTAR_SECOND_PORT` for the flags and keeps it for this) serves the cadet the fleet
+board at its next request, with no restart and without waiting for its heartbeat; unseat
+her (`DELETE` on the same route) and it refuses again.
+
+How it is wired:
+
+- The adapter. [`pkg/auth/signal.go`](pkg/auth/signal.go) builds the engines' change
+  signal with `access.ChangeSignalFunc` over the live service's `Signal` and `Subscribe`
+  on `resource.KindPolicy`: announce signals the kind after a policy write (the engine
+  logs a failed announce and the write stands), watch subscribes and blocks until the
+  engine's context ends. `pkg/config/data.go` builds it once over the live service and
+  hands it to both auths (`crew.Settings.ChangeSignal` and `members.Settings.ChangeSignal`,
+  both required), so the crew store and the members store ride one listener.
+- The route. The console's role-membership routes
+  (`/console/api/sectors/{sector}/roles/{role}/users`: `GET` lists who holds the role,
+  `POST` seats, `DELETE` unseats) are the access library's user-management handlers
+  mounted in `pkg/router/hooks.go` behind the application's own checks in
+  [`app/role_memberships.go`](app/role_memberships.go): List, Create and Delete on
+  `RoleMemberships` in the sector, declared through `@manualAddResource` on
+  `resources.RoleMemberships` ([`pkg/resources/manual.go`](pkg/resources/manual.go)) and
+  held by `SectorMarshal`. The crew's roles are the application's (a password auth), so
+  seating crew is the application's to serve; the members' are the directory's, and no
+  route writes them.
+- The checks. The walkthrough's "one channel" section seats and unseats the cadet
+  against the second server process over the Firestore emulator;
+  [`policy_signal_test.go`](test/integration/policy_signal_test.go) pins it over two
+  instances, two crew engines with the heartbeat pinned to an hour, and the in-memory
+  live service, which fans a signal out to every subscription.
 
 ## Running against a real Spanner instance
 
@@ -261,7 +309,11 @@ sector; `pkg/auth/members/roles.json` only says what a role may do, in the lower
 Google groups carry. The deploy's migrate step and the bootstrap print what each store
 holds that the release cannot use. Each auth is a package (`pkg/auth/crew`,
 `pkg/auth/members`) with its own session tables, permission store, role file, and XSRF
-cookie (`crew-xsrf`, `members-xsrf`), and each outlet binds to one.
+cookie (`crew-xsrf`, `members-xsrf`), and each outlet binds to one. The crew's memberships
+are also the application's to change at run time: the console's role-membership routes
+seat and unseat crew in a sector through the access library's user-management handlers
+([one channel](#one-channel-between-instances)); the members' are reconciled by the
+directory at every login, and no route writes them.
 
 ## The personas
 
@@ -310,7 +362,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   application's mount path) with its chain documented at the top of
   `zz_gen_router.go`, and `hooks.go`, the console's and the portal's own routes composed
   into it; `app/`: wiring, middleware, the ship's log, the client statement, the
-  impersonation mint route, and the watch desk. The mission document download is
+  impersonation mint route, the watch desk, and the role-membership routes. The mission document download is
   generated from `MissionDocument.StoreKey`'s `@file`
   ([`@file.stored`](pkg/resources/mission_documents.go)), and the purser's expense
   manifest is a computed resource whose struct-scope `@file` renders a CSV sheet on
@@ -338,7 +390,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   and `DistressCall.Position` writes no JSON methods of its own any more
   ([`typescript.generated-json-methods`](pkg/resources/distress_calls.go)).
 - `pkg/auth/crew` and `pkg/auth/members`: the two populations, each with its
-  `roles.json`, every grant in §7 per auth, embedded in the binary;
+  `roles.json`, every grant in §7 per auth, embedded in the binary; `pkg/auth/signal.go`:
+  the policy signal both engines take, over the live service;
   `cmd/bootstrap/users.json`: the personas and the droid.
 - `schema/migrations` and `schema/devseed`: the schema and the world the suites and the
   demo share; one mission's deadline is written as bootstrap time plus three minutes so the

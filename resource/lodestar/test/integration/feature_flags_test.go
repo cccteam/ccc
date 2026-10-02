@@ -9,7 +9,7 @@ package integration
 // desk and the card's field out, and the card's field named in a request is an unknown
 // field; the adjutant, who holds FeatureAdministrator, turns the flag on through
 // SetFeature on the first instance, which writes the row and its change record,
-// broadcasts on the features topic and answers the flag as written, and the second
+// signals the features kind and answers the flag as written, and the second
 // instance serves the desk at its next request with no restart; off again, both refuse
 // again, and the change table holds both flips. The steps run in order, each named in
 // its failure, since every one reads what the ones before it wrote. The walkthrough
@@ -67,7 +67,7 @@ type flagInstance struct {
 }
 
 // startInstance builds an App over the database, the real engines and the shared live
-// service and starts it, so its FeatureSet follows the features topic as a served
+// service and starts it, so its FeatureSet follows the features kind as a served
 // instance's does.
 func startInstance(t *testing.T, name string, db *initiator.SpannerDB, crewEngine, membersEngine access.Controller, svc live.Service) *flagInstance {
 	t.Helper()
@@ -193,7 +193,7 @@ func TestFeatureFlags_commendationsDesk(t *testing.T) {
 		{name: "the cadet holds no List on the flags either", on: first, user: featureCadet, method: http.MethodGet, target: featureFlagsRoute, wantStatus: http.StatusForbidden},
 		{name: "a flag the package does not declare is not found", on: first, user: featureAdjutant, method: http.MethodPost, target: setFeatureRoute, body: `{"name":"nonesuch","enabled":true}`, wantStatus: http.StatusNotFound},
 		{
-			name: "the adjutant turns the desk on: the flag as written, and one broadcast on the features topic", on: first, user: featureAdjutant, method: http.MethodPost, target: setFeatureRoute, body: `{"name":"commendations","enabled":true}`, wantStatus: http.StatusOK,
+			name: "the adjutant turns the desk on: the flag as written, and one signal of the features kind", on: first, user: featureAdjutant, method: http.MethodPost, target: setFeatureRoute, body: `{"name":"commendations","enabled":true}`, wantStatus: http.StatusOK,
 			check: func(t *testing.T, step string, body []byte) {
 				t.Helper()
 				assertSetFeature(t, step, body, true)
@@ -312,7 +312,7 @@ func runFlagStep(t *testing.T, step *flagStep) {
 
 // settleOn asks the instance again until it answers the wanted status or the bound
 // passes, returning the last answer: the instance rereads its flags on its own goroutine
-// once the topic's signal lands.
+// once the features kind's signal lands.
 func settleOn(t *testing.T, on *flagInstance, user accesstypes.User, method, target string, wantStatus int) (status int, body []byte) {
 	t.Helper()
 

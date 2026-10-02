@@ -19,6 +19,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
+	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -48,10 +49,12 @@ func (s SpannerSettings) DatabasePath() string {
 	return fmt.Sprintf("projects/%s/instances/%s/databases/%s", s.ProjectID, s.InstanceID, s.DatabaseName)
 }
 
-// FirestoreSettings identifies the Firestore database the live pages run on, beside the
-// Spanner database. The database id is how bedrock hands the database to an application
-// (APP_FIRESTORE_DATABASE); the emulator host is how the development stack does. Neither
-// set, the application serves no live pages.
+// FirestoreSettings identifies the Firestore database the live service runs on, beside
+// the Spanner database: the live pages' subscription record and change sets, and the
+// signals document the instances notify each other through. The database id is how
+// bedrock hands the database to an application (APP_FIRESTORE_DATABASE); the emulator
+// host is how the development stack does. One of the two is required: every application
+// wires the live service, and the data level refuses to start without a database for it.
 type FirestoreSettings struct {
 	// ProjectID is the Google Cloud project the database belongs to. Empty, the Spanner
 	// project is used: the database lives beside the Spanner database in the
@@ -66,9 +69,9 @@ type FirestoreSettings struct {
 	EmulatorHost string `env:"FIRESTORE_EMULATOR_HOST"`
 }
 
-// Enabled reports whether live pages are served: a database is named, or the emulator
-// is.
-func (s FirestoreSettings) Enabled() bool {
+// Configured reports whether the live service has a database: one is named, or the
+// emulator is.
+func (s FirestoreSettings) Configured() bool {
 	return s.DatabaseID != "" || s.EmulatorHost != ""
 }
 
@@ -84,22 +87,20 @@ var firebaseOrigins = []string{
 // BrowserOrigins returns the origins the browser connects to for the change feed, which
 // the content security policy's connect-src must name beside the application itself:
 // the emulator over plain HTTP in development (the token route hands the browser the
-// same host), Firebase's hosts in production, none when live pages are not served.
+// same host), Firebase's hosts in production.
 func (s FirestoreSettings) BrowserOrigins() []string {
-	switch {
-	case s.EmulatorHost != "":
+	if s.EmulatorHost != "" {
 		return []string{"http://" + s.EmulatorHost}
-	case s.DatabaseID != "":
-		return slices.Clone(firebaseOrigins)
-	default:
-		return nil
 	}
+
+	return slices.Clone(firebaseOrigins)
 }
 
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the document store, the resource client over both, the
-// crew auth (its permission engine and session manager), and the live service when a
-// Firestore database is configured.
+// owns the Spanner client, the document store, the resource client over both, the live
+// service over the Firestore database, and the two auths (each its permission engine
+// and session manager), whose engines announce and watch policy changes through the
+// live service.
 type DataConfiguration struct {
 	*coreConfiguration
 	env            *dataConfig
@@ -144,6 +145,33 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "resource.NewCursorKey()")
 	}
 
+	// The live service: the Firestore database the live pages' subscriptions and change
+	// sets live in, beside the Spanner database, and the signals document every instance
+	// holds one listener on. Every application wires one: the generated handlers
+	// subscribe and publish through it, the feature flags follow it, and both permission
+	// engines announce and watch the policy kind through it, so it opens before the
+	// auths, and a configuration naming no database for it does not start.
+	if !env.Firestore.Configured() {
+		return nil, errors.New("the live service needs a Firestore database: set APP_FIRESTORE_DATABASE (the database id) or FIRESTORE_EMULATOR_HOST (the emulator)")
+	}
+	project := env.Firestore.ProjectID
+	if project == "" {
+		project = env.Spanner.ProjectID
+	}
+	liveService, err := livefirestore.New(ctx, livefirestore.Config{
+		ProjectID:    project,
+		DatabaseID:   env.Firestore.DatabaseID,
+		APIKey:       env.Firestore.APIKey,
+		EmulatorHost: env.Firestore.EmulatorHost,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "firestore.New()")
+	}
+
+	// The one change signal both engines take: a policy write on any instance reaches
+	// every engine on every instance through the policy kind of the signals document.
+	policySignal := auth.PolicySignal(liveService)
+
 	// The crew auth: the console's people, whose default roles ride in the binary and
 	// validate against the generated collection, which the router package generates and
 	// the auth package cannot import.
@@ -151,6 +179,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
 		Collection:     router.Collection(),
+		ChangeSignal:   policySignal,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "crew.New()")
@@ -174,28 +203,10 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		resourceClient:    resource.NewSpannerClient(spannerClient, resource.WithFileStore(documents)),
 		cursorKey:         cursorKey,
 		crew:              crewAuth,
+		live:              liveService,
 	}
 	if err := conf.loadTenants(ctx); err != nil {
 		return nil, errors.Wrap(err, "loadTenants()")
-	}
-
-	// The live service: the Firestore database the live pages' subscriptions and
-	// change sets live in, beside the Spanner database, when one is configured.
-	if env.Firestore.Enabled() {
-		project := env.Firestore.ProjectID
-		if project == "" {
-			project = env.Spanner.ProjectID
-		}
-		liveService, err := livefirestore.New(ctx, livefirestore.Config{
-			ProjectID:    project,
-			DatabaseID:   env.Firestore.DatabaseID,
-			APIKey:       env.Firestore.APIKey,
-			EmulatorHost: env.Firestore.EmulatorHost,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "firestore.New()")
-		}
-		conf.live = liveService
 	}
 
 	// The members auth: the portal's people, whose roles are the directory's. Its role
@@ -216,6 +227,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 			GroupPrefix:  env.MembersGroupPrefix,
 			GroupLookup:  env.MembersGroupLookup,
 		},
+		ChangeSignal: policySignal,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "members.New()")
@@ -225,18 +237,17 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	return conf, nil
 }
 
-// Close releases the level's clients, then the levels below it.
+// Close releases the level's clients, the engines before the live service they announce
+// and watch through, then the levels below it.
 func (c *DataConfiguration) Close() {
-	if c.live != nil {
-		if err := c.live.Close(); err != nil {
-			log.Print(errors.Wrap(err, "firestore.Service.Close()"))
-		}
-	}
 	if err := c.crew.Close(); err != nil {
 		log.Print(errors.Wrap(err, "crew.Auth.Close()"))
 	}
 	if err := c.members.Close(); err != nil {
 		log.Print(errors.Wrap(err, "members.Auth.Close()"))
+	}
+	if err := c.live.Close(); err != nil {
+		log.Print(errors.Wrap(err, "firestore.Service.Close()"))
 	}
 	if err := c.documents.Close(); err != nil {
 		log.Print(errors.Wrap(err, "store.DirStore.Close()"))
@@ -251,20 +262,15 @@ func (c *DataConfiguration) Spanner() SpannerSettings {
 }
 
 // Live returns the live service the generated handlers subscribe through and publish
-// to: the Firestore service when a Firestore database or the emulator is configured,
-// nil otherwise. A nil interface is what the App's accessor hands the generated code,
-// never a typed nil.
+// to, the feature flags follow and the permission engines signal through: the Firestore
+// service over the configured database or the emulator.
 func (c *DataConfiguration) Live() live.Service {
-	if c.live == nil {
-		return nil
-	}
-
 	return c.live
 }
 
 // LiveOrigins returns the origins the browser reaches the change feed at, for the
 // content security policy: the Firestore emulator in development, Firebase's hosts in
-// production, none when no live pages are served.
+// production.
 func (c *DataConfiguration) LiveOrigins() []string {
 	return c.env.Firestore.BrowserOrigins()
 }
@@ -301,6 +307,14 @@ func (c *DataConfiguration) UserManager() access.UserManager {
 // Crew returns the crew auth: the one the console binds to.
 func (c *DataConfiguration) Crew() *crew.Auth {
 	return c.crew
+}
+
+// UserManagement returns the crew engine's user-management handlers (access.Handlers),
+// which the console's role-membership routes delegate to behind their own permission
+// checks: the crew's roles are the application's, so seating crew in a sector is the
+// application's to serve.
+func (c *DataConfiguration) UserManagement() access.Handlers {
+	return c.crew.Access().Handlers(httpio.Log)
 }
 
 // engine returns the permission engine of the auth the request came through: the members

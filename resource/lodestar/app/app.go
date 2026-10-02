@@ -43,9 +43,9 @@ const (
 // cspPolicy writes the content security policy: the console's own assets plus the
 // Google Fonts hosts index.html links for the Roboto and Material Icons faces;
 // connections to the application itself and to the origins the live change feed is
-// reached at (the Firestore emulator in development, Firebase's hosts in production,
-// nothing more when no live pages are served), since the browser's feed connects to
-// them directly rather than through the API; and no page may frame the application
+// reached at (the Firestore emulator in development, Firebase's hosts in production),
+// since the browser's feed connects to them directly rather than through the API; and
+// no page may frame the application
 // (frame-ancestors 'none'; X-Frame-Options DENY says the same to browsers that predate
 // it), so its pages cannot be overlaid or clickjacked.
 //
@@ -89,13 +89,19 @@ type Configurer interface {
 	// streams files into it and the generated file route reads them back from it.
 	Documents() *store.DirStore
 	// Live is the live service the generated handlers subscribe through and publish to
-	// (LiveService): the Firestore service when a Firestore database or the emulator is
-	// configured, nil otherwise, which serves no live pages.
+	// (LiveService), the feature flags follow and the permission engines signal
+	// through: the Firestore service, or the in-memory fake in a test harness; every
+	// application wires one.
 	Live() live.Service
 	// LiveOrigins are the origins the browser reaches the change feed at, which the
 	// content security policy names in connect-src: the Firestore emulator in
-	// development, Firebase's hosts in production, none when no live pages are served.
+	// development, Firebase's hosts in production.
 	LiveOrigins() []string
+	// UserManagement is the crew engine's user-management handlers (access.Handlers),
+	// which the console's role-membership routes delegate to behind the App's own
+	// permission checks; nil where those routes are never mounted (the test router's
+	// suites), since mounting them draws on it.
+	UserManagement() access.Handlers
 	TenancyConfigurer
 }
 
@@ -142,6 +148,7 @@ type App struct {
 	computedClient *computedresources.Client
 	documents      *store.DirStore
 	live           live.Service
+	management     access.Handlers
 	// features is the application's copy of its feature flags, read through the
 	// configuration's database client when the App is built; featuresErr is why it
 	// could not be, which Start reports.
@@ -175,6 +182,7 @@ func New(cfg Configurer) *App {
 		computedClient: computedresources.NewClient(),
 		documents:      documents,
 		live:           cfg.Live(),
+		management:     cfg.UserManagement(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
 	}
 	// The feature flags: the application's copy of the FeatureFlags table, read as the
@@ -378,17 +386,17 @@ func (a *App) ComputedClient() *computedresources.Client {
 // LiveService is the live service the generated handlers draw on (resource/live): the
 // list and read handlers register a subscribing request's interest in it before the
 // query, the mutations publish their committed rows through it, and the live routes
-// renew, unsubscribe and mint the browser's identity against it. Nil when no Firestore
-// database and no emulator is configured: the application then serves no live pages
-// and refuses a request carrying X-Subscribe.
+// renew, unsubscribe and mint the browser's identity against it. Every application
+// wires one; it is also the channel the feature flags follow and the permission engines
+// signal through.
 func (a *App) LiveService() live.Service {
 	return a.live
 }
 
 // Start begins the App's background work and ends it when ctx does: the feature flags
-// are followed, so a flip on any instance (signaled through the live service's
-// application topic) or the library's backstop reread brings this instance's copy
-// current. A copy that could not be read when the App was built is reported here, as
+// are followed, so a flip on any instance (signaled on the features kind of the live
+// service's signals document) or the library's backstop reread brings this instance's
+// copy current. A copy that could not be read when the App was built is reported here, as
 // the start-up failure it is: the schema is behind the release.
 func (a *App) Start(ctx context.Context) error {
 	if a.featuresErr != nil {

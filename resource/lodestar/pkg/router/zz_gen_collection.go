@@ -383,6 +383,11 @@ func Collection() *resource.GeneratedCollection {
 				Target:      "Missions",
 			},
 			{
+				Name:        "RoleMemberships",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List},
+			},
+			{
 				Name:        "ScrapShip",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},

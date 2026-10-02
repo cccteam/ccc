@@ -11,7 +11,7 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/logging v1.19.1
 	cloud.google.com/go/spanner v1.95.0
-	github.com/cccteam/access v0.9.12-0.20261002075206-1a36057a30a5
+	github.com/cccteam/access v0.9.12-0.20261002224611-0ed5dfe165e2
 	github.com/cccteam/ccc v0.3.4-0.20260908043255-2adf7c91cccf
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69
 	github.com/cccteam/ccc/resource v0.10.7-0.20260928050122-b8fa8fb4ac3b

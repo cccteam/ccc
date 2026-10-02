@@ -48,3 +48,19 @@ const ViewAsUser accesstypes.Resource = "ViewAsUser"
 //
 // @manualAddResource(Execute)
 const AssumeRole accesstypes.Resource = "AssumeRole"
+
+// RoleMemberships is the console's role-membership routes' resource: who holds a role in
+// a sector, and seating and unseating crew in it. The routes are the access library's
+// user-management handlers mounted behind the application's own checks, since the
+// handlers check nothing themselves, so the permission is declared here, three manual
+// registrations on one constant, all in the domain scope: List opens a role's roster,
+// Create seats a user, Delete unseats one. SectorMarshal holds all three, so the marshal
+// seats crew at Anvil and nowhere else. A seat written through them is a policy write
+// that the crew engine announces to every instance through the live service.
+//
+// Demonstrates: auth.user-management, @manualAddResource.scope.
+//
+// @manualAddResource(List, domain)
+// @manualAddResource(Create, domain)
+// @manualAddResource(Delete, domain)
+const RoleMemberships accesstypes.Resource = "RoleMemberships"

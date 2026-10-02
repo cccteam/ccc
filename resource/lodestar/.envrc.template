@@ -19,13 +19,15 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=lodestar
 # APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
 # generates an ephemeral key and sessions end when it restarts.
 # export APP_COOKIE_KEY=
-# The Firestore database the live pages run on (README, "Live pages"): the subscription
-# record and the per-user change sets. APP_FIRESTORE_DATABASE is the database id, the way
-# the infrastructure hands a database to an application; GOOGLE_CLOUD_FIRESTORE_PROJECT is
-# its project, the Spanner project when unset; APP_FIREBASE_API_KEY is the Firebase web API
-# key the browser initializes the SDK with in production. With neither a database nor the
-# emulator below configured, the application serves no live pages and refuses a request
-# that asks for one. In development the emulator below stands in for all three.
+# The Firestore database the live service runs on (README, "Live pages" and "One channel
+# between instances"): the subscription record, the per-user change sets, and the signals
+# document the instances notify each other through. APP_FIRESTORE_DATABASE is the database
+# id, the way the infrastructure hands a database to an application;
+# GOOGLE_CLOUD_FIRESTORE_PROJECT is its project, the Spanner project when unset;
+# APP_FIREBASE_API_KEY is the Firebase web API key the browser initializes the SDK with in
+# production. A database or the emulator below is required: every process that opens the
+# database refuses to start naming both when neither is set. In development the emulator
+# below stands in for all three.
 # export GOOGLE_CLOUD_FIRESTORE_PROJECT=
 # export APP_FIRESTORE_DATABASE=
 # export APP_FIREBASE_API_KEY=

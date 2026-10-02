@@ -225,6 +225,7 @@ type testConfigurer struct {
 	membersAuth   *members.Auth
 	documents     *store.DirStore
 	live          live.Service
+	management    access.Handlers
 }
 
 // Domains is the seeded roster, the list production's DataConfiguration reads from the
@@ -341,6 +342,11 @@ func (c *testConfigurer) Live() live.Service {
 // LiveOrigins names no change feed origin: the suites drive the test router, which
 // carries no security headers.
 func (c *testConfigurer) LiveOrigins() []string { return nil }
+
+// UserManagement is the crew engine's user-management handlers where a suite mounts the
+// role-membership routes (the served stack and the policy-signal suite); nil elsewhere,
+// since the test router never mounts them.
+func (c *testConfigurer) UserManagement() access.Handlers { return c.management }
 
 // newTestApp builds the application with the given permission table backing every
 // request, served through the generated test router.
@@ -656,10 +662,15 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
+	// One in-memory live service for the stack: both engines announce and watch the
+	// policy kind through it, and the App subscribes and publishes through it.
+	fake := live.NewFake()
+	policySignal := auth.PolicySignal(fake)
 	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{
 		CookieKey:      testCookieKey,
 		SessionTimeout: servedSessionTimeout,
 		Collection:     router.Collection(),
+		ChangeSignal:   policySignal,
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
@@ -685,6 +696,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 			HostedDomain: "example.com",
 			GroupPrefix:  "members-",
 		},
+		ChangeSignal: policySignal,
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)
@@ -723,6 +735,8 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		crewAuth:      crewAuth,
 		membersAuth:   membersAuth,
 		documents:     documents,
+		live:          fake,
+		management:    crewAuth.Access().Handlers(httpio.Log),
 	})
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()

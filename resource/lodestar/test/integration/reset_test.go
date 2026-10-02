@@ -16,6 +16,8 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/deploy"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
@@ -32,7 +34,7 @@ func TestResetDevelopmentData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute, Collection: router.Collection()})
+	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute, Collection: router.Collection(), ChangeSignal: auth.PolicySignal(live.NewFake())})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
 	}

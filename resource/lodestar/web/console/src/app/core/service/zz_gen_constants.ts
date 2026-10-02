@@ -39,6 +39,7 @@ export const Resources = {
   Pilots: 'Pilots' as Resource,
   RefitTasks: 'RefitTasks' as Resource,
   Refits: 'Refits' as Resource,
+  RoleMemberships: 'RoleMemberships' as Resource,
   SectorHazardBoards: 'SectorHazardBoards' as Resource,
   Sectors: 'Sectors' as Resource,
   ServiceLedgers: 'ServiceLedgers' as Resource,

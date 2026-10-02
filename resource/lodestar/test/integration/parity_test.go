@@ -91,11 +91,18 @@ func demoUsers(t *testing.T) []demoUser {
 // openEngine opens a real engine over one auth's store prefix with the auth's role file,
 // validated against the generated collection the way the auth packages open theirs.
 func openEngine(db *initiator.SpannerDB, prefix string, roles access.RoleFile) (*access.Client, error) {
+	return openEngineWith(db, prefix, roles)
+}
+
+// openEngineWith opens an engine over the store with the given prefix and the release's
+// role file, with further engine options: the policy-signal suite's change signal and
+// heartbeat.
+func openEngineWith(db *initiator.SpannerDB, prefix string, roles access.RoleFile, opts ...access.Option) (*access.Client, error) {
 	store, err := spannerstore.New(db.Client, spannerstore.WithPrefix(prefix))
 	if err != nil {
 		return nil, fmt.Errorf("spannerstore.New(): %w", err)
 	}
-	client, err := access.New(store, access.WithDefaultRoles(router.Collection(), roles))
+	client, err := access.New(store, append([]access.Option{access.WithDefaultRoles(router.Collection(), roles)}, opts...)...)
 	if err != nil {
 		return nil, fmt.Errorf("access.New(): %w", err)
 	}

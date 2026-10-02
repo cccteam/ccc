@@ -130,6 +130,10 @@ func (c *testConfigurer) Live() live.Service {
 // LiveOrigins names no change feed origin: the matrix serves no live pages.
 func (c *testConfigurer) LiveOrigins() []string { return nil }
 
+// UserManagement serves no role-membership routes: the matrix drives the bare test
+// router, which never mounts them.
+func (c *testConfigurer) UserManagement() access.Handlers { return nil }
+
 // Domains is the scripted roster: the one domain the generated matrix addresses. The
 // empty test schema holds no sector rows, so nothing is read.
 func (c *testConfigurer) Domains(context.Context) ([]accesstypes.Domain, error) {

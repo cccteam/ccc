@@ -1,5 +1,6 @@
 // Package auth holds what the auths share: the request-scoped record of which auth a
-// request came through. Each auth is its own package beneath this one (crew, members),
+// request came through, and the policy signal both permission engines take (PolicySignal,
+// over the live service). Each auth is its own package beneath this one (crew, members),
 // owning its session manager, its permission store, and its roles file. A surface binds a
 // request to an auth in the session group that authenticated it, and everything that
 // answers for that request (permission checks, tenant visibility) answers from that
