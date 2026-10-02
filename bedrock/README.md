@@ -663,8 +663,9 @@ squash the only merge and, when the placement names an infrastructure team, that
 approval of a change to the workflow and Cloud Build files), and the GitHub Environments
 the operations workflow runs in (every environment but production, each deploying from
 the default branch alone). The operator applies it with their own sign-in, `GITHUB_TOKEN`
-from `gh auth token`, after reading the plan; the placement names the release app
-(`githubReleaseApp`), the default branch (`githubDefaultBranch`) and the team
+from `gh auth token`, after reading the plan; the placement names the release app by its
+App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
+by its slug), the default branch (`githubDefaultBranch`) and the team
 (`githubInfrastructureTeam`, empty for none). A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,

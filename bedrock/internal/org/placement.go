@@ -54,9 +54,11 @@ type Placement struct {
 	// GithubOrganization is the GitHub organization holding the application
 	// repositories and this one.
 	GithubOrganization string `json:"githubOrganization"`
-	// GithubReleaseApp is the slug of the release GitHub App, the only actor that
-	// creates, moves or deletes a release tag of an application's repository.
-	GithubReleaseApp string `json:"githubReleaseApp"`
+	// GithubReleaseAppID is the App ID of the release GitHub App, the only actor that
+	// creates, moves or deletes a release tag of an application's repository: digits,
+	// from the app's settings page. The id, not the slug: a private app cannot be
+	// read by its slug with the operator's token.
+	GithubReleaseAppID string `json:"githubReleaseAppId"`
 	// GithubDefaultBranch is the default branch of every application repository, from
 	// which alone the operations workflow's Environments deploy.
 	GithubDefaultBranch string `json:"githubDefaultBranch"`
@@ -146,7 +148,7 @@ func (p *Placement) Validate() error {
 	for name, value := range map[string]string{
 		"organizationDomain": p.OrganizationDomain, "organizationId": p.OrganizationID, "billingAccount": p.BillingAccount,
 		"appsDomain": p.AppsDomain, "githubOrganization": p.GithubOrganization, "sourceRepo": p.SourceRepo,
-		"githubReleaseApp": p.GithubReleaseApp, "githubDefaultBranch": p.GithubDefaultBranch,
+		"githubReleaseAppId": p.GithubReleaseAppID, "githubDefaultBranch": p.GithubDefaultBranch,
 		"operator": p.Operator, "spanner.config": p.Spanner.Config,
 	} {
 		if strings.TrimSpace(value) == "" {
@@ -160,6 +162,9 @@ func (p *Placement) Validate() error {
 		if r.Name == "" || !regionCodeRE.MatchString(r.Code) {
 			return errors.Newf("region %q needs a name and a three-character code", r.Name)
 		}
+	}
+	if !projectNumberRE.MatchString(p.GithubReleaseAppID) {
+		return errors.Newf("githubReleaseAppId %q is not an App ID (digits)", p.GithubReleaseAppID)
 	}
 	for env, id := range p.Projects {
 		if !slices.Contains(Environments, env) {

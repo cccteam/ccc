@@ -59,7 +59,8 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a long application", mutate: func(p *Placement) { p.Applications = []string{"lighthouse"} }, wantErr: `application "lighthouse"`},
 		{name: "a label without a value", mutate: func(p *Placement) { p.Labels = map[string]string{"team": ""} }, wantErr: "label"},
 		{name: "no spanner config", mutate: func(p *Placement) { p.Spanner.Config = "" }, wantErr: "spanner.config is empty"},
-		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseApp = "" }, wantErr: "githubReleaseApp is empty"},
+		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseAppID = "" }, wantErr: "githubReleaseAppId is empty"},
+		{name: "a release app named by slug", mutate: func(p *Placement) { p.GithubReleaseAppID = "imp-release" }, wantErr: "githubReleaseAppId \"imp-release\" is not an App ID"},
 		{name: "no default branch", mutate: func(p *Placement) { p.GithubDefaultBranch = " " }, wantErr: "githubDefaultBranch is empty"},
 		{name: "no infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "" }},
 		{name: "project numbers for the environments", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "123456789012"} }},
@@ -711,7 +712,7 @@ func TestRepositoryRules(t *testing.T) {
 			name: "the placement's values are the variables' defaults",
 			path: "1-org/variables.tf",
 			want: []string{
-				`default     = "impulseframework-release"`,
+				`default     = 5080645`,
 				`default     = "master"`,
 				`default     = "impulseframework"`,
 				"variable \"github_infrastructure_team\" {\n  description = \"Slug of the organization's infrastructure team, whose approval a change to an application's workflow and Cloud Build files needs, given after the last push. Empty for none.\"\n  type        = string\n  default     = \"\"",

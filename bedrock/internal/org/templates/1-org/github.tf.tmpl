@@ -38,12 +38,10 @@
 # message.
 # ---------------------------------------------------------------------------
 
-data "github_app" "release" {
-  slug = var.github_release_app
-}
-
 # The apps that report the required checks: GitHub Actions the infrastructure
-# workflow's job, Google Cloud Build the pull-request build.
+# workflow's job, Google Cloud Build the pull-request build. Both are public, so
+# their ids are read by slug; the release app, the organization's own, is named
+# by its App ID (var.github_release_app_id).
 data "github_app" "actions" {
   slug = "github-actions"
 }
@@ -137,7 +135,7 @@ resource "github_repository_ruleset" "release_tags" {
   enforcement = "active"
 
   bypass_actors {
-    actor_id    = tonumber(data.github_app.release.id)
+    actor_id    = var.github_release_app_id
     actor_type  = "Integration"
     bypass_mode = "always"
   }

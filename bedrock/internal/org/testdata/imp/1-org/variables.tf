@@ -68,10 +68,10 @@ variable "github_organization" {
   default     = "impulseframework"
 }
 
-variable "github_release_app" {
-  description = "Slug of the release GitHub App, the only actor that creates, moves or deletes a release tag."
-  type        = string
-  default     = "impulseframework-release"
+variable "github_release_app_id" {
+  description = "App ID of the release GitHub App, the only actor that creates, moves or deletes a release tag; from the app's settings page (a private app cannot be read by its slug)."
+  type        = number
+  default     = 5080645
 }
 
 variable "layer_roles" {

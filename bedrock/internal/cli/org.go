@@ -86,8 +86,9 @@ func handSteps(p *org.Placement) string {
 By hand, before the first apply (the commands are in 0-bootstrap/README.md):
   0. On GitHub, in a browser: the organization, this infrastructure repository (never
      managed by the layers), the release and deployer apps with their keys, installed on
-     the organization, the organization secrets, the Cloud Build app, and, if a team is to
-     approve changes to the applications' check files, that team (githubInfrastructureTeam).
+     the organization (the release app's App ID goes into placement.json, githubReleaseAppId),
+     the organization secrets, the Cloud Build app, and, if a team is to approve changes to
+     the applications' check files, that team (githubInfrastructureTeam).
   1. Seed, as %s: the terraform folder at the organization root (%s), the boot
      project %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its
      organization roles, and the state bucket %s-boot-gbl-state-<suffix>.

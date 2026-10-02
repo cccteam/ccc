@@ -5,7 +5,7 @@
   "billingAccount": "012345-6789AB-CDEF01",
   "appsDomain": "impulseframework.dev",
   "githubOrganization": "impulseframework",
-  "githubReleaseApp": "impulseframework-release",
+  "githubReleaseAppId": "5080645",
   "githubDefaultBranch": "master",
   "sourceRepo": "imp-impulse-infrastructure",
   "stateBucket": "imp-boot-gbl-state-a1b2",
