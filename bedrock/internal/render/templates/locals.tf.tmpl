@@ -21,7 +21,7 @@ locals {
   # Each environment's deployment-records bucket (_RECORDS_BUCKETS): a pull-request
   # build against a hotfix line reads each environment's live record as that
   # environment's plan identity, to say where the hotfix will be refused.
-  records_buckets = join(",", [for env in local.environments : "${env}=${try(data.terraform_remote_state.envs[env].outputs.records_bucket, \"\")}"])
+  records_buckets = join(",", [for env in local.environments : "${env}=${try(data.terraform_remote_state.envs[env].outputs.records_bucket, "")}"])
 
   # A pull-request stack: this code in {{.Integration}} with var.pull_request set, into
   # its own state. Its resources carry the short name {{.App}}-pr<N> (2-env's wildcard
