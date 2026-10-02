@@ -1,9 +1,10 @@
 # ---------------------------------------------------------------------------
 # Container images
 #
-# One Docker repository per application, all in the shared project, so an
-# image built once for tst is the same digest that stg and prd run: promotion
-# is a tag, never a copy between registries. Per application rather than one
+# One Docker repository per application, all in the shared project: every
+# environment's build of a commit pushes its own image there and reads the
+# layer cache the builds before it left (no image is promoted from one
+# environment to the next; each builds its own). Per application rather than one
 # for the organization (the tf-gcp-setup shape) because a deploy identity's
 # writer grant is then bounded to its own images; nothing an application's
 # pipeline can do reaches another application's repository. Google-managed
