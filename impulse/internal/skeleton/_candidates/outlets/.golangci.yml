@@ -66,7 +66,6 @@ linters:
             - github.com/go-chi/chi/v5
             - github.com/go-playground/errors/v5
             - github.com/go-playground/validator/v10
-            - github.com/golang-migrate/migrate/v4
             - github.com/jtwatson/server
             - github.com/jtwatson/spaassets
             - github.com/sethvargo/go-envconfig
@@ -152,10 +151,6 @@ linters:
           - paralleltest
           - tparallel
         path: test/integration/outlets_test\.go
-      - linters:
-          - gomoddirectives
-        path: go\.mod
-        text: golang-migrate
     paths:
       - third_party$
       - builtin$

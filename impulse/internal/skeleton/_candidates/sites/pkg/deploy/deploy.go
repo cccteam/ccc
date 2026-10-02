@@ -17,7 +17,6 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/config"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/go-playground/errors/v5"
-	"github.com/golang-migrate/migrate/v4"
 )
 
 // MigrationsSource is where the schema migrations live, relative to the module root.
@@ -40,9 +39,9 @@ func MigrateSchema(ctx context.Context, settings config.SpannerSettings) error {
 	}
 	defer migrator.Close()
 
-	// A database already at the latest migration is not a failure: the migrator
-	// reports it as migrate.ErrNoChange.
-	if err := migrator.MigrateUpSchema(ctx, MigrationsSource); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+	// A database already at the latest migration is not a failure: the migrator has
+	// nothing to apply and returns nil.
+	if err := migrator.MigrateUpSchema(ctx, MigrationsSource); err != nil {
 		return errors.Wrap(err, "initiator.SpannerMigrator.MigrateUpSchema()")
 	}
 
@@ -65,7 +64,7 @@ func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) e
 	}
 	defer migrator.Close()
 
-	if err := migrator.MigrateUpData(ctx, DevSeedSource); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+	if err := migrator.MigrateUpData(ctx, DevSeedSource); err != nil {
 		return errors.Wrap(err, "initiator.SpannerMigrator.MigrateUpData()")
 	}
 

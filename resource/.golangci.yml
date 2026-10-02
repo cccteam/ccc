@@ -175,10 +175,6 @@ linters:
         path: options_test\.go
         text: TestApplicationName
       - linters:
-          - gomoddirectives
-        path: go\.mod
-        text: golang-migrate
-      - linters:
           - funlen
         path: resourceset\.go
         text: permissionsFromTags

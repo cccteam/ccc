@@ -66,7 +66,6 @@ linters:
             - github.com/go-chi/chi/v5
             - github.com/go-playground/errors/v5
             - github.com/go-playground/validator/v10
-            - github.com/golang-migrate/migrate/v4
             - github.com/jtwatson/server
             - github.com/jtwatson/spaassets
             - github.com/sethvargo/go-envconfig
@@ -153,10 +152,6 @@ linters:
           - paralleltest
           - tparallel
         path: test/integration/(language|tenancy|impersonation_ops|rows_of)_test\.go
-      - linters:
-          - gomoddirectives
-        path: go\.mod
-        text: golang-migrate
       # Lodestar is committed in the resource module's own repository, so it builds
       # against the local source rather than a published version that cannot exist yet.
       - linters:
