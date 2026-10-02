@@ -73,6 +73,7 @@ linters:
             - github.com/go-playground/errors/v5
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
+            - github.com/testcontainers/testcontainers-go
             - github.com/google/uuid
             - github.com/jackc/pgx/v5/pgxpool
             - github.com/momaek/formattag/align
@@ -183,10 +184,7 @@ linters:
       # executable is the podman LookPath found, the rules file is copied into the
       # harness's own temporary directory and mounted from there, and the container
       # id comes from podman itself. Nothing here is input a person supplies.
-      - linters:
-          - gosec
-        path: live/firestore/main_test\.go
-        text: G(204|703)
+
       - linters:
           - funlen
         path: resourceset\.go

@@ -1,14 +1,11 @@
 package firestore_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
+	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +13,8 @@ import (
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
 	"github.com/go-playground/errors/v5"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // emulatorImage pins the Cloud SDK emulators image the package's tests start the
@@ -50,20 +49,17 @@ func TestMain(m *testing.M) {
 }
 
 // firestoreEmulator returns the shared emulator's host:port, starting it on first
-// demand. Under -short, or without podman to start it, the calling test skips instead,
-// so the unit run never needs a container runtime.
+// demand. Under -short the calling test skips instead, so the unit run never needs a
+// container runtime; the container is started through testcontainers, the way
+// db-initiator starts the Spanner emulator, so Docker and podman both serve.
 func firestoreEmulator(t *testing.T) string {
 	t.Helper()
 
 	if testing.Short() {
 		t.Skip("requires the Firestore emulator")
 	}
-	podman, err := exec.LookPath("podman")
-	if err != nil {
-		t.Skip("podman is not available to start the Firestore emulator")
-	}
 	sharedEmulator.once.Do(func() {
-		sharedEmulator.host, sharedEmulator.stop, sharedEmulator.err = startEmulator(podman)
+		sharedEmulator.host, sharedEmulator.stop, sharedEmulator.err = startEmulator()
 	})
 	if sharedEmulator.err != nil {
 		t.Fatalf("startEmulator() error = %v", sharedEmulator.err)
@@ -72,77 +68,57 @@ func firestoreEmulator(t *testing.T) string {
 	return sharedEmulator.host
 }
 
-// startEmulator runs the emulator in a container on a random local port with the
-// package's rules, waits for it to answer, and returns its host and how to stop it.
-func startEmulator(podman string) (host string, stop func(), err error) {
-	rulesDir, err := os.MkdirTemp("", "live-firestore-rules-*")
-	if err != nil {
-		return "", nil, errors.Wrap(err, "os.MkdirTemp()")
-	}
+// emulatorPort is the port the emulator listens on inside its container; the host side
+// is whatever the runtime maps it to.
+const emulatorPort = "8080/tcp"
+
+// startEmulator runs the emulator in a container on a mapped local port with the
+// package's rules copied in, waits until its root answers, and returns its host:port and
+// how to stop it.
+func startEmulator() (host string, stop func(), err error) {
 	rules, err := os.ReadFile("firestore.rules")
 	if err != nil {
 		return "", nil, errors.Wrap(err, "os.ReadFile()")
 	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "firestore.rules"), rules, 0o644); err != nil {
-		return "", nil, errors.Wrap(err, "os.WriteFile()")
-	}
 
 	ctx := context.Background()
-	out, err := exec.CommandContext(ctx, podman, "run", "-d", "--rm",
-		"-p", "127.0.0.1::8080",
-		"-v", rulesDir+":/rules:ro,Z",
-		emulatorImage,
-		"gcloud", "emulators", "firestore", "start", "--host-port=0.0.0.0:8080", "--rules=/rules/firestore.rules",
-	).CombinedOutput()
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		Started: true,
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        emulatorImage,
+			Cmd:          []string{"gcloud", "emulators", "firestore", "start", "--host-port=0.0.0.0:8080", "--rules=/firestore.rules"},
+			ExposedPorts: []string{emulatorPort},
+			Files: []testcontainers.ContainerFile{{
+				Reader:            bytes.NewReader(rules),
+				ContainerFilePath: "/firestore.rules",
+				FileMode:          0o644,
+			}},
+			WaitingFor: wait.ForHTTP("/").WithPort(emulatorPort).WithStartupTimeout(2 * time.Minute),
+		},
+	})
 	if err != nil {
-		return "", nil, errors.Wrapf(err, "podman run: %s", out)
+		return "", nil, errors.Wrap(err, "testcontainers.GenericContainer()")
 	}
-	id := strings.TrimSpace(string(out))
 	stop = func() {
-		if out, err := exec.CommandContext(ctx, podman, "stop", "-t", "2", id).CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stderr, "podman stop: %v: %s\n", err, out)
+		if err := container.Terminate(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "the Firestore emulator container was not terminated: %v\n", err)
 		}
-		_ = os.RemoveAll(rulesDir)
 	}
 
-	out, err = exec.CommandContext(ctx, podman, "port", id, "8080/tcp").Output()
+	h, err := container.Host(ctx)
 	if err != nil {
 		stop()
 
-		return "", nil, errors.Wrap(err, "podman port")
+		return "", nil, errors.Wrap(err, "testcontainers.Container.Host()")
 	}
-	host = strings.TrimSpace(strings.Split(string(out), "\n")[0])
-	if err := waitForEmulator(host); err != nil {
-		logs, _ := exec.CommandContext(ctx, podman, "logs", id).CombinedOutput()
+	p, err := container.MappedPort(ctx, emulatorPort)
+	if err != nil {
 		stop()
 
-		return "", nil, errors.Wrapf(err, "the Firestore emulator did not come up: %s", logs)
+		return "", nil, errors.Wrap(err, "testcontainers.Container.MappedPort()")
 	}
 
-	return host, stop, nil
-}
-
-// waitForEmulator polls the emulator's root, which answers Ok once it serves.
-func waitForEmulator(host string) error {
-	deadline := time.Now().Add(2 * time.Minute)
-	client := &http.Client{Timeout: 2 * time.Second}
-	for time.Now().Before(deadline) {
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+host+"/", http.NoBody)
-		if err != nil {
-			return errors.Wrap(err, "http.NewRequestWithContext()")
-		}
-		resp, err := client.Do(req)
-		if err == nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-
-	return errors.New("timed out")
+	return net.JoinHostPort(h, p.Port()), stop, nil
 }
 
 // newService opens a service on the shared emulator with the given clock, closed when
