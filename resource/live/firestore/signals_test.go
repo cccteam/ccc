@@ -225,6 +225,12 @@ func TestService_signals_reopen(t *testing.T) {
 	firstPolicy := subscribe(t, first, live.KindPolicy)
 	secondFeatures := subscribe(t, second, live.KindFeatures)
 	secondTenants := subscribe(t, second, live.KindTenants)
+	// Subscribe waits on nothing, so a signal heard on both instances is what proves
+	// both listeners live before they are dropped; otherwise a drop could land before a
+	// listener's first snapshot and the reopen would count one advance more.
+	signal(t, first, live.KindFeatures)
+	firstFeatures.waitFor(t, "the first instance's features subscription", 1)
+	secondFeatures.waitFor(t, "the second instance's features subscription", 1)
 
 	livefirestore.DropListener(first)
 	livefirestore.DropListener(second)
@@ -233,11 +239,11 @@ func TestService_signals_reopen(t *testing.T) {
 	signal(t, first, live.KindFeatures)
 	signal(t, first, live.KindTenants)
 
-	firstFeatures.waitFor(t, "the first instance's features subscription", 1)
+	firstFeatures.waitFor(t, "the first instance's features subscription", 2)
 	firstTenants.waitFor(t, "the first instance's tenants subscription", 1)
-	secondFeatures.waitFor(t, "the second instance's features subscription", 1)
+	secondFeatures.waitFor(t, "the second instance's features subscription", 2)
 	secondTenants.waitFor(t, "the second instance's tenants subscription", 1)
-	if diff := cmp.Diff([]int{1, 1, 0, 1, 1}, settled(firstFeatures, firstTenants, firstPolicy, secondFeatures, secondTenants)); diff != "" {
+	if diff := cmp.Diff([]int{2, 1, 0, 2, 1}, settled(firstFeatures, firstTenants, firstPolicy, secondFeatures, secondTenants)); diff != "" {
 		t.Errorf("signal counts after the reopen mismatch (-want +got):\n%s", diff)
 	}
 

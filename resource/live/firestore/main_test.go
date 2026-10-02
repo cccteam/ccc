@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -155,15 +156,21 @@ func newServiceIn(t *testing.T, database string, opts ...livefirestore.Option) *
 	return svc
 }
 
-// databaseFor names a database after the test: a database id is lowercase letters,
+// databaseFor names a database after the test and its ask: a database id is lowercase letters,
 // digits and hyphens opening with a letter, so the name is hashed.
 func databaseFor(t *testing.T) string {
 	t.Helper()
 
-	sum := sha256.Sum256([]byte(t.Name()))
+	// The sequence keeps a repeated run (-count) and two calls in one test apart: a
+	// database carries its signals document over, and a subscription made before the
+	// listener's first snapshot is woken once for what it holds.
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s/%d", t.Name(), databaseSeq.Add(1)))
 
 	return "live-" + hex.EncodeToString(sum[:])[:12]
 }
+
+// databaseSeq numbers the databases one run asks for.
+var databaseSeq atomic.Int64
 
 // fixedClock pins a clock to one instant.
 func fixedClock(at time.Time) func() time.Time {
