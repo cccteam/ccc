@@ -101,6 +101,23 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
+			// The fixture's portal keeps its prefix beside its mount path; the console at the
+			// root is in shape.
+			name: "outlet-shape flat portal prefix beside its mount path", fixture: "flat", check: outletShape{},
+			wantStatus: Warn, wantSummary: "1 browser outlet(s) serve their API outside their application's mount path",
+			wantDetails: []string{
+				"cmd/generate/resourcegenerator/main.go:26: outlet portal serves its API under /portal and its browser application at /portal; the one shape puts an outlet's API under its application's mount path, /portal/api",
+			},
+		},
+		{
+			name: "outlet-shape sites declare no browser application", fixture: "sites", check: outletShape{},
+			wantStatus: Skip, wantSummary: "no outlet serves a browser application",
+		},
+		{
+			name: "outlet-shape no site", fixture: "badprogram", check: outletShape{},
+			wantStatus: Skip, wantSummary: "no site generator",
+		},
+		{
 			name: "conditions-proven no auth package", fixture: "flat", check: conditionsProven{},
 			wantStatus: Skip, wantSummary: "no auth package",
 		},

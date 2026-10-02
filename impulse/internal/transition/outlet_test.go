@@ -491,13 +491,33 @@ var beaconRouterProgram = strings.Replace(beaconProgram,
 func TestOutletApplyGeneratedRouter(t *testing.T) {
 	t.Parallel()
 
+	// movedConsole is the GenerateRoutes a console that left the root reads afterwards.
+	const movedConsole = "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),\n"
+	// rootConsole is the console's GenerateRoutes as the fixture declares it.
+	const rootConsole = "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n"
+	moveDid := []string{
+		`cmd/generate/resourcegenerator/main.go: with two browser applications none is mounted at /, so the default outlet's application moves to /console and its API to /console/api: GenerateRoutes("pkg/router", "console/api", ..., WebApp("/console")) in place of "api" and WebApp("/"); the regenerated router answers the root alone with a redirect to /console/`,
+		"web/console: the console project serves under /console/ with its API at /console/api (angular.json baseHref and servePath, the proxy, the environments, the base element)",
+	}
+	moveSkipped := []string{
+		`app/assets.go:9: DeepLink rewrites the console's routes to "/"; it moves to "/console/", and Assets serves the bundle behind http.StripPrefix("/console"), as a second browser application's pair does`,
+		`pkg/config/site.go:5: LoginURL "/login" is the console's login page, which is now under /console/: "/console/login"`,
+		`test/integration/login_test.go:5, 9: names "/api", the console's old prefix, in a string literal; the console's API is now /console/api`,
+		"Procfile:2: names /api, the console's old prefix; the console's API is now /console/api and its pages are under /console/",
+		"README.md:3, 5: names /api, the console's old prefix; the console's API is now /console/api and its pages are under /console/",
+	}
+
 	tests := []struct {
 		name        string
 		outlet      Outlet
 		wantErr     string
 		wantCommand string
 		wantDid     string
+		// wantMoved pins the console's move: the Did lines after the project copy, the
+		// Skipped lines listing what still names the old prefix, and the program.
+		wantMoved   bool
 		wantProgram []string
+		wantAbsent  []string
 		wantCookie  string
 	}{
 		{
@@ -505,10 +525,13 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			outlet:      Outlet{Name: "portal", Prefix: "portal/api", Sessions: true},
 			wantCommand: "impulse add outlet portal --prefix portal/api --auth staff",
 			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.Password), generation.WebApp("/portal"))`,
+			wantMoved:   true,
 			wantProgram: []string{
 				"\t\tgeneration.GenerateRouter(),\n",
+				movedConsole,
 				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
 			},
+			wantAbsent: []string{"ServesSessions", rootConsole},
 			wantCookie: "cookieName: 'staff-xsrf'",
 		},
 		{
@@ -516,9 +539,12 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			outlet:      Outlet{Name: "portal", Prefix: "portal/api", Sessions: true, Auth: "members"},
 			wantCommand: "impulse add outlet portal --prefix portal/api --auth members",
 			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/members", generation.Password), generation.WebApp("/portal"))`,
+			wantMoved:   true,
 			wantProgram: []string{
+				movedConsole,
 				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/members\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
 			},
+			wantAbsent: []string{"ServesSessions", rootConsole},
 			wantCookie: "cookieName: 'members-xsrf'",
 		},
 		{
@@ -527,11 +553,13 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			wantErr: "no auth package pkg/auth/partners to bind the portal outlet to; the auths are members, staff",
 		},
 		{
+			// No second browser application arrives, so the console stays at the root.
 			name:        "an API-key outlet",
 			outlet:      Outlet{Name: "machines", Prefix: "machines"},
 			wantCommand: "impulse add outlet machines --prefix machines --api-key",
 			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("machines", "machines", generation.APIKey())`,
-			wantProgram: []string{"\t\tgeneration.WithRouterOutlet(\"machines\", \"machines\", generation.APIKey()),\n"},
+			wantProgram: []string{"\t\tgeneration.WithRouterOutlet(\"machines\", \"machines\", generation.APIKey()),\n", rootConsole},
+			wantAbsent:  []string{"ServesSessions", "console/api"},
 		},
 	}
 	for _, tt := range tests {
@@ -542,6 +570,13 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			files["cmd/generate/resourcegenerator/main.go"] = beaconRouterProgram
 			files["pkg/auth/members/members.go"] = strings.ReplaceAll(strings.ReplaceAll(files["pkg/auth/staff/staff.go"], "staff", "members"), "Staff", "Members")
 			files["web/console/src/app/app.config.ts"] = "provideHttpClient(withXsrfConfiguration({ cookieName: 'staff-xsrf' }));\n"
+			// What a move leaves for the agent: the App's root deep link, a login page, a
+			// test naming the prefix, and the prose; a generated file naming it is not read.
+			files["app/assets.go"] = "package app\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/jtwatson/spaassets\"\n)\n\nfunc (a *App) DeepLink(next http.Handler) http.Handler { return spaassets.DeepLink(next, \"/\") }\n"
+			files["pkg/config/site.go"] = "package config\n\n// Settings for the console's auth.\nvar settings = struct{ LoginURL string }{\n\tLoginURL: \"/login\",\n}\n"
+			files["test/integration/login_test.go"] = "package integration\n\nimport \"testing\"\n\nconst session = \"/api/user/session\"\n\nfunc TestLogin(t *testing.T) {\n\tt.Log(session)\n\tt.Log(\"/api/permission-digest\")\n}\n"
+			files["pkg/router/zz_gen_router.go"] = "package router\n\nconst prefix = \"/api/\"\n"
+			files["README.md"] = "# beacon\n\nThe console on `/api`.\n\nRoutes under `/api/tenants/{tenantID}/`; the portal on `/portal/api`; the Go API package google.golang.org/api is not it.\n"
 			a := beacon(t, files)
 			ch, err := tt.outlet.Apply(t.Context(), a, &fakeExec{})
 			if tt.wantErr != "" {
@@ -565,7 +600,73 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 					t.Errorf("app.config.ts = %q, want %q", got, tt.wantCookie)
 				}
 			}
-			for _, absent := range []string{"ServesSessions"} {
+			var wantMoveDid, wantMoveSkipped []string
+			if tt.wantMoved {
+				wantMoveDid, wantMoveSkipped = moveDid, moveSkipped
+			}
+			gotMoveDid := []string(nil)
+			for _, d := range ch.Did {
+				if strings.Contains(d, "moves to /console") || strings.Contains(d, "serves under /console/") {
+					gotMoveDid = append(gotMoveDid, d)
+				}
+			}
+			if diff := cmp.Diff(wantMoveDid, gotMoveDid); diff != "" {
+				t.Errorf("the move's Did lines mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(wantMoveSkipped, ch.Skipped); diff != "" {
+				t.Errorf("Skipped mismatch (-want +got):\n%s", diff)
+			}
+			consoleFiles := map[string]string{
+				"web/console/proxy.conf.js":                   "'/api/': {",
+				"web/console/src/index.html":                  `<base href="/" />`,
+				"web/console/src/environments/environment.ts": "baseUrl: '',\n  apiUrl: '/api',",
+			}
+			if tt.wantMoved {
+				consoleFiles = map[string]string{
+					"web/console/proxy.conf.js":                   "'/console/api/': {",
+					"web/console/src/index.html":                  `<base href="/console/" />`,
+					"web/console/src/environments/environment.ts": "baseUrl: '/console/',\n  apiUrl: '/console/api',",
+				}
+			}
+			for rel, want := range consoleFiles {
+				if got := read(t, a, rel); !strings.Contains(got, want) {
+					t.Errorf("%s = %q, want %q", rel, got, want)
+				}
+			}
+			var workspace struct {
+				Projects map[string]struct {
+					Architect struct {
+						Build struct {
+							Options struct {
+								BaseHref string `json:"baseHref"`
+							} `json:"options"`
+						} `json:"build"`
+						Serve struct {
+							Options struct {
+								ServePath string `json:"servePath"`
+							} `json:"options"`
+						} `json:"serve"`
+					} `json:"architect"`
+				} `json:"projects"`
+			}
+			if err := json.Unmarshal([]byte(read(t, a, "web/angular.json")), &workspace); err != nil {
+				t.Fatalf("angular.json is not JSON: %v", err)
+			}
+			console := workspace.Projects["console"]
+			wantBase, wantServe := "", "/"
+			if tt.wantMoved {
+				wantBase, wantServe = "/console/", "/console"
+			}
+			if console.Architect.Build.Options.BaseHref != wantBase || console.Architect.Serve.Options.ServePath != wantServe {
+				t.Errorf("console baseHref %q, servePath %q; want %q, %q", console.Architect.Build.Options.BaseHref, console.Architect.Serve.Options.ServePath, wantBase, wantServe)
+			}
+			if tt.wantMoved {
+				// The copy was taken before the move, so the portal reads as its own.
+				if got := read(t, a, "web/portal/src/environments/environment.ts"); !strings.Contains(got, "baseUrl: '/portal/',\n  apiUrl: '/portal/api',") {
+					t.Errorf("portal environment.ts = %q", got)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
 				if got := read(t, a, "cmd/generate/resourcegenerator/main.go"); strings.Contains(got, absent) {
 					t.Errorf("program has %q:\n%s", absent, got)
 				}
@@ -606,5 +707,57 @@ func TestChangeText(t *testing.T) {
 				t.Errorf("Text() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// TestOutletApplyConsoleUnderPath pins the copy from a console that already lives under
+// its own path, the shape every browser outlet takes once there are two: the new outlet's
+// project reads its own prefix and base path in place of the console's, and the console,
+// off the root already, does not move.
+func TestOutletApplyConsoleUnderPath(t *testing.T) {
+	t.Parallel()
+
+	program := strings.Replace(beaconRouterProgram,
+		"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n",
+		"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),\n"+
+			"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n", 1)
+	files := authFiles(t)
+	files["cmd/generate/resourcegenerator/main.go"] = program
+	files["web/angular.json"] = strings.Replace(strings.Replace(beaconAngular, `"servePath": "/",`, `"servePath": "/console",`, 1), "\"scripts\": []\n", "\"scripts\": [],\n            \"baseHref\": \"/console/\"\n", 1)
+	files["web/console/proxy.conf.js"] = "module.exports = {\n  '/console/api/': {\n    target: 'http://127.0.0.1:8090',\n  },\n};\n"
+	files["web/console/src/index.html"] = "<html>\n  <head>\n    <base href=\"/console/\" />\n  </head>\n</html>\n"
+	files["web/console/src/environments/environment.ts"] = "export const environment = {\n  production: false,\n  baseUrl: '/console/',\n  apiUrl: '/console/api',\n};\n"
+	files["app/assets.go"] = "package app\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/jtwatson/spaassets\"\n)\n\nfunc (a *App) DeepLink(next http.Handler) http.Handler { return spaassets.DeepLink(next, \"/console/\") }\n"
+	a := beacon(t, files)
+
+	ch, err := Outlet{Name: "kiosk", Prefix: "kiosk/api", Sessions: true}.Apply(t.Context(), a, &fakeExec{})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	wantDid := []string{
+		`cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("kiosk", "kiosk/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.Password), generation.WebApp("/kiosk"))`,
+		`cmd/generate/resourcegenerator/main.go: added GenerateTypescript("web/kiosk/src/app/core/service", ForOutlet("kiosk"), ...) with the default target's options`,
+		"copied the console browser project to web/kiosk, rewriting its API prefix (/console/api to /kiosk/api), base path (/kiosk/), and output paths; its titles still say console",
+		"web/angular.json: added the kiosk project as a copy of console, serving under /kiosk on port 4301",
+		"web/package.json: added start:kiosk and extended build, lint, and test to the kiosk project",
+		"Procfile: added the kiosk process, a copy of console running start:kiosk",
+		"ran go generate ./..., which emitted the kiosk outlet's routes and handlers and its browser client",
+	}
+	if diff := cmp.Diff(wantDid, ch.Did); diff != "" {
+		t.Errorf("Did mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string(nil), ch.Skipped); diff != "" {
+		t.Errorf("Skipped mismatch (-want +got):\n%s", diff)
+	}
+	for rel, want := range map[string]string{
+		"web/kiosk/proxy.conf.js":                     "'/kiosk/api/': {",
+		"web/kiosk/src/index.html":                    `<base href="/kiosk/" />`,
+		"web/kiosk/src/environments/environment.ts":   "baseUrl: '/kiosk/',\n  apiUrl: '/kiosk/api',",
+		"web/console/src/environments/environment.ts": "baseUrl: '/console/',\n  apiUrl: '/console/api',",
+		"cmd/generate/resourcegenerator/main.go":      "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n",
+	} {
+		if got := read(t, a, rel); !strings.Contains(got, want) {
+			t.Errorf("%s = %q, want %q", rel, got, want)
+		}
 	}
 }

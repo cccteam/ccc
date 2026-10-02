@@ -3,6 +3,6 @@
 
 export const environment = {
   production: false,
-  baseUrl: '',
-  apiUrl: '/api',
+  baseUrl: '/console/',
+  apiUrl: '/console/api',
 };

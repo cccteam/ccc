@@ -1,11 +1,16 @@
 # outlets
 
 A tenant-scoped application on the cccteam resource stack with every outlet kind on one
-site. One hostname, three outlets — the console on `/api`, a second browser
-application (the portal) on `/portal/api` behind the same session handling, and a
-machine REST API on `/machines` behind an API key that binds requests to a service
-identity with roles like any user. Tenancy as data: the `Tenants` table is the domain universe, tenant-scoped routes live
-under `/api/tenants/{tenantID}/`, and tenant existence is concealed from logins that hold
+site. One hostname, three outlets — the console on `/console/api` with its browser
+application at `/console`, a second browser application (the portal) on `/portal/api`
+behind the same session handling with its application at `/portal`, and a machine REST
+API on `/machines` behind an API key that binds requests to a service identity with roles
+like any user. Every browser outlet's API sits under its application's mount path, and no
+application is mounted at `/`: an installed browser application's scope is every URL under
+its start, so one at `/` would own the origin and the other would never get its own install
+prompt. The root alone redirects to `/console/`; every other unmatched path is 404.
+Tenancy as data: the `Tenants` table is the domain universe, tenant-scoped routes live
+under `/console/api/tenants/{tenantID}/`, and tenant existence is concealed from logins that hold
 nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
 is where it holds a grant, and a grant needs a tenant-scoped resource to land on, so the
 application ships one. `Reading` is machines-only. The console and the portal each show who
@@ -30,7 +35,8 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
   static-asset surfaces. `pkg/router` composes them: the staff auth's session group
   around the console, the members auth's around the portal (login redirect, directory
   callback, front-channel logout), an API-key group for the machines outlet, one Angular
-  application per browser outlet.
+  application per browser outlet under its mount path, and the root redirect to the
+  console's.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
   record, a global resource), `Announcement` (tenant-scoped, on the console and the
   portal), and `Reading` (tenant-scoped, machines-only). `schema/migrations` holds the tables they describe; `schema/devseed` the
@@ -126,9 +132,10 @@ once (the script publishes both packages to the local yalc store, links them, an
     (cd web && ./ccclib.sh local)
 
 `ccclib.sh` expects the ccc-lib checkout beside this application; set `CCC_LIB` to point
-elsewhere. Then `overmind start` runs everything: the console at http://127.0.0.1:4302
-and the portal at http://127.0.0.1:4303/portal/ (the sign-in button signs in as the
-simulated directory's `client`).
+elsewhere. Then `overmind start` runs everything: the console at
+http://127.0.0.1:4301/console/ (sign in as `admin` / `password`) and the portal at
+http://127.0.0.1:4303/portal/ (the sign-in button signs in as the simulated directory's
+`client`).
 
 After a change in ccc-lib, push the rebuilt packages, restart the dev server, and reload the
 page:

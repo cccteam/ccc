@@ -40,7 +40,7 @@ func TestLogin(t *testing.T) {
 
 			// The first request primes the XSRF cookie the login route requires.
 			if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-				t.Fatalf("GET /api/user/session before login: status %d: %s", status, body)
+				t.Fatalf("GET /console/api/user/session before login: status %d: %s", status, body)
 			}
 
 			status, body := b.login(ctx, tt.user, tt.password)
@@ -49,7 +49,7 @@ func TestLogin(t *testing.T) {
 			}
 			if tt.wantLogin != http.StatusOK {
 				if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user-domains", nil); status != http.StatusUnauthorized {
-					t.Errorf("GET /api/user-domains without a session: status %d, want 401: %s", status, body)
+					t.Errorf("GET /console/api/user-domains without a session: status %d, want 401: %s", status, body)
 				}
 
 				return
@@ -57,7 +57,7 @@ func TestLogin(t *testing.T) {
 
 			status, body = b.do(ctx, http.MethodGet, consoleAPI+"/user-domains", nil)
 			if status != http.StatusOK {
-				t.Fatalf("GET /api/user-domains: status %d: %s", status, body)
+				t.Fatalf("GET /console/api/user-domains: status %d: %s", status, body)
 			}
 			var domains []string
 			if err := json.Unmarshal(body, &domains); err != nil {
@@ -80,10 +80,10 @@ func TestLogin(t *testing.T) {
 			// lists it, and the digest reports the Tenants resource.
 			status, body = b.do(ctx, http.MethodGet, consoleAPI+"/tenants", nil)
 			if want := http.StatusOK; tt.user == adminUser && status != want {
-				t.Errorf("GET /api/tenants as %s: status %d, want %d: %s", tt.user, status, want, body)
+				t.Errorf("GET /console/api/tenants as %s: status %d, want %d: %s", tt.user, status, want, body)
 			}
 			if want := http.StatusForbidden; tt.user == memberUser && status != want {
-				t.Errorf("GET /api/tenants as %s: status %d, want %d: %s", tt.user, status, want, body)
+				t.Errorf("GET /console/api/tenants as %s: status %d, want %d: %s", tt.user, status, want, body)
 			}
 
 			// The tenant-scoped list answers in a tenant the login holds a grant in.

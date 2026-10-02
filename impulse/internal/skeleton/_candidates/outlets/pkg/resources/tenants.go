@@ -2,8 +2,8 @@ package resources
 
 type (
 	// Tenant is the tenant record: its route name equals the domain route segment, so
-	// /api/tenants lists the tenants while /api/tenants/{tenantID}/... serves the
-	// tenant-scoped routes. The application derives its domain universe from this
+	// /console/api/tenants lists the tenants while /console/api/tenants/{tenantID}/...
+	// serves the tenant-scoped routes. The application derives its domain universe from this
 	// table rather than a fixed in-code list — a session's tenant list is this roster
 	// filtered by the engine's foothold answer (resource.SessionPermissions), and the
 	// DomainVisible seam checks it — so the tenant list is data. The roles need no row

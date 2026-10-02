@@ -162,10 +162,14 @@ second browser surface bound to the named auth package, pkg/auth/<name>: the gen
 program gains WithRouterOutlet with that auth's Auth and WebApp("/<name>") and a
 GenerateTypescript target for the outlet, and the console's browser project is copied to
 web/<name> with its API prefix, base path, and ports rewritten and registered in
-angular.json, the package scripts, and the Procfile. An API-key outlet (--api-key) is a
-machine surface: the generator program gains WithRouterOutlet with APIKey(). (An
-application that kept a hand-written router gains ServesSessions or nothing, as before,
-and the brief names the auth the outlet binds to.)
+angular.json, the package scripts, and the Procfile. A console that was alone at / moves
+to /console with its API at /console/api, since no browser application is mounted at /
+beside another (an installed application's scope is every URL under its start), and the
+regenerated router answers the root alone with a redirect there; the brief lists the Go
+and prose that still name /api. An API-key outlet (--api-key) is a machine surface: the
+generator program gains WithRouterOutlet with APIKey(). (An application that kept a
+hand-written router gains ServesSessions or nothing, as before, and the brief names the
+auth the outlet binds to.)
 
 Either way go generate emits the outlet's routes, handlers, and client, and the
 generated router mounts the outlet from its declaration. The App's handlers the router

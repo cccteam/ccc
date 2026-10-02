@@ -59,10 +59,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		url    string
 		method string
 	}{
-		{url: "/api/tenants/testDomain/readings", method: http.MethodGet},
-		{url: "/api/tenants/testDomain/readings", method: http.MethodPost},
-		{url: "/api/tenants/testDomain/readings/testReadingID", method: http.MethodGet},
-		{url: "/api/tenants/testDomain/readings/testReadingID", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/readings", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/readings", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/readings/testReadingID", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/readings/testReadingID", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/readings", method: http.MethodGet},
 		{url: "/portal/api/tenants/testDomain/readings", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/readings/testReadingID", method: http.MethodGet},
@@ -189,30 +189,30 @@ func generatedRouteParameters() []string {
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest{
 		{
-			url: "/api/permission-digest", method: http.MethodGet,
+			url: "/console/api/permission-digest", method: http.MethodGet,
 			handlerFunc: "PermissionDigest",
 		},
 		{
-			url: "/api/user-domains", method: http.MethodGet,
+			url: "/console/api/user-domains", method: http.MethodGet,
 			handlerFunc: "UserDomains",
 		},
 		{
-			url: "/api/tenants/testDomain/announcements", method: http.MethodGet,
+			url: "/console/api/tenants/testDomain/announcements", method: http.MethodGet,
 			handlerFunc: "Announcements",
 			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
-			url: "/api/tenants/testDomain/announcements", method: http.MethodPost,
+			url: "/console/api/tenants/testDomain/announcements", method: http.MethodPost,
 			handlerFunc: "Announcements",
 			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
-			url: "/api/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet,
+			url: "/console/api/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet,
 			handlerFunc: "Announcement",
 			parameters:  map[string]string{"tenantID": "testDomain", "announcementID": "testAnnouncementID"},
 		},
 		{
-			url: "/api/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodPost,
+			url: "/console/api/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodPost,
 			handlerFunc: "Announcement",
 			parameters:  map[string]string{"tenantID": "testDomain", "announcementID": "testAnnouncementID"},
 		},
@@ -257,27 +257,27 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"tenantID": "testDomain", "readingID": "testReadingID"},
 		},
 		{
-			url: "/api/tenants", method: http.MethodGet,
+			url: "/console/api/tenants", method: http.MethodGet,
 			handlerFunc: "Tenants",
 			parameters:  map[string]string{},
 		},
 		{
-			url: "/api/tenants", method: http.MethodPost,
+			url: "/console/api/tenants", method: http.MethodPost,
 			handlerFunc: "Tenants",
 			parameters:  map[string]string{},
 		},
 		{
-			url: "/api/tenants/testTenantID", method: http.MethodGet,
+			url: "/console/api/tenants/testTenantID", method: http.MethodGet,
 			handlerFunc: "Tenant",
 			parameters:  map[string]string{"tenantID": "testTenantID"},
 		},
 		{
-			url: "/api/tenants/testTenantID", method: http.MethodPost,
+			url: "/console/api/tenants/testTenantID", method: http.MethodPost,
 			handlerFunc: "Tenant",
 			parameters:  map[string]string{"tenantID": "testTenantID"},
 		},
 		{
-			url: "/api/resources", method: http.MethodPatch,
+			url: "/console/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
 		{

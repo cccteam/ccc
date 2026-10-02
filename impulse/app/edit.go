@@ -6,6 +6,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -258,4 +259,63 @@ func RewriteAuthFlavor(rel string, src []byte, importPath, flavorIdent string) (
 	}
 
 	return out, len(spans), nil
+}
+
+// MoveDefaultOutlet returns the program's source with the default outlet's declaration
+// moved: GenerateRoutes' prefix becomes prefix, and the mount path of its WebApp option,
+// when it declares one, becomes mount. The edit is textual, so the rest of the file's
+// comments and layout survive; the result is formatted.
+func MoveDefaultOutlet(rel string, src []byte, prefix, mount string) ([]byte, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := generationLocalName(f)
+	if pkg == "" {
+		return nil, errors.Newf("%s does not import %s", rel, generationImportPath)
+	}
+	call := findGeneratorCall(f, pkg)
+	if call == nil {
+		return nil, errors.Newf("%s makes no %s.NewResourceGenerator call", rel, pkg)
+	}
+	var routes *ast.CallExpr
+	for _, a := range call.Args[min(positionalArgs, len(call.Args)):] {
+		if ce, ok := a.(*ast.CallExpr); ok && isQualified(ce.Fun, pkg, optGenerateRoutes) {
+			routes = ce
+		}
+	}
+	if routes == nil || len(routes.Args) < 2 {
+		return nil, errors.Newf("%s: no %s with a prefix to move", rel, optGenerateRoutes)
+	}
+
+	type span struct {
+		start, end int
+		text       string
+	}
+	offset := func(pos token.Pos) int { return fset.Position(pos).Offset }
+	spans := []span{{offset(routes.Args[1].Pos()), offset(routes.Args[1].End()), strconv.Quote(prefix)}}
+	for _, a := range routes.Args[2:] {
+		ce, ok := a.(*ast.CallExpr)
+		if !ok || !isQualified(ce.Fun, pkg, optWebApp) || len(ce.Args) != 1 {
+			continue
+		}
+		spans = append(spans, span{offset(ce.Args[0].Pos()), offset(ce.Args[0].End()), strconv.Quote(mount)})
+	}
+
+	var b bytes.Buffer
+	at := 0
+	for _, s := range spans {
+		b.Write(src[at:s.start])
+		b.WriteString(s.text)
+		at = s.end
+	}
+	b.Write(src[at:])
+
+	out, err := format.Source(b.Bytes())
+	if err != nil {
+		return nil, errors.Wrapf(err, "format.Source(): %s after moving the default outlet", rel)
+	}
+
+	return out, nil
 }

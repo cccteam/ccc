@@ -45,26 +45,26 @@ type GeneratedHandlers interface {
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	domainGuard := h.DomainGuard()
 
-	r.Get("/api/permission-digest", h.PermissionDigest())
-	r.Get("/api/user-domains", h.UserDomains())
+	r.Get("/console/api/permission-digest", h.PermissionDigest())
+	r.Get("/console/api/user-domains", h.UserDomains())
 
 	announcementsHandler := domainGuard(h.Announcements())
-	r.Get("/api/tenants/{tenantID}/announcements", announcementsHandler)
-	r.Post("/api/tenants/{tenantID}/announcements", announcementsHandler)
+	r.Get("/console/api/tenants/{tenantID}/announcements", announcementsHandler)
+	r.Post("/console/api/tenants/{tenantID}/announcements", announcementsHandler)
 
 	announcementHandler := domainGuard(h.Announcement())
-	r.Get("/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
-	r.Post("/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+	r.Get("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+	r.Post("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
 
 	tenantsHandler := h.Tenants()
-	r.Get("/api/tenants", tenantsHandler)
-	r.Post("/api/tenants", tenantsHandler)
+	r.Get("/console/api/tenants", tenantsHandler)
+	r.Post("/console/api/tenants", tenantsHandler)
 
 	tenantHandler := h.Tenant()
-	r.Get("/api/tenants/{tenantID}", tenantHandler)
-	r.Post("/api/tenants/{tenantID}", tenantHandler)
+	r.Get("/console/api/tenants/{tenantID}", tenantHandler)
+	r.Post("/console/api/tenants/{tenantID}", tenantHandler)
 
-	r.Patch("/api/resources", h.PatchResources())
+	r.Patch("/console/api/resources", h.PatchResources())
 }
 
 // GeneratedPortalHandlers is the portal outlet's generated

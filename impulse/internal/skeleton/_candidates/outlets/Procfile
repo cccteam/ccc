@@ -8,8 +8,8 @@
 #           so the server never races the bootstrap. Both build with the session
 #           library's skipAuth tag: the portal's directory is simulated (.envrc,
 #           APP_USERNAME) so the portal can be signed in to without a registered application.
-# console:  waits for the server, then ng serve with /api proxied to it. Browse
-#           http://127.0.0.1:4302.
+# console:  waits for the server, then ng serve with /console/api proxied to it. Browse
+#           http://127.0.0.1:4301/console/ and sign in as admin / password.
 # portal:   ng serve for the portal on :4303 with /portal/api proxied. Browse
 #           http://127.0.0.1:4303/portal/ and sign in as client / password.
 #

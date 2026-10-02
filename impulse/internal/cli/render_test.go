@@ -28,7 +28,7 @@ func TestRenderReport(t *testing.T) {
 				candidate: "solo", dir: "../beacon", modulePath: "example.com/acme/beacon", name: "beacon",
 				rendered: &skeleton.Rendered{Files: 90}, port: "8090", emulator: "9014",
 				goProcs: []string{"spanner", "server"},
-				web:     []webWorkspace{{Dir: "web", Projects: []webProject{{Name: "console", Port: 4300}}}},
+				web:     []webWorkspace{{Dir: "web", Projects: []webProject{{Name: "console", Port: 4300, Path: "/"}}}},
 			},
 			want: `Rendered solo into ../beacon as example.com/acme/beacon (90 files).
 Named beacon: the web package, APP_SERVICE_NAME, and the development database carry it.
@@ -46,7 +46,7 @@ Next steps
      Once, for the browser apps: publishes ccc-lib to the local yalc store, links it, and runs
      bun install. ccclib.sh expects the ccc-lib checkout beside this application; set CCC_LIB otherwise.
   5. overmind start
-     Everything, with ng serve for the console at http://127.0.0.1:4300.
+     Everything, with ng serve for the console at http://127.0.0.1:4300/.
 `,
 		},
 		{
@@ -61,8 +61,8 @@ Next steps
 				port: "8094", emulator: "9017", styled: true,
 				goProcs: []string{"spanner", "console", "portal"},
 				web: []webWorkspace{
-					{Dir: "apps/console/web", Projects: []webProject{{Name: "console", Port: 4304}}},
-					{Dir: "apps/portal/web", Projects: []webProject{{Name: "portal", Port: 4305}}},
+					{Dir: "apps/console/web", Projects: []webProject{{Name: "console", Port: 4304, Path: "/"}}},
+					{Dir: "apps/portal/web", Projects: []webProject{{Name: "portal", Port: 4305, Path: "/portal/"}}},
 				},
 			},
 			want: "Rendered sites into /w/harbor as github.com/cccteam/harbor (200 files).\n" +
@@ -82,7 +82,7 @@ Next steps
 				"     Once, for the browser apps: publishes ccc-lib to the local yalc store, links it, and runs\n" +
 				"     bun install. ccclib.sh expects the ccc-lib checkout beside this application; set CCC_LIB otherwise.\n" +
 				"  \x1b[1m6.\x1b[0m overmind start\n" +
-				"     Everything, with ng serve for the console at http://127.0.0.1:4304 and the portal at http://127.0.0.1:4305.\n",
+				"     Everything, with ng serve for the console at http://127.0.0.1:4304/ and the portal at http://127.0.0.1:4305/portal/.\n",
 		},
 		{
 			name: "a new application: headline, first commit, and the options step",
@@ -92,7 +92,7 @@ Next steps
 				candidate: "solo", dir: "../beacon", modulePath: "example.com/acme/beacon", name: "beacon",
 				rendered: &skeleton.Rendered{Files: 90}, port: "8090", emulator: "9014",
 				goProcs: []string{"spanner", "server"},
-				web:     []webWorkspace{{Dir: "web", Projects: []webProject{{Name: "console", Port: 4300}}}},
+				web:     []webWorkspace{{Dir: "web", Projects: []webProject{{Name: "console", Port: 4300, Path: "/"}}}},
 			},
 			want: `Created example.com/acme/beacon at ../beacon with the members auth (90 files).
 Named beacon: the web package, APP_SERVICE_NAME, and the development database carry it.
@@ -111,7 +111,7 @@ Next steps
      Once, for the browser apps: publishes ccc-lib to the local yalc store, links it, and runs
      bun install. ccclib.sh expects the ccc-lib checkout beside this application; set CCC_LIB otherwise.
   5. overmind start
-     Everything, with ng serve for the console at http://127.0.0.1:4300.
+     Everything, with ng serve for the console at http://127.0.0.1:4300/.
   6. impulse add tenancy | impulse add outlet <name> --prefix <p> --auth <auth> | impulse add auth <name>
      Options are added one at a time from a clean tree; each ends in a handoff brief for the
      wiring the tool cannot do and a check that says when it is done.

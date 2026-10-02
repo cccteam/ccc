@@ -241,3 +241,98 @@ func run() {
 		})
 	}
 }
+
+func TestMoveDefaultOutlet(t *testing.T) {
+	t.Parallel()
+
+	const rooted = `package main
+
+import gen "github.com/cccteam/ccc/resource/generation"
+
+func run() {
+	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil,
+		gen.GenerateRouter(),
+		gen.GenerateRoutes("pkg/router", "api",
+			gen.Auth("example.com/acme/pkg/auth/staff", gen.Password),
+			gen.WebApp("/"),
+		),
+		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle), gen.WebApp("/portal")),
+	)
+}
+`
+	const handWritten = `package main
+
+import "github.com/cccteam/ccc/resource/generation"
+
+func run() {
+	_, _ = generation.NewResourceGenerator(nil, "pkg/resources", nil,
+		generation.GenerateRoutes("pkg/router", "api"),
+	)
+}
+`
+	const noRoutes = `package main
+
+import "github.com/cccteam/ccc/resource/generation"
+
+func run() {
+	_, _ = generation.NewResourceGenerator(nil, "pkg/resources", nil,
+		generation.GenerateHandlers("app"),
+	)
+}
+`
+	tests := []struct {
+		name        string
+		src         string
+		wantErr     string
+		wantContain []string
+		wantAbsent  []string
+	}{
+		{
+			name: "the prefix and the mount path move together",
+			src:  rooted,
+			wantContain: []string{
+				"\t\tgen.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgen.Auth(\"example.com/acme/pkg/auth/staff\", gen.Password),\n\t\t\tgen.WebApp(\"/console\"),\n\t\t),\n",
+				`gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle), gen.WebApp("/portal"))`,
+			},
+			wantAbsent: []string{`"api",`, `gen.WebApp("/")`},
+		},
+		{
+			name:        "without a WebApp only the prefix moves",
+			src:         handWritten,
+			wantContain: []string{`generation.GenerateRoutes("pkg/router", "console/api"),`},
+			wantAbsent:  []string{"WebApp"},
+		},
+		{
+			name:    "no GenerateRoutes to move",
+			src:     noRoutes,
+			wantErr: "main.go: no GenerateRoutes with a prefix to move",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := MoveDefaultOutlet("main.go", []byte(tt.src), "console/api", "/console")
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("MoveDefaultOutlet() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("MoveDefaultOutlet() error = %v", err)
+			}
+			for _, want := range tt.wantContain {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(string(out), absent) {
+					t.Errorf("output has %q:\n%s", absent, out)
+				}
+			}
+		})
+	}
+}

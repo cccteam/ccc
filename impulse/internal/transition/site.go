@@ -1226,8 +1226,8 @@ func (s Site) copyWorkspace(a *app.App, from, to string, ch *Change) (project st
 		if err != nil {
 			continue
 		}
-		for _, p := range ps {
-			port = max(port, p.DevPort)
+		for i := range ps {
+			port = max(port, ps[i].DevPort)
 		}
 	}
 	if port > 0 {

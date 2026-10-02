@@ -107,6 +107,7 @@ checks:
   options
   tenancy-wired
   outlet-wired
+  outlet-shape
   sites-wired
   maintenance-switch
   session-tables

@@ -18,12 +18,14 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		[]string{"file://schema/migrations"},
 		generation.GenerateHandlers("app"),
 		// The router is generated from the outlet declarations: the console is the default
-		// outlet, the staff auth's password sessions under /api with its browser application
-		// at /.
+		// outlet, the staff auth's password sessions under /console/api with its browser
+		// application at /console. With two browser applications none is mounted at /: an
+		// installed application's scope is every URL under its start, so one at / would own
+		// the origin. The generated router sends the root alone to /console/.
 		generation.GenerateRouter(),
-		generation.GenerateRoutes("pkg/router", "api",
+		generation.GenerateRoutes("pkg/router", "console/api",
 			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff", generation.Password),
-			generation.WebApp("/"),
+			generation.WebApp("/console"),
 		),
 		// The portal outlet is a second browser surface: structs annotated with @outlet
 		// naming portal are served under /portal/api behind the members auth, whose people
@@ -40,7 +42,7 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.WithRouterOutlet("machines", "machines", generation.APIKey()),
 		generation.GenerateHandlerTests("test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment
-		// pair: /api/tenants/{tenantID}/... . The tenant is the permission domain, and
+		// pair: /console/api/tenants/{tenantID}/... . The tenant is the permission domain, and
 		// Tenant is the tenant-record resource.
 		generation.WithDomainRoute("tenants"),
 		// Tenant existence is concealed: a tenant the caller holds no grant in answers

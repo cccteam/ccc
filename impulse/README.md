@@ -35,7 +35,15 @@ templates, this README, and the tool's source.
   describes a deployment with several hosts, never a layout.
 - **Outlet**: a second URL space on the same host, declared in the generator program. A
   session outlet is a browser surface bound to an auth; an API-key outlet is a machine
-  surface. The default outlet is the one `GenerateRoutes` declares.
+  surface. The default outlet is the one `GenerateRoutes` declares. A browser outlet
+  takes one shape: its application at its own mount path (`WebApp("/portal")`) with its
+  API under it (`/portal/api`), so the application's scope covers its own API, login,
+  and callback routes. One application alone may sit at `/`; with two or more none does,
+  since an installed application's scope is every URL under its start and one at `/`
+  would own the origin, and the generated router answers the root alone with a redirect
+  to the default outlet's application (`/console/`). The `outlets` skeleton carries the
+  shape: the console at `/console` on `/console/api`, the portal at `/portal` on
+  `/portal/api`.
 - **Auth**: a population that signs in one way and holds roles in its own permission
   store. It is a package, `pkg/auth/<name>`, whose name prefixes its tables and cookies
   and whose role file (`roles.json`, embedded in the package) holds the
@@ -187,6 +195,7 @@ impulse check --list
 | `options` | The generator programs declare one coherent option set, and the report states it: layout (flat or sites), sites, tenancy (`WithDomainRoute`, `WithConcealedDomains`), outlets, and targets. Handlers come with routes, `ForOutlet` names a declared session-serving outlet, the referenced directories exist, a `//go:generate` directive runs every program (its own directory, or a main package of the module that imports the package declaring it, the layout an application takes when its tests run the declaration in-process), the sites agree on tenancy, and a second site lives under `apps/<site>/`. |
 | `tenancy-wired` | A program with `WithDomainRoute` has a migration creating the tenant-record table the segment names and at least one struct annotated `@permissionScope(domain)`. A program without it has no tenant-scoped structs. The compiler and the generator hold the rest of the seam, and the permission engine reaches every tenant with the roles held in every domain, so roles need no provisioning per tenant. |
 | `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted: by the generated router (`GenerateRouter`) from the declaration itself, or, in an application that kept a hand-written router, by a hand-written file in the router package calling `generated<Outlet>Routes`. A session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
+| `outlet-shape` | Every session outlet serving a browser application (`WebApp`) has its API prefix under the application's mount path: `<mount>/api`, `api` for an application at `/`. That is the one shape the skeletons carry, so each application's scope covers its own API, login, and callback routes; an outlet shaped otherwise works and the generator accepts it, so the check warns, naming the outlet, its prefix, and its mount path. The mount rule itself is the generator's: a browser application at `/` beside another is refused at generation, since an installed application's scope is every URL under its start. |
 | `sites-wired` | In the sites layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package passing a collection to `access.WithDefaultRoles` (the data level, or the callers of an auth package that makes the call itself), so the collection the permission engine validates the roles against (the union, or one per auth) knows the site's resources. |
 | `maintenance-switch` | Every site's main checks `maintenance.Requested()` before it builds the site configuration (`config.NewSiteConfiguration`), and serves `maintenance.Serve(ctx)` when it is set: the deploy pipeline starts a maintenance revision of the application's own image with `APP_MAINTENANCE` set before a release that replaces or interrupts the database, and that revision must open no database, session store or secret. A main that builds the configuration first, or checks the switch after it, fails; a main that builds no site configuration is a warning, since the check cannot tell where the switch belongs. |
 | `session-tables` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with its session and XSRF cookies when named, and an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
@@ -369,14 +378,24 @@ and a `GenerateTypescript` target for the outlet copied from the default target'
 console's browser project is copied to `web/<name>` with its API prefix, base path, and
 compiler output rewritten (and its XSRF cookie, when the auth is not the console's) and
 registered in `angular.json` (serving under `/<name>` on the next port), the package
-scripts, and the Procfile. For an API-key outlet the program gains `WithRouterOutlet(name, prefix,
-APIKey())`. (An application that kept a hand-written router gains `ServesSessions()` or
-nothing, as before.) `go generate` then emits the outlet's routes, handlers, and client,
-and the generated router mounts the outlet from its declaration: its group, its login
-routes, its not-found handler, and its browser application. The App's handlers the
-generated `Handlers` now requires (the outlet's session getter and deep-link and assets
-pair, or its `<Outlet>Auth` middleware), the configuration, the members (`@outlet`), and
-the tests are the agent's, and the compiler and `outlet-wired` hold it to them.
+scripts, and the Procfile. A console that was alone at `/` moves when the second browser
+application arrives, since the generator refuses an application at `/` beside another (an
+installed application's scope is every URL under its start): it goes to `/console`, the
+name of its Angular project, with its API at `/console/api`, in the generator program
+(`GenerateRoutes("pkg/router", "console/api", ..., WebApp("/console"))`), the project's
+`baseHref` and `servePath`, its proxy, its environments, and its base element, and the
+regenerated router answers the root alone with a redirect to `/console/`. The App's
+`DeepLink` and `Assets` pair, a `LoginURL` naming the console's login page, the
+hand-written routes and tests that name `/api`, and the README and Procfile lines follow
+by hand, and the brief lists each by file and line. For an API-key outlet the program
+gains `WithRouterOutlet(name, prefix, APIKey())`, and the console stays where it is. (An
+application that kept a hand-written router gains `ServesSessions()` or nothing, as
+before.) `go generate` then emits the outlet's routes, handlers, and client, and the
+generated router mounts the outlet from its declaration: its group, its login routes, its
+not-found handler, and its browser application. The App's handlers the generated
+`Handlers` now requires (the outlet's session getter and deep-link and assets pair, or its
+`<Outlet>Auth` middleware), the configuration, the members (`@outlet`), and the tests are
+the agent's, and the compiler, `outlet-wired`, and `outlet-shape` hold it to them.
 
 `add tenancy` makes a flat, untenanted application tenanted. The generator program gains
 `WithDomainRoute` (the table's kebab-case name) and `WithConcealedDomains`; the tenant

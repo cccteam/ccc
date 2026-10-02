@@ -179,6 +179,9 @@ type webWorkspace struct {
 type webProject struct {
 	Name string
 	Port int
+	// Path is where the dev server serves the project, its servePath with a trailing
+	// slash: / for a project at the root, /console/ for one under a mount path.
+	Path string
 }
 
 func (r *renderReport) write(w io.Writer) {
@@ -246,7 +249,7 @@ func (r *renderReport) write(w io.Writer) {
 	for _, ws := range r.web {
 		for _, p := range ws.Projects {
 			if p.Port != 0 {
-				urls = append(urls, fmt.Sprintf("%s at http://127.0.0.1:%d", p.Name, p.Port))
+				urls = append(urls, fmt.Sprintf("%s at http://127.0.0.1:%d%s", p.Name, p.Port, p.Path))
 			}
 		}
 	}
@@ -309,14 +312,26 @@ func webWorkspaces(dir string) ([]webWorkspace, error) {
 			return nil, err
 		}
 		ws := webWorkspace{Dir: w.Dir}
-		for _, p := range projects {
-			ws.Projects = append(ws.Projects, webProject{Name: p.Name, Port: p.DevPort})
+		for i := range projects {
+			p := &projects[i]
+			ws.Projects = append(ws.Projects, webProject{Name: p.Name, Port: p.DevPort, Path: servedPath(p.ServePath)})
 		}
 		workspaces = append(workspaces, ws)
 	}
 	sort.Slice(workspaces, func(i, j int) bool { return workspaces[i].Dir < workspaces[j].Dir })
 
 	return workspaces, nil
+}
+
+// servedPath is the browser path a dev server answers at: its servePath with a trailing
+// slash, / when it names none.
+func servedPath(servePath string) string {
+	trimmed := strings.Trim(servePath, "/")
+	if trimmed == "" {
+		return "/"
+	}
+
+	return "/" + trimmed + "/"
 }
 
 // isTerminal reports whether w is a character device such as a terminal, where ANSI

@@ -22,6 +22,9 @@ type AngularProject struct {
 	// ProxyConfig is the serve option's proxy configuration file relative to the
 	// workspace, or empty.
 	ProxyConfig string
+	// ServePath is the serve option's path the dev server serves the application
+	// under, empty when unset (the dev server then serves at /).
+	ServePath string
 	// DevPort is the development serve configuration's port, 0 when unset.
 	DevPort int
 	// TestBuilder is the test target's builder, empty when the project has no test
@@ -49,6 +52,7 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 				Serve struct {
 					Options struct {
 						ProxyConfig string `json:"proxyConfig"`
+						ServePath   string `json:"servePath"`
 					} `json:"options"`
 					Configurations struct {
 						Development struct {
@@ -77,6 +81,7 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 			Root:         path.Clean(p.Root),
 			SourceRoot:   path.Clean(p.SourceRoot),
 			ProxyConfig:  p.Architect.Serve.Options.ProxyConfig,
+			ServePath:    p.Architect.Serve.Options.ServePath,
 			DevPort:      p.Architect.Serve.Configurations.Development.Port,
 			TestBuilder:  p.Architect.Test.Builder,
 			TestTsConfig: p.Architect.Test.Options.TsConfig,
@@ -91,13 +96,14 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 // workspace-relative path, preferring the deepest match, or false.
 func ProjectFor(projects []AngularProject, rel string) (AngularProject, bool) {
 	best, found, depth := AngularProject{}, false, -1
-	for _, p := range projects {
+	for i := range projects {
+		p := &projects[i]
 		for _, dir := range []string{p.SourceRoot, p.Root} {
 			if dir == "" || dir == "." || !within(dir, rel) {
 				continue
 			}
 			if d := strings.Count(dir, "/"); d > depth {
-				best, found, depth = p, true, d
+				best, found, depth = *p, true, d
 			}
 		}
 	}

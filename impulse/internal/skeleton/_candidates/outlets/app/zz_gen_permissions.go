@@ -13,7 +13,7 @@ import (
 // structural grant enumeration the frontend renders navigation and forms from.
 // The scope is the request's input (?domain= names a tenant partition, absent
 // means global) and the payload is advisory and fail-closed: denied targets are
-// absent. The generated router registers it at GET /api/permission-digest and,
+// absent. The generated router registers it at GET /console/api/permission-digest and,
 // for each additional session-serving outlet (ServesSessions), under that outlet's prefix.
 func (a *App) PermissionDigest() http.HandlerFunc {
 	return resource.PermissionDigestHandler(a.UserPermissions)
@@ -23,7 +23,7 @@ func (a *App) PermissionDigest() http.HandlerFunc {
 // domains where they hold at least one grant, the tenant picker's question. The
 // predicate is concealed tenancy's own foothold test, so the picker and the
 // domain guard can never disagree. The generated router registers it at
-// GET /api/user-domains and, for each additional session-serving
+// GET /console/api/user-domains and, for each additional session-serving
 // outlet (ServesSessions), under that outlet's prefix.
 func (a *App) UserDomains() http.HandlerFunc {
 	return resource.UserDomainsHandler(a.UserPermissions)

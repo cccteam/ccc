@@ -1,6 +1,7 @@
 package transition
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/fs"
@@ -8,6 +9,8 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -154,9 +157,10 @@ func authNames(a *app.App) string {
 // Apply makes the deterministic half of the transition: the generator program gains the
 // outlet and, for a session outlet, a generated client; the browser project is copied
 // from the console's with its prefix, base path, and ports rewritten and registered in
-// the workspace and the Procfile; and go generate emits the outlet's routes, handlers,
-// and client. The router, the served assets, the configuration, the members, and the
-// tests are the agent's.
+// the workspace and the Procfile; a console that was alone at the root moves under its
+// own path, since no browser application is mounted at / beside another; and go generate
+// emits the outlet's routes, handlers, and client. The router, the served assets, the
+// configuration, the members, and the tests are the agent's.
 func (o Outlet) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change, error) {
 	if err := o.Validate(a); err != nil {
 		return nil, err
@@ -184,7 +188,10 @@ func (o Outlet) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chan
 		if site.Default.Auth != nil {
 			consoleAuth = authName(a, site.Default.Auth.ImportPath)
 		}
-		if err := o.cloneProject(a, g, consoleAuth, ch); err != nil {
+		if err := o.cloneProject(a, g, consoleMount(site), consoleAuth, ch); err != nil {
+			return nil, err
+		}
+		if err := o.moveConsole(a, site, ch); err != nil {
 			return nil, err
 		}
 	}
@@ -311,11 +318,11 @@ func defaultTarget(g *app.Generator) *app.TSTarget {
 var skippedNames = map[string]bool{"node_modules": true, "dist": true, ".angular": true, ".yalc": true}
 
 // cloneProject copies the default outlet's browser project to the outlet's, rewrites the
-// API prefix, base path, and output paths in the copy (and the XSRF cookie it names, when
-// the outlet binds to an auth other than the console's, consoleAuth), and registers the
-// project in angular.json, the package scripts, and the Procfile. Each registration it
-// cannot make is recorded as skipped.
-func (o Outlet) cloneProject(a *app.App, g *app.Generator, consoleAuth string, ch *Change) error {
+// API prefix, base path (from the console's mount path, mount), and output paths in the
+// copy (and the XSRF cookie it names, when the outlet binds to an auth other than the
+// console's, consoleAuth), and registers the project in angular.json, the package
+// scripts, and the Procfile. Each registration it cannot make is recorded as skipped.
+func (o Outlet) cloneProject(a *app.App, g *app.Generator, mount, consoleAuth string, ch *Change) error {
 	target := defaultTarget(g)
 	w, ok := a.WebAppFor(target.Dir)
 	if !ok {
@@ -342,7 +349,7 @@ func (o Outlet) cloneProject(a *app.App, g *app.Generator, consoleAuth string, c
 	if routes, ok := g.Option("GenerateRoutes"); ok && len(routes.Args) >= 2 {
 		oldPrefix = routes.Args[1].Str
 	}
-	rewrites := o.rewrites(oldPrefix, oldRoot)
+	rewrites := append(moveRewrites(oldPrefix, mount, o.Prefix, "/"+o.Name), rewrite{"out-tsc/" + oldRoot, "out-tsc/" + o.Name})
 	rebound := o.Auth != "" && consoleAuth != "" && o.Auth != consoleAuth
 	if rebound {
 		// The copy echoes the console auth's XSRF cookie; the outlet's auth issues its own.
@@ -362,8 +369,8 @@ func (o Outlet) cloneProject(a *app.App, g *app.Generator, consoleAuth string, c
 	}
 
 	port := 0
-	for _, p := range projects {
-		port = max(port, p.DevPort)
+	for i := range projects {
+		port = max(port, projects[i].DevPort)
 	}
 	if port > 0 {
 		port++
@@ -377,27 +384,32 @@ func (o Outlet) cloneProject(a *app.App, g *app.Generator, consoleAuth string, c
 	return nil
 }
 
-// rewrites are the textual substitutions a copied project needs: the proxy and client
-// prefix, the base path, and the compiler output directory.
-func (o Outlet) rewrites(oldPrefix, oldRoot string) []rewrite {
-	base := "/" + o.Name + "/"
-
-	return []rewrite{
-		{"'/" + oldPrefix + "/'", "'/" + o.Prefix + "/'"},
-		{"'/" + oldPrefix + "'", "'/" + o.Prefix + "'"},
-		{`<base href="/" />`, `<base href="` + base + `" />`},
-		{"baseUrl: ''", "baseUrl: '" + base + "'"},
-		{"baseUrl: '/'", "baseUrl: '" + base + "'"},
-		{"out-tsc/" + oldRoot, "out-tsc/" + o.Name},
+// moveRewrites are the textual substitutions that move a browser project from one API
+// prefix and mount path to another: the proxy and client prefix, the base element, and
+// the base URL, which an application at the root writes empty in development.
+func moveRewrites(oldPrefix, oldMount, newPrefix, newMount string) []rewrite {
+	oldBase, newBase := basePath(oldMount), basePath(newMount)
+	rewrites := []rewrite{
+		{"'/" + oldPrefix + "/'", "'/" + newPrefix + "/'"},
+		{"'/" + oldPrefix + "'", "'/" + newPrefix + "'"},
+		{`<base href="` + oldBase + `" />`, `<base href="` + newBase + `" />`},
+		{"baseUrl: '" + oldBase + "'", "baseUrl: '" + newBase + "'"},
 	}
+	if oldBase == "/" {
+		rewrites = append(rewrites, rewrite{"baseUrl: ''", "baseUrl: '" + newBase + "'"})
+	}
+
+	return rewrites
 }
 
 type rewrite struct{ old, new string }
 
 // copyProject copies a project directory, skipping build products and generated files,
 // applying the rewrites to text files. Both trees are opened as roots, so the copy stays
-// inside them however the project is laid out.
+// inside them however the project is laid out. With dst equal to src the project is
+// rewritten in place, and a file the rewrites leave as it was is not written.
 func copyProject(src, dst string, rewrites []rewrite) error {
+	inPlace := src == dst
 	from, err := os.OpenRoot(src)
 	if err != nil {
 		return errors.Wrap(err, "os.OpenRoot()")
@@ -435,19 +447,23 @@ func copyProject(src, dst string, rewrites []rewrite) error {
 		if err != nil {
 			return errors.Wrap(err, "os.Root.ReadFile()")
 		}
+		out := data
 		if utf8.Valid(data) {
 			text := string(data)
 			for _, r := range rewrites {
 				text = strings.ReplaceAll(text, r.old, r.new)
 			}
-			data = []byte(text)
+			out = []byte(text)
+		}
+		if inPlace && bytes.Equal(out, data) {
+			return nil
 		}
 		// The mode carries over, so a script such as ccclib.sh stays executable.
 		info, err := d.Info()
 		if err != nil {
 			return errors.Wrap(err, "fs.DirEntry.Info()")
 		}
-		if err := to.WriteFile(filepath.FromSlash(p), data, info.Mode().Perm()); err != nil {
+		if err := to.WriteFile(filepath.FromSlash(p), out, info.Mode().Perm()); err != nil {
 			return errors.Wrap(err, "os.Root.WriteFile()")
 		}
 
@@ -607,6 +623,286 @@ func (o Outlet) registerProcess(a *app.App, from string, ch *Change) {
 	ch.didf("Procfile: added the %s process, a copy of %s running start:%s", o.Name, from, o.Name)
 }
 
+// consoleName is the name the default outlet's browser application takes when no
+// workspace project names it: the skeletons' project.
+const consoleName = "console"
+
+// apiSegment is the last segment of a browser outlet's API prefix in the one shape every
+// browser outlet takes: its API under its application's mount path, <mount>/api.
+const apiSegment = "api"
+
+// consoleMount is the mount path of the default outlet's browser application: its WebApp,
+// or the root under a hand-written router, which declares none.
+func consoleMount(site *app.Site) string {
+	if site.Default.WebApp == "" {
+		return "/"
+	}
+
+	return site.Default.WebApp
+}
+
+// moveConsole takes the default outlet's browser application off the root when this
+// outlet brings a second one: the generated router refuses an application at / beside
+// another, since an installed application's scope is every URL under its start, so one
+// at / would own the origin and the other would never get its own install prompt. The
+// application moves to /<project>, named after its Angular project (console in the
+// skeletons), and its API prefix to <project>/api: in the generator program
+// (GenerateRoutes and its WebApp), the workspace (the project's baseHref and servePath),
+// and the project's files (the proxy, the environments, the base element). The
+// regenerated router then answers the root alone with a redirect to the application. The
+// Go side and the prose that still name the old prefix are listed for the agent, each by
+// file and line.
+func (o Outlet) moveConsole(a *app.App, site *app.Site, ch *Change) error {
+	if !site.GeneratedRouter || site.Default.WebApp != "/" {
+		return nil
+	}
+	g := site.Generator
+	oldPrefix := site.Default.Prefix
+	project, w, found, err := consoleProject(a, g)
+	if err != nil {
+		return err
+	}
+	name := consoleName
+	if found {
+		name = project.Name
+	}
+	mount, prefix := "/"+name, name+"/"+apiSegment
+
+	src, mode, err := readFile(a, g.File)
+	if err != nil {
+		return err
+	}
+	edited, err := app.MoveDefaultOutlet(g.File, src, prefix, mount)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(a.Abs(g.File), edited, mode); err != nil {
+		return errors.Wrap(err, "os.WriteFile()")
+	}
+	ch.didf("%s: with two browser applications none is mounted at /, so the default outlet's application moves to %s and its API to /%s: GenerateRoutes(%q, %q, ..., WebApp(%q)) in place of %q and WebApp(\"/\"); the regenerated router answers the root alone with a redirect to %s/", g.File, mount, prefix, g.RoutesDir(), prefix, mount, oldPrefix, mount)
+
+	if !found {
+		ch.skipf("no browser project holds the default outlet's client, so nothing on the browser side moved; serve the application under %s/ with its API at /%s", mount, prefix)
+	} else if err := o.mountProject(a, w.Dir, &project, oldPrefix, prefix, mount, ch); err != nil {
+		return err
+	}
+
+	return listOldPrefix(a, oldPrefix, prefix, mount, ch)
+}
+
+// consoleProject finds the browser project holding the default outlet's generated client:
+// the project of the workspace whose directory contains the default GenerateTypescript
+// target's. It reports false when no target, workspace, or project does.
+func consoleProject(a *app.App, g *app.Generator) (project app.AngularProject, w app.WebApp, found bool, err error) {
+	target := defaultTarget(g)
+	if target == nil {
+		return app.AngularProject{}, app.WebApp{}, false, nil
+	}
+	w, ok := a.WebAppFor(target.Dir)
+	if !ok {
+		return app.AngularProject{}, app.WebApp{}, false, nil
+	}
+	projects, err := a.ReadAngular(w.Dir)
+	if err != nil {
+		return app.AngularProject{}, app.WebApp{}, false, err
+	}
+	rel := strings.TrimPrefix(strings.TrimPrefix(target.Dir, w.Dir), "/")
+	project, ok = app.ProjectFor(projects, rel)
+	if !ok || project.Root == "" {
+		return app.AngularProject{}, app.WebApp{}, false, nil
+	}
+
+	return project, w, true, nil
+}
+
+// mountProject moves the default outlet's browser project from the root under the mount
+// path: its angular.json entry (baseHref and servePath) and its files (the proxy, the
+// environments, the base element), rewritten in place.
+func (o Outlet) mountProject(a *app.App, webDir string, project *app.AngularProject, oldPrefix, prefix, mount string, ch *Change) error {
+	rel := path.Join(webDir, "angular.json")
+	data, mode, err := readFile(a, rel)
+	if err != nil {
+		return err
+	}
+	out, err := mountAngularProject(data, project.Name, mount)
+	if err != nil {
+		ch.skipf("%s: the %s project could not be moved under %s (%v); set its baseHref to %s/ and its servePath to %s by hand", rel, project.Name, mount, err, mount, mount)
+	} else if err := os.WriteFile(a.Abs(rel), out, mode); err != nil {
+		return errors.Wrap(err, "os.WriteFile()")
+	}
+	dir := a.Abs(path.Join(webDir, project.Root))
+	if err := copyProject(dir, dir, moveRewrites(oldPrefix, "/", prefix, mount)); err != nil {
+		return err
+	}
+	ch.didf("%s/%s: the %s project serves under %s/ with its API at /%s (angular.json baseHref and servePath, the proxy, the environments, the base element)", webDir, project.Root, project.Name, mount, prefix)
+
+	return nil
+}
+
+// mention is one file's lines that name something the move left for the agent.
+type mention struct {
+	file  string
+	lines []int
+}
+
+// mentions collects line numbers per file and renders them sorted by file, one line each.
+type mentions map[string][]int
+
+func (m mentions) add(file string, line int) {
+	m[file] = append(m[file], line)
+}
+
+func (m mentions) sorted() []mention {
+	files := make([]string, 0, len(m))
+	for f := range m {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	out := make([]mention, 0, len(files))
+	for _, f := range files {
+		out = append(out, mention{file: f, lines: m[f]})
+	}
+
+	return out
+}
+
+// lineList renders line numbers as "12" or "12, 40".
+func lineList(lines []int) string {
+	parts := make([]string, 0, len(lines))
+	for _, l := range lines {
+		parts = append(parts, strconv.Itoa(l))
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// deepLinkRootRE matches a DeepLink call that rewrites to the root; loginURLRE captures
+// the login page a data level's construction names.
+var (
+	deepLinkRootRE = regexp.MustCompile(`DeepLink\([^)]*"/"\)`)
+	loginURLRE     = regexp.MustCompile(`LoginURL:\s*"(/[^"]*)"`)
+)
+
+// oldPrefixScan collects what still names the console's old API prefix or its old place
+// after the move, for the brief: the App's DeepLink at the root (its Assets pair serves
+// the bundle from the mount path too), a LoginURL naming a page outside the mount path,
+// the hand-written Go naming the old prefix as a string literal (routes, hooks, tests),
+// and the README, process files, and environment template naming it.
+type oldPrefixScan struct {
+	// literal is the old prefix as a Go string literal opens it.
+	literal string
+	// proseRE matches the old prefix as a path in prose, not inside a longer path.
+	proseRE *regexp.Regexp
+	mount   string
+
+	literals, deepLinks, prose mentions
+	// loginURLs maps file:line to the login page it names.
+	loginURLs map[string]string
+}
+
+func newOldPrefixScan(oldPrefix, mount string) *oldPrefixScan {
+	return &oldPrefixScan{
+		literal:   `"/` + oldPrefix,
+		proseRE:   regexp.MustCompile(`(^|[^A-Za-z0-9./_-])/` + regexp.QuoteMeta(oldPrefix) + `([^A-Za-z0-9_-]|$)`),
+		mount:     mount,
+		literals:  mentions{},
+		deepLinks: mentions{},
+		prose:     mentions{},
+		loginURLs: map[string]string{},
+	}
+}
+
+// file reads one file's lines: hand-written Go for the deep link, the login page, and the
+// literal; prose for the prefix as a path.
+func (sc *oldPrefixScan) file(rel string, data []byte, isGo, isProse bool) {
+	n := 0
+	for line := range strings.Lines(string(data)) {
+		n++
+		switch {
+		case isGo && deepLinkRootRE.MatchString(line):
+			sc.deepLinks.add(rel, n)
+		case isGo && strings.Contains(line, sc.literal):
+			sc.literals.add(rel, n)
+		case isProse && sc.proseRE.MatchString(line):
+			sc.prose.add(rel, n)
+		}
+		if m := loginURLRE.FindStringSubmatch(line); isGo && m != nil && !strings.HasPrefix(m[1], sc.mount+"/") {
+			sc.loginURLs[rel+":"+strconv.Itoa(n)] = m[1]
+		}
+	}
+}
+
+// report records every mention as the agent's, deep links first, then login pages, Go
+// literals, and prose, each file on one line.
+func (sc *oldPrefixScan) report(ch *Change, oldPrefix, prefix string) {
+	for _, m := range sc.deepLinks.sorted() {
+		ch.skipf("%s:%s: DeepLink rewrites the console's routes to \"/\"; it moves to %q, and Assets serves the bundle behind http.StripPrefix(%q), as a second browser application's pair does", m.file, lineList(m.lines), sc.mount+"/", sc.mount)
+	}
+	keys := make([]string, 0, len(sc.loginURLs))
+	for k := range sc.loginURLs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		ch.skipf("%s: LoginURL %q is the console's login page, which is now under %s/: %q", k, sc.loginURLs[k], sc.mount, sc.mount+sc.loginURLs[k])
+	}
+	for _, m := range sc.literals.sorted() {
+		ch.skipf("%s:%s: names %q, the console's old prefix, in a string literal; the console's API is now /%s", m.file, lineList(m.lines), "/"+oldPrefix, prefix)
+	}
+	for _, m := range sc.prose.sorted() {
+		ch.skipf("%s:%s: names /%s, the console's old prefix; the console's API is now /%s and its pages are under %s/", m.file, lineList(m.lines), oldPrefix, prefix, sc.mount)
+	}
+}
+
+// listOldPrefix walks the application for what still names the console's old prefix or
+// its old place after the move and records each as the agent's. Generated files, build
+// products, and the repository's own directory are not read; the tree is opened as a
+// root, so the walk stays inside it.
+func listOldPrefix(a *app.App, oldPrefix, prefix, mount string, ch *Change) error {
+	root, err := os.OpenRoot(a.Root)
+	if err != nil {
+		return errors.Wrap(err, "os.OpenRoot()")
+	}
+	defer root.Close()
+
+	scan := newOldPrefixScan(oldPrefix, mount)
+	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.Wrap(err, "fs.WalkDir()")
+		}
+		if d.IsDir() {
+			if p != "." && (skippedNames[d.Name()] || d.Name() == ".git") {
+				return fs.SkipDir
+			}
+
+			return nil
+		}
+		name := d.Name()
+		isGo := strings.HasSuffix(name, ".go") && !strings.HasPrefix(name, "zz_gen_")
+		isProse := name == readmeFile || processFileRE.MatchString(name) || (a.EnvTemplate != "" && p == a.EnvTemplate)
+		if !isGo && !isProse {
+			return nil
+		}
+		data, err := root.ReadFile(filepath.FromSlash(p))
+		if err != nil {
+			return errors.Wrap(err, "os.Root.ReadFile()")
+		}
+		scan.file(p, data, isGo, isProse)
+
+		return nil
+	})
+	if err != nil {
+		return errors.Wrap(err, "fs.WalkDir()")
+	}
+	scan.report(ch, oldPrefix, prefix)
+
+	return nil
+}
+
+// processFileRE matches the development process files, whose comments name the proxied
+// prefix.
+var processFileRE = regexp.MustCompile(`^(Procfile.*|process-compose.*\.ya?ml)$`)
+
 // Meaning explains the outlet in this framework and names the wiring left to do.
 func (o Outlet) Meaning() string {
 	pascal := strings.ToUpper(o.Name[:1]) + o.Name[1:]
@@ -618,7 +914,8 @@ func (o Outlet) Meaning() string {
 		if o.Auth != "" {
 			auth = "the " + o.Auth + " auth"
 		}
-		fmt.Fprintf(&b, "This is a session outlet: a browser surface bound to %s (the program declares it with that auth's `Auth` and `WebApp(\"/%s\")`), so its people sign in under `/%s/user/login` and the generated router serves its browser application from `/%s/`. Give the App what the generated `Handlers` now requires: `%s()` returning the auth's session handlers (an auth's embedded session manager satisfies its handler interface, so the method returns it), and the `%sDeepLink` and `%sAssets` pair serving a dist directory from configuration (`APP_%s_DIST` defaulting to `web/dist/%s`), like the console's. A route of the outlet's own goes in the `%s` field of the application's `Hooks`, inside the outlet's guards. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: sign in under `/%s/user/login` and read `user-domains` and the permission digest there, and show a resource that is not a member answers not found under the prefix. If the outlet's audience is another population, add an auth for it (`impulse add auth`), point the outlet's `Auth` at it, and add its development login to the bootstrap identities.\n", auth, o.Name, o.Prefix, o.Name, pascal, pascal, pascal, upper, o.Name, pascal, o.Name, o.Prefix)
+		fmt.Fprintf(&b, "This is a session outlet: a browser surface bound to %s (the program declares it with that auth's `Auth` and `WebApp(\"/%s\")`), so its people sign in under `/%s/user/login` and the generated router serves its browser application from `/%s/`. Give the App what the generated `Handlers` now requires: `%s()` returning the auth's session handlers (an auth's embedded session manager satisfies its handler interface, so the method returns it), and the `%sDeepLink` and `%sAssets` pair serving a dist directory from configuration (`APP_%s_DIST` defaulting to `web/dist/%s`), like the console's. A route of the outlet's own goes in the `%s` field of the application's `Hooks`, inside the outlet's guards. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: sign in under `/%s/user/login` and read `user-domains` and the permission digest there, and show a resource that is not a member answers not found under the prefix. If the outlet's audience is another population, add an auth for it (`impulse add auth`), point the outlet's `Auth` at it, and add its development login to the bootstrap identities.\n\n", auth, o.Name, o.Prefix, o.Name, pascal, pascal, pascal, upper, o.Name, pascal, o.Name, o.Prefix)
+		b.WriteString("Every browser outlet takes one shape: its API under its application's mount path (`/" + o.Name + "/api` under `/" + o.Name + "`), so the application's scope covers its own API, login, and callback routes; `impulse check` warns where an outlet's API sits elsewhere. With two browser applications none is mounted at `/`: an installed application's scope is every URL under its start, so one at `/` would own the origin and the other would never get its own install prompt, and the generator refuses the shape. A console that was alone at `/` therefore moved to `/console` with its API at `/console/api` (the generator program, the project's `baseHref` and `servePath`, its proxy, environments, and base element), and the regenerated router answers the root alone with a redirect to `/console/`. The App's `DeepLink` and `Assets` pair follows (`spaassets.DeepLink(next, \"/console/\")`, the bundle behind `http.StripPrefix(\"/console\")`, as the portal's pair reads in the reference), as do a `LoginURL` naming the console's login page, the hand-written routes, hooks, and tests that name `/api`, and the README and Procfile lines; the brief lists each by file and line.\n")
 
 		return b.String()
 	}

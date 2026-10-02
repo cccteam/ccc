@@ -29,8 +29,7 @@ func cloneAngularProject(data []byte, from, to string, port int) ([]byte, error)
 	if port > 0 {
 		clone = regexp.MustCompile(`"port":\s*\d+`).ReplaceAllString(clone, fmt.Sprintf(`"port": %d`, port))
 	}
-	clone = setOrInsert(clone, "servePath", fmt.Sprintf("%q", "/"+to), "proxyConfig")
-	clone = setOrInsert(clone, "baseHref", fmt.Sprintf("%q", "/"+to+"/"), "outputPath")
+	clone = mountEntry(clone, "/"+to)
 
 	var b bytes.Buffer
 	b.Write(data[:end])
@@ -38,6 +37,42 @@ func cloneAngularProject(data []byte, from, to string, port int) ([]byte, error)
 	b.Write(data[end:])
 
 	return b.Bytes(), nil
+}
+
+// mountEntry returns a project's angular.json entry served under the mount path: the dev
+// server's servePath and the build's baseHref (the mount path with a trailing slash), set
+// where they appear or inserted beside proxyConfig and outputPath.
+func mountEntry(entry, mount string) string {
+	entry = setOrInsert(entry, "servePath", fmt.Sprintf("%q", mount), "proxyConfig")
+
+	return setOrInsert(entry, "baseHref", fmt.Sprintf("%q", basePath(mount)), "outputPath")
+}
+
+// mountAngularProject returns angular.json with the named project served under the mount
+// path. The edit is textual so the file keeps its layout.
+func mountAngularProject(data []byte, name, mount string) ([]byte, error) {
+	start, end, _, err := projectRange(data, name)
+	if err != nil {
+		return nil, err
+	}
+
+	var b bytes.Buffer
+	b.Write(data[:start])
+	b.WriteString(mountEntry(string(data[start:end]), mount))
+	b.Write(data[end:])
+
+	return b.Bytes(), nil
+}
+
+// basePath is the browser base path of an application at the mount path: the path with a
+// trailing slash, / at the root.
+func basePath(mount string) string {
+	trimmed := strings.Trim(mount, "/")
+	if trimmed == "" {
+		return "/"
+	}
+
+	return "/" + trimmed + "/"
 }
 
 // setOrInsert sets the string value of key where it appears, or inserts the key before

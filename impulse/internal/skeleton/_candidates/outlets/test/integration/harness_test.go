@@ -53,7 +53,7 @@ const (
 	machinesAPIKey = "integration-machines-key"
 
 	// The browser outlets' API prefixes.
-	consoleAPI = "/api"
+	consoleAPI = "/console/api"
 	portalAPI  = "/portal/api"
 )
 
