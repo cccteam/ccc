@@ -52,6 +52,9 @@ type Repo struct {
 	Changed map[string][]string
 	// PullStates by pull request number: open or closed.
 	PullStates map[int]string
+	// PullRequests as the API lists them, oldest first; one opened through the API is
+	// appended, numbered after the highest number the repository knows.
+	PullRequests []github.PullRequest
 	// Deployments made through the API, oldest first, with their statuses.
 	Deployments []*Deployment
 	// Environments by name, as put in place through the API, with their custom branch
@@ -97,6 +100,8 @@ type Server struct {
 	// messages of commits made through the API.
 	Calls    []string
 	Messages []string
+	// Bodies are the bodies of the pull requests opened through the API, oldest first.
+	Bodies []string
 	// Login is who the token belongs to, as /user answers; octocat by default.
 	Login string
 }
@@ -119,6 +124,7 @@ var (
 	commentsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)/comments$`)
 	releaseRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/releases/tags/(.+)$`)
 	pullRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls/(\d+)$`)
+	pullsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls$`)
 	deploysRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments$`)
 	statusesRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments/(\d+)/statuses$`)
 	repoInstRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/installation$`)
@@ -260,6 +266,9 @@ var routes = []route{
 	{pullRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		number, _ := strconv.Atoi(m[3])
 		s.pull(w, m[1]+"/"+m[2], number)
+	}},
+	{pullsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.pulls(w, r, m[1]+"/"+m[2], m[1])
 	}},
 	{deploysRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
 		s.deployments(w, r, m[1]+"/"+m[2])
@@ -834,6 +843,68 @@ func (s *Server) pull(w http.ResponseWriter, key string, number int) {
 		return
 	}
 	reply(w, http.StatusOK, map[string]any{"number": number, "state": state})
+}
+
+// pulls lists the pull requests whose head the query names (owner:branch), newest
+// first, or opens one: its head and base branches must exist, and it is numbered after
+// the highest number the repository knows.
+func (s *Server) pulls(w http.ResponseWriter, r *http.Request, key, owner string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		head := strings.TrimPrefix(r.URL.Query().Get("head"), owner+":")
+		state := r.URL.Query().Get("state")
+		prs := []github.PullRequest{}
+		for i := len(repo.PullRequests) - 1; i >= 0; i-- {
+			pr := repo.PullRequests[i]
+			if (head != "" && pr.Head.Ref != head) || (state != "" && state != "all" && pr.State != state) {
+				continue
+			}
+			prs = append(prs, pr)
+		}
+		reply(w, http.StatusOK, prs)
+	case http.MethodPost:
+		var in github.PullRequestRequest
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Title == "" || in.Head == "" || in.Base == "" {
+			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "title, head and base are required"})
+
+			return
+		}
+		head := strings.TrimPrefix(in.Head, owner+":")
+		headRef, headOK := repo.Refs["refs/heads/"+head]
+		baseRef, baseOK := repo.Refs["refs/heads/"+in.Base]
+		if !headOK || !baseOK {
+			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "head or base branch not found"})
+
+			return
+		}
+		number := 0
+		for n := range repo.PullStates {
+			number = max(number, n)
+		}
+		for i := range repo.PullRequests {
+			number = max(number, repo.PullRequests[i].Number)
+		}
+		number++
+		pr := github.PullRequest{
+			Number: number, State: "open", Title: in.Title,
+			HTMLURL: "https://github.com/" + key + "/pull/" + strconv.Itoa(number),
+			Head:    github.PullRequestRef{Ref: head, SHA: headRef.SHA},
+			Base:    github.PullRequestRef{Ref: in.Base, SHA: baseRef.SHA},
+		}
+		repo.PullRequests = append(repo.PullRequests, pr)
+		s.Bodies = append(s.Bodies, in.Body)
+		if repo.PullStates == nil {
+			repo.PullStates = map[int]string{}
+		}
+		repo.PullStates[number] = "open"
+		reply(w, http.StatusCreated, pr)
+	default:
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
+	}
 }
 
 // deployments lists the environment's deployments, newest first, or creates one.

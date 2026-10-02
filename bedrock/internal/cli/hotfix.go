@@ -24,7 +24,7 @@ func newHotfix(d deps) *cobra.Command {
 started at a release's commit, on which release-please releases fixes as the line's next patch
 versions while the default branch moves on.`,
 	}
-	cmd.AddCommand(newHotfixStart(d))
+	cmd.AddCommand(newHotfixStart(d), newHotfixMerge(d))
 
 	return cmd
 }
@@ -70,8 +70,8 @@ reported and left as it is.`,
 				fmt.Fprintf(out, "Created %s in %s at %s (%s); the line's next release is %s.\n", result.Branch, where, short(result.Commit), result.Tag, result.Next)
 			}
 			if !result.Existed {
-				fmt.Fprintf(out, "Next: open the fix pull request against %s and merge it; release-please releases the branch as %s, and the tag runs through the environments like any release. When the hotfix is out, merge %s back into %s by pull request with a merge commit, so %s carries the fix and counts releases from it.\n",
-					result.Branch, result.Next, result.Branch, rc.placement.DefaultBranch, rc.placement.DefaultBranch)
+				fmt.Fprintf(out, "Next: open the fix pull request against %s and merge it; release-please releases the branch as %s, and the tag runs through the environments like any release. When the hotfix is out, bring it to %s with bedrock hotfix merge %s: a branch at the release's commit and its pull request into %s, squash-merged; %s is never the pull request's head.\n",
+					result.Branch, result.Next, rc.placement.DefaultBranch, result.Next, rc.placement.DefaultBranch, result.Branch)
 			}
 			if result.Latest != result.Tag {
 				fmt.Fprintf(out, "Warning: %s is not the repository's latest release (%s is). A hotfix is based on the release production runs; make sure production runs %s before fixing on %s. GitHub does not know what production runs; production's deployment record does.\n",
@@ -95,4 +95,61 @@ func short(sha string) string {
 	}
 
 	return sha
+}
+
+// newHotfixMerge is hotfix merge <tag>.
+func newHotfixMerge(d deps) *cobra.Command {
+	var dirFlag, placementFlag string
+	cmd := &cobra.Command{
+		Use:   "merge <tag>",
+		Short: "Bring a released hotfix to the default branch by pull request",
+		Long: `merge creates the branch merge-back/<tag> at the commit of the hotfix release tagged <tag>, a
+release on a hotfix line, and opens a pull request from it into the default branch, titled
+fix: <tag> (the conventional-commit line the squash merge carries and release-please reads; edit
+it if the fix deserves a better line) with the release's notes as its body. Conflicts, such as
+release-please's manifest and changelog when the default branch has released since the line's
+base, are resolved by commits on that branch; the squash merge deletes it, and the hotfix line is
+never the pull request's head, so it is never deleted and never receives a conflict commit. A
+release that is not on a hotfix line, or that the default branch already carries, is refused; an
+existing merge-back branch or pull request for the release is reported and left as it is.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			rc, err := d.repository(dirFlag, placementFlag)
+			if err != nil {
+				return err
+			}
+			client, err := d.github(ctx)
+			if err != nil {
+				return err
+			}
+			req := hotfix.MergeRequest{Owner: rc.owner, Repo: rc.repo, DefaultBranch: rc.placement.DefaultBranch, Tag: args[0]}
+			result, err := hotfix.Merge(ctx, client, req)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			where := rc.owner + "/" + rc.repo
+			switch {
+			case result.Existed && result.Merged:
+				fmt.Fprintf(out, "%s already has its pull request into %s, #%d, merged: %s. Nothing was created.\n", result.Branch, rc.placement.DefaultBranch, result.Number, result.URL)
+
+				return nil
+			case result.Existed:
+				fmt.Fprintf(out, "%s already has its pull request into %s, #%d, open: %s. Nothing was created.\n", result.Branch, rc.placement.DefaultBranch, result.Number, result.URL)
+			case result.BranchExisted:
+				fmt.Fprintf(out, "%s already existed in %s at %s; opened pull request #%d into %s: %s\n", result.Branch, where, short(result.BranchCommit), result.Number, rc.placement.DefaultBranch, result.URL)
+			default:
+				fmt.Fprintf(out, "Created %s in %s at %s (%s) and opened pull request #%d into %s: %s\n", result.Branch, where, short(result.Commit), result.Tag, result.Number, rc.placement.DefaultBranch, result.URL)
+			}
+			fmt.Fprintf(out, "Its title, %q, is the commit line the squash merge carries and release-please reads; edit it if the fix deserves a better line. Resolve any conflict with commits on %s (release-please's manifest and changelog when %s has released since the line's base, or code %s has reworked), then squash-merge: the merge deletes %s, and %s stays as it is.\n",
+				result.Title, result.Branch, rc.placement.DefaultBranch, rc.placement.DefaultBranch, result.Branch, result.Line)
+
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dirFlag, "dir", "", "the stack directory holding the placement (default: the application's stack, found from the working directory)")
+	cmd.Flags().StringVar(&placementFlag, "placement", "", "placement file (default: placement.json in the stack directory)")
+
+	return cmd
 }

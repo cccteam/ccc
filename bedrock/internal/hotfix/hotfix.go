@@ -24,6 +24,10 @@ import (
 )
 
 const (
+	// statusAhead and statusIdentical are the comparison results that say the base
+	// commit is on the head branch.
+	statusAhead     = "ahead"
+	statusIdentical = "identical"
 	// ManifestFile is release-please's manifest: the version of each package, at the
 	// repository root the one package ".".
 	ManifestFile = ".release-please-manifest.json"
@@ -159,7 +163,7 @@ func onDefaultBranch(ctx context.Context, client *github.Client, req Request, co
 	if err != nil {
 		return errors.Wrapf(err, "comparing %s with %s", req.Tag, req.DefaultBranch)
 	}
-	if cmp.Status != "ahead" && cmp.Status != "identical" {
+	if cmp.Status != statusAhead && cmp.Status != statusIdentical {
 		return errors.Newf("tag %s (commit %s) is not on %s (%s): a hotfix line starts from a release on the default branch", req.Tag, short(commit), req.DefaultBranch, cmp.Status)
 	}
 

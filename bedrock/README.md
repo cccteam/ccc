@@ -528,6 +528,20 @@ would roll production's application back. `hotfix start` prints the rule, and wa
 when the release is not the repository's latest, which GitHub can tell; what production
 runs, only its deployment record can.
 
+`hotfix merge <release>` brings a released hotfix to the default branch. It creates the
+branch `merge-back/<release>` at the release's commit (the tag's, so the merge-back
+carries exactly what shipped and not unreleased commits on the line) and opens a pull
+request from it into the default branch, titled `fix: <release>` (the conventional-commit
+line the squash merge carries and release-please reads; the author may edit it) with the
+release's notes as its body. Conflicts, such as release-please's manifest and changelog
+when the default branch has released since the line's base, or code the default branch
+has reworked, are resolved by commits on that branch, which is unprotected; the squash
+merge deletes it, and the hotfix line is never the pull request's head, so it is never
+deleted and never receives a conflict commit. Never a merge commit, and never a pull
+request from the line's tip itself. The command refuses a release that is not on a
+hotfix line or that the default branch already carries, and reports an existing
+merge-back branch or pull request for the release instead of making a second.
+
 The restore is a run of the environment's version trigger for the release, carrying the
 instruction `_RESTORE` (`empty`, or `production-backup` for the environment on
 production's instance) and `_REQUESTER`. Everything that changes the environment happens

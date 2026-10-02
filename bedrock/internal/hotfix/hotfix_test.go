@@ -201,3 +201,147 @@ func TestStart(t *testing.T) {
 		})
 	}
 }
+
+// quillLine adds the hotfix line of 0.1 to quill: hotfix/0.1.x at h1, a fix commit on
+// v0.1.21 (c21), released as v0.1.22 with notes; master has moved on to v0.2.0 (c30),
+// so the line and master have diverged at c21.
+func quillLine(t *testing.T, server *githubtest.Server) *githubtest.Repo {
+	t.Helper()
+
+	repo := quill(t, server, "v0.2.0")
+	repo.Refs["refs/heads/hotfix/0.1.x"] = github.Object{Type: "commit", SHA: "h1"}
+	repo.Refs["refs/tags/v0.1.22"] = github.Object{Type: "commit", SHA: "h1"}
+	repo.Ancestry["h1"] = []string{"h1", "c21", "c20"}
+	repo.MergeBase["c30 h1"] = "c21"
+	repo.Releases = map[string]github.Release{"v0.1.22": {TagName: "v0.1.22", Body: "### Bug Fixes\n\n* the fix"}}
+
+	return repo
+}
+
+func TestMerge(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// prepare adjusts the repository before the run.
+		prepare func(repo *githubtest.Repo)
+		tag     string
+		want    hotfix.MergeResult
+		// wantPulls is the number of pull requests after the run, and wantBody the
+		// opened one's body.
+		wantPulls int
+		wantBody  string
+		wantErr   string
+	}{
+		{
+			name:      "the branch at the release's commit and the pull request into master",
+			tag:       "v0.1.22",
+			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", Number: 1, URL: "https://github.com/acme/quill/pull/1", Title: "fix: v0.1.22"},
+			wantPulls: 1,
+			wantBody:  "### Bug Fixes\n\n* the fix",
+		},
+		{
+			name: "an existing merge-back branch is kept and gets its pull request",
+			prepare: func(repo *githubtest.Repo) {
+				repo.Refs["refs/heads/merge-back/v0.1.22"] = github.Object{Type: "commit", SHA: "h1"}
+			},
+			tag:       "v0.1.22",
+			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 1, URL: "https://github.com/acme/quill/pull/1", Title: "fix: v0.1.22"},
+			wantPulls: 1,
+			wantBody:  "### Bug Fixes\n\n* the fix",
+		},
+		{
+			name: "an existing pull request is reported, not made again",
+			prepare: func(repo *githubtest.Repo) {
+				repo.Refs["refs/heads/merge-back/v0.1.22"] = github.Object{Type: "commit", SHA: "h1"}
+				repo.PullRequests = []github.PullRequest{{Number: 7, State: "open", HTMLURL: "https://github.com/acme/quill/pull/7", Head: github.PullRequestRef{Ref: "merge-back/v0.1.22", SHA: "h1"}}}
+			},
+			tag:       "v0.1.22",
+			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 7, URL: "https://github.com/acme/quill/pull/7", Existed: true, Title: "fix: v0.1.22"},
+			wantPulls: 1,
+		},
+		{
+			name: "a merged pull request is reported as merged",
+			prepare: func(repo *githubtest.Repo) {
+				repo.Refs["refs/heads/merge-back/v0.1.22"] = github.Object{Type: "commit", SHA: "h1"}
+				repo.PullRequests = []github.PullRequest{{Number: 7, State: "closed", MergedAt: "2026-10-02T01:00:00Z", HTMLURL: "https://github.com/acme/quill/pull/7", Head: github.PullRequestRef{Ref: "merge-back/v0.1.22", SHA: "h1"}}}
+			},
+			tag:       "v0.1.22",
+			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 7, URL: "https://github.com/acme/quill/pull/7", Existed: true, Merged: true, Title: "fix: v0.1.22"},
+			wantPulls: 1,
+		},
+		{
+			name:    "the line's base release is already on master",
+			tag:     "v0.1.21",
+			wantErr: "tag v0.1.21 (commit c21) is already on master: nothing to merge back",
+		},
+		{
+			name:    "a release without a hotfix line is refused",
+			tag:     "v0.9.0",
+			wantErr: "no hotfix line hotfix/0.9.x in acme/quill: v0.9.0 is not a release on a hotfix line",
+		},
+		{
+			name: "a release without its GitHub Release is refused",
+			prepare: func(repo *githubtest.Repo) {
+				delete(repo.Releases, "v0.1.22")
+			},
+			tag:     "v0.1.22",
+			wantErr: "no release for tag v0.1.22 in acme/quill: the merge-back carries the release's notes",
+		},
+		{
+			name:    "an absent tag is refused",
+			tag:     "v0.1.23",
+			wantErr: "no tag v0.1.23 in acme/quill: a merge-back brings a release that exists",
+		},
+		{
+			name:    "a tag of the wrong shape is refused before anything is looked up",
+			tag:     "0.1.22",
+			wantErr: `tag "0.1.22" is not a release tag`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := githubtest.New(t)
+			repo := quillLine(t, server)
+			if tt.prepare != nil {
+				tt.prepare(repo)
+			}
+			req := hotfix.MergeRequest{Owner: "acme", Repo: "quill", DefaultBranch: "master", Tag: tt.tag}
+			got, err := hotfix.Merge(t.Context(), server.Client(), req)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Merge() error = %v, wantErr %q", err, tt.wantErr)
+				}
+				if _, created := repo.Refs["refs/heads/merge-back/"+tt.tag]; created || len(repo.PullRequests) != 0 {
+					t.Error("Merge() created a branch or a pull request although it refused")
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Merge() error = %v", err)
+			}
+			if *got != tt.want {
+				t.Errorf("Merge() = %+v, want %+v", *got, tt.want)
+			}
+			if branch := repo.Refs["refs/heads/merge-back/v0.1.22"]; branch.SHA != "h1" {
+				t.Errorf("merge-back branch at %q, want h1", branch.SHA)
+			}
+			if len(repo.PullRequests) != tt.wantPulls {
+				t.Fatalf("%d pull request(s) after Merge(), want %d", len(repo.PullRequests), tt.wantPulls)
+			}
+			if tt.wantBody == "" {
+				return
+			}
+			pr := repo.PullRequests[len(repo.PullRequests)-1]
+			if pr.Title != tt.want.Title || pr.Head.Ref != tt.want.Branch || pr.Base.Ref != "master" {
+				t.Errorf("pull request = %+v, want title %q from %s into master", pr, tt.want.Title, tt.want.Branch)
+			}
+			if body := server.Bodies[len(server.Bodies)-1]; body != tt.wantBody {
+				t.Errorf("pull request body = %q, want %q", body, tt.wantBody)
+			}
+		})
+	}
+}

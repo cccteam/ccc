@@ -32,6 +32,55 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, number i
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, number), in, nil)
 }
 
+// PullRequest is a pull request as the API answers it: its number, its state (open or
+// closed; a merged one is closed with MergedAt set), its page, and its head and base.
+type PullRequest struct {
+	Number   int            `json:"number"`
+	State    string         `json:"state"`
+	HTMLURL  string         `json:"html_url"`
+	MergedAt string         `json:"merged_at"`
+	Title    string         `json:"title"`
+	Head     PullRequestRef `json:"head"`
+	Base     PullRequestRef `json:"base"`
+}
+
+// PullRequestRef is a pull request's head or base: the branch and its commit.
+type PullRequestRef struct {
+	Ref string `json:"ref"`
+	SHA string `json:"sha"`
+}
+
+// PullRequestRequest is a pull request to open: its title, its body, the head branch
+// (a branch of the repository) and the base branch it goes into.
+type PullRequestRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Head  string `json:"head"`
+	Base  string `json:"base"`
+}
+
+// CreatePullRequest opens a pull request as the token's account.
+func (c *Client) CreatePullRequest(ctx context.Context, owner, repo string, in PullRequestRequest) (*PullRequest, error) {
+	pr := &PullRequest{}
+	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/repos/%s/%s/pulls", owner, repo), in, pr); err != nil {
+		return nil, err
+	}
+
+	return pr, nil
+}
+
+// PullRequestsFrom lists the pull requests whose head is the branch, open and closed,
+// newest first.
+func (c *Client) PullRequestsFrom(ctx context.Context, owner, repo, branch string) ([]PullRequest, error) {
+	var prs []PullRequest
+	q := url.Values{"head": {owner + ":" + branch}, "state": {"all"}, "per_page": {"100"}}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/repos/%s/%s/pulls?%s", owner, repo, q.Encode()), nil, &prs); err != nil {
+		return nil, err
+	}
+
+	return prs, nil
+}
+
 // DirEntry is one entry of a directory as a commit holds it: its name, its git object
 // SHA (for a file, the blob's, which git hash-object computes from the content) and its
 // type (file, dir, symlink, submodule).
