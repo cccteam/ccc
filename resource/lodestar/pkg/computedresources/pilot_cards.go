@@ -5,6 +5,7 @@ import (
 	"iter"
 	"slices"
 
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
@@ -22,7 +23,15 @@ type (
 	// computed resource, not an RPC. The keyed read route is suppressed: there is no
 	// key to give but one's own.
 	//
-	// Demonstrates: computed.user, @computed, @suppress.
+	// Commendations is the card's one gated field: how many citations the commendations
+	// desk holds on the pilot's record, behind the same flag as the desk
+	// (@feature(Commendations) on the field). While the flag is off the field is not on
+	// the card: a request naming it in columns= is refused as an unknown field, the
+	// list leaves it out, and the digest leaves PilotCards.commendations out, so the
+	// browser's card draws nothing for it. When the flag is on the field is served under
+	// the crew's ordinary List grant, which has carried it since the feature shipped.
+	//
+	// Demonstrates: computed.user, @computed, @suppress, @feature.field.
 	//
 	// @computed
 	// @suppress(readHandler)
@@ -35,6 +44,8 @@ type (
 		FeeLimit       decimal.Decimal `spanner:"FeeLimit"`
 		Certifications []string        `spanner:"Certifications"`
 		Squadrons      []string        `spanner:"Squadrons"`
+		// @feature(Commendations)
+		Commendations int64 `spanner:"Commendations"`
 	}
 )
 
@@ -62,6 +73,7 @@ func ListPilotCard(ctx context.Context, qSet *resource.QuerySet[PilotCard], clie
 // pilotCard folds the subject attribute tables for one user.
 func pilotCard(ctx context.Context, client resource.Client, user accesstypes.User) (*PilotCard, error) {
 	var card *PilotCard
+	var pilotID ccc.UUID
 	pilots := resources.NewPilotQuery().
 		AddColumns(resources.NewPilotColumns().All()).
 		Where(resources.NewPilotQueryClause().UserID().Equal(string(user)))
@@ -69,10 +81,24 @@ func pilotCard(ctx context.Context, client resource.Client, user accesstypes.Use
 		if err != nil {
 			return nil, errors.Wrap(err, "resources.PilotQuery.List()")
 		}
+		pilotID = row.Data.ID
 		card = &PilotCard{UserID: row.Data.UserID, DisplayName: row.Data.DisplayName, Clearance: row.Data.Clearance, FeeLimit: row.Data.FeeLimit}
 	}
 	if card == nil {
 		return nil, nil
+	}
+
+	// The citations on the pilot's record, counted off the desk's index whether or not
+	// the commendations flag is on: the generated handler leaves the field out of the
+	// card while the flag is off, and the count is one indexed read.
+	commendations := resources.NewCommendationQuery().
+		AddColumns(resources.NewCommendationColumns().ID()).
+		Where(resources.NewCommendationQueryClause().PilotID().Equal(pilotID))
+	for _, err := range commendations.List(ctx, client) {
+		if err != nil {
+			return nil, errors.Wrap(err, "resources.CommendationQuery.List()")
+		}
+		card.Commendations++
 	}
 
 	certifications := resources.NewPilotCertificationQuery().

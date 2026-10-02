@@ -28,6 +28,14 @@ export interface ClientRosters {
   sectorMissions?: number;
 }
 
+export interface Commendations {
+  id: string;
+  pilotId?: string;
+  citation?: string;
+  awardedBy?: string;
+  awardedAt?: Date;
+}
+
 export interface Consignments {
   id: string;
   sectorId?: string;
@@ -255,6 +263,7 @@ export interface PilotCards {
   feeLimit?: number;
   certifications?: string[];
   squadrons?: string[];
+  commendations?: number;
 }
 
 export interface SectorHazardBoards {
@@ -338,6 +347,18 @@ const resourceMap = defineResourceMap({
       { fieldName: 'trusted', displayType: 'boolean', required: true, isIndex: false },
       { fieldName: 'contactCount', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'sectorMissions', displayType: 'number', required: true, isIndex: false },
+    ],
+  },
+  [Resources.Commendations]: {
+    route: 'commendations',
+    feature: 'commendations',
+    consolidatedRoute: 'resources',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
+      { fieldName: 'pilotId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Pilots },
+      { fieldName: 'citation', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'awardedBy', displayType: 'string', required: false, isIndex: false, readOnly: true },
+      { fieldName: 'awardedAt', displayType: 'date', required: false, isIndex: false, readOnly: true },
     ],
   },
   [Resources.Consignments]: {
@@ -642,6 +663,7 @@ const resourceMap = defineResourceMap({
       { fieldName: 'feeLimit', displayType: 'number', required: false, isIndex: false },
       { fieldName: 'certifications', displayType: 'string[]', required: false, isIndex: false },
       { fieldName: 'squadrons', displayType: 'string[]', required: false, isIndex: false },
+      { fieldName: 'commendations', displayType: 'number', required: false, isIndex: false, feature: 'commendations' },
     ],
   },
   [Resources.SectorHazardBoards]: {
@@ -715,6 +737,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Clients]: PermissionScopes.global,
   [Resources.ClientContacts]: PermissionScopes.global,
   [Resources.ClientRosters]: PermissionScopes.domain,
+  [Resources.Commendations]: PermissionScopes.global,
   [Resources.Consignments]: PermissionScopes.domain,
   [Resources.DistressCalls]: PermissionScopes.domain,
   [Resources.FeeByKinds]: PermissionScopes.global,

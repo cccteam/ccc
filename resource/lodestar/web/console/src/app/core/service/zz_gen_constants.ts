@@ -22,6 +22,7 @@ export const Resources = {
   ClientContacts: 'ClientContacts' as Resource,
   ClientRosters: 'ClientRosters' as Resource,
   Clients: 'Clients' as Resource,
+  Commendations: 'Commendations' as Resource,
   Consignments: 'Consignments' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
   ExpenseManifests: 'ExpenseManifests' as Resource,
@@ -147,6 +148,23 @@ export namespace Clients {
     insured: 'Clients.insured' as Resource,
     name: 'Clients.name' as Resource,
     trusted: 'Clients.trusted' as Resource,
+  };
+}
+
+export namespace Commendations {
+  export const fieldName = {
+    awardedAt: 'awardedAt' as FieldName,
+    awardedBy: 'awardedBy' as FieldName,
+    citation: 'citation' as FieldName,
+    id: 'id' as FieldName,
+    pilotId: 'pilotId' as FieldName,
+  };
+  export const resourceName = {
+    awardedAt: 'Commendations.awardedAt' as Resource,
+    awardedBy: 'Commendations.awardedBy' as Resource,
+    citation: 'Commendations.citation' as Resource,
+    id: 'Commendations.id' as Resource,
+    pilotId: 'Commendations.pilotId' as Resource,
   };
 }
 
@@ -395,6 +413,7 @@ export namespace PilotCards {
   export const fieldName = {
     certifications: 'certifications' as FieldName,
     clearance: 'clearance' as FieldName,
+    commendations: 'commendations' as FieldName,
     displayName: 'displayName' as FieldName,
     feeLimit: 'feeLimit' as FieldName,
     squadrons: 'squadrons' as FieldName,
@@ -403,6 +422,7 @@ export namespace PilotCards {
   export const resourceName = {
     certifications: 'PilotCards.certifications' as Resource,
     clearance: 'PilotCards.clearance' as Resource,
+    commendations: 'PilotCards.commendations' as Resource,
     displayName: 'PilotCards.displayName' as Resource,
     feeLimit: 'PilotCards.feeLimit' as Resource,
     squadrons: 'PilotCards.squadrons' as Resource,

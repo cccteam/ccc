@@ -605,6 +605,20 @@ func Collection() *resource.GeneratedCollection {
 				QueryKeys: []accesstypes.Tag{"name", "contactEmail"},
 			},
 			{
+				Name:        "Commendations",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "awardedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "awardedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "citation", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "id"},
+					{Name: "pilotId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
+				Order:     []accesstypes.Tag{"awardedAt"},
+				QueryKeys: []accesstypes.Tag{"pilotId"},
+			},
+			{
 				Name:        "FeatureFlags",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
@@ -642,6 +656,7 @@ func Collection() *resource.GeneratedCollection {
 				Tags: []resource.TagData{
 					{Name: "certifications", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "clearance", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "commendations", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "displayName", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "feeLimit", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "squadrons", Permissions: []accesstypes.Permission{accesstypes.List}},

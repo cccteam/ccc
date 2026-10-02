@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/go-chi/chi/v5"
 )
@@ -86,6 +87,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/client-rosters", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodPost},
+		{url: "/droids/commendations", method: http.MethodGet},
+		{url: "/droids/commendations", method: http.MethodPost},
+		{url: "/droids/commendations/testCommendationID", method: http.MethodGet},
+		{url: "/droids/commendations/testCommendationID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/distress-calls", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/distress-calls", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/distress-calls/testDistressCallID", method: http.MethodGet},
@@ -213,6 +218,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/clients/testClientID", method: http.MethodGet},
 		{url: "/portal/api/clients/testClientID", method: http.MethodPost},
 		{url: "/portal/api/clients", method: http.MethodPatch},
+		{url: "/portal/api/commendations", method: http.MethodGet},
+		{url: "/portal/api/commendations", method: http.MethodPost},
+		{url: "/portal/api/commendations/testCommendationID", method: http.MethodGet},
+		{url: "/portal/api/commendations/testCommendationID", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/consignments", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/consignments", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/consignments/testConsignmentID", method: http.MethodGet},
@@ -428,6 +437,7 @@ func generatedRouteParameters() []string {
 		"clientID",
 		"clientContactID",
 		"clientRosterID",
+		"commendationID",
 		"consignmentID",
 		"distressCallID",
 		"feeByKindKindID",
@@ -590,6 +600,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/portal/api/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodPost,
 			handlerFunc: "ClientRoster",
 			parameters:  map[string]string{"sectorID": "testDomain", "clientRosterID": "testClientRosterID"},
+		},
+		{
+			url: "/console/api/commendations", method: http.MethodGet,
+			handlerFunc: "Commendations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/commendations", method: http.MethodPost,
+			handlerFunc: "Commendations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/commendations/testCommendationID", method: http.MethodGet,
+			handlerFunc: "Commendation",
+			parameters:  map[string]string{"commendationID": "testCommendationID"},
+		},
+		{
+			url: "/console/api/commendations/testCommendationID", method: http.MethodPost,
+			handlerFunc: "Commendation",
+			parameters:  map[string]string{"commendationID": "testCommendationID"},
 		},
 		{
 			url: "/console/api/sectors/testDomain/consignments", method: http.MethodGet,
@@ -1381,6 +1411,14 @@ func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.Handle
 	return func(next http.HandlerFunc) http.HandlerFunc { return next }
 }
 
+// FeatureGuard passes requests through unchecked: the routing tests exercise dispatch,
+// not the gate (the generated feature gate tests cover it over a real FeatureSet).
+func (s *generatedHandlersStub) FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+	return func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+		return func(next http.HandlerFunc) http.HandlerFunc { return next }
+	}
+}
+
 func (s *generatedHandlersStub) AttachMissionDocument() http.HandlerFunc {
 	return s.record("AttachMissionDocument")
 }
@@ -1423,6 +1461,14 @@ func (s *generatedHandlersStub) ClientRosters() http.HandlerFunc {
 
 func (s *generatedHandlersStub) ClientRoster() http.HandlerFunc {
 	return s.record("ClientRoster")
+}
+
+func (s *generatedHandlersStub) Commendations() http.HandlerFunc {
+	return s.record("Commendations")
+}
+
+func (s *generatedHandlersStub) Commendation() http.HandlerFunc {
+	return s.record("Commendation")
 }
 
 func (s *generatedHandlersStub) CompileBriefing() http.HandlerFunc {

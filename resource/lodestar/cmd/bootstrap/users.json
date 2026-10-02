@@ -370,6 +370,22 @@
           ]
         }
       }
+    },
+    {
+      "user": "adjutant",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "Adjutant",
+          "FeatureAdministrator"
+        ],
+        "domains": {
+          "anvil": [
+            "SectorCrew"
+          ]
+        }
+      }
     }
   ],
   "serviceAccounts": [

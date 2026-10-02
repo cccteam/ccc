@@ -45,3 +45,12 @@ func (a *App) FeatureFlag() http.HandlerFunc {
 func (a *App) SetFeature() http.HandlerFunc {
 	return resource.SetFeatureHandler(a, router.Collection(), a.LiveService())
 }
+
+// FeatureGuard is the middleware the generated route registration wraps around every
+// route gated behind a feature flag (@feature): while the flag is off the route
+// answers 404 exactly as an unregistered route does, and the handler never runs.
+func (a *App) FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+	return func(feature resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+		return resource.FeatureGuard(a.FeatureSet(), feature)
+	}
+}

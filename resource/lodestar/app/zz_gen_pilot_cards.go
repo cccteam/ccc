@@ -24,6 +24,7 @@ func (a *App) PilotCards() http.HandlerFunc {
 		FeeLimit       decimal.Decimal `json:"feeLimit"`
 		Certifications []string        `json:"certifications"`
 		Squadrons      []string        `json:"squadrons"`
+		Commendations  int64           `json:"commendations"  feature:"commendations"`
 	}
 
 	type response []map[string]any
@@ -69,6 +70,8 @@ func (a *App) PilotCards() http.HandlerFunc {
 					rmap["certifications"] = rec.Certifications
 				case "Squadrons":
 					rmap["squadrons"] = rec.Squadrons
+				case "Commendations":
+					rmap["commendations"] = rec.Commendations
 				}
 			}
 			resp = append(resp, rmap)

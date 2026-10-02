@@ -134,6 +134,63 @@ How it is wired:
   board and comes back with no request to the server, then sees a hail produce a refetch
   carrying the change's timestamp as `_v`.
 
+## Feature flags
+
+The commendations desk is behind a feature flag, and the flag is seeded off. Sign in as
+`adjutant` (Adjutant Alba): the server answers the desk's routes with the router's own 404,
+the permission digest carries no `Commendations` and no `PilotCards.commendations`, so the
+console shows no page and no card field for it, and a request naming the card's field is
+refused as an unknown field. Turn the flag on (through the API today, `POST
+/console/api/set-feature` with `{"name":"commendations","enabled":true}` as the adjutant;
+the console's dialog follows with the client release) and the desk exists: its routes
+answer, the digest carries it, and Pilot Pax's card counts his two citations. Every running
+instance of the application follows the flip within a moment, with no restart and no
+release; turn it off again and the desk is gone everywhere. The flag's value lives in the
+application's database, so it is per environment by construction, and every flip is
+recorded in `FeatureFlagChanges`.
+
+How it is wired:
+
+- The declaration. [`pkg/resources/features.go`](pkg/resources/features.go) declares
+  `Commendations resource.Feature = "commendations"`, its doc comment the description an
+  administrator reads. `@feature(Commendations)` on the `Commendation` struct
+  ([`@feature`](pkg/resources/commendations.go)) gates the desk whole; on
+  `PilotCard.Commendations` ([`@feature.field`](pkg/computedresources/pilot_cards.go)) it
+  gates the one field. The generator writes `Features()` and `FeatureGates()` into
+  `pkg/resources/zz_gen_features.go`, wraps the desk's routes in the application's
+  `FeatureGuard`, filters the digest, teaches the decoders the field, and writes
+  `test/authz/zz_gen_features_test.go`, every gated route and field driven in both states;
+  the TypeScript descriptor and metadata carry `feature: 'commendations'` and the client
+  file declares the `Feature` union and constants.
+- The table and the seed. Migration `000043` creates the desk's table, which ships whether
+  or not the flag is on, with three seeded citations; migration `000042` carries the
+  library's `FeatureFlags` and `FeatureFlagChanges` tables. The bootstrap and the deploy's
+  migrate step call `deploy.MigrateFeatures`, which writes the declared flag off where the
+  table has no row and keeps the state where it has one, so a fresh stack starts with the
+  desk dark and a release never flips anything.
+- The role and the persona. `FeatureAdministrator` (global: List and Read on
+  `FeatureFlags`, Execute on `SetFeature`) is the one role that flips flags, held by
+  `adjutant` beside `Adjutant`, the desk's own role (List, Read and Create on
+  `Commendations`); no other role gained a flag grant. The crew's `PilotCards` grant carries
+  the `commendations` field since the feature shipped: while the flag is off the digest
+  hides it, so turning the flag on needs no role change.
+- The instances. `app.New` loads the application's copy of the table and `App.Start`
+  follows it (`FeatureSet.Follow`): on every signal the live service's application topic
+  delivers on `features`, and every five minutes regardless. `SetFeature` writes the row
+  and its change record in one transaction, broadcasts on the topic after the commit,
+  reloads its own copy and answers the flag as written. With the Firestore emulator
+  running, a second server process on another port sees the flip at its next request;
+  without one, at the backstop.
+- The checks. The walkthrough's "feature flags" section drives the scenario by curl, a
+  second server process built from the tree included;
+  [`feature_flags_test.go`](test/integration/feature_flags_test.go) pins it over two
+  instances, the real engines and the in-memory live service; the generated authorization
+  matrix runs with the flag on (`test/authz/harness_test.go` puts every declared flag on in
+  a database nothing has written flags into), since a flag that is off answers before the
+  permission gate the matrix pins. The console's dialog, the `*cccFeature` directive and
+  the route guard arrive with the client release; the generated metadata already says what
+  they will read.
+
 ## Running against a real Spanner instance
 
 The emulator answers every test, but it returns no query plans, does not promise the
@@ -230,6 +287,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `hazards` | Hazard Analyst Hale | A conditional (row-free `now`) grant on a computed resource, the whole board through `limit=all`. Demonstrates: computed.conditional-grant, paging.limit-all, computed.fold. |
 | `dock` / `watch` | Dockmaster Dara / Night Watch Nadia | `timeOfDay(now, local)` and the wrap-around `timeOfDay(now, 'America/Denver')` window; `dayOfWeek(now, local) NOT IN ('sat', 'sun')`. At any hour exactly one sees the hangar deck. Demonstrates: condition.time-of-day, condition.day-of-week, condition.local-zone. |
 | `harbormaster` | Harbormaster Hollis, Anvil | List and Read on Ships, nothing else of her own: the live fleet board. Her list and the ship she has open are subscribed when they are read, the engineer's refit (or a hail) lands on both without a reload, a board left and reopened inside five minutes is the browser's own, and the pilot watching Bastion's fleet and the cadet, who holds no List on Ships, receive nothing. Demonstrates: live.pages. |
+| `adjutant` | Adjutant Alba, headquarters | The commendations desk, the one resource behind a feature flag, and the key that turns it: `FeatureAdministrator` (List and Read on `FeatureFlags`, Execute on `SetFeature`, global) beside `Adjutant` (List, Read and Create on `Commendations`). Off, the desk's routes answer the router's own 404, the digest leaves the desk and the card's `commendations` field out, and the field named in a request is unknown; she turns the flag on through `SetFeature`, the desk answers, Pax's card counts his citations, and a second server process serves the desk at its next request with no restart; off again, both refuse. Demonstrates: @feature, @feature.field. |
 | `client` | Client Cleo, portal only | Signs in through her company's directory, whose groups are her roles; the second browser app over the second TypeScript target; `client = subject.client` from the ClientContact anchor; a conditional Execute fired from a portal session; a PII field an external user writes; the portal-only client statement. Demonstrates: auth.directory-roles, auth.skipauth-directory, typescript.second-target, outlet.session, @subjectValue.second-anchor, @manualAddResource.outlet. |
 | `droid-r7` | R7, service account, no login | The API-keyed droids outlet: telemetry with no human route, one reading per call, each carrying the firmware's raw frame, a type declared in the droid link's own package whose generated methods the generator writes there (`WithTypes`); releases through the shared method under its own read grant. Demonstrates: outlet.api-key, outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package. |
 
@@ -357,8 +415,10 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   `walkthrough.sh`, the proof by hand. Demonstrates: demonstration-index, walkthrough.
 - `walkthrough.sh`: every persona's proof by curl against a freshly bootstrapped or reset stack, including the
   droid channel, the portal through the simulated directory, the dry runs, the watch desk,
-  both impersonation moments, and the three-minute wait for the overdue flip
-  (`LODESTAR_SKIP_FLIP=1` to skip). Export the `.envrc` variables before running it.
+  both impersonation moments, the feature flag's flip with a second server process built
+  from the tree on `LODESTAR_SECOND_PORT` (default 8091), and the three-minute wait for
+  the overdue flip (`LODESTAR_SKIP_FLIP=1` to skip). Export the `.envrc` variables before
+  running it.
 
 ## Regen discipline
 

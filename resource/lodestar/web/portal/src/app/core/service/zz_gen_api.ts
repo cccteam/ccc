@@ -5,6 +5,12 @@ import { Methods, Resources } from './zz_gen_constants';
 import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates, FeatureFlags } from './zz_gen_resources';
 import { StandDownMission, SetFeature, SetFeatureResult } from './zz_gen_methods';
 
+/** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
+export type Feature = 'commendations';
+export const Feature = {
+  Commendations: 'commendations' as Feature,
+};
+
 /**
  * The fields a client may set when creating ClientContacts. Server-owned fields are
  * absent; a server-generated key is absent, a client-assigned key is required.

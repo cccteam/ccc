@@ -50,6 +50,13 @@ INSERT INTO PilotCertifications (UserId, CertificationId) VALUES ('marshal', 'es
 INSERT INTO PilotCertifications (UserId, CertificationId) VALUES ('marshal', 'salvage');
 INSERT INTO PilotCertifications (UserId, CertificationId) VALUES ('wingco', 'escort');
 
+-- Commendations are the commendations desk's rows, the one resource behind a feature flag
+-- (pkg/resources/features.go): Pax carries two citations and Vela one, so a card counts them
+-- once the flag is on, and the desk lists them newest first.
+INSERT INTO Commendations (Id, PilotId, Citation, AwardedBy, AwardedAt) VALUES ('e0000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000004', 'Brought the Kingfisher home on one engine', 'governor', TIMESTAMP '2026-07-18T16:00:00Z');
+INSERT INTO Commendations (Id, PilotId, Citation, AwardedBy, AwardedAt) VALUES ('e0000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000004', 'Talked a drifting hauler crew through a cold restart', 'marshal', TIMESTAMP '2026-08-21T09:30:00Z');
+INSERT INTO Commendations (Id, PilotId, Citation, AwardedBy, AwardedAt) VALUES ('e0000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000005', 'Held formation through the debris belt with a cracked canopy', 'governor', TIMESTAMP '2026-06-02T12:00:00Z');
+
 INSERT INTO Wings (Id, SectorId, Name) VALUES ('40000000-0000-4000-8000-000000000001', 'anvil', 'Forge Wing');
 INSERT INTO Wings (Id, SectorId, Name) VALUES ('40000000-0000-4000-8000-000000000002', 'bastion', 'Rampart Wing');
 INSERT INTO Wings (Id, SectorId, Name) VALUES ('40000000-0000-4000-8000-000000000003', 'cinder', 'Ember Wing');

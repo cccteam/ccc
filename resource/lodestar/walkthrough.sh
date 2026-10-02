@@ -17,7 +17,8 @@
 # Demonstrates: walkthrough.
 set -u
 S=$(mktemp -d)
-trap 'rm -rf "$S"' EXIT
+SECOND_PID=   # the feature flags section's second server process, killed with the run
+trap '[ -n "$SECOND_PID" ] && kill "$SECOND_PID" 2>/dev/null; rm -rf "$S"' EXIT
 B=${LODESTAR_URL:-http://127.0.0.1:${PORT:-8090}}
 # Each browser outlet's API sits under its application's mount path.
 API=$B/console/api
@@ -137,7 +138,7 @@ if [ "$r" = "307 $B/console/" ]; then echo "PASS  the root alone redirects to th
 r=$(curl -s -o /dev/null -w '%{http_code}' "$B/nowhere")
 if [ "$r" = 404 ]; then echo "PASS  an unmatched path at the root is not found (404)"; else echo "FAIL  an unmatched path at the root: status $r, want 404"; fails=$((fails + 1)); fi
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch harbormaster; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch harbormaster adjutant; do
   login "$p"
 done
 login_portal client
@@ -414,6 +415,88 @@ r=$(req harbormaster POST "$API/live/unsubscribe" "{\"tab\":\"$TAB\",\"all\":fal
 assert_fs "the tab's subscriptions are gone" subscriptions "not any(d['principal']=='harbormaster' and d['tab']=='$TAB' for d in rows)"
 r=$(req pilot POST "$API/live/unsubscribe" "{\"tab\":\"$TAB-pilot\",\"all\":true}"); check "the pilot logs out of live pages: everything of the principal's" 204 "$r"
 assert_fs "no subscription of the pilot's remains" subscriptions "not any(d['principal']=='pilot' for d in rows)"
+fi
+
+# ---- feature flags: the commendations desk ----
+# The commendations desk (Commendations, and the commendations count on every crew member's
+# card) is behind the one feature flag Lodestar declares, and the flag is seeded off. Off, the
+# desk's routes answer the router's own 404, its arm of the consolidated patch answers as an
+# unknown resource, the digest leaves the desk and the card's field out, and the field named in
+# a request is unknown. The adjutant, who holds FeatureAdministrator, reads the flags as the
+# dialog does (name, description, state, when it last changed and by whom), turns the flag on
+# through SetFeature, and the desk answers, the digest carries it, and Pax's card counts his
+# citations. A second server process on another port against the same emulators, built from
+# this tree and started before the flip, serves the desk at its next request with no restart:
+# the flip is signaled through the live service's application topic. Off again, both refuse.
+# The second process is skipped when the stack runs without the Firestore emulator (the
+# five-minute backstop alone would carry the flip then). Demonstrates: @feature, @feature.field.
+SECOND_PORT=${LODESTAR_SECOND_PORT:-8091}
+B2=http://127.0.0.1:$SECOND_PORT
+API2=$B2/console/api
+PAX=30000000-0000-4000-8000-000000000004
+RECENT="(lambda s: 0 <= (__import__('datetime').datetime.now(__import__('datetime').timezone.utc) - __import__('datetime').datetime.strptime(s.split('.')[0].rstrip('Z'), '%Y-%m-%dT%H:%M:%S').replace(tzinfo=__import__('datetime').timezone.utc)).total_seconds() <= 86400)"
+if [ -n "$FS" ]; then
+  # The second instance: the same binary from this tree, the stack's own environment, another port.
+  ( cd "$(dirname "$0")" && go build -tags skipAuth -o "$S/lodestar-second" . && exec env PORT="$SECOND_PORT" "$S/lodestar-second" ) >"$S/second.log" 2>&1 &
+  SECOND_PID=$!
+fi
+login_second() { # login_second <persona>: the persona signed in on the second instance, its jar kept apart (the instances share no cookie key)
+  local p=$1
+  rm -f "$S/$p.2.jar"
+  curl -s -L -c "$S/$p.2.jar" -b "$S/$p.2.jar" -o /dev/null -H 'Content-Type: application/json' \
+    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API2/user/login"
+}
+login adjutant
+r=$(req adjutant GET "$API/features"); check "the features route answers anyone signed in: nothing is on" 200 "$r"
+assert_py "the enabled set is empty" "$r" "rows=={'enabled':[]}"
+r=$(req cadet GET "$API/features"); assert_py "the cadet reads the same set with no grant on the flags" "$r" "rows=={'enabled':[]}"
+r=$(req adjutant GET "$API/feature-flags"); check "the adjutant lists the flags (List on FeatureFlags): the dialog's rows" 200 "$r"
+assert_py "one flag, commendations, off, with its description, stamped by the migration within the last day" "$r" "len(rows)==1 and rows[0]['name']=='commendations' and rows[0]['enabled'] is False and rows[0]['description'].startswith('Commendations lets headquarters cite a pilot') and 'MigrateFeatures' in rows[0]['updatedBy'] and $RECENT(rows[0]['updatedAt'])"
+r=$(req adjutant GET "$API/commendations"); check "the desk is dark while the flag is off: the router's own 404" 404 "$r"
+r=$(req adjutant GET "$API/commendations/e0000000-0000-4000-8000-000000000001"); check "a seeded citation's read is not found either" 404 "$r"
+r=$(req adjutant PATCH "$API/resources" "[{\"op\":\"add\",\"path\":\"/commendations\",\"value\":{\"pilotId\":\"$PAX\",\"citation\":\"Filed while the desk is dark\"}}]"); check "the desk's arm of the consolidated patch answers as an unknown resource" 400 "$r"
+r=$(req adjutant GET "$API/permission-digest"); assert_py "the adjutant's digest leaves the desk and the card's field out and carries the flags and the flip" "$r" "'Commendations' not in rows and 'PilotCards.commendations' not in rows and rows['FeatureFlags']['List']=='granted' and rows['SetFeature']['Execute']=='granted'"
+r=$(req pilot GET "$API/pilot-cards?columns=userId,commendations"); check "a gated field named in a request is an unknown field while the flag is off" 400 "$r"
+r=$(req pilot GET "$API/pilot-cards"); assert_py "Pax's card carries no commendations field" "$r" "len(rows)==1 and 'commendations' not in rows[0]"
+r=$(req cadet POST "$API/set-feature" '{"name":"commendations","enabled":true}'); check "the cadet holds no Execute on SetFeature" 403 "$r"
+r=$(req cadet GET "$API/feature-flags"); check "nor List on the flags" 403 "$r"
+r=$(req adjutant POST "$API/set-feature" '{"name":"nonesuch","enabled":true}'); check "a flag the package does not declare is not found" 404 "$r"
+r=$(dryrun adjutant POST "$API/set-feature" '{"name":"commendations","enabled":true}'); check "a dry run of the flip runs the frame and rolls back" 200 "$r"
+r=$(req adjutant GET "$API/features"); assert_py "the dry run changed nothing" "$r" "rows=={'enabled':[]}"
+if [ -n "$SECOND_PID" ]; then
+  for i in $(seq 1 600); do (echo > /dev/tcp/127.0.0.1/"$SECOND_PORT") >/dev/null 2>&1 && break || sleep 0.5; done
+  if (echo > /dev/tcp/127.0.0.1/"$SECOND_PORT") >/dev/null 2>&1; then echo "PASS  a second server process is up on :$SECOND_PORT against the same emulators"; else echo "FAIL  the second server process did not come up: $(tail -5 "$S/second.log" | tr '\n' ' ' | head -c 300)"; fails=$((fails+1)); fi
+  login_second adjutant
+  r=$(req adjutant.2 GET "$API2/features"); assert_py "the second instance loaded the flag off at start" "$r" "rows=={'enabled':[]}"
+  r=$(req adjutant.2 GET "$API2/commendations"); check "the desk is dark on the second instance too" 404 "$r"
+fi
+r=$(req adjutant POST "$API/set-feature" '{"name":"commendations","enabled":true}'); check "the adjutant turns the commendations desk on" 200 "$r"
+assert_py "the answer is the flag as written, stamped now" "$r" "rows['name']=='commendations' and rows['enabled'] is True and $RECENT(rows['updatedAt'])"
+r=$(req adjutant GET "$API/features"); assert_py "the features route lists it" "$r" "rows=={'enabled':['commendations']}"
+r=$(req adjutant GET "$API/feature-flags/commendations"); check "the flag read by name (Read on FeatureFlags)" 200 "$r"
+assert_py "on, stamped by the adjutant within the last day: what the dialog shows as on-since" "$r" "rows['enabled'] is True and 'adjutant' in rows['updatedBy'] and $RECENT(rows['updatedAt'])"
+r=$(req adjutant GET "$API/commendations"); check "the desk answers at once on the instance that flipped" 200 "$r"
+assert_py "the seeded citations, newest first" "$r" "[c['citation'] for c in rows]==['Talked a drifting hauler crew through a cold restart','Brought the Kingfisher home on one engine','Held formation through the debris belt with a cracked canopy']"
+r=$(req adjutant GET "$API/commendations?filter=pilotId:eq:$PAX"); assert_py "Pax's two, off the index" "$r" "len(rows)==2 and all(c['pilotId']=='$PAX' for c in rows)"
+r=$(req adjutant GET "$API/permission-digest"); assert_py "the digest now carries the desk and the card's field" "$r" "rows['Commendations']['List']=='granted' and rows['Commendations']['Create']=='granted' and 'PilotCards.commendations' in rows"
+r=$(req pilot GET "$API/pilot-cards?columns=userId,commendations"); check "the card's field is served under the crew's grant" 200 "$r"
+assert_py "Pax's card counts his two citations" "$r" "rows[0]['commendations']==2"
+r=$(req adjutant PATCH "$API/resources" "[{\"op\":\"add\",\"path\":\"/commendations\",\"value\":{\"pilotId\":\"$PAX\",\"citation\":\"Flew the Hesper's wounded home through the belt\"}}]"); check "the adjutant files a citation on Pax's record" 200 "$r"
+r=$(req pilot GET "$API/pilot-cards?columns=userId,commendations"); assert_py "the card counts three" "$r" "rows[0]['commendations']==3"
+r=$(req cadet GET "$API/commendations"); check "the cadet holds no desk: the flag opens the route, the grant still decides" 403 "$r"
+if [ -n "$SECOND_PID" ]; then
+  tries=0; for i in $(seq 1 40); do tries=$i; r=$(req adjutant.2 GET "$API2/commendations"); [ "${r##*$'\n'}" = 200 ] && break; sleep 0.25; done
+  check "the second instance serves the desk at its next request, no restart (the topic's signal; answered on try $tries)" 200 "$r"
+  assert_py "with the four citations" "$r" "len(rows)==4"
+  r=$(req adjutant.2 GET "$API2/features"); assert_py "its features route lists the flag" "$r" "rows=={'enabled':['commendations']}"
+fi
+r=$(req adjutant POST "$API/set-feature" '{"name":"commendations","enabled":false}'); check "the adjutant turns the desk off again" 200 "$r"
+r=$(req adjutant GET "$API/commendations"); check "the desk is dark again on the first instance" 404 "$r"
+r=$(req pilot GET "$API/pilot-cards?columns=userId,commendations"); check "and the card's field is unknown again" 400 "$r"
+if [ -n "$SECOND_PID" ]; then
+  tries=0; for i in $(seq 1 40); do tries=$i; r=$(req adjutant.2 GET "$API2/commendations"); [ "${r##*$'\n'}" = 404 ] && break; sleep 0.25; done
+  check "and on the second instance at its next request (try $tries)" 404 "$r"
+  kill "$SECOND_PID" 2>/dev/null; wait "$SECOND_PID" 2>/dev/null; SECOND_PID=
 fi
 
 # ---- squadrons config page: the array config's request ----

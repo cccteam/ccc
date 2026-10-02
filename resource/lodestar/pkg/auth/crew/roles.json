@@ -12,7 +12,8 @@
                 "clearance",
                 "feeLimit",
                 "certifications",
-                "squadrons"
+                "squadrons",
+                "commendations"
               ]
             },
             {
@@ -340,6 +341,74 @@
                 "section",
                 "directive"
               ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Adjutant",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Commendations",
+              "fields": [
+                "pilotId",
+                "citation",
+                "awardedBy",
+                "awardedAt"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Commendations",
+              "fields": [
+                "pilotId",
+                "citation",
+                "awardedBy",
+                "awardedAt"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "Commendations",
+              "fields": [
+                "pilotId",
+                "citation"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "FeatureAdministrator",
+        "permissions": {
+          "List": [
+            {
+              "resource": "FeatureFlags",
+              "fields": [
+                "description",
+                "enabled",
+                "updatedAt",
+                "updatedBy"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "FeatureFlags",
+              "fields": [
+                "description",
+                "enabled",
+                "updatedAt",
+                "updatedBy"
+              ]
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "SetFeature"
             }
           ]
         }

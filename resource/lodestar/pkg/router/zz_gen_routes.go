@@ -6,7 +6,9 @@ package router
 import (
 	"net/http"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
 )
@@ -17,6 +19,7 @@ const (
 	ClientID                          httpio.ParamType = "clientID"
 	ClientContactID                   httpio.ParamType = "clientContactID"
 	ClientRosterID                    httpio.ParamType = "clientRosterID"
+	CommendationID                    httpio.ParamType = "commendationID"
 	ConsignmentID                     httpio.ParamType = "consignmentID"
 	DistressCallID                    httpio.ParamType = "distressCallID"
 	FeeByKindKindID                   httpio.ParamType = "feeByKindKindID"
@@ -54,6 +57,10 @@ type GeneratedHandlers interface {
 	// DomainGuard wraps every domain-scoped route below: it rejects requests for
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
+
+	// FeatureGuard wraps every route below gated behind a feature flag (@feature):
+	// while the flag is off the route answers 404 as an unregistered route does.
+	FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc
 
 	// LiveService is the application's live service (resource/live): the subscription
 	// record the list and read handlers register in, the publisher the mutations write
@@ -93,6 +100,9 @@ type GeneratedHandlers interface {
 
 	ClientRosters() http.HandlerFunc
 	ClientRoster() http.HandlerFunc
+
+	Commendations() http.HandlerFunc
+	Commendation() http.HandlerFunc
 
 	CompileBriefing() http.HandlerFunc
 
@@ -225,6 +235,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r = r.With(live.Subscribing(h.LiveService()))
 	domainGuard := h.DomainGuard()
 
+	featureGuard := h.FeatureGuard()
+
 	r.Get("/console/api/permission-digest", h.PermissionDigest())
 	r.Get("/console/api/user-domains", h.UserDomains())
 	r.Post("/console/api/live/renew", h.LiveRenew())
@@ -266,6 +278,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	clientRosterHandler := domainGuard(h.ClientRoster())
 	r.Get("/console/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
 	r.Post("/console/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
+
+	commendationsHandler := featureGuard(resources.Commendations)(h.Commendations())
+	r.Get("/console/api/commendations", commendationsHandler)
+	r.Post("/console/api/commendations", commendationsHandler)
+
+	commendationHandler := featureGuard(resources.Commendations)(h.Commendation())
+	r.Get("/console/api/commendations/{commendationID}", commendationHandler)
+	r.Post("/console/api/commendations/{commendationID}", commendationHandler)
 
 	r.Post("/console/api/sectors/{sectorID}/compile-briefing", domainGuard(h.CompileBriefing()))
 

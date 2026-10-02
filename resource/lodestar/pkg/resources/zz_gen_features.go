@@ -10,7 +10,9 @@ import "github.com/cccteam/ccc/resource"
 // description the constant's doc comment. The deploy step migrates the FeatureFlags
 // table to this list (resource.MigrateFeatures). Nil when the package declares none.
 func Features() []resource.FeatureDeclaration {
-	return nil
+	return []resource.FeatureDeclaration{
+		{Name: Commendations, Description: "Commendations lets headquarters cite a pilot for a sortie flown well: the commendations desk lists and files the citations, and every crew member's card counts their own.", Constant: "Commendations"},
+	}
 }
 
 // FeatureGates maps every resource, field ("Resource.field") and method gated behind a
@@ -18,5 +20,8 @@ func Features() []resource.FeatureDeclaration {
 // gated-off target is absent from the digest exactly as a denied one is. Nil when
 // nothing is gated.
 func FeatureGates() resource.FeatureGates {
-	return nil
+	return resource.FeatureGates{
+		"Commendations":            Commendations,
+		"PilotCards.commendations": Commendations,
+	}
 }

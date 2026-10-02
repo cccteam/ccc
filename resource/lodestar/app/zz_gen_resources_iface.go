@@ -13,8 +13,8 @@ import (
 type Resourcer interface {
 	resource.Resourcer
 	resources.Client | resources.ClientContact | virtualresources.ClientRoster |
-		resources.Consignment | resources.DistressCall | resources.DroidReport |
-		virtualresources.FeeByKind | resources.Hangar | resources.Mission |
+		resources.Commendation | resources.Consignment | resources.DistressCall |
+		resources.DroidReport | virtualresources.FeeByKind | resources.Hangar | resources.Mission |
 		virtualresources.MissionBoard | resources.MissionDocument |
 		virtualresources.OpenMissionsBySquadron | resources.Pilot |
 		virtualresources.PilotAssignment | resources.PilotCertification | resources.Refit |

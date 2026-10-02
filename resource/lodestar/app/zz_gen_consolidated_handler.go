@@ -30,6 +30,15 @@ func (a *App) PatchResources() http.HandlerFunc {
 	}
 	clientContactDecoder := NewDecoder[resources.ClientContact, clientContactRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
+	type commendationRequest struct {
+		ID        ccc.UUID  `json:"-"`
+		PilotID   ccc.UUID  `json:"pilotId"`
+		Citation  string    `json:"citation"`
+		AwardedBy string    `json:"-"`
+		AwardedAt time.Time `json:"-"`
+	}
+	commendationDecoder := NewDecoder[resources.Commendation, commendationRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
 	type consignmentRequest struct {
 		ID          ccc.UUID   `json:"-"`
 		SectorID    string     `json:"-"`
@@ -255,6 +264,43 @@ func (a *App) PatchResources() http.HandlerFunc {
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewClientContactDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 							return errors.Wrap(err, "resources.ClientContactDeletePatch.Buffer()")
+						}
+					}
+				case "commendations":
+					// The resource is gated behind a feature flag: while it is off its arm
+					// answers as an unknown resource does, as its own routes answer 404.
+					if !a.FeatureSet().Enabled(resources.Commendations) {
+						return httpio.NewBadRequestMessagef("unknown resource %q", httpio.Param[string](op.Req, "resource"))
+					}
+					patchSet, err := commendationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
+					if err != nil {
+						return errors.Wrap(err, "commendationDecoder.DecodeOperation()")
+					}
+
+					req, err := op.ReqWithPattern("/{resource}/{id}")
+					if err != nil {
+						return errors.Wrap(err, "op.ReqWithPattern()")
+					}
+
+					switch op.Type {
+					case resource.OperationCreate:
+						patch, err := resources.NewCommendationCreatePatchFromPatchSet(patchSet)
+						if err != nil {
+							return errors.Wrap(err, "commendationCreatePatchFromPatchSet()")
+						}
+						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(err, "resources.CommendationCreatePatch.Buffer()")
+						}
+						resp["commendations"] = append(resp["commendations"], patch.ID())
+					case resource.OperationUpdate:
+						id := httpio.Param[ccc.UUID](req, "id")
+						if err := resources.NewCommendationUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(err, "resources.CommendationUpdatePatch.Buffer()")
+						}
+					case resource.OperationDelete:
+						id := httpio.Param[ccc.UUID](req, "id")
+						if err := resources.NewCommendationDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(err, "resources.CommendationDeletePatch.Buffer()")
 						}
 					}
 				case "pilots":

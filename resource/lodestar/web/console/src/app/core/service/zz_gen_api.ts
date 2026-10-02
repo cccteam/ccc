@@ -2,8 +2,14 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullBoolean, ResourceHandle, UploadMethodHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags } from './zz_gen_resources';
+import { Clients, ClientContacts, ClientRosters, Commendations, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags } from './zz_gen_resources';
 import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult } from './zz_gen_methods';
+
+/** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
+export type Feature = 'commendations';
+export const Feature = {
+  Commendations: 'commendations' as Feature,
+};
 
 /**
  * The fields a client may set when creating Clients. Server-owned fields are
@@ -47,6 +53,22 @@ export type ClientContactsKey = [id: string];
 
 /** The primary key of ClientRosters, in route order. */
 export type ClientRostersKey = [id: string];
+
+/**
+ * The fields a client may set when creating Commendations. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export interface CommendationsCreate {
+  pilotId: string;
+  citation: string;
+}
+/** The fields a client may change on Commendations. Keys, server-owned, and immutable fields are absent. */
+export interface CommendationsPatch {
+  pilotId?: string;
+  citation?: string;
+}
+/** The primary key of Commendations, in route order. */
+export type CommendationsKey = [id: string];
 
 /**
  * The fields a client may set when creating Consignments. Server-owned fields are
@@ -469,6 +491,19 @@ export const apiDescriptor = defineApiDescriptor({
       page: { default: 25, max: 200 },
       order: [{ field: 'name', direction: 'asc' }],
     },
+    [Resources.Commendations]: {
+      resource: Resources.Commendations,
+      property: 'commendations',
+      route: 'commendations',
+      scope: 'global',
+      consolidated: true,
+      keys: ['id'],
+      operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 25, max: 200 },
+      order: [{ field: 'awardedAt', direction: 'desc' }],
+      patchable: ['pilotId', 'citation'],
+      feature: 'commendations',
+    },
     [Resources.Consignments]: {
       resource: Resources.Consignments,
       property: 'consignments',
@@ -834,6 +869,7 @@ export const apiDescriptor = defineApiDescriptor({
 export interface GlobalApi {
   clients: ResourceHandle<Clients, ClientsKey, 'list' | 'read' | 'create' | 'patch' | 'remove', ClientsCreate, ClientsPatch>;
   clientContacts: ResourceHandle<ClientContacts, ClientContactsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', ClientContactsCreate, ClientContactsPatch>;
+  commendations: ResourceHandle<Commendations, CommendationsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', CommendationsCreate, CommendationsPatch>;
   feeByKinds: ResourceHandle<FeeByKinds, FeeByKindsKey, 'list' | 'read'>;
   pilots: ResourceHandle<Pilots, PilotsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', PilotsCreate, PilotsPatch>;
   pilotCertifications: ResourceHandle<PilotCertifications, PilotCertificationsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', PilotCertificationsCreate, PilotCertificationsPatch>;
