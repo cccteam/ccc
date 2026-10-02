@@ -68,7 +68,8 @@ the boot project as `imp-org-gbl-tofu`.
   environment's version trigger with the restore instruction, and the pipeline
   does the work as the deploy identity. `2-env` grants the role on each
   environment project to each application's operations identity, in every
-  environment but production.
+  environment but production, and in tst to each application's deploy
+  identity as well, as which Cloud Scheduler runs the hourly sweep trigger.
 - The custom organization role `cloudBuildBuildReader`: reads Cloud Build
   builds (`cloudbuild.builds.get`) and nothing else. The pipeline's first step
   reads the build it runs in (the trigger's kind, the tag or the pull request,

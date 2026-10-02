@@ -83,7 +83,7 @@ output "secondary_region_code" {
 }
 
 output "cloud_build_trigger_runner_role" {
-  description = "Full name of the cloudBuildTriggerRunner custom organization role: runs Cloud Build triggers and reads the builds they start, nothing else. 2-env grants it on the environment project to each application's operations identity."
+  description = "Full name of the cloudBuildTriggerRunner custom organization role: runs Cloud Build triggers and reads the builds they start, nothing else. 2-env grants it on the environment project to each application's operations identity, and in tst to each application's deploy identity, which runs the hourly sweep trigger."
   value       = google_organization_iam_custom_role.cloud_build_trigger_runner.id
 }
 

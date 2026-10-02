@@ -110,7 +110,9 @@ resource "google_organization_iam_custom_role" "spanner_plan_reader" {
 # else: roles/cloudbuild.builds.editor would also cancel and retry builds and
 # write every trigger. Granted on the environment project to each
 # application's operations identity by 2-env, in every environment but
-# production, which is never restored by a run.
+# production, which is never restored by a run; and in tst to each
+# application's deploy identity, as which Cloud Scheduler runs the hourly
+# sweep trigger.
 resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
   org_id      = local.org_id
   role_id     = "cloudBuildTriggerRunner"
@@ -176,7 +178,7 @@ resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
 # in the environment project (tst), and the application's uploaded files through
 # the bucket's default grants to project viewers. A plan refreshes what the stack
 # manages and reads no data, so the plan identity holds this role instead: the
-# get and list of every resource type the application stack declares, found in
+# read of every resource type the application stack declares, found in
 # the lab from the plans' refusals, and nothing of what those resources hold.
 # The IAM policies the stack's grants are refreshed through are
 # roles/iam.securityReviewer's, granted beside it.

@@ -113,7 +113,7 @@ Plans the application's stack for this environment on a pull request, from
 tst's Cloud Build, and writes nothing: the plan a reviewer approves is the
 plan of every environment, each made as that environment's plan identity. On
 the environment project: `applicationPlanReader` (`1-org`'s custom role: the
-get and list of every resource type the stack declares, found in the lab from
+read of every resource type the stack declares, found in the lab from
 the plans' refusals, and nothing of what those resources hold; `roles/viewer`
 would read the rows of a database in this project and the application's
 uploaded files through the bucket's default grants to project viewers),
@@ -150,8 +150,10 @@ runs the application's sweep trigger as this identity. Bounded grants:
 environment's records bucket (a record is written once and read back: the
 stale-database check of a pull-request build reads the pull request's newest
 record, and the environment's live version is in its newest live record;
-neither role overwrites or deletes a record, and no role on the project
-reaches the bucket, so a record is written once);
+neither role overwrites or deletes a record, and none of the deploy identity's
+project roles reaches the bucket, so it writes a record once; the apply
+identity it may act as still reaches the bucket through its storage admin on
+the project);
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
 `var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; in tst
 only, `roles/spanner.databaseAdmin` on the tst instance for pull-request
