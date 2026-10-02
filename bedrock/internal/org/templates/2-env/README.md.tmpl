@@ -112,10 +112,14 @@ applies the pull request's stack as it.
 Plans the application's stack for this environment on a pull request, from
 tst's Cloud Build, and writes nothing: the plan a reviewer approves is the
 plan of every environment, each made as that environment's plan identity. On
-the environment project: `roles/viewer` (refreshing what the stack manages),
+the environment project: `applicationPlanReader` (`1-org`'s custom role: the
+get and list of every resource type the stack declares, found in the lab from
+the plans' refusals, and nothing of what those resources hold; `roles/viewer`
+would read the rows of a database in this project and the application's
+uploaded files through the bucket's default grants to project viewers),
 `roles/iam.securityReviewer` (reading the IAM policies the stack's grants are
-refreshed from, a bucket's and a queue's among them, which `viewer` does not
-read) and `roles/serviceusage.serviceUsageConsumer`. On the state bucket:
+refreshed from, a bucket's and a queue's among them) and
+`roles/serviceusage.serviceUsageConsumer`. On the state bucket:
 `roles/storage.legacyBucketReader` unconditionally, and
 `roles/storage.objectViewer` on `3-app/<app>/<env>/` and on the upstream
 states the apply identity reads; no write, so the plan runs without the state

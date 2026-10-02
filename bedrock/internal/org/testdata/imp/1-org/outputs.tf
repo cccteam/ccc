@@ -92,6 +92,11 @@ output "cloud_build_build_reader_role" {
   value       = google_organization_iam_custom_role.cloud_build_build_reader.id
 }
 
+output "application_plan_reader_role" {
+  description = "Full name of the applicationPlanReader custom organization role: reads the resources an application stack declares, nothing of their data. 2-env grants it on the environment project to each application's plan identity in place of roles/viewer."
+  value       = google_organization_iam_custom_role.application_plan_reader.id
+}
+
 output "cloud_tasks_queue_operator_role" {
   description = "Full name of the cloudTasksQueueOperator custom organization role: pauses, resumes and purges a Cloud Tasks queue, nothing else. An application's stack grants it on the application's own queue to its deploy identity, for the maintenance a restore run or a breaking release puts the application into."
   value       = google_organization_iam_custom_role.cloud_tasks_queue_operator.id

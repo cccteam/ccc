@@ -78,6 +78,19 @@ the boot project as `{{.Prefix}}-org-gbl-tofu`.
   account, which carries that read together with every object of every bucket
   in the project: with it a deployment record is not written once and an
   application's uploaded files are the build's to delete.
+- The custom organization role `applicationPlanReader`: the reads a plan of an
+  application stack needs, found in the lab from the plans' refusals: Cloud
+  Build builds (`cloudbuild.builds.get`, which answers a regional trigger's
+  read), Cloud Scheduler jobs, Cloud Tasks queues, backend services and
+  serverless network endpoint groups, a Firestore database's metadata, Cloud
+  Run services and jobs and a service's tag bindings, secrets and the metadata
+  of their versions, and buckets; nothing of what those resources hold. `2-env`
+  grants it on each environment project to each application's plan identity
+  in place of `roles/viewer`, which reads data as well: the rows of a Spanner
+  database in the project, and the application's uploaded files through the
+  bucket's default grants to project viewers. The IAM policies the stack's
+  grants are refreshed through come from `roles/iam.securityReviewer`, granted
+  beside it.
 - The custom organization role `cloudTasksQueueOperator`: pauses, resumes and
   purges a Cloud Tasks queue, and reads it, nothing else. An application's stack
   grants it on the application's own queue to its deploy identity: a release that
@@ -258,4 +271,5 @@ bucket, prefix `1-org`.
 | `spanner_plan_reader_role` | Full name of the `spannerPlanReader` role. |
 | `cloud_build_trigger_runner_role` | Full name of the `cloudBuildTriggerRunner` role. |
 | `cloud_build_build_reader_role` | Full name of the `cloudBuildBuildReader` role. |
+| `application_plan_reader_role` | Full name of the `applicationPlanReader` role. |
 | `cloud_tasks_queue_operator_role` | Full name of the `cloudTasksQueueOperator` role. |

@@ -158,17 +158,17 @@ locals {
   ], local.is_tst ? [local.org.cloud_build_trigger_runner_role] : [])
 
   # The application plan identity plans the application's stack for this
-  # environment on a pull request and writes nothing: viewer on the project to
-  # refresh what the stack manages, securityReviewer to read the IAM policies
-  # the stack's grants are refreshed from (viewer refreshes the bucket and
-  # the queue themselves but not their IAM policies: the first plan as this
-  # identity was refused storage.buckets.getIamPolicy and
-  # cloudtasks.queues.getIamPolicy),
-  # and serviceUsageConsumer to use the project as its quota project, the same
-  # as the apply identity.
+  # environment on a pull request and writes nothing: applicationPlanReader,
+  # 1-org's custom role, reads the resources the stack declares and nothing of
+  # their data (roles/viewer, the cloud's bundle for a reader, would read the
+  # rows of a database in this project and the application's uploaded files
+  # through the bucket's default grants to project viewers); securityReviewer
+  # reads the IAM policies the stack's grants are refreshed from (a bucket's,
+  # a queue's); and serviceUsageConsumer uses the project as its quota project,
+  # the same as the apply identity.
   plan_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
-    "roles/viewer",
+    local.org.application_plan_reader_role,
     "roles/iam.securityReviewer",
   ]
 

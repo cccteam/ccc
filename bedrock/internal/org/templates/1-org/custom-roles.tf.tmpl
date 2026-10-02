@@ -169,3 +169,45 @@ resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
     "cloudbuild.builds.get",
   ]
 }
+
+# A pull-request build plans each environment's application stack as that
+# environment's plan identity, a reader. roles/viewer, the cloud's bundle for a
+# reader, reads data as well as resources: Spanner rows where the database is
+# in the environment project (tst), and the application's uploaded files through
+# the bucket's default grants to project viewers. A plan refreshes what the stack
+# manages and reads no data, so the plan identity holds this role instead: the
+# get and list of every resource type the application stack declares, found in
+# the lab from the plans' refusals, and nothing of what those resources hold.
+# The IAM policies the stack's grants are refreshed through are
+# roles/iam.securityReviewer's, granted beside it.
+resource "google_organization_iam_custom_role" "application_plan_reader" {
+  org_id      = local.org_id
+  role_id     = "applicationPlanReader"
+  title       = "Application Plan Reader"
+  description = "Reads the resources an application stack declares, for a plan, and nothing of their data."
+  permissions = [
+    # Cloud Build: the application's triggers. A regional trigger's read is answered on
+    # builds.get; triggers.get is not asked for.
+    "cloudbuild.builds.get",
+    # Cloud Scheduler: the sweep's schedule.
+    "cloudscheduler.jobs.get",
+    # Cloud Tasks: the application's queue.
+    "cloudtasks.queues.get",
+    # The load balancer's backend services and serverless network endpoint groups.
+    "compute.backendServices.get",
+    "compute.regionNetworkEndpointGroups.get",
+    # Firestore: the database's metadata (what its read checks; databases.get is not).
+    "datastore.databases.getMetadata",
+    # Cloud Run: the services, the jobs, and a service's tag bindings, which Cloud Run
+    # checks on its own permission rather than Resource Manager's.
+    "run.jobs.get",
+    "run.services.get",
+    "run.services.listTagBindings",
+    # Secret Manager: the secrets, and the metadata of the versions a revision pins (the
+    # pipeline checks after the plan that each exists and is enabled); never a payload.
+    "secretmanager.secrets.get",
+    "secretmanager.versions.get",
+    # Cloud Storage: the assets bucket, and not its objects.
+    "storage.buckets.get",
+  ]
+}

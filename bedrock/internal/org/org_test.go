@@ -240,6 +240,45 @@ func TestDeployProjectRoles(t *testing.T) {
 	}
 }
 
+// TestPlanProjectRoles pins the plan identity's roles on the environment project: the reads a
+// plan needs and no bundle. roles/viewer reads data as well as resources (the rows of a
+// database in the project, the application's uploaded files through the bucket's default
+// grants to project viewers), so the identity reads the stack's resources through
+// applicationPlanReader, their IAM policies through securityReviewer, and nothing else.
+func TestPlanProjectRoles(t *testing.T) {
+	t.Parallel()
+
+	locals := renderedFile(t, "2-env/locals.tf")
+	tests := []struct {
+		name   string
+		text   string
+		absent bool
+	}{
+		{
+			name: "the roles a plan needs",
+			text: "  plan_project_roles = [\n" +
+				"    \"roles/serviceusage.serviceUsageConsumer\",\n" +
+				"    local.org.application_plan_reader_role,\n" +
+				"    \"roles/iam.securityReviewer\",\n" +
+				"  ]\n",
+		},
+		{name: "no viewer bundle", text: "\"roles/viewer\"", absent: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			found := strings.Contains(locals, tt.text)
+			switch {
+			case tt.absent && found:
+				t.Errorf("2-env/locals.tf grants %s", tt.text)
+			case !tt.absent && !found:
+				t.Errorf("2-env/locals.tf lacks:\n%s", tt.text)
+			}
+		})
+	}
+}
+
 // TestCustomRolePermissions pins what 1-org's custom roles carry: each is the exact
 // permissions one identity needs where the cloud's own roles carry more.
 func TestCustomRolePermissions(t *testing.T) {
@@ -273,6 +312,19 @@ func TestCustomRolePermissions(t *testing.T) {
 			roleID:      "runJobPolicyAdmin",
 			permissions: []string{"run.jobs.getIamPolicy", "run.jobs.setIamPolicy"},
 		},
+		{
+			name:     "plans an application stack",
+			resource: "application_plan_reader",
+			roleID:   "applicationPlanReader",
+			permissions: []string{
+				"cloudbuild.builds.get", "cloudscheduler.jobs.get", "cloudtasks.queues.get",
+				"compute.backendServices.get", "compute.regionNetworkEndpointGroups.get",
+				"datastore.databases.getMetadata",
+				"run.jobs.get", "run.services.get", "run.services.listTagBindings",
+				"secretmanager.secrets.get", "secretmanager.versions.get",
+				"storage.buckets.get",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -289,13 +341,22 @@ func TestCustomRolePermissions(t *testing.T) {
 			if !closed {
 				t.Fatalf("1-org/custom-roles.tf: the role %s has no closing brace", tt.roleID)
 			}
-			want := "  permissions = [\n"
-			for _, p := range tt.permissions {
-				want += "    \"" + p + "\",\n"
+			_, list, found := strings.Cut(block, "  permissions = [\n")
+			if !found {
+				t.Fatalf("1-org/custom-roles.tf: the role %s has no permissions list", tt.roleID)
 			}
-			want += "  ]"
-			if !strings.Contains(block, want) {
-				t.Errorf("role %s carries other permissions than:\n%s\nin:\n%s", tt.roleID, want, block)
+			list, _, _ = strings.Cut(list, "\n  ]")
+			// The list may carry comment lines on what a permission is for; the
+			// permissions are the quoted lines.
+			var got []string
+			for _, line := range strings.Split(list, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "\"") {
+					got = append(got, strings.Trim(line, "\","))
+				}
+			}
+			if strings.Join(got, " ") != strings.Join(tt.permissions, " ") {
+				t.Errorf("role %s carries the permissions\n%s\nwant\n%s", tt.roleID, strings.Join(got, "\n"), strings.Join(tt.permissions, "\n"))
 			}
 		})
 	}
