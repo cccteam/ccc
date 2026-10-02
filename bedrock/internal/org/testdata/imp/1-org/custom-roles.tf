@@ -102,6 +102,29 @@ resource "google_organization_iam_custom_role" "spanner_plan_reader" {
   ]
 }
 
+# Creating a database is checked on the instance (spanner.databases.create),
+# as is listing what the instance holds: a list is a request on the instance,
+# so no condition on a database's or a backup's name can admit it. Each
+# application's apply identity holds this role on its instance without
+# condition, and the admin roles under a condition naming its own database
+# and backups (2-spn for the shared instance, 2-env for an environment's
+# own), so an identity makes its own database and sees what else exists, and
+# changes nothing it did not make.
+resource "google_organization_iam_custom_role" "spanner_database_creator" {
+  org_id      = local.org_id
+  role_id     = "spannerDatabaseCreator"
+  title       = "Spanner Database Creator"
+  description = "Creates a database on an instance and lists the instance's databases, backups and operations; changes nothing that exists."
+  permissions = [
+    "spanner.backupOperations.list",
+    "spanner.backups.list",
+    "spanner.databaseOperations.list",
+    "spanner.databases.create",
+    "spanner.databases.list",
+    "spanner.instances.get",
+  ]
+}
+
 # A restore of an environment to a release is started from GitHub: the
 # application's operations workflow exchanges its token for the environment's
 # operations identity and runs the environment's version trigger with the

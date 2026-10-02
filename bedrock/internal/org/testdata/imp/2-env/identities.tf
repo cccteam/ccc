@@ -53,12 +53,31 @@ resource "google_project_iam_member" "apply" {
   member  = google_service_account.apply[each.value.app].member
 }
 
-# Database admin on the environment's instance rather than on the instance
-# project: enough to create the application's database and set its IAM, and
-# nothing on the instance itself. Only when the instance is this layer's
-# (var.spanner_instances, placement own); for an environment on the shared
-# instance the same grant is 2-spn's, from its database_admins variable,
-# which takes this layer's applications[*].apply_identity_member.
+# Grants on the environment's own instance (var.spanner_instances, placement
+# own), bounded to each application's own database and backups; for an
+# environment on the shared instance the same grants are 2-spn's, from its
+# database_admins variable, which takes this layer's
+# applications[*].apply_identity_member. Creating a database and listing what
+# the instance holds are checked on the instance, so the organization's
+# spannerDatabaseCreator role is held without condition; databaseAdmin and
+# backupAdmin are conditioned on the resource's name: the application's
+# environment database ("<prefix>-<env>-gbl-<app>-") and, in tst, its
+# pull-request databases ("<app>-pr<number>-db"), with the schedules and
+# operations under them, and the backups taken from them. Nothing on the
+# instance itself, and nothing of another application's.
+locals {
+  instance_path = local.own_instance ? "projects/${local.instance_project}/instances/${local.instance_name}" : null
+}
+
+resource "google_spanner_instance_iam_member" "apply_database_creator" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = local.org.spanner_database_creator_role
+  member   = google_service_account.apply[each.key].member
+}
+
 resource "google_spanner_instance_iam_member" "apply_database_admin" {
   for_each = { for app in var.applications : app => app if local.own_instance }
 
@@ -66,11 +85,18 @@ resource "google_spanner_instance_iam_member" "apply_database_admin" {
   instance = local.instance_name
   role     = "roles/spanner.databaseAdmin"
   member   = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} databases"
+    description = "The application's own database in this environment and its pull-request databases, with the schedules and operations under them."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\") || resource.name.startsWith(\"${local.instance_path}/databases/${each.key}-pr\")"
+  }
 }
 
 # The backup schedules a production stack makes on its database are read and
 # changed with spanner.backupSchedules.*, which databaseAdmin does not carry
-# (2-spn grants the same on the shared instance).
+# (2-spn grants the same on the shared instance). Backups are named after the
+# database they are taken from.
 resource "google_spanner_instance_iam_member" "apply_backup_admin" {
   for_each = { for app in var.applications : app => app if local.own_instance }
 
@@ -78,6 +104,12 @@ resource "google_spanner_instance_iam_member" "apply_backup_admin" {
   instance = local.instance_name
   role     = "roles/spanner.backupAdmin"
   member   = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} backups"
+    description = "The application's own databases in this environment and the backups taken from them."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\") || resource.name.startsWith(\"${local.instance_path}/databases/${each.key}-pr\") || resource.name.startsWith(\"${local.instance_path}/backups/${local.name}-gbl-${each.key}-\")"
+  }
 }
 
 # Only when 2-net publishes a shared VPC: a stack that attaches a Cloud Run
@@ -324,19 +356,10 @@ resource "google_secret_manager_secret_iam_member" "deploy_build_secrets" {
   member    = google_service_account.deploy[each.value.app].member
 }
 
-# tst only: the deploy identity creates and drops pull-request databases on
-# the tst instance. In stg and prd it holds nothing on Spanner. When tst is
-# placed on the shared instance (var.spanner_instances), this grant cannot be
-# made here: it goes into 2-spn's database_admins as a deliberate, visible
-# choice, since it reaches every database on that instance.
-resource "google_spanner_instance_iam_member" "deploy_database_admin" {
-  for_each = { for app in var.applications : app => app if local.is_tst && local.own_instance }
-
-  project  = local.instance_project
-  instance = local.instance_name
-  role     = "roles/spanner.databaseAdmin"
-  member   = google_service_account.deploy[each.key].member
-}
+# The deploy identity holds nothing on a Spanner instance: pull-request
+# databases are created and dropped by the pull-request stack, which runs as
+# the apply identity (above), and every other touch of a database is the
+# migrate job's, as the migrate identity on its own database.
 
 # Service Account User on the application's runtime identities is granted in
 # the application's stack, where those identities are created: the deploy identity may act

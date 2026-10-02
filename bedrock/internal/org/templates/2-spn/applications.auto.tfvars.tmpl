@@ -4,17 +4,18 @@
 # terraform.tfvars, which keeps the values a person decides.
 
 # Each application's apply identity in the environments whose databases live on the
-# shared instance (every one but the first, whose instance is its own): database admin
-# on the instance, since creating a database is checked there.
-database_admins = [
+# shared instance (every one but the first, whose instance is its own), with the
+# environment and application its grants are bounded to and, in every environment but
+# production, the environment whose backups it may restore from.
+database_admins = {
 {{- range $app := .Applications}}
 {{- range $env := $.Environments}}
 {{- if ne $env (index $.Environments 0)}}
-  "{{$.ApplyIdentity $env $app}}", # {{$app}}'s {{$env}} apply identity (2-env {{$env}})
+  "{{$.ApplyIdentity $env $app}}" = { environment = "{{$env}}", application = "{{$app}}"{{if ne $env $.Production}}, restore_from = "{{$.Production}}"{{end}} } # {{$app}}'s {{$env}} apply identity (2-env {{$env}})
 {{- end}}
 {{- end}}
 {{- end}}
-]
+}
 
 # Each application's plan identity in the same environments: the organization's
 # spannerPlanReader role on the instance, since a pull-request build plans the

@@ -56,6 +56,12 @@ func (*view) Environments() []string {
 	return Environments
 }
 
+// Production is the last environment: the one a hotfix is based on, and the one whose
+// backups the other environments restore from.
+func (*view) Production() string {
+	return Environments[len(Environments)-1]
+}
+
 // DeployIdentity is the application's deploy identity in the environment, as an IAM
 // member; ApplyIdentity its apply identity. Both are 2-env's, named under the
 // environment's project.

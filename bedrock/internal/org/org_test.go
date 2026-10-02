@@ -320,6 +320,15 @@ func TestCustomRolePermissions(t *testing.T) {
 			permissions: []string{"run.jobs.getIamPolicy", "run.jobs.setIamPolicy"},
 		},
 		{
+			name:     "creates a database on an instance",
+			resource: "spanner_database_creator",
+			roleID:   "spannerDatabaseCreator",
+			permissions: []string{
+				"spanner.backupOperations.list", "spanner.backups.list", "spanner.databaseOperations.list",
+				"spanner.databases.create", "spanner.databases.list", "spanner.instances.get",
+			},
+		},
+		{
 			name:     "plans an application stack",
 			resource: "application_plan_reader",
 			roleID:   "applicationPlanReader",
@@ -364,6 +373,74 @@ func TestCustomRolePermissions(t *testing.T) {
 			}
 			if strings.Join(got, " ") != strings.Join(tt.permissions, " ") {
 				t.Errorf("role %s carries the permissions\n%s\nwant\n%s", tt.roleID, strings.Join(got, "\n"), strings.Join(tt.permissions, "\n"))
+			}
+		})
+	}
+}
+
+// TestSpannerGrants reads the Spanner grants 2-spn and 2-env render: each application's
+// apply identity holds the organization's creator role on its instance without condition
+// and the admin roles under a condition naming its own database and backups; the restore
+// right reaches production's backups alone, from every environment but production; and
+// the deploy identity holds nothing on an instance.
+func TestSpannerGrants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the shared instance's members carry their environment, application and restore source",
+			path: "2-spn/applications.auto.tfvars",
+			want: []string{
+				`"serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "harbor", restore_from = "prd" }`,
+				`"serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com" = { environment = "prd", application = "harbor" }`,
+				`"serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "beacon", restore_from = "prd" }`,
+			},
+			absent: []string{`restore_from = "stg"`, `environment = "tst"`},
+		},
+		{
+			name: "the shared instance bounds the admin roles to the member's own database and backups",
+			path: "2-spn/spanner.tf",
+			want: []string{
+				`role     = local.org.spanner_database_creator_role`,
+				`own_databases = { for m, v in var.database_admins : m => "${local.instance_path}/databases/${local.prefix}-${v.environment}-gbl-${v.application}-" }`,
+				`own_backups   = { for m, v in var.database_admins : m => "${local.instance_path}/backups/${local.prefix}-${v.environment}-gbl-${v.application}-" }`,
+				`expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\")"`,
+				`expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\") || resource.name.startsWith(\"${local.own_backups[each.key]}\")"`,
+				`for_each = { for m, v in var.database_admins : m => v if v.restore_from != "" }`,
+				`expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")"`,
+			},
+		},
+		{
+			name: "an environment's own instance bounds the apply identity and grants the deploy identity nothing",
+			path: "2-env/identities.tf",
+			want: []string{
+				`resource "google_spanner_instance_iam_member" "apply_database_creator" {`,
+				`role     = local.org.spanner_database_creator_role`,
+				`expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\") || resource.name.startsWith(\"${local.instance_path}/databases/${each.key}-pr\")"`,
+				`expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\") || resource.name.startsWith(\"${local.instance_path}/databases/${each.key}-pr\") || resource.name.startsWith(\"${local.instance_path}/backups/${local.name}-gbl-${each.key}-\")"`,
+			},
+			absent: []string{`"deploy_database_admin"`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content := renderedFile(t, tt.path)
+			for _, w := range tt.want {
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks %q", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(content, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
 			}
 		})
 	}

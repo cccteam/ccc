@@ -1,10 +1,17 @@
 variable "database_admins" {
   description = <<-EOT
-    IAM members granted roles/spanner.databaseAdmin on the instance. Creating a
-    database needs spanner.databases.create on the instance, so every identity
-    that creates databases here belongs in this list: the application apply
-    identity of each application in stg and prd, which the environment layers
-    create. A member has to exist before it can be bound, so an application's
+    The apply identities that hold databases on the instance, each with the
+    environment and application its grants are bounded to: the application
+    apply identity of each application in stg and prd, which the environment
+    layers create. Every member holds the organization's spannerDatabaseCreator
+    role on the instance (creating a database and listing what the instance
+    holds are checked on the instance) and roles/spanner.databaseAdmin and
+    roles/spanner.backupAdmin under a condition naming its own database and
+    backups, "<prefix>-<environment>-gbl-<application>-"; a member with
+    restore_from set (every environment but production) also holds
+    roles/spanner.restoreAdmin on that environment's backups of the same
+    application, for the restore of its database from production's backup.
+    A member has to exist before it can be bound, so an application's
     identities are added here after the environment layers have run for it.
 
     Everything below the instance is the application layer's: the database
@@ -12,16 +19,20 @@ variable "database_admins" {
     are made on each database by the layer that creates it.
 
     Example:
-      [
-        "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-a1b2.iam.gserviceaccount.com",
-        "serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-a1b2.iam.gserviceaccount.com",
-      ]
+      {
+        "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-a1b2.iam.gserviceaccount.com" = { environment = "stg", application = "harbor", restore_from = "prd" },
+        "serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-a1b2.iam.gserviceaccount.com" = { environment = "prd", application = "harbor" },
+      }
   EOT
-  type        = list(string)
-  default     = []
+  type = map(object({
+    environment  = string
+    application  = string
+    restore_from = optional(string, "")
+  }))
+  default = {}
 
   validation {
-    condition     = alltrue([for m in var.database_admins : can(regex("^(serviceAccount|user|group|principal|principalSet):", m))])
+    condition     = alltrue([for m in keys(var.database_admins) : can(regex("^(serviceAccount|user|group|principal|principalSet):", m))])
     error_message = "Every database admin must be a full IAM member, such as serviceAccount:name@project.iam.gserviceaccount.com."
   }
 }

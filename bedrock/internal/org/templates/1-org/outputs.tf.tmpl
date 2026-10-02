@@ -121,3 +121,8 @@ output "spanner_plan_reader_role" {
   description = "Full name of the spannerPlanReader custom organization role: reads an instance's databases, their IAM policies and their backup schedules, nothing of their data. 2-spn grants it on the shared instance and 2-env on an environment's own instance to each application's plan identity."
   value       = google_organization_iam_custom_role.spanner_plan_reader.id
 }
+
+output "spanner_database_creator_role" {
+  description = "Full name of the spannerDatabaseCreator custom organization role: creates a database on an instance and lists what the instance holds, and changes nothing that exists. 2-spn grants it on the shared instance and 2-env on an environment's own instance to each application's apply identity, beside the admin roles bounded to that application's own database and backups."
+  value       = google_organization_iam_custom_role.spanner_database_creator.id
+}

@@ -91,11 +91,15 @@ which the stack makes in this project and a tag build's plan reads),
 `roles/resourcemanager.projectIamAdmin`, and the custom organization role
 `secretContainerAdmin` from `1-org` (secrets as containers, never payloads). `roles/compute.networkUser` on the environment
 project only when `2-net` publishes a shared VPC (it publishes null). In tst,
-`roles/spanner.databaseAdmin` on the tst instance, enough to create the
-application's database and set its policy, and `roles/spanner.backupAdmin`
-there, for the backup schedules a production stack makes on its database,
-which `databaseAdmin` does not read; in stg and prd the same grants on the
-shared instance are `2-spn`'s, from its `database_admins`. On the state
+on the tst instance: the organization's `spannerDatabaseCreator` role
+(creating a database and listing what the instance holds are checked on the
+instance) and, under a condition naming the application's own database and
+its pull-request databases, `roles/spanner.databaseAdmin` (the policy, the
+schema, the drop) and `roles/spanner.backupAdmin` (the backup schedules a
+production stack makes on its database, which `databaseAdmin` does not read,
+and the backups taken from it); nothing of another application's database.
+In stg and prd the same grants on the shared instance are `2-spn`'s, from its
+`database_admins`. On the state
 bucket (the boot project's): `roles/storage.legacyBucketReader` unconditionally
 (a list is a request on the bucket and cannot be conditioned by object name),
 `roles/storage.objectUser` on `3-app/<app>/<env>/` (the pull-request stacks
@@ -158,9 +162,9 @@ project roles reaches the bucket, so it writes a record once; the apply
 identity it may act as still reaches the bucket through its storage admin on
 the project);
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
-`var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; in tst
-only, `roles/spanner.databaseAdmin` on the tst instance for pull-request
-databases. Two grants are made elsewhere from this identity's member:
+`var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; nothing on
+a Spanner instance (pull-request databases are the pull-request stack's, which
+runs as the apply identity). Two grants are made elsewhere from this identity's member:
 `roles/artifactregistry.writer` on the application's own repository by
 `2-shr` (`pushers`), and `roles/iam.serviceAccountUser` on the application's
 runtime identities by the application stack, where those identities are

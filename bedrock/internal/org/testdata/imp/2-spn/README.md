@@ -12,14 +12,23 @@ Cloud Build in the boot project as `imp-spn-gbl-tofu`.
   `bedrock-lab`. No autoscaler. `force_destroy` is off and the resource
   carries `prevent_destroy`, so neither a plan nor a stray destroy can take
   the databases with it.
-- `roles/spanner.databaseAdmin`, `roles/spanner.backupAdmin` and
-  `roles/spanner.restoreAdmin` on the instance for each member of
-  `database_admins` (the second for the backup schedules a production stack
-  makes on its database, which `databaseAdmin` does not read; the third for the
-  restore of an environment's database from production's backup, which adds
-  `spanner.backups.restoreDatabase` alone), rendered into
-  `applications.auto.tfvars` from `placement.json` and bound only after the
-  environment layers have created the application apply identities.
+- For each member of `database_admins` (an application's apply identity in
+  stg or prd, with the environment and application its grants are bounded
+  to), rendered into `applications.auto.tfvars` from `placement.json` and bound
+  only after the environment layers have created the identities: the
+  organization's `spannerDatabaseCreator` role on the instance without
+  condition (creating a database and listing what the instance holds are
+  checked on the instance); `roles/spanner.databaseAdmin` under a condition
+  naming the application's own database in that environment
+  (`<prefix>-<env>-gbl-<app>-`, with the schedules and operations under it);
+  `roles/spanner.backupAdmin` under the same condition widened to the backups
+  taken from that database (for the backup schedules a production stack makes
+  on its database, which `databaseAdmin` does not read); and, for every
+  environment but production, `roles/spanner.restoreAdmin` on production's
+  backups of the same application (the restore of the environment's database
+  from production's backup, which adds `spanner.backups.restoreDatabase`
+  alone). stg's identity can neither drop production's database nor restore
+  over it, and neither application's identity reaches the other's.
 - The organization's `spannerPlanReader` role (`1-org`) on the instance for
   each member of `database_planners`, the application plan identities of the
   same environments: a pull-request build plans the environment's stack as

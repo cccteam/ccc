@@ -52,47 +52,88 @@ resource "google_spanner_instance" "shared" {
   }
 }
 
-# Instance-level grants. spanner.databases.create is checked on the instance,
-# so each identity that creates databases holds databaseAdmin here. That role
-# at instance level reaches every database on the instance, other
-# applications' included; bounding it to an application's own databases by
-# name is one of the open IAM questions, and until it is
-# answered the list stays short and the members stay apply identities that
-# run only after approval.
+# Instance-level grants, bounded to each application's own database and
+# backups. Creating a database and listing what the instance holds are checked
+# on the instance, so every apply identity holds the organization's
+# spannerDatabaseCreator role here without condition; the admin roles are
+# conditioned on the resource's name, so an identity reaches its own database
+# ("<prefix>-<environment>-gbl-<application>-", with the schedules and
+# operations under it) and its own backups, and nothing of another
+# environment's or another application's. stg's identity can neither drop
+# production's database nor restore over it; it may restore from production's
+# backups alone (restore_admin below).
+locals {
+  instance_path = "projects/${local.project_id}/instances/${google_spanner_instance.shared.name}"
+
+  # The names each member's grants are bounded to.
+  own_databases = { for m, v in var.database_admins : m => "${local.instance_path}/databases/${local.prefix}-${v.environment}-gbl-${v.application}-" }
+  own_backups   = { for m, v in var.database_admins : m => "${local.instance_path}/backups/${local.prefix}-${v.environment}-gbl-${v.application}-" }
+}
+
+resource "google_spanner_instance_iam_member" "database_creator" {
+  for_each = var.database_admins
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = local.org.spanner_database_creator_role
+  member   = each.key
+}
+
 resource "google_spanner_instance_iam_member" "database_admin" {
-  for_each = toset(var.database_admins)
+  for_each = var.database_admins
 
   project  = local.project_id
   instance = google_spanner_instance.shared.name
   role     = "roles/spanner.databaseAdmin"
-  member   = each.value
+  member   = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} database"
+    description = "The application's own database in this environment, with the schedules and operations under it."
+    expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\")"
+  }
 }
 
 # The backup schedules a production stack makes on its database are read and
 # changed with spanner.backupSchedules.*, which databaseAdmin does not carry:
 # the first tag build that planned a production stack as its apply identity
-# was refused the schedule's read. backupAdmin carries them, and the backups.
+# was refused the schedule's read. backupAdmin carries them, and the backups,
+# which are named after the database they are taken from.
 resource "google_spanner_instance_iam_member" "backup_admin" {
-  for_each = toset(var.database_admins)
+  for_each = var.database_admins
 
   project  = local.project_id
   instance = google_spanner_instance.shared.name
   role     = "roles/spanner.backupAdmin"
-  member   = each.value
+  member   = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} backups"
+    description = "The application's own database in this environment and the backups taken from it."
+    expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\") || resource.name.startsWith(\"${local.own_backups[each.key]}\")"
+  }
 }
 
 # A restore from production's backup creates the environment's database afresh
 # from a backup of production's, on this instance, as the environment's apply
-# identity: spanner.backups.restoreDatabase, which neither databaseAdmin nor
-# backupAdmin carries and restoreAdmin adds alone (its other permissions the
-# two already hold).
+# identity: spanner.backups.restoreDatabase on the backup, which neither
+# databaseAdmin nor backupAdmin carries and restoreAdmin adds alone, bounded
+# to production's backups of the same application (the other permissions
+# restoreAdmin carries, the roles above already hold). Production's own
+# identity holds no restore right: no run restores production.
 resource "google_spanner_instance_iam_member" "restore_admin" {
-  for_each = toset(var.database_admins)
+  for_each = { for m, v in var.database_admins : m => v if v.restore_from != "" }
 
   project  = local.project_id
   instance = google_spanner_instance.shared.name
   role     = "roles/spanner.restoreAdmin"
-  member   = each.value
+  member   = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} restores from ${each.value.restore_from}"
+    description = "Production's backups of the application, which this environment's database is restored from."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")"
+  }
 }
 
 # The plan identities read the databases, their IAM policies and their backup
