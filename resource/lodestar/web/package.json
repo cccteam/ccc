@@ -23,9 +23,9 @@
     "@angular/material": "^21.1.1",
     "@angular/platform-browser": "^21.1.1",
     "@angular/router": "^21.1.1",
-    "@cccteam/resource-angular": "0.0.2",
+    "@cccteam/resource-angular": "0.0.3",
     "@cccteam/resource-firestore": "0.0.1",
-    "@cccteam/resource": "0.0.2",
+    "@cccteam/resource": "0.0.3",
     "@contentful/rich-text-types": "^17.2.5",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
@@ -35,7 +35,7 @@
     "zone.js": "~0.16.0"
   },
   "overrides": {
-    "@cccteam/resource": "0.0.2"
+    "@cccteam/resource": "0.0.3"
   },
   "devDependencies": {
     "@angular/build": "^21.1.1",

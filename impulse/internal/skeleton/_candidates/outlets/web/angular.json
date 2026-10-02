@@ -78,7 +78,7 @@
             "servePath": "/console",
             "proxyConfig": "console/proxy.conf.js",
             "prebundle": {
-              "exclude": ["@cccteam/resource", "@cccteam/resource-angular"]
+              "exclude": ["@cccteam/resource", "@cccteam/resource-angular", "@cccteam/resource-firestore"]
             }
           },
           "configurations": {
@@ -182,7 +182,7 @@
             "servePath": "/portal",
             "proxyConfig": "portal/proxy.conf.js",
             "prebundle": {
-              "exclude": ["@cccteam/resource", "@cccteam/resource-angular"]
+              "exclude": ["@cccteam/resource", "@cccteam/resource-angular", "@cccteam/resource-firestore"]
             }
           },
           "configurations": {
