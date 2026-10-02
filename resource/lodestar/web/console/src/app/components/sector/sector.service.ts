@@ -26,6 +26,7 @@ import {
   Page,
   Permission,
   Resource,
+  ResourceDescriptor,
   ResourceHandle,
 } from '@cccteam/resource';
 
@@ -33,7 +34,43 @@ import {
 export type SectorApi = DomainClient<DomainApi>;
 
 /** A handle a page can list from and ask about: what sectorList/globalList need. */
-type ListHandle<Row> = Listable<Row> & { can(permission: Permission): boolean };
+export type ListHandle<Row> = Listable<Row> & {
+  readonly descriptor: ResourceDescriptor;
+  can(permission: Permission): boolean;
+  grantedFields(permission: Permission): readonly string[] | undefined;
+};
+
+/**
+ * The query a global reader passes: a ListQuery as written, or a function that builds one
+ * from the handle (grantedColumns). The function runs inside the reader's params, so the
+ * reader reads again when what it builds changes, and not when a digest reload builds the
+ * same query again.
+ */
+export type ListQueryOf<Row> = ListQuery<Row> | ((handle: ListHandle<Row>) => ListQuery<Row>);
+
+/**
+ * grantedColumns asks for exactly the columns the digest grants on the handle's resource,
+ * with its keys: the query for a reader of a resource with a field behind a feature flag
+ * (the pilot card's citation count, @feature.field). The server serves a gated field only
+ * when it is named in columns= and refuses the name while the flag is off, so a bare list
+ * never carries it; the digest names the field exactly while the flag is on, so this query
+ * follows the flag, and the person who flips it sees their own read follow at once (the
+ * flip refreshes the digest). A digest that enumerates no fields for the resource asks for
+ * the default columns.
+ */
+export function grantedColumns<Row>(handle: ListHandle<Row>): ListQuery<Row> {
+  const fields = handle.grantedFields(Permissions.List);
+  if (!fields) {
+    return {};
+  }
+  return { columns: [...new Set([...handle.descriptor.keys, ...fields])] as (keyof Row & string)[] };
+}
+
+/** What a global reader reads with: the granted handle and the query it was given, built. */
+interface GlobalRead<Row> {
+  handle: ListHandle<Row>;
+  query: ListQuery<Row> | undefined;
+}
 
 /**
  * ShipsLogEntry is one change-tracking event from the hand-written
@@ -343,36 +380,51 @@ export class SectorService {
 
   /**
    * globalList is sectorList's global-resource sibling: no sector involved, same List gate.
-   * The params are the handle itself while the grant holds, one object for the life of
-   * the client, and undefined otherwise, when the resource idles at its default; they are
-   * a computed, since resource() re-runs its loader whenever the params function's
-   * dependencies change, and only a computed holds its consumers still while its value is
-   * the same. So a digest load that changes no answer to the global question (the
-   * selected sector's digest landing after sign-in, a sector change) reads nothing, and
-   * the list is read once per answer, not once per digest.
+   * The params are the handle with the query while the grant holds, and undefined
+   * otherwise, when the resource idles at its default; they are a computed that counts the
+   * same handle with the same query as the same value, since resource() re-runs its loader
+   * whenever the params function's dependencies change, and only a computed holds its
+   * consumers still while its value is the same. So a digest load that changes no answer
+   * to the global question (the selected sector's digest landing after sign-in, a sector
+   * change) reads nothing, and the list is read once per answer, not once per digest. A
+   * query given as a function (grantedColumns) is built inside the computed, so a digest
+   * that changes what it builds is a new answer and reads again.
    */
-  globalList<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Row[]> {
+  globalList<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQueryOf<Row>): ResourceRef<Row[]> {
     return resource({
-      params: this.grantedGlobal(select),
-      loader: ({ params }) => params.list(query),
+      params: this.grantedGlobal(select, query),
+      loader: ({ params }) => params.handle.list(params.query),
       defaultValue: [],
     });
   }
 
   /** globalPage is sectorPage's global-resource sibling, its params globalList's. */
-  globalPage<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Page<Row> | undefined> {
+  globalPage<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQueryOf<Row>): ResourceRef<Page<Row> | undefined> {
     return resource({
-      params: this.grantedGlobal(select),
-      loader: ({ params }) => params.page(query),
+      params: this.grantedGlobal(select, query),
+      loader: ({ params }) => params.handle.page(params.query),
     });
   }
 
-  /** The selected global handle while the digest grants List on it, else undefined: a global reader's params. */
-  private grantedGlobal<Row>(select: (api: Api) => ListHandle<Row>): Signal<ListHandle<Row> | undefined> {
-    return computed(() => {
-      this.permissions();
-      const handle = select(this.api);
-      return handle.can(Permissions.List) ? handle : undefined;
-    });
+  /**
+   * The selected global handle with its query while the digest grants List on it, else
+   * undefined: a global reader's params. Equal while the handle is the same object and the
+   * query reads the same, so a reload that changes neither holds the reader still.
+   */
+  private grantedGlobal<Row>(
+    select: (api: Api) => ListHandle<Row>,
+    query?: ListQueryOf<Row>,
+  ): Signal<GlobalRead<Row> | undefined> {
+    return computed(
+      () => {
+        this.permissions();
+        const handle = select(this.api);
+        if (!handle.can(Permissions.List)) {
+          return undefined;
+        }
+        return { handle, query: typeof query === 'function' ? query(handle) : query };
+      },
+      { equal: (a, b) => a?.handle === b?.handle && JSON.stringify(a?.query) === JSON.stringify(b?.query) },
+    );
   }
 }

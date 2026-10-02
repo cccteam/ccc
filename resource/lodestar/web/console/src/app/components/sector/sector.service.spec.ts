@@ -11,7 +11,7 @@ import { provideResourceTesting } from '@cccteam/resource-angular/testing';
 import { ScriptedTransport, scriptedTransport } from '@cccteam/resource/testing';
 import { environment } from '@env';
 import { firstValueFrom } from 'rxjs';
-import { SectorService } from './sector.service';
+import { grantedColumns, SectorService } from './sector.service';
 
 // A global reader (globalList, globalPage) asks for its list when the digest grants it and
 // again only when the answer to that global question changes. The selected sector's digest
@@ -21,7 +21,21 @@ import { SectorService } from './sector.service';
 
 /** The global digest grants the pilot cards when `granted`; every sector's digest grants missions. */
 let granted = true;
+/** The card fields the global digest enumerates under the grant, when it enumerates any. */
+let cardFields: string[] = [];
 const sectorDigest: PermissionDigest = { Missions: { List: 'granted', Read: 'granted' } };
+
+/** The global digest: the grant on the cards, with a field-level entry per enumerated field. */
+function globalDigest(): PermissionDigest {
+  if (!granted) {
+    return {};
+  }
+  const digest: PermissionDigest = { PilotCards: { List: 'granted' } };
+  for (const field of cardFields) {
+    digest[`PilotCards.${field}`] = { List: 'granted' };
+  }
+  return digest;
+}
 
 /** The server as the spec plays it: the session, the digests, two lit sectors, and the pilot cards. */
 function server(request: TransportRequest): TransportResponse {
@@ -33,7 +47,7 @@ function server(request: TransportRequest): TransportResponse {
       if (url.searchParams.get('domain')) {
         return { status: 200, body: sectorDigest };
       }
-      return { status: 200, body: granted ? { PilotCards: { List: 'granted' } } : {} };
+      return { status: 200, body: globalDigest() };
     case `${environment.apiUrl}/user-domains`:
       return { status: 200, body: ['anvil', 'bastion'] };
     case `${environment.apiUrl}/pilot-cards`:
@@ -46,9 +60,21 @@ function server(request: TransportRequest): TransportResponse {
 describe('SectorService global readers', () => {
   let transport: ScriptedTransport;
 
+  /** The pilot-cards requests as URLs, in order. */
+  const pilotCardRequests = (): URL[] =>
+    transport.requests
+      .map((r) => new URL(r.url, 'http://lodestar.test'))
+      .filter((url) => url.pathname === `${environment.apiUrl}/pilot-cards`);
+
   /** How many times the pilot cards were asked for, whatever the query. */
-  const pilotCardReads = (): number =>
-    transport.requests.filter((r) => new URL(r.url, 'http://lodestar.test').pathname === `${environment.apiUrl}/pilot-cards`).length;
+  const pilotCardReads = (): number => pilotCardRequests().length;
+
+  /** The columns each pilot-cards request named. */
+  const pilotCardColumns = (): (string | null)[] => pilotCardRequests().map((url) => url.searchParams.get('columns'));
+
+  beforeEach(() => {
+    cardFields = [];
+  });
 
   /** Runs the root effects and lets pending promises land until `done` answers true, for at most `rounds` rounds. */
   const settle = async (done: () => boolean, rounds = 50): Promise<void> => {
@@ -126,5 +152,27 @@ describe('SectorService global readers', () => {
     await settle(() => sectors.can(Permissions.List, Resources.Missions));
     expect(cards.value()).toEqual([]);
     expect(pilotCardReads()).toBe(0);
+  });
+
+  // A query built from the digest (grantedColumns) names the key and the granted columns;
+  // a reload that enumerates the same fields reads nothing more, and one that adds a field
+  // (the commendations flag turned on, the digest refreshed by the flip) reads again with it.
+  it('a reader with grantedColumns follows the digest: the same fields hold it still, a new field reads again', async () => {
+    granted = true;
+    cardFields = ['displayName', 'clearance'];
+    const sectors = await signIn();
+    const cards = TestBed.runInInjectionContext(() => sectors.globalList((api) => api.pilotCards, grantedColumns));
+    await settle(() => cards.status() === 'resolved');
+    expect(pilotCardColumns()).toEqual(['userId,clearance,displayName']);
+
+    await TestBed.inject<ClientBase>(RESOURCE_CLIENT).permissions.refresh();
+    await settle(() => false, 5);
+    expect(pilotCardColumns()).toEqual(['userId,clearance,displayName']);
+
+    cardFields = ['displayName', 'clearance', 'commendations'];
+    await TestBed.inject<ClientBase>(RESOURCE_CLIENT).permissions.refresh();
+    await settle(() => pilotCardReads() === 2);
+    expect(pilotCardColumns()).toEqual(['userId,clearance,displayName', 'userId,clearance,commendations,displayName']);
+    expect(cards.status()).toBe('resolved');
   });
 });

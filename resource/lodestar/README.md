@@ -140,10 +140,13 @@ The commendations desk is behind a feature flag, and the flag is seeded off. Sig
 `adjutant` (Adjutant Alba): the server answers the desk's routes with the router's own 404,
 the permission digest carries no `Commendations` and no `PilotCards.commendations`, so the
 console shows no page and no card field for it, and a request naming the card's field is
-refused as an unknown field. Turn the flag on (through the API today, `POST
-/console/api/set-feature` with `{"name":"commendations","enabled":true}` as the adjutant;
-the console's dialog follows with the client release) and the desk exists: its routes
-answer, the digest carries it, and Pilot Pax's card counts his two citations. Every running
+refused as an unknown field. Turn the flag on (the header's "Feature flags" link opens the
+library's dialog for anyone holding List on `FeatureFlags`; its toggles are live for a
+login holding Execute on `SetFeature`, read-only otherwise; the walkthrough does the same
+through `POST /console/api/set-feature` with `{"name":"commendations","enabled":true}`)
+and the desk exists: its routes answer, the digest carries it, the Commendations item
+appears in the console's navigation without a reload, and Pilot Pax's card reads
+"Cited: 2" from the field the flag gates. Every running
 instance of the application follows the flip within a moment, with no restart and no
 release; turn it off again and the desk is gone everywhere. The flag's value lives in the
 application's database, so it is per environment by construction, and every flip is
@@ -185,11 +188,13 @@ How it is wired:
   second server process built from the tree included;
   [`feature_flags_test.go`](test/integration/feature_flags_test.go) pins it over two
   instances, the real engines and the in-memory live service; the generated authorization
-  matrix runs with the flag on (`test/authz/harness_test.go` puts every declared flag on in
-  a database nothing has written flags into), since a flag that is off answers before the
-  permission gate the matrix pins. The console's dialog, the `*cccFeature` directive and
-  the route guard arrive with the client release; the generated metadata already says what
-  they will read.
+  matrix puts every declared flag on in its own test database before it drives a route,
+  since a flag that is off answers before the permission gate the matrix pins. In the
+  console, `resourceRoutes` reads `feature` from the generated metadata and guards the
+  desk's route with `featureMatch`, the header's "Cited" line sits under `*cccFeature`, and
+  the header's "Feature flags" link opens the library's dialog; `header.component.spec.ts`
+  covers the link, the dialog and the card in both states, and the headless check in the
+  walkthrough's feature-flags section drives the flip through the dialog.
 
 ## Running against a real Spanner instance
 

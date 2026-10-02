@@ -5,6 +5,7 @@ import { resourceRoutes } from '@cccteam/resource-angular/resource-route-generat
 import { sectorRoute } from '@components/sector/sector.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { clientsConfig } from './configs/clients.config';
+import { commendationsConfig } from './configs/commendations.config';
 import { distressCallsConfig } from './configs/distressCalls.config';
 import { missionDocumentsConfig } from './configs/missionDocuments.config';
 import { missionsConfig } from './configs/missions.config';
@@ -48,6 +49,13 @@ export const routes: Routes = [
       // alone, no `:uuid` row route, since a line has no key to open by.
       resourceRoutes(standingOrdersConfig, resourceMeta),
       resourceRoutes(pilotsConfig, resourceMeta),
+      // The commendations desk sits behind the one feature flag. Nothing here says so:
+      // resourceRoutes reads `feature` from the generated metadata and matches the route
+      // only while the flag is on (the library's featureMatch guard), so a URL to the
+      // desk while it is off falls to the wildcard below as an unknown URL does.
+      //
+      // Demonstrates: @feature.
+      resourceRoutes(commendationsConfig, resourceMeta),
       resourceRoutes(sectorsConfig, resourceMeta),
       resourceRoutes(missionsConfig, resourceMeta),
       resourceRoutes(shipsConfig, resourceMeta),

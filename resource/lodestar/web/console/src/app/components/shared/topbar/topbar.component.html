@@ -1,6 +1,11 @@
 <!--
   Items carry the permission their destination requires; cccHasPermission answers from
-  the permission digest, so a persona sees only the decks they can open.
+  the permission digest, so a persona sees only the decks they can open. An item may
+  carry a feature flag too (resourceRoutes fills it from the generated metadata when the
+  resource is gated); cccFeature hides it while the flag is off, as the library's own
+  sidenav does. For a resource behind a flag the digest alone would hide the item, since
+  the server leaves a gated-off resource out of it; the flag gate is what hides a
+  hand-written item with no resource behind it.
 -->
 <nav class="menu">
   @for (item of menuData; track item.label) {
@@ -8,11 +13,15 @@
       <button mat-button [matMenuTriggerFor]="groupMenu">{{ item.label }} ▾</button>
       <mat-menu #groupMenu="matMenu">
         @for (child of item.children; track child.label) {
-          <a mat-menu-item *cccHasPermission="scopeFor(child)" [routerLink]="child.route">{{ child.label }}</a>
+          <ng-container *cccFeature="child.feature">
+            <a mat-menu-item *cccHasPermission="scopeFor(child)" [routerLink]="child.route">{{ child.label }}</a>
+          </ng-container>
         }
       </mat-menu>
     } @else {
-      <a mat-button *cccHasPermission="scopeFor(item)" [routerLink]="item.route">{{ item.label }}</a>
+      <ng-container *cccFeature="item.feature">
+        <a mat-button *cccHasPermission="scopeFor(item)" [routerLink]="item.route">{{ item.label }}</a>
+      </ng-container>
     }
   }
 </nav>
