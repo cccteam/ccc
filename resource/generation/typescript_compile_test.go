@@ -162,7 +162,7 @@ func Test_typescriptClientFiles_compile(t *testing.T) {
 			writeCompileFile(t, filepath.Join(packageDir, "package.json"), `{"name":"@cccteam/resource","version":"0.0.0","types":"index.d.ts"}`)
 			writeCompileFile(t, filepath.Join(packageDir, "index.d.ts"), readClientDeclaration(t, tt.declaration))
 
-			cmd := exec.CommandContext(t.Context(), tsc, "-p", dir, "--pretty", "false")
+			cmd := exec.CommandContext(t.Context(), "node", tsc, "-p", dir, "--pretty", "false")
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			var exitErr *exec.ExitError
@@ -188,12 +188,16 @@ func Test_typescriptClientFiles_compile(t *testing.T) {
 	}
 }
 
-// findTsc is the TypeScript compiler the test runs: the one Lodestar's web workspace
-// installs, the version its build uses, else one on PATH; the test skips without either.
+// findTsc is the TypeScript compiler's script the test runs through node: the one
+// Lodestar's web workspace installs, the version its build uses, else the one on PATH
+// (a node script too); the test skips without node or without either.
 func findTsc(t *testing.T) string {
 	t.Helper()
 
-	workspace := filepath.Join(generationDir(t), "..", "lodestar", "web", "node_modules", ".bin", "tsc")
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is not installed: the compile test runs the TypeScript compiler's script through it")
+	}
+	workspace := filepath.Join(generationDir(t), "..", "lodestar", "web", "node_modules", "typescript", "bin", "tsc")
 	if _, err := os.Stat(workspace); err == nil {
 		return workspace
 	}
