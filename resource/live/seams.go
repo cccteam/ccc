@@ -52,29 +52,63 @@ type Identity interface {
 	Revoke(ctx context.Context, uid string) error
 }
 
-// ApplicationTopic is the application's own channel between its instances: a signal
-// on a named topic, delivered to every instance watching it, carrying nothing but the
-// fact that something changed. The feature flags use it (resource.FeaturesTopic): a flip
-// broadcasts, and every instance's FeatureSet watching the topic rereads the table. The
-// Firestore implementation keeps one document per topic, application/{topic}, and a
-// watch is a snapshot listener on it.
-type ApplicationTopic interface {
-	// Broadcast signals the topic: every watch on it, on every instance, runs its
-	// onSignal once.
-	Broadcast(ctx context.Context, topic string) error
-	// Watch runs onSignal on every broadcast of the topic after the watch began, on the
-	// watcher's own goroutine; the state at the start is not a signal. stop ends the
-	// watch, as does ctx ending.
-	Watch(ctx context.Context, topic string, onSignal func()) (stop func(), err error)
+// Kind is a signal's kind: which of the application's shared states changed. It is
+// resource.SignalKind, declared in the resource package so the resource package's
+// consumers (FeatureSet) and the live service name one type; the kinds are re-exported
+// here under the same names.
+type Kind = resource.SignalKind
+
+// The kinds.
+const (
+	// KindFeatures is a feature flag flip.
+	KindFeatures = resource.KindFeatures
+	// KindTenants is a change of the tenant roster.
+	KindTenants = resource.KindTenants
+	// KindPolicy is a change of the permission policy.
+	KindPolicy = resource.KindPolicy
+)
+
+// Signaler is the application's own channel between its instances: a signal of a
+// kind, delivered to every instance subscribed to the kind, carrying nothing but the
+// fact that something of the kind changed. The Firestore implementation keeps one
+// signals document per application, application/signals, with a field per kind
+// holding the time of the last signal and the instance that sent it; a signal of a
+// kind writes that kind's field alone, so two kinds never clobber each other, and a
+// subscriber served one snapshot after two quick signals of different kinds sees both.
+type Signaler interface {
+	// Signal signals the kind: every subscription to it, on every instance, runs its
+	// onSignal once. While a write of the kind is in flight, a later Signal of the kind
+	// is absorbed into one following write the implementation makes on its own and
+	// answers nil at once: one write after the last call covers every call before it.
+	// The error of the caller's own write is returned for the caller to log; the
+	// caller's contract stays log and never fail the request, since every subscriber
+	// also rereads at its own backstop.
+	Signal(ctx context.Context, kind Kind) error
 }
 
-// Service is the live service an application wires: the record, the publisher, the
-// identity and the application topic together. The generated handlers draw on it
-// through the application's LiveService accessor; nil means the application serves no
-// live pages, and a request carrying the subscribe header is refused.
+// Subscriber delivers the signals to this instance's consumers: one subscriber per
+// instance holds the one listener on the signals document and runs, for every kind
+// whose time advanced since it last looked, the onSignal of each subscription to the
+// kind. The state at the start is not a signal; a subscription made after the listener
+// began receives every signal after it was made; a listener the backend ends on its
+// own is logged and reopened with backoff by the subscriber, and on the reopen every
+// kind whose time advanced while it was down is signaled once.
+type Subscriber interface {
+	// Subscribe runs onSignal on every signal of the kind from now on, on the
+	// subscriber's goroutine, so it must return quickly (a non-blocking send is the
+	// usual shape). Several subscriptions to one kind each run. stop ends this
+	// subscription alone.
+	Subscribe(kind Kind, onSignal func()) (stop func(), err error)
+}
+
+// Service is the live service an application wires: the record, the change publisher,
+// the identity, and the signals' signaler and subscriber together. The generated
+// handlers draw on it through the application's LiveService accessor, and every
+// application wires one: the Firestore service, or the Fake in a test harness.
 type Service interface {
 	SubscriptionRecord
 	ChangePublisher
 	Identity
-	ApplicationTopic
+	Signaler
+	Subscriber
 }

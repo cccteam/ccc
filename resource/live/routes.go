@@ -68,9 +68,6 @@ func RenewHandler(svc Service, userPermissions func(r *http.Request) resource.Us
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		if svc == nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage(notServedMessage))
-		}
 		var req RenewRequest
 		if err := decodeBody(w, r, &req); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -175,9 +172,6 @@ func UnsubscribeHandler(svc Service) http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		if svc == nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage(notServedMessage))
-		}
 		var req UnsubscribeRequest
 		if err := decodeBody(w, r, &req); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -211,9 +205,6 @@ func TokenHandler(svc Service) http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		if svc == nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage(notServedMessage))
-		}
 		payload, err := svc.Token(ctx, PrincipalID(ctx))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)

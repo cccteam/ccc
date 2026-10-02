@@ -23,12 +23,18 @@
 // the browser that addressed the row by its route and the publisher that saw the patch
 // spell it identically.
 //
-// The package holds the seams (SubscriptionRecord, ChangePublisher, Identity, bundled
-// as Service), the fan-out that every publisher implementation shares (Fanout), an
-// in-memory Fake for tests, the handler-side glue the generated code calls
-// (Subscribing, Refusing, Subscribe, SetCacheControl, Publish), and the three route
-// handlers (RenewHandler, UnsubscribeHandler, TokenHandler). The Firestore
-// implementation is the firestore subpackage.
+// The service also carries the application's signals between its instances
+// (Signaler, Subscriber): one signals document per application with a field per kind
+// (features, tenants, policy), a signal of a kind writing that kind's field and waking
+// every instance's subscriptions to the kind. The feature flags ride the features kind.
+//
+// The package holds the seams (SubscriptionRecord, ChangePublisher, Identity, Signaler,
+// Subscriber, bundled as Service), the fan-out that every publisher implementation
+// shares (Fanout), an in-memory Fake for tests, the handler-side glue the generated
+// code calls (Subscribing, Refusing, Subscribe, SetCacheControl, Publish), and the
+// three route handlers (RenewHandler, UnsubscribeHandler, TokenHandler). Every
+// application wires a Service; the Firestore implementation is the firestore
+// subpackage.
 package live
 
 import (

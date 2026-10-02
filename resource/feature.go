@@ -60,19 +60,16 @@ const (
 	// FeatureFlagNameParam is the read route's parameter, named as every single-key read
 	// route's is: the resource and its key field.
 	FeatureFlagNameParam httpio.ParamType = "featureFlagName"
-	// FeaturesTopic is the application topic a flip broadcasts on, and every instance's
-	// FeatureSet watches when a live service is wired.
-	FeaturesTopic = "features"
 )
 
 // The numbers.
 const (
 	// FeatureBackstop is how often a FeatureSet rereads the table whether or not a
-	// signal arrived, so an instance that missed a broadcast is at most this far behind.
+	// signal arrived, so an instance that missed a signal is at most this far behind.
 	FeatureBackstop = 5 * time.Minute
-	// FeatureBroadcastTimeout bounds a flip's broadcast: past it the failure is logged
-	// and the request answers, since the other instances reload at their backstop.
-	FeatureBroadcastTimeout = 2 * time.Second
+	// FeatureSignalTimeout bounds a flip's signal: past it the failure is logged and
+	// the request answers, since the other instances reload at their backstop.
+	FeatureSignalTimeout = 2 * time.Second
 	// FeatureNameMaxLength is the longest name the table holds.
 	FeatureNameMaxLength = 64
 )
@@ -376,23 +373,9 @@ func bufferFeatureWrite(ctx context.Context, txn ReadWriteTransaction, name Feat
 	return nil
 }
 
-// TopicBroadcaster signals every instance of the application on a topic: what a flip
-// broadcasts on. The live service implements it (live.Service); a nil broadcaster
-// signals nothing, and the other instances reload at their backstop.
-type TopicBroadcaster interface {
-	Broadcast(ctx context.Context, topic string) error
-}
-
-// TopicWatcher delivers the signals broadcast on a topic: what a FeatureSet follows
-// when a live service is wired. onSignal runs on every broadcast after the watch began,
-// on the watcher's goroutine; stop ends the watch.
-type TopicWatcher interface {
-	Watch(ctx context.Context, topic string, onSignal func()) (stop func(), err error)
-}
-
 // FeatureSet is one instance's copy of the FeatureFlags table: what the gated routes,
 // the decoders and the permission digest consult. LoadFeatures reads it once at start;
-// Follow keeps it current on the topic's signals and the backstop; Reload rereads it
+// Follow keeps it current on the features signals and the backstop; Reload rereads it
 // now. A nil FeatureSet answers every flag off, so an application that wires none fails
 // closed on every gate. It is safe for concurrent use.
 type FeatureSet struct {
@@ -498,28 +481,28 @@ func (s *FeatureSet) EnabledNames() []string {
 }
 
 // Follow keeps the copy current until ctx ends: it rereads the table on every signal
-// the topic delivers on FeaturesTopic, and at the backstop interval regardless. A nil
-// topic (no live service wired) leaves the backstop alone to keep the copy current. A
-// failed reread is logged and the copy stays as it was until the next.
-func (s *FeatureSet) Follow(ctx context.Context, topic TopicWatcher) error {
+// of KindFeatures the subscriber delivers, and at the backstop interval regardless, the
+// backstop being the correctness guard should a signal be missed. The subscriber is the
+// application's live service, which every application wires; nil is refused. A failed
+// reread is logged and the copy stays as it was until the next.
+func (s *FeatureSet) Follow(ctx context.Context, signals SignalSubscriber) error {
 	if s == nil {
 		return errors.New("no feature set is loaded")
 	}
-	signals := make(chan struct{}, 1)
-	stop := func() {}
-	if topic != nil {
-		var err error
-		stop, err = topic.Watch(ctx, FeaturesTopic, func() {
-			select {
-			case signals <- struct{}{}:
-			default:
-			}
-		})
-		if err != nil {
-			return errors.Wrap(err, "TopicWatcher.Watch()")
-		}
+	if signals == nil {
+		return errors.New("resource.FeatureSet.Follow: a signal subscriber is required; the application wires its live service")
 	}
-	go s.follow(ctx, signals, stop)
+	wake := make(chan struct{}, 1)
+	stop, err := signals.Subscribe(KindFeatures, func() {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	})
+	if err != nil {
+		return errors.Wrap(err, "SignalSubscriber.Subscribe()")
+	}
+	go s.follow(ctx, wake, stop)
 
 	return nil
 }
@@ -775,13 +758,18 @@ type SetFeatureResult struct {
 
 // SetFeatureHandler flips a flag, to an Execute grant on SetFeature: the row takes the
 // value with the commit timestamp and the principal, the audit table gains the flip's
-// row in the same transaction, the topic is broadcast after the commit and before the
-// answer (bounded by FeatureBroadcastTimeout; a failure is logged, since the other
+// row in the same transaction, KindFeatures is signaled after the commit and before the
+// answer (bounded by FeatureSignalTimeout; a failure is logged, since the other
 // instances reload at their backstop), this instance's copy reloads, and the answer is
 // the flag from the reloaded copy. An unknown name is 404. A dry run (X-Dry-Run: true)
-// runs the frame and rolls back, as every transaction-form method does. The generated
-// router registers it at POST <prefix>/set-feature on every session-serving outlet.
-func SetFeatureHandler(a FeatureApp, collection *GeneratedCollection, topic TopicBroadcaster) http.HandlerFunc {
+// runs the frame and rolls back, as every transaction-form method does. The signaler is
+// the application's live service, which every application wires; the handler refuses
+// to be built without one. The generated router registers it at
+// POST <prefix>/set-feature on every session-serving outlet.
+func SetFeatureHandler(a FeatureApp, collection *GeneratedCollection, signals Signaler) http.HandlerFunc {
+	if signals == nil {
+		panic("resource.SetFeatureHandler: a signaler is required; the application wires its live service")
+	}
 	decoder := MustNewRPCDecoder[SetFeatureRequest](a, SetFeatureMethod, accesstypes.Execute).WithCollection(collection)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -817,7 +805,7 @@ func SetFeatureHandler(a FeatureApp, collection *GeneratedCollection, topic Topi
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.Client.ExecuteFunc()"))
 		}
 
-		broadcastFeatures(ctx, topic)
+		signalFeatures(ctx, signals)
 		if err := features.Reload(ctx); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.FeatureSet.Reload()"))
 		}
@@ -830,15 +818,12 @@ func SetFeatureHandler(a FeatureApp, collection *GeneratedCollection, topic Topi
 	})
 }
 
-// broadcastFeatures signals the other instances that the flags changed, within the
+// signalFeatures signals the other instances that the flags changed, within the
 // timeout; a failure is logged and never fails the request.
-func broadcastFeatures(ctx context.Context, topic TopicBroadcaster) {
-	if topic == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(ctx, FeatureBroadcastTimeout)
+func signalFeatures(ctx context.Context, signals Signaler) {
+	ctx, cancel := context.WithTimeout(ctx, FeatureSignalTimeout)
 	defer cancel()
-	if err := topic.Broadcast(ctx, FeaturesTopic); err != nil {
-		logger.FromCtx(ctx).Errorf("feature flags: broadcasting the change failed; the other instances reload at their backstop: %v", err)
+	if err := signals.Signal(ctx, KindFeatures); err != nil {
+		logger.FromCtx(ctx).Errorf("feature flags: signaling the change failed; the other instances reload at their backstop: %v", err)
 	}
 }

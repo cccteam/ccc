@@ -795,8 +795,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) FeatureFlag() http.HandlerFun
 
 // SetFeature flips a flag for a caller holding Execute on SetFeature in the global
 // scope: the row and its change record are written in one transaction, the other
-// instances are signaled through the live service's application topic, this
-// instance's FeatureSet is reloaded, and the flag is answered as written. A flag the
+// instances are signaled through the live service (the features kind of the signals
+// document), this instance's FeatureSet is reloaded, and the flag is answered as
+// written. A flag the
 // package does not declare is 404. The generated router registers it at
 // POST /{{ .RoutePrefix }}/{{ SetFeatureRoute }}{{ if .HasExtraSessionOutlets }} and, for each additional session-serving outlet,
 // under that outlet's prefix{{ end }}.
@@ -1171,9 +1172,9 @@ import (
 // CursorKey is the one key that seals list cursors (resource.NewCursorKey over the
 // application's cookie key); every generated query decoder is wired with it.
 // LiveService is the live service (resource/live) the list and read handlers register
-// a subscribing request in before the query and the mutations publish their committed
-// rows through; nil serves no live pages, and a request carrying X-Subscribe is
-// refused. FeatureSet is the application's copy of its feature flags
+// a subscribing request in before the query, the mutations publish their committed
+// rows through, and the instances signal each other through; every application wires
+// one. FeatureSet is the application's copy of its feature flags
 // (resource.LoadFeatures): what the gated routes, the decoders and the digest answer
 // from; nil leaves every gated target off.
 type resourceApp interface {
@@ -2779,11 +2780,6 @@ type GeneratedHandlers interface {
 	// while the flag is off the route answers 404 as an unregistered route does.
 	FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc
 	{{ end }}
-	// LiveService is the application's live service (resource/live): the subscription
-	// record the list and read handlers register in, the publisher the mutations write
-	// to, and the browser's identity. Nil serves no live pages, and a request carrying
-	// X-Subscribe is refused.
-	LiveService() live.Service
 	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
 	// outlet's prefix: a tab's subscriptions renewed against the user's grants, a tab
 	// or a logout leaving, and how the browser connects to its change set.
@@ -2811,9 +2807,9 @@ type GeneratedHandlers interface {
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when the application
-	// serves no live pages.
-	r = r.With(live.Subscribing(h.LiveService()))
+	// X-Subscribe is noted on its request log line and refused when its tab id is
+	// malformed.
+	r = r.With(live.Subscribing())
 {{- if .HasDomainScopedRoutes }}
 	domainGuard := h.DomainGuard()
 {{ end }}
@@ -2856,9 +2852,6 @@ type Generated{{ $outlet.Suffix }}Handlers interface {
 	FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc
 	{{ end }}
 	{{- if $outlet.ServesSessions }}
-	// LiveService is the application's live service (resource/live); nil serves no
-	// live pages, and a request carrying X-Subscribe is refused.
-	LiveService() live.Service
 	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
 	// outlet's prefix.
 	LiveRenew() http.HandlerFunc
@@ -2887,9 +2880,9 @@ type Generated{{ $outlet.Suffix }}Handlers interface {
 func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suffix }}Handlers) {
 {{- if $outlet.ServesSessions }}
 	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when the application
-	// serves no live pages.
-	r = r.With(live.Subscribing(h.LiveService()))
+	// X-Subscribe is noted on its request log line and refused when its tab id is
+	// malformed.
+	r = r.With(live.Subscribing())
 {{- else }}
 	// The outlet serves no browser sessions, so it serves no live pages: a request
 	// carrying X-Subscribe is refused naming the header.
@@ -2979,7 +2972,6 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/resource"
-	"github.com/cccteam/ccc/resource/live"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -3243,12 +3235,6 @@ func (s *generatedHandlersStub) PermissionDigest() http.HandlerFunc {
 
 func (s *generatedHandlersStub) UserDomains() http.HandlerFunc {
 	return s.record("UserDomains")
-}
-
-// LiveService serves no live pages in the routing tests: nothing here subscribes, and
-// the live routes dispatch to their recording handlers like every other route.
-func (s *generatedHandlersStub) LiveService() live.Service {
-	return nil
 }
 
 func (s *generatedHandlersStub) LiveRenew() http.HandlerFunc {

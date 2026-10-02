@@ -65,33 +65,26 @@ func TestSubscribing(t *testing.T) {
 	tests := []struct {
 		name       string
 		header     string
-		served     bool
 		wantStatus int
 		wantRan    bool
 		wantBody   string
 	}{
-		{name: "a request without the header passes", served: true, wantStatus: http.StatusOK, wantRan: true},
-		{name: "a request without the header passes an application serving no live pages too", wantStatus: http.StatusOK, wantRan: true},
-		{name: "a subscribing request passes when live pages are served", header: "tab-1", served: true, wantStatus: http.StatusOK, wantRan: true},
-		{name: "a subscribing request is refused when live pages are not served", header: "tab-1", wantStatus: http.StatusBadRequest, wantBody: "live subscriptions are not served"},
-		{name: "a malformed tab is refused naming the header", header: "tab 1", served: true, wantStatus: http.StatusBadRequest, wantBody: "invalid X-Subscribe value"},
+		{name: "a request without the header passes", wantStatus: http.StatusOK, wantRan: true},
+		{name: "a subscribing request passes", header: "tab-1", wantStatus: http.StatusOK, wantRan: true},
+		{name: "a malformed tab is refused naming the header", header: "tab 1", wantStatus: http.StatusBadRequest, wantBody: "invalid X-Subscribe value"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var svc Service
-			if tt.served {
-				svc = NewFake()
-			}
 			ran := false
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/ships", http.NoBody)
 			if tt.header != "" {
 				req.Header.Set(SubscribeHeader, tt.header)
 			}
 			rr := httptest.NewRecorder()
-			Subscribing(svc)(passing(&ran)).ServeHTTP(rr, req)
+			Subscribing()(passing(&ran)).ServeHTTP(rr, req)
 
 			if rr.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d: %s", rr.Code, tt.wantStatus, rr.Body.String())
@@ -151,7 +144,6 @@ func TestSubscribe(t *testing.T) {
 	tests := []struct {
 		name   string
 		header string
-		served bool
 		gate   gateFunc
 		sub    *Subscription
 		want   []Subscription
@@ -159,7 +151,6 @@ func TestSubscribe(t *testing.T) {
 		{
 			name:   "a permitted list request registers the list before the query",
 			header: "tab-1",
-			served: true,
 			gate:   permit,
 			sub:    ListSubscription("Ships", "anvil"),
 			want:   []Subscription{{Principal: "dispatcher", Tab: "tab-1", Resource: "Ships", Domain: "anvil"}},
@@ -167,7 +158,6 @@ func TestSubscribe(t *testing.T) {
 		{
 			name:   "a permitted read registers the row, with no domain",
 			header: "tab-1",
-			served: true,
 			gate:   permit,
 			sub:    &Subscription{Resource: "Ships", Key: "s1", Domain: "anvil"},
 			want:   []Subscription{{Principal: "dispatcher", Tab: "tab-1", Resource: "Ships", Key: "s1"}},
@@ -175,28 +165,19 @@ func TestSubscribe(t *testing.T) {
 		{
 			name:   "a refused request registers nothing",
 			header: "tab-1",
-			served: true,
 			gate:   refuse,
 			sub:    ListSubscription("Ships", "anvil"),
 		},
 		{
 			name:   "a gate that fails registers nothing and the request goes on",
 			header: "tab-1",
-			served: true,
 			gate:   failing,
 			sub:    ListSubscription("Ships", "anvil"),
 		},
 		{
-			name:   "a request without the header registers nothing",
-			served: true,
-			gate:   permit,
-			sub:    ListSubscription("Ships", "anvil"),
-		},
-		{
-			name:   "no live service registers nothing",
-			header: "tab-1",
-			gate:   permit,
-			sub:    ListSubscription("Ships", "anvil"),
+			name: "a request without the header registers nothing",
+			gate: permit,
+			sub:  ListSubscription("Ships", "anvil"),
 		},
 	}
 
@@ -205,17 +186,13 @@ func TestSubscribe(t *testing.T) {
 			t.Parallel()
 
 			fake := NewFake()
-			var svc Service
-			if tt.served {
-				svc = fake
-			}
 			ctx := withSession(t.Context(), "dispatcher")
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/ships", http.NoBody)
 			if tt.header != "" {
 				req.Header.Set(SubscribeHeader, tt.header)
 			}
 
-			Subscribe(ctx, req, svc, tt.gate, tt.sub)
+			Subscribe(ctx, req, fake, tt.gate, tt.sub)
 
 			got := fake.Subscriptions()
 			if diff := cmp.Diff(tt.want, got, cmpopts.IgnoreFields(Subscription{}, "Expiry"), cmpopts.EquateEmpty()); diff != "" {
@@ -294,27 +271,23 @@ func TestPublish(t *testing.T) {
 	}
 	tests := []struct {
 		name   string
-		served bool
 		writes []write
 		domain accesstypes.Domain
 		want   []FakePublish
 	}{
 		{
 			name:   "a committed request publishes under its route domain",
-			served: true,
 			writes: []write{{res: "Ships", key: "s1"}},
 			domain: "anvil",
 			want:   []FakePublish{{Domain: "anvil", Touched: map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1"}}}}},
 		},
 		{
 			name:   "rows decoded in their own tenant publish under it",
-			served: true,
 			writes: []write{{domain: "bastion", res: "Hangars", key: "h1"}},
 			domain: "",
 			want:   []FakePublish{{Domain: "bastion", Touched: map[accesstypes.Resource][]resource.RowChange{"Hangars": {{Key: "h1"}}}}},
 		},
-		{name: "a request that committed nothing publishes nothing", served: true, domain: "anvil"},
-		{name: "no live service publishes nothing", writes: []write{{res: "Ships", key: "s1"}}, domain: "anvil"},
+		{name: "a request that committed nothing publishes nothing", domain: "anvil"},
 	}
 
 	for _, tt := range tests {
@@ -322,10 +295,6 @@ func TestPublish(t *testing.T) {
 			t.Parallel()
 
 			fake := NewFake()
-			var svc Service
-			if tt.served {
-				svc = fake
-			}
 			ctx, touched := resource.CollectTouchedRows(t.Context())
 			client := resource.NewMockClient(&bufferingTxn{}, nil, nil)
 			for _, w := range tt.writes {
@@ -336,7 +305,7 @@ func TestPublish(t *testing.T) {
 				}
 			}
 
-			Publish(ctx, svc, tt.domain, touched)
+			Publish(ctx, fake, tt.domain, touched)
 
 			if diff := cmp.Diff(tt.want, fake.Publishes(), cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("Publishes() mismatch (-want +got):\n%s", diff)

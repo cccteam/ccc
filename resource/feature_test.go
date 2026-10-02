@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/google/go-cmp/cmp"
@@ -175,6 +177,58 @@ func TestFeatureSet_nil(t *testing.T) {
 	if err := s.Follow(t.Context(), nil); err == nil {
 		t.Error("Follow() on a nil FeatureSet error = nil, want an error")
 	}
+}
+
+// TestFeatureSet_Follow_requiresSubscriber pins that the backstop-only mode is gone:
+// every application wires a live service, so a nil subscriber is refused rather than
+// followed on the backstop alone.
+func TestFeatureSet_Follow_requiresSubscriber(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		subscriber SignalSubscriber
+		wantErr    bool
+	}{
+		{name: "a nil subscriber is refused", wantErr: true},
+		{name: "a subscriber is followed", subscriber: &recordingSubscriber{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			features := featureSetOf(map[Feature]bool{"debriefs": false})
+			features.backstop = time.Hour
+			err := features.Follow(ctx, tt.subscriber)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Follow() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			subscriber, ok := tt.subscriber.(*recordingSubscriber)
+			if !ok {
+				t.Fatalf("subscriber is %T, want a recordingSubscriber", tt.subscriber)
+			}
+			if diff := cmp.Diff([]SignalKind{KindFeatures}, subscriber.kinds); diff != "" {
+				t.Errorf("subscribed kinds mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// recordingSubscriber remembers the kinds subscribed to.
+type recordingSubscriber struct {
+	kinds []SignalKind
+}
+
+func (r *recordingSubscriber) Subscribe(kind SignalKind, _ func()) (func(), error) {
+	r.kinds = append(r.kinds, kind)
+
+	return func() {}, nil
 }
 
 func TestFeatureGates_Off(t *testing.T) {

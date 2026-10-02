@@ -479,7 +479,7 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
 				// A session-less outlet acquires no permission routes and no
 				// PermissionDigest/UserDomains requirement of its own, no live routes
-				// and no LiveService requirement.
+				// and no subscribe middleware.
 				`r.Get("/automation/permission-digest"`,
 				`r.Get("/automation/user-domains"`,
 				`r.Post("/automation/live/renew"`,
@@ -513,7 +513,7 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				`r.Post("/portal/live/renew", h.LiveRenew())`,
 				`r.Post("/portal/live/unsubscribe", h.LiveUnsubscribe())`,
 				`r.Get("/portal/live/token", h.LiveToken())`,
-				"r = r.With(live.Subscribing(h.LiveService()))",
+				"r = r.With(live.Subscribing())",
 			},
 		},
 		{
@@ -637,7 +637,7 @@ func Test_routesTemplate_sessionOutletHandlers(t *testing.T) {
 
 	for _, method := range []string{
 		"PermissionDigest() http.HandlerFunc", "UserDomains() http.HandlerFunc",
-		"LiveService() live.Service", "LiveRenew() http.HandlerFunc", "LiveUnsubscribe() http.HandlerFunc", "LiveToken() http.HandlerFunc",
+		"LiveRenew() http.HandlerFunc", "LiveUnsubscribe() http.HandlerFunc", "LiveToken() http.HandlerFunc",
 	} {
 		if got := strings.Count(string(out), method); got != 2 {
 			t.Errorf("%q appears %d times, want 2 (default interface and portal interface):\n%s", method, got, out)
@@ -802,7 +802,7 @@ func Test_routerTestTemplate_outletIsolation(t *testing.T) {
 				`url: "/portal/live/renew", method: http.MethodPost,`,
 				`url: "/portal/live/unsubscribe", method: http.MethodPost,`,
 				`url: "/portal/live/token", method: http.MethodGet,`,
-				"func (s *generatedHandlersStub) LiveService() live.Service {",
+				"func (s *generatedHandlersStub) LiveToken() http.HandlerFunc {",
 			},
 			wantNotContains: []string{
 				`url: "/automation/permission-digest"`,

@@ -1167,31 +1167,52 @@ to reach the change set, and the identity: in production a Firebase custom token
 browser signs in with, against the emulator an empty token and the emulator host, which
 the browser connects to with the SDK's mock user token. A request carrying `X-Subscribe`
 on an API-key outlet answers 400 naming the header: machine clients wanting change
-notification are a different consumer on a topic. When the application wires no live
-service, a request carrying the header answers 400 `live subscriptions are not served`,
-and so do the live routes. Every subscribing request, the live routes included, carries
-`subscribe=<tab>` on its request log line (`AddRequestAttribute`).
+notification are a different consumer on a topic. Every subscribing request, the live
+routes included, carries `subscribe=<tab>` on its request log line
+(`AddRequestAttribute`).
 
 **The seams** are in `resource/live`: `SubscriptionRecord` (register and renew in one
 batch, unsubscribe a tab or a principal, the subscribers of a row, of a list in a domain,
 of a resource), `ChangePublisher` (`Publish(ctx, domain, touched)`), `Identity` (the
-token payload and the revocation), bundled as `Service`; `Fanout` is the fan-out every
-publisher implementation writes, and `Fake` an in-memory service for tests. The Firestore
-implementation is `resource/live/firestore`: `subscriptions/{id}`, a flat server-owned
-collection with a time-to-live on `expiry` and one composite index per lookup shape, and
+token payload and the revocation), `Signaler` and `Subscriber` (the signals below),
+bundled as `Service`; `Fanout` is the fan-out every publisher implementation writes, and
+`Fake` an in-memory service for tests. The Firestore implementation is
+`resource/live/firestore`: `subscriptions/{id}`, a flat server-owned collection with a
+time-to-live on `expiry` and one composite index per lookup shape, and
 `users/{uid}/changes/{id}` with a time-to-live on `expires`, which a user may read for
 their own uid and nobody writes from a client; `firestore.rules`, `firestore.indexes.json`
 and the layout's README sit beside it. The generated handlers reach all of it through the
 application's `LiveService() live.Service` accessor, and the three routes are generated
 in `zz_gen_live.go` as delegations to the library's handlers.
 
+**The signals document.** The live service is also how an application's instances tell
+each other that something shared changed. One document per application,
+`application/signals`, has a field per kind of change, `features`, `tenants` and
+`policy`, each `{at: <server timestamp>, by: <host/pid of the writer>}`; a
+`Signal(ctx, kind)` writes that kind's field alone (a merge write on the field path),
+so two kinds never clobber each other, and one snapshot after quick signals of two
+kinds carries both. Each instance holds one snapshot listener on the document
+(`Subscribe(kind, onSignal)`, several subscriptions per kind, a subscription made
+after the listener began included): the snapshot it starts from is the state at the
+start and signals nothing, and every later snapshot wakes the subscriptions of each
+kind whose `at` advanced. A listener Firestore ends on its own is logged and reopened
+with backoff by the subscriber, the one place that owns reconnection, and on the
+reopen every kind that advanced while it was down wakes once. A signal carries nothing
+but the fact of a change, so the signaler coalesces: while a write of a kind is in
+flight, later signals of the kind are absorbed into one following write. A signal's
+failure is returned for the caller to log and never fails the request, since every
+subscriber also rereads at its own backstop. The kinds are `resource.SignalKind`
+(`KindFeatures`, `KindTenants`, `KindPolicy`), re-exported by the live package as
+`live.Kind`; the document needs no index, no time-to-live and no rules exposure, since
+no client reads it.
+
 **What an application wires.** One method, `LiveService() live.Service`, returning the
-Firestore service when a Firestore database is configured (`APP_FIRESTORE_DATABASE`, the
+Firestore service: the configured Firestore database (`APP_FIRESTORE_DATABASE`, the
 database bedrock hands the application; the project, and the optional Firebase web API
-key `APP_FIREBASE_API_KEY`) or the emulator is (`FIRESTORE_EMULATOR_HOST`), and nil
-otherwise: the application then serves no live pages and the client learns it from the
-400. The infrastructure applies the indexes and the time-to-live policies. Lodestar's
-wiring is [pkg/config/data.go](lodestar/pkg/config/data.go) and
+key `APP_FIREBASE_API_KEY`), or the emulator (`FIRESTORE_EMULATOR_HOST`). Every
+application wires one; the generated handlers assume it, and a test harness wires
+`live.NewFake()`. The infrastructure applies the indexes and the time-to-live policies.
+Lodestar's wiring is [pkg/config/data.go](lodestar/pkg/config/data.go) and
 [app/app.go](lodestar/app/app.go).
 
 **The names the client library mirrors**: the header `X-Subscribe`, the parameter `_v`,
@@ -1261,13 +1282,14 @@ turns it on. Lodestar's deploy step is
 bootstrap commands.
 
 **The copy every instance holds.** `resource.LoadFeatures(ctx, client)` reads the table
-into a `FeatureSet`, and `FeatureSet.Follow(ctx, topic)` keeps it current until ctx
-ends: on every signal the live service's application topic delivers on `features`, and
-at the five-minute backstop regardless, the table is reread; a failed reread is logged
-and the copy stays as it was. With no live service wired (`Follow(ctx, nil)`) the
-backstop alone keeps the copy current, so a flip reaches every instance within five
-minutes; with one, within a moment. The application exposes the copy as
-`FeatureSet() *resource.FeatureSet`, asserted on the application type beside
+into a `FeatureSet`, and `FeatureSet.Follow(ctx, liveService)` keeps it current until
+ctx ends: the flags ride the `features` kind of the live service's signals document
+(section 14), so on every signal of that kind, and at the five-minute backstop
+regardless, the table is reread; a failed reread is logged and the copy stays as it
+was. A flip therefore reaches every instance within a moment, and the backstop is the
+guard should a signal be missed. The subscriber is the application's live service,
+which every application wires; `Follow` refuses a nil one. The application exposes the
+copy as `FeatureSet() *resource.FeatureSet`, asserted on the application type beside
 `LiveService`, and the generated decoders, routes and digest read it. Lodestar reads it
 through the configuration's database client when the App is built and follows it from
 `Start`: [app/app.go](lodestar/app/app.go).
@@ -1295,9 +1317,9 @@ struct or a manual registration that would take the name `FeatureFlags` is refus
 `SetFeature` is the library's method (`resource.SetFeatureHandler`), registered with
 Execute and carried as an RPC method entry: it writes the row and its change record in
 one transaction, honors `X-Dry-Run`, signals the other instances through the live
-service's application topic (`Broadcast(ctx, "features")`, bounded by two seconds, a
-failure logged), reloads this instance's copy, and answers the flag as written. An
-`@rpc` struct named `SetFeature` is refused.
+service (`Signal(ctx, resource.KindFeatures)`, bounded by two seconds, a failure
+logged), reloads this instance's copy, and answers the flag as written. An `@rpc`
+struct named `SetFeature` is refused.
 
 **The role.** A role that administers flags holds Execute on `SetFeature` and List and
 Read on `FeatureFlags` with its four non-key fields, in the global scope:
@@ -1338,5 +1360,6 @@ the body `{"name", "enabled"}` and the result `{"name", "enabled", "updatedAt"}`
 descriptor's `features: { route: 'features' }` on every application and `feature:
 '<name>'` on a gated resource's, method's and field's entry; and in the client file the
 `Feature` union of the declared names with the `Feature` constants keyed by the Go
-constants' identifiers (`Feature.Debriefs`). The topic the instances signal each other
-on is `features`, a document `application/features` in the Firestore layout.
+constants' identifiers (`Feature.Debriefs`). The kind the instances signal each other
+with is `features` (`resource.KindFeatures`), a field of the `application/signals`
+document in the Firestore layout.

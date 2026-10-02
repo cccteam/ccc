@@ -16,9 +16,9 @@ import (
 // CursorKey is the one key that seals list cursors (resource.NewCursorKey over the
 // application's cookie key); every generated query decoder is wired with it.
 // LiveService is the live service (resource/live) the list and read handlers register
-// a subscribing request in before the query and the mutations publish their committed
-// rows through; nil serves no live pages, and a request carrying X-Subscribe is
-// refused. FeatureSet is the application's copy of its feature flags
+// a subscribing request in before the query, the mutations publish their committed
+// rows through, and the instances signal each other through; every application wires
+// one. FeatureSet is the application's copy of its feature flags
 // (resource.LoadFeatures): what the gated routes, the decoders and the digest answer
 // from; nil leaves every gated target off.
 type resourceApp interface {

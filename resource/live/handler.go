@@ -14,7 +14,6 @@ import (
 
 // The refusals a subscribing request can meet before any handler runs.
 const (
-	notServedMessage       = "live subscriptions are not served"
 	notSessionOutletMsg    = SubscribeHeader + " is not served on this outlet: it serves no browser sessions"
 	malformedTabMessageFmt = "invalid " + SubscribeHeader + " value: a tab id is 1 to 64 characters of [A-Za-z0-9_-]"
 )
@@ -34,11 +33,10 @@ func Tab(r *http.Request) (string, error) {
 }
 
 // Subscribing is the middleware a session-serving outlet's generated routes run under:
-// a request carrying the subscribe header has the tab noted on its request log line,
-// is refused when the tab is malformed, and is refused when the application serves no
-// live pages (svc nil), so a page that asked to be live learns it is not. A request
-// without the header passes untouched.
-func Subscribing(svc Service) func(http.Handler) http.Handler {
+// a request carrying the subscribe header has the tab noted on its request log line
+// and is refused when the tab is malformed. A request without the header passes
+// untouched.
+func Subscribing() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 			if r.Header.Get(SubscribeHeader) == "" {
@@ -51,9 +49,6 @@ func Subscribing(svc Service) func(http.Handler) http.Handler {
 				return httpio.NewEncoder(w).ClientMessage(r.Context(), err)
 			}
 			logger.FromReq(r).AddRequestAttribute(LogAttribute, tab)
-			if svc == nil {
-				return httpio.NewEncoder(w).ClientMessage(r.Context(), httpio.NewBadRequestMessage(notServedMessage))
-			}
 			next.ServeHTTP(w, r)
 
 			return nil
@@ -95,9 +90,8 @@ type Gate interface {
 // fails over it.
 func Subscribe(ctx context.Context, r *http.Request, svc Service, gate Gate, sub *Subscription) {
 	tab, err := Tab(r)
-	if err != nil || tab == "" || svc == nil {
-		// A malformed tab, and a header on an application serving no live pages, were
-		// refused by the outlet's middleware before the handler ran.
+	if err != nil || tab == "" {
+		// A malformed tab was refused by the outlet's middleware before the handler ran.
 		return
 	}
 	permitted, err := gate.Permitted(ctx)
@@ -136,10 +130,10 @@ func SetCacheControl(w http.ResponseWriter, r *http.Request) {
 // the commit and before the response: the rows the request's transactions wrote, each
 // group under the domain its patch was decoded in (domain is the request's route
 // domain, which rows written by hand take). It is bounded by PublishTimeout, a failure
-// is logged, and the request answers either way. Nothing happens for an application
-// serving no live pages, or for a request that committed nothing.
+// is logged, and the request answers either way. Nothing happens for a request that
+// committed nothing.
 func Publish(ctx context.Context, svc Service, domain accesstypes.Domain, touched *resource.TouchedRows) {
-	if svc == nil || touched.Empty() {
+	if touched.Empty() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, PublishTimeout)

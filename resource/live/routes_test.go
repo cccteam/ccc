@@ -56,7 +56,6 @@ func TestRenewHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		served     bool
 		body       string
 		wantStatus int
 		wantKept   []SubscriptionRequest
@@ -65,8 +64,7 @@ func TestRenewHandler(t *testing.T) {
 		wantBody   string
 	}{
 		{
-			name:   "kept subscriptions are written with a fresh expiry, dropped ones echoed",
-			served: true,
+			name: "kept subscriptions are written with a fresh expiry, dropped ones echoed",
 			body: `{"tab":"tab-1","subscriptions":[
 				{"resource":"Ships","domain":"anvil"},
 				{"resource":"Ships","key":"s1","domain":"anvil"},
@@ -94,7 +92,6 @@ func TestRenewHandler(t *testing.T) {
 		},
 		{
 			name:       "a row subscription without its domain is re-checked in the global scope, where a domain-scoped resource has no grant",
-			served:     true,
 			body:       `{"tab":"tab-1","subscriptions":[{"resource":"Ships","key":"s1"}]}`,
 			wantStatus: http.StatusOK,
 			wantKept:   []SubscriptionRequest{},
@@ -102,17 +99,15 @@ func TestRenewHandler(t *testing.T) {
 		},
 		{
 			name:       "nothing to renew answers with nothing kept and nothing written",
-			served:     true,
 			body:       `{"tab":"tab-1","subscriptions":[]}`,
 			wantStatus: http.StatusOK,
 			wantKept:   []SubscriptionRequest{},
 			wantDrop:   []SubscriptionRequest{},
 		},
-		{name: "a malformed tab is refused", served: true, body: `{"tab":"tab 1","subscriptions":[]}`, wantStatus: http.StatusBadRequest, wantBody: "invalid X-Subscribe value"},
-		{name: "a subscription without a resource is refused", served: true, body: `{"tab":"tab-1","subscriptions":[{"key":"s1"}]}`, wantStatus: http.StatusBadRequest, wantBody: "names its resource"},
-		{name: "an unknown field is refused", served: true, body: `{"tab":"tab-1","subs":[]}`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
-		{name: "a body that is not JSON is refused", served: true, body: `tab-1`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
-		{name: "no live service is refused", body: `{"tab":"tab-1","subscriptions":[]}`, wantStatus: http.StatusBadRequest, wantBody: "live subscriptions are not served"},
+		{name: "a malformed tab is refused", body: `{"tab":"tab 1","subscriptions":[]}`, wantStatus: http.StatusBadRequest, wantBody: "invalid X-Subscribe value"},
+		{name: "a subscription without a resource is refused", body: `{"tab":"tab-1","subscriptions":[{"key":"s1"}]}`, wantStatus: http.StatusBadRequest, wantBody: "names its resource"},
+		{name: "an unknown field is refused", body: `{"tab":"tab-1","subs":[]}`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
+		{name: "a body that is not JSON is refused", body: `tab-1`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 	}
 
 	for _, tt := range tests {
@@ -120,11 +115,7 @@ func TestRenewHandler(t *testing.T) {
 			t.Parallel()
 
 			fake := NewFake()
-			var svc Service
-			if tt.served {
-				svc = fake
-			}
-			handler := RenewHandler(svc, permissionsFor(&grantTable{decisions: digest}))
+			handler := RenewHandler(fake, permissionsFor(&grantTable{decisions: digest}))
 			req := httptest.NewRequestWithContext(withSession(t.Context(), "dispatcher"), http.MethodPost, "/api/live/renew", strings.NewReader(tt.body))
 			rr := httptest.NewRecorder()
 			before := time.Now()
@@ -195,7 +186,6 @@ func TestUnsubscribeHandler(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		served      bool
 		body        string
 		wantStatus  int
 		wantLeft    []string // "principal|tab"
@@ -203,14 +193,12 @@ func TestUnsubscribeHandler(t *testing.T) {
 	}{
 		{
 			name:       "a tab leaving drops its subscriptions alone",
-			served:     true,
 			body:       `{"tab":"tab-1"}`,
 			wantStatus: http.StatusNoContent,
 			wantLeft:   []string{"dispatcher|tab-2", "mechanic|tab-3"},
 		},
 		{
 			name:        "a logout drops every subscription of the principal and revokes the identity",
-			served:      true,
 			body:        `{"tab":"tab-1","all":true}`,
 			wantStatus:  http.StatusNoContent,
 			wantLeft:    []string{"mechanic|tab-3"},
@@ -218,13 +206,11 @@ func TestUnsubscribeHandler(t *testing.T) {
 		},
 		{
 			name:       "a tab with nothing there still answers 204",
-			served:     true,
 			body:       `{"tab":"tab-9"}`,
 			wantStatus: http.StatusNoContent,
 			wantLeft:   []string{"dispatcher|tab-1", "dispatcher|tab-2", "mechanic|tab-3"},
 		},
-		{name: "neither a tab nor all is refused", served: true, body: `{}`, wantStatus: http.StatusBadRequest, wantLeft: []string{"dispatcher|tab-1", "dispatcher|tab-2", "mechanic|tab-3"}},
-		{name: "no live service is refused", body: `{"tab":"tab-1"}`, wantStatus: http.StatusBadRequest, wantLeft: []string{"dispatcher|tab-1", "dispatcher|tab-2", "mechanic|tab-3"}},
+		{name: "neither a tab nor all is refused", body: `{}`, wantStatus: http.StatusBadRequest, wantLeft: []string{"dispatcher|tab-1", "dispatcher|tab-2", "mechanic|tab-3"}},
 	}
 
 	for _, tt := range tests {
@@ -235,13 +221,9 @@ func TestUnsubscribeHandler(t *testing.T) {
 			if err := fake.Register(t.Context(), held(time.Now())); err != nil {
 				t.Fatalf("Register() error = %v", err)
 			}
-			var svc Service
-			if tt.served {
-				svc = fake
-			}
 			req := httptest.NewRequestWithContext(withSession(t.Context(), "dispatcher"), http.MethodPost, "/api/live/unsubscribe", strings.NewReader(tt.body))
 			rr := httptest.NewRecorder()
-			UnsubscribeHandler(svc).ServeHTTP(rr, req)
+			UnsubscribeHandler(fake).ServeHTTP(rr, req)
 
 			if rr.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d: %s", rr.Code, tt.wantStatus, rr.Body.String())
@@ -266,39 +248,31 @@ func TestTokenHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		served     bool
 		ctx        context.Context
 		wantStatus int
 		want       *TokenPayload
 	}{
 		{
 			name:       "the payload names the session principal",
-			served:     true,
 			ctx:        withSession(context.Background(), "dispatcher"),
 			wantStatus: http.StatusOK,
 			want:       &TokenPayload{UID: "dispatcher", Project: fakeProject, Database: fakeDatabase, Emulator: fakeEmulator},
 		},
 		{
 			name:       "a role principal is the role",
-			served:     true,
 			ctx:        withRoleSession(context.Background(), "alice", "Auditor"),
 			wantStatus: http.StatusOK,
 			want:       &TokenPayload{UID: "role:Auditor", Project: fakeProject, Database: fakeDatabase, Emulator: fakeEmulator},
 		},
-		{name: "no live service is refused", ctx: withSession(context.Background(), "dispatcher"), wantStatus: http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var svc Service
-			if tt.served {
-				svc = NewFake()
-			}
 			req := httptest.NewRequestWithContext(tt.ctx, http.MethodGet, "/api/live/token", http.NoBody)
 			rr := httptest.NewRecorder()
-			TokenHandler(svc).ServeHTTP(rr, req)
+			TokenHandler(NewFake()).ServeHTTP(rr, req)
 
 			if rr.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d: %s", rr.Code, tt.wantStatus, rr.Body.String())

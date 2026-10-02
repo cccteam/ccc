@@ -1,11 +1,12 @@
 # live/firestore
 
 The Firestore implementation of the live service (`resource/live`): the subscription
-record, the change sets, and the browser's identity.
+record, the change sets, the browser's identity, and the application's signals.
 
 ## Layout
 
-Two collections, one server-owned and one the browser reads.
+Two collections and one document: the record and the signals server-owned, the change
+sets read by the browser.
 
 `subscriptions/{id}` is the record. One document per subscription; the id is the
 first 32 hex characters of `sha256("principal|tab|resource|key|domain")`, so the same
@@ -23,12 +24,19 @@ document, `domain` on a list document, `at` (the server timestamp), `expires`
 (timestamp, ten minutes after the write). The browser queries
 `where at > lastSeen order by at` and may read only its own set.
 
-`application/{topic}` is the application topic: one document per topic the server's
-instances signal each other on, set with `at` (the server timestamp) and `by` (the
-writing instance) on every `Broadcast`, and watched by every instance's `Watch`, which
-skips the snapshot it starts from and runs its callback on each later one. The one topic
-today is `features`: a feature flag flip signals every instance to reread its flags.
-No client reads it; the rules deny everything outside the change sets.
+`application/signals` is the application's signals document: the one document the
+server's instances signal each other through. It has a field per kind (`features`,
+`tenants`, `policy`), each a map `{at: <server timestamp>, by: <host/pid of the
+writing instance>}`; a `Signal` of a kind sets that kind's field alone (a merge write
+on the field path), so two kinds never clobber each other, and one snapshot after
+quick signals of different kinds carries both. Every instance holds one snapshot
+listener on the document (`Subscribe`): the snapshot it starts from seeds each kind's
+time and signals nothing, and each later snapshot wakes the subscriptions of every
+kind whose `at` advanced. A listener Firestore ends is reopened with backoff, and the
+reopened listener's first snapshot is compared the same way, so a kind that advanced
+while the listener was down wakes once. The features kind carries the feature flag
+flips. No client reads it; the rules deny everything outside the change sets, and the
+document needs no index and no time-to-live.
 
 ## Indexes
 
@@ -83,4 +91,9 @@ image, started with podman beside the Spanner emulator the resource package's te
 use, and skip under `-short` and when podman is absent. They prove the record's
 lookups and expiry, the publisher's documents, coalescing and the bulk threshold, the
 emulator token, and, through the emulator's REST API with an unsigned token for a uid,
-that a user reads their own change set and nothing else.
+that a user reads their own change set and nothing else. The signals tests run two
+instances on one document in a database of their own per test: a signal of a kind
+wakes that kind's subscriptions on both and no other kind's, the state at the start is
+not a signal, a listener ended from the test is reopened and every kind that advanced
+meanwhile wakes once, a burst of signals of one kind is one following write, and a
+closed client's failure is returned while a fresh client signals again.

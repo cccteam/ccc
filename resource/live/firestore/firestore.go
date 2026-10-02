@@ -1,9 +1,10 @@
 // Package firestore is the Firestore implementation of the live service: the
 // subscription record in one server-owned collection, the change sets under each
-// user's document, and the browser's identity as a Firebase custom token. Against the
-// Firestore emulator (EmulatorHost set) the service connects as the emulator's owner,
-// mints no token and revokes nothing; the browser then connects with the emulator's
-// mock user token.
+// user's document, the browser's identity as a Firebase custom token, and the
+// application's signals in one server-owned document with a field per kind, which
+// this instance's one snapshot listener watches. Against the Firestore emulator
+// (EmulatorHost set) the service connects as the emulator's owner, mints no token and
+// revokes nothing; the browser then connects with the emulator's mock user token.
 //
 // The layout, the indexes it needs and the time-to-live policies it relies on are in
 // the README beside this file, with firestore.rules and firestore.indexes.json.
@@ -21,7 +22,6 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
-	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -40,10 +40,13 @@ const (
 	// which a user reads for their own uid and nobody writes but the server.
 	UsersCollection   = "users"
 	ChangesCollection = "changes"
-	// ApplicationCollection is the application topics: application/{topic}, one
-	// server-owned document per topic, rewritten by every broadcast and listened to by
-	// every watch. No client reads it.
+	// ApplicationCollection and SignalsDocument are the application's signals:
+	// application/signals, one server-owned document per application with a field per
+	// kind, each {at: <server timestamp>, by: <host/pid of the signaling instance>}. A
+	// signal writes its kind's field alone, and every instance's one listener watches
+	// the document. No client reads it.
 	ApplicationCollection = "application"
+	SignalsDocument       = "signals"
 )
 
 // Config says which database the service uses and how the browser reaches it.
@@ -79,9 +82,16 @@ type Service struct {
 	auth *fbauth.Client
 	cfg  Config
 	now  func() time.Time
-	// instance identifies this process in the topic documents it broadcasts: the
-	// host and the process id, so a watcher's log can say who signaled.
+	// instance identifies this process in the signals it writes: the host and the
+	// process id, so a reader of the document can say who signaled.
 	instance string
+	// lifetime is the service's own context, carrying New's values without its
+	// cancelation: the signals listener and the following writes run under it, and
+	// Close ends it.
+	lifetime context.Context
+	end      context.CancelFunc
+	// signals is the signaler's and the subscriber's state.
+	signals signalsState
 }
 
 var _ live.Service = (*Service)(nil)
@@ -97,6 +107,17 @@ func WithClock(now func() time.Time) Option {
 	}
 }
 
+// WithReopenBackoff sets how long the subscriber waits before reopening a signals
+// listener Firestore ended, first and at most, the wait doubling from first to most
+// while reopening keeps failing; ReopenFirst and ReopenMost by default. Tests shorten
+// them.
+func WithReopenBackoff(first, most time.Duration) Option {
+	return func(s *Service) {
+		s.signals.reopenFirst = first
+		s.signals.reopenMost = most
+	}
+}
+
 // New opens the service on the configured database. In production the Firestore
 // client and the Firebase Admin SDK authenticate with the application's default
 // credentials; the custom tokens are signed through the IAM credentials API with the
@@ -105,7 +126,8 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Service, error) {
 	if cfg.ProjectID == "" {
 		return nil, errors.New("live/firestore: a project id is required")
 	}
-	s := &Service{cfg: cfg, now: time.Now, instance: instanceID()}
+	s := &Service{cfg: cfg, now: time.Now, instance: instanceID(), signals: newSignalsState()}
+	s.lifetime, s.end = context.WithCancel(context.WithoutCancel(ctx))
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -145,8 +167,9 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Service, error) {
 	return s, nil
 }
 
-// Close releases the Firestore client.
+// Close ends the signals listener and releases the Firestore client.
 func (s *Service) Close() error {
+	s.end()
 	if err := s.client.Close(); err != nil {
 		return errors.Wrap(err, "firestore.Client.Close()")
 	}
@@ -477,7 +500,7 @@ func (s *Service) Revoke(ctx context.Context, uid string) error {
 	return nil
 }
 
-// instanceID names this process for the topic documents: host and process id.
+// instanceID names this process in the signals it writes: host and process id.
 func instanceID() string {
 	host, err := os.Hostname()
 	if err != nil {
@@ -485,57 +508,6 @@ func instanceID() string {
 	}
 
 	return host + "/" + strconv.Itoa(os.Getpid())
-}
-
-// topic returns a topic's document.
-func (s *Service) topic(name string) *cloudfirestore.DocumentRef {
-	return s.client.Collection(ApplicationCollection).Doc(name)
-}
-
-// Broadcast rewrites the topic's document with the server timestamp and this instance's
-// id: one write, which every watch on the topic observes as a change.
-func (s *Service) Broadcast(ctx context.Context, topic string) error {
-	if _, err := s.topic(topic).Set(ctx, map[string]any{
-		"at": cloudfirestore.ServerTimestamp,
-		"by": s.instance,
-	}); err != nil {
-		return errors.Wrap(err, "firestore.DocumentRef.Set()")
-	}
-
-	return nil
-}
-
-// Watch listens to the topic's document: the first snapshot is the state at the start
-// and signals nothing; every snapshot after it runs onSignal, on the watch's goroutine.
-// The listener ends when stop is called or ctx ends; a listener Firestore ends on its
-// own is logged, and the watcher falls back to whatever cadence it keeps without
-// signals.
-func (s *Service) Watch(ctx context.Context, topic string, onSignal func()) (func(), error) {
-	ctx, cancel := context.WithCancel(ctx)
-	snapshots := s.topic(topic).Snapshots(ctx)
-	// The first snapshot is read synchronously, so a broadcast after Watch returns is
-	// never mistaken for the state at the start.
-	if _, err := snapshots.Next(); err != nil {
-		snapshots.Stop()
-		cancel()
-
-		return nil, errors.Wrap(err, "firestore.DocumentSnapshotIterator.Next()")
-	}
-	go func() {
-		defer snapshots.Stop()
-		for {
-			if _, err := snapshots.Next(); err != nil {
-				if ctx.Err() == nil {
-					logger.FromCtx(ctx).Errorf("live: the watch on topic %q ended: %v", topic, err)
-				}
-
-				return
-			}
-			onSignal()
-		}
-	}()
-
-	return cancel, nil
 }
 
 // await ends the batch and reports the first write that failed.

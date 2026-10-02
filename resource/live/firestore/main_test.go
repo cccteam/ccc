@@ -3,6 +3,8 @@ package firestore_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -121,16 +123,26 @@ func startEmulator() (host string, stop func(), err error) {
 	return net.JoinHostPort(h, p.Port()), stop, nil
 }
 
-// newService opens a service on the shared emulator with the given clock, closed when
-// the test ends.
+// newService opens a service on the shared emulator's test database with the given
+// clock, closed when the test ends.
 func newService(t *testing.T, now func() time.Time) *livefirestore.Service {
+	t.Helper()
+
+	return newServiceIn(t, testDatabase, livefirestore.WithClock(now))
+}
+
+// newServiceIn opens a service on the named database of the shared emulator, closed
+// when the test ends. The signals tests each take a database of their own
+// (databaseFor), since an application has one signals document and parallel tests on
+// one database would wake each other.
+func newServiceIn(t *testing.T, database string, opts ...livefirestore.Option) *livefirestore.Service {
 	t.Helper()
 
 	svc, err := livefirestore.New(t.Context(), livefirestore.Config{
 		ProjectID:    testProject,
-		DatabaseID:   testDatabase,
+		DatabaseID:   database,
 		EmulatorHost: firestoreEmulator(t),
-	}, livefirestore.WithClock(now))
+	}, opts...)
 	if err != nil {
 		t.Fatalf("firestore.New() error = %v", err)
 	}
@@ -141,6 +153,16 @@ func newService(t *testing.T, now func() time.Time) *livefirestore.Service {
 	})
 
 	return svc
+}
+
+// databaseFor names a database after the test: a database id is lowercase letters,
+// digits and hyphens opening with a letter, so the name is hashed.
+func databaseFor(t *testing.T) string {
+	t.Helper()
+
+	sum := sha256.Sum256([]byte(t.Name()))
+
+	return "live-" + hex.EncodeToString(sum[:])[:12]
 }
 
 // fixedClock pins a clock to one instant.

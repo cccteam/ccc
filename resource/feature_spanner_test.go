@@ -169,23 +169,23 @@ func TestMigrateFeatures(t *testing.T) {
 	}
 }
 
-// fakeTopic is a TopicWatcher and TopicBroadcaster for the tests: the watch's onSignal
-// is kept and run on Broadcast, and the broadcasts are remembered.
-type fakeTopic struct {
+// fakeSignals is a SignalSubscriber and Signaler for the tests: the subscription's
+// onSignal is kept and run on a Signal of its kind, and the signals are remembered.
+type fakeSignals struct {
 	mu         sync.Mutex
 	onSignal   func()
-	watched    []string
-	broadcasts []string
+	subscribed []SignalKind
+	signals    []SignalKind
 	err        error
 }
 
-func (f *fakeTopic) Watch(_ context.Context, topic string, onSignal func()) (func(), error) {
+func (f *fakeSignals) Subscribe(kind SignalKind, onSignal func()) (func(), error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.watched = append(f.watched, topic)
+	f.subscribed = append(f.subscribed, kind)
 	f.onSignal = onSignal
 
 	return func() {
@@ -195,27 +195,27 @@ func (f *fakeTopic) Watch(_ context.Context, topic string, onSignal func()) (fun
 	}, nil
 }
 
-func (f *fakeTopic) Broadcast(_ context.Context, topic string) error {
+func (f *fakeSignals) Signal(_ context.Context, kind SignalKind) error {
 	if f.err != nil {
 		return f.err
 	}
 	f.mu.Lock()
-	f.broadcasts = append(f.broadcasts, topic)
+	f.signals = append(f.signals, kind)
 	onSignal := f.onSignal
 	f.mu.Unlock()
-	if onSignal != nil {
+	if onSignal != nil && kind == KindFeatures {
 		onSignal()
 	}
 
 	return nil
 }
 
-// Broadcasts returns the topics broadcast so far.
-func (f *fakeTopic) Broadcasts() []string {
+// Signals returns the kinds signaled so far.
+func (f *fakeSignals) Signals() []SignalKind {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return append([]string(nil), f.broadcasts...)
+	return append([]SignalKind(nil), f.signals...)
 }
 
 // eventually polls until the condition holds or the deadline passes.
@@ -233,24 +233,21 @@ func eventually(t *testing.T, within time.Duration, condition func() bool) bool 
 	return condition()
 }
 
-// TestFeatureSet_Follow pins how a FeatureSet stays current: a signal on the topic
-// rereads the table at once, and the backstop rereads it without one.
+// TestFeatureSet_Follow pins how a FeatureSet stays current: a signal of the features
+// kind rereads the table at once, and the backstop rereads it without one.
 func TestFeatureSet_Follow(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// topic is the watcher Follow is handed; nil follows the backstop alone.
-		topic func() *fakeTopic
-		// signal says whether the test broadcasts after the flip.
+		// signal says whether the test signals the features kind after the flip.
 		signal   bool
 		backstop time.Duration
 		// within bounds how soon the copy must show the flip.
 		within time.Duration
 	}{
-		{name: "a signal on the topic rereads the table at once", topic: func() *fakeTopic { return &fakeTopic{} }, signal: true, backstop: time.Hour, within: 2 * time.Second},
-		{name: "the backstop rereads the table without a signal", topic: func() *fakeTopic { return &fakeTopic{} }, backstop: 50 * time.Millisecond, within: 2 * time.Second},
-		{name: "without a live service the backstop alone keeps the copy current", backstop: 50 * time.Millisecond, within: 2 * time.Second},
+		{name: "a signal of the features kind rereads the table at once", signal: true, backstop: time.Hour, within: 2 * time.Second},
+		{name: "the backstop rereads the table without a signal", backstop: 50 * time.Millisecond, within: 2 * time.Second},
 	}
 
 	for i, tt := range tests {
@@ -271,27 +268,20 @@ func TestFeatureSet_Follow(t *testing.T) {
 				t.Fatal("a freshly migrated flag is on; it is inserted disabled")
 			}
 
-			var topic *fakeTopic
-			var watcher TopicWatcher
-			if tt.topic != nil {
-				topic = tt.topic()
-				watcher = topic
-			}
-			if err := features.Follow(ctx, watcher); err != nil {
+			signals := &fakeSignals{}
+			if err := features.Follow(ctx, signals); err != nil {
 				t.Fatalf("Follow() error = %v", err)
 			}
-			if topic != nil {
-				if diff := cmp.Diff([]string{FeaturesTopic}, topic.watched); diff != "" {
-					t.Errorf("watched topics mismatch (-want +got):\n%s", diff)
-				}
+			if diff := cmp.Diff([]SignalKind{KindFeatures}, signals.subscribed); diff != "" {
+				t.Errorf("subscribed kinds mismatch (-want +got):\n%s", diff)
 			}
 
 			if err := SetFeatureEnabled(ctx, client, "debriefs", true, "harbormaster (test)"); err != nil {
 				t.Fatalf("SetFeatureEnabled() error = %v", err)
 			}
 			if tt.signal {
-				if err := topic.Broadcast(ctx, FeaturesTopic); err != nil {
-					t.Fatalf("Broadcast() error = %v", err)
+				if err := signals.Signal(ctx, KindFeatures); err != nil {
+					t.Fatalf("Signal() error = %v", err)
 				}
 			}
 			if !eventually(t, tt.within, func() bool { return features.Enabled("debriefs") }) {
@@ -339,42 +329,42 @@ func featureGrants(perms ...accesstypes.Permission) *fakeUserPermissions {
 
 // featureRouter mounts the three flag routes the way the generated routes do, with the
 // route parameter captured.
-func featureRouter(a *featureTestApp, topic TopicBroadcaster) http.Handler {
+func featureRouter(a *featureTestApp, signals Signaler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
 	r.Get("/api/"+FeatureFlagsRoute, FeatureFlagsHandler(a, nil))
 	r.Get("/api/"+FeatureFlagsRoute+"/{"+string(FeatureFlagNameParam)+"}", FeatureFlagHandler(a, nil))
-	r.Post("/api/"+SetFeatureRoute, SetFeatureHandler(a, nil, topic))
+	r.Post("/api/"+SetFeatureRoute, SetFeatureHandler(a, nil, signals))
 
 	return r
 }
 
 // TestSetFeatureHandler pins the flip over the emulator: the row and the audit row
-// written in one transaction with the commit timestamp and the principal, the topic
-// broadcast, the copy reloaded and answered from; an unknown name 404; a dry run that
-// writes and broadcasts nothing; a missing grant 403.
+// written in one transaction with the commit timestamp and the principal, the features
+// kind signaled, the copy reloaded and answered from; an unknown name 404; a dry run
+// that writes and signals nothing; a missing grant 403.
 func TestSetFeatureHandler(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		perms          UserPermissions
-		body           string
-		dryRun         bool
-		wantStatus     int
-		wantEnabled    bool
-		wantBroadcasts []string
-		wantChanges    int
-		wantBody       func(t *testing.T, body []byte)
+		name        string
+		perms       UserPermissions
+		body        string
+		dryRun      bool
+		wantStatus  int
+		wantEnabled bool
+		wantSignals []SignalKind
+		wantChanges int
+		wantBody    func(t *testing.T, body []byte)
 	}{
 		{
-			name:           "a flip writes the row and the audit row, broadcasts, reloads and answers the flag",
-			perms:          featureGrants(accesstypes.Execute),
-			body:           `{"name":"debriefs","enabled":true}`,
-			wantStatus:     http.StatusOK,
-			wantEnabled:    true,
-			wantBroadcasts: []string{FeaturesTopic},
-			wantChanges:    1,
+			name:        "a flip writes the row and the audit row, signals, reloads and answers the flag",
+			perms:       featureGrants(accesstypes.Execute),
+			body:        `{"name":"debriefs","enabled":true}`,
+			wantStatus:  http.StatusOK,
+			wantEnabled: true,
+			wantSignals: []SignalKind{KindFeatures},
+			wantChanges: 1,
 			wantBody: func(t *testing.T, body []byte) {
 				t.Helper()
 				var got SetFeatureResult
@@ -393,7 +383,7 @@ func TestSetFeatureHandler(t *testing.T) {
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:       "a dry run refuses as the real call would, then writes and broadcasts nothing",
+			name:       "a dry run refuses as the real call would, then writes and signals nothing",
 			perms:      featureGrants(accesstypes.Execute),
 			body:       `{"name":"debriefs","enabled":true}`,
 			dryRun:     true,
@@ -433,8 +423,8 @@ func TestSetFeatureHandler(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadFeatures() error = %v", err)
 			}
-			topic := &fakeTopic{}
-			handler := featureRouter(&featureTestApp{client: client, perms: tt.perms, features: features}, topic)
+			signals := &fakeSignals{}
+			handler := featureRouter(&featureTestApp{client: client, perms: tt.perms, features: features}, signals)
 
 			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/"+SetFeatureRoute, strings.NewReader(tt.body))
 			if tt.dryRun {
@@ -468,8 +458,8 @@ func TestSetFeatureHandler(t *testing.T) {
 					t.Errorf("audit row = %+v, want the flip with its commit timestamp and principal", change)
 				}
 			}
-			if diff := cmp.Diff(tt.wantBroadcasts, topic.Broadcasts(), cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("broadcasts mismatch (-want +got):\n%s", diff)
+			if diff := cmp.Diff(tt.wantSignals, signals.Signals(), cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("signals mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -520,7 +510,7 @@ func TestFeatureFlagHandlers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := featureRouter(&featureTestApp{client: client, perms: tt.perms, features: features}, nil)
+			handler := featureRouter(&featureTestApp{client: client, perms: tt.perms, features: features}, &fakeSignals{})
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, httptest.NewRequestWithContext(ctx, http.MethodGet, tt.target, http.NoBody))
 			if rr.Code != tt.wantStatus {

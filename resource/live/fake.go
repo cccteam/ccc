@@ -13,24 +13,25 @@ import (
 
 // Fake is an in-memory Service for tests: the record is a map, a publish keeps the
 // documents Fanout produced per principal with the fake's clock as their timestamp,
-// the identity answers a recognizable payload and remembers what it revoked. Every
-// method fails with Err when it is set, so a caller's logged-failure path can be
-// driven. It is safe for concurrent use.
+// the identity answers a recognizable payload and remembers what it revoked, and a
+// signal runs the kind's subscriptions synchronously and is remembered. Every method
+// fails with Err when it is set, so a caller's logged-failure path can be driven. It is
+// safe for concurrent use.
 type Fake struct {
 	// Now is the fake's clock, time.Now by default.
 	Now func() time.Time
 	// Err, when set, is every method's answer.
 	Err error
 
-	mu         sync.Mutex
-	subs       map[string]Subscription
-	changes    map[string][]FakeChange
-	revoked    []string
-	lookups    int
-	publishs   []FakePublish
-	broadcasts []string
-	watches    map[string]map[int]func()
-	nextWatch  int
+	mu               sync.Mutex
+	subs             map[string]Subscription
+	changes          map[string][]FakeChange
+	revoked          []string
+	lookups          int
+	publishs         []FakePublish
+	signals          []Kind
+	subscriptions    map[Kind]map[int]func()
+	nextSubscription int
 }
 
 // FakeChange is one change document the fake holds, with the fake's timestamp and the
@@ -57,10 +58,10 @@ const (
 // NewFake returns an empty fake on the wall clock.
 func NewFake() *Fake {
 	return &Fake{
-		Now:     time.Now,
-		subs:    make(map[string]Subscription),
-		changes: make(map[string][]FakeChange),
-		watches: make(map[string]map[int]func()),
+		Now:           time.Now,
+		subs:          make(map[string]Subscription),
+		changes:       make(map[string][]FakeChange),
+		subscriptions: make(map[Kind]map[int]func()),
 	}
 }
 
@@ -218,70 +219,68 @@ func (f *Fake) Revoke(_ context.Context, uid string) error {
 	return nil
 }
 
-// Broadcast remembers the topic and runs every watch on it, synchronously, so a test
-// sees the signal's effect when Broadcast returns.
-func (f *Fake) Broadcast(_ context.Context, topic string) error {
+// Signal remembers the kind and runs every subscription to it, synchronously and in
+// subscription order, so a test sees the signal's effect when Signal returns. Nothing
+// coalesces: the fake has no write in flight.
+func (f *Fake) Signal(_ context.Context, kind Kind) error {
 	if f.Err != nil {
 		return f.Err
 	}
 	f.mu.Lock()
-	f.broadcasts = append(f.broadcasts, topic)
-	watching := make([]func(), 0, len(f.watches[topic]))
-	ids := make([]int, 0, len(f.watches[topic]))
-	for id := range f.watches[topic] {
+	f.signals = append(f.signals, kind)
+	ids := make([]int, 0, len(f.subscriptions[kind]))
+	for id := range f.subscriptions[kind] {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
+	wake := make([]func(), 0, len(ids))
 	for _, id := range ids {
-		watching = append(watching, f.watches[topic][id])
+		wake = append(wake, f.subscriptions[kind][id])
 	}
 	f.mu.Unlock()
 
-	for _, onSignal := range watching {
+	for _, onSignal := range wake {
 		onSignal()
 	}
 
 	return nil
 }
 
-// Watch registers onSignal on the topic until stop is called or ctx ends.
-func (f *Fake) Watch(ctx context.Context, topic string, onSignal func()) (func(), error) {
+// Subscribe registers onSignal to the kind until stop is called.
+func (f *Fake) Subscribe(kind Kind, onSignal func()) (func(), error) {
 	if f.Err != nil {
 		return nil, f.Err
 	}
 	f.mu.Lock()
-	id := f.nextWatch
-	f.nextWatch++
-	if f.watches[topic] == nil {
-		f.watches[topic] = make(map[int]func())
+	defer f.mu.Unlock()
+	id := f.nextSubscription
+	f.nextSubscription++
+	if f.subscriptions[kind] == nil {
+		f.subscriptions[kind] = make(map[int]func())
 	}
-	f.watches[topic][id] = onSignal
-	f.mu.Unlock()
+	f.subscriptions[kind][id] = onSignal
 
-	stop := func() {
+	return func() {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		delete(f.watches[topic], id)
-	}
-	context.AfterFunc(ctx, stop)
-
-	return stop, nil
+		delete(f.subscriptions[kind], id)
+	}, nil
 }
 
-// Broadcasts returns the topics broadcast so far, in order.
-func (f *Fake) Broadcasts() []string {
+// Signals returns the kinds signaled so far, in order.
+func (f *Fake) Signals() []Kind {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return slices.Clone(f.broadcasts)
+	return slices.Clone(f.signals)
 }
 
-// Watching returns how many watches the topic has.
-func (f *Fake) Watching(topic string) int {
+// Subscribers returns how many subscriptions the kind has.
+func (f *Fake) Subscribers(kind Kind) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return len(f.watches[topic])
+	return len(f.subscriptions[kind])
 }
 
 // Subscriptions returns every subscription the fake holds, expired ones included, in a
