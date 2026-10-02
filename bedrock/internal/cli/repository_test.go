@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -67,7 +69,7 @@ func TestRestoreAndHotfix(t *testing.T) {
 			wantOut: []string{
 				"Asked, as octocat, for tst to be restored to v0.1.4: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). The run replaces tst's database (empty), deploys v0.1.4, and its record names you.",
 			},
-			wantDispatch: "operations.yml master environment=tst release=v0.1.4",
+			wantDispatch: "operations.yml master action=restore environment=tst release=v0.1.4",
 		},
 		{
 			name:    "restore refuses production",
@@ -79,7 +81,7 @@ func TestRestoreAndHotfix(t *testing.T) {
 			name:    "restore refuses a release that does not exist",
 			remote:  "git@github.com:impulseframework/harbor.git",
 			args:    []string{"restore", "tst", "v0.9.9", "--placement", placement},
-			wantErr: "no release v0.9.9 in impulseframework/harbor: an environment is restored to a release that exists",
+			wantErr: "no release v0.9.9 in impulseframework/harbor: an operation names a release that exists",
 		},
 		{
 			name:    "restore refuses a tag of the wrong shape",
@@ -202,10 +204,166 @@ func TestRestoreAndHotfix(t *testing.T) {
 				if len(repo.Dispatches) != 1 {
 					t.Fatalf("dispatches = %+v, want one", repo.Dispatches)
 				}
-				d := repo.Dispatches[0]
-				if got := d.File + " " + d.Ref + " environment=" + d.Inputs["environment"] + " release=" + d.Inputs["release"]; got != tt.wantDispatch {
+				if got := dispatched(repo.Dispatches[0]); got != tt.wantDispatch {
 					t.Errorf("dispatch = %q, want %q", got, tt.wantDispatch)
 				}
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+// dispatched is a workflow_dispatch event on one line: the file, the ref and the inputs
+// by name.
+func dispatched(d githubtest.Dispatch) string {
+	parts := []string{d.File, d.Ref}
+	for _, name := range slices.Sorted(maps.Keys(d.Inputs)) {
+		parts = append(parts, name+"="+d.Inputs[name])
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// TestMigrationOperations: the three operations on an environment's migrations dispatch
+// the operations workflow with their inputs as the signed-in person, and production, a
+// missing release, a release that does not exist and a version that is not one are
+// refused, production before any call reaches GitHub.
+func TestMigrationOperations(t *testing.T) {
+	t.Parallel()
+
+	placement := filepath.Join(fixtureApp, "..", "placement.json")
+	const remote = "git@github.com:impulseframework/harbor.git"
+	tests := []struct {
+		name         string
+		args         []string
+		wantOut      []string
+		wantDispatch string
+		// wantNoCalls says the refusal came before any call to GitHub.
+		wantNoCalls bool
+		wantErr     string
+	}{
+		{
+			name:         "version dispatches the migration job with the version action",
+			args:         []string{"migration", "version", "tst", "--release", "v0.1.4", "--placement", placement},
+			wantOut:      []string{"Asked, as octocat, for tst's migration version at v0.1.4: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). The migrate job prints what each migrations table says about the database, in the build log and in the run's summary; nothing else deploys."},
+			wantDispatch: "operations.yml master action=version environment=tst release=v0.1.4",
+		},
+		{
+			name:         "rerun dispatches the migration job with the rerun action",
+			args:         []string{"migration", "rerun", "stg", "--release", "v0.1.4", "--placement", placement},
+			wantOut:      []string{"Asked, as octocat, for stg to run v0.1.4 again: the operations workflow of impulseframework/harbor runs it", "The migrate job continues a file that stopped from its failed statement once the cause is fixed, and the release continues"},
+			wantDispatch: "operations.yml master action=rerun environment=stg release=v0.1.4",
+		},
+		{
+			name:         "force dispatches the migration job with the table and the version",
+			args:         []string{"migration", "force", "tst", "40", "--release", "v0.1.4", "--placement", placement},
+			wantOut:      []string{"Asked, as octocat, for tst's schema migrations table to be set to version 40 and v0.1.4 to continue: the operations workflow of impulseframework/harbor runs it", "The migrate job sets the version and prints the row before and after, then the migrations run from it and the release continues to the service, the traffic shift and the record, which names you."},
+			wantDispatch: "operations.yml master action=force environment=tst release=v0.1.4 table=schema version=40",
+		},
+		{
+			name:         "force of the data table to no version",
+			args:         []string{"migration", "force", "stg", "none", "--release", "v0.1.4", "--table", "data", "--placement", placement},
+			wantOut:      []string{"Asked, as octocat, for stg's data migrations table to be set to no version and v0.1.4 to continue"},
+			wantDispatch: "operations.yml master action=force environment=stg release=v0.1.4 table=data version=-1",
+		},
+		{
+			name:        "production is refused before any call",
+			args:        []string{"migration", "version", "prd", "--release", "v0.1.4", "--placement", placement},
+			wantNoCalls: true,
+			wantErr:     "prd is production: the operations workflow reaches no production identity, and production's migrations are the platform operator's, with the commands the README gives under When the migrate job fails",
+		},
+		{
+			name:        "a force in production is refused before any call",
+			args:        []string{"migration", "force", "prd", "40", "--release", "v0.1.4", "--placement", placement},
+			wantNoCalls: true,
+			wantErr:     "prd is production",
+		},
+		{
+			name:        "a missing release is refused",
+			args:        []string{"migration", "version", "tst", "--placement", placement},
+			wantNoCalls: true,
+			wantErr:     `required flag(s) "release" not set`,
+		},
+		{
+			name:    "a release that does not exist is refused",
+			args:    []string{"migration", "rerun", "tst", "--release", "v0.9.9", "--placement", placement},
+			wantErr: "no release v0.9.9 in impulseframework/harbor: an operation names a release that exists",
+		},
+		{
+			name:        "a release of the wrong shape is refused",
+			args:        []string{"migration", "version", "tst", "--release", "0.1.4", "--placement", placement},
+			wantNoCalls: true,
+			wantErr:     `"0.1.4" is not a release tag`,
+		},
+		{
+			name:        "a version that is not an integer is refused",
+			args:        []string{"migration", "force", "tst", "forty", "--release", "v0.1.4", "--placement", placement},
+			wantNoCalls: true,
+			wantErr:     `"forty" is not a version: an integer 0 or above, or none for no version`,
+		},
+		{
+			name:        "a version below -1 is refused",
+			args:        []string{"migration", "force", "--release", "v0.1.4", "--placement", placement, "tst", "--", "-2"},
+			wantNoCalls: true,
+			wantErr:     `"-2" is not a version`,
+		},
+		{
+			name:         "-1 after -- is no version too",
+			args:         []string{"migration", "force", "--release", "v0.1.4", "--placement", placement, "tst", "--", "-1"},
+			wantOut:      []string{"for tst's schema migrations table to be set to no version"},
+			wantDispatch: "operations.yml master action=force environment=tst release=v0.1.4 table=schema version=-1",
+		},
+		{
+			name:        "an unknown table is refused",
+			args:        []string{"migration", "force", "tst", "40", "--release", "v0.1.4", "--table", "rows", "--placement", placement},
+			wantNoCalls: true,
+			wantErr:     `unknown table "rows" (the tables are schema and data)`,
+		},
+		{
+			name:        "an environment the placement does not list is refused",
+			args:        []string{"migration", "version", "qa", "--release", "v0.1.4", "--placement", placement},
+			wantNoCalls: true,
+			wantErr:     `"qa" is not one of the environments (tst, stg, prd)`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server, repo := labGitHub(t)
+			dir := harborRepo(t, remote)
+			d := deps{
+				domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: dir, interactive: never,
+				github: func(context.Context) (*github.Client, error) {
+					return server.Client(), nil
+				},
+			}
+			out, err := execute(d, "", tt.args...)
+			if tt.wantNoCalls && len(server.Calls) != 0 {
+				t.Errorf("GitHub was called before the refusal: %v", server.Calls)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+				if len(repo.Dispatches) != 0 {
+					t.Errorf("dispatches = %+v, want none", repo.Dispatches)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			if len(repo.Dispatches) != 1 {
+				t.Fatalf("dispatches = %+v, want one", repo.Dispatches)
+			}
+			if got := dispatched(repo.Dispatches[0]); got != tt.wantDispatch {
+				t.Errorf("dispatch = %q, want %q", got, tt.wantDispatch)
 			}
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {

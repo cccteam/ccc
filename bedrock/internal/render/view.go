@@ -649,16 +649,20 @@ func (v *view) environments() {
 
 // operationsEnv is one environment as the operations workflow addresses it: its
 // project, the workload identity provider and the operations identity (both named
-// after the project, as 2-env creates them), the version trigger, and the restore a run
-// makes there. Wired is false for an environment the placement records no project for.
+// after the project, as 2-env creates them), the version trigger, the restore a run
+// makes there, the migrate template job (whose copies a build runs) and the log bucket
+// holding the job's lines (both named as the application stack names them). Wired is
+// false for an environment the placement records no project for.
 type operationsEnv struct {
-	Env      string
-	Wired    bool
-	Project  string
-	Provider string
-	Identity string
-	Trigger  string
-	Restore  string
+	Env        string
+	Wired      bool
+	Project    string
+	Provider   string
+	Identity   string
+	Trigger    string
+	Restore    string
+	MigrateJob string
+	Logs       string
 }
 
 // The pinned GitHub Actions the operations workflow uses, by commit, with the release
@@ -668,12 +672,18 @@ const (
 	gcloudAction = "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
 )
 
-// operations lists the environments the operations workflow may restore.
+// operations lists the environments the operations workflow may act on: every one but
+// production.
 func (v *view) operations() {
 	v.AuthAction, v.GcloudAction = authAction, gcloudAction
 	v.PrimaryRegion = v.P.Regions[0].Name
 	for _, env := range v.P.Restorable() {
-		o := operationsEnv{Env: env, Restore: v.P.RestoreKind(env), Trigger: v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-version"}
+		o := operationsEnv{
+			Env: env, Restore: v.P.RestoreKind(env),
+			Trigger:    v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-version",
+			MigrateJob: v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-migrate",
+			Logs:       v.Prefix + "-" + env + "-gbl-" + v.App + "-migrate-logs",
+		}
 		if project, ok := v.P.Project(env); ok {
 			o.Wired = true
 			o.Project = project.ID

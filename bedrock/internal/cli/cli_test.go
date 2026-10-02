@@ -71,7 +71,7 @@ func TestRenderThenCheck(t *testing.T) {
 			name:      "a fresh render checks clean",
 			afterFunc: func(*testing.T, string) {},
 			wantCode:  0,
-			wantOut:   []string{"20 owned file(s) match the code"},
+			wantOut:   []string{"21 owned file(s) match the code"},
 		},
 		{
 			name: "an edited owned file fails the check",
@@ -237,7 +237,7 @@ func TestStackFromLayout(t *testing.T) {
 			if err != nil {
 				t.Fatalf("check error = %v; output:\n%s", err, out)
 			}
-			if want := "20 owned file(s) match the code"; !strings.Contains(out, want) {
+			if want := "21 owned file(s) match the code"; !strings.Contains(out, want) {
 				t.Errorf("check output lacks %q:\n%s", want, out)
 			}
 		})

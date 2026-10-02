@@ -110,6 +110,9 @@ type Clients struct {
 	Registry RegistryFunc
 	// Run opens Cloud Run, for the migrate job and the services.
 	Run RunFunc
+	// Logs opens Cloud Logging, for the lines the migrate job wrote, read through the
+	// environment's log view.
+	Logs LogsFunc
 	// Tasks opens Cloud Tasks, for the queue a maintenance step pauses and resumes.
 	Tasks TasksFunc
 	// Metrics opens Cloud Monitoring, for the active instances a maintenance step waits on.
@@ -137,7 +140,7 @@ type Clients struct {
 func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, StorageAs: NewStorageAs, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
-		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
+		Registry: NewArtifactRegistry, Run: NewCloudRun, Logs: NewCloudLogging, Secrets: NewSecretManager, Exec: OSRunner{},
 		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs,
 	}
 }
@@ -304,6 +307,9 @@ type Facts struct {
 	// seed changed in an environment on the placement's seed list); empty for a restore
 	// a person asked for.
 	RestoreReason string
+	// Migration is the migration operation a release build carries (the operations
+	// workflow's version, rerun or force), which the migrate step does; nil for none.
+	Migration     *MigrateAction
 	Image         string
 	ImageTag      string
 	CommitTag     string
@@ -395,6 +401,9 @@ func newFacts(data []byte) (*Facts, error) {
 	if err := f.restore(); err != nil {
 		return nil, err
 	}
+	if err := f.migration(); err != nil {
+		return nil, err
+	}
 
 	return f, nil
 }
@@ -408,8 +417,8 @@ func newFacts(data []byte) (*Facts, error) {
 func (f *Facts) restore() error {
 	restore, requester := f.Substitutions[restoreSub], f.Substitutions[requesterSub]
 	if restore == "" {
-		if requester != "" {
-			return errors.Newf("%s names %s but %s is empty: a requester comes with a restore", requesterSub, requester, restoreSub)
+		if requester != "" && f.Substitutions[migrateActionSub] == "" {
+			return errors.Newf("%s names %s but %s and %s are empty: a requester comes with a restore or a migration operation", requesterSub, requester, restoreSub, migrateActionSub)
 		}
 
 		return nil
@@ -433,6 +442,27 @@ func (f *Facts) restore() error {
 		return errors.Newf("%s=%s names no requester (%s): a restore says who asked for it", restoreSub, restore, requesterSub)
 	}
 	f.Restore, f.Requester = restore, requester
+
+	return nil
+}
+
+// migration reads the migration operation (bedrock migration version|rerun|force, through
+// the operations workflow). It is a release build's: a pull request's database is its own
+// and recreated instead; and never a restore run's, whose database is replaced, so there
+// is no migration state to operate on. What it asks is checked here, before the image
+// builds, and done by the migrate step.
+func (f *Facts) migration() error {
+	action, err := migrateAction(f.Substitutions)
+	if err != nil || action == nil {
+		return err
+	}
+	if f.Tag == "" {
+		return errors.Newf("%s=%s on a pull-request build: a migration operation is a release build's; a pull request's own database is recreated with /gcbrun reload-db", migrateActionSub, action.Action)
+	}
+	if f.Restore != "" {
+		return errors.Newf("%s=%s with %s=%s: a restore replaces the database, so there is no migration state to operate on", migrateActionSub, action.Action, restoreSub, f.Restore)
+	}
+	f.Migration = action
 
 	return nil
 }
@@ -478,6 +508,9 @@ func (f *Facts) trigger(ctx context.Context, comments CommentsFunc, out io.Write
 		f.Version, f.Release = f.Tag, f.Tag
 		if f.Restore != "" {
 			fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, asked for by %s.\n", f.Environment, f.Restore, f.Tag, f.Requester)
+		}
+		if f.Migration != nil {
+			fmt.Fprintf(out, "Migration operation %s.\n", f.Migration)
 		}
 
 		return nil

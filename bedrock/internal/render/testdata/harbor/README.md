@@ -264,6 +264,11 @@ substitutions and this stack's outputs:
   environment's stack as, and the pull-request build a pull request's stack
   as; `_RESTORE` and `_REQUESTER`, empty on a tag's own build and set on a
   restore run (what replaces the environment's database, and who asked);
+  `_MIGRATE_ACTION`, `_MIGRATE_TABLE` and `_MIGRATE_VERSION`, empty on a tag's
+  own build and set by the operations workflow's migration job (`version`,
+  `rerun` or `force` on the environment's migrations, with `_REQUESTER` naming
+  who asked), and `_MIGRATE_LOGS`, the log view the pipeline reads the migrate
+  job's lines through (`logging.tf`; empty in production, which has none);
   `_MIGRATIONS_DIR`, the
   schema migrations directory, which decides whether `/gcbrun shared-db` is
   allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep;
@@ -286,6 +291,13 @@ substitutions and this stack's outputs:
   build's image: the migrate job, which `deploy migrate` runs once and
   deletes, and the job process's job, with the template's IAM policy;
   `deploy sweep-jobs` deletes the builds' jobs nothing runs any more.
+- `logging.tf` routes the migrate job's log entries into a log bucket of their
+  own (a sink on the job's name; the entries stay in the project's `_Default`
+  bucket too) and grants the deploy identity and the operations identity
+  `roles/logging.viewAccessor` on that bucket's view alone, so `deploy migrate`
+  prints the lines the job wrote into the build log and the operations
+  workflow's migration job prints them in its summary, and neither identity
+  reads the application's own logs. In every environment but production.
 - One image per release and environment in the one repository,
   `harbor:<release>-<env>` (its commit's tag beside it), carrying the site,
   the migrate command and the job process, with `APP_VERSION` baked in at build.

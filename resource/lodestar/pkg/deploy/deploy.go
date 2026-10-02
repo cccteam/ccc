@@ -72,6 +72,67 @@ func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) e
 	return nil
 }
 
+// Table names one of the two migrations tables the migrate command reports and forces:
+// the schema migrations' and the data migrations'.
+type Table string
+
+// The two tables, as the command's flags and output name them.
+const (
+	SchemaTable Table = "schema"
+	DataTable   Table = "data"
+)
+
+// Versions reads what the schema and data migrations tables say about the database: no
+// version, clean at a version, or dirty at one with the progress the runner recorded.
+// Nothing is applied.
+func Versions(ctx context.Context, settings config.SpannerSettings) (schema, data initiator.Version, err error) {
+	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
+	if err != nil {
+		return initiator.Version{}, initiator.Version{}, errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())
+	}
+	defer migrator.Close()
+
+	schema, err = migrator.SchemaVersion(ctx)
+	if err != nil {
+		return initiator.Version{}, initiator.Version{}, errors.Wrap(err, "initiator.SpannerMigrator.SchemaVersion()")
+	}
+	data, err = migrator.DataVersion(ctx)
+	if err != nil {
+		return initiator.Version{}, initiator.Version{}, errors.Wrap(err, "initiator.SpannerMigrator.DataVersion()")
+	}
+
+	return schema, data, nil
+}
+
+// Force sets one migrations table to a version, clean, with no progress recorded; -1
+// leaves the table with no version. It is for the states the runner refuses to guess at
+// (a database the old library left dirty with no progress recorded, an in-flight
+// operation Spanner no longer has, a file changed in its applied part): a person reads
+// the database's state, decides what it really holds, and forces that version, and the
+// next run continues from it.
+func Force(ctx context.Context, settings config.SpannerSettings, table Table, version int) error {
+	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
+	if err != nil {
+		return errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())
+	}
+	defer migrator.Close()
+
+	switch table {
+	case SchemaTable:
+		if err := migrator.ForceSchema(ctx, version); err != nil {
+			return errors.Wrap(err, "initiator.SpannerMigrator.ForceSchema()")
+		}
+	case DataTable:
+		if err := migrator.ForceData(ctx, version); err != nil {
+			return errors.Wrap(err, "initiator.SpannerMigrator.ForceData()")
+		}
+	default:
+		return errors.Newf("table %q is neither %s nor %s", table, SchemaTable, DataTable)
+	}
+
+	return nil
+}
+
 // CheckRoles reads one auth's policy store once and prints what a deploy should hear
 // about before the release takes traffic: the role file's own warnings, and what the
 // store holds that this release cannot use as written (a grant it skips, a custom role a

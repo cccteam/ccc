@@ -38,7 +38,7 @@ func Hook(ctx context.Context, clients *Clients, w Workspace, stage hook.Stage, 
 			return nil
 		}
 	} else if env[skipDeploy] == trueValue {
-		fmt.Fprintln(out, tornDown)
+		fmt.Fprintln(out, skipped(env))
 
 		return nil
 	}

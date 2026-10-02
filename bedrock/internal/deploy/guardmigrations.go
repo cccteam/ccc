@@ -48,7 +48,7 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 	subs := build.Substitutions
 	switch {
 	case env[skipDeploy] == trueValue:
-		fmt.Fprintln(out, tornDown)
+		fmt.Fprintln(out, skipped(env))
 
 		return nil
 	case env[downFact] == trueValue:

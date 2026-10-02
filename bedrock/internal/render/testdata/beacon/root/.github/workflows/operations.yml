@@ -1,41 +1,75 @@
-# beacon's operations: a restore of an environment to a release, started from GitHub and run by
-# the environment's pipeline. Rendered by bedrock and owned by it (bedrock render rewrites this
-# file, bedrock check compares it). The job runs in the GitHub Environment named after the target
-# environment, which deploys from master alone (declared by the organization's 1-org
-# layer), exchanges its GitHub token for the environment's operations identity through Workload
-# Identity Federation (no key exists anywhere; the environment's provider trusts tokens of this
-# repository, this workflow file and that Environment alone), and runs the environment's version
-# trigger for the release with the restore instruction. Everything that changes the environment
-# happens inside that run, as the deploy identity, as for any release: the application goes into
-# maintenance, the database is replaced (an empty one, which the migrations then fill, and the seed
-# where the placement's seed list names the environment, or production's most recent backup), the
-# release's jobs are created, the migrations run, the revision deploys, traffic moves, and the
-# record names the requester. The identity here starts the trigger and reads how the build went, and
-# nothing else. Production is never restored by a run. Started by bedrock restore <env> <release>,
+# beacon's operations, started from GitHub and run by the environment's pipeline: a restore of an
+# environment to a release, and the operations on an environment's migrations (the migration
+# version, a rerun, a forced version). Rendered by bedrock and owned by it (bedrock render rewrites
+# this file, bedrock check compares it). Each job runs in the GitHub Environment named after the
+# target environment, which deploys from master alone (declared by the organization's
+# 1-org layer), exchanges its GitHub token for the environment's operations identity through
+# Workload Identity Federation (no key exists anywhere; the environment's provider trusts tokens
+# of this repository, this workflow file and that Environment alone), and runs the environment's
+# version trigger for the release with the instruction. Everything that changes the environment
+# happens inside that run, as the deploy identity, as for any release. The identity here starts
+# the trigger, reads how the build went and reads the lines the migrate job wrote (through the
+# view over the job's own log bucket, and no other log), and nothing else. None of it reaches
+# production. Started by bedrock restore <env> <release>, by bedrock migration version|rerun|force,
 # or by the Run workflow button; a release waits for its approval in Cloud Build as any release
 # does.
+#
+# restore: the application goes into maintenance, the database is replaced (an empty one, which
+# the migrations then fill, and the seed where the placement's seed list names the environment,
+# or production's most recent backup), the release's jobs are created, the migrations run, the
+# revision deploys, traffic moves, and the record names the requester.
+#
+# version: the migrate job prints what each migrations table says about the database (no version,
+# a version, or dirty at one with the progress recorded) and nothing else deploys. rerun: the
+# release runs again, so the migrate job continues a file that stopped from its failed statement
+# once the cause is fixed. force: the migrate job sets a migrations table to the version given
+# (-1 for no version), prints the row before and after, then the migrations run and the release
+# continues; the record names the table, the version and the requester. The job's lines print in
+# the run's summary.
 name: operations
 
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: "What to do: restore the environment to the release; or, on its migrations, version (print the database's migration version), rerun (run the release again, continuing a stopped file) or force (set the migration version and let the release continue)"
+        type: choice
+        required: true
+        default: restore
+        options:
+          - restore
+          - version
+          - rerun
+          - force
       environment:
-        description: The environment to restore (tst or stg)
+        description: The environment (tst or stg)
         type: choice
         required: true
         options:
           - tst
           - stg
       release:
-        description: The release to restore the environment to (v<major>.<minor>.<patch>, one that exists)
+        description: The release (v<major>.<minor>.<patch>, one that exists)
         type: string
         required: true
+      table:
+        description: "For force: the migrations table to set"
+        type: choice
+        default: schema
+        options:
+          - schema
+          - data
+      version:
+        description: "For force: the version the database is at (an integer 0 or above, or -1 for no version)"
+        type: string
+        default: ""
 
 permissions: {}
 
 jobs:
   restore:
     name: restore ${{ inputs.environment }} to ${{ inputs.release }}
+    if: ${{ inputs.action == 'restore' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
@@ -90,3 +124,100 @@ jobs:
             esac
             sleep 30
           done
+
+  migration:
+    name: ${{ inputs.action }} on ${{ inputs.environment }}'s migrations at ${{ inputs.release }}
+    if: ${{ inputs.action != 'restore' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      ACTION: ${{ inputs.action }}
+      TABLE: ${{ inputs.table }}
+      VERSION: ${{ inputs.version }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+    steps:
+      # The environment's values, from the placement's projects, and the inputs checked
+      # before anything runs: a force names its version, and nothing else takes one.
+      - name: The environment's project, identity, trigger, migrate job and log bucket
+        id: target
+        run: |
+          case "$RELEASE" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          if [ "$ACTION" = force ]; then
+            if ! printf '%s' "$VERSION" | grep -Eq '^(-1|0|[1-9][0-9]*)$'; then
+              echo "::error::force needs the version the database is at: an integer 0 or above, or -1 for no version (got \"$VERSION\")"
+              exit 1
+            fi
+          elif [ -n "$VERSION" ]; then
+            echo "::error::a version goes with force alone: $ACTION takes none"
+            exit 1
+          fi
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger migrate_job logs; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The version trigger's build with the operation, waited for to its end (an approval in
+      # Cloud Build included); then the lines the build's migrate job wrote, read from the job's
+      # own log bucket (the identity reads that view and no other log) and printed here and in
+      # the run's summary, whether the build succeeded or failed. The build's job is the
+      # template job named with the release as a key (v1.2.3 gives v1-2-3).
+      - name: Run the version trigger with the migration operation
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          MIGRATE_JOB: ${{ steps.target.outputs.migrate_job }}
+          LOGS: ${{ steps.target.outputs.logs }}
+        run: |
+          substitutions="_MIGRATE_ACTION=$ACTION,_REQUESTER=$REQUESTER"
+          if [ "$ACTION" = force ]; then
+            substitutions="$substitutions,_MIGRATE_TABLE=$TABLE,_MIGRATE_VERSION=$VERSION"
+          fi
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "$substitutions" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT: $ACTION on the migrations at $RELEASE, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS|FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) break ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+          key=$(printf '%s' "$RELEASE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//')
+          lines=$(gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"$MIGRATE_JOB-$key\" AND timestamp>=\"$started\"" \
+            --bucket "$LOGS" --location global --view _AllLogs --project "$PROJECT" --order asc --format 'value(textPayload)')
+          {
+            echo "## $ACTION on $ENVIRONMENT's migrations at $RELEASE"
+            echo
+            echo "Build $build ended $status, asked for by $REQUESTER."
+            echo
+            echo '```'
+            printf '%s\n' "${lines:-no line of the migrate job reached Cloud Logging yet}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "--- the migrate job wrote ---"
+          printf '%s\n' "${lines:-no line of the migrate job reached Cloud Logging yet}"
+          echo "---"
+          case "$status" in
+            SUCCESS) echo "Build $build succeeded." ;;
+            *) echo "::error::Build $build ended $status; the migrate job's lines are above and in the summary."; exit 1 ;;
+          esac

@@ -34,7 +34,7 @@ func SweepJobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer
 		return err
 	}
 	if env[skipDeploy] == trueValue {
-		fmt.Fprintln(out, tornDown)
+		fmt.Fprintln(out, skipped(env))
 
 		return nil
 	}

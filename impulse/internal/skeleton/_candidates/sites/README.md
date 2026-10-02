@@ -34,7 +34,11 @@ concealed from logins that hold nothing there.
   A development seed under `schema/devseed` (data files as migrations, tracked apart from
   the schema, so a seeded database takes nothing twice) is applied by `cmd/bootstrap` and
   by the migrate command with `-seed`, which the pipeline passes in test environments and
-  never in production; an application without the directory has nothing to apply.
+  never in production; an application without the directory has nothing to apply. The
+  migrate command's `-version` prints what each migrations table says about the database,
+  and `-force <n>` and `-force-data <n>` set a table to a version (-1 for no version), for
+  the states the migration runner refuses to guess at; the pipeline passes them from the
+  operations workflow (`bedrock migration`), and none of them applies a migration.
 - `cmd/generate` runs the three generators: console, portal, shared. `impulse check`'s
   sites-generators check fails the build when a generator reads a different schema or the
   shared generator misses a site.

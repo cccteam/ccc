@@ -470,7 +470,7 @@ func (d deps) resolveAdd(cmd *cobra.Command, args []string, f *addFlags) (*secre
 		return nil, secret.ValidateVariable(variable)
 	}
 	if !slices.Contains(declared, variable) && !isBuild {
-		declares := "none"
+		declares := noneWord
 		if len(build) > 0 {
 			declares = strings.Join(build, ", ")
 		}

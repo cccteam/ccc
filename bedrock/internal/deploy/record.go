@@ -60,6 +60,30 @@ type Record struct {
 	// the job executions canceled and how the wait for the old revision's requests
 	// ended. Absent otherwise.
 	Maintenance *Maintenance `json:"maintenance,omitempty"`
+	// Force says the run set a migrations table to a version before the migrations ran
+	// (the operations workflow's force): the table, the version and who asked. Absent
+	// otherwise.
+	Force *Force `json:"force,omitempty"`
+}
+
+// Force is a forced migration version as the record keeps it.
+type Force struct {
+	// Table is the migrations table set: schema, or data.
+	Table string `json:"table"`
+	// Version is the version set; -1 for no version.
+	Version   int    `json:"version"`
+	Requester string `json:"requester"`
+}
+
+// forceOf reads the force a run applied from the facts the migrate step left; nil for a
+// run that forced nothing.
+func forceOf(env map[string]string, build *Build) *Force {
+	if env[forcedTableFact] == "" {
+		return nil
+	}
+	version, _ := strconv.Atoi(env[forcedVersionFact])
+
+	return &Force{Table: env[forcedTableFact], Version: version, Requester: build.Substitutions[requesterSub]}
 }
 
 // Maintenance is a run's maintenance as the record keeps it.
@@ -146,7 +170,8 @@ const (
 // RecordRequest is what the record step found in the workspace: the record to write and
 // where, or that there is nothing to record.
 type RecordRequest struct {
-	// Skipped says why nothing is recorded: the pull request's environment was torn down.
+	// Skipped says why nothing is recorded: the pull request's environment was torn down,
+	// or the run asked for the migration version alone.
 	Skipped string
 	Bucket  string
 	Object  string
@@ -178,7 +203,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		return nil, err
 	}
 	if env[skipDeploy] == trueValue {
-		return &RecordRequest{Skipped: "The pull request's environment was torn down: nothing to record."}, nil
+		return &RecordRequest{Skipped: skippedRecord(env)}, nil
 	}
 	build, err := w.Build()
 	if err != nil {
@@ -238,6 +263,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Stack:       stack,
 		Restore:     restore,
 		Maintenance: maintenance,
+		Force:       forceOf(env, build),
 	}
 
 	return &RecordRequest{

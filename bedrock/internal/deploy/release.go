@@ -42,6 +42,26 @@ const (
 	statusIdentical = "identical"
 )
 
+// skipped is a step's answer to a run an earlier step ended: the reason that step left
+// (SKIP_REASON: a version run, whose migrate job printed the database's migration version
+// and nothing else deploys), else the pull request's environment torn down.
+func skipped(env map[string]string) string {
+	if reason := env[skipReasonFact]; reason != "" {
+		return reason
+	}
+
+	return tornDown
+}
+
+// skippedRecord is the record step's answer to the same.
+func skippedRecord(env map[string]string) string {
+	if reason := env[skipReasonFact]; reason != "" {
+		return reason + " Nothing to record."
+	}
+
+	return "The pull request's environment was torn down: nothing to record."
+}
+
 // hotfixLineRE reads the release line of a v<major>.<minor>.<patch> tag.
 var hotfixLineRE = regexp.MustCompile(`^v(\d+)\.(\d+)\.\d+$`)
 
@@ -87,7 +107,7 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 		return err
 	}
 	if env[skipDeploy] == trueValue {
-		fmt.Fprintln(out, tornDown)
+		fmt.Fprintln(out, skipped(env))
 
 		return nil
 	}

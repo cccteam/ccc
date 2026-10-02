@@ -105,7 +105,7 @@ func prBuild(overrides map[string]string) map[string]string {
 }
 
 // known is the stack's contract in these tests.
-var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_SEED", "_RESTORE", "_REQUESTER"}
+var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_SEED", "_RESTORE", "_REQUESTER", "_MIGRATE_ACTION", "_MIGRATE_TABLE", "_MIGRATE_VERSION", "_MIGRATE_LOGS"}
 
 func buildFor(t *testing.T, subs map[string]string) string {
 	t.Helper()
@@ -123,15 +123,22 @@ type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token  string
 	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Notice bool
 	ReloadReason, Restore, Requester, RestoreReason               string
-	Declared                                                      []string
+	// Migration is the migration operation in words, empty for none.
+	Migration string
+	Declared  []string
 }
 
 func summarize(f *Facts) outcome {
-	return outcome{
+	o := outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Notice: f.Notice != "",
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
 	}
+	if f.Migration != nil {
+		o.Migration = f.Migration.String()
+	}
+
+	return o
 }
 
 // The records and trees the stale-database cases use: pull request 7's last build
@@ -263,15 +270,75 @@ func TestResolve(t *testing.T) {
 			wantErr: "_RESTORE=empty names no requester (_REQUESTER): a restore says who asked for it",
 		},
 		{
-			name:    "a requester without a restore is a mistake",
+			name:    "a requester without a restore or a migration operation is a mistake",
 			subs:    tagBuild(map[string]string{requesterSub: "octocat"}),
-			wantErr: "_REQUESTER names octocat but _RESTORE is empty: a requester comes with a restore",
+			wantErr: "_REQUESTER names octocat but _RESTORE and _MIGRATE_ACTION are empty: a requester comes with a restore or a migration operation",
 		},
 		{
 			name:     "a pull-request build carries no restore",
 			subs:     prBuild(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat"}),
 			comments: []string{"/gcbrun"},
 			wantErr:  "_RESTORE=empty on a pull-request build: a restore is a release build's instruction; a pull request's own database is recreated with /gcbrun reload-db",
+		},
+		{
+			name: "a version operation is read and reported",
+			subs: tagBuild(map[string]string{migrateActionSub: actionVersion, requesterSub: "octocat"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.Migration = "version: the migrate job prints the database's migration version and nothing else deploys, asked for by octocat"
+			}),
+			wantOut: []string{"Migration operation version: the migrate job prints the database's migration version and nothing else deploys, asked for by octocat."},
+		},
+		{
+			name: "a rerun needs no requester",
+			subs: tagBuild(map[string]string{migrateActionSub: actionRerun}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.Migration = "rerun: the migrate job runs as it always does and the release continues"
+			}),
+			wantOut: []string{"Migration operation rerun: the migrate job runs as it always does and the release continues."},
+		},
+		{
+			name: "a force names its table and version",
+			subs: tagBuild(map[string]string{migrateActionSub: actionForce, migrateTableSub: tableData, migrateVersionSub: "40", requesterSub: "octocat"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.Migration = "force: the data migrations table is set to version 40, then the migrations run and the release continues, asked for by octocat"
+			}),
+			wantOut: []string{"Migration operation force: the data migrations table is set to version 40, then the migrations run and the release continues, asked for by octocat."},
+		},
+		{
+			name:    "a force without a version is refused",
+			subs:    tagBuild(map[string]string{migrateActionSub: actionForce, requesterSub: "octocat"}),
+			wantErr: "_MIGRATE_ACTION=force names no version (_MIGRATE_VERSION): a force says which version the database is at, or -1 for no version",
+		},
+		{
+			name:    "a force with a version that is not an integer is refused",
+			subs:    tagBuild(map[string]string{migrateActionSub: actionForce, migrateVersionSub: "forty", requesterSub: "octocat"}),
+			wantErr: `_MIGRATE_VERSION "forty" is not a version: an integer 0 or above, or -1 for no version`,
+		},
+		{
+			name:    "a force names who asked",
+			subs:    tagBuild(map[string]string{migrateActionSub: actionForce, migrateVersionSub: "40"}),
+			wantErr: "_MIGRATE_ACTION=force names no requester (_REQUESTER): a force says who asked for it",
+		},
+		{
+			name:    "an unknown operation is refused",
+			subs:    tagBuild(map[string]string{migrateActionSub: "undo", requesterSub: "octocat"}),
+			wantErr: `unknown _MIGRATE_ACTION "undo" (the actions are version, rerun and force)`,
+		},
+		{
+			name:    "a version value goes with a force alone",
+			subs:    tagBuild(map[string]string{migrateActionSub: actionVersion, migrateVersionSub: "40", requesterSub: "octocat"}),
+			wantErr: "_MIGRATE_VERSION=40 with _MIGRATE_ACTION=version: a version goes with force",
+		},
+		{
+			name:     "a pull-request build carries no migration operation",
+			subs:     prBuild(map[string]string{migrateActionSub: actionVersion, requesterSub: "octocat"}),
+			comments: []string{"/gcbrun"},
+			wantErr:  "_MIGRATE_ACTION=version on a pull-request build: a migration operation is a release build's; a pull request's own database is recreated with /gcbrun reload-db",
+		},
+		{
+			name:    "a migration operation never rides a restore",
+			subs:    tagBuild(map[string]string{restoreSub: restoreEmpty, migrateActionSub: actionRerun, requesterSub: "octocat"}),
+			wantErr: "_MIGRATE_ACTION=rerun with _RESTORE=empty: a restore replaces the database, so there is no migration state to operate on",
 		},
 		{
 			name:    "a hand-submitted build without a connection skips the GitHub checks",

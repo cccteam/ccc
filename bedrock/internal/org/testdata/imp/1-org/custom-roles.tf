@@ -223,6 +223,10 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     "compute.regionNetworkEndpointGroups.get",
     # Firestore: the database's metadata (what its read checks; databases.get is not).
     "datastore.databases.getMetadata",
+    # Cloud Logging: the migrate job's log bucket and the sink that fills it (the stack's
+    # logging.tf); never an entry.
+    "logging.buckets.get",
+    "logging.sinks.get",
     # Cloud Run: the services, the jobs, and a service's tag bindings, which Cloud Run
     # checks on its own permission rather than Resource Manager's.
     "run.jobs.get",

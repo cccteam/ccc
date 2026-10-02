@@ -54,7 +54,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 		return err
 	}
 	if env[skipDeploy] == trueValue {
-		fmt.Fprintln(out, tornDown)
+		fmt.Fprintln(out, skipped(env))
 
 		return nil
 	}

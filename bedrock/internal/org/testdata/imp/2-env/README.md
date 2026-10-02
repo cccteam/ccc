@@ -175,9 +175,10 @@ list the application at all.
 ### Application operations identity `imp-<env>-gbl-<app>-ops`
 
 A restore of the environment to a release (`bedrock restore <env> <release>`)
-is started from GitHub: the application's operations workflow runs the
-environment's version trigger with the restore instruction, and the pipeline
-does the work as the deploy identity, as for any release. The workflow's job
+and an operation on its migrations (`bedrock migration version|rerun|force`)
+are started from GitHub: the application's operations workflow runs the
+environment's version trigger with the instruction, and the pipeline does the
+work as the deploy identity, as for any release. The workflow's job
 holds no key. It exchanges GitHub's short-lived token for this identity
 through the environment's workload identity pool
 `imp-<env>-github` (`operations.tf`), whose provider trusts tokens of
@@ -187,7 +188,11 @@ the identity narrows that to the application's own repository. The identity
 holds `cloudBuildTriggerRunner` (`1-org`'s custom role: starts a trigger's
 build and reads how it went) on the environment project, and
 `roles/iam.serviceAccountUser` on the application's deploy identity, which
-starting a trigger whose builds run as it requires, and nothing else. The
+starting a trigger whose builds run as it requires, and nothing else here. The
+application's own stack adds one bounded read (its `logging.tf`):
+`roles/logging.viewAccessor` on the view over the migrate job's own log
+bucket, so the workflow's migration job prints the lines the migrate job wrote
+and reads no other log. The
 application's placement records the environment project's id and number
 (`projects`, printed by `bedrock org register` once `placement.json` here
 records `projects` and `projectNumbers`), and bedrock renders the workflow

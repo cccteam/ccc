@@ -101,11 +101,33 @@ func TestNewRecordRequest(t *testing.T) {
 		wantMigrations []Migration
 		wantStack      *StackPlan
 		// wantRestore is the restore note a restore run leaves; wantMaintenance the
-		// maintenance the run went through.
+		// maintenance the run went through; wantForce the migration version a run forced.
 		wantRestore     *Restore
 		wantMaintenance *Maintenance
+		wantForce       *Force
 		wantErr         string
 	}{
+		{
+			name:        "a run that forced a migration version records the table, the version and who asked",
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport MIGRATE_FORCED_TABLE=\"schema\"\nexport MIGRATE_FORCED_VERSION=\"40\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATE_ACTION": "force", "_MIGRATE_VERSION": "40", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
+			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:  Live,
+			wantRegions: "us-central1,us-west3",
+			wantForce:   &Force{Table: "schema", Version: 40, Requester: "octocat"},
+		},
+		{
+			name:        "a run that forced no version to the data table records -1",
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export MIGRATE_FORCED_TABLE=\"data\"\nexport MIGRATE_FORCED_VERSION=\"-1\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
+			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:  Live,
+			wantRegions: "us-central1,us-west3",
+			wantForce:   &Force{Table: "data", Version: -1, Requester: "octocat"},
+		},
+		{
+			name:        "a version run records nothing and says why",
+			files:       map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"true\"\nexport SKIP_REASON=\"" + versionSkipped + "\"\n"},
+			wantSkipped: versionSkipped + " Nothing to record.",
+		},
 		{
 			name:            "a run in maintenance records its revisions, queue, canceled executions and wait",
 			files:           map[string]string{EnvironmentFile: liveEnvironment + "export MAINTENANCE=\"true\"\nexport MAINTENANCE_REVISIONS=\"us-central1=harbor-app-00008-maint,us-west3=harbor-app-00008-maint\"\nexport MAINTENANCE_QUEUE=\"projects/p/locations/us-central1/queues/harbor-tasks\"\nexport MAINTENANCE_PURGED=\"true\"\nexport MAINTENANCE_CANCELED=\"2\"\nexport MAINTENANCE_WAITED=\"4s: no active instance\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
@@ -240,6 +262,9 @@ func TestNewRecordRequest(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantRestore, r.Restore); diff != "" {
 				t.Errorf("Restore mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantForce, r.Force); diff != "" {
+				t.Errorf("Force mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
