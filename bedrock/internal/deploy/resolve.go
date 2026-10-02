@@ -96,6 +96,9 @@ var (
 type Clients struct {
 	// Storage opens Cloud Storage, for the deployment records.
 	Storage StoreFunc
+	// StorageAs opens Cloud Storage as an impersonated identity, for a pull-request
+	// build's read of an environment's records as that environment's plan identity.
+	StorageAs StoreAsFunc
 	// Builds opens Cloud Build, for the build's own description and the repository's
 	// GitHub token.
 	Builds BuildsFunc
@@ -133,7 +136,7 @@ type Clients struct {
 // DefaultClients opens the real services.
 func DefaultClients() *Clients {
 	return &Clients{
-		Storage: NewStorage, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
+		Storage: NewStorage, StorageAs: NewStorageAs, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
 		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
 		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs,
 	}

@@ -193,6 +193,18 @@ resource "google_storage_bucket_iam_member" "deploy_records_viewer" {
   member = google_service_account.deploy[each.key].member
 }
 
+# Read on the deployment records for the application plan identity: a pull-request
+# build against a hotfix line previews what each environment's release check will say
+# to the line's next release, reading the environment's live record as that
+# environment's plan identity, the identity the build already plans the environment as.
+resource "google_storage_bucket_iam_member" "plan_records" {
+  for_each = local.apps
+
+  bucket = google_storage_bucket.records.name
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.plan[each.key].member
+}
+
 # The deploy identity may act as the apply identity: a release's tag build
 # applies the environment's application stack (plan, tests, apply, as the
 # apply identity) after the image build and before the migrations, and in tst

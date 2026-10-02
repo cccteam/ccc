@@ -546,6 +546,17 @@ request from the line's tip itself. The command refuses a release that is not on
 hotfix line or that the default branch already carries, and reports an existing
 merge-back branch or pull request for the release instead of making a second.
 
+A fix on a hotfix line gets its pull-request build like any change: the pull-request
+trigger covers the lines beside the default branch, and the build's migration guard
+compares the pull request with the line (Cloud Build's `_BASE_BRANCH`), which is behind
+the default branch on purpose. The build also looks ahead for the line's next release:
+`ValidateRelease` reads each environment's live deployment record as that environment's
+plan identity (the identity the build already plans the environment as; `2-env` grants it
+the read of its own environment's records) and says, environment by environment, whether
+the hotfix would be taken or refused there, naming the file the database holds that the
+pull request does not carry, or the line production runs, so the developer learns before
+the merge that a restore comes first, and where. The preview warns and never refuses.
+
 The restore is a run of the environment's version trigger for the release, carrying the
 instruction `_RESTORE` (`empty`, or `production-backup` for the environment on
 production's instance) and `_REQUESTER`. Everything that changes the environment happens

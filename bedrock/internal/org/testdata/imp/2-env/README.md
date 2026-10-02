@@ -123,7 +123,10 @@ refreshed from, a bucket's and a queue's among them) and
 `roles/storage.legacyBucketReader` unconditionally, and
 `roles/storage.objectViewer` on `3-app/<app>/<env>/` and on the upstream
 states the apply identity reads; no write, so the plan runs without the state
-lock. On the Spanner instance the application's database lives on, the
+lock. On its own environment's records bucket: `roles/storage.objectViewer`,
+since a pull-request build against a hotfix line reads the environment's live
+record as this identity to say where the line's next release will be refused.
+On the Spanner instance the application's database lives on, the
 organization's `spannerPlanReader` role (the database, its IAM policy and its
 backup schedules, nothing of the data): on the tst instance from this layer,
 on the shared instance from `2-spn`'s `database_planners`. tst's deploy identity of the same application may impersonate it

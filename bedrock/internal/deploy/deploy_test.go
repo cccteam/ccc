@@ -254,11 +254,19 @@ func hashOf(content string) string {
 
 // memoryStore is a Store holding what was written, by gs:// path.
 type memoryStore struct {
-	objects map[string]string
-	fail    error
+	objects    map[string]string
+	fail       error
+	identities []string
 }
 
 func (m *memoryStore) open(context.Context) (Store, error) {
+	return m, nil
+}
+
+// openAs is the store as an identity: the identities asked for are kept, in order.
+func (m *memoryStore) openAs(_ context.Context, identity string) (Store, error) {
+	m.identities = append(m.identities, identity)
+
 	return m, nil
 }
 

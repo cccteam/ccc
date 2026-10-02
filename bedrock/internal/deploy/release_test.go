@@ -112,8 +112,52 @@ func TestValidateRelease(t *testing.T) {
 		wantAbsent []string
 		// wantFact is WINDOW_RELEASE after the step: true for a window release, else empty.
 		wantFact string
-		wantErr  string
+		// wantIdentities are the identities the records were read as, in order.
+		wantIdentities []string
+		wantErr        string
 	}{
+		{
+			name: "a pull request against a hotfix line previews each environment's answer, read as its plan identity",
+			env:  connected,
+			subs: map[string]string{
+				tagSub: "", prNumberSub: "7", baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst,stg,prd",
+				planIdentitiesSub: "tst=plan-tst@x.iam,stg=plan-stg@x.iam,prd=plan-prd@x.iam",
+				recordsBucketsSub: "tst=tst-records,stg=stg-records,prd=prd-records",
+			},
+			objects: map[string]string{
+				"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive,
+				"gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits),
+				"gs://prd-records/quill/prd/v1.2.3/b-7.json": strings.Replace(stgLive("v1.2.3", first), `"env": "stg"`, `"env": "prd"`, 1),
+			},
+			files: map[string]string{first.path(): first.content},
+			wantOut: []string{
+				"Hotfix preview: this pull request is against hotfix/1.2.x, and each environment's release check will say this to the line's next release",
+				"tst: would take the hotfix; its database holds nothing this pull request does not carry (0 file(s) recorded by v1.2.4, build b-0).",
+				"stg: WILL REFUSE the hotfix: stg's database holds schema/migrations/000002_Refits.up.sql (applied by v1.3.0), which this pull request does not carry; restore stg to the hotfix first: a restore run replaces the database and skips this check.",
+				"prd: would take the hotfix; its database holds nothing this pull request does not carry (1 file(s) recorded by v1.2.3, build b-5).",
+				"Pull-request build: no release to validate.",
+			},
+			wantIdentities: []string{"plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam"},
+		},
+		{
+			name: "a pull request against a hotfix line of another release line is told production will refuse it at the door",
+			env:  connected,
+			subs: map[string]string{
+				tagSub: "", prNumberSub: "7", baseBranchSub: "hotfix/1.1.x", environmentsSub: "prd",
+				planIdentitiesSub: "prd=plan-prd@x.iam", recordsBucketsSub: "prd=prd-records",
+			},
+			objects: map[string]string{"gs://prd-records/quill/prd/v1.2.3/b-7.json": strings.Replace(stgLive("v1.2.3"), `"env": "stg"`, `"env": "prd"`, 1)},
+			wantOut: []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.2.3, line 1.2; this hotfix is on hotfix/1.1.x. A hotfix is based on the release production runs."},
+		},
+		{
+			name: "a pull request against a hotfix line whose environment's records cannot be read is told so and goes on",
+			env:  connected,
+			subs: map[string]string{
+				tagSub: "", prNumberSub: "7", baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst,stg",
+				planIdentitiesSub: "tst=plan-tst@x.iam", recordsBucketsSub: "tst=tst-records,stg=stg-records",
+			},
+			wantOut: []string{"tst: no live deployment record; nothing to be behind.", "stg: its records bucket or plan identity is not named (_RECORDS_BUCKETS, _PLAN_IDENTITIES); nothing read.", "Pull-request build: no release to validate."},
+		},
 		{
 			name:       "a pull-request build has no release to validate",
 			env:        connected,
@@ -381,7 +425,7 @@ func TestValidateRelease(t *testing.T) {
 			for path, content := range tt.objects {
 				store.objects[path] = content
 			}
-			clients := &Clients{Storage: store.open, GitHub: func(string) *github.Client {
+			clients := &Clients{Storage: store.open, StorageAs: store.openAs, GitHub: func(string) *github.Client {
 				return srv.Client()
 			}}
 			files := map[string]string{EnvironmentFile: tt.env, BuildFile: releaseBuild(t, tt.subs)}
@@ -421,6 +465,9 @@ func TestValidateRelease(t *testing.T) {
 			}
 			if facts[windowReleaseFact] != tt.wantFact {
 				t.Errorf("%s = %q, want %q", windowReleaseFact, facts[windowReleaseFact], tt.wantFact)
+			}
+			if tt.wantIdentities != nil && strings.Join(store.identities, ",") != strings.Join(tt.wantIdentities, ",") {
+				t.Errorf("records read as %v, want %v", store.identities, tt.wantIdentities)
 			}
 		})
 	}

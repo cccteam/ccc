@@ -69,8 +69,10 @@ steps:
     env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
     timeout: 300s
 
-  # A tag build only: the tag is a release cut by the release app, its commit is on the
+  # A tag build: the tag is a release cut by the release app, its commit is on the
   # default branch (or tips its hotfix line), and the previous environment runs it live.
+  # A pull-request build against a hotfix line previews, from each environment's live
+  # record read as its plan identity, where the line's next release will be refused.
   - id: ValidateRelease
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock

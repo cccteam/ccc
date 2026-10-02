@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/api/impersonate"
+	"google.golang.org/api/option"
+
 	"cloud.google.com/go/storage"
 	"github.com/go-playground/errors/v5"
 
@@ -313,6 +316,29 @@ type Store interface {
 
 // StoreFunc opens a Store.
 type StoreFunc func(ctx context.Context) (Store, error)
+
+// StoreAsFunc opens a Store as an identity the process's credentials may impersonate.
+type StoreAsFunc func(ctx context.Context, identity string) (Store, error)
+
+// NewStorageAs opens Cloud Storage as the identity, impersonated with the process's
+// default credentials, for reading: a pull-request build reads an environment's
+// deployment records as that environment's plan identity, which may read what the
+// deploy identity may not.
+func NewStorageAs(ctx context.Context, identity string) (Store, error) {
+	source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+		TargetPrincipal: identity,
+		Scopes:          []string{"https://www.googleapis.com/auth/devstorage.read_only"},
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
+	}
+	client, err := storage.NewClient(ctx, option.WithTokenSource(source))
+	if err != nil {
+		return nil, errors.Wrap(err, "storage.NewClient()")
+	}
+
+	return &cloudStorage{client: client}, nil
+}
 
 // NewStorage opens Cloud Storage with the process's default credentials (in Cloud Build,
 // the build's service account).

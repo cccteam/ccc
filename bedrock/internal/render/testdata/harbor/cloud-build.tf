@@ -48,10 +48,11 @@ locals {
     _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                                 # that environment's records bucket, which 2-env there lets this deploy identity read
     _ENVIRONMENTS            = join(",", local.environments)                                                                 # the promotion order; a pull-request build plans the stack for each
     _PLAN_IDENTITIES         = local.plan_identities                                                                         # env=identity; the reader a pull-request build plans each environment as
-    _APPLY_IDENTITY          = local.identities.apply_identity_email                                                         # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
-    _TASKS_QUEUE             = local.tasks_queue                                                                             # the task queue a maintenance step pauses while the database is replaced or migrated and resumes after traffic moves
-    _RESTORE                 = ""                                                                                            # a restore run's instruction (empty, or production-backup): the environment's database is replaced before the release deploys; set by bedrock restore when it runs the trigger, never on a tag's own build, and refused in prd
-    _REQUESTER               = ""                                                                                            # who asked for the restore; the record carries it
+    _RECORDS_BUCKETS         = local.records_buckets
+    _APPLY_IDENTITY          = local.identities.apply_identity_email # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
+    _TASKS_QUEUE             = local.tasks_queue                     # the task queue a maintenance step pauses while the database is replaced or migrated and resumes after traffic moves
+    _RESTORE                 = ""                                    # a restore run's instruction (empty, or production-backup): the environment's database is replaced before the release deploys; set by bedrock restore when it runs the trigger, never on a tag's own build, and refused in prd
+    _REQUESTER               = ""                                    # who asked for the restore; the record carries it
     # The schema migrations, root-relative: /gcbrun shared-db is refused when a
     # pull request changes anything under it. The repository as GitHub names it
     # (owner/name, from the module path): the sweep asks GitHub about each pull

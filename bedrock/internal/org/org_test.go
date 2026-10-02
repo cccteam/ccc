@@ -178,9 +178,12 @@ func TestDeployRecordsGrants(t *testing.T) {
 		name     string
 		resource string
 		role     string
+		// identity is the service account resource granted: deploy, or plan.
+		identity string
 	}{
-		{name: "creates records", resource: "deploy_records", role: "roles/storage.objectCreator"},
-		{name: "reads records", resource: "deploy_records_viewer", role: "roles/storage.objectViewer"},
+		{name: "creates records", resource: "deploy_records", role: "roles/storage.objectCreator", identity: "deploy"},
+		{name: "reads records", resource: "deploy_records_viewer", role: "roles/storage.objectViewer", identity: "deploy"},
+		{name: "the plan identity reads records, for the hotfix preview", resource: "plan_records", role: "roles/storage.objectViewer", identity: "plan"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -190,7 +193,7 @@ func TestDeployRecordsGrants(t *testing.T) {
 				"  for_each = local.apps\n\n" +
 				"  bucket = google_storage_bucket.records.name\n" +
 				"  role   = \"" + tt.role + "\"\n" +
-				"  member = google_service_account.deploy[each.key].member\n}\n"
+				"  member = google_service_account." + tt.identity + "[each.key].member\n}\n"
 			if !strings.Contains(identities, want) {
 				t.Errorf("2-env/identities.tf lacks the grant:\n%s", want)
 			}

@@ -276,9 +276,11 @@ substitutions and this stack's outputs:
   check accepts (the release app as `<slug>[bot]`); `_PREVIOUS_ENV` and
   `_PREVIOUS_RECORDS_BUCKET`, the environment before this one and its records
   bucket, empty in the first environment; `_ENVIRONMENTS`, the promotion
-  order, and `_PLAN_IDENTITIES`, each environment's plan identity
+  order, `_PLAN_IDENTITIES`, each environment's plan identity
   (`<env>=<email>`), which a pull-request build plans the stack for every
-  environment as; `_APPLY_IDENTITY`, the identity the tag build applies this
+  environment as, and `_RECORDS_BUCKETS`, each environment's records bucket
+  (`<env>=<bucket>`), which a pull-request build against a hotfix line reads
+  as those identities to say where the hotfix will be refused; `_APPLY_IDENTITY`, the identity the tag build applies this
   environment's stack as, and the pull-request build a pull request's stack
   as; `_RESTORE` and `_REQUESTER`, empty on a tag's own build and set on a
   restore run (what replaces the environment's database, and who asked);

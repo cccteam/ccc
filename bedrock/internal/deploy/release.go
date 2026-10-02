@@ -26,7 +26,10 @@ const (
 	defaultBranchSub = "_DEFAULT_BRANCH"
 	// baseBranchSub is Cloud Build's substitution for a pull request's base branch:
 	// the default branch, or a hotfix line.
-	baseBranchSub      = "_BASE_BRANCH"
+	baseBranchSub = "_BASE_BRANCH"
+	// recordsBucketsSub names each environment's deployment-records bucket, env=bucket
+	// pairs in the promotion order, for the pull-request build's hotfix preview.
+	recordsBucketsSub  = "_RECORDS_BUCKETS"
 	previousEnvSub     = "_PREVIOUS_ENV"
 	previousRecordsSub = "_PREVIOUS_RECORDS_BUCKET"
 	// rejected starts every refusal a release check makes.
@@ -41,6 +44,9 @@ const (
 
 // hotfixLineRE reads the release line of a v<major>.<minor>.<patch> tag.
 var hotfixLineRE = regexp.MustCompile(`^v(\d+)\.(\d+)\.\d+$`)
+
+// hotfixBranchRE is a hotfix line's branch, hotfix/<major>.<minor>.x, with the line.
+var hotfixBranchRE = regexp.MustCompile(`^hotfix/(\d+\.\d+)\.x$`)
 
 // GitHubFunc opens the GitHub client with the token the resolve step minted: the public
 // API, or a stand-in in tests.
@@ -91,6 +97,11 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	}
 	subs := build.Substitutions
 	if subs[tagSub] == "" {
+		if subs[prNumberSub] != "" && hotfixBranchRE.MatchString(subs[baseBranchSub]) {
+			if err := hotfixPreview(ctx, clients.StorageAs, subs, w, out); err != nil {
+				return err
+			}
+		}
 		fmt.Fprintln(out, "Pull-request build: no release to validate.")
 
 		return nil
@@ -160,18 +171,12 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 
 		return nil
 	}
-	for _, m := range upFirst(live.Migrations) {
-		hash, err := hashFile(filepath.Join(string(w), filepath.FromSlash(m.Dir), m.Name))
-		if err != nil {
-			return err
-		}
-		file := path.Join(m.Dir, m.Name)
-		switch {
-		case hash == "":
-			return errors.Newf("%s%s's database holds %s (applied by %s), which hotfix %s does not carry; restore %s to %s first: a restore run replaces the database and skips this check.", rejected, env, file, live.Version, h.tag, env, h.tag)
-		case hash != m.Hash:
-			return errors.Newf("%s%s's database holds %s as %s applied it, with other content than hotfix %s carries; restore %s to %s first: a restore run replaces the database and skips this check.", rejected, env, file, live.Version, h.tag, env, h.tag)
-		}
+	behind, err := behindRecord(w, live, env, "hotfix "+h.tag, h.tag)
+	if err != nil {
+		return err
+	}
+	if behind != "" {
+		return errors.Newf("%s%s", rejected, behind)
 	}
 	if env == prdEnvironment {
 		m := hotfixLineRE.FindStringSubmatch(live.Version)
@@ -185,6 +190,106 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 	fmt.Fprintf(out, "Hotfix check passed: %s's database holds nothing %s does not carry (%d file(s) recorded by %s, build %s)\n", env, h.tag, len(live.Migrations), live.Version, live.Build)
 
 	return nil
+}
+
+// behindRecord says what the environment's database holds, by its live record, that the
+// files under the workspace do not carry: the refusal's sentence, or nothing. what names
+// the candidate ("hotfix v1.2.4", "this pull request") and restoreTo what the environment
+// is restored to ("v1.2.4", "the hotfix").
+func behindRecord(w Workspace, live *Record, env, what, restoreTo string) (string, error) {
+	for _, m := range upFirst(live.Migrations) {
+		hash, err := hashFile(filepath.Join(string(w), filepath.FromSlash(m.Dir), m.Name))
+		if err != nil {
+			return "", err
+		}
+		file := path.Join(m.Dir, m.Name)
+		switch {
+		case hash == "":
+			return fmt.Sprintf("%s's database holds %s (applied by %s), which %s does not carry; restore %s to %s first: a restore run replaces the database and skips this check.", env, file, live.Version, what, env, restoreTo), nil
+		case hash != m.Hash:
+			return fmt.Sprintf("%s's database holds %s as %s applied it, with other content than %s carries; restore %s to %s first: a restore run replaces the database and skips this check.", env, file, live.Version, what, env, restoreTo), nil
+		}
+	}
+
+	return "", nil
+}
+
+// hotfixPreview is a pull-request build's look ahead for a fix on a hotfix line: what
+// each environment's release check will say to the line's next release, read from the
+// environment's live deployment record as that environment's plan identity (the
+// identity the build already plans the environment as; _RECORDS_BUCKETS and
+// _PLAN_IDENTITIES name the buckets and identities). It warns and never refuses: the
+// developer learns before the merge that a restore comes first, and where.
+func hotfixPreview(ctx context.Context, open StoreAsFunc, subs map[string]string, w Workspace, out io.Writer) error {
+	line := subs[baseBranchSub]
+	buckets, identities := pairs(subs[recordsBucketsSub]), pairs(subs[planIdentitiesSub])
+	fmt.Fprintf(out, "Hotfix preview: this pull request is against %s, and each environment's release check will say this to the line's next release, read from the environment's live deployment record:\n", line)
+	for _, env := range strings.Split(subs[environmentsSub], ",") {
+		if env == "" {
+			continue
+		}
+		bucket, identity := buckets[env], identities[env]
+		if bucket == "" || identity == "" {
+			fmt.Fprintf(out, "  %s: its records bucket or plan identity is not named (%s, %s); nothing read.\n", env, recordsBucketsSub, planIdentitiesSub)
+
+			continue
+		}
+		answer, err := previewEnvironment(ctx, open, w, subs[appSub], env, bucket, identity, line)
+		if err != nil {
+			fmt.Fprintf(out, "  %s: its records could not be read as %s: %v\n", env, identity, err)
+
+			continue
+		}
+		fmt.Fprintf(out, "  %s\n", answer)
+	}
+
+	return nil
+}
+
+// previewEnvironment is one environment's answer in the hotfix preview.
+func previewEnvironment(ctx context.Context, open StoreAsFunc, w Workspace, app, env, bucket, identity, line string) (string, error) {
+	store, err := open(ctx, identity)
+	if err != nil {
+		return "", err
+	}
+	defer store.Close()
+	live, err := newestLiveRelease(ctx, store, bucket, app, env)
+	if err != nil {
+		return "", err
+	}
+	if live == nil {
+		return env + ": no live deployment record; nothing to be behind.", nil
+	}
+	behind, err := behindRecord(w, live, env, "this pull request", "the hotfix")
+	if err != nil {
+		return "", err
+	}
+	if behind != "" {
+		return env + ": WILL REFUSE the hotfix: " + behind, nil
+	}
+	if env == prdEnvironment {
+		m := hotfixLineRE.FindStringSubmatch(live.Version)
+		if m == nil {
+			return fmt.Sprintf("%s: production's live record names %s, not a v<major>.<minor>.<patch> release, so the line cannot be checked against it.", env, live.Version), nil
+		}
+		if l := m[1] + "." + m[2]; "hotfix/"+l+".x" != line {
+			return fmt.Sprintf("%s: WILL REFUSE the hotfix at production's door: production runs %s, line %s; this hotfix is on %s. A hotfix is based on the release production runs.", env, live.Version, l, line), nil
+		}
+	}
+
+	return fmt.Sprintf("%s: would take the hotfix; its database holds nothing this pull request does not carry (%d file(s) recorded by %s, build %s).", env, len(live.Migrations), live.Version, live.Build), nil
+}
+
+// pairs reads a substitution of env=value pairs, comma-separated.
+func pairs(list string) map[string]string {
+	values := map[string]string{}
+	for _, pair := range strings.Split(list, ",") {
+		if key, value, ok := strings.Cut(pair, "="); ok && key != "" {
+			values[key] = value
+		}
+	}
+
+	return values
 }
 
 // upFirst orders a record's migrations so that up files come before down files: the
