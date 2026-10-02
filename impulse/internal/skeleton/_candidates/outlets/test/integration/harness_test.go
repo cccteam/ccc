@@ -410,12 +410,12 @@ func (b *browser) xsrfToken() string {
 func provesGrant(t *testing.T, roles access.RoleFile, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
 	t.Helper()
 
-	config, err := roles.Parse()
+	parsed, err := roles.Parse()
 	if err != nil {
 		t.Fatalf("parsing the role file: %v", err)
 	}
 	var conditions []string
-	for _, r := range slices.Concat(config.Roles.Global, config.Roles.Domain) {
+	for _, r := range slices.Concat(parsed.Roles.Global, parsed.Roles.Domain) {
 		if r.Name != role {
 			continue
 		}
