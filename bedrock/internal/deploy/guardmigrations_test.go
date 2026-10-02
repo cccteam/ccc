@@ -46,6 +46,8 @@ func TestGuardMigrations(t *testing.T) {
 		files map[string]string
 		// repoFiles adds files to the repository's trees, "tree:path".
 		repoFiles map[string]string
+		// refs adds branches to the repository.
+		refs map[string]github.Object
 		// deployer registers the deployer app's key, so a refusal is posted as the app.
 		deployer    bool
 		wantOut     []string
@@ -99,6 +101,22 @@ func TestGuardMigrations(t *testing.T) {
 				"schema/migrations: 3 migration(s), 000001 to 000003, read together with master.",
 				"schema/devseed: 1 migration(s), 000001 to 000001, read together with master.",
 				"Guard passed: the migrations form one sequence, the committed schema migrations unchanged against master.",
+			},
+		},
+		{
+			name: "a pull request against a hotfix line is compared with the line, which is behind the default branch",
+			env:  env,
+			subs: func() map[string]string {
+				subs := prSubs()
+				subs[baseBranchSub] = "hotfix/0.1.x"
+
+				return subs
+			}(),
+			refs:  map[string]github.Object{"refs/heads/hotfix/0.1.x": {Type: "commit", SHA: "c3"}},
+			files: map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000002_Mine.up.sql": "create c", "schema/devseed/000001_Seed.up.sql": "insert a"},
+			wantOut: []string{
+				"schema/migrations: 2 migration(s), 000001 to 000002, read together with hotfix/0.1.x.",
+				"Guard passed: the migrations form one sequence, the committed schema migrations unchanged against hotfix/0.1.x.",
 			},
 		},
 		{
@@ -176,6 +194,9 @@ func TestGuardMigrations(t *testing.T) {
 			}
 			w := workspaceFiles(t, files)
 			repo := migrationsRepo()
+			for ref, object := range tt.refs {
+				repo.Refs[ref] = object
+			}
 			for name, content := range tt.repoFiles {
 				repo.Files[name] = content
 			}

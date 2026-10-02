@@ -483,7 +483,11 @@ to follow the default branch's highest index with no gap, keeping their order. A
 migration the default branch holds is never touched: git says which files are the
 branch's own, and the default branch is read from origin's copy of it when the repository
 has one, else from the local branch, so fetch first. A tracked file moves with `git mv`;
-an untracked one is renamed on disk.
+an untracked one is renamed on disk. A branch cut from a hotfix line
+(`hotfix/<major>.<minor>.x`, nearer to the branch in the history than the default branch
+is) follows the line instead, since a line is behind the default branch on purpose; the
+pipeline's guard compares such a pull request with the line too (Cloud Build's
+`_BASE_BRANCH`), and the pull-request trigger covers the lines beside the default branch.
 
 The seed directory beside the migrations is renumbered against its own sequence, and as
 its files are editable, a committed seed file the branch removed leaves no gap: the seed

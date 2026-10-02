@@ -31,8 +31,9 @@ type Options struct {
 	Root string
 	Dirs []string
 	// Branch is the default branch, whose committed sequence the branch's own files
-	// follow. Its tree is read from origin's copy of the branch when the repository
-	// has one, else from the local branch.
+	// follow; a working branch cut from a hotfix line follows the line instead, which
+	// Renumber finds (followedBranch). The followed branch's tree is read from origin's
+	// copy of it when the repository has one, else from the local branch.
 	Branch string
 	// Editable names the directories of Dirs whose committed files may move: the seed
 	// directory, whose files are editable, where the files after a removed one move
@@ -96,7 +97,11 @@ func (s *stem) files() []string {
 // branch's, and in an editable directory the files after a removed one down. A directory
 // that does not exist has nothing to renumber.
 func Renumber(ctx context.Context, opts Options) (*Result, error) {
-	ref, commit, err := defaultRef(ctx, opts.Root, opts.Branch)
+	branch, err := followedBranch(ctx, opts.Root, opts.Branch)
+	if err != nil {
+		return nil, err
+	}
+	ref, commit, err := defaultRef(ctx, opts.Root, branch)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +109,7 @@ func Renumber(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	n := &renumbering{root: opts.Root, ref: ref, base: base, branch: opts.Branch, result: &Result{Ref: ref, Commit: commit}}
+	n := &renumbering{root: opts.Root, ref: ref, base: base, branch: branch, result: &Result{Ref: ref, Commit: commit}}
 	for _, dir := range opts.Dirs {
 		if err := n.dir(ctx, dir, slices.Contains(opts.Editable, dir)); err != nil {
 			return nil, err

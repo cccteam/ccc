@@ -60,7 +60,14 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 
 		return nil
 	}
-	g := &migrationGuard{w: w, branch: subs[defaultBranchSub]}
+	// A pull request's migrations are compared with its base branch's: the default
+	// branch, or the hotfix line the fix is for, which is behind the default branch on
+	// purpose. A tag build has no base branch and reads the default branch's.
+	branch := subs[baseBranchSub]
+	if branch == "" {
+		branch = subs[defaultBranchSub]
+	}
+	g := &migrationGuard{w: w, branch: branch}
 	if subs[prNumberSub] != "" {
 		if err := g.branchedFrom(ctx, clients, subs, env); err != nil {
 			return err
@@ -85,8 +92,9 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 	return g.refuse(ctx, clients, build, env, out)
 }
 
-// migrationGuard is one guard's reading: the default branch, the commit the pull
-// request branched from (empty in a tag build) and the problems found so far.
+// migrationGuard is one guard's reading: the branch the migrations are compared with
+// (the pull request's base branch, or the default branch in a tag build), the commit
+// the pull request branched from (empty in a tag build) and the problems found so far.
 type migrationGuard struct {
 	w           Workspace
 	gh          *github.Client

@@ -70,7 +70,9 @@ it before the application's generators, so they read the migrations as the pipel
 Nothing to do prints nothing.
 
 The stack directory and the application are found the way check finds them; --app, --dir and
---placement override. The placement names the default branch.`,
+--placement override. The placement names the default branch; a branch cut from a hotfix line
+(hotfix/<major>.<minor>.x, nearer to the branch in the history than the default branch is) follows
+the line instead, since a line is behind the default branch on purpose.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appDir, stackDir, err := d.stack(appFlag, dirFlag)

@@ -7,6 +7,8 @@ import (
 	"context"
 	"os/exec"
 	"path"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -102,4 +104,58 @@ func mergeBase(ctx context.Context, root, ref string) (string, error) {
 	}
 
 	return strings.TrimSpace(string(out)), nil
+}
+
+// lineRE is a hotfix line: hotfix/<major>.<minor>.x.
+var lineRE = regexp.MustCompile(`^hotfix/\d+\.\d+\.x$`)
+
+// followedBranch is the branch whose committed sequence the renumber follows: the
+// default branch, or a hotfix line nearer to HEAD in the history, since a fix for a
+// line is cut from the line, which is behind the default branch on purpose. Nearness
+// is the number of commits HEAD has beyond the branch; a branch that is not an
+// ancestor of HEAD is not followed, and a tie goes to the default branch.
+func followedBranch(ctx context.Context, root, defaultBranch string) (string, error) {
+	out, err := git(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/hotfix/", "refs/heads/hotfix/")
+	if err != nil {
+		return "", errors.Wrap(err, "git for-each-ref")
+	}
+	followed, nearest := defaultBranch, -1
+	if ref, _, err := defaultRef(ctx, root, defaultBranch); err == nil {
+		nearest = distance(ctx, root, ref)
+	}
+	seen := map[string]bool{}
+	for _, name := range strings.Fields(out) {
+		line := strings.TrimPrefix(name, "origin/")
+		if !lineRE.MatchString(line) || seen[line] {
+			continue
+		}
+		seen[line] = true
+		ref, _, err := defaultRef(ctx, root, line)
+		if err != nil {
+			continue
+		}
+		if d := distance(ctx, root, ref); d >= 0 && (nearest < 0 || d < nearest) {
+			followed, nearest = line, d
+		}
+	}
+
+	return followed, nil
+}
+
+// distance is the number of commits HEAD has beyond the ref, or -1 when the ref is not
+// an ancestor of HEAD.
+func distance(ctx context.Context, root, ref string) int {
+	if _, err := git(ctx, root, "merge-base", "--is-ancestor", ref, "HEAD"); err != nil {
+		return -1
+	}
+	out, err := git(ctx, root, "rev-list", "--count", ref+"..HEAD")
+	if err != nil {
+		return -1
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return -1
+	}
+
+	return n
 }

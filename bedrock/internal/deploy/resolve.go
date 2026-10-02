@@ -88,7 +88,7 @@ var (
 	// triggerSubstitutions are the substitutions a trigger sets beyond the stack's map
 	// (_PR_NUMBER and, on a pull request, the branches) and the pipeline's own default
 	// (_DEFAULT_BRANCH): known, so never declared.
-	triggerSubstitutions = []string{prNumberSub, "_BASE_BRANCH", "_HEAD_BRANCH", "_HEAD_REPO_URL", "_DEFAULT_BRANCH"}
+	triggerSubstitutions = []string{prNumberSub, baseBranchSub, "_HEAD_BRANCH", "_HEAD_REPO_URL", "_DEFAULT_BRANCH"}
 )
 
 // Clients are the deploy sequence's seams: what its commands open, replaced by fakes in

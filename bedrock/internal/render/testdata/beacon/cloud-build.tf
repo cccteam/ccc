@@ -136,7 +136,10 @@ resource "google_cloudbuild_trigger" "pr" {
     repository = local.identities.repository_id
 
     pull_request {
-      branch          = "^master$"
+      # The default branch and the hotfix lines (hotfix/<major>.<minor>.x): a fix
+      # on a line gets its pull-request build like any change, and the guard
+      # compares its migrations with the line's (_BASE_BRANCH).
+      branch          = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
       comment_control = "COMMENTS_ENABLED"
     }
   }

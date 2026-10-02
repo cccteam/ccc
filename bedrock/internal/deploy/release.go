@@ -20,10 +20,13 @@ import (
 // The substitutions the release checks read, beyond the record step's, and the words
 // the log has always carried.
 const (
-	tagSub             = "TAG_NAME"
-	repoFullNameSub    = "REPO_FULL_NAME"
-	releaseActorsSub   = "_RELEASE_ACTORS"
-	defaultBranchSub   = "_DEFAULT_BRANCH"
+	tagSub           = "TAG_NAME"
+	repoFullNameSub  = "REPO_FULL_NAME"
+	releaseActorsSub = "_RELEASE_ACTORS"
+	defaultBranchSub = "_DEFAULT_BRANCH"
+	// baseBranchSub is Cloud Build's substitution for a pull request's base branch:
+	// the default branch, or a hotfix line.
+	baseBranchSub      = "_BASE_BRANCH"
 	previousEnvSub     = "_PREVIOUS_ENV"
 	previousRecordsSub = "_PREVIOUS_RECORDS_BUCKET"
 	// rejected starts every refusal a release check makes.
