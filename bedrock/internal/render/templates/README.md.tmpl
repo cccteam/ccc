@@ -68,8 +68,9 @@ from `2-env`'s state.
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets; `{{.Prefix}}-<env>-gbl-{{.App}}-migrate`
   for the migration job (`{{.Migrate.Dir}}`) with
-  `roles/logging.logWriter` and `roles/spanner.databaseAdmin` on the database
-  only, for DDL{{if .Jobs}}; `{{.Prefix}}-<env>-gbl-{{.App}}-jobs` for the job process
+  `roles/logging.logWriter` and `roles/monitoring.metricWriter` on the project
+  (the Spanner client's own metrics) and `roles/spanner.databaseAdmin` on the
+  database only, for DDL{{if .Jobs}}; `{{.Prefix}}-<env>-gbl-{{.App}}-jobs` for the job process
   (`{{.Jobs.Dir}}`) with the site's project roles{{if .JobsReadsData}}, `roles/spanner.databaseUser`
   on the database and accessor on the secrets at the levels it constructs{{end}}{{end}}.
   The deploy identity from `2-env` gets `roles/iam.serviceAccountUser` on

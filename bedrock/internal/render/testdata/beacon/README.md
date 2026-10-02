@@ -68,8 +68,9 @@ from `2-env`'s state.
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets; `imp-<env>-gbl-beacon-migrate`
   for the migration job (`cmd/deployment/migrate`) with
-  `roles/logging.logWriter` and `roles/spanner.databaseAdmin` on the database
-  only, for DDL.
+  `roles/logging.logWriter` and `roles/monitoring.metricWriter` on the project
+  (the Spanner client's own metrics) and `roles/spanner.databaseAdmin` on the
+  database only, for DDL.
   The deploy identity from `2-env` gets `roles/iam.serviceAccountUser` on
   both.
 - **The database** `imp-<env>-gbl-beacon-db` on the environment's instance

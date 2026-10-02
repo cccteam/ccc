@@ -68,8 +68,9 @@ from `2-env`'s state.
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets; `imp-<env>-gbl-harbor-migrate`
   for the migration job (`cmd/deployment/migrate`) with
-  `roles/logging.logWriter` and `roles/spanner.databaseAdmin` on the database
-  only, for DDL; `imp-<env>-gbl-harbor-jobs` for the job process
+  `roles/logging.logWriter` and `roles/monitoring.metricWriter` on the project
+  (the Spanner client's own metrics) and `roles/spanner.databaseAdmin` on the
+  database only, for DDL; `imp-<env>-gbl-harbor-jobs` for the job process
   (`cmd/jobs`) with the site's project roles, `roles/spanner.databaseUser`
   on the database and accessor on the secrets at the levels it constructs.
   The deploy identity from `2-env` gets `roles/iam.serviceAccountUser` on
