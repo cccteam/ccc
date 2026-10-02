@@ -141,7 +141,7 @@ func TestRestoreAndHotfix(t *testing.T) {
 			},
 			args: []string{"hotfix", "start", "v0.1.4", "--placement", placement},
 			wantOut: []string{
-				"Created hotfix/0.1.x in impulseframework/harbor at a commit on c4 (v0.1.4) that sets the manifest to 0.1.5, which master has already cut; the line's next release is v0.1.6.",
+				"Created hotfix/0.1.x in impulseframework/harbor at a commit on c4 (v0.1.4) whose message names the line's next release, v0.1.6, since master has already cut v0.1.5.",
 				"release-please releases the branch as v0.1.6",
 			},
 		},

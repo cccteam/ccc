@@ -3,18 +3,20 @@
 // release-please as the line's next patch versions.
 //
 // release-please numbers a release from the manifest file as it stands on the branch
-// it releases and from the commits since the last release in that branch's history. At
-// the release's commit the manifest names that release, so the line's first hotfix is
-// the next patch, whatever the default branch has released since. One case needs help:
-// when the default branch has already cut a later patch of the same line (v0.1.22 cut
-// while production still runs v0.1.21), the branch would compute v0.1.22 again. Start
-// then creates the branch at a commit that sets the manifest to the line's highest
-// existing patch, so the next release skips to the one after it.
+// it releases and from the commits since that version's release in the branch's
+// history. At the release's commit the manifest names that release, so the line's first
+// hotfix is the next patch, whatever the default branch has released since. One case
+// needs help: when the default branch has already cut a later patch of the same line
+// (v0.1.22 cut while production still runs v0.1.21), the branch would compute v0.1.22
+// again. Start then creates the branch at a commit on the release's commit whose message
+// carries release-please's Release-As footer naming the patch after the highest one cut,
+// so the line's first release skips to it. The manifest is left as the release wrote it:
+// set to a version whose release the line does not hold, release-please would count the
+// line's whole history as unreleased, and the feature commits in it would bump the minor.
 package hotfix
 
 import (
 	"context"
-	"encoding/json"
 	"regexp"
 	"strconv"
 
@@ -31,10 +33,6 @@ const (
 	// ManifestFile is release-please's manifest: the version of each package, at the
 	// repository root the one package ".".
 	ManifestFile = ".release-please-manifest.json"
-	// rootPackage is the manifest's key for the repository root.
-	rootPackage = "."
-	// fileMode is a regular file in a git tree.
-	fileMode = "100644"
 )
 
 // tagRE is a release tag: v<major>.<minor>.<patch>.
@@ -142,10 +140,11 @@ func Start(ctx context.Context, client *github.Client, req Request) (*Result, er
 	}
 	highest := highestPatch(tags, base)
 	tip := commit
-	result.Next = version{major: base.major, minor: base.minor, patch: highest.patch + 1}.String()
+	next := version{major: base.major, minor: base.minor, patch: highest.patch + 1}
+	result.Next = next.String()
 	if highest.patch > base.patch {
 		result.Skipped = highest.String()
-		tip, err = manifestCommit(ctx, client, req, commit, highest)
+		tip, err = continuationCommit(ctx, client, req, commit, highest, next)
 		if err != nil {
 			return nil, err
 		}
@@ -204,43 +203,22 @@ func latestRelease(tags []github.Tag, base version) version {
 	return latest
 }
 
-// manifestCommit makes a commit on the release's commit that sets the manifest's root
-// version to the line's highest patch, and returns it.
-func manifestCommit(ctx context.Context, client *github.Client, req Request, parent string, highest version) (string, error) {
-	data, err := client.Contents(ctx, req.Owner, req.Repo, ManifestFile, parent)
-	if err != nil {
-		if github.NotFound(err) {
-			return "", errors.Newf("no %s at %s: release-please needs its manifest to number the line's releases, and %s has already been cut beyond %s", ManifestFile, req.Tag, highest, req.Tag)
-		}
-
-		return "", errors.Wrapf(err, "reading %s at %s", ManifestFile, req.Tag)
-	}
-	manifest := map[string]string{}
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return "", errors.Wrapf(err, "%s at %s", ManifestFile, req.Tag)
-	}
-	manifest[rootPackage] = highest.bare()
-	content, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return "", errors.Wrap(err, "json.MarshalIndent()")
-	}
-	content = append(content, '\n')
-	blob, err := client.CreateBlob(ctx, req.Owner, req.Repo, content)
-	if err != nil {
-		return "", errors.Wrap(err, "storing the manifest")
-	}
+// continuationCommit makes a commit on the release's commit, with the release's own
+// tree, whose message tells release-please the line's next release (its Release-As
+// footer), and returns it. The manifest is left as the release wrote it: release-please
+// counts a line's unreleased commits from the manifest's release on the branch, which
+// the line holds, and the footer alone decides the number, so the line's first release
+// is the patch after the one the default branch has already cut, with a changelog of
+// the line's own commits.
+func continuationCommit(ctx context.Context, client *github.Client, req Request, parent string, highest, next version) (string, error) {
 	parentCommit, err := client.GetCommit(ctx, req.Owner, req.Repo, parent)
 	if err != nil {
 		return "", errors.Wrapf(err, "reading commit %s", short(parent))
 	}
-	tree, err := client.CreateTree(ctx, req.Owner, req.Repo, parentCommit.Tree.SHA, []github.TreeEntry{{Path: ManifestFile, Mode: fileMode, Type: "blob", SHA: blob}})
+	message := "chore(hotfix): the " + strconv.Itoa(highest.major) + "." + strconv.Itoa(highest.minor) + " line continues after " + highest.String() + ", which " + req.DefaultBranch + " has already cut\n\nRelease-As: " + next.bare()
+	commit, err := client.CreateCommit(ctx, req.Owner, req.Repo, message, parentCommit.Tree.SHA, []string{parent})
 	if err != nil {
-		return "", errors.Wrap(err, "building the tree")
-	}
-	message := "chore(hotfix): the " + strconv.Itoa(highest.major) + "." + strconv.Itoa(highest.minor) + " line continues after " + highest.String() + ", which " + req.DefaultBranch + " has already cut"
-	commit, err := client.CreateCommit(ctx, req.Owner, req.Repo, message, tree, []string{parent})
-	if err != nil {
-		return "", errors.Wrap(err, "creating the manifest commit")
+		return "", errors.Wrap(err, "creating the continuation commit")
 	}
 
 	return commit, nil

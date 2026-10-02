@@ -91,7 +91,7 @@ func TestStart(t *testing.T) {
 		existing string
 		tag      string
 		want     hotfix.Result
-		// wantTip is the commit the branch is created at: the tag's, or the manifest
+		// wantTip is the commit the branch is created at: the tag's, or the continuation
 		// commit made through the API (a name the stand-in makes up).
 		wantTip        string
 		wantManifest   string
@@ -111,12 +111,12 @@ func TestStart(t *testing.T) {
 			want:  hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Next: "v0.1.22"},
 		},
 		{
-			name:         "master has cut the line's next patch already: the branch starts with the manifest at it, so the hotfix is the one after",
+			name:         "master has cut the line's next patch already: the branch starts at a commit naming the one after, the manifest unchanged",
 			later:        []string{"v0.1.22"},
 			tag:          "v0.1.21",
 			want:         hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Skipped: "v0.1.22", Next: "v0.1.23"},
-			wantManifest: "{\n  \".\": \"0.1.22\"\n}\n",
-			wantMessage:  "chore(hotfix): the 0.1 line continues after v0.1.22, which master has already cut",
+			wantManifest: "{\n  \".\": \"0.1.21\"\n}\n",
+			wantMessage:  "chore(hotfix): the 0.1 line continues after v0.1.22, which master has already cut\n\nRelease-As: 0.1.23",
 		},
 		{
 			name:     "an existing line is reported, not recreated",
@@ -186,7 +186,7 @@ func TestStart(t *testing.T) {
 				return
 			}
 			if branch.SHA == tt.want.Commit {
-				t.Fatal("branch at the tag's commit, want a manifest commit on it")
+				t.Fatal("branch at the tag's commit, want a continuation commit on it")
 			}
 			tree := repo.Trees[branch.SHA]
 			if manifest := repo.Files[tree+":"+hotfix.ManifestFile]; manifest != tt.wantManifest {
@@ -196,7 +196,7 @@ func TestStart(t *testing.T) {
 				t.Errorf("commit messages = %q, want [%q]", server.Messages, tt.wantMessage)
 			}
 			if ancestry := repo.Ancestry[branch.SHA]; len(ancestry) < 2 || ancestry[1] != tt.want.Commit {
-				t.Errorf("the manifest commit's parent is not %s: ancestry %v", tt.want.Commit, ancestry)
+				t.Errorf("the continuation commit's parent is not %s: ancestry %v", tt.want.Commit, ancestry)
 			}
 		})
 	}

@@ -515,7 +515,14 @@ fixes as the line's next patch versions while the default branch moves on. The p
 release check accepts a tag at the tip of such a line whose base on the default branch
 carries a release tag of the same line. The line's next patch must be free for the
 hotfix, so a feature release on the default branch advances the minor, below 1.0 as
-above it: `check` refuses release-please's `bump-patch-for-minor-pre-major`.
+above it: `check` refuses release-please's `bump-patch-for-minor-pre-major`. When the
+default branch has already cut a later patch of the line (production runs v0.1.21 while
+v0.1.22 is out), the branch starts at a commit on the release's commit whose message names
+the line's next release for release-please (its `Release-As` footer, the patch after the
+highest one cut), so the line's first release skips to it; the manifest stays the
+release's, since release-please counts the line's commits from the manifest's release on
+the branch, and set to a version the line does not hold it would count the line's whole
+history and let its feature commits bump the minor.
 
 A hotfix is based on the release production runs, and it deploys like any release:
 through tst and stg, then prd, each after the one before holds it live. What matters in

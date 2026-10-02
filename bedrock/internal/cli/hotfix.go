@@ -39,9 +39,11 @@ func newHotfixStart(d deps) *cobra.Command {
 release on the default branch, in the repository the command runs in. Fixes are pull requests
 against that branch; release-please releases each as the line's next patch version, and the tag
 runs through the environments like any release. When the default branch has already cut a later
-patch of the same line, the branch starts at a commit that sets release-please's manifest to
-that patch, so the line's next release skips past it. A line that already has its branch is
-reported and left as it is.`,
+patch of the same line, the branch starts at a commit on the release's commit whose message
+names the line's next release for release-please (its Release-As footer: the patch after the
+highest one cut), so the line's first release skips to it; the manifest stays the release's,
+since release-please counts the line's commits from the manifest's release on the branch. A line
+that already has its branch is reported and left as it is.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -64,8 +66,8 @@ reported and left as it is.`,
 			case result.Existed:
 				fmt.Fprintf(out, "%s already exists in %s at %s: open the fix pull request against it.\n", result.Branch, where, short(result.BranchCommit))
 			case result.Skipped != "":
-				fmt.Fprintf(out, "Created %s in %s at a commit on %s (%s) that sets the manifest to %s, which %s has already cut; the line's next release is %s.\n",
-					result.Branch, where, short(result.Commit), result.Tag, result.Skipped[1:], rc.placement.DefaultBranch, result.Next)
+				fmt.Fprintf(out, "Created %s in %s at a commit on %s (%s) whose message names the line's next release, %s, since %s has already cut %s.\n",
+					result.Branch, where, short(result.Commit), result.Tag, result.Next, rc.placement.DefaultBranch, result.Skipped)
 			default:
 				fmt.Fprintf(out, "Created %s in %s at %s (%s); the line's next release is %s.\n", result.Branch, where, short(result.Commit), result.Tag, result.Next)
 			}
