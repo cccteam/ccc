@@ -2,7 +2,7 @@
 package integration
 
 // This suite pins the consolidated mutation surface's batch semantics: one PATCH
-// /api/resources body is one transaction even when its operations span sectors, and
+// /console/api/resources body is one transaction even when its operations span sectors, and
 // the wire vocabulary is closed — add, patch, and remove are the only operations.
 
 import (
@@ -89,7 +89,7 @@ func TestConsolidatedBatchSemantics(t *testing.T) {
 			t.Parallel()
 
 			h := newTestApp(db, createGrants)
-			status, body := doRequest(t, h, http.MethodPatch, "/api/resources", tt.ops)
+			status, body := doRequest(t, h, http.MethodPatch, "/console/api/resources", tt.ops)
 			assertStatus(t, status, tt.wantStatus, body)
 			if got := countMissionsTitled(ctx, t, db, tt.title); got != tt.wantCount {
 				t.Errorf("missions titled %q = %d, want %d", tt.title, got, tt.wantCount)

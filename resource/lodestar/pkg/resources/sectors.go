@@ -4,7 +4,7 @@ import "cloud.google.com/go/civil"
 
 type (
 	// Sector is the tenant record: its route name equals the domain route segment, so
-	// /api/sectors lists the sectors while /api/sectors/{sectorID}/... serves the
+	// /console/api/sectors lists the sectors while /console/api/sectors/{sectorID}/... serves the
 	// sector-scoped routes. The application derives its domain universe from this table
 	// rather than a fixed in-code list: the data configuration reads it at startup as the
 	// roster a session's sector list is filtered from, and the DomainVisible seam checks

@@ -46,7 +46,7 @@ func TestLogin(t *testing.T) {
 
 			// The first request primes the XSRF cookie the login route requires.
 			if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-				t.Fatalf("GET /api/user/session before login: status %d: %s", status, body)
+				t.Fatalf("GET /console/api/user/session before login: status %d: %s", status, body)
 			}
 
 			status, body := b.login(ctx, tt.user, tt.password)
@@ -55,7 +55,7 @@ func TestLogin(t *testing.T) {
 			}
 			if tt.wantLogin != http.StatusOK {
 				if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user-domains", nil); status != http.StatusUnauthorized {
-					t.Errorf("GET /api/user-domains without a session: status %d, want 401: %s", status, body)
+					t.Errorf("GET /console/api/user-domains without a session: status %d, want 401: %s", status, body)
 				}
 
 				return
@@ -63,7 +63,7 @@ func TestLogin(t *testing.T) {
 
 			status, body = b.do(ctx, http.MethodGet, consoleAPI+"/user-domains", nil)
 			if status != http.StatusOK {
-				t.Fatalf("GET /api/user-domains: status %d: %s", status, body)
+				t.Fatalf("GET /console/api/user-domains: status %d: %s", status, body)
 			}
 			var domains []string
 			if err := json.Unmarshal(body, &domains); err != nil {
@@ -84,7 +84,7 @@ func TestLogin(t *testing.T) {
 
 			// The sector record is global: only a global grant lists it.
 			if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/sectors", nil); status != tt.wantSectors {
-				t.Errorf("GET /api/sectors as %s: status %d, want %d: %s", tt.user, status, tt.wantSectors, body)
+				t.Errorf("GET /console/api/sectors as %s: status %d, want %d: %s", tt.user, status, tt.wantSectors, body)
 			}
 
 			// The sector-scoped list answers in a sector the login holds a grant in; a

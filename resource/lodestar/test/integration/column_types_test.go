@@ -60,7 +60,7 @@ func TestDistressCallPosition_importedType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, body = doRequestAs(t, h, "marshal", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "marshal", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"summary":"Beacon fix on the outer lane","severity":2,"position":%s}}]`, opPath(anvil, "distress-calls"), pointJSON))
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["distressCalls"].([]any)
@@ -80,7 +80,7 @@ func TestDistressCallPosition_importedType(t *testing.T) {
 	}
 
 	// A null in a PATCH clears the column, and the row reads back null.
-	status, body = doRequestAs(t, h, "marshal", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "marshal", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"position":null}}]`, opPath(anvil, "distress-calls/"+id)))
 	assertStatus(t, status, http.StatusOK, body)
 	if stored := readColumn[spanner.NullJSON](ctx, t, db, "DistressCalls", spanner.Key{id}, "Position"); stored.Valid {
@@ -93,7 +93,7 @@ func TestDistressCallPosition_importedType(t *testing.T) {
 	}
 
 	// The cadet's grants name no position: the field is masked, absent from the row.
-	status, body = doRequestAs(t, h, "cadet", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "cadet", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"summary":"Cadet's own call","severity":1}}]`, opPath(anvil, "distress-calls")))
 	assertStatus(t, status, http.StatusOK, body)
 	cadetIDs, _ := decodeRow(t, body)["distressCalls"].([]any)
@@ -134,9 +134,9 @@ func TestBriefingTemplateLayout_rawJSON(t *testing.T) {
 		// wantLayout says whether the rows carry the layout objects, or no layout key.
 		wantLayout bool
 	}{
-		{name: "the console reads every sheet's layout as the JSON the catalog holds", fields: []string{"name", "layout"}, target: "/api/briefing-templates?limit=all", user: "integration-test-user", wantLayout: true},
+		{name: "the console reads every sheet's layout as the JSON the catalog holds", fields: []string{"name", "layout"}, target: "/console/api/briefing-templates?limit=all", user: "integration-test-user", wantLayout: true},
 		{name: "the portal reads the same objects", fields: []string{"name", "layout"}, target: "/portal/api/briefing-templates?limit=all", user: "client", wantLayout: true},
-		{name: "a grant that does not name the layout leaves it out", fields: []string{"name"}, target: "/api/briefing-templates?limit=all", user: "integration-test-user", wantLayout: false},
+		{name: "a grant that does not name the layout leaves it out", fields: []string{"name"}, target: "/console/api/briefing-templates?limit=all", user: "integration-test-user", wantLayout: false},
 	}
 
 	for _, tt := range tests {
@@ -306,7 +306,7 @@ func TestShipCargoBays_patchWritesWhole(t *testing.T) {
 
 	ctx, db, h := demoWorld(t)
 
-	status, body := doRequestAs(t, h, "marshal", http.MethodPatch, "/api/resources",
+	status, body := doRequestAs(t, h, "marshal", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"cargoBays":[12,8]}}]`, opPath(anvil, "ships/"+shipKingfisherID)))
 	assertStatus(t, status, http.StatusOK, body)
 

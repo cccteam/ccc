@@ -50,7 +50,7 @@ export APP_ROLES=client-portal,client-account
 # export APP_MEMBERS_OIDC_CLIENT_ID=
 # export APP_MEMBERS_OIDC_CLIENT_SECRET=
 # APP_MEMBERS_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to
-# the members auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy.
+# the members auth, such as http://127.0.0.1:4300/console/api/user/callback through the dev proxy.
 export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4301/portal/api/user/callback
 # APP_MEMBERS_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the
 # simulated directory presents it too, so it is set in development.

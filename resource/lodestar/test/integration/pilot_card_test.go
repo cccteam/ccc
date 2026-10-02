@@ -34,7 +34,7 @@ func TestPilotCardIsCallerScoped(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := doRequestAs(t, h, tt.user, http.MethodGet, "/api/pilot-cards", "")
+			status, body := doRequestAs(t, h, tt.user, http.MethodGet, "/console/api/pilot-cards", "")
 			assertStatus(t, status, tt.wantStatus, body)
 			if status != http.StatusOK {
 				return

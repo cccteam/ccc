@@ -47,8 +47,8 @@ const (
 	devSeedSource    = demoSeedSource
 	usersPath        = "../../cmd/bootstrap/users.json"
 
-	// The browser outlets' API prefixes.
-	consoleAPI = "/api"
+	// The browser outlets' API prefixes: each sits under its application's mount path.
+	consoleAPI = "/console/api"
 	portalAPI  = "/portal/api"
 
 	// The droids outlet's API key in the suites.
@@ -349,7 +349,7 @@ func newTestAppWithEngines(db *initiator.SpannerDB, crewEngine, membersEngine ac
 func withHandWrittenRoutes(a *app.App) http.Handler {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
-	r.Get("/api/sectors/{sectorID}/ships-log-entries", a.DomainGuard()(a.ShipsLogEntries()))
+	r.Get(router.ShipsLogEntriesRoute, a.DomainGuard()(a.ShipsLogEntries()))
 	r.Get(router.ClientStatementsRoute, a.DomainGuard()(a.ClientStatements()))
 	r.Mount("/", router.NewTestRouter(a))
 

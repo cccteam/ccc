@@ -41,7 +41,7 @@ func TestUserDomains(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := doRequestAs(t, h, tt.user, http.MethodGet, "/api/user-domains", "")
+			status, body := doRequestAs(t, h, tt.user, http.MethodGet, "/console/api/user-domains", "")
 			assertStatus(t, status, http.StatusOK, body)
 
 			var got []accesstypes.Domain

@@ -25,7 +25,7 @@ import (
 func mountLog(a *app.App) http.Handler {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
-	r.Get("/api/sectors/{sectorID}/ships-log-entries", a.DomainGuard()(a.ShipsLogEntries()))
+	r.Get("/console/api/sectors/{sectorID}/ships-log-entries", a.DomainGuard()(a.ShipsLogEntries()))
 	r.Mount("/", router.NewTestRouter(a))
 
 	return r

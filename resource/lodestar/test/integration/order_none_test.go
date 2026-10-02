@@ -39,31 +39,31 @@ func TestOrderRequired_pagedRequestsCarryAnOrder(t *testing.T) {
 	}{
 		{
 			name:        "a bare GET on the hull catalog is refused naming the resource and the two ways out",
-			target:      "/api/ship-classes",
+			target:      "/console/api/ship-classes",
 			wantStatus:  http.StatusBadRequest,
 			wantMessage: "ShipClasses declares no order; add a sort, or ask limit=all",
 		},
 		{
 			name:        "a limit on the hull catalog without a sort is refused the same way",
-			target:      "/api/ship-classes?limit=2",
+			target:      "/console/api/ship-classes?limit=2",
 			wantStatus:  http.StatusBadRequest,
 			wantMessage: "ShipClasses declares no order; add a sort, or ask limit=all",
 		},
 		{
 			name:        "a filter alone is not an order",
-			target:      "/api/ship-classes?filter=designation:eq:Corvid",
+			target:      "/console/api/ship-classes?filter=designation:eq:Corvid",
 			wantStatus:  http.StatusBadRequest,
 			wantMessage: "ShipClasses declares no order; add a sort, or ask limit=all",
 		},
 		{
 			name:        "a bare GET on the briefing catalog, a computed resource, is refused too",
-			target:      "/api/briefing-templates",
+			target:      "/console/api/briefing-templates",
 			wantStatus:  http.StatusBadRequest,
 			wantMessage: "BriefingTemplates declares no order; add a sort, or ask limit=all",
 		},
 		{
 			name:       "a requested sort pages the hull catalog",
-			target:     "/api/ship-classes?sort=designation&limit=2",
+			target:     "/console/api/ship-classes?sort=designation&limit=2",
 			wantStatus: http.StatusOK,
 		},
 		{
@@ -101,24 +101,24 @@ func TestOrderNone_wholeListsAreUnsorted(t *testing.T) {
 	}{
 		{
 			name:     "limit=all answers every hull, the catalog declaring no maximum, and writes no Link",
-			target:   "/api/ship-classes?limit=all",
+			target:   "/console/api/ship-classes?limit=all",
 			wantRows: 4,
 		},
 		{
 			name:     "a requested sort on the hull catalog pages by cursor",
-			target:   "/api/ship-classes?sort=designation&limit=2",
+			target:   "/console/api/ship-classes?sort=designation&limit=2",
 			wantRows: 2,
 			wantRels: []string{"next"},
 		},
 		{
 			name:     "limit=all lists the briefing catalog in its own sequence, the standard sheet first, neither by name nor by key",
-			target:   "/api/briefing-templates?limit=all",
+			target:   "/console/api/briefing-templates?limit=all",
 			wantRows: 4,
 			wantIDs:  []string{"standard", "hazard-first", "client-facing", "dispatch"},
 		},
 		{
 			name:     "a requested sort orders the briefing catalog by name and pages it",
-			target:   "/api/briefing-templates?sort=name&limit=2",
+			target:   "/console/api/briefing-templates?sort=name&limit=2",
 			wantRows: 2,
 			wantIDs:  []string{"client-facing", "dispatch"},
 			wantRels: []string{"next"},

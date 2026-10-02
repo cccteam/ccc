@@ -28,7 +28,7 @@ type routerOutletChain struct {
 
 // routerOutletChains keys each outlet's chain by the prefix its routes sit under.
 var routerOutletChains = map[string]routerOutletChain{
-	"/api/": {
+	"/console/api/": {
 		group:  []string{"BindAuth(" + crew.Name + ")", "NoCaching", "CompressionMiddleware", "StartSession", "SetXSRFToken"},
 		guards: []string{"ValidateSession", "ValidateXSRFToken"},
 	},
@@ -68,9 +68,9 @@ type routerSessionRoute struct {
 // routerSessionRoutes lists every session outlet's routes.
 func routerSessionRoutes() []routerSessionRoute {
 	return []routerSessionRoute{
-		{url: "/api/user/login", suffix: "/user/login", method: http.MethodPost, handler: "Login"},
-		{url: "/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "Authenticated"},
-		{url: "/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "Logout"},
+		{url: "/console/api/user/login", suffix: "/user/login", method: http.MethodPost, handler: "Login"},
+		{url: "/console/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "Authenticated"},
+		{url: "/console/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "Logout"},
 		{url: "/portal/api/user/login", suffix: "/user/login", method: http.MethodGet, handler: "PortalLogin"},
 		{url: "/portal/api/user/callback", suffix: "/user/callback", method: http.MethodGet, handler: "PortalCallbackOIDC"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "PortalAuthenticated"},
@@ -169,7 +169,7 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 	t.Parallel()
 
 	unknown := []string{
-		"/api/does-not-exist",
+		"/console/api/does-not-exist",
 		"/droids/does-not-exist",
 		"/portal/api/does-not-exist",
 	}
@@ -198,9 +198,9 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 	}
 	var foreigns []foreign
 	foreigns = append(foreigns,
-		foreign{url: "/api/sectors/testDomain/droid-reports", method: http.MethodGet},
-		foreign{url: "/api/sectors/testDomain/droid-reports", method: http.MethodPost},
-		foreign{url: "/api/sectors/testDomain/ingest-droid-reports", method: http.MethodPost},
+		foreign{url: "/console/api/sectors/testDomain/droid-reports", method: http.MethodGet},
+		foreign{url: "/console/api/sectors/testDomain/droid-reports", method: http.MethodPost},
+		foreign{url: "/console/api/sectors/testDomain/ingest-droid-reports", method: http.MethodPost},
 		foreign{url: "/droids/permission-digest", method: http.MethodGet},
 		foreign{url: "/droids/user-domains", method: http.MethodGet},
 		foreign{url: "/droids/clients", method: http.MethodGet},
@@ -496,8 +496,7 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 }
 
 // TestGeneratedRouterWebApps proves each browser application answers at its mount path
-// for any path beneath it, through its deep-link rewrite and nothing else, and that the
-// application at / is the catch-all.
+// for any path beneath it, through its deep-link rewrite and nothing else.
 func TestGeneratedRouterWebApps(t *testing.T) {
 	t.Parallel()
 
@@ -506,8 +505,8 @@ func TestGeneratedRouterWebApps(t *testing.T) {
 		handler  string
 		deepLink string
 	}{
+		{url: "/console/generated-router-page/deep/link", handler: "Assets", deepLink: "DeepLink"},
 		{url: "/portal/generated-router-page/deep/link", handler: "PortalAssets", deepLink: "PortalDeepLink"},
-		{url: "/generated-router-page/deep/link", handler: "Assets", deepLink: "DeepLink"},
 	}
 	for _, tt := range tests {
 		t.Run("GET-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
@@ -531,6 +530,45 @@ func TestGeneratedRouterWebApps(t *testing.T) {
 	}
 }
 
+// TestGeneratedRouterRoot proves that with no browser application at / the root alone
+// redirects to the default outlet's application, calling no handler, and that an
+// unmatched path outside every prefix and every mount is 404: no application answers for
+// the whole origin.
+func TestGeneratedRouterRoot(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		url      string
+		code     int
+		location string
+	}{
+		{name: "the root redirects", url: "/", code: http.StatusTemporaryRedirect, location: "/console/"},
+		{name: "an unmatched path is not found", url: "/generated-router-unmatched", code: http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			rr := serveGeneratedRouter(t, rec, Hooks{}, http.MethodGet, tt.url)
+
+			if got := rr.Code; got != tt.code {
+				t.Errorf("response.Code = %v, want %v", got, tt.code)
+			}
+			if got := rr.Header().Get("Location"); got != tt.location {
+				t.Errorf("Location = %q, want %q", got, tt.location)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Fatalf("expected no handler called, got: %v", rec.handlers)
+			}
+			if !slices.Equal(rec.chain, routerRootChain) {
+				t.Errorf("middleware chain = %v, want %v", rec.chain, routerRootChain)
+			}
+		})
+	}
+}
+
 // TestGeneratedRouterHooks proves the seams sit where the chain comment says: Outermost
 // runs ahead of the logger, Root's routes sit behind the every-request chain alone, each
 // outlet's hook runs inside the outlet's guards with the generated routes registering
@@ -546,7 +584,7 @@ func TestGeneratedRouterHooks(t *testing.T) {
 			},
 			Default: func(r chi.Router, generated func(chi.Router)) {
 				r.Use(rec.Middleware("DefaultHook"))
-				r.Get("/api/generated-router-probe", rec.RecordHandlerCall("DefaultProbe"))
+				r.Get("/console/api/generated-router-probe", rec.RecordHandlerCall("DefaultProbe"))
 				generated(r)
 			},
 			Droids: func(r chi.Router, generated func(chi.Router)) {
@@ -573,8 +611,8 @@ func TestGeneratedRouterHooks(t *testing.T) {
 	tests := []hookCase{
 		{name: "a root route", url: "/generated-router-probe", method: http.MethodGet, handler: "RootProbe", chain: outermost},
 		{
-			name: "the default outlet's hook", url: "/api/generated-router-probe", method: http.MethodGet, handler: "DefaultProbe",
-			chain: slices.Concat(outermost, routerOutletChains["/api/"].group, routerOutletChains["/api/"].guards, []string{"DefaultHook"}),
+			name: "the default outlet's hook", url: "/console/api/generated-router-probe", method: http.MethodGet, handler: "DefaultProbe",
+			chain: slices.Concat(outermost, routerOutletChains["/console/api/"].group, routerOutletChains["/console/api/"].guards, []string{"DefaultHook"}),
 		},
 		{
 			name: "the droids outlet's hook", url: "/droids/generated-router-probe", method: http.MethodGet, handler: "DroidsProbe",
@@ -638,9 +676,9 @@ func TestGeneratedRouterHooks(t *testing.T) {
 
 // prefixHookFields names each outlet's hook by the prefix its routes sit under.
 var prefixHookFields = map[string]string{
-	"/api/":        "Default",
-	"/droids/":     "Droids",
-	"/portal/api/": "Portal",
+	"/console/api/": "Default",
+	"/droids/":      "Droids",
+	"/portal/api/":  "Portal",
 }
 
 // routerCallRecorder records the order middleware ran in, beside the handler and
@@ -789,18 +827,18 @@ func (s *routerHandlersStub) CompressionMiddleware() func(http.Handler) http.Han
 	return s.rec.Middleware("CompressionMiddleware")
 }
 
-func (s *routerHandlersStub) PortalDeepLink(next http.Handler) http.Handler {
-	return s.rec.Middleware("PortalDeepLink")(next)
-}
-
-func (s *routerHandlersStub) PortalAssets() http.HandlerFunc {
-	return s.rec.RecordHandlerCall("PortalAssets")
-}
-
 func (s *routerHandlersStub) DeepLink(next http.Handler) http.Handler {
 	return s.rec.Middleware("DeepLink")(next)
 }
 
 func (s *routerHandlersStub) Assets() http.HandlerFunc {
 	return s.rec.RecordHandlerCall("Assets")
+}
+
+func (s *routerHandlersStub) PortalDeepLink(next http.Handler) http.Handler {
+	return s.rec.Middleware("PortalDeepLink")(next)
+}
+
+func (s *routerHandlersStub) PortalAssets() http.HandlerFunc {
+	return s.rec.RecordHandlerCall("PortalAssets")
 }

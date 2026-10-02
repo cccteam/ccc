@@ -5,8 +5,8 @@
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
 //	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
-//	default (/api), password sessions of the crew auth:
-//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /api/user/login, GET /api/user/session, DELETE /api/user/session
+//	default (/console/api), password sessions of the crew auth:
+//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /console/api/user/login, GET /console/api/user/session, DELETE /console/api/user/session
 //	  + ValidateSession, ValidateXSRFToken: hooks.Default, generatedRoutes
 //	droids (/droids), API key:
 //	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
@@ -16,7 +16,8 @@
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
-// applications answer, longer mount paths first: /portal (PortalDeepLink, PortalAssets), / (DeepLink, Assets).
+// applications answer, longer mount paths first: /console (DeepLink, Assets), /portal (PortalDeepLink, PortalAssets).
+// None is mounted at /: the root alone redirects to /console/, the default outlet's application.
 package router
 
 import (
@@ -54,15 +55,15 @@ type Handlers interface {
 	NoCaching(next http.Handler) http.Handler
 	CompressionMiddleware() func(http.Handler) http.Handler
 
+	// The default outlet's browser application at /console: DeepLink rewrites its routes to
+	// the entry document, Assets serves the built bundle.
+	DeepLink(next http.Handler) http.Handler
+	Assets() http.HandlerFunc
+
 	// The portal outlet's browser application at /portal: PortalDeepLink rewrites its routes to
 	// the entry document, PortalAssets serves the built bundle.
 	PortalDeepLink(next http.Handler) http.Handler
 	PortalAssets() http.HandlerFunc
-
-	// The default outlet's browser application at /: DeepLink rewrites its routes to
-	// the entry document, Assets serves the built bundle.
-	DeepLink(next http.Handler) http.Handler
-	Assets() http.HandlerFunc
 }
 
 // Hooks are the application's additions to the generated router. They compose inward
@@ -108,7 +109,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 
-	// The default outlet (/api): password sessions of the crew auth.
+	// The default outlet (/console/api): password sessions of the crew auth.
 	r.Group(func(r chi.Router) {
 		r.Use(h.BindAuth(crew.Name))
 		r.Use(h.NoCaching)
@@ -116,9 +117,9 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
-		r.Post("/api/user/login", h.Login())
-		r.Get("/api/user/session", h.Authenticated())
-		r.Delete("/api/user/session", h.Logout())
+		r.Post("/console/api/user/login", h.Login())
+		r.Get("/console/api/user/session", h.Authenticated())
+		r.Delete("/console/api/user/session", h.Logout())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
@@ -168,13 +169,20 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 
 	// Under an outlet's prefix nothing else answers: an unknown API path is 404, never a
 	// browser application's entry document.
-	for _, prefix := range []string{"/api/", "/droids/", "/portal/api/"} {
+	for _, prefix := range []string{"/console/api/", "/droids/", "/portal/api/"} {
 		r.Route(prefix, func(r chi.Router) {
 			r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "Not Found", http.StatusNotFound)
 			})
 		})
 	}
+
+	// The default outlet's browser application at /console.
+	r.Route("/console", func(r chi.Router) {
+		r.Use(h.DeepLink)
+
+		r.Get("/*", h.Assets())
+	})
 
 	// The portal outlet's browser application at /portal.
 	r.Route("/portal", func(r chi.Router) {
@@ -183,11 +191,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Get("/*", h.PortalAssets())
 	})
 
-	// The default outlet's browser application at /, the catch-all.
-	r.Route("/", func(r chi.Router) {
-		r.Use(h.DeepLink)
-
-		r.Get("/*", h.Assets())
+	// No browser application is mounted at /: an installed application's scope is every
+	// URL under its start, so one at / would own the origin and the others would never
+	// install on their own. The root alone sends the browser to the default outlet's
+	// application; every other unmatched path is 404.
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, "/console/", http.StatusTemporaryRedirect)
 	})
 
 	return r

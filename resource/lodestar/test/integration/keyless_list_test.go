@@ -41,56 +41,56 @@ func TestKeylessList_servedWhole(t *testing.T) {
 	}{
 		{
 			name:         "a bare GET serves the whole book in its own order, with no order asked and none declared",
-			target:       "/api/standing-orders",
+			target:       "/console/api/standing-orders",
 			wantStatus:   http.StatusOK,
 			wantSections: bookOrder,
 		},
 		{
 			name:         "limit=all is the explicit spelling of the same shape",
-			target:       "/api/standing-orders?limit=all",
+			target:       "/console/api/standing-orders?limit=all",
 			wantStatus:   http.StatusOK,
 			wantSections: bookOrder,
 		},
 		{
 			name:         "a requested sort orders the whole book",
-			target:       "/api/standing-orders?sort=section",
+			target:       "/console/api/standing-orders?sort=section",
 			wantStatus:   http.StatusOK,
 			wantSections: []string{"Flight", "Flight", "General", "General", "Hangar", "Salvage"},
 		},
 		{
 			name:         "a filter narrows the whole book and the rest still arrives in one response",
-			target:       "/api/standing-orders?filter=section:eq:Flight",
+			target:       "/console/api/standing-orders?filter=section:eq:Flight",
 			wantStatus:   http.StatusOK,
 			wantSections: []string{"Flight", "Flight"},
 		},
 		{
 			name:         "count=true answers in Total-Count on the whole list",
-			target:       "/api/standing-orders?count=true",
+			target:       "/console/api/standing-orders?count=true",
 			wantStatus:   http.StatusOK,
 			wantSections: bookOrder,
 			wantTotal:    "6",
 		},
 		{
 			name:        "a numeric limit is refused naming the resource, the missing key, and the way to page",
-			target:      "/api/standing-orders?limit=10",
+			target:      "/console/api/standing-orders?limit=10",
 			wantStatus:  http.StatusBadRequest,
 			wantMessage: "StandingOrders declares no primary key, so its list is served whole and does not page; drop the limit, or declare @primarykey to page",
 		},
 		{
 			name:        "a sort does not make a page: a limit beside it is refused the same way",
-			target:      "/api/standing-orders?sort=section&limit=2",
+			target:      "/console/api/standing-orders?sort=section&limit=2",
 			wantStatus:  http.StatusBadRequest,
 			wantMessage: "StandingOrders declares no primary key, so its list is served whole and does not page; drop the limit",
 		},
 		{
 			name:        "a cursor is refused the same way",
-			target:      "/api/standing-orders?cursor=v4.local.anything",
+			target:      "/console/api/standing-orders?cursor=v4.local.anything",
 			wantStatus:  http.StatusBadRequest,
 			wantMessage: "StandingOrders declares no primary key, so its list is served whole and does not page; drop the cursor, or declare @primarykey to page",
 		},
 		{
 			name:       "a key-less list has no read route",
-			target:     "/api/standing-orders/General",
+			target:     "/console/api/standing-orders/General",
 			wantStatus: http.StatusNotFound,
 		},
 	}
@@ -133,7 +133,7 @@ func TestKeylessList_gate(t *testing.T) {
 
 	_, h, _ := sharedWorld(t)
 
-	status, body := doRequestAs(t, h, "cadet", http.MethodGet, "/api/standing-orders", "")
+	status, body := doRequestAs(t, h, "cadet", http.MethodGet, "/console/api/standing-orders", "")
 	assertStatus(t, status, http.StatusForbidden, body)
 }
 

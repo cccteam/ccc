@@ -71,7 +71,7 @@ func TestSquadronCallsigns_nullClearsTheFiling(t *testing.T) {
 	ctx, db, h := demoWorld(t)
 
 	patch := func(value string) (int, []byte) {
-		return doRequestAs(t, h, "marshal", http.MethodPatch, "/api/resources",
+		return doRequestAs(t, h, "marshal", http.MethodPatch, "/console/api/resources",
 			fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"callsigns":%s}}]`, opPath(anvil, "squadrons/"+squadronTongsID), value))
 	}
 	read := func() any {
@@ -138,7 +138,7 @@ func TestSquadronCallsigns_notNullSliceRefused(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := doRequestAs(t, h, "marshal", http.MethodPatch, "/api/resources", tt.ops)
+			status, body := doRequestAs(t, h, "marshal", http.MethodPatch, "/console/api/resources", tt.ops)
 			assertStatus(t, status, http.StatusBadRequest, body)
 			if !strings.Contains(string(body), tt.wantMessage) {
 				t.Errorf("body = %s, want it to carry %q", body, tt.wantMessage)

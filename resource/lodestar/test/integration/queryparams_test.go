@@ -60,14 +60,14 @@ func TestQueryParameters(t *testing.T) {
 		{name: "sort with unknown field is rejected", target: sectorPath(anvil, "consignments?sort=warpFactor"), wantStatus: http.StatusBadRequest},
 		{name: "limit caps the row count", target: sectorPath(anvil, "consignments?"+three+"&sort=expiresOn&limit=1"), wantStatus: http.StatusOK, wantRows: 1, wantCodes: []string{"BND-ANV-0002"}},
 		{name: "offset is refused", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=1&offset=1"), wantStatus: http.StatusBadRequest},
-		{name: "limit=all returns every row where no maximum is declared", target: "/api/pilots?sort=displayName&limit=all", wantStatus: http.StatusOK, wantRows: 17},
+		{name: "limit=all returns every row where no maximum is declared", target: "/console/api/pilots?sort=displayName&limit=all", wantStatus: http.StatusOK, wantRows: 17},
 		{name: "limit=all is refused where a maximum is declared", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=all"), wantStatus: http.StatusBadRequest},
 		{name: "limit=0 is rejected", target: sectorPath(anvil, "consignments?limit=0"), wantStatus: http.StatusBadRequest},
 		{name: "non-numeric limit is rejected", target: sectorPath(anvil, "consignments?limit=many"), wantStatus: http.StatusBadRequest},
 		{name: "unknown query parameter is rejected", target: sectorPath(anvil, "consignments?warp=9"), wantStatus: http.StatusBadRequest},
-		{name: "filter on pii field in url is rejected", target: "/api/clients?filter=name:eq:Halvard%20Freight,contactEmail:eq:cleo@halvard.example", wantStatus: http.StatusBadRequest},
-		{name: "filter on pii field in post body is allowed", method: http.MethodPost, target: "/api/clients", body: `{"filter":"name:eq:Halvard Freight,contactEmail:eq:cleo@halvard.example"}`, wantStatus: http.StatusOK, wantRows: 1},
-		{name: "filter in both query and body is rejected", method: http.MethodPost, target: "/api/clients?filter=name:eq:Halvard%20Freight", body: `{"filter":"name:eq:Halvard Freight"}`, wantStatus: http.StatusBadRequest},
+		{name: "filter on pii field in url is rejected", target: "/console/api/clients?filter=name:eq:Halvard%20Freight,contactEmail:eq:cleo@halvard.example", wantStatus: http.StatusBadRequest},
+		{name: "filter on pii field in post body is allowed", method: http.MethodPost, target: "/console/api/clients", body: `{"filter":"name:eq:Halvard Freight,contactEmail:eq:cleo@halvard.example"}`, wantStatus: http.StatusOK, wantRows: 1},
+		{name: "filter in both query and body is rejected", method: http.MethodPost, target: "/console/api/clients?filter=name:eq:Halvard%20Freight", body: `{"filter":"name:eq:Halvard Freight"}`, wantStatus: http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {

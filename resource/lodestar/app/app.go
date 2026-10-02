@@ -231,15 +231,15 @@ func (a *App) CompressionMiddleware() func(http.Handler) http.Handler {
 	return middleware.Compress(5)
 }
 
-// DeepLink rewrites the console's Angular routes to its entry point so bookmarked
-// frontend routes load the single-page application.
+// DeepLink rewrites the console's Angular routes to its entry point under /console/ so
+// bookmarked frontend routes load the single-page application.
 func (a *App) DeepLink(next http.Handler) http.Handler {
-	return spaassets.DeepLink(next, "/")
+	return spaassets.DeepLink(next, "/console/")
 }
 
-// Assets serves the console's built Angular application.
+// Assets serves the console's built Angular application from /console/.
 func (a *App) Assets() http.HandlerFunc {
-	return serveSPA(http.FileServer(http.Dir(a.consoleDist)))
+	return serveSPA(http.StripPrefix("/console", http.FileServer(http.Dir(a.consoleDist))))
 }
 
 // PortalDeepLink rewrites the portal's Angular routes to its entry point under /portal/.

@@ -154,6 +154,7 @@ var Demonstrations = []Demonstration{
 	{"outlet.isolation", "The generated router tests and the served suites prove the outlets' URL spaces are disjoint."},
 	{"outlet.session", "WithRouterOutlet(..., Auth(...)) (ServesSessions() under a hand-written router): a second browser surface with its own permission routes."},
 	{"GenerateRouter", "The generated router: each outlet declares Auth or APIKey and its WebApp, the generator emits the router with its middleware chain documented and proven, and the application's own routes compose in through Hooks."},
+	{"WebApp.several", "Several browser applications on one router tree: none is mounted at / (a WebApp at / beside another is refused at generation, naming both outlets), each sits under its own mount path with its outlet's API beneath it (the console at /console with /console/api, the portal at /portal with /portal/api), and the generated router answers GET / alone with a temporary redirect to the default outlet's application."},
 	{"outlet.api-key", "An API-key outlet bound to a service identity through the same permission checks."},
 	{"machine-identity", "A service account holding roles with no login."},
 	{"typescript.second-target", "GenerateTypescript(..., ForOutlet(...)): a second client filtered to an outlet, generated in the same run."},

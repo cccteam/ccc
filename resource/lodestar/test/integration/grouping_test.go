@@ -30,7 +30,7 @@ func TestDispatcherWriteGrouping(t *testing.T) {
 	provesGrant(t, crew.Roles(), "Dispatcher", "Update", "Missions", "state NOT IN ('completed', 'failed', 'stood_down') AND new.deadline >= deadline")
 
 	patch := func(mission, value string) (int, []byte) {
-		return doRequestAs(t, h, "dispatcher", http.MethodPatch, "/api/resources",
+		return doRequestAs(t, h, "dispatcher", http.MethodPatch, "/console/api/resources",
 			fmt.Sprintf(`[{"op":"patch","path":%q,"value":%s}]`, opPath(anvil, "missions/"+mission), value))
 	}
 

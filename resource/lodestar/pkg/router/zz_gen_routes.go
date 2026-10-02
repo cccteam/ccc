@@ -202,290 +202,290 @@ type GeneratedHandlers interface {
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	domainGuard := h.DomainGuard()
 
-	r.Get("/api/permission-digest", h.PermissionDigest())
-	r.Get("/api/user-domains", h.UserDomains())
+	r.Get("/console/api/permission-digest", h.PermissionDigest())
+	r.Get("/console/api/user-domains", h.UserDomains())
 
-	r.Post("/api/sectors/{sectorID}/attach-mission-document", domainGuard(h.AttachMissionDocument()))
+	r.Post("/console/api/sectors/{sectorID}/attach-mission-document", domainGuard(h.AttachMissionDocument()))
 
-	r.Post("/api/sectors/{sectorID}/begin-refit", domainGuard(h.BeginRefit()))
+	r.Post("/console/api/sectors/{sectorID}/begin-refit", domainGuard(h.BeginRefit()))
 
 	briefingTemplatesHandler := h.BriefingTemplates()
-	r.Get("/api/briefing-templates", briefingTemplatesHandler)
-	r.Post("/api/briefing-templates", briefingTemplatesHandler)
+	r.Get("/console/api/briefing-templates", briefingTemplatesHandler)
+	r.Post("/console/api/briefing-templates", briefingTemplatesHandler)
 
-	r.Post("/api/sectors/{sectorID}/claim-mission", domainGuard(h.ClaimMission()))
+	r.Post("/console/api/sectors/{sectorID}/claim-mission", domainGuard(h.ClaimMission()))
 
 	clientsHandler := h.Clients()
-	r.Get("/api/clients", clientsHandler)
-	r.Post("/api/clients", clientsHandler)
+	r.Get("/console/api/clients", clientsHandler)
+	r.Post("/console/api/clients", clientsHandler)
 
 	clientHandler := h.Client()
-	r.Get("/api/clients/{clientID}", clientHandler)
-	r.Post("/api/clients/{clientID}", clientHandler)
+	r.Get("/console/api/clients/{clientID}", clientHandler)
+	r.Post("/console/api/clients/{clientID}", clientHandler)
 
-	r.Patch("/api/clients", h.PatchClients())
+	r.Patch("/console/api/clients", h.PatchClients())
 
 	clientContactsHandler := h.ClientContacts()
-	r.Get("/api/client-contacts", clientContactsHandler)
-	r.Post("/api/client-contacts", clientContactsHandler)
+	r.Get("/console/api/client-contacts", clientContactsHandler)
+	r.Post("/console/api/client-contacts", clientContactsHandler)
 
 	clientContactHandler := h.ClientContact()
-	r.Get("/api/client-contacts/{clientContactID}", clientContactHandler)
-	r.Post("/api/client-contacts/{clientContactID}", clientContactHandler)
+	r.Get("/console/api/client-contacts/{clientContactID}", clientContactHandler)
+	r.Post("/console/api/client-contacts/{clientContactID}", clientContactHandler)
 
 	clientRostersHandler := domainGuard(h.ClientRosters())
-	r.Get("/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
-	r.Post("/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
+	r.Get("/console/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
+	r.Post("/console/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
 
 	clientRosterHandler := domainGuard(h.ClientRoster())
-	r.Get("/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
-	r.Post("/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
+	r.Get("/console/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
+	r.Post("/console/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
 
-	r.Post("/api/sectors/{sectorID}/compile-briefing", domainGuard(h.CompileBriefing()))
+	r.Post("/console/api/sectors/{sectorID}/compile-briefing", domainGuard(h.CompileBriefing()))
 
-	r.Post("/api/sectors/{sectorID}/complete-mission", domainGuard(h.CompleteMission()))
+	r.Post("/console/api/sectors/{sectorID}/complete-mission", domainGuard(h.CompleteMission()))
 
 	consignmentsHandler := domainGuard(h.Consignments())
-	r.Get("/api/sectors/{sectorID}/consignments", consignmentsHandler)
-	r.Post("/api/sectors/{sectorID}/consignments", consignmentsHandler)
+	r.Get("/console/api/sectors/{sectorID}/consignments", consignmentsHandler)
+	r.Post("/console/api/sectors/{sectorID}/consignments", consignmentsHandler)
 
 	consignmentHandler := domainGuard(h.Consignment())
-	r.Get("/api/sectors/{sectorID}/consignments/{consignmentID}", consignmentHandler)
-	r.Post("/api/sectors/{sectorID}/consignments/{consignmentID}", consignmentHandler)
+	r.Get("/console/api/sectors/{sectorID}/consignments/{consignmentID}", consignmentHandler)
+	r.Post("/console/api/sectors/{sectorID}/consignments/{consignmentID}", consignmentHandler)
 
 	distressCallsHandler := domainGuard(h.DistressCalls())
-	r.Get("/api/sectors/{sectorID}/distress-calls", distressCallsHandler)
-	r.Post("/api/sectors/{sectorID}/distress-calls", distressCallsHandler)
+	r.Get("/console/api/sectors/{sectorID}/distress-calls", distressCallsHandler)
+	r.Post("/console/api/sectors/{sectorID}/distress-calls", distressCallsHandler)
 
 	distressCallHandler := domainGuard(h.DistressCall())
-	r.Get("/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
-	r.Post("/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
+	r.Get("/console/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
+	r.Post("/console/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
 
 	expenseManifestsHandler := domainGuard(h.ExpenseManifests())
-	r.Get("/api/sectors/{sectorID}/expense-manifests", expenseManifestsHandler)
-	r.Post("/api/sectors/{sectorID}/expense-manifests", expenseManifestsHandler)
+	r.Get("/console/api/sectors/{sectorID}/expense-manifests", expenseManifestsHandler)
+	r.Post("/console/api/sectors/{sectorID}/expense-manifests", expenseManifestsHandler)
 
 	expenseManifestHandler := domainGuard(h.ExpenseManifest())
-	r.Get("/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}", expenseManifestHandler)
-	r.Post("/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}", expenseManifestHandler)
+	r.Get("/console/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}", expenseManifestHandler)
+	r.Post("/console/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}", expenseManifestHandler)
 
-	r.Get("/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}/content", domainGuard(h.ExpenseManifestContent()))
+	r.Get("/console/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}/content", domainGuard(h.ExpenseManifestContent()))
 
-	r.Post("/api/sectors/{sectorID}/fail-flight-test", domainGuard(h.FailFlightTest()))
+	r.Post("/console/api/sectors/{sectorID}/fail-flight-test", domainGuard(h.FailFlightTest()))
 
-	r.Post("/api/sectors/{sectorID}/fail-mission", domainGuard(h.FailMission()))
+	r.Post("/console/api/sectors/{sectorID}/fail-mission", domainGuard(h.FailMission()))
 
 	feeByKindsHandler := h.FeeByKinds()
-	r.Get("/api/fee-by-kinds", feeByKindsHandler)
-	r.Post("/api/fee-by-kinds", feeByKindsHandler)
+	r.Get("/console/api/fee-by-kinds", feeByKindsHandler)
+	r.Post("/console/api/fee-by-kinds", feeByKindsHandler)
 
 	feeByKindHandler := h.FeeByKind()
-	r.Get("/api/fee-by-kinds/{feeByKindKindID}", feeByKindHandler)
-	r.Post("/api/fee-by-kinds/{feeByKindKindID}", feeByKindHandler)
+	r.Get("/console/api/fee-by-kinds/{feeByKindKindID}", feeByKindHandler)
+	r.Post("/console/api/fee-by-kinds/{feeByKindKindID}", feeByKindHandler)
 
-	r.Post("/api/sectors/{sectorID}/hail-ship", domainGuard(h.HailShip()))
+	r.Post("/console/api/sectors/{sectorID}/hail-ship", domainGuard(h.HailShip()))
 
 	hangarsHandler := domainGuard(h.Hangars())
-	r.Get("/api/sectors/{sectorID}/hangars", hangarsHandler)
-	r.Post("/api/sectors/{sectorID}/hangars", hangarsHandler)
+	r.Get("/console/api/sectors/{sectorID}/hangars", hangarsHandler)
+	r.Post("/console/api/sectors/{sectorID}/hangars", hangarsHandler)
 
 	hangarHandler := domainGuard(h.Hangar())
-	r.Get("/api/sectors/{sectorID}/hangars/{hangarID}", hangarHandler)
-	r.Post("/api/sectors/{sectorID}/hangars/{hangarID}", hangarHandler)
+	r.Get("/console/api/sectors/{sectorID}/hangars/{hangarID}", hangarHandler)
+	r.Post("/console/api/sectors/{sectorID}/hangars/{hangarID}", hangarHandler)
 
-	r.Patch("/api/sectors/{sectorID}/hangars", domainGuard(h.PatchHangars()))
+	r.Patch("/console/api/sectors/{sectorID}/hangars", domainGuard(h.PatchHangars()))
 
-	r.Post("/api/sectors/{sectorID}/hold-mission", domainGuard(h.HoldMission()))
+	r.Post("/console/api/sectors/{sectorID}/hold-mission", domainGuard(h.HoldMission()))
 
-	r.Post("/api/sectors/{sectorID}/inspect-ship", domainGuard(h.InspectShip()))
+	r.Post("/console/api/sectors/{sectorID}/inspect-ship", domainGuard(h.InspectShip()))
 
-	r.Post("/api/issue-bulletin", h.IssueBulletin())
+	r.Post("/console/api/issue-bulletin", h.IssueBulletin())
 
-	r.Post("/api/sectors/{sectorID}/launch-mission", domainGuard(h.LaunchMission()))
+	r.Post("/console/api/sectors/{sectorID}/launch-mission", domainGuard(h.LaunchMission()))
 
 	missionsHandler := domainGuard(h.Missions())
-	r.Get("/api/sectors/{sectorID}/missions", missionsHandler)
-	r.Post("/api/sectors/{sectorID}/missions", missionsHandler)
+	r.Get("/console/api/sectors/{sectorID}/missions", missionsHandler)
+	r.Post("/console/api/sectors/{sectorID}/missions", missionsHandler)
 
 	missionHandler := domainGuard(h.Mission())
-	r.Get("/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
-	r.Post("/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
+	r.Get("/console/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
+	r.Post("/console/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
 
 	missionBoardsHandler := domainGuard(h.MissionBoards())
-	r.Get("/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
-	r.Post("/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
+	r.Get("/console/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
+	r.Post("/console/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
 
 	missionBoardHandler := domainGuard(h.MissionBoard())
-	r.Get("/api/sectors/{sectorID}/mission-boards/{missionBoardID}", missionBoardHandler)
-	r.Post("/api/sectors/{sectorID}/mission-boards/{missionBoardID}", missionBoardHandler)
+	r.Get("/console/api/sectors/{sectorID}/mission-boards/{missionBoardID}", missionBoardHandler)
+	r.Post("/console/api/sectors/{sectorID}/mission-boards/{missionBoardID}", missionBoardHandler)
 
 	missionDocumentsHandler := domainGuard(h.MissionDocuments())
-	r.Get("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
-	r.Post("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+	r.Get("/console/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+	r.Post("/console/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
 
 	missionDocumentHandler := domainGuard(h.MissionDocument())
-	r.Get("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
-	r.Post("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+	r.Get("/console/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+	r.Post("/console/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
 
-	r.Get("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content", domainGuard(h.MissionDocumentContent()))
+	r.Get("/console/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content", domainGuard(h.MissionDocumentContent()))
 
 	openMissionsBySquadronsHandler := domainGuard(h.OpenMissionsBySquadrons())
-	r.Get("/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
-	r.Post("/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
+	r.Get("/console/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
+	r.Post("/console/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
 
 	openMissionsBySquadronHandler := domainGuard(h.OpenMissionsBySquadron())
-	r.Get("/api/sectors/{sectorID}/open-missions-by-squadrons/{openMissionsBySquadronSquadronID}/{openMissionsBySquadronSectorID}", openMissionsBySquadronHandler)
-	r.Post("/api/sectors/{sectorID}/open-missions-by-squadrons/{openMissionsBySquadronSquadronID}/{openMissionsBySquadronSectorID}", openMissionsBySquadronHandler)
+	r.Get("/console/api/sectors/{sectorID}/open-missions-by-squadrons/{openMissionsBySquadronSquadronID}/{openMissionsBySquadronSectorID}", openMissionsBySquadronHandler)
+	r.Post("/console/api/sectors/{sectorID}/open-missions-by-squadrons/{openMissionsBySquadronSquadronID}/{openMissionsBySquadronSectorID}", openMissionsBySquadronHandler)
 
-	r.Post("/api/sectors/{sectorID}/pass-flight-test", domainGuard(h.PassFlightTest()))
+	r.Post("/console/api/sectors/{sectorID}/pass-flight-test", domainGuard(h.PassFlightTest()))
 
 	pilotsHandler := h.Pilots()
-	r.Get("/api/pilots", pilotsHandler)
-	r.Post("/api/pilots", pilotsHandler)
+	r.Get("/console/api/pilots", pilotsHandler)
+	r.Post("/console/api/pilots", pilotsHandler)
 
 	pilotHandler := h.Pilot()
-	r.Get("/api/pilots/{pilotID}", pilotHandler)
-	r.Post("/api/pilots/{pilotID}", pilotHandler)
+	r.Get("/console/api/pilots/{pilotID}", pilotHandler)
+	r.Post("/console/api/pilots/{pilotID}", pilotHandler)
 
 	pilotAssignmentsHandler := domainGuard(h.PilotAssignments())
-	r.Get("/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
-	r.Post("/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
+	r.Get("/console/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
+	r.Post("/console/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
 
 	pilotAssignmentHandler := domainGuard(h.PilotAssignment())
-	r.Get("/api/sectors/{sectorID}/pilot-assignments/{pilotAssignmentSquadronID}/{pilotAssignmentUserID}", pilotAssignmentHandler)
-	r.Post("/api/sectors/{sectorID}/pilot-assignments/{pilotAssignmentSquadronID}/{pilotAssignmentUserID}", pilotAssignmentHandler)
+	r.Get("/console/api/sectors/{sectorID}/pilot-assignments/{pilotAssignmentSquadronID}/{pilotAssignmentUserID}", pilotAssignmentHandler)
+	r.Post("/console/api/sectors/{sectorID}/pilot-assignments/{pilotAssignmentSquadronID}/{pilotAssignmentUserID}", pilotAssignmentHandler)
 
 	pilotCardsHandler := h.PilotCards()
-	r.Get("/api/pilot-cards", pilotCardsHandler)
-	r.Post("/api/pilot-cards", pilotCardsHandler)
+	r.Get("/console/api/pilot-cards", pilotCardsHandler)
+	r.Post("/console/api/pilot-cards", pilotCardsHandler)
 
 	pilotCertificationsHandler := h.PilotCertifications()
-	r.Get("/api/pilot-certifications", pilotCertificationsHandler)
-	r.Post("/api/pilot-certifications", pilotCertificationsHandler)
+	r.Get("/console/api/pilot-certifications", pilotCertificationsHandler)
+	r.Post("/console/api/pilot-certifications", pilotCertificationsHandler)
 
 	pilotCertificationHandler := h.PilotCertification()
-	r.Get("/api/pilot-certifications/{pilotCertificationUserID}/{pilotCertificationCertificationID}", pilotCertificationHandler)
-	r.Post("/api/pilot-certifications/{pilotCertificationUserID}/{pilotCertificationCertificationID}", pilotCertificationHandler)
+	r.Get("/console/api/pilot-certifications/{pilotCertificationUserID}/{pilotCertificationCertificationID}", pilotCertificationHandler)
+	r.Post("/console/api/pilot-certifications/{pilotCertificationUserID}/{pilotCertificationCertificationID}", pilotCertificationHandler)
 
 	refitsHandler := domainGuard(h.Refits())
-	r.Get("/api/sectors/{sectorID}/refits", refitsHandler)
-	r.Post("/api/sectors/{sectorID}/refits", refitsHandler)
+	r.Get("/console/api/sectors/{sectorID}/refits", refitsHandler)
+	r.Post("/console/api/sectors/{sectorID}/refits", refitsHandler)
 
 	refitHandler := domainGuard(h.Refit())
-	r.Get("/api/sectors/{sectorID}/refits/{refitID}", refitHandler)
-	r.Post("/api/sectors/{sectorID}/refits/{refitID}", refitHandler)
+	r.Get("/console/api/sectors/{sectorID}/refits/{refitID}", refitHandler)
+	r.Post("/console/api/sectors/{sectorID}/refits/{refitID}", refitHandler)
 
 	refitTasksHandler := domainGuard(h.RefitTasks())
-	r.Get("/api/sectors/{sectorID}/refit-tasks", refitTasksHandler)
-	r.Post("/api/sectors/{sectorID}/refit-tasks", refitTasksHandler)
+	r.Get("/console/api/sectors/{sectorID}/refit-tasks", refitTasksHandler)
+	r.Post("/console/api/sectors/{sectorID}/refit-tasks", refitTasksHandler)
 
 	refitTaskHandler := domainGuard(h.RefitTask())
-	r.Get("/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}", refitTaskHandler)
-	r.Post("/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}", refitTaskHandler)
+	r.Get("/console/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}", refitTaskHandler)
+	r.Post("/console/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}", refitTaskHandler)
 
-	r.Get("/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}/photo", domainGuard(h.RefitTaskPhoto()))
+	r.Get("/console/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}/photo", domainGuard(h.RefitTaskPhoto()))
 
-	r.Post("/api/sectors/{sectorID}/release-consignment", domainGuard(h.ReleaseConsignment()))
+	r.Post("/console/api/sectors/{sectorID}/release-consignment", domainGuard(h.ReleaseConsignment()))
 
-	r.Post("/api/sectors/{sectorID}/replace-mission-document", domainGuard(h.ReplaceMissionDocument()))
+	r.Post("/console/api/sectors/{sectorID}/replace-mission-document", domainGuard(h.ReplaceMissionDocument()))
 
-	r.Post("/api/sectors/{sectorID}/resume-mission", domainGuard(h.ResumeMission()))
+	r.Post("/console/api/sectors/{sectorID}/resume-mission", domainGuard(h.ResumeMission()))
 
-	r.Post("/api/sectors/{sectorID}/scrap-ship", domainGuard(h.ScrapShip()))
+	r.Post("/console/api/sectors/{sectorID}/scrap-ship", domainGuard(h.ScrapShip()))
 
 	sectorsHandler := h.Sectors()
-	r.Get("/api/sectors", sectorsHandler)
-	r.Post("/api/sectors", sectorsHandler)
+	r.Get("/console/api/sectors", sectorsHandler)
+	r.Post("/console/api/sectors", sectorsHandler)
 
 	sectorHandler := h.Sector()
-	r.Get("/api/sectors/{sectorID}", sectorHandler)
-	r.Post("/api/sectors/{sectorID}", sectorHandler)
+	r.Get("/console/api/sectors/{sectorID}", sectorHandler)
+	r.Post("/console/api/sectors/{sectorID}", sectorHandler)
 
 	sectorHazardBoardsHandler := domainGuard(h.SectorHazardBoards())
-	r.Get("/api/sectors/{sectorID}/sector-hazard-boards", sectorHazardBoardsHandler)
-	r.Post("/api/sectors/{sectorID}/sector-hazard-boards", sectorHazardBoardsHandler)
+	r.Get("/console/api/sectors/{sectorID}/sector-hazard-boards", sectorHazardBoardsHandler)
+	r.Post("/console/api/sectors/{sectorID}/sector-hazard-boards", sectorHazardBoardsHandler)
 
 	sectorHazardBoardHandler := domainGuard(h.SectorHazardBoard())
-	r.Get("/api/sectors/{sectorID}/sector-hazard-boards/{sectorHazardBoardShipID}/{sectorHazardBoardSubsystem}", sectorHazardBoardHandler)
-	r.Post("/api/sectors/{sectorID}/sector-hazard-boards/{sectorHazardBoardShipID}/{sectorHazardBoardSubsystem}", sectorHazardBoardHandler)
+	r.Get("/console/api/sectors/{sectorID}/sector-hazard-boards/{sectorHazardBoardShipID}/{sectorHazardBoardSubsystem}", sectorHazardBoardHandler)
+	r.Post("/console/api/sectors/{sectorID}/sector-hazard-boards/{sectorHazardBoardShipID}/{sectorHazardBoardSubsystem}", sectorHazardBoardHandler)
 
 	serviceLedgersHandler := h.ServiceLedgers()
-	r.Get("/api/service-ledgers", serviceLedgersHandler)
-	r.Post("/api/service-ledgers", serviceLedgersHandler)
+	r.Get("/console/api/service-ledgers", serviceLedgersHandler)
+	r.Post("/console/api/service-ledgers", serviceLedgersHandler)
 
 	shipsHandler := domainGuard(h.Ships())
-	r.Get("/api/sectors/{sectorID}/ships", shipsHandler)
-	r.Post("/api/sectors/{sectorID}/ships", shipsHandler)
+	r.Get("/console/api/sectors/{sectorID}/ships", shipsHandler)
+	r.Post("/console/api/sectors/{sectorID}/ships", shipsHandler)
 
 	shipHandler := domainGuard(h.Ship())
-	r.Get("/api/sectors/{sectorID}/ships/{shipID}", shipHandler)
-	r.Post("/api/sectors/{sectorID}/ships/{shipID}", shipHandler)
+	r.Get("/console/api/sectors/{sectorID}/ships/{shipID}", shipHandler)
+	r.Post("/console/api/sectors/{sectorID}/ships/{shipID}", shipHandler)
 
 	shipClassesHandler := h.ShipClasses()
-	r.Get("/api/ship-classes", shipClassesHandler)
-	r.Post("/api/ship-classes", shipClassesHandler)
+	r.Get("/console/api/ship-classes", shipClassesHandler)
+	r.Post("/console/api/ship-classes", shipClassesHandler)
 
 	shipClassHandler := h.ShipClass()
-	r.Get("/api/ship-classes/{shipClassID}", shipClassHandler)
-	r.Post("/api/ship-classes/{shipClassID}", shipClassHandler)
+	r.Get("/console/api/ship-classes/{shipClassID}", shipClassHandler)
+	r.Post("/console/api/ship-classes/{shipClassID}", shipClassHandler)
 
 	sortiesHandler := domainGuard(h.Sorties())
-	r.Get("/api/sectors/{sectorID}/sorties", sortiesHandler)
-	r.Post("/api/sectors/{sectorID}/sorties", sortiesHandler)
+	r.Get("/console/api/sectors/{sectorID}/sorties", sortiesHandler)
+	r.Post("/console/api/sectors/{sectorID}/sorties", sortiesHandler)
 
 	sortieHandler := domainGuard(h.Sortie())
-	r.Get("/api/sectors/{sectorID}/sorties/{sortieID}", sortieHandler)
-	r.Post("/api/sectors/{sectorID}/sorties/{sortieID}", sortieHandler)
+	r.Get("/console/api/sectors/{sectorID}/sorties/{sortieID}", sortieHandler)
+	r.Post("/console/api/sectors/{sectorID}/sorties/{sortieID}", sortieHandler)
 
 	sortieExpensesHandler := domainGuard(h.SortieExpenses())
-	r.Get("/api/sectors/{sectorID}/sortie-expenses", sortieExpensesHandler)
-	r.Post("/api/sectors/{sectorID}/sortie-expenses", sortieExpensesHandler)
+	r.Get("/console/api/sectors/{sectorID}/sortie-expenses", sortieExpensesHandler)
+	r.Post("/console/api/sectors/{sectorID}/sortie-expenses", sortieExpensesHandler)
 
 	sortieExpenseHandler := domainGuard(h.SortieExpense())
-	r.Get("/api/sectors/{sectorID}/sortie-expenses/{sortieExpenseID}", sortieExpenseHandler)
-	r.Post("/api/sectors/{sectorID}/sortie-expenses/{sortieExpenseID}", sortieExpenseHandler)
+	r.Get("/console/api/sectors/{sectorID}/sortie-expenses/{sortieExpenseID}", sortieExpenseHandler)
+	r.Post("/console/api/sectors/{sectorID}/sortie-expenses/{sortieExpenseID}", sortieExpenseHandler)
 
 	squadronsHandler := domainGuard(h.Squadrons())
-	r.Get("/api/sectors/{sectorID}/squadrons", squadronsHandler)
-	r.Post("/api/sectors/{sectorID}/squadrons", squadronsHandler)
+	r.Get("/console/api/sectors/{sectorID}/squadrons", squadronsHandler)
+	r.Post("/console/api/sectors/{sectorID}/squadrons", squadronsHandler)
 
 	squadronHandler := domainGuard(h.Squadron())
-	r.Get("/api/sectors/{sectorID}/squadrons/{squadronID}", squadronHandler)
-	r.Post("/api/sectors/{sectorID}/squadrons/{squadronID}", squadronHandler)
+	r.Get("/console/api/sectors/{sectorID}/squadrons/{squadronID}", squadronHandler)
+	r.Post("/console/api/sectors/{sectorID}/squadrons/{squadronID}", squadronHandler)
 
 	squadronMembershipsHandler := domainGuard(h.SquadronMemberships())
-	r.Get("/api/sectors/{sectorID}/squadron-memberships", squadronMembershipsHandler)
-	r.Post("/api/sectors/{sectorID}/squadron-memberships", squadronMembershipsHandler)
+	r.Get("/console/api/sectors/{sectorID}/squadron-memberships", squadronMembershipsHandler)
+	r.Post("/console/api/sectors/{sectorID}/squadron-memberships", squadronMembershipsHandler)
 
 	squadronMembershipHandler := domainGuard(h.SquadronMembership())
-	r.Get("/api/sectors/{sectorID}/squadron-memberships/{squadronMembershipSquadronID}/{squadronMembershipUserID}", squadronMembershipHandler)
-	r.Post("/api/sectors/{sectorID}/squadron-memberships/{squadronMembershipSquadronID}/{squadronMembershipUserID}", squadronMembershipHandler)
+	r.Get("/console/api/sectors/{sectorID}/squadron-memberships/{squadronMembershipSquadronID}/{squadronMembershipUserID}", squadronMembershipHandler)
+	r.Post("/console/api/sectors/{sectorID}/squadron-memberships/{squadronMembershipSquadronID}/{squadronMembershipUserID}", squadronMembershipHandler)
 
 	squadronRostersHandler := domainGuard(h.SquadronRosters())
-	r.Get("/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
-	r.Post("/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
+	r.Get("/console/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
+	r.Post("/console/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
 
 	squadronRosterHandler := domainGuard(h.SquadronRoster())
-	r.Get("/api/sectors/{sectorID}/squadron-rosters/{squadronRosterSquadronID}/{squadronRosterUserID}", squadronRosterHandler)
-	r.Post("/api/sectors/{sectorID}/squadron-rosters/{squadronRosterSquadronID}/{squadronRosterUserID}", squadronRosterHandler)
+	r.Get("/console/api/sectors/{sectorID}/squadron-rosters/{squadronRosterSquadronID}/{squadronRosterUserID}", squadronRosterHandler)
+	r.Post("/console/api/sectors/{sectorID}/squadron-rosters/{squadronRosterSquadronID}/{squadronRosterUserID}", squadronRosterHandler)
 
-	r.Post("/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
+	r.Post("/console/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
 
 	standingOrdersHandler := h.StandingOrders()
-	r.Get("/api/standing-orders", standingOrdersHandler)
-	r.Post("/api/standing-orders", standingOrdersHandler)
+	r.Get("/console/api/standing-orders", standingOrdersHandler)
+	r.Post("/console/api/standing-orders", standingOrdersHandler)
 
-	r.Post("/api/sectors/{sectorID}/start-flight-test", domainGuard(h.StartFlightTest()))
+	r.Post("/console/api/sectors/{sectorID}/start-flight-test", domainGuard(h.StartFlightTest()))
 
 	wingsHandler := domainGuard(h.Wings())
-	r.Get("/api/sectors/{sectorID}/wings", wingsHandler)
-	r.Post("/api/sectors/{sectorID}/wings", wingsHandler)
+	r.Get("/console/api/sectors/{sectorID}/wings", wingsHandler)
+	r.Post("/console/api/sectors/{sectorID}/wings", wingsHandler)
 
 	wingHandler := domainGuard(h.Wing())
-	r.Get("/api/sectors/{sectorID}/wings/{wingID}", wingHandler)
-	r.Post("/api/sectors/{sectorID}/wings/{wingID}", wingHandler)
+	r.Get("/console/api/sectors/{sectorID}/wings/{wingID}", wingHandler)
+	r.Post("/console/api/sectors/{sectorID}/wings/{wingID}", wingHandler)
 
-	r.Patch("/api/resources", h.PatchResources())
+	r.Patch("/console/api/resources", h.PatchResources())
 }
 
 // GeneratedDroidsHandlers is the droids outlet's generated

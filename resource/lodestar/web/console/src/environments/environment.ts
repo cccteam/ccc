@@ -4,7 +4,7 @@
 export const environment = {
   production: false,
   baseUrl: '',
-  apiUrl: '/api',
+  apiUrl: '/console/api',
   // The idle session in seconds, provided to the library's tokens in app.config.ts. A
   // development build is short so the warning, its countdown, and the stay-logged-in
   // action can be watched: the warning after two minutes idle, the session ended a minute

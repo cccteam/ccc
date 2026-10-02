@@ -37,7 +37,7 @@ type ListHandle<Row> = Listable<Row> & { can(permission: Permission): boolean };
 
 /**
  * ShipsLogEntry is one change-tracking event from the hand-written
- * /api/sectors/{sectorID}/ships-log-entries surface. The resource is registered
+ * /console/api/sectors/{sectorID}/ships-log-entries surface. The resource is registered
  * manually (@manualAddResource(List, domain)) so no generated row type exists; the
  * shape mirrors app.shipsLogEntry's wire struct.
  */

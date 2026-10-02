@@ -31,7 +31,7 @@ func TestPermissionDigest(t *testing.T) {
 		{
 			name:   "the cadet's Anvil digest carries the tri-state per grant",
 			user:   "cadet",
-			target: "/api/permission-digest?domain=" + anvil,
+			target: "/console/api/permission-digest?domain=" + anvil,
 			wantEntries: accesstypes.PermissionDigest{
 				"Missions":              {"List": accesstypes.DigestConditional, "Read": accesstypes.DigestConditional},
 				"Missions.hazard":       {"List": accesstypes.DigestConditional, "Read": accesstypes.DigestConditional},
@@ -47,7 +47,7 @@ func TestPermissionDigest(t *testing.T) {
 		{
 			name:   "the dispatcher's two update groups both read conditional",
 			user:   "dispatcher",
-			target: "/api/permission-digest?domain=" + anvil,
+			target: "/console/api/permission-digest?domain=" + anvil,
 			wantEntries: accesstypes.PermissionDigest{
 				"Missions.assignedSquadronId": {"List": accesstypes.DigestConditional, "Read": accesstypes.DigestConditional, "Update": accesstypes.DigestConditional},
 				"Missions.notes":              {"List": accesstypes.DigestConditional, "Read": accesstypes.DigestConditional, "Update": accesstypes.DigestConditional},
@@ -56,7 +56,7 @@ func TestPermissionDigest(t *testing.T) {
 		{
 			name:   "the dockmaster's windowed grant reads conditional, with a clock",
 			user:   "dock",
-			target: "/api/permission-digest?domain=" + anvil,
+			target: "/console/api/permission-digest?domain=" + anvil,
 			wantEntries: accesstypes.PermissionDigest{
 				"Refits": {"List": accesstypes.DigestConditional, "Read": accesstypes.DigestConditional},
 			},
@@ -64,7 +64,7 @@ func TestPermissionDigest(t *testing.T) {
 		{
 			name:   "the marshal's global digest is the global roles' structure",
 			user:   "marshal",
-			target: "/api/permission-digest",
+			target: "/console/api/permission-digest",
 			wantEntries: accesstypes.PermissionDigest{
 				"Sectors":       {"List": accesstypes.DigestGranted, "Read": accesstypes.DigestGranted},
 				"IssueBulletin": {"Execute": accesstypes.DigestConditional},
@@ -77,13 +77,13 @@ func TestPermissionDigest(t *testing.T) {
 		{
 			name:      "a sector without a foothold digests to nothing",
 			user:      "cadet",
-			target:    "/api/permission-digest?domain=" + cinder,
+			target:    "/console/api/permission-digest?domain=" + cinder,
 			wantEmpty: true,
 		},
 		{
 			name:      "an unknown sector digests to nothing, indistinguishably",
 			user:      "cadet",
-			target:    "/api/permission-digest?domain=nowhere",
+			target:    "/console/api/permission-digest?domain=nowhere",
 			wantEmpty: true,
 		},
 	}

@@ -183,7 +183,7 @@ func TestTemporalWindows(t *testing.T) {
 			name:       "dayOfWeek admits on a computed weekday beside a state term",
 			user:       "shift-on",
 			method:     http.MethodPatch,
-			target:     "/api/resources",
+			target:     "/console/api/resources",
 			body:       fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"notes":"checked on shift"}}]`, opPath(anvil, "refit-tasks/"+refitSamaritanID+"/2")),
 			wantStatus: http.StatusOK,
 		},
@@ -191,7 +191,7 @@ func TestTemporalWindows(t *testing.T) {
 			name:       "the state term beside a folded temporal term still refuses",
 			user:       "shift-on",
 			method:     http.MethodPatch,
-			target:     "/api/resources",
+			target:     "/console/api/resources",
 			body:       fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"notes":"not in refit"}}]`, opPath(anvil, "refit-tasks/"+refitMuleID+"/1")),
 			wantStatus: http.StatusForbidden,
 		},
@@ -199,21 +199,21 @@ func TestTemporalWindows(t *testing.T) {
 			name:       "dayOfWeek refuses on a computed weekend",
 			user:       "shift-off",
 			method:     http.MethodPatch,
-			target:     "/api/resources",
+			target:     "/console/api/resources",
 			body:       fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"notes":"weekend"}}]`, opPath(anvil, "refit-tasks/"+refitSamaritanID+"/2")),
 			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:       "the on-shift digest reads conditional at any hour",
 			user:       "shift-on",
-			target:     "/api/permission-digest?domain=" + anvil,
+			target:     "/console/api/permission-digest?domain=" + anvil,
 			wantStatus: http.StatusOK,
 			wantDigest: accesstypes.DigestConditional,
 		},
 		{
 			name:       "the off-shift digest reads conditional at any hour",
 			user:       "shift-off",
-			target:     "/api/permission-digest?domain=" + anvil,
+			target:     "/console/api/permission-digest?domain=" + anvil,
 			wantStatus: http.StatusOK,
 			wantDigest: accesstypes.DigestConditional,
 		},
@@ -311,7 +311,7 @@ func TestNightWatchWeekdayTasks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := doRequestAs(t, h, "watch", http.MethodPatch, "/api/resources",
+			status, body := doRequestAs(t, h, "watch", http.MethodPatch, "/console/api/resources",
 				fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"notes":"checked on watch"}}]`, opPath(anvil, tt.target)))
 			assertStatus(t, status, tt.wantStatus, body)
 		})

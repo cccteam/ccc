@@ -24,7 +24,7 @@ import (
 func patchAs(t *testing.T, h http.Handler, user accesstypes.User, body string) (statusCode int, respBody []byte) {
 	t.Helper()
 
-	return doRequestAs(t, h, user, http.MethodPatch, "/api/resources", body)
+	return doRequestAs(t, h, user, http.MethodPatch, "/console/api/resources", body)
 }
 
 // removeOp is the consolidated delete of one mission document.

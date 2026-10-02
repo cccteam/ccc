@@ -39,7 +39,7 @@ func TestComputedResources(t *testing.T) {
 			// Anvil has twenty-three missions still moving worth 269000 in fees, and three
 			// settlements: 38500, 1000, and 15500.
 			name:   "the service ledger aggregates the seeded world",
-			target: "/api/service-ledgers",
+			target: "/console/api/service-ledgers",
 			check: func(t *testing.T, respBody []byte) {
 				t.Helper()
 				row := rowsByID(t, decodeRows(t, respBody), "sectorId")[anvil]
@@ -186,7 +186,7 @@ func TestVirtualResources(t *testing.T) {
 			// Four kinds; salvage (the Corvid, the pod, the tow, the sweep, and six of the
 			// filler) sums 187500 once the stood-down escorts are excluded by the WITH clause.
 			name:     "the WITH-clause subquery folds fees by kind",
-			target:   "/api/fee-by-kinds",
+			target:   "/console/api/fee-by-kinds",
 			wantRows: 4,
 			check: func(t *testing.T, respBody []byte) {
 				t.Helper()

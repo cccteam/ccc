@@ -168,14 +168,14 @@ func TestConditionLanguage(t *testing.T) {
 			name:      "client browser: bool attribute",
 			construct: "trusted = true",
 			user:      "booking",
-			target:    "/api/clients",
+			target:    "/console/api/clients",
 			wantIDs:   []string{clientHalvardID, clientMeridianID, clientVellumID},
 		},
 		{
 			name:      "salvor: IS NULL OR = true on a nullable bool admits the undecided outfits",
 			construct: "insured IS NULL OR insured = true",
 			user:      "salvor",
-			target:    "/api/clients",
+			target:    "/console/api/clients",
 			wantIDs:   []string{clientHalvardID, clientMeridianID, clientBastionRelayID}, // Vellum's cover is refused (false); Bastion Relay is untrusted but undecided
 		},
 	}
@@ -444,7 +444,7 @@ func TestConditionLanguageWrites(t *testing.T) {
 	// the rows later cases address (the hauler's fee, the pod's description).
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status, body := doRequestAs(t, h, tt.user, http.MethodPatch, "/api/resources", tt.body)
+			status, body := doRequestAs(t, h, tt.user, http.MethodPatch, "/console/api/resources", tt.body)
 			if status != tt.wantStatus {
 				t.Fatalf("%s: status = %d, want %d: %s", tt.construct, status, tt.wantStatus, body)
 			}

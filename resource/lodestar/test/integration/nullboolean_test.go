@@ -38,14 +38,14 @@ func TestClientInsured_nullBooleanWalk(t *testing.T) {
 
 	for _, step := range steps {
 		if step.body != "" {
-			status, body := doRequestAs(t, h, "governor", http.MethodPatch, "/api/clients",
+			status, body := doRequestAs(t, h, "governor", http.MethodPatch, "/console/api/clients",
 				fmt.Sprintf(`[{"op":"patch","path":"/%s","value":%s}]`, clientMeridianID, step.body))
 			if status != http.StatusOK {
 				t.Fatalf("%s: PATCH status = %d, want %d: %s", step.name, status, http.StatusOK, body)
 			}
 		}
 
-		status, body := doRequestAs(t, h, "governor", http.MethodGet, "/api/clients/"+clientMeridianID, "")
+		status, body := doRequestAs(t, h, "governor", http.MethodGet, "/console/api/clients/"+clientMeridianID, "")
 		if status != http.StatusOK {
 			t.Fatalf("%s: GET status = %d, want %d: %s", step.name, status, http.StatusOK, body)
 		}

@@ -11,7 +11,7 @@ import (
 type (
 	// OpenMissionsBySquadron is the sector-scoped virtual resource: per-squadron counts
 	// of missions still moving. Its permission registrations use the domain scope, so
-	// it is served under /api/sectors/{sectorID}/... and checked in that sector's
+	// it is served under /console/api/sectors/{sectorID}/... and checked in that sector's
 	// partition, and its bare @domain on a view column partitions the projection's
 	// rows. The key is compound: the squadron and its sector.
 	//

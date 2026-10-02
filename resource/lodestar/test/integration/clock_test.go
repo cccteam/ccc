@@ -79,7 +79,7 @@ func TestOverseerOverdueDesk(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := doRequestAs(t, h, "overseer", "PATCH", "/api/resources",
+			status, body := doRequestAs(t, h, "overseer", "PATCH", "/console/api/resources",
 				`[{"op":"patch","path":"`+opPath(anvil, "missions/"+tt.mission)+`","value":{"assignedSquadronId":"`+squadronTongsID+`"}}]`)
 			if status != tt.wantStatus {
 				t.Fatalf("status = %d, want %d: %s", status, tt.wantStatus, body)

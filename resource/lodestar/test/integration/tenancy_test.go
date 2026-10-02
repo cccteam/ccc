@@ -103,7 +103,7 @@ func TestWriteTenancy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newTestApp(db, full)
 
-			status, body := doRequest(t, h, http.MethodPatch, "/api/resources", tt.body)
+			status, body := doRequest(t, h, http.MethodPatch, "/console/api/resources", tt.body)
 			assertStatus(t, status, tt.wantStatus, body)
 			if tt.wantStatus == http.StatusNotFound && !strings.Contains(string(body), "not found") {
 				t.Errorf("expected a not-found message, got: %s", body)

@@ -106,7 +106,7 @@ func TestValueLimit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := doRequest(t, h, http.MethodPatch, "/api/resources", tt.ops)
+			status, body := doRequest(t, h, http.MethodPatch, "/console/api/resources", tt.ops)
 			assertStatus(t, status, tt.wantStatus, body)
 			if tt.wantMessage == "" {
 				return

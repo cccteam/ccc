@@ -28,7 +28,7 @@ import (
 func (b *browser) impersonate(ctx context.Context, body string) (status int, respBody []byte) {
 	b.t.Helper()
 
-	return b.do(ctx, http.MethodPost, "/api/impersonate", []byte(body))
+	return b.do(ctx, http.MethodPost, "/console/api/impersonate", []byte(body))
 }
 
 // Demonstrates: impersonation.view-as, impersonation.act-as-role, impersonation.mask, impersonation.identity-proof, impersonation.end, event-source, @manualAddResource.execute, impersonation.session-permissions.
@@ -74,7 +74,7 @@ func TestImpersonatedSessions(t *testing.T) {
 		}
 
 		// The digest carries no write permission.
-		status, body = maren.do(ctx, http.MethodGet, "/api/permission-digest?domain="+anvil, nil)
+		status, body = maren.do(ctx, http.MethodGet, "/console/api/permission-digest?domain="+anvil, nil)
 		assertStatus(t, status, http.StatusOK, body)
 		var digest accesstypes.PermissionDigest
 		if err := json.Unmarshal(body, &digest); err != nil {
@@ -121,7 +121,7 @@ func TestImpersonatedSessions(t *testing.T) {
 		}
 
 		// A deadline extension lands (grant B)...
-		status, body = greer.do(ctx, http.MethodPatch, "/api/resources",
+		status, body = greer.do(ctx, http.MethodPatch, "/console/api/resources",
 			fmt.Appendf(nil, `[{"op":"patch","path":%q,"value":{"deadline":%q}}]`, opPath(anvil, "missions/"+missionConvoyID), deadline(27)))
 		assertStatus(t, status, http.StatusOK, body)
 		// ...and the change event names the actor and the role.
@@ -132,12 +132,12 @@ func TestImpersonatedSessions(t *testing.T) {
 
 		// The identity proof: grant A reads subject.squadrons against Greer's own
 		// memberships (none), so the assignment is refused.
-		status, body = greer.do(ctx, http.MethodPatch, "/api/resources",
+		status, body = greer.do(ctx, http.MethodPatch, "/console/api/resources",
 			fmt.Appendf(nil, `[{"op":"patch","path":%q,"value":{"assignedSquadronId":%q}}]`, opPath(anvil, "missions/"+missionHaulerID), squadronHammerID))
 		assertStatus(t, status, http.StatusForbidden, body)
 
 		// The role session's digest is the role's.
-		status, body = greer.do(ctx, http.MethodGet, "/api/permission-digest?domain="+anvil, nil)
+		status, body = greer.do(ctx, http.MethodGet, "/console/api/permission-digest?domain="+anvil, nil)
 		assertStatus(t, status, http.StatusOK, body)
 		var digest accesstypes.PermissionDigest
 		if err := json.Unmarshal(body, &digest); err != nil {
@@ -164,7 +164,7 @@ func TestImpersonatedSessions(t *testing.T) {
 
 		// Ending the minted session hands the browser the actor's own session back:
 		// a local actor whose source session is still live is restored, not logged out.
-		status, body = maren.do(ctx, http.MethodPost, "/api/impersonate/end", nil)
+		status, body = maren.do(ctx, http.MethodPost, "/console/api/impersonate/end", nil)
 		assertStatus(t, status, http.StatusOK, body)
 		var ended struct {
 			Restored bool `json:"restored"`
@@ -186,7 +186,7 @@ func TestImpersonatedSessions(t *testing.T) {
 
 		// The mask is gone with the minted session: the marshal's own digest carries
 		// the write permissions the view withheld.
-		status, body = maren.do(ctx, http.MethodGet, "/api/permission-digest?domain="+anvil, nil)
+		status, body = maren.do(ctx, http.MethodGet, "/console/api/permission-digest?domain="+anvil, nil)
 		assertStatus(t, status, http.StatusOK, body)
 		var digest accesstypes.PermissionDigest
 		if err := json.Unmarshal(body, &digest); err != nil {
@@ -197,7 +197,7 @@ func TestImpersonatedSessions(t *testing.T) {
 		}
 
 		// Ending from a session that is not impersonated has nothing to end.
-		status, body = maren.do(ctx, http.MethodPost, "/api/impersonate/end", nil)
+		status, body = maren.do(ctx, http.MethodPost, "/console/api/impersonate/end", nil)
 		if status == http.StatusOK {
 			t.Errorf("ending an ordinary session succeeded: %s", body)
 		}

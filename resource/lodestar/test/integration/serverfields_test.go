@@ -35,7 +35,7 @@ func TestDistressCallServerFields(t *testing.T) {
 	})
 
 	// Supplying the output_only case number is rejected, not ignored.
-	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
+	status, body := doRequest(t, h, http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"summary":"Forged","severity":2,"caseNumber":"DC-FORGED"}}]`, opPath(anvil, "distress-calls")))
 	if status != http.StatusBadRequest {
 		t.Fatalf("client-supplied caseNumber: status = %d, want 400: %s", status, body)
@@ -43,7 +43,7 @@ func TestDistressCallServerFields(t *testing.T) {
 
 	// A clean create gets a server-issued case number and the session's user as
 	// filedBy; the input_only transcript lands in the row but never serializes back.
-	status, body = doRequestAs(t, h, "caller-cal", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "caller-cal", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"summary":"Hull breach reported","severity":4,"callerContact":"cal@relay.example","transcript":"Mayday, mayday"}}]`, opPath(anvil, "distress-calls")))
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["distressCalls"].([]any)
@@ -179,19 +179,19 @@ func TestMissionCreateDefaultsAndValidator(t *testing.T) {
 	h := newTestApp(db, grants{accesstypes.Create: withFields(missionsResource, "clientId", "kindId", "title", "hazard", "fee", "deadline")})
 
 	// The validator rejects a deadline that has passed — someone is waiting.
-	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
+	status, body := doRequest(t, h, http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Too late","hazard":2,"fee":100,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(-1)))
 	if status != http.StatusBadRequest {
 		t.Fatalf("past deadline: status = %d, want 400: %s", status, body)
 	}
-	status, body = doRequest(t, h, http.MethodPatch, "/api/resources",
+	status, body = doRequest(t, h, http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"rescue","title":"Too hazardous","hazard":9,"fee":100,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(365)))
 	if status != http.StatusBadRequest {
 		t.Fatalf("hazard 9: status = %d, want 400: %s", status, body)
 	}
 
 	// The defaults type fills an omitted hazard at the lowest class.
-	status, body = doRequest(t, h, http.MethodPatch, "/api/resources",
+	status, body = doRequest(t, h, http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"courier","title":"Defaulted hazard","fee":100,"deadline":%q}}]`, opPath(anvil, "missions"), clientHalvardID, deadline(365)))
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["missions"].([]any)
@@ -213,7 +213,7 @@ func TestRefitUpdateDefaultsAndValidator(t *testing.T) {
 	h := newTestApp(db, grants{accesstypes.Update: withFields("Refits", "estimate", "notes")})
 
 	// The update defaults type rounds the estimate to whole credits.
-	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
+	status, body := doRequest(t, h, http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"estimate":12345.67}}]`, opPath(anvil, "refits/"+refitMuleID)))
 	assertStatus(t, status, http.StatusOK, body)
 	if got := readColumn[spanner.NullNumeric](ctx, t, db, "Refits", spanner.Key{refitMuleID}, "Estimate"); !got.Valid || got.Numeric.FloatString(0) != "12346" {
@@ -221,7 +221,7 @@ func TestRefitUpdateDefaultsAndValidator(t *testing.T) {
 	}
 
 	// The validator rejects a negative estimate.
-	status, body = doRequest(t, h, http.MethodPatch, "/api/resources",
+	status, body = doRequest(t, h, http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"estimate":-5}}]`, opPath(anvil, "refits/"+refitMuleID)))
 	if status != http.StatusBadRequest {
 		t.Fatalf("negative estimate: status = %d, want 400: %s", status, body)
@@ -252,7 +252,7 @@ func TestImmutableField(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
+			status, body := doRequest(t, h, http.MethodPatch, "/console/api/resources",
 				fmt.Sprintf(`[{"op":"patch","path":%q,"value":%s}]`, opPath(anvil, "ships/"+shipKingfisherID), tt.value))
 			assertStatus(t, status, tt.wantStatus, body)
 		})

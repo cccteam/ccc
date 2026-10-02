@@ -19,7 +19,8 @@ set -u
 S=$(mktemp -d)
 trap 'rm -rf "$S"' EXIT
 B=${LODESTAR_URL:-http://127.0.0.1:${PORT:-8090}}
-API=$B/api
+# Each browser outlet's API sits under its application's mount path.
+API=$B/console/api
 PORTAL=$B/portal/api
 DROIDS=$B/droids
 KEY=${APP_DROIDS_API_KEY:-}
@@ -127,6 +128,14 @@ MERIDIAN=10000000-0000-4000-8000-000000000002
 BASTION_RELAY=10000000-0000-4000-8000-000000000003
 CONVOY_SORTIE=90000000-0000-4000-8000-000000000001
 BEACON_CALL=d0000000-0000-4000-8000-000000000001
+
+# Two browser applications share the router tree, so neither is mounted at /: the root
+# alone sends a browser to the console's application, and every other unmatched path is
+# not found.
+r=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$B/")
+if [ "$r" = "307 $B/console/" ]; then echo "PASS  the root alone redirects to the console at /console/ (307)"; else echo "FAIL  the root redirect: $r, want 307 $B/console/"; fails=$((fails + 1)); fi
+r=$(curl -s -o /dev/null -w '%{http_code}' "$B/nowhere")
+if [ "$r" = 404 ]; then echo "PASS  an unmatched path at the root is not found (404)"; else echo "FAIL  an unmatched path at the root: status $r, want 404"; fails=$((fails + 1)); fi
 
 for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch; do
   login "$p"

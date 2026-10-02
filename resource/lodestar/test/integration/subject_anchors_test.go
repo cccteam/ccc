@@ -85,10 +85,10 @@ func TestSubjectAnchorWrites(t *testing.T) {
 		// Portcullis passes grant A; assigning it to Hammer (an Anvil squadron Dunn
 		// also flies with) fails, because Hammer is not in Bastion's partition of
 		// subject.squadrons.
-		status, body := doRequestAs(t, h, "dispatcher", http.MethodPatch, "/api/resources",
+		status, body := doRequestAs(t, h, "dispatcher", http.MethodPatch, "/console/api/resources",
 			fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"assignedSquadronId":%q}}]`, opPath(bastion, "missions/"+missionBeaconID), squadronHammerID))
 		assertStatus(t, status, http.StatusForbidden, body)
-		status, body = doRequestAs(t, h, "dispatcher", http.MethodPatch, "/api/resources",
+		status, body = doRequestAs(t, h, "dispatcher", http.MethodPatch, "/console/api/resources",
 			fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"assignedSquadronId":%q}}]`, opPath(bastion, "missions/"+missionBeaconID), squadronPortcullisID))
 		assertStatus(t, status, http.StatusOK, body)
 	})
@@ -99,10 +99,10 @@ func TestSubjectAnchorWrites(t *testing.T) {
 		// booking's feeLimit (25000) and clearance (0) live on one row: the clearance
 		// keeps Bex off the Pilot's board (Bex holds no Pilot role anyway), while the
 		// fee limit admits a 25000 booking and refuses 25001.
-		status, body := doRequestAs(t, h, "booking", http.MethodPatch, "/api/resources",
+		status, body := doRequestAs(t, h, "booking", http.MethodPatch, "/console/api/resources",
 			fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"escort","title":"At the limit","hazard":2,"fee":25000,"deadline":%q}}]`, opPath(anvil, "missions"), clientMeridianID, deadline(400)))
 		assertStatus(t, status, http.StatusOK, body)
-		status, body = doRequestAs(t, h, "booking", http.MethodPatch, "/api/resources",
+		status, body = doRequestAs(t, h, "booking", http.MethodPatch, "/console/api/resources",
 			fmt.Sprintf(`[{"op":"add","path":%q,"value":{"clientId":%q,"kindId":"escort","title":"Over the limit","hazard":2,"fee":25001,"deadline":%q}}]`, opPath(anvil, "missions"), clientMeridianID, deadline(400)))
 		assertStatus(t, status, http.StatusForbidden, body)
 	})

@@ -32,8 +32,16 @@ type AppHandlers interface {
 	ClientStatements() http.HandlerFunc
 }
 
+// consoleAPI is the console outlet's API prefix. The generator program mounts the
+// console's browser application at /console, and the outlet's API sits under that mount
+// path, as the portal's sits under /portal.
+const consoleAPI = "/console/api"
+
 // ImpersonationRoute names one live impersonated session on the watch desk.
-const ImpersonationRoute = "/api/impersonations/{impersonationID}"
+const ImpersonationRoute = consoleAPI + "/impersonations/{impersonationID}"
+
+// ShipsLogEntriesRoute is the console's ship's log route under the sector segment.
+const ShipsLogEntriesRoute = consoleAPI + "/sectors/{sectorID}/ships-log-entries"
 
 // ClientStatementsRoute is the portal's statement route under the sector segment.
 const ClientStatementsRoute = "/portal/api/sectors/{sectorID}/client-statements"
@@ -53,21 +61,21 @@ func AppHooks(h AppHandlers) Hooks {
 		Default: func(r chi.Router, generated func(chi.Router)) {
 			// Ending a view stays reachable from a read-only session: it ends the session,
 			// it writes nothing the mask protects, so it is mounted before the backstop.
-			r.Post("/api/impersonate/end", h.EndImpersonation())
+			r.Post(consoleAPI+"/impersonate/end", h.EndImpersonation())
 
 			r.Group(func(r chi.Router) {
 				r.Use(h.EnforceReadOnlyMask)
 
-				r.Get("/api/sectors/{sectorID}/ships-log-entries", h.DomainGuard()(h.ShipsLogEntries()))
-				r.Post("/api/impersonate", h.Impersonate())
-				r.Get("/api/impersonations", h.ActiveImpersonations())
+				r.Get(ShipsLogEntriesRoute, h.DomainGuard()(h.ShipsLogEntries()))
+				r.Post(consoleAPI+"/impersonate", h.Impersonate())
+				r.Get(consoleAPI+"/impersonations", h.ActiveImpersonations())
 				r.Delete(ImpersonationRoute, h.RevokeImpersonation())
 
 				generated(r)
 			})
 		},
 		// The portal: the client statement beside the portal outlet's generated routes,
-		// behind the members auth. A client's session opens nothing under /api.
+		// behind the members auth. A client's session opens nothing under /console/api.
 		Portal: func(r chi.Router, generated func(chi.Router)) {
 			r.Get(ClientStatementsRoute, h.DomainGuard()(h.ClientStatements()))
 

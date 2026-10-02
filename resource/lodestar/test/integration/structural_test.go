@@ -138,7 +138,7 @@ func TestDomainGuard(t *testing.T) {
 		{
 			name:       "global routes carry no domain guard",
 			grants:     grants{accesstypes.List: {accesstypes.Resource("Sectors")}},
-			target:     "/api/sectors",
+			target:     "/console/api/sectors",
 			wantStatus: http.StatusOK,
 		},
 	}
@@ -208,10 +208,10 @@ func TestSuppressedReadHandler(t *testing.T) {
 	}
 	h := newTestApp(db, ledger)
 
-	status, body := doRequest(t, h, http.MethodGet, "/api/service-ledgers", "")
+	status, body := doRequest(t, h, http.MethodGet, "/console/api/service-ledgers", "")
 	assertStatus(t, status, http.StatusOK, body)
 
-	status, body = doRequest(t, h, http.MethodGet, "/api/service-ledgers/"+anvil, "")
+	status, body = doRequest(t, h, http.MethodGet, "/console/api/service-ledgers/"+anvil, "")
 	if status != http.StatusNotFound {
 		t.Errorf("suppressed read route: status = %d, want 404: %s", status, body)
 	}

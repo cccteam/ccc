@@ -1,5 +1,6 @@
-// main serves the application: the generated resource API behind browser sessions, and the
-// console's built Angular bundle for everything else.
+// main serves the application: the generated resource API behind browser sessions, the
+// console's and the portal's built Angular bundles under /console/ and /portal/, and the
+// root alone redirecting to the console.
 //
 // Demonstrates: impulse.bootstrapped, ci-stub.
 package main

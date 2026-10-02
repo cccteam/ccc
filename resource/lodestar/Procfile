@@ -6,8 +6,10 @@
 # server:   waits for the emulator, bootstraps the database (schema, the demo world, development
 #           logins), then serves the application. Bootstrap and serve share one process
 #           so the server never races the bootstrap.
-# console:  waits for the server, then ng serve with /api proxied to it. Browse
-#           http://127.0.0.1:4300.
+# console:  waits for the server, then ng serve with /console/api proxied to it. Browse
+#           http://127.0.0.1:4300/console/.
+# portal:   the same for the portal, with /portal/api proxied. Browse
+#           http://127.0.0.1:4301/portal/.
 #
 # The browser processes need the web workspace installed once first (README, "Browser
 # apps"); until then start the Go side alone: overmind start -l spanner,server

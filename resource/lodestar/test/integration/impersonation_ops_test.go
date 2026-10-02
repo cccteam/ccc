@@ -48,7 +48,7 @@ func TestImpersonationOperator(t *testing.T) {
 	greer.signIn(ctx, "governor")
 
 	t.Run("the desk lists the live session with its actor, principal, and two-hour cap", func(t *testing.T) {
-		status, body := greer.do(ctx, http.MethodGet, "/api/impersonations", nil)
+		status, body := greer.do(ctx, http.MethodGet, "/console/api/impersonations", nil)
 		assertStatus(t, status, http.StatusOK, body)
 		var entries []watchDeskEntry
 		if err := json.Unmarshal(body, &entries); err != nil {
@@ -85,20 +85,20 @@ func TestImpersonationOperator(t *testing.T) {
 	t.Run("the cadet may not operate the desk", func(t *testing.T) {
 		cass := newBrowser(t, s, consoleAPI)
 		cass.signIn(ctx, "cadet")
-		status, body := cass.do(ctx, http.MethodGet, "/api/impersonations", nil)
+		status, body := cass.do(ctx, http.MethodGet, "/console/api/impersonations", nil)
 		assertStatus(t, status, http.StatusForbidden, body)
-		status, body = cass.do(ctx, http.MethodDelete, "/api/impersonations/"+minted.SessionID, nil)
+		status, body = cass.do(ctx, http.MethodDelete, "/console/api/impersonations/"+minted.SessionID, nil)
 		assertStatus(t, status, http.StatusForbidden, body)
 	})
 
 	t.Run("revocation refuses the revoked console's next request", func(t *testing.T) {
-		status, body := greer.do(ctx, http.MethodDelete, "/api/impersonations/"+minted.SessionID, nil)
+		status, body := greer.do(ctx, http.MethodDelete, "/console/api/impersonations/"+minted.SessionID, nil)
 		assertStatus(t, status, http.StatusNoContent, body)
 
 		status, body = maren.do(ctx, http.MethodGet, sectorPath(anvil, "missions"), nil)
 		assertStatus(t, status, http.StatusUnauthorized, body)
 
-		status, body = greer.do(ctx, http.MethodGet, "/api/impersonations", nil)
+		status, body = greer.do(ctx, http.MethodGet, "/console/api/impersonations", nil)
 		assertStatus(t, status, http.StatusOK, body)
 		var entries []watchDeskEntry
 		if err := json.Unmarshal(body, &entries); err != nil {

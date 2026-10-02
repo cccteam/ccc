@@ -208,7 +208,7 @@ func TestPaging_contract(t *testing.T) {
 		},
 		{
 			name:       "limit=all returns every row with no Link header where no maximum is declared",
-			target:     func(*testing.T) string { return "/api/pilots?limit=all" },
+			target:     func(*testing.T) string { return "/console/api/pilots?limit=all" },
 			wantStatus: http.StatusOK,
 			wantRows:   17,
 		},
@@ -406,7 +406,7 @@ func TestPaging_sensitiveSortColumn(t *testing.T) {
 	}
 	testApp := newTestApp(db, grants{accesstypes.List: withFields("Clients", "name", "contactEmail")})
 
-	rr := doRequestRecorded(t, testApp, "/api/clients?sort=contactEmail&limit=1")
+	rr := doRequestRecorded(t, testApp, "/console/api/clients?sort=contactEmail&limit=1")
 	assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
 	rows := decodeRows(t, rr.Body.Bytes())
 	if len(rows) != 1 {

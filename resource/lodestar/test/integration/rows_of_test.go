@@ -164,7 +164,7 @@ func TestRowsOfWrites(t *testing.T) {
 		{name: "Tongs' roster is the dispatcher and the pilot", method: http.MethodGet, target: roster, wantStatus: http.StatusOK, wantRows: 2},
 		{name: "the cadet is assigned nowhere", method: http.MethodGet, target: assignments, wantStatus: http.StatusOK, wantRows: 0},
 		{
-			name: "a create goes into the table, its compound key in the operation's path", method: http.MethodPatch, target: "/api/resources",
+			name: "a create goes into the table, its compound key in the operation's path", method: http.MethodPatch, target: "/console/api/resources",
 			body: fmt.Sprintf(`[{"op":"add","path":%q,"value":{}}]`, membership), wantStatus: http.StatusOK,
 		},
 		{
@@ -186,7 +186,7 @@ func TestRowsOfWrites(t *testing.T) {
 			},
 		},
 		{
-			name: "a delete removes the row through the table, lifting the key the view carries", method: http.MethodPatch, target: "/api/resources",
+			name: "a delete removes the row through the table, lifting the key the view carries", method: http.MethodPatch, target: "/console/api/resources",
 			body: fmt.Sprintf(`[{"op":"remove","path":%q}]`, membership), wantStatus: http.StatusOK,
 		},
 		{name: "the roster is back to two", method: http.MethodGet, target: roster, wantStatus: http.StatusOK, wantRows: 2},

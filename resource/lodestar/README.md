@@ -35,10 +35,10 @@ the bootstrap only checks the store against it; a database that already holds da
 refused unless the bootstrap runs with `-reset`, which empties the data and seeds it
 again without touching the schema), serves the application on :8090, and runs `ng serve`
 for both browser apps:
-the crew console on :4300 (`/api` proxied) and the client portal on :4301 (`/portal/api`
-proxied). Browse http://127.0.0.1:4300 and sign in as any persona on the crew manifest;
-browse http://127.0.0.1:4301/portal/ and sign in through the simulated directory as
-`client`. Both Go processes build with the session library's `skipAuth` tag: the portal's
+the crew console on :4300 (`/console/api` proxied) and the client portal on :4301
+(`/portal/api` proxied). Browse http://127.0.0.1:4300/console/ and sign in as any persona
+on the crew manifest; browse http://127.0.0.1:4301/portal/ and sign in through the
+simulated directory as `client`. Both Go processes build with the session library's `skipAuth` tag: the portal's
 Google directory is simulated from `APP_USERNAME` and `APP_ROLES` in `.envrc`, so no
 tenant is contacted and the persona quick-fill still works. `APP_DROIDS_API_KEY` opens the
 droid channel.
@@ -57,8 +57,12 @@ The two packages are bundled with the application code rather than prebundled by
 browser profile: nothing is held behind an immutable URL, and no cache needs clearing.
 
 The served application also serves the built bundles (`bun run build` in `web/`): the
-console at `/` and the portal at `/portal/`, paths overridable through
-`APP_CONSOLE_DIST` and `APP_PORTAL_DIST`. Mission documents land in the directory
+console at `/console/` and the portal at `/portal/`, the bundles' directories overridable
+through `APP_CONSOLE_DIST` and `APP_PORTAL_DIST`. Neither application is mounted at `/`:
+an installed browser application owns every URL under its start, so two applications on
+one origin each sit under their own path, each with its API beneath it (`/console/api`,
+`/portal/api`), and the generated router answers the root alone with a temporary redirect
+to `/console/`; every other unmatched path is 404. Mission documents land in the directory
 `APP_UPLOAD_DIR` names (default `uploads/`, gitignored): the upload frame streams each
 file there under a minted key, the transaction's commit claims it, a failure before
 commit deletes it, and the generated file route reads it back; `store.DirStore.Sweep` is
@@ -117,7 +121,7 @@ has a second page.
 
 ## Two populations, two auths
 
-The crew sign in with passwords at `/api/user/login`; their roles are the application's
+The crew sign in with passwords at `/console/api/user/login`; their roles are the application's
 (`pkg/auth/crew/roles.json`, embedded in the binary and validated against the generated
 permission collection when the auth opens, so a release whose roles are wrong does not
 start; the store holds no row for them, and the bootstrap assigns the memberships from
@@ -172,7 +176,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   (the pushdown [`computed.pushdown`](pkg/computedresources/service_ledgers.go), the
   fold, and the key-less standing orders
   [`computed.keyless`](pkg/computedresources/standing_orders.go)) and `pkg/virtualresources`; `pkg/router`: the generated router over three outlets
-  (`/api`, `/portal/api`, `/droids`) with its chain documented at the top of
+  (`/console/api`, `/portal/api`, `/droids`; each browser outlet's API under its
+  application's mount path) with its chain documented at the top of
   `zz_gen_router.go`, and `hooks.go`, the console's and the portal's own routes composed
   into it; `app/`: wiring, middleware, the ship's log, the client statement, the
   impersonation mint route, and the watch desk. The mission document download is

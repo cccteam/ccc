@@ -80,7 +80,7 @@ func TestEnumeratedPickerResources(t *testing.T) {
 		{
 			// The catalog declares no maximum and no order: a picker reads it whole.
 			name: "the marshal lists the briefing template catalog whole", user: "marshal",
-			target: "/api/briefing-templates?columns=id,name&limit=all", wantStatus: http.StatusOK, wantRows: 4,
+			target: "/console/api/briefing-templates?columns=id,name&limit=all", wantStatus: http.StatusOK, wantRows: 4,
 			check: func(t *testing.T, respBody []byte) {
 				t.Helper()
 				if got := rowsByID(t, decodeRows(t, respBody), "id")["standard"]["name"]; got != "Standard sheet" {
@@ -90,7 +90,7 @@ func TestEnumeratedPickerResources(t *testing.T) {
 		},
 		{
 			name: "the catalog has no read route: the display resolves from the list", user: "marshal",
-			target: "/api/briefing-templates/standard", wantStatus: http.StatusNotFound,
+			target: "/console/api/briefing-templates/standard", wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "the marshal's missions carry the template a plain column names", user: "marshal",
@@ -103,10 +103,10 @@ func TestEnumeratedPickerResources(t *testing.T) {
 			},
 		},
 		{name: "the cadet holds no List on the roster, so the picker's request is refused", user: "cadet", target: sectorPath(anvil, "client-rosters?columns=id,name"), wantStatus: http.StatusForbidden},
-		{name: "the cadet holds no List on the catalog, so that picker's request is refused too", user: "cadet", target: "/api/briefing-templates?columns=id,name&limit=all", wantStatus: http.StatusForbidden},
+		{name: "the cadet holds no List on the catalog, so that picker's request is refused too", user: "cadet", target: "/console/api/briefing-templates?columns=id,name&limit=all", wantStatus: http.StatusForbidden},
 		{name: "the dispatcher, who edits missions, lists the roster", user: "dispatcher", target: sectorPath(anvil, "client-rosters?columns=id,name"), wantStatus: http.StatusOK, wantRows: 4},
 		{name: "the dispatcher reads a roster row by key, as the paging picker does", user: "dispatcher", target: sectorPath(anvil, "client-rosters/"+clientHalvardID+"?columns=id,name"), wantStatus: http.StatusOK},
-		{name: "the booking agent, who books missions, lists the catalog whole", user: "booking", target: "/api/briefing-templates?columns=id,name&limit=all", wantStatus: http.StatusOK, wantRows: 4},
+		{name: "the booking agent, who books missions, lists the catalog whole", user: "booking", target: "/console/api/briefing-templates?columns=id,name&limit=all", wantStatus: http.StatusOK, wantRows: 4},
 	}
 
 	for _, tt := range tests {
@@ -200,7 +200,7 @@ func TestPickerReadModes(t *testing.T) {
 		},
 		{
 			name: "the class picker and the Class column read the hull catalog whole, unsorted, with no Link", user: "marshal",
-			target: "/api/ship-classes?columns=id,designation&limit=all", wantStatus: http.StatusOK, wantRows: 4, wantNoLink: true,
+			target: "/console/api/ship-classes?columns=id,designation&limit=all", wantStatus: http.StatusOK, wantRows: 4, wantNoLink: true,
 			check: func(t *testing.T, respBody []byte) {
 				t.Helper()
 				for _, row := range decodeRows(t, respBody) {

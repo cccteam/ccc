@@ -13,7 +13,7 @@ import (
 // generate program (./resourcegenerator) runs it, and the schema-warning test runs it
 // in-process, so the two never drift.
 //
-// Demonstrates: GenerateRouter, typescript.types-package.
+// Demonstrates: GenerateRouter, WebApp.several, typescript.types-package.
 func NewGenerator(ctx context.Context) (generation.Generator, error) {
 	generator, err := generation.NewResourceGenerator(
 		ctx,
@@ -21,11 +21,15 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		[]string{"file://schema/migrations"},
 		generation.GenerateHandlers("app"),
 		// The router is generated: the default outlet is the console, the crew auth's
-		// password sessions under /api with the console's browser application at /.
+		// password sessions under /console/api with the console's browser application
+		// at /console. No application is mounted at /: an installed browser application
+		// owns every URL under its start, so beside the portal the console sits under
+		// its own path, and the generated router answers the root alone with a redirect
+		// to it. Every session outlet's API sits under its application's mount path.
 		generation.GenerateRouter(),
-		generation.GenerateRoutes("pkg/router", "api",
+		generation.GenerateRoutes("pkg/router", "console/api",
 			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.Password),
-			generation.WebApp("/"),
+			generation.WebApp("/console"),
 		),
 		// The droids outlet is the machine channel: structs annotated with @outlet
 		// naming droids are served under /droids, which the router composes behind
@@ -40,7 +44,7 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.OIDCGoogle),
 			generation.WebApp("/portal"),
 		),
-		// Sector-scoped resources and methods are served under /api/sectors/{sectorID}/;
+		// Sector-scoped resources and methods are served under /console/api/sectors/{sectorID}/;
 		// a sector the caller holds no grant in answers like one that does not exist.
 		generation.WithDomainRoute("sectors"),
 		generation.WithConcealedDomains(),

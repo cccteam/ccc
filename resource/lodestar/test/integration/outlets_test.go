@@ -161,3 +161,40 @@ func TestDroidsOutlet(t *testing.T) {
 		})
 	}
 }
+
+// TestRootRedirect drives the served root with two browser applications on one router
+// tree: neither is mounted at /, so the root alone answers a temporary redirect to the
+// console, the default outlet's application at /console/, while an unmatched path at the
+// root is not found and an unknown path under the console's API prefix is not found
+// rather than the console's entry document. These are a browser's first requests, before
+// any session.
+//
+// Demonstrates: WebApp.several.
+func TestRootRedirect(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	s := newServed(ctx, t)
+	b := newBrowser(t, s, consoleAPI)
+
+	tests := []struct {
+		name         string
+		target       string
+		wantStatus   int
+		wantLocation string
+	}{
+		{name: "the root alone redirects to the console's application", target: "/", wantStatus: http.StatusTemporaryRedirect, wantLocation: "/console/"},
+		{name: "an unmatched path at the root is not found", target: "/nowhere", wantStatus: http.StatusNotFound},
+		{name: "an unknown path under the console's API prefix is not found", target: consoleAPI + "/nowhere", wantStatus: http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, location := b.redirect(ctx, tt.target)
+			if status != tt.wantStatus || location != tt.wantLocation {
+				t.Errorf("GET %s: status %d to %q, want %d to %q", tt.target, status, location, tt.wantStatus, tt.wantLocation)
+			}
+		})
+	}
+}

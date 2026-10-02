@@ -210,19 +210,19 @@ func TestLedgerPushdown(t *testing.T) {
 		wantTotal   string
 		wantLink    bool
 	}{
-		{name: "the declared order: fees outstanding, highest first", target: "/api/service-ledgers", wantStatus: http.StatusOK, wantSectors: []string{anvil, bastion, cinder}},
-		{name: "a requested sort, pushed into the statement", target: "/api/service-ledgers?sort=name:desc", wantStatus: http.StatusOK, wantSectors: []string{cinder, bastion, anvil}},
-		{name: "a filter on a filterable column, pushed down", target: "/api/service-ledgers?filter=name:eq:Bastion", wantStatus: http.StatusOK, wantSectors: []string{bastion}},
-		{name: "an IN filter, pushed down", target: "/api/service-ledgers?filter=sectorId:in:(anvil,cinder)&sort=sectorId", wantStatus: http.StatusOK, wantSectors: []string{anvil, cinder}},
-		{name: "a page with a count degrades to the fold and still counts", target: "/api/service-ledgers?limit=1&count=true", wantStatus: http.StatusOK, wantSectors: []string{anvil}, wantTotal: "3", wantLink: true},
-		{name: "a filter on a column without allow_filter is refused at decode", target: "/api/service-ledgers?filter=settlements:gt:1", wantStatus: http.StatusBadRequest},
-		{name: "a malformed filter is refused at decode", target: "/api/service-ledgers?filter=name:between:a", wantStatus: http.StatusBadRequest},
+		{name: "the declared order: fees outstanding, highest first", target: "/console/api/service-ledgers", wantStatus: http.StatusOK, wantSectors: []string{anvil, bastion, cinder}},
+		{name: "a requested sort, pushed into the statement", target: "/console/api/service-ledgers?sort=name:desc", wantStatus: http.StatusOK, wantSectors: []string{cinder, bastion, anvil}},
+		{name: "a filter on a filterable column, pushed down", target: "/console/api/service-ledgers?filter=name:eq:Bastion", wantStatus: http.StatusOK, wantSectors: []string{bastion}},
+		{name: "an IN filter, pushed down", target: "/console/api/service-ledgers?filter=sectorId:in:(anvil,cinder)&sort=sectorId", wantStatus: http.StatusOK, wantSectors: []string{anvil, cinder}},
+		{name: "a page with a count degrades to the fold and still counts", target: "/console/api/service-ledgers?limit=1&count=true", wantStatus: http.StatusOK, wantSectors: []string{anvil}, wantTotal: "3", wantLink: true},
+		{name: "a filter on a column without allow_filter is refused at decode", target: "/console/api/service-ledgers?filter=settlements:gt:1", wantStatus: http.StatusBadRequest},
+		{name: "a malformed filter is refused at decode", target: "/console/api/service-ledgers?filter=name:between:a", wantStatus: http.StatusBadRequest},
 		// LastReturnAt: Anvil's last sortie came home on Aug 30; Bastion and Cinder have
 		// flown none, so both are NULL, and Spanner places NULL first ascending.
-		{name: "sorted by the nullable column ascending: the sectors with no return first, Spanner's placement", target: "/api/service-ledgers?sort=lastReturnAt", wantStatus: http.StatusOK, wantSectors: []string{bastion, cinder, anvil}},
-		{name: "sorted by the nullable column descending: the sectors with no return last", target: "/api/service-ledgers?sort=lastReturnAt:desc", wantStatus: http.StatusOK, wantSectors: []string{anvil, bastion, cinder}},
-		{name: "a count over the nullable sort: the handler takes the first page from the body's order", target: "/api/service-ledgers?sort=lastReturnAt&limit=1&count=true", wantStatus: http.StatusOK, wantSectors: []string{bastion}, wantTotal: "3", wantLink: true},
-		{name: "a filter the body leaves to the handler, applied over the body's order", target: "/api/service-ledgers?sort=lastReturnAt&filter=openMissions:gt:0", wantStatus: http.StatusOK, wantSectors: []string{bastion, anvil}},
+		{name: "sorted by the nullable column ascending: the sectors with no return first, Spanner's placement", target: "/console/api/service-ledgers?sort=lastReturnAt", wantStatus: http.StatusOK, wantSectors: []string{bastion, cinder, anvil}},
+		{name: "sorted by the nullable column descending: the sectors with no return last", target: "/console/api/service-ledgers?sort=lastReturnAt:desc", wantStatus: http.StatusOK, wantSectors: []string{anvil, bastion, cinder}},
+		{name: "a count over the nullable sort: the handler takes the first page from the body's order", target: "/console/api/service-ledgers?sort=lastReturnAt&limit=1&count=true", wantStatus: http.StatusOK, wantSectors: []string{bastion}, wantTotal: "3", wantLink: true},
+		{name: "a filter the body leaves to the handler, applied over the body's order", target: "/console/api/service-ledgers?sort=lastReturnAt&filter=openMissions:gt:0", wantStatus: http.StatusOK, wantSectors: []string{bastion, anvil}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -248,7 +248,7 @@ func TestLedgerPushdown(t *testing.T) {
 	t.Run("a walk through the ledger's pages, one sector each, forward and back", func(t *testing.T) {
 		t.Parallel()
 
-		first := doRequestRecorded(t, testApp, "/api/service-ledgers?limit=1")
+		first := doRequestRecorded(t, testApp, "/console/api/service-ledgers?limit=1")
 		assertStatus(t, first.Code, http.StatusOK, first.Body.Bytes())
 		if got := sectorsOf(decodeRows(t, first.Body.Bytes())); !equalStrings(got, []string{anvil}) {
 			t.Fatalf("page 1 = %v", got)
@@ -286,10 +286,10 @@ func TestLedgerPushdown(t *testing.T) {
 		query string
 		want  []string
 	}{
-		{name: "ascending, the body paging itself: the NULL region first", query: "/api/service-ledgers?sort=lastReturnAt&limit=1", want: []string{bastion, cinder, anvil}},
-		{name: "descending, the body paging itself: the NULL region last", query: "/api/service-ledgers?sort=lastReturnAt:desc&limit=1", want: []string{anvil, bastion, cinder}},
-		{name: "ascending, the handler paging over the body's order", query: "/api/service-ledgers?sort=lastReturnAt&filter=openMissions:gt:0&limit=1", want: []string{bastion, anvil}},
-		{name: "descending, the handler paging over the body's order", query: "/api/service-ledgers?sort=lastReturnAt:desc&filter=openMissions:gt:0&limit=1", want: []string{anvil, bastion}},
+		{name: "ascending, the body paging itself: the NULL region first", query: "/console/api/service-ledgers?sort=lastReturnAt&limit=1", want: []string{bastion, cinder, anvil}},
+		{name: "descending, the body paging itself: the NULL region last", query: "/console/api/service-ledgers?sort=lastReturnAt:desc&limit=1", want: []string{anvil, bastion, cinder}},
+		{name: "ascending, the handler paging over the body's order", query: "/console/api/service-ledgers?sort=lastReturnAt&filter=openMissions:gt:0&limit=1", want: []string{bastion, anvil}},
+		{name: "descending, the handler paging over the body's order", query: "/console/api/service-ledgers?sort=lastReturnAt:desc&filter=openMissions:gt:0&limit=1", want: []string{anvil, bastion}},
 	}
 	for _, tt := range walks {
 		t.Run("a walk across the NULL boundary, "+tt.name, func(t *testing.T) {

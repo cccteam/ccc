@@ -17,6 +17,7 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
+            "baseHref": "/console/",
             "outputPath": {
               "base": "dist/console",
               "browser": ""
@@ -74,7 +75,7 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "servePath": "/",
+            "servePath": "/console",
             "proxyConfig": "console/proxy.conf.js",
             "prebundle": {
               "exclude": ["@cccteam/resource", "@cccteam/resource-angular"]

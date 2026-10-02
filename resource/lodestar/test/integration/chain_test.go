@@ -28,7 +28,7 @@ func TestTwoHopStateChain(t *testing.T) {
 	// each step depends on the state the previous one left behind.
 
 	// Underway: the quartermaster books an expense two hops below the root...
-	status, body := doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body := doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"sortieId":%q,"category":"fuel","amount":250,"note":"top-up"}}]`, opPath(anvil, "sortie-expenses"), sortieConvoyID))
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["sortieExpenses"].([]any)
@@ -38,16 +38,16 @@ func TestTwoHopStateChain(t *testing.T) {
 	expenseID, _ := ids[0].(string)
 
 	// ...and corrects it.
-	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"amount":275}}]`, opPath(anvil, "sortie-expenses/"+expenseID)))
 	assertStatus(t, status, http.StatusOK, body)
 
 	// The courier mission is on hold: its sortie's expenses are closed to the
 	// quartermaster — same grant, other side of the condition.
-	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"amount":999}}]`, opPath(anvil, "sortie-expenses/"+expenseCourierFuelID)))
 	assertStatus(t, status, http.StatusForbidden, body)
-	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"sortieId":%q,"category":"fuel","amount":1,"note":"while held"}}]`, opPath(anvil, "sortie-expenses"), sortieCourierID))
 	assertStatus(t, status, http.StatusForbidden, body)
 
@@ -57,7 +57,7 @@ func TestTwoHopStateChain(t *testing.T) {
 	status, body = doRequestAs(t, h, "marshal", http.MethodPost, sectorPath(anvil, "hold-mission"),
 		fmt.Sprintf(`{"missionId":%q,"reason":"debris on the lane"}`, missionConvoyID))
 	assertStatus(t, status, http.StatusOK, body)
-	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"amount":300}}]`, opPath(anvil, "sortie-expenses/"+expenseID)))
 	assertStatus(t, status, http.StatusForbidden, body)
 
@@ -65,15 +65,15 @@ func TestTwoHopStateChain(t *testing.T) {
 	status, body = doRequestAs(t, h, "lead", http.MethodPost, sectorPath(anvil, "resume-mission"),
 		fmt.Sprintf(`{"missionId":%q}`, missionConvoyID))
 	assertStatus(t, status, http.StatusOK, body)
-	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"amount":300}}]`, opPath(anvil, "sortie-expenses/"+expenseID)))
 	assertStatus(t, status, http.StatusOK, body)
 
 	// The delete rides the same two-hop binding.
-	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"remove","path":%q}]`, opPath(anvil, "sortie-expenses/"+expensePodTowGearID)))
 	assertStatus(t, status, http.StatusForbidden, body) // the pod mission is completed
-	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
+	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
 		fmt.Sprintf(`[{"op":"remove","path":%q}]`, opPath(anvil, "sortie-expenses/"+expenseID)))
 	assertStatus(t, status, http.StatusOK, body)
 }
