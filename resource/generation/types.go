@@ -220,6 +220,7 @@ const (
 	resourceEnumsFileName         = "enums"
 	domainGuardOutputName         = "domain_guard"
 	permissionsOutputName         = "permissions"
+	liveOutputName                = "live"
 	decodersOutputName            = "decoders"
 	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"

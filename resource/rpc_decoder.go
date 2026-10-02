@@ -88,7 +88,7 @@ func (s *RPCDecoder[Request]) DecodeCaller(request *http.Request, scope accessty
 	}
 
 	userPermissions := s.userPermissions(request)
-	env := newRequestEnvironment()
+	env := RequestEnvironment()
 	decisions, err := userPermissions.Check(request.Context(), env, scope, s.requiredPermission, s.res)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "resource.UserPermissions.Check()")

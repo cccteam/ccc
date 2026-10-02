@@ -5,7 +5,9 @@ go 1.26.6
 require (
 	aidanwoods.dev/go-paseto v1.6.0
 	cloud.google.com/go v0.123.0
+	cloud.google.com/go/firestore v1.26.0
 	cloud.google.com/go/spanner v1.95.0
+	firebase.google.com/go/v4 v4.22.0
 	github.com/cccteam/ccc v0.3.2
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69
 	github.com/cccteam/ccc/cache v0.1.8-0.20260928033352-026459e32084
@@ -31,6 +33,15 @@ require (
 	golang.org/x/tools v0.49.0
 	google.golang.org/api v0.297.0
 	google.golang.org/protobuf v1.36.12
+)
+
+require (
+	cloud.google.com/go/storage v1.62.3 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.56.0 // indirect
+	github.com/MicahParks/keyfunc v1.9.0 // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
+	google.golang.org/appengine/v2 v2.0.6 // indirect
 )
 
 require (

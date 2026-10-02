@@ -46,6 +46,8 @@ func Test_apiClientData(t *testing.T) {
 				"  name?: string;",
 				"  secret?: string;",
 				"export type WidgetsKey = [id: string];",
+				// The outlet serves the live routes, named beside the permission routes.
+				"live: { renewRoute: 'live/renew', unsubscribeRoute: 'live/unsubscribe', tokenRoute: 'live/token' },",
 				"property: 'widgets',",
 				"route: 'widgets',",
 				"scope: 'global',",

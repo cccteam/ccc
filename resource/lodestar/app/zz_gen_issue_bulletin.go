@@ -9,6 +9,7 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
@@ -36,6 +37,11 @@ func (a *App) IssueBulletin() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, caller)
 
 		p := (*rpc.IssueBulletin)(params)
+
+		// The rows the method writes are collected for the live pages, published once
+		// the commit lands and before the answer; a transaction that rolls back wrote
+		// nothing to publish.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
 		// rolls the transaction back: every refusal answers as the real call
 		// would, and a call that would have succeeded answers 200 with no body.
@@ -56,6 +62,8 @@ func (a *App) IssueBulletin() http.HandlerFunc {
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
+
+		live.Publish(ctx, a.LiveService(), "", touched)
 
 		return httpio.NewEncoder(w).Ok(nil)
 	})

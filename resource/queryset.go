@@ -183,6 +183,25 @@ func (q *QuerySet[Resource]) User() accesstypes.User {
 	return q.userPermissions.User()
 }
 
+// Permitted reports whether the request's own gate admits the query: the required
+// permission is granted, or granted under a condition, on the resource in the scope
+// the decode bound, against the environment it sampled. It asks the same question the
+// read asks of the resource before it touches a field, so a live subscription written
+// on its answer is written exactly for a request the read would not refuse at the
+// gate; the field and row rules still run when the query does. A QuerySet bound to no
+// permissions is not permitted.
+func (q *QuerySet[Resource]) Permitted(ctx context.Context) (bool, error) {
+	if q.userPermissions == nil {
+		return false, nil
+	}
+	decisions, err := q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, q.Resource())
+	if err != nil {
+		return false, errors.Wrap(err, "resource.UserPermissions.Check()")
+	}
+
+	return len(decisions.DeniedResources()) == 0, nil
+}
+
 // ReturnAccessibleFields configures the QuerySet to automatically include all fields
 // the user has access to if no specific fields are requested.
 func (q *QuerySet[Resource]) ReturnAccessibleFields(b bool) *QuerySet[Resource] {

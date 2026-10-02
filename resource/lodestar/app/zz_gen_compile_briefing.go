@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
 	"github.com/cccteam/ccc/tracer"
@@ -91,6 +92,11 @@ func (a *App) CompileBriefing() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, caller)
 
 		p := (*rpc.CompileBriefing)(params)
+
+		// The rows the method writes are collected for the live pages, published once
+		// the commit lands and before the answer; a transaction that rolls back wrote
+		// nothing to publish.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		// Captured inside the transaction, encoded after it commits: under
 		// abort-and-retry the value is the committing attempt's.
 		var result *rpc.Briefing
@@ -104,6 +110,8 @@ func (a *App) CompileBriefing() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		result = answer
+
+		live.Publish(ctx, a.LiveService(), domain, touched)
 		if result == nil {
 			return httpio.NewEncoder(w).Ok(nil)
 		}

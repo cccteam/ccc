@@ -79,7 +79,7 @@ func (s *TargetedRPCDecoder[Request]) Decode(request *http.Request, scope access
 	}
 
 	userPermissions := s.userPermissions(request)
-	env := newRequestEnvironment()
+	env := RequestEnvironment()
 	decisions, err := userPermissions.Check(request.Context(), env, scope, s.perm, s.res)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "resource.UserPermissions.Check()")

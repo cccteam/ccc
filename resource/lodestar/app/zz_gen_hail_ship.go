@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
@@ -41,6 +42,11 @@ func (a *App) HailShip() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, gate.Caller())
 
 		p := (*rpc.HailShip)(params)
+
+		// The rows the method writes are collected for the live pages, published once
+		// the commit lands and before the answer; a transaction that rolls back wrote
+		// nothing to publish.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
 		// rolls the transaction back: every refusal answers as the real call
 		// would, and a call that would have succeeded answers 200 with no body.
@@ -86,6 +92,8 @@ func (a *App) HailShip() http.HandlerFunc {
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
+
+		live.Publish(ctx, a.LiveService(), domain, touched)
 
 		w.WriteHeader(http.StatusNoContent)
 

@@ -515,6 +515,10 @@ type tsAPIData struct {
 	HasDomainScoped    bool
 	HasGlobal          bool
 	HasDomain          bool
+	// Live says the outlet serves the live routes (resource/live), so the descriptor
+	// names them; every outlet a client is generated for serves sessions, and every
+	// session outlet serves them.
+	Live bool
 }
 
 // HasUpload reports whether any method on this outlet is an @upload, so the client

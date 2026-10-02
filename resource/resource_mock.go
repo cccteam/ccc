@@ -68,7 +68,8 @@ func (c *MockClient) SpannerReadOnlyTransaction() spxapi.Querier {
 
 // ExecuteFunc executes a function within a read-write transaction. As the Spanner
 // client's does, it deletes the file objects the function's patches released from the
-// client's FileStore once the function returns nil, and releases nothing when it errors.
+// client's FileStore once the function returns nil, hands the rows the patches wrote to
+// the collector ctx carries (CollectTouchedRows), and does neither when it errors.
 func (c *MockClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
 	txn := newMockReadWriteTransaction(c.txnMock, newReleasedKeys(), c.txnReadMocks...)
 	if err := f(ctx, txn); err != nil {
@@ -76,6 +77,7 @@ func (c *MockClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context
 	}
 
 	releaseFiles(ctx, c.store, txn.Released())
+	collectTouched(ctx, txn.touched())
 
 	return nil
 }
@@ -98,6 +100,7 @@ type MockReadWriteTransaction struct {
 	txnReaderMocks []any
 	txnMock        ReadWriteTransaction
 	released       *releasedKeys
+	touchedRows    *touchedRows
 }
 
 // NewMockReadWriteTransaction creates a new MockReadWriteTransaction.
@@ -112,6 +115,7 @@ func newMockReadWriteTransaction(mock ReadWriteTransaction, released *releasedKe
 		txnReaderMocks: txnReaderMocks,
 		txnMock:        mock,
 		released:       released,
+		touchedRows:    newTouchedRows(),
 	}
 }
 
@@ -129,6 +133,11 @@ func (c *MockReadWriteTransaction) recordReleased(keys ...string) {
 // SpannerReadWriteTransaction.Released does.
 func (c *MockReadWriteTransaction) Released() []string {
 	return c.released.list()
+}
+
+// touched returns the rows the transaction's patches wrote so far.
+func (c *MockReadWriteTransaction) touched() []touchedRow {
+	return c.touchedRows.list()
 }
 
 // DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction.
@@ -151,6 +160,7 @@ func (c *MockReadWriteTransaction) BufferMap(r PatchSetMetadata, p map[string]an
 	if err := c.txnMock.BufferMap(r, p); err != nil {
 		return errors.Wrap(err, "c.txnMock.BufferMap()")
 	}
+	c.touchedRows.record(r)
 
 	return nil
 }
@@ -160,6 +170,7 @@ func (c *MockReadWriteTransaction) BufferStruct(p PatchSetMetadata) error {
 	if err := c.txnMock.BufferStruct(p); err != nil {
 		return errors.Wrap(err, "c.txnMock.BufferStruct()")
 	}
+	c.touchedRows.record(p)
 
 	return nil
 }

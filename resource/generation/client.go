@@ -25,6 +25,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
@@ -490,6 +491,17 @@ func (c *client) templateFuncs() map[string]any {
 		"ScopeConstant":           scopeConstant,
 		"MaskingConstant":         maskingConstant,
 		"BindingHops":             bindingHopsLiteral,
+		// The live routes under an outlet's prefix, from the live package's constants,
+		// so the routes, the router tests and the TypeScript descriptor spell them once.
+		"LiveRenewRoute": func() string {
+			return live.RenewRoute
+		},
+		"LiveUnsubscribeRoute": func() string {
+			return live.UnsubscribeRoute
+		},
+		"LiveTokenRoute": func() string {
+			return live.TokenRoute
+		},
 	}
 
 	return templateFuncs

@@ -29,6 +29,7 @@ func fileTemplates() map[string]string {
 		"rpcInterfacesTemplate":           rpcInterfacesTemplate,
 		"computedResourceHandlerTemplate": computedResourceHandlerTemplate,
 		"domainGuardTemplate":             domainGuardTemplate,
+		"liveTemplate":                    liveTemplate,
 		"decodersTemplate":                decodersTemplate,
 		"appContractTemplate":             appContractTemplate,
 		"handlerTestsMainTemplate":        handlerTestsMainTemplate,
@@ -460,6 +461,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			wantContains: []string{
 				"type GeneratedAutomationHandlers interface {",
 				"func generatedAutomationRoutes(r chi.Router, h GeneratedAutomationHandlers) {",
+				// A session-less outlet refuses a subscribing request at its door.
+				"r = r.With(live.Refusing())",
 				`r.Get("/automation/widgets", widgetsHandler)`,
 				`r.Patch("/automation/stations/{stationID}/gadgets", domainGuard(h.PatchGadgets()))`,
 				`r.Patch("/automation/resources", h.PatchAutomationResources())`,
@@ -472,9 +475,13 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			wantNotContains: []string{
 				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
 				// A session-less outlet acquires no permission routes and no
-				// PermissionDigest/UserDomains requirement of its own.
+				// PermissionDigest/UserDomains requirement of its own, no live routes
+				// and no LiveService requirement.
 				`r.Get("/automation/permission-digest"`,
 				`r.Get("/automation/user-domains"`,
+				`r.Post("/automation/live/renew"`,
+				`r.Get("/automation/live/token"`,
+				"func generatedAutomationRoutes(r chi.Router, h GeneratedAutomationHandlers) {\n\tr = r.With(live.Subscribing(",
 			},
 		},
 		{
@@ -498,6 +505,12 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				"type GeneratedPortalHandlers interface {",
 				`r.Get("/portal/permission-digest", h.PermissionDigest())`,
 				`r.Get("/portal/user-domains", h.UserDomains())`,
+				// A session outlet serves the live routes under its prefix, behind the
+				// subscribe middleware, and requires the live surface of its own.
+				`r.Post("/portal/live/renew", h.LiveRenew())`,
+				`r.Post("/portal/live/unsubscribe", h.LiveUnsubscribe())`,
+				`r.Get("/portal/live/token", h.LiveToken())`,
+				"r = r.With(live.Subscribing(h.LiveService()))",
 			},
 		},
 		{
@@ -618,10 +631,113 @@ func Test_routesTemplate_sessionOutletHandlers(t *testing.T) {
 		t.Fatalf("generateTemplateOutput() error = %v", err)
 	}
 
-	for _, method := range []string{"PermissionDigest() http.HandlerFunc", "UserDomains() http.HandlerFunc"} {
+	for _, method := range []string{
+		"PermissionDigest() http.HandlerFunc", "UserDomains() http.HandlerFunc",
+		"LiveService() live.Service", "LiveRenew() http.HandlerFunc", "LiveUnsubscribe() http.HandlerFunc", "LiveToken() http.HandlerFunc",
+	} {
 		if got := strings.Count(string(out), method); got != 2 {
 			t.Errorf("%q appears %d times, want 2 (default interface and portal interface):\n%s", method, got, out)
 		}
+	}
+}
+
+// Test_handlerTemplates_live pins the live-page lines of the generated handlers: the
+// list and read handlers register before the query and set the cache header before the
+// answer, the mutation handlers collect what their transaction wrote and publish after
+// the commit, and the live routes delegate to the library's handlers.
+func Test_handlerTemplates_live(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		template string
+		want     []string
+	}{
+		{
+			name:     "list",
+			template: listTemplate,
+			want: []string{
+				"live.Subscribe(ctx, r, {{ .ReceiverName }}.LiveService(), querySet, live.ListSubscription(querySet.Resource(),",
+				"live.SetCacheControl(w, r)",
+			},
+		},
+		{
+			name:     "read",
+			template: readTemplate,
+			want: []string{
+				"live.Subscribe(ctx, r, {{ .ReceiverName }}.LiveService(), querySet, live.RowSubscription(querySet.Resource(), resource.RowKey({{ .Resource.KeyParamList }})))",
+				"live.SetCacheControl(w, r)",
+			},
+		},
+		{
+			name:     "computed",
+			template: computedResourceHandlerTemplate,
+			want: []string{
+				"live.ListSubscription(querySet.Resource(),",
+				"live.RowSubscription(querySet.Resource(), resource.RowKey({{ .Resource.KeyParamList }}))",
+				"live.SetCacheControl(w, r)",
+			},
+		},
+		{
+			name:     "patch",
+			template: patchTemplate,
+			want: []string{
+				"ctx, touched := resource.CollectTouchedRows(ctx)",
+				`live.Publish(ctx, {{ .ReceiverName }}.LiveService(), {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)`,
+			},
+		},
+		{
+			name:     "consolidated",
+			template: consolidatedPatchTemplate,
+			want: []string{
+				"ctx, touched := resource.CollectTouchedRows(ctx)",
+				`live.Publish(ctx, {{ .ReceiverName }}.LiveService(), "", touched)`,
+			},
+		},
+		{
+			name:     "rpc",
+			template: rpcHandlerTemplate,
+			want: []string{
+				`{{- template "rpcCollectTouched" $ }}`,
+				`{{- template "rpcPublish" $ }}`,
+				"ctx, touched := resource.CollectTouchedRows(ctx)",
+				`live.Publish(ctx, {{ $.ReceiverName }}.LiveService(), {{ if .RPCMethod.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)`,
+			},
+		},
+		{
+			name:     "upload",
+			template: rpcUploadHandlerTemplate,
+			want: []string{
+				`{{- template "rpcCollectTouched" $ }}`,
+				`{{- template "rpcPublish" $ }}`,
+			},
+		},
+		{
+			name:     "live routes",
+			template: liveTemplate,
+			want: []string{
+				"return live.RenewHandler({{ .ReceiverName }}.LiveService(), {{ .ReceiverName }}.UserPermissions)",
+				"return live.UnsubscribeHandler({{ .ReceiverName }}.LiveService())",
+				"return live.TokenHandler({{ .ReceiverName }}.LiveService())",
+			},
+		},
+		{
+			name:     "app contract",
+			template: appContractTemplate,
+			want:     []string{"LiveService() live.Service"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, want := range tt.want {
+				if !strings.Contains(tt.template, want) {
+					t.Errorf("template missing %q", want)
+				}
+			}
+		})
 	}
 }
 
@@ -675,14 +791,19 @@ func Test_routerTestTemplate_outletIsolation(t *testing.T) {
 				"func (s *generatedHandlersStub) PatchAutomationResources() http.HandlerFunc {",
 				`url: "/automation/resources", method: http.MethodPatch,`,
 				`handlerFunc: "PatchAutomationResources",`,
-				// The session-serving outlet's permission routes get dispatch cases;
-				// the session-less outlet's do not.
+				// The session-serving outlet's permission routes and live routes get
+				// dispatch cases; the session-less outlet's do not.
 				`url: "/portal/permission-digest", method: http.MethodGet,`,
 				`url: "/portal/user-domains", method: http.MethodGet,`,
+				`url: "/portal/live/renew", method: http.MethodPost,`,
+				`url: "/portal/live/unsubscribe", method: http.MethodPost,`,
+				`url: "/portal/live/token", method: http.MethodGet,`,
+				"func (s *generatedHandlersStub) LiveService() live.Service {",
 			},
 			wantNotContains: []string{
 				`url: "/automation/permission-digest"`,
 				`url: "/automation/user-domains"`,
+				`url: "/automation/live/renew"`,
 			},
 		},
 		{

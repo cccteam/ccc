@@ -23,6 +23,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
@@ -323,6 +324,10 @@ func (c *testConfigurer) PortalDist() string { return "" }
 // DroidsAPIKey is the droids outlet's key on the served stack; the test router carries no
 // outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return droidsAPIKey }
+
+// Live serves no live pages in the suites: nothing here subscribes, and a request
+// carrying X-Subscribe is refused.
+func (c *testConfigurer) Live() live.Service { return nil }
 
 // newTestApp builds the application with the given permission table backing every
 // request, served through the generated test router.

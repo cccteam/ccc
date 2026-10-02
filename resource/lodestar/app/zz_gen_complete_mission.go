@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
@@ -77,6 +78,11 @@ func (a *App) CompleteMission() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, gate.Caller())
 
 		p := (*rpc.CompleteMission)(params)
+
+		// The rows the method writes are collected for the live pages, published once
+		// the commit lands and before the answer; a transaction that rolls back wrote
+		// nothing to publish.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		// Captured inside the transaction, encoded after it commits: under
 		// abort-and-retry the value is the committing attempt's.
 		var result *rpc.Settlement
@@ -155,6 +161,8 @@ func (a *App) CompleteMission() http.HandlerFunc {
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
+
+		live.Publish(ctx, a.LiveService(), domain, touched)
 		if status == http.StatusNoContent {
 			w.WriteHeader(http.StatusNoContent)
 

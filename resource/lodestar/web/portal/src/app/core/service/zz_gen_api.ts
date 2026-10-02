@@ -108,6 +108,7 @@ export const apiDescriptor: ApiDescriptor = {
   consolidatedRoute: 'resources',
   permissionDigestRoute: 'permission-digest',
   userDomainsRoute: 'user-domains',
+  live: { renewRoute: 'live/renew', unsubscribeRoute: 'live/unsubscribe', tokenRoute: 'live/token' },
   resources: {
     [Resources.ClientContacts]: {
       resource: Resources.ClientContacts,

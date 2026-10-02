@@ -25,12 +25,14 @@ func SetLocalZone(zone *time.Location) {
 	localZone.Store(zone)
 }
 
-// newRequestEnvironment samples the request's decision context. The decoders
-// are the single construction point: each decoded artifact carries one
+// RequestEnvironment samples the request's decision context. The decoders
+// are the construction point for every decoded artifact: each carries one
 // Environment, so the instant a permission check folds conditions against is
 // the identical instant later bound into SQL — the two consumers can never
-// disagree about a window boundary.
-func newRequestEnvironment() accesstypes.Environment {
+// disagree about a window boundary. A check run outside a decoder on the
+// request's behalf (the live renewal's re-check of a tab's subscriptions)
+// samples its own through the same function, so it sees the same local zone.
+func RequestEnvironment() accesstypes.Environment {
 	env := accesstypes.NewEnvironment().WithNow(time.Now())
 	if zone := localZone.Load(); zone != nil {
 		env = env.WithZone(zone)

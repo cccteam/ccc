@@ -11,6 +11,8 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
+	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
@@ -45,9 +47,34 @@ func (s SpannerSettings) DatabasePath() string {
 	return fmt.Sprintf("projects/%s/instances/%s/databases/%s", s.ProjectID, s.InstanceID, s.DatabaseName)
 }
 
+// FirestoreSettings identifies the Firestore database the live pages run on, beside the
+// Spanner database. The database id is how bedrock hands the database to an application
+// (APP_FIRESTORE_DATABASE); the emulator host is how the development stack does. Neither
+// set, the application serves no live pages.
+type FirestoreSettings struct {
+	// ProjectID is the Google Cloud project the database belongs to. Empty, the Spanner
+	// project is used: the database lives beside the Spanner database in the
+	// application's project unless this says otherwise.
+	ProjectID string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
+	// DatabaseID is the Firestore database, by id.
+	DatabaseID string `env:"APP_FIRESTORE_DATABASE"`
+	// APIKey is the Firebase web API key the browser initializes the SDK with; unused
+	// against the emulator.
+	APIKey string `env:"APP_FIREBASE_API_KEY"`
+	// EmulatorHost is the Firestore emulator's host:port, the development stack's.
+	EmulatorHost string `env:"FIRESTORE_EMULATOR_HOST"`
+}
+
+// Enabled reports whether live pages are served: a database is named, or the emulator
+// is.
+func (s FirestoreSettings) Enabled() bool {
+	return s.DatabaseID != "" || s.EmulatorHost != ""
+}
+
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the document store, the resource client over both, and the
-// crew auth (its permission engine and session manager).
+// owns the Spanner client, the document store, the resource client over both, the
+// crew auth (its permission engine and session manager), and the live service when a
+// Firestore database is configured.
 type DataConfiguration struct {
 	*coreConfiguration
 	env            *dataConfig
@@ -58,6 +85,7 @@ type DataConfiguration struct {
 	crew           *crew.Auth
 	tenants        tenantRoster
 	members        *members.Auth
+	live           *livefirestore.Service
 }
 
 // NewDataConfiguration loads the core and data levels and opens their clients. Each
@@ -126,6 +154,25 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "loadTenants()")
 	}
 
+	// The live service: the Firestore database the live pages' subscriptions and
+	// change sets live in, beside the Spanner database, when one is configured.
+	if env.Firestore.Enabled() {
+		project := env.Firestore.ProjectID
+		if project == "" {
+			project = env.Spanner.ProjectID
+		}
+		liveService, err := livefirestore.New(ctx, livefirestore.Config{
+			ProjectID:    project,
+			DatabaseID:   env.Firestore.DatabaseID,
+			APIKey:       env.Firestore.APIKey,
+			EmulatorHost: env.Firestore.EmulatorHost,
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "firestore.New()")
+		}
+		conf.live = liveService
+	}
+
 	// The members auth: the portal's people, whose roles are the directory's. Its role
 	// synchronization writes a global role in the global partition and a domain role in
 	// every sector, so a client's membership reaches each sector with one row; the
@@ -155,6 +202,11 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 // Close releases the level's clients, then the levels below it.
 func (c *DataConfiguration) Close() {
+	if c.live != nil {
+		if err := c.live.Close(); err != nil {
+			log.Print(errors.Wrap(err, "firestore.Service.Close()"))
+		}
+	}
 	if err := c.crew.Close(); err != nil {
 		log.Print(errors.Wrap(err, "crew.Auth.Close()"))
 	}
@@ -171,6 +223,18 @@ func (c *DataConfiguration) Close() {
 // Spanner returns the database identity.
 func (c *DataConfiguration) Spanner() SpannerSettings {
 	return c.env.Spanner
+}
+
+// Live returns the live service the generated handlers subscribe through and publish
+// to: the Firestore service when a Firestore database or the emulator is configured,
+// nil otherwise. A nil interface is what the App's accessor hands the generated code,
+// never a typed nil.
+func (c *DataConfiguration) Live() live.Service {
+	if c.live == nil {
+		return nil
+	}
+
+	return c.live
 }
 
 // ResourceClient returns the database client the resource layer uses, constructed over
@@ -240,7 +304,8 @@ func ephemeralKey() (string, error) {
 
 // dataConfig holds the environment every database-opening process reads.
 type dataConfig struct {
-	Spanner SpannerSettings
+	Spanner   SpannerSettings
+	Firestore FirestoreSettings
 
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration `env:"APP_DEFAULT_SESSION_TIMEOUT,default=10m"`

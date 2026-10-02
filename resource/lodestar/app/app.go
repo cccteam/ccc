@@ -16,6 +16,7 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
@@ -76,6 +77,10 @@ type Configurer interface {
 	// Documents is the store the generated frames drive (FileStore): the upload frame
 	// streams files into it and the generated file route reads them back from it.
 	Documents() *store.DirStore
+	// Live is the live service the generated handlers subscribe through and publish to
+	// (LiveService): the Firestore service when a Firestore database or the emulator is
+	// configured, nil otherwise, which serves no live pages.
+	Live() live.Service
 	TenancyConfigurer
 }
 
@@ -121,6 +126,7 @@ type App struct {
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
 	documents      *store.DirStore
+	live           live.Service
 }
 
 // New constructs an App from its dependencies.
@@ -147,6 +153,7 @@ func New(cfg Configurer) *App {
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, documents),
 		computedClient: computedresources.NewClient(),
 		documents:      documents,
+		live:           cfg.Live(),
 	}
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
@@ -334,6 +341,16 @@ func (a *App) RPCClient() *rpc.Client {
 // ComputedClient returns the dependencies for computed-resource query logic.
 func (a *App) ComputedClient() *computedresources.Client {
 	return a.computedClient
+}
+
+// LiveService is the live service the generated handlers draw on (resource/live): the
+// list and read handlers register a subscribing request's interest in it before the
+// query, the mutations publish their committed rows through it, and the live routes
+// renew, unsubscribe and mint the browser's identity against it. Nil when no Firestore
+// database and no emulator is configured: the application then serves no live pages
+// and refuses a request carrying X-Subscribe.
+func (a *App) LiveService() live.Service {
+	return a.live
 }
 
 // FileStore is the store the generated frames drive: the upload frame streams each file

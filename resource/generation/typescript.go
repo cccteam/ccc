@@ -716,6 +716,9 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 		GenPrefix:          genPrefix,
 		DomainRouteSegment: t.domainRouteSegment,
 		DomainRouteParam:   t.domainRouteParam,
+		// A client is only generated for a session-serving outlet (validateOutlets),
+		// and every session outlet serves the live routes.
+		Live: true,
 	}
 
 	outlet := t.targetOutlet()

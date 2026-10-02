@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
@@ -114,6 +115,9 @@ func (c *testConfigurer) Documents() *store.DirStore { return c.documents }
 // DroidsAPIKey is unused by these suites: the matrix drives the bare test router, which
 // carries no outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return "authz-droids-key" }
+
+// Live serves no live pages in the matrix: nothing here subscribes.
+func (c *testConfigurer) Live() live.Service { return nil }
 
 // Domains is the scripted roster: the one domain the generated matrix addresses. The
 // empty test schema holds no sector rows, so nothing is read.

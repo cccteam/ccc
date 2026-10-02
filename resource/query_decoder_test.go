@@ -243,6 +243,49 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
 		},
+		// The live version parameter: accepted in its shape and skipped, never a filter
+		// and never an unknown parameter; anything else unknown beside it is still refused.
+		{
+			name:        "the version parameter alone is accepted and skipped",
+			queryValues: url.Values{VersionParam: []string{"1727900000123456"}},
+			wantErr:     false,
+			expectedResult: &parsedQueryParams{
+				Page: pageRequest{size: DefaultPageSize},
+			},
+		},
+		{
+			name:              "the version parameter beside a filter changes nothing about the query",
+			queryValues:       url.Values{"filter": []string{"age:eq:42"}, VersionParam: []string{"seed_Ab-9.z:1"}},
+			wantErr:           false,
+			expectedASTString: "age_sql:eq:42",
+			expectedResult: &parsedQueryParams{
+				Page: pageRequest{size: DefaultPageSize},
+			},
+		},
+		{
+			name:           "the version parameter beside an unknown parameter is still refused",
+			queryValues:    url.Values{VersionParam: []string{"1727900000123456"}, "unknown": []string{"value"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown query parameters: map[unknown:[value]]",
+		},
+		{
+			name:           "an empty version value is refused naming the parameter",
+			queryValues:    url.Values{VersionParam: []string{""}},
+			wantErr:        true,
+			expectedErrMsg: "invalid _v value: 1 to 64 characters of [A-Za-z0-9_.:-]",
+		},
+		{
+			name:           "a version value outside the charset is refused naming the parameter",
+			queryValues:    url.Values{VersionParam: []string{"17279/0000"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid _v value",
+		},
+		{
+			name:           "a version value over 64 characters is refused naming the parameter",
+			queryValues:    url.Values{VersionParam: []string{strings.Repeat("a", 65)}},
+			wantErr:        true,
+			expectedErrMsg: "invalid _v value",
+		},
 		{
 			name:              "integer equality",
 			queryValues:       url.Values{"filter": []string{"age:eq:42"}},

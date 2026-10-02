@@ -61,7 +61,9 @@ linters:
             - $gostd
             - aidanwoods.dev/go-paseto
             - cloud.google.com/go/civil
+            - cloud.google.com/go/firestore
             - cloud.google.com/go/spanner
+            - firebase.google.com/go/v4
             - github.com/cccteam
             - github.com/cloudspannerecosystem/memefish
             - github.com/cloudspannerecosystem/memefish/ast
@@ -86,7 +88,10 @@ linters:
             - golang.org/x/tools/go/packages
             - golang.org/x/tools/imports
             - google.golang.org/api/iterator
+            - google.golang.org/api/option
+            - google.golang.org/grpc
             - google.golang.org/grpc/codes
+            - google.golang.org/grpc/credentials/insecure
             - google.golang.org/grpc/status
             - google.golang.org/protobuf/types/known/structpb
     dupl:
@@ -174,6 +179,14 @@ linters:
           - paralleltest
         path: options_test\.go
         text: TestApplicationName
+      # The live tests' harness starts the Firestore emulator in a container: the
+      # executable is the podman LookPath found, the rules file is copied into the
+      # harness's own temporary directory and mounted from there, and the container
+      # id comes from podman itself. Nothing here is input a person supplies.
+      - linters:
+          - gosec
+        path: live/firestore/main_test\.go
+        text: G(204|703)
       - linters:
           - funlen
         path: resourceset\.go

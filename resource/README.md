@@ -204,6 +204,7 @@ none of them can be used as field names in filters:
 | `cursor` | The page position, copied from the `Link` header of the page that issued it (`rel="next"` or `rel="prev"`); never assembled by a client. A sealed token carrying the boundary row's sort values, the direction, and a fingerprint of the resource, scope, filter, sort, and limit — a cursor altered, sealed by another application, or presented with a different query, tenant, or page size is a 400. A cursor is valid for the database that issued it: the seal binds it to the application, and its position is read back in that database's `NULL` placement. A request with a cursor carries the same `sort` and `limit` as the page that issued it. Every paged request carries an order (`@order` or `sort`), so every page has its `Link` relations; a cursor never names a position in an unsorted list, because such a list is served only whole. A cursor on a resource with no `@primarykey` is refused with a 400 naming the missing key: the list has no row identity to anchor a position on, so it is served whole (`limit`). |
 | `count` | `count=true` on a first page asks for the total number of rows the same WHERE admits, answered in the `Total-Count` header; later pages carry no count and refuse the parameter. A whole list (`limit=all`, or a key-less resource) answers it too. A request that does not ask pays nothing. |
 | `offset` | Removed. A request carrying it is refused with a 400 naming `cursor` as its replacement; pages are positioned by the row the cursor names, not by a count of rows to skip. |
+| `_v` | The live pages' version (section 14): a client holding a live row or list appends it so the browser's cache keys the answer by the change it last saw. 1 to 64 characters of `[A-Za-z0-9_.:-]`; accepted and skipped, never a filter. A list or read response to a request carrying it is the one response that carries `Cache-Control: private, max-age=300`. |
 | `capabilities` | Comma-separated write permissions (`Create`, `Update`, `Delete`, `Execute`) to evaluate per row — the §13 capability envelope. Each returned row gains the reserved `zzCapabilities` property: `Update` carries the positive list of editable JSON field names, every field the caller may write on the row whether or not the read projected it, in name order (a write-only `input_only` field, which no read returns, is named when the caller's Update grant covers it, so an edit form draws its blank input), `Delete` a boolean, `Execute` the positive list of `@target` methods that apply to the row — a declared `@transition` requires the row's pre-image state in its `from` set, a conditional Execute grant ANDs its condition into the same boolean (a plain `@target` method's is the condition alone; unconditional plain methods are structural, no SQL), and the user holds the method's Execute grant — and `Create` the positive list of workflow member resources the user may create beneath the row (§11): the members whose immediate `@stateRoot` hop is this resource, gated by the user's member Create grants, a conditional grant's state terms evaluated against this row's own uniform state binding while terms the parent row cannot answer count potentially-true (an unconditional member grant is structural, no SQL). Advisory hints computed from the same row image and decision instant as the read (conditions render as booleans in the same statement; pure RBAC adds no SQL; a `new.`-referencing term counts potentially-true while the rest of its condition still renders). Enforcement is unchanged. |
 
 A sort or filter runs over the projection the caller can see. A field the caller is
@@ -1082,3 +1083,96 @@ Examples: [MissionDocument.StoreKey](lodestar/pkg/resources/mission_documents.go
 stored file with its name and type columns, served to the console's crew and listed but
 not served to the client portal; [ExpenseManifest](lodestar/pkg/computedresources/expense_manifests.go),
 a rendered `text/csv` manifest of a mission's booked expenses.
+
+## 14. Live pages
+
+A page that asked for a live list or a live row stays current without polling and
+without refetching while nothing changed, and a page mounted again inside a short window
+is served by the browser with no request. The server holds no push connection and keeps
+scaling to zero.
+
+**The shape.** A request opts in by carrying the header `X-Subscribe: <tab>`, a
+client-minted tab id of 1 to 64 characters of `[A-Za-z0-9_-]`; the client library sends
+it only on requests a page asked to be live (list pages, record pages), never from a
+picker, an edit form or an export. On a permitted list or read the generated handler
+registers the subscription — who, which tab, which resource, which key or which tenant
+domain, until when — *before* it runs the query, so a commit that lands during the
+query is not missed; a refused request registers nothing. A row is named by its key as
+the read route spells it: a single key's string form, a compound key's parts joined with
+`/` in route order (`resource.RowKey`). A list is named by its resource and the request's
+domain, empty for a global resource; filter, sort and cursor are not part of a
+subscription, so any change to the resource in that domain refetches the page. A
+mutation (a patch, the consolidated patch, an RPC method) publishes after its commit and
+before its answer: for each row it wrote, the subscribers of the row get a row document
+and the subscribers of the resource's list in the row's domain a list document; above
+100 rows of one resource in one request, every subscriber of the resource gets one
+resource document instead. Writes to one target within one second coalesce. The publish
+is bounded by two seconds and a failure is logged; it never fails the request. The
+browser listens to its own change set (`users/{uid}/changes`, timestamps after the last
+one it saw) and refetches the row or list with `_v=<the change's timestamp>` (section 4),
+and such a response carries `Cache-Control: private, max-age=300` so a remount inside
+the window is the browser's own; before any change arrived the client mints a seed at
+login, so a second user on a shared machine never hits the first's cached answers. Every
+other response stays uncached; the session and digest routes never carry the header.
+
+**The routes**, on every session-serving outlet under its API prefix, behind the outlet's
+session middleware like every other route:
+
+```
+POST <prefix>/live/renew        {"tab":"<tab>","subscriptions":[{"resource":"Ships","key":"<key>","domain":"<domain>"},{"resource":"Ships","domain":"<domain>"}]}
+                                → 200 {"kept":[...],"dropped":[...],"expiresAt":"<RFC 3339>"}
+POST <prefix>/live/unsubscribe  {"tab":"<tab>"} or {"tab":"<tab>","all":true}   → 204
+GET  <prefix>/live/token        → 200 {"uid","token","project","database","apiKey","emulator"}
+```
+
+The client renews every 120 seconds; a subscription expires 300 seconds after it was
+written or renewed. The renewal re-checks each subscription against the user's grants —
+`Read` on the resource for a row, `List` for a list, in the subscription's domain (the
+global scope when none is sent) — writes the kept ones with a fresh expiry in one batch,
+and echoes, in the order sent, which were kept and which dropped; a resource the grants
+do not know is dropped, never refused. A row subscription of a domain-scoped resource
+sends the domain the row was read in, or its re-check runs in the global scope, where a
+domain-scoped resource holds no grant, and the subscription is dropped. Revocation
+therefore ends a subscription at the next renewal, and the refetch is refused meanwhile;
+the publisher never checks permission. A page sends `unsubscribe {tab}` best effort as it
+leaves; a logout sends `{tab, all: true}`, which deletes every subscription of the
+principal and revokes the browser's identity. The token route answers the session
+principal's id (the user name, or `role:<role>` for a session established as a role), how
+to reach the change set, and the identity: in production a Firebase custom token the
+browser signs in with, against the emulator an empty token and the emulator host, which
+the browser connects to with the SDK's mock user token. A request carrying `X-Subscribe`
+on an API-key outlet answers 400 naming the header: machine clients wanting change
+notification are a different consumer on a topic. When the application wires no live
+service, a request carrying the header answers 400 `live subscriptions are not served`,
+and so do the live routes. Every subscribing request, the live routes included, carries
+`subscribe=<tab>` on its request log line (`AddRequestAttribute`).
+
+**The seams** are in `resource/live`: `SubscriptionRecord` (register and renew in one
+batch, unsubscribe a tab or a principal, the subscribers of a row, of a list in a domain,
+of a resource), `ChangePublisher` (`Publish(ctx, domain, touched)`), `Identity` (the
+token payload and the revocation), bundled as `Service`; `Fanout` is the fan-out every
+publisher implementation writes, and `Fake` an in-memory service for tests. The Firestore
+implementation is `resource/live/firestore`: `subscriptions/{id}`, a flat server-owned
+collection with a time-to-live on `expiry` and one composite index per lookup shape, and
+`users/{uid}/changes/{id}` with a time-to-live on `expires`, which a user may read for
+their own uid and nobody writes from a client; `firestore.rules`, `firestore.indexes.json`
+and the layout's README sit beside it. The generated handlers reach all of it through the
+application's `LiveService() live.Service` accessor, and the three routes are generated
+in `zz_gen_live.go` as delegations to the library's handlers.
+
+**What an application wires.** One method, `LiveService() live.Service`, returning the
+Firestore service when a Firestore database is configured (`APP_FIRESTORE_DATABASE`, the
+database bedrock hands the application; the project, and the optional Firebase web API
+key `APP_FIREBASE_API_KEY`) or the emulator is (`FIRESTORE_EMULATOR_HOST`), and nil
+otherwise: the application then serves no live pages and the client learns it from the
+400. The infrastructure applies the indexes and the time-to-live policies. Lodestar's
+wiring is [pkg/config/data.go](lodestar/pkg/config/data.go) and
+[app/app.go](lodestar/app/app.go).
+
+**The names the client library mirrors**: the header `X-Subscribe`, the parameter `_v`,
+the routes `live/renew`, `live/unsubscribe` and `live/token` under the outlet's prefix,
+the renewal interval 120 s, the expiry 300 s, the cache header `Cache-Control: private,
+max-age=300`, the bulk threshold 100, and the change document's shape (`kind` of `row`,
+`list` or `resource`; `resource`; `key` and `deleted` on a row; `domain` on a list; `at`
+and `expires`). The generated descriptor names the routes per outlet:
+`live: { renewRoute, unsubscribeRoute, tokenRoute }`.

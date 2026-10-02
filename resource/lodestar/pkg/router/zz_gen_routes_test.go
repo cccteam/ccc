@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -64,6 +65,9 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/console/api/sectors/testDomain/ingest-droid-reports", method: http.MethodPost},
 		{url: "/droids/permission-digest", method: http.MethodGet},
 		{url: "/droids/user-domains", method: http.MethodGet},
+		{url: "/droids/live/renew", method: http.MethodPost},
+		{url: "/droids/live/unsubscribe", method: http.MethodPost},
+		{url: "/droids/live/token", method: http.MethodGet},
 		{url: "/droids/clients", method: http.MethodGet},
 		{url: "/droids/clients", method: http.MethodPost},
 		{url: "/droids/clients/testClientID", method: http.MethodGet},
@@ -463,6 +467,18 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/console/api/user-domains", method: http.MethodGet,
 			handlerFunc: "UserDomains",
+		},
+		{
+			url: "/console/api/live/renew", method: http.MethodPost,
+			handlerFunc: "LiveRenew",
+		},
+		{
+			url: "/console/api/live/unsubscribe", method: http.MethodPost,
+			handlerFunc: "LiveUnsubscribe",
+		},
+		{
+			url: "/console/api/live/token", method: http.MethodGet,
+			handlerFunc: "LiveToken",
 		},
 		{
 			url: "/console/api/clients", method: http.MethodGet,
@@ -1234,6 +1250,18 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/portal/api/user-domains", method: http.MethodGet,
 			handlerFunc: "UserDomains",
 		},
+		{
+			url: "/portal/api/live/renew", method: http.MethodPost,
+			handlerFunc: "LiveRenew",
+		},
+		{
+			url: "/portal/api/live/unsubscribe", method: http.MethodPost,
+			handlerFunc: "LiveUnsubscribe",
+		},
+		{
+			url: "/portal/api/live/token", method: http.MethodGet,
+			handlerFunc: "LiveToken",
+		},
 	}
 
 	return routerTests
@@ -1256,6 +1284,24 @@ func (s *generatedHandlersStub) PermissionDigest() http.HandlerFunc {
 
 func (s *generatedHandlersStub) UserDomains() http.HandlerFunc {
 	return s.record("UserDomains")
+}
+
+// LiveService serves no live pages in the routing tests: nothing here subscribes, and
+// the live routes dispatch to their recording handlers like every other route.
+func (s *generatedHandlersStub) LiveService() live.Service {
+	return nil
+}
+
+func (s *generatedHandlersStub) LiveRenew() http.HandlerFunc {
+	return s.record("LiveRenew")
+}
+
+func (s *generatedHandlersStub) LiveUnsubscribe() http.HandlerFunc {
+	return s.record("LiveUnsubscribe")
+}
+
+func (s *generatedHandlersStub) LiveToken() http.HandlerFunc {
+	return s.record("LiveToken")
 }
 
 // DomainGuard passes requests through unchecked: the routing tests exercise dispatch,

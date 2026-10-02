@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,6 +29,17 @@ type parsedQueryParams struct {
 type filterBody struct {
 	Filter string `json:"filter"`
 }
+
+// The shape of a live version parameter's value: a change document's timestamp as
+// unix microseconds in decimal, or the seed a client minted at login, both within
+// this charset and length. A request whose value is outside it is refused naming
+// the parameter.
+const (
+	versionValueCharset   = "[A-Za-z0-9_.:-]"
+	versionValueMaxLength = 64
+)
+
+var versionValuePattern = regexp.MustCompile("^" + versionValueCharset + "{1," + strconv.Itoa(versionValueMaxLength) + "}$")
 
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
@@ -187,7 +199,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
-	qSet.env = newRequestEnvironment()
+	qSet.env = RequestEnvironment()
 	qSet.requestableFields = d.requestFieldMapper.Fields()
 	qSet.collection = d.collection
 	qSet.jsonNames = d.requestFieldMapper.JSONNames()
@@ -332,6 +344,17 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		}
 
 		delete(query, capabilitiesParam)
+	}
+
+	if query.Has(VersionParam) {
+		// The live version parameter is the browser cache's key, never the query's:
+		// its value is accepted in the shape the client library mints (a change
+		// timestamp or a login seed) and skipped.
+		if !versionValuePattern.MatchString(query.Get(VersionParam)) {
+			return nil, httpio.NewBadRequestMessagef("invalid %s value: 1 to %d characters of %s", VersionParam, versionValueMaxLength, versionValueCharset)
+		}
+
+		delete(query, VersionParam)
 	}
 
 	if len(query) > 0 {

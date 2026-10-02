@@ -137,7 +137,7 @@ func (d *Decoder[Resource, Request]) DecodeOperationWithoutPermissions(oper *Ope
 func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions, scope accesstypes.Scope) (*PatchSet[Resource], error) {
 	if oper.Type == OperationDelete {
 		patchSet := NewPatchSet(d.resourceSet.ResourceMetadata())
-		patchSet.querySet.env = newRequestEnvironment()
+		patchSet.querySet.env = RequestEnvironment()
 		patchSet.querySet.collection = d.collection
 
 		return patchSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, permissionFromType(oper.Type)), nil
@@ -240,7 +240,7 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 	}
 
 	patchSet := NewPatchSet(rSet.ResourceMetadata())
-	patchSet.querySet.env = newRequestEnvironment()
+	patchSet.querySet.env = RequestEnvironment()
 	// Add to patchset in order of struct fields
 	// Every key in changes is guaranteed to be a field in the struct
 	for _, f := range reflect.VisibleFields(vValue.Type()) {

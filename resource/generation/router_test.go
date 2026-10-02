@@ -63,15 +63,18 @@ func Test_negativeTestsForOutlet_sessionRoutes(t *testing.T) {
 		want   []negativeRouterTest
 	}{
 		{
-			name:   "session-less outlet gets 404 cases for the permission routes",
+			name:   "session-less outlet gets 404 cases for the permission routes and the live routes",
 			outlet: routerOutlet{name: "automation", prefix: "automation"},
 			want: []negativeRouterTest{
 				{Method: "http.MethodGet", URL: "/automation/permission-digest"},
 				{Method: "http.MethodGet", URL: "/automation/user-domains"},
+				{Method: "http.MethodPost", URL: "/automation/live/renew"},
+				{Method: "http.MethodPost", URL: "/automation/live/unsubscribe"},
+				{Method: "http.MethodGet", URL: "/automation/live/token"},
 			},
 		},
 		{
-			name:   "session-serving outlet contributes no permission-route cases",
+			name:   "session-serving outlet contributes no permission-route or live-route cases",
 			outlet: routerOutlet{name: "portal", prefix: "portal", servesSessions: true},
 			want:   nil,
 		},

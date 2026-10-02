@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/tracer"
@@ -43,6 +44,10 @@ func (a *App) Refits() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+
+		// A live list registers before the query runs, so a commit that lands during
+		// the query is not missed; a refused request registers nothing.
+		live.Subscribe(ctx, r, a.LiveService(), querySet, live.ListSubscription(querySet.Resource(), domain))
 
 		res := resources.NewRefitQueryFromQuerySet(querySet)
 
@@ -106,6 +111,9 @@ func (a *App) Refits() http.HandlerFunc {
 		if err := page.WriteHeaders(w, r); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		// A request carrying the version parameter is a live refetch: the browser
+		// may cache the answer for the subscription's window.
+		live.SetCacheControl(w, r)
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
@@ -135,6 +143,10 @@ func (a *App) Refit() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+
+		// A live row registers before the read runs, so a commit that lands during the
+		// read is not missed; a refused request registers nothing.
+		live.Subscribe(ctx, r, a.LiveService(), querySet, live.RowSubscription(querySet.Resource(), resource.RowKey(id)))
 
 		res := resources.NewRefitQueryFromQuerySet(querySet).SetID(id)
 
@@ -179,6 +191,7 @@ func (a *App) Refit() http.HandlerFunc {
 		if capabilities := row.Capabilities(); capabilities != nil {
 			rmap[resource.CapabilitiesProperty] = capabilities
 		}
+		live.SetCacheControl(w, r)
 
 		return httpio.NewEncoder(w).Ok(rmap)
 	})

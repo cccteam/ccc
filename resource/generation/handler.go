@@ -35,6 +35,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generatePermissions()")
 	}
 
+	if err := r.generateLive(); err != nil {
+		return errors.Wrap(err, "generateLive()")
+	}
+
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
 		return err
 	}
@@ -349,6 +353,32 @@ func (r *resourceGenerator) generatePermissions() error {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 	log.Printf("Generated permissions file in %s: %s", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
+// generateLive emits the application's live route handlers — LiveRenew,
+// LiveUnsubscribe and LiveToken — as delegations to the library-owned handlers over
+// the application's LiveService, unconditionally: every generated application serves
+// the live routes on each session-serving outlet, wiring only the service.
+func (r *resourceGenerator) generateLive() error {
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(liveOutputName))
+
+	extraSessionOutlets := slices.ContainsFunc(r.extraOutlets, func(outlet routerOutlet) bool {
+		return outlet.servesSessions
+	})
+	if err := r.writeFormattedGoFile(destinationFilePath, "liveTemplate", liveTemplate, &permissionsData{
+		Source:                 r.resource.Dir(),
+		Package:                r.handler.Package(),
+		ApplicationName:        r.applicationName,
+		ReceiverName:           r.receiverName,
+		RoutePrefix:            r.routePrefix,
+		HasExtraSessionOutlets: extraSessionOutlets,
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+	log.Printf("Generated live file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

@@ -64,14 +64,16 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 	var (
 		buffered   = newBufferedPatches()
 		released   = newReleasedKeys()
+		touched    = newTouchedRows()
 		funcFailed bool
 	)
 	_, err := c.spanner.ReadWriteTransaction(ctx, func(ctx context.Context, txn *spanner.ReadWriteTransaction) error {
 		// A retried transaction runs f again; the records belong to the attempt that commits.
 		buffered = newBufferedPatches()
 		released = newReleasedKeys()
+		touched = newTouchedRows()
 		funcFailed = false
-		if err := f(ctx, newSpannerReadWriteTransaction(txn, buffered, released)); err != nil {
+		if err := f(ctx, newSpannerReadWriteTransaction(txn, buffered, released, touched)); err != nil {
 			funcFailed = true
 
 			return errors.Wrap(err, "f()")
@@ -89,6 +91,7 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 	}
 
 	releaseFiles(ctx, c.store, released.list())
+	collectTouched(ctx, touched.list())
 
 	return nil
 }
@@ -353,34 +356,44 @@ var _ ReadWriteTransaction = (*SpannerReadWriteTransaction)(nil)
 
 // SpannerReadWriteTransaction represents a database transaction that can be used for both reads and writes.
 // It records the resource and patch type of every patch it buffers, so a commit Spanner
-// refuses can be answered in terms of what the transaction was asked to do, and the
-// file objects its patches release, so the executor deletes them once the commit lands.
+// refuses can be answered in terms of what the transaction was asked to do; the file
+// objects its patches release, so the executor deletes them once the commit lands; and
+// the rows its patches write, so the request publishes them to the live pages once the
+// commit lands.
 type SpannerReadWriteTransaction struct {
 	txn              *spanner.ReadWriteTransaction
 	resourceRowIndex map[string]int
 	buffered         *bufferedPatches
 	released         *releasedKeys
+	touchedRows      *touchedRows
 }
 
 // NewSpannerReadWriteTransaction creates a new SpannerReadWriteTransaction from a
 // spanner.ReadWriteTransaction. A transaction an application wraps itself and commits
 // outside ExecuteFunc has no executor to delete the file objects its patches released:
 // read them off the wrapper with Released after the commit and delete them from the
-// store yourself.
+// store yourself. It also has no executor to hand the rows it wrote to the request's
+// collector, so nothing it writes reaches the live pages.
 func NewSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) *SpannerReadWriteTransaction {
-	return newSpannerReadWriteTransaction(txn, newBufferedPatches(), newReleasedKeys())
+	return newSpannerReadWriteTransaction(txn, newBufferedPatches(), newReleasedKeys(), newTouchedRows())
 }
 
 // newSpannerReadWriteTransaction wraps a transaction over the records its buffered
-// patches and released file keys are noted in; ExecuteFunc holds the same records when
-// the commit comes back.
-func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction, buffered *bufferedPatches, released *releasedKeys) *SpannerReadWriteTransaction {
+// patches, released file keys, and written rows are noted in; ExecuteFunc holds the
+// same records when the commit comes back.
+func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction, buffered *bufferedPatches, released *releasedKeys, touched *touchedRows) *SpannerReadWriteTransaction {
 	return &SpannerReadWriteTransaction{
 		txn:              txn,
 		resourceRowIndex: make(map[string]int),
 		buffered:         buffered,
 		released:         released,
+		touchedRows:      touched,
 	}
+}
+
+// touched returns the rows the transaction's patches wrote so far.
+func (c *SpannerReadWriteTransaction) touched() []touchedRow {
+	return c.touchedRows.list()
 }
 
 // DBType returns the database type.
@@ -451,6 +464,7 @@ func (c *SpannerReadWriteTransaction) BufferMap(r PatchSetMetadata, patch map[st
 		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
 	}
 	c.buffered.record(r)
+	c.touchedRows.record(r)
 
 	return nil
 }
@@ -484,6 +498,7 @@ func (c *SpannerReadWriteTransaction) BufferStruct(patch PatchSetMetadata) error
 		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
 	}
 	c.buffered.record(patch)
+	c.touchedRows.record(patch)
 
 	return nil
 }

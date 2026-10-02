@@ -198,7 +198,7 @@ func (d *FileDecoder[Resource, Request]) Decode(request *http.Request, userPermi
 	gate := base.ResourceWithTag(d.segment)
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
-	qSet.env = newRequestEnvironment()
+	qSet.env = RequestEnvironment()
 	qSet.requestableFields = d.fields
 	qSet.jsonNames = d.jsonNames
 	qSet.collection = d.collection

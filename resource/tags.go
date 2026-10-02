@@ -71,6 +71,14 @@ const (
 	// offsetParam is reserved so a request still carrying it is refused with a
 	// message naming the cursor as its replacement, never treated as a filter.
 	offsetParam = "offset"
+	// VersionParam is the live pages' version parameter: a client that holds a live
+	// row or list appends it so the browser's cache keys the answer by the change it
+	// last saw (the change document's timestamp, or a seed minted at login before any
+	// change arrived). The decoders accept and skip it, and a list or read response
+	// to a request carrying it is the one response that carries a Cache-Control
+	// header (resource/live). It is exported because the live package names it to
+	// the client library.
+	VersionParam = "_v"
 )
 
 // reservedQueryParams registers every reserved query parameter for the README.md
@@ -84,4 +92,5 @@ var reservedQueryParams = []string{
 	countParam,
 	capabilitiesParam,
 	offsetParam,
+	VersionParam,
 }

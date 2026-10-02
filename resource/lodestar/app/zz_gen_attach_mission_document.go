@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
@@ -67,6 +68,11 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+
+		// The rows the method writes are collected for the live pages, published once
+		// the commit lands and before the answer; a transaction that rolls back wrote
+		// nothing to publish.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		// Captured inside the transaction, encoded after it commits: under
 		// abort-and-retry the value is the committing attempt's.
 		var result *rpc.Attached
@@ -117,6 +123,8 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 
 		// The transaction committed with the keys recorded: the rows claim the
 		// objects, and nothing more happens to the store.
+
+		live.Publish(ctx, a.LiveService(), domain, touched)
 		if result == nil {
 			return httpio.NewEncoder(w).Ok(nil)
 		}

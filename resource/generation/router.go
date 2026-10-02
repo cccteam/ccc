@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
@@ -453,6 +454,9 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]nega
 		tests = append(tests,
 			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/permission-digest", outlet.prefix)},
 			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/user-domains", outlet.prefix)},
+			negativeRouterTest{Method: httpMethodConstant(http.MethodPost), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.RenewRoute)},
+			negativeRouterTest{Method: httpMethodConstant(http.MethodPost), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.UnsubscribeRoute)},
+			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.TokenRoute)},
 		)
 	}
 
