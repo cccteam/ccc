@@ -1,15 +1,17 @@
 // Package main bootstraps the Lodestar demo database: it creates the database where it is
-// missing, runs the deployment's migration steps (schema, roles), seeds the demo world, and
-// creates the demo personas. The target is the environment's, as it is for the Spanner
-// client library: with SPANNER_EMULATOR_HOST set it is the emulator the Procfile starts,
-// whose instance the bootstrap also creates; without it, the project the application
-// credentials reach, whose instance must already exist. A database that already exists is
-// refused unless -reset is given, which empties its data and seeds it again without
-// touching the schema.
+// missing, runs the deployment's migration steps (the schema, then the role check), seeds
+// the demo world, and creates the demo personas. The target is the environment's, as it is
+// for the Spanner client library: with SPANNER_EMULATOR_HOST set it is the emulator the
+// Procfile starts, whose instance the bootstrap also creates; without it, the project the
+// application credentials reach, whose instance must already exist. A database that
+// already exists is refused unless -reset is given, which empties its data and seeds it
+// again without touching the schema.
 //
-// The order matters: the demo world is seeded before the roles because the domain
-// universe MigrateRoles reconciles across is read from the Sectors table. Tenancy is data,
-// not a compiled-in list.
+// The order matters: the demo world is seeded before the data configuration opens because
+// the tenant roster is read from the Sectors table at startup. Tenancy is data, not a
+// compiled-in list. The roles need no step of their own: each auth's default roles travel
+// with the binary and are validated when the auth opens, and the role check only reports
+// what the store holds that the release cannot use.
 //
 // Demonstrates: bootstrap.target, bootstrap.reset.
 package main
@@ -65,11 +67,14 @@ type devIdentities struct {
 	ServiceAccounts []devServiceAccount `json:"serviceAccounts"`
 }
 
-// devRoles is an identity's role assignments per scope; the global partition is its
-// own key, mirroring accesstypes.Scope.
+// devRoles is an identity's role assignments by where each is held: the global
+// partition, every sector, and one sector at a time, each its own key, mirroring
+// accesstypes.PolicyScope. A role held in every sector reaches a sector created after
+// the bootstrap too.
 type devRoles struct {
-	Global  []accesstypes.Role                        `json:"global"`
-	Domains map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
+	Global      []accesstypes.Role                        `json:"global"`
+	EveryDomain []accesstypes.Role                        `json:"everyDomain"`
+	Domains     map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
 }
 
 // devUser is one persona: a crew login and its roles.
@@ -146,22 +151,17 @@ func run(ctx context.Context, reset bool) error {
 	}
 	defer data.Close()
 
-	domains, err := data.Domains(ctx)
-	if err != nil {
-		return errors.Wrap(err, "config.DataConfiguration.Domains()")
+	// Each auth's default roles are the binary's, validated when the auth opened; the
+	// check reports the role file's warnings and anything the store holds that this
+	// release cannot use. The members roles say what a client may do; who holds them is
+	// the directory's business (RoleSync), so no member is seeded here, and in
+	// development APP_ROLES names the groups every simulated login is in.
+	if err := deploy.CheckRoles(ctx, data.Crew().Access(), crew.Name); err != nil {
+		return errors.Wrap(err, "deploy.CheckRoles(crew)")
 	}
-	if err := deploy.MigrateRoles(ctx, data.UserManager(), crew.RolesPath, domains...); err != nil {
-		return errors.Wrap(err, "deploy.MigrateRoles()")
+	if err := deploy.CheckRoles(ctx, data.Members().Access(), members.Name); err != nil {
+		return errors.Wrap(err, "deploy.CheckRoles(members)")
 	}
-	fmt.Printf("Provisioned roles from %s across %v\n", crew.RolesPath, domains)
-
-	// The members roles: what a client may do. Who holds them is the directory's
-	// business (RoleSync), so no member is seeded here; in development APP_ROLES names
-	// the groups every simulated login is in.
-	if err := deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), members.RolesPath, domains...); err != nil {
-		return errors.Wrap(err, "deploy.MigrateRoles(members)")
-	}
-	fmt.Printf("Provisioned roles from %s across %v\n", members.RolesPath, domains)
 
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
@@ -292,18 +292,24 @@ func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 	return nil
 }
 
-// assignRoles grants the identity its roles per scope: the global partition first, then
-// each domain in sorted order.
+// assignRoles writes the identity's memberships where each is held: the global partition
+// first, then every sector, then each sector in sorted order.
 func assignRoles(ctx context.Context, manager access.UserManager, user accesstypes.User, roles devRoles) error {
 	if len(roles.Global) > 0 {
-		if err := manager.AddUserRoles(ctx, accesstypes.GlobalScope(), user, roles.Global...); err != nil {
+		if err := manager.AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), user, roles.Global...); err != nil {
 			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in the global scope", user)
 		}
 		fmt.Printf("Assigned %v to %s in the global scope\n", roles.Global, user)
 	}
+	if len(roles.EveryDomain) > 0 {
+		if err := manager.AddUserRoles(ctx, accesstypes.EveryDomainPolicyScope(), user, roles.EveryDomain...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in every domain", user)
+		}
+		fmt.Printf("Assigned %v to %s in every domain\n", roles.EveryDomain, user)
+	}
 	for _, domain := range slices.Sorted(maps.Keys(roles.Domains)) {
 		domainRoles := roles.Domains[domain]
-		if err := manager.AddUserRoles(ctx, accesstypes.DomainScope(domain), user, domainRoles...); err != nil {
+		if err := manager.AddUserRoles(ctx, accesstypes.DomainPolicyScope(domain), user, domainRoles...); err != nil {
 			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in domain %s", user, domain)
 		}
 		fmt.Printf("Assigned %v to %s in domain %s\n", domainRoles, user, domain)

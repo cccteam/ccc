@@ -34,7 +34,7 @@ func newSwapAuth() *cobra.Command {
 		Use:   "auth <name>",
 		Short: "Move an auth to a directory: its people sign in over OpenID Connect instead of a password",
 		Long: `auth changes how an existing auth's people sign in. The auth keeps its name, its permission
-store, its roles file, and the surfaces bound to it; its package is rewritten from the
+store, its role file, and the surfaces bound to it; its package is rewritten from the
 reference OIDC auth (--oidc-azure or --oidc-google), one migration drops its session tables
 and creates them in the new shape, the data level's construction gains the directory
 registration (APP_<NAME>_OIDC_* variables), the Procfile builds with the session library's

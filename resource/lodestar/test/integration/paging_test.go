@@ -437,7 +437,7 @@ func TestPaging_visibleProjection(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The grant this suite proves, the archivist's fee on completed missions alone, pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "Archivist", "List", "Missions", "state = 'completed'")
+	provesGrant(t, crew.Roles(), "Archivist", "List", "Missions", "state = 'completed'")
 
 	// Anvil's closed missions: three completed (fee visible) and four masked.
 	var (
@@ -741,7 +741,7 @@ func TestPaging_namedVariantKey(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The grant this suite proves, pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "Assessor", "List", "Missions", "state = 'open'")
+	provesGrant(t, crew.Roles(), "Assessor", "List", "Missions", "state = 'open'")
 
 	// From the seed: Anvil's open missions grouped by hazard, the primary key breaking
 	// ties within a group, and the sixteen missions in every other state, whose hazard

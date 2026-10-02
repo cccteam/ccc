@@ -177,7 +177,7 @@ func (tn Tenancy) writeSeed(a *app.App, dir string, ch *Change) error {
 	if err := writeNew(a, path.Join(dir, base+".down.sql"), down); err != nil {
 		return err
 	}
-	ch.didf("%s/%s.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the roles", dir, base)
+	ch.didf("%s/%s.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the logins", dir, base)
 
 	return nil
 }
@@ -210,8 +210,8 @@ type (
 	// %[2]s is the tenant record: its route name equals the domain route segment, so
 	// /%[3]s lists the tenants while /%[3]s/{%[4]sID}/... serves the tenant-scoped routes.
 	// The application derives its domain universe from this table rather than a fixed
-	// in-code list: the deployment reads it for MigrateRoles and the DomainVisible seam
-	// checks it, so the tenant list is data.
+	// in-code list: the data level reads it into the roster a login's tenant list is
+	// answered from and the DomainVisible seam checks it, so the tenant list is data.
 	//
 	// The primary key is a human-readable slug, not a UUID: tenant identifiers appear in
 	// every tenant-scoped URL and in role provisioning, and the schema enforces the slug
@@ -636,9 +636,9 @@ func (tn Tenancy) Meaning() string {
 	fmt.Fprintf(&b, "Tenancy is data. The %s table is the domain universe: a permission domain per row, read into a roster at startup, and every struct annotated `@permissionScope(domain)` is served under the tenant segment pair `/%s/{%sID}/...` with the tenant as its permission domain. `%s` itself is a global resource, since administering the tenant list is a global concern. Tenant existence is concealed (`WithConcealedDomains`): the generated guard asks `DomainVisible`, which answers whether the tenant exists AND the caller holds at least one grant in it, so a login with no foothold gets the same not-found an unknown tenant gets. A login's tenant list (`user-domains`) is the set of tenants where it holds a grant, and a grant needs a tenant-scoped resource to land on.\n\n", tn.Table, seg, strcase.ToCamel(rec), rec)
 	b.WriteString("Left to wire, in this order:\n\n")
 	items := []string{
-		"The bootstrap and the deployment. Seed the development tenants (`schema/devseed`, a data migration applied with the migrator's data step) BEFORE the roles, then pass the roster (`Domains()`) to `MigrateRoles` in both the bootstrap and the deployment's migrate step: the roles are reconciled per tenant, and `tenancy-wired` requires every `MigrateRoles` call to carry domains. Give the development logins roles in the tenants (the bootstrap identities file): the administrator everywhere, and add a member login that holds a role in one tenant only, so concealment is observable.",
+		"The bootstrap and the deployment. Seed the development tenants (`schema/devseed`, a data migration applied with the migrator's data step) BEFORE the logins, and hand the roster (`Domains()`) to the App, which passes it to `resource.SessionPermissions` so a login's tenant list is read from it; the roles need no provisioning per tenant, since a membership held in every domain (`EveryDomainPolicyScope`) reaches every tenant the roster names. Give the development logins roles in the tenants (the bootstrap identities file): the administrator under `everyDomain`, and add a member login that holds a role in one tenant only under `domains`, so concealment is observable.",
 		"Tenant-scoped resources. Decide which existing resources belong to a tenant: give each a `TenantId` column referencing the tenant table (a migration, with a data step assigning existing rows to a tenant), annotate the struct `@permissionScope(domain)` and the column `// @domain`, then run `go generate ./...`. If none of the application's resources is tenant-scoped yet, add a first one so the option is observable from the first sign-in; the reference has one. `tenancy-wired` requires at least one.",
-		"The test harnesses. The authorization suite's configurer needs `DomainVisible` recognizing the generated matrix's domain (`testDomain`) when the case carries grants; the integration harness needs `DomainVisible` composed with `UserHasGrants` over the development tenants, the dev seed applied beside the schema, `MigrateRoles` with the tenants, the member's assignments, and a wait for the engine's snapshot to show them.",
+		"The test harnesses. The authorization suite's configurer needs `DomainVisible` recognizing the generated matrix's domain (`testDomain`) when the case carries grants, and `Domains()` listing it; the integration harness needs `DomainVisible` composed with `UserHasGrants` over the development tenants, the dev seed applied beside the schema, the member's assignments in its tenant (`DomainPolicyScope`), and a wait for the engine's snapshot to show them.",
 		"Integration tests: the administrator lists both tenants and reads a tenant's digest; the member lists one and gets not-found in the other and in an unknown tenant; the tenant list is global.",
 		"The browser app: a tenant picker in the header bound to the tenant service (its tenants, current, and select), and the pages reading permissions through it, so the digest follows the selected tenant.",
 	}

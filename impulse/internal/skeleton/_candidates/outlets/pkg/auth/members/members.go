@@ -11,14 +11,15 @@
 //
 // An auth is a package. It owns its session manager, in its login flavor and with its own
 // session and user tables and cookie; its permission store, with its own table prefix; and
-// its role configuration. A site or an outlet binds to an auth by composing its handlers,
-// and two auths on one database and one host never collide, because everything an auth
-// names carries its name. The same name in this auth and in another is two unrelated
-// principals.
+// its role file, embedded beside it, so the release's default roles travel with the binary.
+// A site or an outlet binds to an auth by composing its handlers, and two auths on one
+// database and one host never collide, because everything an auth names carries its name.
+// The same name in this auth and in another is two unrelated principals.
 package members
 
 import (
 	"context"
+	_ "embed"
 	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
@@ -30,8 +31,7 @@ import (
 )
 
 const (
-	// Name is the auth's name: the cookie its sessions ride in and the stem of its roles
-	// file.
+	// Name is the auth's name: the cookie its sessions ride in.
 	Name = "members"
 	// TablePrefix is the name's PascalCase form, which prefixes every table the auth owns.
 	TablePrefix = "Members"
@@ -41,11 +41,6 @@ const (
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
 
-	// RolesPath is the committed role configuration MigrateRoles reconciles into this
-	// auth's store, relative to the module root. The file is the complete statement of
-	// the auth's roles: a login holds only what it declares.
-	RolesPath = "schema/roles/" + Name + ".json"
-
 	// The auth's tables, which schema/migrations creates: the sessions, and the user
 	// anchor keyed by the directory's immutable (tenant, object) identifier pair, so a
 	// renamed account stays the same person.
@@ -53,8 +48,30 @@ const (
 	usersTable    = TablePrefix + "OIDCUsers"
 )
 
-// Settings are the auth's environment-derived settings.
+// roleFile is the auth's default roles: the role file beside this package, embedded in the
+// binary so the roles travel with the release. The file is the complete statement of the
+// default roles; the store holds only the custom roles and the memberships written at run
+// time, and a login holds what its memberships name. A global role is held in the global
+// partition and a domain role in every tenant domain, so nothing provisions the file per
+// tenant.
+//
+//go:embed roles.json
+var roleFile access.RoleFile
+
+// Roles returns the auth's role file, which New hands to the permission engine and the
+// tests validate and read.
+func Roles() access.RoleFile {
+	return roleFile
+}
+
+// Settings are the auth's settings: the collection the role file validates against and the
+// environment-derived values.
 type Settings struct {
+	// Collection is the generated permission collection: the resources, permissions and
+	// fields the release declares, which the role file validates against when the engine
+	// opens. The package that constructs the auth passes it in; this package imports no
+	// router.
+	Collection access.PermissionCollection
 	// CookieKey signs session cookies: a Base64-encoded string of at least 32 bytes of
 	// cryptographically secure random data.
 	CookieKey string
@@ -86,13 +103,15 @@ type Auth struct {
 }
 
 // New opens the auth's permission store and session manager over the database. The
-// permission engine blocks until its first policy snapshot is loaded.
+// permission engine parses and validates the role file against the collection before it
+// opens, so a release whose default roles are wrong does not start, and blocks until its
+// first policy snapshot is loaded.
 func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Auth, error) {
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
 	}
-	accessClient, err := access.New(store)
+	accessClient, err := access.New(store, access.WithDefaultRoles(settings.Collection, Roles()))
 	if err != nil {
 		return nil, errors.Wrap(err, "access.New()")
 	}
@@ -125,7 +144,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its
-// UserManager writes roles, grants, and role assignments.
+// UserManager writes custom roles, their grants, and role memberships.
 func (a *Auth) Access() *access.Client {
 	return a.access
 }

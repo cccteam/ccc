@@ -14,6 +14,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
@@ -59,8 +60,9 @@ type DataConfiguration struct {
 	members        *members.Auth
 }
 
-// NewDataConfiguration loads the core and data levels and opens their clients. The
-// permission engine blocks until its first policy snapshot is loaded.
+// NewDataConfiguration loads the core and data levels and opens their clients. Each
+// auth's permission engine validates its role file against the generated permission
+// collection and blocks until its first policy snapshot is loaded.
 func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	core, err := newCoreConfiguration(ctx)
 	if err != nil {
@@ -89,7 +91,14 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "resource.NewCursorKey()")
 	}
 
-	crewAuth, err := crew.New(ctx, spannerClient, crew.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	// The crew auth: the console's people, whose default roles ride in the binary and
+	// validate against the generated collection, which the router package generates and
+	// the auth package cannot import.
+	crewAuth, err := crew.New(ctx, spannerClient, crew.Settings{
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		Collection:     router.Collection(),
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "crew.New()")
 	}
@@ -118,14 +127,15 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	}
 
 	// The members auth: the portal's people, whose roles are the directory's. Its role
-	// synchronization sweeps the global scope and every sector of the roster, so a
-	// client's roles land in each sector; the portal's grants then narrow by company.
-	// The portal's login page is where a refused directory login returns to.
+	// synchronization writes a global role in the global partition and a domain role in
+	// every sector, so a client's membership reaches each sector with one row; the
+	// portal's grants then narrow by company. The portal's login page is where a refused
+	// directory login returns to.
 	membersAuth, err := members.New(ctx, spannerClient, &members.Settings{
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/portal/login",
-		Domains:        conf.Domains,
+		Collection:     router.Collection(),
 		Directory: members.Directory{
 			ClientID:     env.MembersClientID,
 			ClientSecret: env.MembersClientSecret,

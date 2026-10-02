@@ -334,6 +334,10 @@ func constString(expr ast.Expr, consts map[string]string) (string, bool) {
 // population that signs in one way and holds roles in one store.
 const authDir = "auth"
 
+// RolesFileName is the role file an auth package embeds beside its source: the
+// release's default roles for that auth, which the package exports through Roles().
+const RolesFileName = "roles.json"
+
 // AuthPackageName returns the auth an authenticator construction belongs to, from its
 // file's place in the tree (a package directly under an auth directory), or empty.
 func AuthPackageName(file string) string {
@@ -458,16 +462,4 @@ func selectorsOf(rel string, src []byte, importPath string) ([]string, error) {
 	sort.Strings(names)
 
 	return names, nil
-}
-
-// ConstString evaluates the named package-level string constant of a file.
-func ConstString(rel string, src []byte, name string) (string, bool) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
-	if err != nil {
-		return "", false
-	}
-	value, ok := fileConstStrings(f)[name]
-
-	return value, ok
 }

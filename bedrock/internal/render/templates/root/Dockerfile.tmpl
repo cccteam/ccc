@@ -105,7 +105,7 @@ LABEL org.opencontainers.image.title="{{.App}}" \
 
 COPY --from=build-env /build /
 
-# The migrate command reads {{.Image.SchemaDir}} (the migrations, the seed, the roles) relative to its
+# The migrate command reads {{.Image.SchemaDir}} (the migrations, the seed) relative to its
 # working directory{{if .Image.Workspaces}}, and the server serves each bundle from the directory its variable
 # names{{end}}, so everything sits under the working directory set below.
 {{- range .Image.Bundles}}

@@ -8,13 +8,34 @@ import (
 	"github.com/cccteam/spxscan/spxapi"
 )
 
-// UserPermissions is an interface that provides methods to check user permissions and retrieve user information, and is used
-// in the PatchSet and QuerySet types to enforce user permissions on resources.
+// UserPermissions is the permission surface a request's decoders consume: the
+// checks, the frontend's advisory enumerations, and the identity a row
+// condition's subject binds to. SessionPermissions composes it per request
+// from the session's principal, the application's checker for that principal
+// and the application's tenant roster; applications hand the composed value
+// to the PatchSet and QuerySet types, which enforce permissions through it.
+type UserPermissions interface {
+	UserPermissionChecker
+
+	// Domains lists the domains where the user holds at least one grant,
+	// sorted — the payload the generated user-domains endpoint serves and
+	// the tenant picker's membership question: the application's tenant
+	// roster filtered by HasGrants, so a domain listed here is exactly a
+	// domain whose routes answer the user with ordinary 403s rather than
+	// concealed tenancy's 404; the picker and the guard can never disagree.
+	// Never nil: an application without tenants lists none.
+	Domains(ctx context.Context) ([]accesstypes.Domain, error)
+}
+
+// UserPermissionChecker is what an application's per-request accessor for a
+// user principal hands SessionPermissions: UserPermissions without Domains,
+// since a checker holds no tenant list — the roster is the application's,
+// and SessionPermissions filters it by HasGrants.
 //
 // The canonical implementation is the access package's request-bound checker
 // (Client.ForUser), which satisfies this interface structurally — neither
 // package imports the other.
-type UserPermissions interface {
+type UserPermissionChecker interface {
 	// Check returns the Decision for perm on each of resources within scope.
 	//
 	// env is the request's decision context, sampled once at decode; the check
@@ -40,18 +61,18 @@ type UserPermissions interface {
 	// stable for the life of a policy snapshot.
 	PermissionDigest(ctx context.Context, scope accesstypes.Scope) (accesstypes.PermissionDigest, error)
 
-	// Domains lists the domains where the user holds at least one grant,
-	// sorted — the payload the generated user-domains endpoint serves and
-	// the tenant picker's membership question. Same foothold predicate as
-	// concealed tenancy's visibility check, so the two never disagree; the
-	// global scope is never a domain.
-	Domains(ctx context.Context) ([]accesstypes.Domain, error)
+	// HasGrants reports whether the user holds at least one grant in scope —
+	// the foothold concealed tenancy's visibility check asks, and the
+	// predicate the tenant picker filters the application's roster by. A
+	// membership that resolves to no grants is not a foothold; a membership
+	// held in every tenant domain is a foothold in each.
+	HasGrants(ctx context.Context, scope accesstypes.Scope) (bool, error)
 
 	User() accesstypes.User
 }
 
 // RolePermissions is the permission surface of a session that operates as a
-// role principal: UserPermissions without User(), because a role is not
+// role principal: UserPermissionChecker without User(), because a role is not
 // anyone. SessionPermissions completes it into the UserPermissions every
 // decoder consumes by supplying the session's effective identity as User().
 //
@@ -61,18 +82,24 @@ type UserPermissions interface {
 type RolePermissions interface {
 	// Check returns the Decision for perm on each of resources within scope,
 	// evaluated against the role's effective grants. See
-	// UserPermissions.Check for the contract every implementation owes:
+	// UserPermissionChecker.Check for the contract every implementation owes:
 	// an entry per resource, no short-circuit, one snapshot per call.
 	Check(ctx context.Context, env accesstypes.Environment, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error)
 
 	// PermissionDigest returns the role's structural grant enumeration within
-	// scope. See UserPermissions.PermissionDigest.
+	// scope. See UserPermissionChecker.PermissionDigest.
 	PermissionDigest(ctx context.Context, scope accesstypes.Scope) (accesstypes.PermissionDigest, error)
 
-	// Domains lists the domains where the role holds at least one grant,
-	// sorted. See UserPermissions.Domains.
-	Domains(ctx context.Context) ([]accesstypes.Domain, error)
+	// HasGrants reports whether the role holds at least one grant in scope.
+	// See UserPermissionChecker.HasGrants.
+	HasGrants(ctx context.Context, scope accesstypes.Scope) (bool, error)
 }
+
+// DomainRoster lists the application's tenant domains: the roster the tenant
+// picker is filtered from, read from wherever the application keeps its
+// tenants. An application without tenants passes nil to SessionPermissions,
+// and its sessions list no domain.
+type DomainRoster func(ctx context.Context) ([]accesstypes.Domain, error)
 
 // Client is an interface for the supported database Client's to implement. It is not intended
 // for mocking since each database requires an implementation in this package.

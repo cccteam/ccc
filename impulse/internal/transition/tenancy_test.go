@@ -165,7 +165,7 @@ func TestTenancyApply(t *testing.T) {
 			wantDid: []string{
 				`cmd/generate/resourcegenerator/main.go: added WithDomainRoute("tenants") and WithConcealedDomains()`,
 				"schema/migrations/000003_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key and a unique Name)",
-				"schema/devseed/000001_dev_tenants.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the roles",
+				"schema/devseed/000001_dev_tenants.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the logins",
 				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug",
 				"pkg/config/tenancy.go: the tenant roster (tenantRoster, loaded from Tenants at startup), Domains(), and DomainVisible() on DataConfiguration; pkg/config/data.go gained the field and the load",
 				"app/tenancy.go: TenancyConfigurer (embedded in Configurer), DomainVisibleFunc, and App.DomainVisible; app/app.go gained the field and its assignment",

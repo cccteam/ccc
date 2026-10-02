@@ -43,11 +43,15 @@ type App struct {
 	// DomainResources are the structs the application's own code annotates
 	// @permissionScope(domain): the tenant-scoped resources.
 	DomainResources []DomainResource
-	// RoleMigrations are the calls to access.MigrateRoles outside tests: where the
-	// application provisions its roles.
-	RoleMigrations []RoleMigration
+	// DefaultRoles are the calls to access.WithDefaultRoles outside tests: where a
+	// release hands its default roles, an auth package's embedded role file, to the
+	// permission engine.
+	DefaultRoles []DefaultRoles
+	// PolicyChecks are the calls to CheckPolicy outside tests: the deploy step that
+	// prints what the store holds that the release cannot use as written.
+	PolicyChecks []PolicyCheck
 	// RoleValidations are the calls to access.ValidateRoles in the application's tests:
-	// where a roles file's deploy-time warnings are pinned in code.
+	// where a role file's warnings are pinned in code.
 	RoleValidations []RoleValidation
 	// GrantProofs are the calls to the harness helper provesGrant in the application's
 	// tests: where a test case names the conditional grant it proves.
@@ -68,24 +72,11 @@ type App struct {
 
 	// goFiles are the non-test Go files scanned, for the passes that follow the walk.
 	goFiles []string
-	// roleWrappers are the application's own functions that pass their variadic domains
-	// through to access.MigrateRoles; their callers are role migrations too.
-	roleWrappers []roleWrapper
 }
 
 // GoFiles lists the non-test Go files of the application, root-relative.
 func (a *App) GoFiles() []string {
 	return a.goFiles
-}
-
-// roleWrapper is an application function wrapping access.MigrateRoles.
-type roleWrapper struct {
-	// Pkg is the wrapper's package import path.
-	Pkg string
-	// Func is the wrapper's name.
-	Func string
-	// Fixed is how many parameters precede the variadic domains.
-	Fixed int
 }
 
 // Auth is one construction of a session authenticator: session.NewPasswordAuth,
@@ -151,41 +142,32 @@ type DomainResource struct {
 	Name string
 }
 
-// RoleMigration is one call to access.MigrateRoles, or to an application wrapper that
-// passes its own variadic domains through to it.
-type RoleMigration struct {
+// DefaultRoles is one call to access.WithDefaultRoles outside tests: a release handing a
+// role file to the permission engine.
+type DefaultRoles struct {
 	File string
 	Line int
-	// Domains counts the domain arguments after the callee's fixed ones.
-	Domains int
-	// Spread reports a trailing slice argument (domains...), which may be empty at run
-	// time: an untenanted application's wrapper passes its own empty variadic through.
-	Spread bool
-	// Via is the wrapper as the caller writes it (deploy.MigrateRoles), or empty for a
-	// direct access.MigrateRoles call.
-	Via string
+	// RolesPackage is the import path of the package whose Roles() the call hands over:
+	// the file's own package when the argument is Roles() unqualified, the imported
+	// package when it is <auth>.Roles(), or empty when the argument reads some other way.
+	RolesPackage string
 }
 
-// RoleValidation is one call to access.ValidateRoles in a test file: the roles files it
-// validates are the auth packages whose RolesPath the file names.
+// PolicyCheck is one call to CheckPolicy outside tests: the deploy step printing what
+// the store holds that the release cannot use as written.
+type PolicyCheck struct {
+	File string
+	Line int
+}
+
+// RoleValidation is one call to access.ValidateRoles in a test file: the role files it
+// validates are the auth packages whose Roles() the file calls.
 type RoleValidation struct {
 	File string
 	Line int
-	// RolesPaths are the import paths of the packages whose RolesPath constant the file
-	// reads, sorted and without repeats; the roles files the call validates.
-	RolesPaths []string
-}
-
-// WithDomains reports whether the call can provision roles into tenants.
-func (m RoleMigration) WithDomains() bool { return m.Domains > 0 || m.Spread }
-
-// Callee is the function called, as written.
-func (m RoleMigration) Callee() string {
-	if m.Via != "" {
-		return m.Via
-	}
-
-	return "access.MigrateRoles"
+	// RolesPackages are the import paths of the packages whose Roles() the file calls,
+	// sorted and without repeats; the role files the call validates.
+	RolesPackages []string
 }
 
 // WebApp is one browser application.

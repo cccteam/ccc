@@ -1,14 +1,20 @@
 // Package deploy holds the database steps a deployment runs and the development
-// bootstrap reuses: applying the schema migrations and reconciling the role
-// configuration into the permission engine's policy store; and the bootstrap's own
-// data steps, seeding the demo world and emptying a database for the next seed.
+// bootstrap reuses: applying the schema migrations and checking each auth's policy store
+// against the release's role file; and the bootstrap's own data steps, seeding the demo
+// world and emptying a database for the next seed.
+//
+// The roles themselves are not a deploy step. Each auth's default roles travel with the
+// release as a file embedded in its package (crew.Roles, members.Roles), which the
+// permission engine validates when the auth opens; the store holds custom roles and
+// memberships only, so there is nothing to copy into it per deploy or per tenant, and a
+// rollback carries its own file.
 //
 // Demonstrates: impulse.bootstrapped, auth.two-populations.
 package deploy
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,9 +24,7 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/config"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/go-playground/errors/v5"
 )
@@ -52,8 +56,8 @@ func MigrateSchema(ctx context.Context, settings config.SpannerSettings) error {
 }
 
 // SeedDevelopmentData applies the demo world to the database as a data migration. The
-// sectors it seeds are the domain universe MigrateRoles reconciles across, so it runs
-// before the roles.
+// sectors it seeds are the tenant roster the data configuration reads at startup, so it
+// runs before the configuration opens.
 func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) error {
 	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
 	if err != nil {
@@ -68,34 +72,29 @@ func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) e
 	return nil
 }
 
-// MigrateRoles reconciles one auth's committed role configuration (its roles file) into
-// its policy store (its user manager), validated against the generated permission
-// collection, across the given tenant domains (none for a global-only application).
-func MigrateRoles(ctx context.Context, manager access.UserManager, rolesPath string, domains ...accesstypes.Domain) error {
-	roles, err := loadRoles(rolesPath)
+// CheckRoles reads one auth's policy store once and prints what a deploy should hear
+// about before the release takes traffic: the role file's own warnings, and what the
+// store holds that this release cannot use as written (a grant it skips, a custom role a
+// default of the same name shadows, memberships naming a role nothing defines). It
+// writes nothing: the default roles are the release's, held in the file the engine
+// already validated when the auth opened, so there is nothing to reconcile. Each warning
+// prints as one line, under a line naming the auth; an auth with nothing to report prints
+// nothing.
+func CheckRoles(ctx context.Context, client *access.Client, name string) error {
+	warnings, err := client.CheckPolicy(ctx)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "access.Client.CheckPolicy(): the %s roles", name)
+	}
+	if len(warnings) == 0 {
+		return nil
 	}
 
-	if err := access.MigrateRoles(ctx, manager, router.Collection(), roles, domains...); err != nil {
-		return errors.Wrap(err, "access.MigrateRoles()")
+	fmt.Printf("Checked the %s roles: %d warning(s)\n", name, len(warnings))
+	for _, w := range warnings {
+		fmt.Printf("Warning: %s\n", w)
 	}
 
 	return nil
-}
-
-func loadRoles(path string) (*access.RoleConfig, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, errors.Wrapf(err, "os.ReadFile(%q)", path)
-	}
-
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		return nil, errors.Wrapf(err, "json.Unmarshal(%q)", path)
-	}
-
-	return &roles, nil
 }
 
 // schemaMigrationsTable is where db-initiator's migrator records the schema versions it

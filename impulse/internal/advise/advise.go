@@ -178,7 +178,7 @@ func (b *Brief) Write(w io.Writer) {
 	}
 
 	fmt.Fprintf(w, "## Accepted role warnings\n\n")
-	fmt.Fprintf(w, "The deploy-time validation of the roles files (`access.ValidateRoles`) prints a warning per grant it provisions as written but flags. The application accepts one by pinning its typed value in %s; each row of that test is one roles file, and an empty expected set means nothing is accepted. Read the pinned values there: they are role warnings to advise on too.\n\n",
+	fmt.Fprintf(w, "The deploy-time validation of the role files (`access.ValidateRoles`) prints a warning per grant it provisions as written but flags. The application accepts one by pinning its typed value in %s; each row of that test is one role file, and an empty expected set means nothing is accepted. Read the pinned values there: they are role warnings to advise on too.\n\n",
 		b.pointer(b.RoleTest, b.RoleTestPresent, "no such test exists yet, so no role warning is accepted in code; `impulse check` (auths-wired) says where it belongs"))
 
 	fmt.Fprintf(w, "## How impulse reads each kind\n\n")
@@ -267,7 +267,7 @@ var kinds = []kind{
 		recognize: "`role <Role>: <Permission> on <Resource> is granted under \"<condition>\" without Read or List on <Row> ...`",
 		reading:   "A role holds a conditional Delete, Update, or targeted Execute on a row it can neither Read nor List. A caller holding the role learns from a Forbidden answer that the row exists, where a read would have answered NotFound. Granting Read or List on the row resource in this role, or in a role assigned with it, closes it; a Read whose condition is narrower than the write's leaks the same way.",
 		question:  "Whether the disclosure is intended: whether the row's existence is sensitive to this role, or the role is a writer who knows the rows anyway.",
-		edits:     "a Read or List grant on the row resource in the roles file, with a condition at least as wide as the write's; or the pinned `access.GrantWarning` in the deploy test.",
+		edits:     "a Read or List grant on the row resource in the role file, with a condition at least as wide as the write's; or the pinned `access.GrantWarning` in the deploy test.",
 	},
 	{
 		name:      "Concealing key warning (a role warning, pinned in the deploy test)",
@@ -280,7 +280,7 @@ var kinds = []kind{
 
 // rules are the agent's rules: an answer, no edit, no write.
 var rules = []string{
-	"Answer per warning and finding, in prose: name it, apply the reading above to it (read the resource struct, its migrations, the roles file, and how the table is used, to say which branch of the reading holds), answer the question from what the code tells you, and name the edit you recommend, from the edits on offer or better, or say the warning should be accepted and where its pin goes (the program's warnings test for a schema warning, the deploy test for a role warning). The pinned values in those tests are warnings to advise on too.",
+	"Answer per warning and finding, in prose: name it, apply the reading above to it (read the resource struct, its migrations, the role file, and how the table is used, to say which branch of the reading holds), answer the question from what the code tells you, and name the edit you recommend, from the edits on offer or better, or say the warning should be accepted and where its pin goes (the program's warnings test for a schema warning, the deploy test for a role warning). The pinned values in those tests are warnings to advise on too.",
 	"Edit nothing. Run nothing that writes: no `go generate`, no `impulse` command, no test. Read the code.",
 	"Where the code cannot answer the question (whether a table will grow, whether a field's rank is sensitive to a role), say so and state the question for the developer in one sentence.",
 	"Finish with the edits you recommend as a list, in the order you would make them, each naming its file.",

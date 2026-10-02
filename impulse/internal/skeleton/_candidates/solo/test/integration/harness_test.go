@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -29,7 +27,6 @@ import (
 
 const (
 	migrationsSource = "file://../../schema/migrations"
-	rolesPath        = "../../" + staff.RolesPath
 
 	// The development login the served suites sign in as.
 	adminUser     = "admin"
@@ -74,8 +71,9 @@ type served struct {
 	access *access.Client
 }
 
-// newServed provisions the database the way the deployment does (schema, then the
-// committed roles), creates the development login, and serves the full router.
+// newServed provisions the database the way the deployment does (the schema, then the
+// auth opened over it with its embedded role file validated against the collection),
+// creates the development login, and serves the full router.
 func newServed(ctx context.Context, t *testing.T) *served {
 	t.Helper()
 
@@ -84,7 +82,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	auth, err := staff.New(ctx, db.Client, staff.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	auth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -95,17 +93,12 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	})
 	accessClient := auth.Access()
 
-	roles := loadRoles(t)
-	if err := access.MigrateRoles(ctx, accessClient.UserManager(), router.Collection(), roles); err != nil {
-		t.Fatalf("access.MigrateRoles() error = %v", err)
-	}
-
 	passwordAuth := auth.Session()
 	password := adminPassword
 	if _, err := passwordAuth.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: adminUser, Password: &password}); err != nil {
 		t.Fatalf("CreateSessionUser() error = %v", err)
 	}
-	if err := accessClient.UserManager().AddUserRoles(ctx, accesstypes.GlobalScope(), adminUser, "Administrator_Global"); err != nil {
+	if err := accessClient.UserManager().AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), adminUser, "Administrator_Global"); err != nil {
 		t.Fatalf("AddUserRoles() error = %v", err)
 	}
 
@@ -118,21 +111,6 @@ func newServed(ctx context.Context, t *testing.T) *served {
 
 // testCookieKey signs session cookies in the suites; any 32 bytes will do.
 const testCookieKey = "dGVzdC1jb29raWUta2V5LXRlc3QtY29va2llLWtleS0xMjM0NTY="
-
-func loadRoles(t *testing.T) *access.RoleConfig {
-	t.Helper()
-
-	raw, err := os.ReadFile(rolesPath)
-	if err != nil {
-		t.Fatalf("reading %s: %v", rolesPath, err)
-	}
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		t.Fatalf("parsing %s: %v", rolesPath, err)
-	}
-
-	return &roles
-}
 
 // browser is one browser's view of the served application: a cookie jar and the XSRF
 // token the session middleware issued into it.
@@ -208,25 +186,22 @@ func (b *browser) xsrfToken() string {
 	return ""
 }
 
-// provesGrant names the conditional grant a test case proves. It reads the roles file at
-// rolesPath (root-relative, as the auth package's RolesPath spells it) and fails unless a
-// grant for the role, permission, and resource carries exactly that condition text, so a
-// case whose grant is gone or reworded fails here even when nobody ran impulse check, whose
+// provesGrant names the conditional grant a test case proves. It parses the auth's role
+// file (<auth>.Roles(), the file embedded in the auth package) and fails unless a grant for
+// the role, permission, and resource carries exactly that condition text, so a case whose
+// grant is gone or reworded fails here even when nobody ran impulse check, whose
 // conditions-proven check reads these calls to find the conditional grants no case names.
-// Write the arguments as literals: the check reads them from the source.
-func provesGrant(t *testing.T, rolesPath string, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
+// Write the file as the auth package's Roles() call and the coordinates as literals: the
+// check reads them from the source.
+func provesGrant(t *testing.T, roles access.RoleFile, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join("..", "..", rolesPath))
+	config, err := roles.Parse()
 	if err != nil {
-		t.Fatalf("reading %s: %v", rolesPath, err)
-	}
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		t.Fatalf("parsing %s: %v", rolesPath, err)
+		t.Fatalf("parsing the role file: %v", err)
 	}
 	var conditions []string
-	for _, r := range slices.Concat(roles.Roles.Global, roles.Roles.Domain) {
+	for _, r := range slices.Concat(config.Roles.Global, config.Roles.Domain) {
 		if r.Name != role {
 			continue
 		}
@@ -240,5 +215,5 @@ func provesGrant(t *testing.T, rolesPath string, role accesstypes.Role, permissi
 			conditions = append(conditions, g.Condition)
 		}
 	}
-	t.Fatalf("%s: no %s grant of the %s role on %s carries the condition %q (the file's conditions there: %q); the case proves a grant the file no longer carries", rolesPath, permission, role, res, condition, conditions)
+	t.Fatalf("no %s grant of the %s role on %s carries the condition %q (the file's conditions there: %q); the case proves a grant the file no longer carries", permission, role, res, condition, conditions)
 }

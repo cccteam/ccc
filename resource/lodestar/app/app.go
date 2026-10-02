@@ -116,6 +116,7 @@ type App struct {
 	consoleDist    string
 	portalDist     string
 	droidsAPIKey   string
+	domains        resource.DomainRoster
 	domainVisible  DomainVisibleFunc
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
@@ -141,6 +142,7 @@ func New(cfg Configurer) *App {
 		consoleDist:    cfg.ConsoleDist(),
 		portalDist:     cfg.PortalDist(),
 		droidsAPIKey:   cfg.DroidsAPIKey(),
+		domains:        cfg.Domains,
 		domainVisible:  cfg.DomainVisible,
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, documents),
 		computedClient: computedresources.NewClient(),
@@ -293,13 +295,15 @@ func serveSPA(assets http.Handler) http.HandlerFunc {
 // UserPermissions returns the permission checker for a request, composed from the
 // session's principal: the engine of the auth the request came through, bound to the
 // user for an ordinary or impersonated-user session, bound to the role for a session
-// established as a role, and attenuated by the session's permission mask.
+// established as a role, and attenuated by the session's permission mask. The sectors
+// the session lists are the application's roster filtered by where the checker holds a
+// grant, so the star chart and the sector guard can never disagree.
 //
 // Demonstrates: impersonation.session-permissions.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
 	engine := a.engine(r.Context())
 
-	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole)
+	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole, a.domains)
 }
 
 // Validator returns the request validator the generated decoder constructors draw on.

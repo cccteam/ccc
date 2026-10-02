@@ -13,6 +13,7 @@ package crew
 
 import (
 	"context"
+	_ "embed" // the role file rides in the binary
 	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
@@ -24,8 +25,7 @@ import (
 )
 
 const (
-	// Name is the auth's name: the cookie its sessions ride in and the stem of its roles
-	// file.
+	// Name is the auth's name: the cookie its sessions ride in.
 	Name = "crew"
 	// TablePrefix is the name's PascalCase form, which prefixes every table the auth owns.
 	TablePrefix = "Crew"
@@ -34,11 +34,6 @@ const (
 	// so two auths on one host never overwrite each other's token; the browser echoes it in
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
-
-	// RolesPath is the committed role configuration MigrateRoles reconciles into this
-	// auth's store, relative to the module root. The file is the complete statement of
-	// the auth's roles: a login holds only what it declares.
-	RolesPath = "schema/roles/" + Name + ".json"
 
 	// The auth's tables, which schema/migrations creates. ImpersonationsTable is the
 	// impersonation record the library joins into every session read, so a view-as or
@@ -54,6 +49,20 @@ const (
 	impersonationTimeout = 4 * time.Hour
 )
 
+// rolesFile is the auth's default roles: the release's own policy for the crew, which
+// travels with the binary and is handed to the permission engine at New. The store holds
+// no row for these roles; a login holds one by name alone, and the file is the complete
+// statement of what each role may do. A global role is held in the global partition and a
+// domain role in every sector.
+//
+//go:embed roles.json
+var rolesFile []byte
+
+// Roles returns the auth's role file.
+func Roles() access.RoleFile {
+	return access.RoleFile(rolesFile)
+}
+
 // Settings are the auth's environment-derived settings.
 type Settings struct {
 	// CookieKey signs session cookies: a Base64-encoded string of at least 32 bytes of
@@ -61,6 +70,10 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
+	// Collection is the generated permission collection the role file validates against:
+	// the resources, fields and conditions the release declares. The router package
+	// generates it and imports this one, so the configuration passes it in.
+	Collection access.PermissionCollection
 }
 
 // Auth is the crew auth: its permission store and its session manager.
@@ -70,13 +83,15 @@ type Auth struct {
 }
 
 // New opens the auth's permission store and session manager over the database. The
-// permission engine blocks until its first policy snapshot is loaded.
+// permission engine validates the role file against the collection and refuses to start
+// on a file that does not parse or grants what the release does not declare; it then
+// blocks until its first policy snapshot is loaded.
 func New(ctx context.Context, db *cloudspanner.Client, settings Settings) (*Auth, error) {
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
 	}
-	accessClient, err := access.New(store)
+	accessClient, err := access.New(store, access.WithDefaultRoles(settings.Collection, Roles()))
 	if err != nil {
 		return nil, errors.Wrap(err, "access.New()")
 	}

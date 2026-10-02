@@ -72,13 +72,12 @@ import (
 	"context"
 
 	"github.com/cccteam/access"
-	"github.com/cccteam/ccc/accesstypes"
-
-	"example.com/acme/beacon/pkg/router"
 )
 
-func MigrateRoles(ctx context.Context, manager access.UserManager, rolesPath string, domains ...accesstypes.Domain) error {
-	return access.MigrateRoles(ctx, manager, router.Collection(), nil, domains...)
+func CheckRoles(ctx context.Context, client *access.Client, name string) error {
+	_, err := client.CheckPolicy(ctx)
+
+	return err
 }
 `
 	siteAuthz = `package authz
@@ -101,6 +100,13 @@ console: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/${PORT}) >/de
 `
 )
 
+// siteData is the flat data level handing the staff auth the one router's collection.
+func siteData() string {
+	text := strings.Replace(authConfig, "\t\"example.com/acme/beacon/pkg/auth/staff\"\n", "\t\"example.com/acme/beacon/pkg/auth/staff\"\n\t\"example.com/acme/beacon/pkg/router\"\n", 1)
+
+	return strings.Replace(text, "staff.Settings{CookieKey: cookieKey}", "staff.Settings{Collection: router.Collection(), CookieKey: cookieKey}", 1)
+}
+
 // flatSite is the beacon application with a flat site's hand-written files.
 func flatSite(t *testing.T) *app.App {
 	t.Helper()
@@ -111,6 +117,7 @@ func flatSite(t *testing.T) *app.App {
 	files["pkg/router/router.go"] = siteRouter
 	files["pkg/router/zz_gen_routes.go"] = "package router\n\nfunc generatedRoutes(any) any { return nil }\n"
 	files["pkg/config/site.go"] = siteLevel
+	files["pkg/config/data.go"] = siteData()
 	files["pkg/deploy/deploy.go"] = siteDeploy
 	files["test/authz/harness_test.go"] = siteAuthz
 	files["test/authz/zz_gen_authz_test.go"] = "package authz\n"
@@ -215,10 +222,10 @@ func TestSiteApplyPromotes(t *testing.T) {
 	}
 
 	// The union and the shared generator cover both sites.
-	deploy := read(t, a, "pkg/deploy/deploy.go")
-	for _, want := range []string{`consolerouter "example.com/acme/beacon/apps/console/pkg/router"`, `portalrouter "example.com/acme/beacon/apps/portal/pkg/router"`, "collection, err := Collection()", "access.MigrateRoles(ctx, manager, collection, nil, domains...)", `"github.com/go-playground/errors/v5"`, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection())"} {
-		if !strings.Contains(deploy, want) {
-			t.Errorf("deploy.go lacks %q:\n%s", want, deploy)
+	data := read(t, a, "pkg/config/data.go")
+	for _, want := range []string{`consolerouter "example.com/acme/beacon/apps/console/pkg/router"`, `portalrouter "example.com/acme/beacon/apps/portal/pkg/router"`, "\tcollection, err := Collection()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\tstaffAuth, err := staff.New(ctx, spannerClient, staff.Settings{Collection: collection, CookieKey: cookieKey})", `"github.com/cccteam/access"`, `"github.com/go-playground/errors/v5"`, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection())"} {
+		if !strings.Contains(data, want) {
+			t.Errorf("data.go lacks %q:\n%s", want, data)
 		}
 	}
 	shared := read(t, a, "cmd/generate/sharedgenerator/generator.go")
@@ -341,8 +348,8 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	if got := read(t, promoted, "cmd/generate/generate.go"); !strings.Contains(got, "./portalgenerator\n//go:generate go run ./kioskgenerator\n//go:generate go run ./sharedgenerator\n") {
 		t.Errorf("generate.go = %q", got)
 	}
-	if got := read(t, promoted, "pkg/deploy/deploy.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection(), kioskrouter.Collection())") || !strings.Contains(got, `kioskrouter "example.com/acme/beacon/apps/kiosk/pkg/router"`) {
-		t.Errorf("deploy.go = %q", got)
+	if got := read(t, promoted, "pkg/config/data.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection(), kioskrouter.Collection())") || !strings.Contains(got, `kioskrouter "example.com/acme/beacon/apps/kiosk/pkg/router"`) {
+		t.Errorf("data.go = %q", got)
 	}
 	if got := read(t, promoted, "cmd/generate/sharedgenerator/generator.go"); !strings.Contains(got, `GenerateTypescript("apps/kiosk/web/kiosk/src/app/core/service/shared"`) {
 		t.Errorf("sharedgenerator = %q", got)

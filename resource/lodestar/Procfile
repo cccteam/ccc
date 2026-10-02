@@ -3,7 +3,7 @@
 #     cp .envrc.template .envrc && direnv allow && overmind start
 #
 # spanner:  a fresh Spanner emulator (--rm, so every start bootstraps from scratch).
-# server:   waits for the emulator, bootstraps the database (schema, roles, development
+# server:   waits for the emulator, bootstraps the database (schema, the demo world, development
 #           logins), then serves the application. Bootstrap and serve share one process
 #           so the server never races the bootstrap.
 # console:  waits for the server, then ng serve with /api proxied to it. Browse

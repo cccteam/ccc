@@ -12,7 +12,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -46,8 +45,6 @@ const (
 	migrationsSource = "file://../../schema/migrations"
 	demoSeedSource   = "file://../../schema/devseed"
 	devSeedSource    = demoSeedSource
-	crewRolesPath    = "../../" + crew.RolesPath
-	membersRolesPath = "../../" + members.RolesPath
 	usersPath        = "../../cmd/bootstrap/users.json"
 
 	// The browser outlets' API prefixes.
@@ -225,6 +222,12 @@ type testConfigurer struct {
 	crewAuth      *crew.Auth
 	membersAuth   *members.Auth
 	documents     *store.DirStore
+}
+
+// Domains is the seeded roster, the list production's DataConfiguration reads from the
+// Sectors table at startup: what a session's sector list is filtered from.
+func (c *testConfigurer) Domains(context.Context) ([]accesstypes.Domain, error) {
+	return sectors, nil
 }
 
 // DomainVisible composes the seeded roster with the foothold answer of the engine of the
@@ -603,9 +606,10 @@ type served struct {
 }
 
 // newServed provisions the database the way the bootstrap does (schema, the demo world,
-// both auths' roles across the seeded sectors, the personas and the droid), and serves the
-// full router. Under the skipAuth build the members auth's directory is simulated and its
-// login returns straight to the callback; without the tag the suite skips.
+// the personas and the droid with their memberships; both auths' roles are the embedded
+// files the engines validate when the auths open), and serves the full router. Under the
+// skipAuth build the members auth's directory is simulated and its login returns straight
+// to the callback; without the tag the suite skips.
 func newServed(ctx context.Context, t *testing.T) *served {
 	t.Helper()
 	if !simulatedDirectory() {
@@ -617,7 +621,11 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: servedSessionTimeout})
+	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{
+		CookieKey:      testCookieKey,
+		SessionTimeout: servedSessionTimeout,
+		Collection:     router.Collection(),
+	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
 	}
@@ -636,7 +644,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		CookieKey:      testCookieKey,
 		SessionTimeout: servedSessionTimeout,
 		LoginURL:       "/portal/login",
-		Domains:        func(context.Context) ([]accesstypes.Domain, error) { return sectors, nil },
+		Collection:     router.Collection(),
 		Directory: members.Directory{
 			RedirectURL:  "http://" + server.Listener.Addr().String() + portalAPI + "/user/callback",
 			HostedDomain: "example.com",
@@ -869,25 +877,21 @@ func (b *browser) xsrfToken() string {
 	return ""
 }
 
-// provesGrant names the conditional grant a test case proves. It reads the roles file at
-// rolesPath (root-relative, as the auth package's RolesPath spells it) and fails unless a
-// grant for the role, permission, and resource carries exactly that condition text, so a
-// case whose grant is gone or reworded fails here even when nobody ran impulse check, whose
+// provesGrant names the conditional grant a test case proves. It parses the auth's
+// embedded role file (crew.Roles() or members.Roles()) and fails unless a grant for the
+// role, permission, and resource carries exactly that condition text, so a case whose
+// grant is gone or reworded fails here even when nobody ran impulse check, whose
 // conditions-proven check reads these calls to find the conditional grants no case names.
 // Write the arguments as literals: the check reads them from the source.
-func provesGrant(t *testing.T, rolesPath string, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
+func provesGrant(t *testing.T, roles access.RoleFile, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join("..", "..", rolesPath))
+	config, err := roles.Parse()
 	if err != nil {
-		t.Fatalf("reading %s: %v", rolesPath, err)
-	}
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		t.Fatalf("parsing %s: %v", rolesPath, err)
+		t.Fatalf("access.RoleFile.Parse() error = %v", err)
 	}
 	var conditions []string
-	for _, r := range slices.Concat(roles.Roles.Global, roles.Roles.Domain) {
+	for _, r := range slices.Concat(config.Roles.Global, config.Roles.Domain) {
 		if r.Name != role {
 			continue
 		}
@@ -901,5 +905,5 @@ func provesGrant(t *testing.T, rolesPath string, role accesstypes.Role, permissi
 			conditions = append(conditions, g.Condition)
 		}
 	}
-	t.Fatalf("%s: no %s grant of the %s role on %s carries the condition %q (the file's conditions there: %q); the case proves a grant the file no longer carries", rolesPath, permission, role, res, condition, conditions)
+	t.Fatalf("no %s grant of the %s role on %s carries the condition %q (the role file's conditions there: %q); the case proves a grant the file no longer carries", permission, role, res, condition, conditions)
 }

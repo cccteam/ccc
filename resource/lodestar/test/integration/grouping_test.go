@@ -26,8 +26,8 @@ func TestDispatcherWriteGrouping(t *testing.T) {
 	ctx, db, h := demoWorld(t)
 
 	// The two grants this suite proves, A then B, each pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "Dispatcher", "Update", "Missions", "state IN ('open', 'claimed') AND new.assignedSquadron IN subject.squadrons")
-	provesGrant(t, crew.RolesPath, "Dispatcher", "Update", "Missions", "state NOT IN ('completed', 'failed', 'stood_down') AND new.deadline >= deadline")
+	provesGrant(t, crew.Roles(), "Dispatcher", "Update", "Missions", "state IN ('open', 'claimed') AND new.assignedSquadron IN subject.squadrons")
+	provesGrant(t, crew.Roles(), "Dispatcher", "Update", "Missions", "state NOT IN ('completed', 'failed', 'stood_down') AND new.deadline >= deadline")
 
 	patch := func(mission, value string) (int, []byte) {
 		return doRequestAs(t, h, "dispatcher", http.MethodPatch, "/api/resources",

@@ -55,6 +55,11 @@ type Configurer interface {
 	CursorKey() *resource.CursorKey
 	Access() access.Controller
 	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
+	// Domains lists the application's tenants, the roster a session's tenant list is
+	// filtered from: a permission engine holds no tenant list, so the picker's question
+	// is this roster asked, tenant by tenant, whether the session holds a grant there in
+	// the store of the auth it came through.
+	Domains(ctx context.Context) ([]accesstypes.Domain, error)
 	// Staff returns the auth the console binds to: the staff auth, whose session manager
 	// the App composes the console's login and session handlers from.
 	Staff() *staff.Auth
@@ -86,6 +91,7 @@ type App struct {
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	domainVisible  func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
+	domains        resource.DomainRoster
 	validate       *validator.Validate
 	logExporter    logger.Exporter
 	consoleDist    string
@@ -101,6 +107,7 @@ func New(cfg Configurer) *App {
 		resourceClient: cfg.ResourceClient(),
 		cursorKey:      cfg.CursorKey(),
 		domainVisible:  cfg.DomainVisible,
+		domains:        cfg.Domains,
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
 		consoleDist:    cfg.ConsoleDist(),
@@ -247,11 +254,13 @@ func serveSPA(assets http.Handler) http.HandlerFunc {
 // UserPermissions returns the permission checker for a request, composed from the
 // session's principal: the engine of the auth the request came through, bound to the
 // user for an ordinary or impersonated-user session, bound to the role for a session
-// established as a role, and attenuated by the session's permission mask.
+// established as a role, listing the tenants of the application's roster where the
+// principal holds a grant in that engine, and attenuated by the session's permission
+// mask.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
 	engine := a.engine(r.Context())
 
-	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole)
+	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole, a.domains)
 }
 
 // DomainVisible reports whether the tenant exists and the user holds at least one grant

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path"
@@ -24,7 +27,7 @@ import (
 
 // Site adds a site: a stand-alone application on a host of its own, with its own main
 // package, handlers, router, resources, authorization suite, and browser workspace under
-// apps/<name>/, served by a process of its own and covered by the role migration through
+// apps/<name>/, served by a process of its own and known to the permission engine through
 // the union of every site's permission collection. On a flat application the first site
 // added promotes the layout: the existing site moves under apps/<existing>/ (its import paths
 // change), the generator program becomes that site's, a shared generator is laid in for
@@ -585,47 +588,68 @@ func (s Site) promoteEnvTemplate(a *app.App, ch *Change) {
 	ch.didf("%s: PORT and APP_DIST are per site now, set by the Procfile per process", a.EnvTemplate)
 }
 
-// unionAnchorRE is the base deploy package's use of the one router's collection.
-var unionAnchorRE = regexp.MustCompile(`\brouter\.Collection\(\)`)
+// unionAnchor is the base data level's use of the one router's collection: the
+// expression the auths' settings take the collection they hand the permission engine
+// from.
+const unionAnchor = "router.Collection()"
 
-// unionNeedle is the call every deploy package in the sites layout makes: the union of the
+// unionNeedle is the call every data level in the sites layout makes: the union of the
 // sites' router collections, with one element per site.
 const unionNeedle = "access.UnionCollection("
 
-// errorsImport is the error package the generated Collection() wraps with.
-const errorsImport = "github.com/go-playground/errors/v5"
+// The packages the generated Collection() needs: the engine's collection type and the
+// error package it wraps with.
+const (
+	accessImport = "github.com/cccteam/access"
+	errorsImport = "github.com/go-playground/errors/v5"
+)
 
-// union makes the deployment's collection the union of every named site's router
-// collection: the aliased import, Collection() over access.UnionCollection, and the role
-// migration reading Collection() before it reconciles.
+// union makes the collection the auths hand to the permission engine the union of every
+// named site's router collection: the aliased import, Collection() over
+// access.UnionCollection, and the construction reading Collection() before it hands the
+// collection on.
 func (s Site) union(a *app.App, modulePath, first string, ch *Change) error {
-	rel, data, mode, err := findFileCalling(a, "access.MigrateRoles")
+	rel, data, mode, err := findFileCalling(a, unionAnchor)
 	if err != nil {
 		return err
 	}
-	if rel == "" || !unionAnchorRE.Match(data) {
-		ch.skipf("no package calling access.MigrateRoles passes router.Collection(), so the collection was not made the union; reconcile the roles against access.UnionCollection over every site's router collection, as the reference's pkg/deploy does")
+	if rel == "" {
+		ch.skipf("no package passes router.Collection() to an auth, so the collection was not made the union; hand the auths access.UnionCollection over every site's router collection, as the reference's pkg/config does")
 
 		return nil
 	}
 	text := string(data)
 	firstImport := `"` + modulePath + "/" + path.Join(sitesDir, first, "pkg/router") + `"`
 	if !strings.Contains(text, firstImport) {
-		ch.skipf("%s: does not import %s, so the collection was not made the union; reconcile the roles against access.UnionCollection over every site's router collection", rel, firstImport)
+		ch.skipf("%s: does not import %s, so the collection was not made the union; hand the auths access.UnionCollection over every site's router collection", rel, firstImport)
 
 		return nil
 	}
 	alias := first + "router"
 	text = strings.Replace(text, "\t"+firstImport, "\t"+alias+" "+firstImport, 1)
-	text = readCollectionBefore(text, unionAnchorRE)
-	text, imported := ensureImport(text, errorsImport)
+	text, ok, err := readCollectionBefore(rel, text, unionAnchor)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		ch.skipf("%s: the function passing router.Collection() returns no error to hand Collection()'s to, so the collection was not made the union; hand the auths access.UnionCollection over every site's router collection", rel)
+
+		return nil
+	}
+	var missing []string
+	for _, importPath := range []string{accessImport, errorsImport} {
+		var imported bool
+		if text, imported = ensureImport(text, importPath); !imported {
+			missing = append(missing, strconv.Quote(importPath))
+		}
+	}
 	text = strings.TrimRight(text, "\n") + fmt.Sprintf(`
 
 // Collection is the application's whole permission registry: the union of every site's
-// generated collection. The sites share one policy store, so the roles are reconciled
-// against everything any site registers; a resource several sites serve is declared
-// identically in each and appears once, and access.UnionCollection refuses sites that
-// disagree on one.
+// generated collection. The sites share one policy store, so the permission engine
+// validates the roles against everything any site registers; a resource several sites
+// serve is declared identically in each and appears once, and access.UnionCollection
+// refuses sites that disagree on one.
 func Collection() (access.PermissionCollection, error) {
 	collection, err := access.UnionCollection(%s.Collection())
 	if err != nil {
@@ -642,31 +666,130 @@ func Collection() (access.PermissionCollection, error) {
 	if err := os.WriteFile(a.Abs(rel), formatted, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	if !imported {
-		ch.skipf("%s: has no import block to add %q to; import it for Collection()", rel, errorsImport)
+	if len(missing) > 0 {
+		ch.skipf("%s: has no import block to add %s to; import them for Collection()", rel, strings.Join(missing, " and "))
 	}
-	ch.didf("%s: the roles are reconciled against Collection(), access.UnionCollection over every site's router collection (the %s site's to start)", rel, first)
+	ch.didf("%s: the auths take Collection(), access.UnionCollection over every site's router collection (the %s site's to start)", rel, first)
 
 	return nil
 }
 
 // readCollectionBefore rewrites the statement using the anchored expression to read
-// Collection() first: the statement's line is preceded by the read and its error
-// check, at the same indentation, and the expression becomes the read's result.
-func readCollectionBefore(text string, anchor *regexp.Regexp) string {
-	loc := anchor.FindStringIndex(text)
-	if loc == nil {
-		return text
+// Collection() first: the statement is preceded by the read and its error check at the
+// same indentation, returning the enclosing function's zero results with the error, and
+// the expression becomes the read's result. ok is false when the function enclosing the
+// expression returns no error to hand Collection()'s to.
+func readCollectionBefore(rel, text, anchor string) (edited string, ok bool, err error) {
+	at := strings.Index(text, anchor)
+	if at < 0 {
+		return text, true, nil
 	}
-	lineStart := strings.LastIndex(text[:loc[0]], "\n") + 1
-	indent := text[lineStart : lineStart+len(text[lineStart:])-len(strings.TrimLeft(text[lineStart:], "\t "))]
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, text, parser.SkipObjectResolution)
+	if err != nil {
+		return "", false, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pos := fset.File(f.Pos()).Pos(at)
+	fn, stmt := enclosingStatement(f, pos)
+	if fn == nil || stmt == nil {
+		return text, true, nil
+	}
+	results := zeroResults(fn.Type.Results)
+	if results == "" {
+		return text, false, nil
+	}
+	offset := fset.Position(stmt.Pos()).Offset
+	lineStart := strings.LastIndex(text[:offset], "\n") + 1
+	line := text[lineStart:]
+	indent := line[:len(line)-len(strings.TrimLeft(line, "\t "))]
 	read := indent + "collection, err := Collection()\n" +
 		indent + "if err != nil {\n" +
-		indent + "\treturn err\n" +
+		indent + "\treturn " + results + "\n" +
 		indent + "}\n\n"
-	rest := anchor.ReplaceAllString(text[lineStart:], "collection")
+	rest := strings.Replace(text[lineStart:], anchor, "collection", 1)
 
-	return text[:lineStart] + read + rest
+	return text[:lineStart] + read + rest, true, nil
+}
+
+// enclosingStatement finds the function declaration and the innermost statement of a
+// block that hold the position.
+func enclosingStatement(f *ast.File, pos token.Pos) (*ast.FuncDecl, ast.Stmt) {
+	for _, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Body == nil || pos < fd.Body.Pos() || pos >= fd.Body.End() {
+			continue
+		}
+		var stmt ast.Stmt
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			block, ok := n.(*ast.BlockStmt)
+			if !ok {
+				return true
+			}
+			for _, s := range block.List {
+				if pos >= s.Pos() && pos < s.End() {
+					stmt = s // the innermost block's statement is visited last
+				}
+			}
+
+			return true
+		})
+
+		return fd, stmt
+	}
+
+	return nil, nil
+}
+
+// zeroResults renders the return a function's error path makes, "nil, err" for a
+// function returning a value and an error: each result's zero value, with the last one
+// err. It is empty when the last result is not an error.
+func zeroResults(results *ast.FieldList) string {
+	if results == nil || len(results.List) == 0 {
+		return ""
+	}
+	var values []string
+	for _, field := range results.List {
+		for range max(len(field.Names), 1) {
+			values = append(values, zeroValue(field.Type))
+		}
+	}
+	last, ok := results.List[len(results.List)-1].Type.(*ast.Ident)
+	if !ok || last.Name != "error" {
+		return ""
+	}
+	values[len(values)-1] = "err"
+
+	return strings.Join(values, ", ")
+}
+
+// nilValue is the zero value of every type that has one.
+const nilValue = "nil"
+
+// zeroValue renders the zero value of a type as written.
+func zeroValue(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		switch t.Name {
+		case "string":
+			return `""`
+		case "bool":
+			return "false"
+		case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "complex64", "complex128", "byte", "rune":
+			return "0"
+		case "error", "any":
+			return nilValue
+		default:
+			return t.Name + "{}"
+		}
+	case *ast.SelectorExpr:
+		if pkg, ok := t.X.(*ast.Ident); ok {
+			return pkg.Name + "." + t.Sel.Name + "{}"
+		}
+
+		return nilValue
+	default:
+		return nilValue
+	}
 }
 
 // ensureImport adds importPath to the file's first import block when no import of it is
@@ -1426,7 +1549,7 @@ func processLinesOf(text string) ([]string, error) {
 // Meaning explains a site in this framework and names the wiring left to do.
 func (s Site) Meaning() string {
 	var b strings.Builder
-	b.WriteString("A site is a stand-alone application on a host of its own: its own main package, handlers, router, resources, authorization suite, and browser workspace under `apps/<site>/`, served by a process of its own (its own `PORT`, `APP_DIST`, and `APP_SERVICE_NAME` over the shared data level) and covered by the role migration through the union of every site's permission collection. The sites layout is several hosts from one repository: the sites share the schema, the configuration levels, the auths, and `pkg/sharedresources`, whose TypeScript the shared generator emits into every site's browser application so they agree on the shared vocabulary.\n\n")
+	b.WriteString("A site is a stand-alone application on a host of its own: its own main package, handlers, router, resources, authorization suite, and browser workspace under `apps/<site>/`, served by a process of its own (its own `PORT`, `APP_DIST`, and `APP_SERVICE_NAME` over the shared data level) and known to the permission engine through the union of every site's permission collection. The sites layout is several hosts from one repository: the sites share the schema, the configuration levels, the auths, and `pkg/sharedresources`, whose TypeScript the shared generator emits into every site's browser application so they agree on the shared vocabulary.\n\n")
 	if s.Existing != "" {
 		fmt.Fprintf(&b, "The application was flat, so adding the %s site promoted the layout: the existing site moved under `apps/%s/` (every import of its packages changed), its generator became `cmd/generate/%sgenerator`, the site level's bundle variable became `APP_DIST` (set per site process, as `PORT` is), the deployment's collection became the union, and the shared generator was laid in over an empty `pkg/sharedresources`. Everything existing belongs to the %s site.\n\n", s.Name, s.Existing, s.Existing, s.Existing)
 	}

@@ -107,7 +107,7 @@ func TestBriefWrite(t *testing.T) {
 func TestBriefMeanings(t *testing.T) {
 	t.Parallel()
 
-	conditions := check.Result{Name: "conditions-proven", Status: check.Fail, Summary: "1 conditional grant(s) proven by no test case", Details: []string{`schema/roles/staff.json: Cadet List Missions under "hazard IN (1, 2)" is proven by no test case`}}
+	conditions := check.Result{Name: "conditions-proven", Status: check.Fail, Summary: "1 conditional grant(s) proven by no test case", Details: []string{`pkg/auth/staff/roles.json: Cadet List Missions under "hazard IN (1, 2)" is proven by no test case`}}
 	tenancy := check.Result{Name: "tenancy-wired", Status: check.Fail, Summary: "1 tenancy wiring problem(s)", Details: []string{"x"}}
 	conditionsMeaning := check.Meaning("conditions-proven")
 	if conditionsMeaning == "" {

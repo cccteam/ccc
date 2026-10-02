@@ -4,67 +4,54 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"path"
 	"strconv"
 
 	"github.com/go-playground/errors/v5"
 )
 
 // ProvesGrantFunc is the harness helper a test case calls to name the conditional grant it
-// proves: provesGrant(t, <auth>.RolesPath, role, permission, resource, condition). The
-// helper reads the roles file at test time and fails unless a grant with that role,
-// permission, and resource carries exactly that condition text; the conditions-proven
-// check reads the call, so the two hold the case and the file together from both sides.
+// proves: provesGrant(t, <auth>.Roles(), role, permission, resource, condition). The
+// helper parses the auth's embedded role file at test time and fails unless a grant with
+// that role, permission, and resource carries exactly that condition text; the
+// conditions-proven check reads the call, so the two hold the case and the file together
+// from both sides.
 const ProvesGrantFunc = "provesGrant"
 
-// provesGrantArity is the helper's argument count: t, the roles path, then the four
+// provesGrantArity is the helper's argument count: t, the role file, then the four
 // coordinates of the grant.
 const provesGrantArity = 6
 
 // grantArgNames names the helper's arguments after t, for the problem a call raises.
-var grantArgNames = [provesGrantArity]string{"t", "rolesPath", "role", "permission", "resource", "condition"}
+var grantArgNames = [provesGrantArity]string{"t", "roles", "role", "permission", "resource", "condition"}
 
 // GrantProof is one call to the harness helper in a test file: a case's claim that it
-// proves the named conditional grant of a roles file.
+// proves the named conditional grant of a role file.
 type GrantProof struct {
 	File string
 	Line int
-	// RolesPath is the root-relative roles file the call names as a literal or a constant
-	// of the file, or empty when it names a package's RolesPath constant instead.
-	RolesPath string
-	// RolesPackage is the import path of the package whose RolesPath constant the call
-	// names, or empty for a literal path.
+	// RolesPackage is the import path of the auth package whose Roles() the call hands
+	// the helper: the role file the proof is about.
 	RolesPackage string
 	Role         string
 	Permission   string
 	Resource     string
 	Condition    string
 	// Problem says why the call cannot be read, or is empty: the wrong number of
-	// arguments, or an argument that is neither a literal nor a constant of the file.
+	// arguments, a role file that is not an imported package's Roles() call, or a
+	// coordinate that is neither a literal nor a constant of the file.
 	Problem string
 }
 
-// parseGrantProofs returns every call to the harness helper in a test file. The roles path
-// is read as a literal, a constant of the file, or a selector on an imported package's
-// RolesPath; the four coordinates are literals or constants of the file.
+// parseGrantProofs returns every call to the harness helper in a test file. The role file
+// is read as a Roles() call on an imported package; the four coordinates are literals or
+// constants of the file.
 func parseGrantProofs(rel string, src []byte) ([]GrantProof, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
-	imports := map[string]string{}
-	for _, imp := range f.Imports {
-		p, err := strconv.Unquote(imp.Path.Value)
-		if err != nil {
-			continue
-		}
-		local := path.Base(p)
-		if imp.Name != nil {
-			local = imp.Name.Name
-		}
-		imports[local] = p
-	}
+	imports := fileImports(f)
 	consts := fileConstStrings(f)
 
 	var proofs []GrantProof
@@ -92,21 +79,11 @@ func readGrantProof(rel string, line int, call *ast.CallExpr, imports, consts ma
 
 		return proof
 	}
-	if sel, ok := call.Args[1].(*ast.SelectorExpr); ok && sel.Sel.Name == rolesPathConst {
-		if id, ok := sel.X.(*ast.Ident); ok {
-			if p, imported := imports[id.Name]; imported {
-				proof.RolesPackage = p
-			}
-		}
-	}
+	proof.RolesPackage = rolesCallPackage(call.Args[1], imports, "")
 	if proof.RolesPackage == "" {
-		p, ok := constString(call.Args[1], consts)
-		if !ok {
-			proof.Problem = "argument " + grantArgNames[1] + " is neither a literal, a constant of the file, nor an imported package's " + rolesPathConst
+		proof.Problem = "argument " + grantArgNames[1] + " is not an imported auth package's " + rolesFunc + "()"
 
-			return proof
-		}
-		proof.RolesPath = path.Clean(p)
+		return proof
 	}
 	fields := [...]*string{&proof.Role, &proof.Permission, &proof.Resource, &proof.Condition}
 	for i, field := range fields {

@@ -33,6 +33,10 @@ func (s *digestStubPermissions) PermissionDigest(_ context.Context, scope access
 	return s.digest, nil
 }
 
+func (s *digestStubPermissions) HasGrants(context.Context, accesstypes.Scope) (bool, error) {
+	return false, nil
+}
+
 func (s *digestStubPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
 	return []accesstypes.Domain{}, nil
 }

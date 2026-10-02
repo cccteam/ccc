@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -12,13 +13,16 @@ import (
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// staffAuth is a minimal auth package.
+// staffAuth is a minimal auth package: it embeds its role file and hands it to the
+// permission engine itself.
 const staffAuth = `package staff
 
 import (
 	"context"
+	_ "embed"
 
 	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/access"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessionstorage"
 )
@@ -26,14 +30,22 @@ import (
 const (
 	Name        = "staff"
 	TablePrefix = "Staff"
-	RolesPath   = "schema/roles/" + Name + ".json"
 )
+
+//go:embed roles.json
+var roleFile access.RoleFile
+
+// Roles is the release's default roles for the staff auth.
+func Roles() access.RoleFile { return roleFile }
 
 type Auth struct {
 	session *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 }
 
-func New(ctx context.Context, db *cloudspanner.Client, key string) (*Auth, error) {
+func New(ctx context.Context, db *cloudspanner.Client, key string, collection access.PermissionCollection) (*Auth, error) {
+	if _, err := access.New(nil, access.WithDefaultRoles(collection, Roles())); err != nil {
+		return nil, err
+	}
 	s, err := session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerPasswordAuth(db), key,
 		session.WithSessionTableName(TablePrefix+"Sessions"), session.WithUserTableName(TablePrefix+"SessionUsers"))
 	if err != nil {
@@ -46,6 +58,14 @@ func New(ctx context.Context, db *cloudspanner.Client, key string) (*Auth, error
 func (a *Auth) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] { return a.session }
 `
 
+// The staff auth package in other shapes: handing its role file to nobody, exporting no
+// Roles(), and reading its role file without embedding it.
+var (
+	staffAuthUnhanded = strings.Replace(staffAuth, "\tif _, err := access.New(nil, access.WithDefaultRoles(collection, Roles())); err != nil {\n\t\treturn nil, err\n\t}\n", "", 1)
+	staffAuthNoRoles  = strings.Replace(staffAuthUnhanded, "//go:embed roles.json\nvar roleFile access.RoleFile\n\n// Roles is the release's default roles for the staff auth.\nfunc Roles() access.RoleFile { return roleFile }\n\n", "", 1)
+	staffAuthNoEmbed  = strings.Replace(staffAuth, "//go:embed roles.json\nvar roleFile access.RoleFile\n", "var roleFile access.RoleFile\n", 1)
+)
+
 const (
 	staffConfig = `package config
 
@@ -53,6 +73,7 @@ import (
 	"context"
 
 	"example.com/harbor/pkg/auth/staff"
+	"example.com/harbor/pkg/router"
 )
 
 type DataConfiguration struct {
@@ -60,7 +81,7 @@ type DataConfiguration struct {
 }
 
 func New(ctx context.Context) (*DataConfiguration, error) {
-	s, err := staff.New(ctx, nil, "")
+	s, err := staff.New(ctx, nil, "", router.Collection())
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +90,59 @@ func New(ctx context.Context) (*DataConfiguration, error) {
 }
 
 func (c *DataConfiguration) Staff() *staff.Auth { return c.staff }
+`
+	// staffConfigHanding is a data level handing the staff auth's role file to the engine
+	// itself, for an auth package that does not.
+	staffConfigHanding = `package config
+
+import (
+	"context"
+
+	"github.com/cccteam/access"
+
+	"example.com/harbor/pkg/auth/staff"
+	"example.com/harbor/pkg/router"
+)
+
+type DataConfiguration struct {
+	staff *staff.Auth
+}
+
+func New(ctx context.Context) (*DataConfiguration, error) {
+	if _, err := access.New(nil, access.WithDefaultRoles(router.Collection(), staff.Roles())); err != nil {
+		return nil, err
+	}
+	s, err := staff.New(ctx, nil, "", router.Collection())
+	if err != nil {
+		return nil, err
+	}
+
+	return &DataConfiguration{staff: s}, nil
+}
+
+func (c *DataConfiguration) Staff() *staff.Auth { return c.staff }
+`
+	// staffDeploy is the deploy package's policy check over an auth's engine.
+	staffDeploy = `package deploy
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/cccteam/access"
+)
+
+func CheckRoles(ctx context.Context, client *access.Client, name string) error {
+	warnings, err := client.CheckPolicy(ctx)
+	if err != nil {
+		return err
+	}
+	for _, w := range warnings {
+		fmt.Printf("Warning: %s\n", w)
+	}
+
+	return nil
+}
 `
 	staffBootstrap = `package main
 
@@ -81,19 +155,9 @@ import (
 	"example.com/harbor/pkg/deploy"
 )
 
-func run(ctx context.Context, manager access.UserManager, roles *access.RoleConfig) error {
-	return deploy.MigrateRoles(ctx, manager, roles, staff.RolesPath)
+func run(ctx context.Context, client *access.Client) error {
+	return deploy.CheckRoles(ctx, client, staff.Name)
 }
-`
-	staffPrinter = `package main
-
-import (
-	"fmt"
-
-	"example.com/harbor/pkg/auth/staff"
-)
-
-func main() { fmt.Println(staff.RolesPath) }
 `
 	staffApp = `package app
 
@@ -103,22 +167,9 @@ type Configurer interface {
 	Staff() *staff.Auth
 }
 `
-	rolesWrapper = `package deploy
-
-import (
-	"context"
-
-	"github.com/cccteam/access"
-	"github.com/cccteam/ccc/accesstypes"
-)
-
-func MigrateRoles(ctx context.Context, manager access.UserManager, roles *access.RoleConfig, rolesPath string, domains ...accesstypes.Domain) error {
-	return access.MigrateRoles(ctx, manager, nil, roles, domains...)
-}
-`
 	rolesJSON = "{\"roles\": {\"global\": [], \"domain\": []}}\n"
-	// rolesValidation is the roles validation test with the staff row: it reads the roles
-	// file at staff.RolesPath and runs access.ValidateRoles over the collection.
+	// rolesValidation is the roles validation test with the staff row: it parses the
+	// staff auth's role file and runs access.ValidateRoles over the collection.
 	rolesValidation = `package deploy_test
 
 import (
@@ -130,13 +181,16 @@ import (
 )
 
 func TestRoles(t *testing.T) {
-	_ = staff.RolesPath
-	if _, err := access.ValidateRoles(nil, nil); err != nil {
+	roles, err := staff.Roles().Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := access.ValidateRoles(nil, roles); err != nil {
 		t.Fatal(err)
 	}
 }
 `
-	// noValidation is a test that calls access.ValidateRoles for some other roles file.
+	// noValidation is a test that calls access.ValidateRoles for some other role file.
 	noValidation = `package deploy_test
 
 import (
@@ -158,8 +212,10 @@ const membersAuth = `package members
 
 import (
 	"context"
+	_ "embed"
 
 	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/access"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessionstorage"
 )
@@ -167,14 +223,21 @@ import (
 const (
 	Name        = "members"
 	TablePrefix = "Members"
-	RolesPath   = "schema/roles/" + Name + ".json"
 )
+
+//go:embed roles.json
+var roleFile access.RoleFile
+
+func Roles() access.RoleFile { return roleFile }
 
 type Auth struct {
 	session *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
 }
 
-func New(ctx context.Context, db *cloudspanner.Client, key string) (*Auth, error) {
+func New(ctx context.Context, db *cloudspanner.Client, key string, collection access.PermissionCollection) (*Auth, error) {
+	if _, err := access.New(nil, access.WithDefaultRoles(collection, Roles())); err != nil {
+		return nil, err
+	}
 	s, err := session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(db, sessionstorage.WithOIDCUsers()), %s, key, "", "", "", "",
 		session.WithSessionTableName(TablePrefix+"Sessions"), session.WithOIDCUserTableName(TablePrefix+"OIDCUsers"))
 	if err != nil {
@@ -194,6 +257,7 @@ import (
 	"context"
 
 	"example.com/harbor/pkg/auth/members"
+	"example.com/harbor/pkg/router"
 )
 
 type DataConfiguration struct {
@@ -201,7 +265,7 @@ type DataConfiguration struct {
 }
 
 func New(ctx context.Context) (*DataConfiguration, error) {
-	m, err := members.New(ctx, nil, "")
+	m, err := members.New(ctx, nil, "", router.Collection())
 	if err != nil {
 		return nil, err
 	}
@@ -211,21 +275,19 @@ func New(ctx context.Context) (*DataConfiguration, error) {
 
 func (c *DataConfiguration) Members() *members.Auth { return c.members }
 `
-	// membersBootstrap provisions the members roles and assigns a development member.
+	// membersBootstrap checks the members roles and assigns a development member.
 	membersBootstrap = `package main
 
 import (
 	"context"
-
-	"github.com/cccteam/access"
 
 	"example.com/harbor/pkg/auth/members"
 	"example.com/harbor/pkg/config"
 	"example.com/harbor/pkg/deploy"
 )
 
-func run(ctx context.Context, data *config.DataConfiguration, roles *access.RoleConfig) error {
-	if err := deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), roles, members.RolesPath); err != nil {
+func run(ctx context.Context, data *config.DataConfiguration) error {
+	if err := deploy.CheckRoles(ctx, data.Members().Access(), members.Name); err != nil {
 		return err
 	}
 
@@ -252,8 +314,11 @@ import (
 )
 
 func TestRoles(t *testing.T) {
-	_ = members.RolesPath
-	if _, err := access.ValidateRoles(nil, nil); err != nil {
+	roles, err := members.Roles().Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := access.ValidateRoles(nil, roles); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -265,11 +330,11 @@ func TestAuthsWired(t *testing.T) {
 
 	wired := map[string]string{
 		"pkg/auth/staff/staff.go":   staffAuth,
+		"pkg/auth/staff/roles.json": rolesJSON,
 		"pkg/config/data.go":        staffConfig,
-		"pkg/deploy/deploy.go":      rolesWrapper,
+		"pkg/deploy/deploy.go":      staffDeploy,
 		"cmd/bootstrap/main.go":     staffBootstrap,
 		"app/app.go":                staffApp,
-		"schema/roles/staff.json":   rolesJSON,
 		"pkg/deploy/deploy_test.go": rolesValidation,
 	}
 	without := func(keys ...string) map[string]string {
@@ -288,6 +353,7 @@ func TestAuthsWired(t *testing.T) {
 
 		return files
 	}
+	const noValidationTest = "pkg/auth/staff: no test validates the staff auth's role file (access.ValidateRoles over the collection, parsing staff.Roles()), so a warning the deploy prints is accepted nowhere in code; add the staff row to pkg/deploy/deploy_test.go with its expected warnings empty"
 
 	tests := []struct {
 		name        string
@@ -298,7 +364,7 @@ func TestAuthsWired(t *testing.T) {
 	}{
 		{
 			name: "wired", files: wired,
-			wantStatus: Pass, wantSummary: "1 auth(s) constructed, provisioned, and bound: staff",
+			wantStatus: Pass, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: staff",
 		},
 		{
 			name: "never constructed, never bound", files: without("pkg/config/data.go", "app/app.go"),
@@ -309,75 +375,89 @@ func TestAuthsWired(t *testing.T) {
 			},
 		},
 		{
-			name: "the roles file has no validation test", files: without("pkg/deploy/deploy_test.go"),
-			wantStatus: Warn, wantSummary: "1 auth(s) constructed, provisioned, and bound: staff; 1 roles file(s) without a validation test",
-			wantDetails: []string{"pkg/auth/staff: no test validates the staff auth's roles file (access.ValidateRoles over the collection, reading staff.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the staff row to pkg/deploy/deploy_test.go with its expected warnings empty"},
+			name: "the role file has no validation test", files: without("pkg/deploy/deploy_test.go"),
+			wantStatus: Warn, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: staff; 1 role file(s) without a validation test",
+			wantDetails: []string{noValidationTest},
 		},
 		{
-			name: "a validation test that reads another roles file", files: with(without(), "pkg/deploy/deploy_test.go", noValidation),
-			wantStatus: Warn, wantSummary: "1 auth(s) constructed, provisioned, and bound: staff; 1 roles file(s) without a validation test",
-			wantDetails: []string{"pkg/auth/staff: no test validates the staff auth's roles file (access.ValidateRoles over the collection, reading staff.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the staff row to pkg/deploy/deploy_test.go with its expected warnings empty"},
+			name: "a validation test that parses another role file", files: with(without(), "pkg/deploy/deploy_test.go", noValidation),
+			wantStatus: Warn, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: staff; 1 role file(s) without a validation test",
+			wantDetails: []string{noValidationTest},
 		},
 		{
-			name: "a wiring failure lists the missing validation test beneath it", files: without("pkg/deploy/deploy_test.go", "schema/roles/staff.json"),
+			name: "the validation test is named after the package checking the policy", files: with(without("pkg/deploy/deploy.go", "pkg/deploy/deploy_test.go"), "pkg/release/release.go", staffDeploy),
+			wantStatus: Warn, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: staff; 1 role file(s) without a validation test",
+			wantDetails: []string{strings.Replace(noValidationTest, "pkg/deploy/deploy_test.go", "pkg/release/release_test.go", 1)},
+		},
+		{
+			name: "a wiring failure lists the missing validation test beneath it", files: without("pkg/deploy/deploy_test.go", "pkg/auth/staff/roles.json"),
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{
-				"pkg/auth/staff: staff.RolesPath names schema/roles/staff.json, which does not exist",
-				"pkg/auth/staff: no test validates the staff auth's roles file (access.ValidateRoles over the collection, reading staff.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the staff row to pkg/deploy/deploy_test.go with its expected warnings empty",
+				"pkg/auth/staff: pkg/auth/staff/roles.json does not exist; the staff auth embeds its role file from there",
+				noValidationTest,
 			},
 		},
 		{
-			name: "roles never provisioned", files: without("cmd/bootstrap/main.go"),
+			name: "the role file never reaches the engine", files: with(without(), "pkg/auth/staff/staff.go", staffAuthUnhanded),
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
-			wantDetails: []string{"pkg/auth/staff: nothing outside tests reads staff.RolesPath; the staff auth's roles are never provisioned"},
+			wantDetails: []string{"pkg/auth/staff: nothing outside tests hands staff.Roles() to access.WithDefaultRoles; the staff auth's default roles never reach its permission engine"},
 		},
 		{
-			name: "roles path read where no roles are migrated", files: with(without("cmd/bootstrap/main.go"), "cmd/print/main.go", staffPrinter),
-			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
-			wantDetails: []string{"pkg/auth/staff: staff.RolesPath is read (cmd/print/main.go) but not by a file that migrates roles; the staff auth's roles are never provisioned"},
+			name: "the role file handed over by the data level", files: with(with(without(), "pkg/auth/staff/staff.go", staffAuthUnhanded), "pkg/config/data.go", staffConfigHanding),
+			wantStatus: Pass, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: staff",
 		},
 		{
-			name: "the roles file is missing", files: without("schema/roles/staff.json"),
+			name: "the package exports no Roles()", files: with(without(), "pkg/auth/staff/staff.go", staffAuthNoRoles),
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
-			wantDetails: []string{"pkg/auth/staff: staff.RolesPath names schema/roles/staff.json, which does not exist"},
+			wantDetails: []string{"pkg/auth/staff: the package exports no Roles(); the staff auth's role file reaches the permission engine as staff.Roles() handed to access.WithDefaultRoles"},
+		},
+		{
+			name: "the role file is not embedded", files: with(without(), "pkg/auth/staff/staff.go", staffAuthNoEmbed),
+			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{"pkg/auth/staff: no //go:embed roles.json directive in the package; the staff auth's role file does not travel with the release"},
+		},
+		{
+			name: "the role file is missing", files: without("pkg/auth/staff/roles.json"),
+			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{"pkg/auth/staff: pkg/auth/staff/roles.json does not exist; the staff auth embeds its role file from there"},
 		},
 		{
 			name: "an application-run directory auth assigns roles in the bootstrap",
 			files: map[string]string{
 				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "session.DisableRoleSync()"),
+				"pkg/auth/members/roles.json": rolesJSON,
 				"pkg/config/data.go":          membersConfig,
-				"pkg/deploy/deploy.go":        rolesWrapper,
+				"pkg/deploy/deploy.go":        staffDeploy,
 				"cmd/bootstrap/main.go":       membersBootstrap,
 				"app/app.go":                  membersApp,
-				"schema/roles/members.json":   rolesJSON,
 				"pkg/deploy/deploy_test.go":   membersValidation,
 			},
-			wantStatus: Pass, wantSummary: "1 auth(s) constructed, provisioned, and bound: members",
+			wantStatus: Pass, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: members",
 		},
 		{
 			name: "a directory-run auth with a role writer in the bootstrap",
 			files: map[string]string{
-				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "session.RoleSync(nil, nil)"),
+				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "session.RoleSync(nil)"),
+				"pkg/auth/members/roles.json": rolesJSON,
 				"pkg/config/data.go":          membersConfig,
-				"pkg/deploy/deploy.go":        rolesWrapper,
+				"pkg/deploy/deploy.go":        staffDeploy,
 				"cmd/bootstrap/main.go":       membersBootstrap,
 				"app/app.go":                  membersApp,
-				"schema/roles/members.json":   rolesJSON,
 				"pkg/deploy/deploy_test.go":   membersValidation,
 			},
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
-			wantDetails: []string{"cmd/bootstrap/main.go:18: the members auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)"},
+			wantDetails: []string{"cmd/bootstrap/main.go:16: the members auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)"},
 		},
 		{
 			name:       "two auths leave their cookies at the library defaults",
-			files:      with(without(), "pkg/auth/members/members.go", fmt.Sprintf(membersAuth, "session.DisableRoleSync()")),
-			wantStatus: Fail, wantSummary: "5 auth wiring problem(s)",
+			files:      with(with(without(), "pkg/auth/members/members.go", fmt.Sprintf(membersAuth, "session.DisableRoleSync()")), "pkg/auth/members/roles.json", rolesJSON),
+			wantStatus: Fail, wantSummary: "4 auth wiring problem(s)",
 			wantDetails: []string{
 				"pkg/auth/members: nothing outside tests calls members.New; the members auth is never constructed",
-				"pkg/auth/members: nothing outside tests reads members.RolesPath; the members auth's roles are never provisioned",
 				`pkg/auth/members: no outlet declares Auth("example.com/harbor/pkg/auth/members", ...) and no surface takes *members.Auth; nothing binds to the members auth, so its people can sign in nowhere`,
 				"pkg/auth/members, pkg/auth/staff: both issue their XSRF token in the cookie XSRF-TOKEN, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)",
 				"pkg/auth/members, pkg/auth/staff: both ride their sessions in the cookie auth, so a login to one ends the other's session in the browser; name each auth's cookie (session.WithCookieName)",
+				"pkg/auth/members: no test validates the members auth's role file (access.ValidateRoles over the collection, parsing members.Roles()), so a warning the deploy prints is accepted nowhere in code; add the members row to pkg/deploy/deploy_test.go with its expected warnings empty",
 			},
 		},
 		{
@@ -387,7 +467,7 @@ func TestAuthsWired(t *testing.T) {
 				`generation.GenerateRouter(),`,
 				`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.Password), generation.WebApp("/")),`,
 			)),
-			wantStatus: Pass, wantSummary: "1 auth(s) constructed, provisioned, and bound: staff",
+			wantStatus: Pass, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: staff",
 		},
 		{
 			name: "the program's flavor disagrees with the package",

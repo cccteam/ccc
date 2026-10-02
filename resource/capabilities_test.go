@@ -43,6 +43,10 @@ func (capStubPermissions) PermissionDigest(context.Context, accesstypes.Scope) (
 	return accesstypes.PermissionDigest{}, nil
 }
 
+func (capStubPermissions) HasGrants(context.Context, accesstypes.Scope) (bool, error) {
+	return false, nil
+}
+
 func (capStubPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
 	return []accesstypes.Domain{}, nil
 }

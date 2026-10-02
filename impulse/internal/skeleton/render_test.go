@@ -155,7 +155,7 @@ func TestRenderAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	for _, rel := range []string{"pkg/auth/members/members.go", "schema/roles/members.json", "schema/migrations/000002_MembersAccess.up.sql", "schema/migrations/000003_MembersSessions.down.sql", "schema/migrations/000004_MembersSessionUsers.up.sql"} {
+	for _, rel := range []string{"pkg/auth/members/members.go", "pkg/auth/members/roles.json", "schema/migrations/000002_MembersAccess.up.sql", "schema/migrations/000003_MembersSessions.down.sql", "schema/migrations/000004_MembersSessionUsers.up.sql"} {
 		if _, err := root.Stat(filepath.FromSlash(rel)); err != nil {
 			t.Errorf("%s: %v", rel, err)
 		}
@@ -210,7 +210,7 @@ func TestRenderAuth(t *testing.T) {
 			if r.Status == check.Fail {
 				t.Errorf("%s: %s %v", r.Name, r.Summary, r.Details)
 			}
-			if r.Name == "auths-wired" && r.Summary != "1 auth(s) constructed, provisioned, and bound: members" {
+			if r.Name == "auths-wired" && r.Summary != "1 auth(s) constructed, roles handed to the engine, and bound: members" {
 				t.Errorf("auths-wired summary = %q", r.Summary)
 			}
 		}

@@ -6,8 +6,10 @@ type (
 	// Sector is the tenant record: its route name equals the domain route segment, so
 	// /api/sectors lists the sectors while /api/sectors/{sectorID}/... serves the
 	// sector-scoped routes. The application derives its domain universe from this table
-	// rather than a fixed in-code list: the deployment reads it for MigrateRoles and the
-	// DomainVisible seam checks it, so adding a sector is a data change, not a release.
+	// rather than a fixed in-code list: the data configuration reads it at startup as the
+	// roster a session's sector list is filtered from, and the DomainVisible seam checks
+	// it, so adding a sector is a data change, not a release. A role held in every sector
+	// reaches the new sector with nothing written for it.
 	//
 	// The primary key is a human-readable slug, not a UUID: sector identifiers appear in
 	// every sector-scoped URL and in role provisioning, and the schema enforces the slug

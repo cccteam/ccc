@@ -1,11 +1,13 @@
 // Demonstrates: bootstrap.reset.
 package integration
 
-// This suite pins the bootstrap's data-only reset: a seeded database, with both auths'
-// roles provisioned and a role assigned, emptied of every row the schema migrations do
-// not own, table by table, with the schema, its own rows (the enumeration tables), and
-// its migration bookkeeping intact. The role assignment matters: it is an interleaved
-// child under ON DELETE NO ACTION, which Spanner refuses to delete out from under.
+// This suite pins the bootstrap's data-only reset: a seeded database, with a custom role,
+// its grant, and memberships written through the crew auth's manager, emptied of every
+// row the schema migrations do not own, table by table, with the schema, its own rows
+// (the enumeration tables), and its migration bookkeeping intact. The custom role's grant
+// matters: it is an interleaved child on cascade under the role, so it must go before
+// its parent and does. The release's default roles have no row, so the tables the reset
+// empties hold only what the application wrote.
 
 import (
 	"context"
@@ -16,6 +18,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/deploy"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
 )
 
@@ -29,7 +32,7 @@ func TestResetDevelopmentData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute, Collection: router.Collection()})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
 	}
@@ -39,14 +42,18 @@ func TestResetDevelopmentData(t *testing.T) {
 		}
 	})
 	manager := crewAuth.Access().UserManager()
-	if err := deploy.MigrateRoles(ctx, manager, crewRolesPath, anvil, bastion, cinder); err != nil {
-		t.Fatalf("deploy.MigrateRoles() error = %v", err)
+	held := accesstypes.DomainPolicyScope(anvil)
+	if err := manager.AddRole(ctx, held, "Auditor"); err != nil {
+		t.Fatalf("access.UserManager.AddRole() error = %v", err)
 	}
-	if err := manager.AddUserRoles(ctx, accesstypes.DomainScope(anvil), "someone", "Archivist"); err != nil {
+	if err := manager.AddRoleGrant(ctx, held, "Auditor", accesstypes.List, "Missions", ""); err != nil {
+		t.Fatalf("access.UserManager.AddRoleGrant() error = %v", err)
+	}
+	if err := manager.AddUserRoles(ctx, held, "someone", "Auditor", "Archivist"); err != nil {
 		t.Fatalf("access.UserManager.AddUserRoles() error = %v", err)
 	}
 
-	for table, column := range map[string]string{"Missions": "Id", "CrewRoles": "Role", "CrewUserRoles": "User"} {
+	for table, column := range map[string]string{"Missions": "Id", "CrewRoles": "Role", "CrewRoleGrants": "Role", "CrewUserRoles": "User"} {
 		if n := countRows(ctx, t, db, table, column); n == 0 {
 			t.Fatalf("%s is empty before the reset; the reset would prove nothing", table)
 		}
@@ -66,8 +73,9 @@ func TestResetDevelopmentData(t *testing.T) {
 		{name: "the tenants are emptied", table: "Sectors", column: "Id", wantEmpty: true},
 		{name: "an interleaved child on cascade is emptied with its parent", table: "RefitTasks", column: "Id", wantEmpty: true},
 		{name: "a foreign-key parent is emptied after its children", table: "Clients", column: "Id", wantEmpty: true},
-		{name: "a role assignment, the interleaved child on no action, is emptied first", table: "CrewUserRoles", column: "User", wantEmpty: true},
-		{name: "then the roles it hung under", table: "CrewRoles", column: "Role", wantEmpty: true},
+		{name: "a custom role's grant, the interleaved child on cascade, is emptied first", table: "CrewRoleGrants", column: "Role", wantEmpty: true},
+		{name: "then the custom role it hung under", table: "CrewRoles", column: "Role", wantEmpty: true},
+		{name: "the memberships are emptied", table: "CrewUserRoles", column: "User", wantEmpty: true},
 		{name: "an enumeration the schema populates stays", table: "MissionStatuses", column: "Id", wantEmpty: false},
 		{name: "the schema migration bookkeeping stays", table: "SchemaMigrations", column: "Version", wantEmpty: false},
 	}

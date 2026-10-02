@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -31,7 +29,6 @@ import (
 const (
 	migrationsSource = "file://../../schema/migrations"
 	devSeedSource    = "file://../../schema/devseed"
-	rolesPath        = "../../" + staff.RolesPath
 
 	// The development tenants, matching schema/devseed.
 	north = "north"
@@ -51,6 +48,12 @@ const (
 type servedConfigurer struct {
 	db   *initiator.SpannerDB
 	auth *staff.Auth
+}
+
+// Domains lists the development tenants: the roster the served stack filters by the
+// engine's foothold answer, as production's DataConfiguration.Domains lists the table.
+func (c *servedConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error) {
+	return []accesstypes.Domain{north, south}, nil
 }
 
 // DomainVisible composes the development roster with the engine's foothold answer — the
@@ -98,8 +101,9 @@ type served struct {
 	access *access.Client
 }
 
-// newServed provisions the database the way the deployment does (schema, then the
-// committed roles), creates the development login, and serves the full router.
+// newServed provisions the database the way the deployment does (the schema and the
+// development tenants, then the auth opened over it with its embedded role file validated
+// against the collection), creates the development logins, and serves the full router.
 func newServed(ctx context.Context, t *testing.T) *served {
 	t.Helper()
 
@@ -108,7 +112,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	auth, err := staff.New(ctx, db.Client, staff.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	auth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -119,11 +123,6 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	})
 	accessClient := auth.Access()
 
-	roles := loadRoles(t)
-	if err := access.MigrateRoles(ctx, accessClient.UserManager(), router.Collection(), roles, north, south); err != nil {
-		t.Fatalf("access.MigrateRoles() error = %v", err)
-	}
-
 	passwordAuth := auth.Session()
 	password := adminPassword
 	for _, user := range []string{adminUser, memberUser} {
@@ -131,15 +130,16 @@ func newServed(ctx context.Context, t *testing.T) *served {
 			t.Fatalf("CreateSessionUser(%s) error = %v", user, err)
 		}
 	}
+	// The memberships as the bootstrap identities hold them: the administrator's domain
+	// role in every tenant domain, one membership, and the member's in north alone.
 	assignments := []struct {
 		user  accesstypes.User
-		scope accesstypes.Scope
+		scope accesstypes.PolicyScope
 		role  accesstypes.Role
 	}{
-		{adminUser, accesstypes.GlobalScope(), "Administrator_Global"},
-		{adminUser, accesstypes.DomainScope(north), "Administrator_Domain"},
-		{adminUser, accesstypes.DomainScope(south), "Administrator_Domain"},
-		{memberUser, accesstypes.DomainScope(north), "Administrator_Domain"},
+		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator_Global"},
+		{adminUser, accesstypes.EveryDomainPolicyScope(), "Administrator_Domain"},
+		{memberUser, accesstypes.DomainPolicyScope(north), "Administrator_Domain"},
 	}
 	for _, a := range assignments {
 		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {
@@ -158,14 +158,16 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	return &served{server: server, access: accessClient}
 }
 
-// waitForDomains blocks until the engine's snapshot reports the user's expected tenant
-// membership: the store writes signal a reload, but the swap is asynchronous.
+// waitForDomains blocks until the engine's snapshot reports the user's footholds in
+// exactly the expected tenants, asked the way the served stack asks (the development
+// roster filtered by UserHasGrants): the store writes signal a reload, but the swap is
+// asynchronous.
 func waitForDomains(ctx context.Context, t *testing.T, client *access.Client, user accesstypes.User, want []accesstypes.Domain) {
 	t.Helper()
 
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		domains, err := client.UserDomains(ctx, user)
+		domains, err := footholds(ctx, client, user)
 		if err == nil && slices.Equal(domains, want) {
 			return
 		}
@@ -176,23 +178,24 @@ func waitForDomains(ctx context.Context, t *testing.T, client *access.Client, us
 	}
 }
 
+// footholds lists the development tenants where the user holds at least one grant.
+func footholds(ctx context.Context, client *access.Client, user accesstypes.User) ([]accesstypes.Domain, error) {
+	var domains []accesstypes.Domain
+	for _, domain := range []accesstypes.Domain{north, south} {
+		has, err := client.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+		if err != nil {
+			return nil, errors.Wrap(err, "access.Client.UserHasGrants()")
+		}
+		if has {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains, nil
+}
+
 // testCookieKey signs session cookies in the suites; any 32 bytes will do.
 const testCookieKey = "dGVzdC1jb29raWUta2V5LXRlc3QtY29va2llLWtleS0xMjM0NTY="
-
-func loadRoles(t *testing.T) *access.RoleConfig {
-	t.Helper()
-
-	raw, err := os.ReadFile(rolesPath)
-	if err != nil {
-		t.Fatalf("reading %s: %v", rolesPath, err)
-	}
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		t.Fatalf("parsing %s: %v", rolesPath, err)
-	}
-
-	return &roles
-}
 
 // browser is one browser's view of the served application: a cookie jar and the XSRF
 // token the session middleware issued into it.
@@ -268,25 +271,22 @@ func (b *browser) xsrfToken() string {
 	return ""
 }
 
-// provesGrant names the conditional grant a test case proves. It reads the roles file at
-// rolesPath (root-relative, as the auth package's RolesPath spells it) and fails unless a
-// grant for the role, permission, and resource carries exactly that condition text, so a
-// case whose grant is gone or reworded fails here even when nobody ran impulse check, whose
+// provesGrant names the conditional grant a test case proves. It parses the auth's role
+// file (<auth>.Roles(), the file embedded in the auth package) and fails unless a grant for
+// the role, permission, and resource carries exactly that condition text, so a case whose
+// grant is gone or reworded fails here even when nobody ran impulse check, whose
 // conditions-proven check reads these calls to find the conditional grants no case names.
-// Write the arguments as literals: the check reads them from the source.
-func provesGrant(t *testing.T, rolesPath string, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
+// Write the file as the auth package's Roles() call and the coordinates as literals: the
+// check reads them from the source.
+func provesGrant(t *testing.T, roles access.RoleFile, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join("..", "..", rolesPath))
+	config, err := roles.Parse()
 	if err != nil {
-		t.Fatalf("reading %s: %v", rolesPath, err)
-	}
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		t.Fatalf("parsing %s: %v", rolesPath, err)
+		t.Fatalf("parsing the role file: %v", err)
 	}
 	var conditions []string
-	for _, r := range slices.Concat(roles.Roles.Global, roles.Roles.Domain) {
+	for _, r := range slices.Concat(config.Roles.Global, config.Roles.Domain) {
 		if r.Name != role {
 			continue
 		}
@@ -300,5 +300,5 @@ func provesGrant(t *testing.T, rolesPath string, role accesstypes.Role, permissi
 			conditions = append(conditions, g.Condition)
 		}
 	}
-	t.Fatalf("%s: no %s grant of the %s role on %s carries the condition %q (the file's conditions there: %q); the case proves a grant the file no longer carries", rolesPath, permission, role, res, condition, conditions)
+	t.Fatalf("no %s grant of the %s role on %s carries the condition %q (the file's conditions there: %q); the case proves a grant the file no longer carries", permission, role, res, condition, conditions)
 }

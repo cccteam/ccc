@@ -12,18 +12,18 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 )
 
-// TestGrants_everyUnconditionalGrantIsServed proves the deploy path delivers the shipped
-// roles files: for each auth, every role at its scope (a global role in the global scope, a
+// TestGrants_everyUnconditionalGrantIsServed proves the engine serves the embedded role
+// files: for each auth, every role at its scope (a global role in the global scope, a
 // domain role in Anvil), and every unconditional grant with each of its fields, the engine
 // answers granted for a login holding the role. The expectation is the file itself; what
-// the test proves is that MigrateRoles delivers it through each auth's own store prefix
-// across the seeded sectors and that the engine serves it. Conditional grants are left out,
-// since their answer depends on a row: each is proven by the case that names it through
-// provesGrant. The world is this test's own, provisioned here, so the logins it assigns
-// touch no other suite.
+// the test proves is that an engine opened over each auth's own store prefix with the
+// auth's file compiles every grant from it and serves it, with no row written for a role:
+// a domain default role is held in every sector, so a membership in Anvil alone finds it.
+// Conditional grants are left out, since their answer depends on a row: each is proven by
+// the case that names it through provesGrant. The world is this test's own, provisioned
+// here, so the logins it assigns touch no other suite.
 func TestGrants_everyUnconditionalGrantIsServed(t *testing.T) {
 	t.Parallel()
 
@@ -34,18 +34,18 @@ func TestGrants_everyUnconditionalGrantIsServed(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		rolesPath string
-		prefix    string
+		name   string
+		roles  access.RoleFile
+		prefix string
 	}{
-		{name: "crew", rolesPath: crew.RolesPath, prefix: crew.TablePrefix},
-		{name: "members", rolesPath: members.RolesPath, prefix: members.TablePrefix},
+		{name: "crew", roles: crew.Roles(), prefix: crew.TablePrefix},
+		{name: "members", roles: members.Roles(), prefix: members.TablePrefix},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			engine, err := openEngine(db, tt.prefix)
+			engine, err := openEngine(db, tt.prefix, tt.roles)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -54,12 +54,9 @@ func TestGrants_everyUnconditionalGrantIsServed(t *testing.T) {
 					t.Errorf("access.Client.Close() error = %v", err)
 				}
 			})
-			roles, err := loadRoleConfig("../../" + tt.rolesPath)
+			roles, err := tt.roles.Parse()
 			if err != nil {
-				t.Fatal(err)
-			}
-			if err := access.MigrateRoles(ctx, engine.UserManager(), router.Collection(), roles, sectors...); err != nil {
-				t.Fatalf("access.MigrateRoles(%s) error = %v", tt.name, err)
+				t.Fatalf("access.RoleFile.Parse() error = %v", err)
 			}
 			rows := unconditionalRows(accesstypes.GlobalScope(), roles.Roles.Global)
 			rows = append(rows, unconditionalRows(accesstypes.DomainScope(anvil), roles.Roles.Domain)...)
@@ -122,7 +119,7 @@ func checkGrantsServed(ctx context.Context, t *testing.T, engine *access.Client,
 	t.Helper()
 
 	user := accesstypes.User("grants-" + strings.ToLower(string(row.role)))
-	if err := engine.UserManager().AddUserRoles(ctx, row.scope, user, row.role); err != nil {
+	if err := engine.UserManager().AddUserRoles(ctx, row.scope.PolicyScope(), user, row.role); err != nil {
 		t.Fatalf("AddUserRoles(%s, %s) error = %v", user, row.role, err)
 	}
 	checker := engine.ForUser(user)

@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
@@ -92,7 +93,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "resource.NewCursorKey()")
 	}
 
-	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	// The auth's default roles validate against the generated collection when its engine
+	// opens; the collection is passed in here, since the auth package imports no router.
+	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{Collection: router.Collection(), CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
@@ -100,6 +103,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	// The portal's login page is where a refused directory login returns to; the data
 	// level knows it because the auth's error redirects are configured here.
 	membersAuth, err := members.New(ctx, spannerClient, &members.Settings{
+		Collection:     router.Collection(),
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/portal/login",

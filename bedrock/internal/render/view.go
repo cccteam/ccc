@@ -230,7 +230,7 @@ type imageView struct {
 	// HooksPkg is the hooks program's package, empty without one.
 	HooksPkg string
 	// SchemaDir is the directory the migrate command reads relative to its working
-	// directory (schema: the migrations, the seed, the roles), copied whole.
+	// directory (schema: the migrations, the seed), copied whole.
 	SchemaDir string
 	// Workspaces are the browser workspaces, in the order the site's variables name
 	// them, each with the bundles built there (one per browser app); Bundles lists every

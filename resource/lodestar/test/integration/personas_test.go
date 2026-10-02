@@ -19,7 +19,7 @@ func TestDemoPersonaViews(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The grant this suite proves, pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "BulletinOfficer", "Execute", "IssueBulletin", "now < '2099-06-30T00:00:00Z'")
+	provesGrant(t, crew.Roles(), "BulletinOfficer", "Execute", "IssueBulletin", "now < '2099-06-30T00:00:00Z'")
 
 	tests := []struct {
 		name       string

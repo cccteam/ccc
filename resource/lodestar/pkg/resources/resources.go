@@ -1,9 +1,9 @@
 // Package resources provides the resource types for Lodestar: the rescue and salvage
 // service's sectors, clients, ships, crews, missions, refits, and cargo. Every permission
 // rule in the application is either structural (an annotation here) or a conditional
-// grant in schema/roles; no handler carries one. Each struct annotated with @resource
-// describes one table of schema/migrations; the generator derives the handlers, routes,
-// permission collection, and both TypeScript clients from them.
+// grant in an auth package's role file; no handler carries one. Each struct annotated
+// with @resource describes one table of schema/migrations; the generator derives the
+// handlers, routes, permission collection, and both TypeScript clients from them.
 package resources
 
 import (

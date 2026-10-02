@@ -21,7 +21,7 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
 - `pkg/auth` holds the auths, one package per population: `staff` (the console's people,
   who sign in with a password) and `members` (the portal's people, who sign in through the
   organization's directory over OpenID Connect). Each owns its session tables and cookie,
-  its permission store, and its roles file, so a member and a staff login with the same
+  its permission store, and its role file, so a member and a staff login with the same
   name are two unrelated principals. The members auth leaves role membership to the
   application (`session.DisableRoleSync`): the bootstrap assigns the development members
   their roles.
@@ -34,25 +34,28 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
   record, a global resource), `Announcement` (tenant-scoped, on the console and the
   portal), and `Reading` (tenant-scoped, machines-only). `schema/migrations` holds the tables they describe; `schema/devseed` the
-  development tenants; `schema/roles/staff.json` and `schema/roles/members.json` the role
-  configuration the deployment reconciles into each auth's store across the tenant roster.
-  The staff file authors `Administrator_Global` over the tenant record, `Administrator_Domain`
-  over the console's announcements, and `Machines_Domain`, the service account's role, over
-  the readings; the members file authors `Administrator_Domain` over the portal's
+  development tenants; `pkg/auth/staff/roles.json` and `pkg/auth/members/roles.json` each
+  auth's role file: the default roles the release ships, embedded in the binary and
+  validated against the generated collection when the auth's engine opens. A domain role
+  is held in every tenant domain, so nothing provisions a file per tenant. The staff file
+  authors `Administrator_Global` over the tenant record, `Administrator_Domain` over the
+  console's announcements, and `Machines_Domain`, the service account's role, over the
+  readings; the members file authors `Administrator_Domain` over the portal's
   announcements. A new resource stays invisible until a role in its auth's file is granted
   it. Every grant in either file is proven live by `test/integration/grants_test.go`, which
-  provisions the file the way the deployment does and asks the engine about each
+  opens each auth the way the deployment does and asks its engine about each
   unconditional grant; a conditional grant is proven by a test case that names it through
   `provesGrant`, and `impulse check` fails on one no case names.
-- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles
-  across the tenants read from the table. `cmd/deployment/migrate` is the deploy step;
+- `pkg/deploy` holds the database steps a deployment runs: the schema migrations, then
+  each auth's role policy check (`CheckRoles`), which prints what its store holds that
+  this release cannot use as written. `cmd/deployment/migrate` is the deploy step;
   `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development
-  tenants first (the roster MigrateRoles reconciles across is data), and adds the
-  development logins, the development member, and the machines service account from
-  `cmd/bootstrap/users.json`. Its test runs each roles file through the deploy-time
-  validation (`access.ValidateRoles`) and pins the warnings the deploy would print as
-  typed values, none expected: a warning is accepted by pinning it there, or the role is
-  fixed.
+  tenants (tenancy is data), and adds the development logins, the development member, and
+  the machines service account from `cmd/bootstrap/users.json`, each with its
+  memberships by where they are held (`global`, `everyDomain`, `domains`). Its test runs
+  each auth's role file through the validation the engine performs when it opens
+  (`access.ValidateRoles`) and pins the warnings the deploy would print as typed values,
+  none expected: a warning is accepted by pinning it there, or the role is fixed.
   A development seed under `schema/devseed` (data files as migrations, tracked apart from
   the schema, so a seeded database takes nothing twice) is applied by `cmd/bootstrap` and
   by the migrate command with `-seed`, which the pipeline passes in test environments and

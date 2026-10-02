@@ -21,7 +21,7 @@ import (
 // Auth adds an auth to the application: a population that signs in one way and holds
 // roles in its own permission store. An auth is a package, pkg/auth/<name>, copied from
 // an auth the application already has with every name substituted, so the new one owns
-// its own tables, cookie, store prefix, and roles file from the start; an auth whose
+// its own tables, cookie, store prefix, and role file from the start; an auth whose
 // people sign in through a directory (the OIDC flavors) is copied from the reference
 // skeleton's when the application has none. The data level constructs it. Binding a site
 // or an outlet to it, the users it starts with, and the tests that prove its people are
@@ -315,7 +315,7 @@ func (src *authSource) readFile(a *app.App, rel string) ([]byte, error) {
 	return data, nil
 }
 
-// Apply makes the deterministic half: the package, its migrations, its roles file, and
+// Apply makes the deterministic half: the package, its migrations, its role file, and
 // its construction on the data level.
 func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change, error) {
 	if err := au.Validate(a); err != nil {
@@ -434,14 +434,10 @@ const (
 		// person's roles to the directory's role claims, removing any it does not name,
 		// and a login naming no known role is refused. Hand-assigned roles do not survive
 		// it, so nothing in the application assigns roles in this store.
-		session.RoleSync(accessClient.UserManager(), settings.Domains),
+		session.RoleSync(accessClient.UserManager()),
 `
 	directoryField = `	// Directory identifies the application to the directory that verifies its logins.
 	Directory Directory
-`
-	domainsField = `	// Domains lists the tenants role synchronization sweeps besides the global scope:
-	// the application's tenant roster, or nil for an application without tenants.
-	Domains session.DomainsProvider
 `
 	applicationDoc = `// The directory proves who someone is; the application decides what they may do. Role
 // membership is the application's (session.DisableRoleSync): the bootstrap assigns the
@@ -469,7 +465,7 @@ const (
 		// by the group prefix), removing any it does not name, and a login naming no known
 		// role is refused. Hand-assigned roles do not survive it, so nothing in the
 		// application assigns roles in this store.
-		session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, lookup),
+		session.GoogleRoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
 `
 	googleGroupsConstruction = `	// The directory's groups are the source of role membership, read through the Cloud
 	// Identity Groups API with the person's own sign-in token, as far as the configured
@@ -552,13 +548,11 @@ func swapAuthority(text, flavor, authority string) (string, bool) {
 	switch {
 	case authority == AuthorityDirectory && strings.Contains(text, applicationSlot):
 		text = strings.Replace(text, applicationSlot, directorySlot, 1)
-		text = strings.Replace(text, directoryField, directoryField+domainsField, 1)
 		text = strings.Replace(text, applicationDoc, directoryDoc, 1)
 
 		return text, true
 	case authority == AuthorityApplication && strings.Contains(text, directorySlot):
 		text = strings.Replace(text, directorySlot, applicationSlot, 1)
-		text = strings.Replace(text, domainsField, "", 1)
 		text = strings.Replace(text, directoryDoc, applicationDoc, 1)
 
 		return text, true
@@ -579,7 +573,6 @@ func swapGoogleAuthority(text, authority string) (string, bool) {
 	case authority == AuthorityDirectory && strings.Contains(text, applicationSlot):
 		text = strings.Replace(text, applicationSlot, googleDirectorySlot, 1)
 		text = strings.Replace(text, googleConstructor, googleGroupsConstruction+googleConstructor, 1)
-		text = strings.Replace(text, directoryField, directoryField+domainsField, 1)
 		text = strings.Replace(text, googleHostedField, googleHostedField+googleGroupsFields, 1)
 		text = strings.Replace(text, googleDirectoryDoc, googleDirectoryRunDoc, 1)
 		text = strings.Replace(text, googleApplicationDoc, googleDirectoryPkgDoc, 1)
@@ -588,7 +581,6 @@ func swapGoogleAuthority(text, authority string) (string, bool) {
 	case authority == AuthorityApplication && strings.Contains(text, googleDirectorySlot):
 		text = strings.Replace(text, googleDirectorySlot, applicationSlot, 1)
 		text = strings.Replace(text, googleGroupsConstruction, "", 1)
-		text = strings.Replace(text, domainsField, "", 1)
 		text = strings.Replace(text, googleGroupsFields, "", 1)
 		text = strings.Replace(text, googleDirectoryRunDoc, googleDirectoryDoc, 1)
 		text = strings.Replace(text, googleDirectoryPkgDoc, googleApplicationDoc, 1)
@@ -750,13 +742,10 @@ func createsPrefixed(data []byte, prefix string) bool {
 
 var createTableRE = regexp.MustCompile("(?i)CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?`?([A-Za-z_][A-Za-z0-9_]*)`?")
 
-// writeRoles writes the auth's roles file, empty, beside the source auth's.
+// writeRoles writes the auth's role file, empty, in the package: the file its Roles()
+// embeds, which the package copy does not carry (only its Go files are copied).
 func (au Auth) writeRoles(a *app.App, src *authSource, ch *Change) error {
-	rolesDir := "schema/roles"
-	if entries, err := fs.Glob(os.DirFS(a.Root), "schema/roles/"+src.Name+".json"); err == nil && len(entries) > 0 {
-		rolesDir = path.Dir(entries[0])
-	}
-	rel := path.Join(rolesDir, au.Name+".json")
+	rel := path.Join(src.AuthDir, au.Name, app.RolesFileName)
 	if _, err := os.Stat(a.Abs(rel)); err == nil {
 		ch.skipf("%s already exists and was left alone", rel)
 
@@ -765,7 +754,7 @@ func (au Auth) writeRoles(a *app.App, src *authSource, ch *Change) error {
 	if err := writeNew(a, rel, "{\n  \"roles\": {\n    \"global\": [],\n    \"domain\": []\n  }\n}\n"); err != nil {
 		return err
 	}
-	ch.didf("%s: the %s auth's role configuration, empty: author its roles when its surfaces are bound", rel, au.Name)
+	ch.didf("%s: the %s auth's role file, empty: author its roles when its surfaces are bound", rel, au.Name)
 
 	return nil
 }
@@ -1009,11 +998,11 @@ func (au Auth) Meaning() string {
 		return au.oidcMeaning()
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions`%s, cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths.\n\n", au.Name, au.Flavor, au.Pascal(), au.userTableNote(), au.Name, au.Name, au.Pascal(), au.Name)
+	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions`%s, cookie `%s`), the %s permission store (tables prefixed `%s`), and the role file `pkg/auth/%s/roles.json`, embedded in the package and handed to the permission engine as the release's default roles (`access.WithDefaultRoles`). A person in two auths is two unrelated principals. The data level now constructs it beside the other auths.\n\n", au.Name, au.Flavor, au.Pascal(), au.userTableNote(), au.Name, au.Name, au.Pascal(), au.Name)
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
 		au.bindItem(),
-		fmt.Sprintf("Provision its roles. Call the roles migration for the %s auth in the bootstrap and the deployment's migrate step with `%s.RolesPath` and the %s auth's user manager, across the tenants when the application is tenanted. Give the %s auth its development identities (a login and its roles) in the bootstrap identities, kept apart from the other auths' identities. Add the %s auth's row to the roles validation test in `pkg/deploy` (`access.ValidateRoles` over the collection), its expected warnings empty, so a warning the deploy would print is accepted in code or fixed in the role; `impulse check` warns while the row is missing.", au.Name, au.Name, au.Name, au.Name, au.Name),
+		fmt.Sprintf("Check its roles. The package hands its role file to the engine when the data level constructs it; call `deploy.CheckRoles` for the %s auth in the bootstrap and the deployment's migrate step, so a deploy prints what the store holds that the release cannot use as written. Give the %s auth its development identities (a login and its roles under `global`, `everyDomain` and `domains`) in the bootstrap identities, kept apart from the other auths' identities. Add the %s auth's row to the roles validation test in `pkg/deploy` (`access.ValidateRoles` over the collection, parsing `%s.Roles()`), its expected warnings empty, so a warning the deploy would print is accepted in code or fixed in the role; `impulse check` warns while the row is missing.", au.Name, au.Name, au.Name, au.Name),
 		fmt.Sprintf("Release it. Close the %s auth where the data level closes the others.", au.Name),
 		fmt.Sprintf("Prove the segmentation in the integration tests: a %s login is refused by every other auth's surface, another auth's session is refused by the %s surface, and a username that exists in two auths is two principals with separate roles.", au.Name, au.Name),
 	}
@@ -1032,19 +1021,19 @@ func (au Auth) oidcMeaning() string {
 	if au.Flavor == FlavorOIDCGoogle {
 		anchor, directory, logoutRoute = "subject identifier", "Google, restricted to the Workspace domain the registration names", " (Google has no directory-initiated logout, so there is no front-channel route: the session's own logout route ends it)"
 	}
-	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable %s; cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. Its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), anchor, au.Name, au.Name, au.Pascal(), au.Name, directory)
+	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable %s; cookie `%s`), the %s permission store (tables prefixed `%s`), and the role file `pkg/auth/%s/roles.json`, embedded in the package and handed to the permission engine as the release's default roles (`access.WithDefaultRoles`). Its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), anchor, au.Name, au.Name, au.Pascal(), au.Name, directory)
 	switch {
 	case au.Authority == AuthorityDirectory && au.Flavor == FlavorOIDCGoogle:
-		fmt.Fprintf(&b, "Role membership is the directory's (`session.GoogleRoleSync`): every login reconciles the person's roles to the Google Groups the directory places them in, a group named `<prefix><role>@<domain>` assigning `<role>`, and removes any role no group names; a login in no role group is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory's groups assign them. The groups are read through the Cloud Identity Groups API with the person's own sign-in token (the sign-in asks for the groups read-only scope beside the identity scopes; no service account, key, or delegation is involved, and the Cloud Identity API must be enabled in the Google Cloud project that owns the OAuth client). `APP_%s_OIDC_GROUP_LOOKUP` sets how far the lookup reaches: `direct` (the default) reads the groups the person is a direct member of; `nested` climbs from those to the groups they are in, level by level, for a directory that nests its role groups. A group the person may not view is not seen, which costs that one membership and never the sign-in. Under the session library's `skipAuth` tag the lookup is simulated and `APP_ROLES` names the groups every login is in. Name every role in lowercase: the groups assign roles by lowercase name. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, strings.ToUpper(au.Name), au.Name)
+		fmt.Fprintf(&b, "Role membership is the directory's (`session.GoogleRoleSync`): every login reconciles the person's roles to the Google Groups the directory places them in, a group named `<prefix><role>@<domain>` assigning `<role>`, and removes any role no group names; a login in no role group is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the role file only defines the roles and their grants; the directory's groups assign them. The groups are read through the Cloud Identity Groups API with the person's own sign-in token (the sign-in asks for the groups read-only scope beside the identity scopes; no service account, key, or delegation is involved, and the Cloud Identity API must be enabled in the Google Cloud project that owns the OAuth client). `APP_%s_OIDC_GROUP_LOOKUP` sets how far the lookup reaches: `direct` (the default) reads the groups the person is a direct member of; `nested` climbs from those to the groups they are in, level by level, for a directory that nests its role groups. A group the person may not view is not seen, which costs that one membership and never the sign-in. Under the session library's `skipAuth` tag the lookup is simulated and `APP_ROLES` names the groups every login is in. Name every role in lowercase: the groups assign roles by lowercase name. A tenanted application needs no roster for the sweep: a membership the directory assigns is held in every domain.\n\n", au.Name, au.Name, strings.ToUpper(au.Name))
 	case au.Authority == AuthorityDirectory:
-		fmt.Fprintf(&b, "Role membership is the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory assigns them. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
+		fmt.Fprintf(&b, "Role membership is the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the role file only defines the roles and their grants; the directory assigns them. A tenanted application needs no roster for the sweep: a membership the directory assigns is held in every domain.\n\n", au.Name, au.Name)
 	default:
 		fmt.Fprintf(&b, "Role membership is the application's (`session.DisableRoleSync`): the directory proves who someone is and the application decides what they may do. A login neither reads nor changes roles, so the bootstrap assigns the development %s identities their roles in the %s store by username, with no password and no account to create, since the directory presents the name.\n\n", au.Name, au.Name)
 	}
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
 		au.bindItem() + fmt.Sprintf(" The directory's routes are the flavor's: `GET <prefix>/user/login` (the redirect to the directory), `GET <prefix>/user/callback` (the directory's return)%s, and the session and logout routes; set `LoginURL` in the data level's construction to the surface's login page.", logoutRoute),
-		fmt.Sprintf("Provision its roles. Call the roles migration for the %s auth in the bootstrap and the deployment's migrate step with `%s.RolesPath` and the %s auth's user manager, across the tenants when the application is tenanted.%s Add the %s auth's row to the roles validation test in `pkg/deploy` (`access.ValidateRoles` over the collection), its expected warnings empty, so a warning the deploy would print is accepted in code or fixed in the role; `impulse check` warns while the row is missing.", au.Name, au.Name, au.Name, au.identitiesNote(), au.Name),
+		fmt.Sprintf("Check its roles. The package hands its role file to the engine when the data level constructs it; call `deploy.CheckRoles` for the %s auth in the bootstrap and the deployment's migrate step, so a deploy prints what the store holds that the release cannot use as written.%s Add the %s auth's row to the roles validation test in `pkg/deploy` (`access.ValidateRoles` over the collection, parsing `%s.Roles()`), its expected warnings empty, so a warning the deploy would print is accepted in code or fixed in the role; `impulse check` warns while the row is missing.", au.Name, au.identitiesNote(), au.Name, au.Name),
 		fmt.Sprintf("Register it. The environment template now carries the %s auth's `APP_%s_OIDC_*` variables: set the redirect URL to the browser-facing callback of the surface it binds to (through the dev proxy in development), and fill in %s when the application is registered in a directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every %s login is `APP_USERNAME`.", au.Name, strings.ToUpper(au.Name), au.registrationToFill(), au.Name),
 		"Sign in from the browser. The surface's login page becomes a button that sends the browser to `<prefix>/user/login?returnUrl=<page>`, as the reference's portal login component does; a refused login returns to the login page with a code in `?code=`, never text, which the page maps through the library's login messages (`UiCoreService.loginMessage`), and `provideLoginMessages` adds the application's own codes.",
 		fmt.Sprintf("Release it. Close the %s auth where the data level closes the others.", au.Name),
@@ -1089,13 +1078,13 @@ func (au Auth) registrationToFill() string {
 // authority.
 func (au Auth) identitiesNote() string {
 	if au.Authority == AuthorityDirectory && au.Flavor == FlavorOIDCGoogle {
-		return " Seed no role assignments for it: the directory's groups assign them, and the roles file defines what each role may do. In development, APP_ROLES names the groups every simulated login is in."
+		return " Seed no role assignments for it: the directory's groups assign them, and the role file defines what each role may do. In development, APP_ROLES names the groups every simulated login is in."
 	}
 	if au.Authority == AuthorityDirectory {
-		return " Seed no role assignments for it: the directory assigns them, and the roles file defines what each role may do."
+		return " Seed no role assignments for it: the directory assigns them, and the role file defines what each role may do."
 	}
 
-	return fmt.Sprintf(" Give the %s auth its development identities in the bootstrap identities: role assignments by username, no passwords, kept apart from the other auths' identities.", au.Name)
+	return fmt.Sprintf(" Give the %s auth its development identities in the bootstrap identities: role assignments by username under `global`, `everyDomain` and `domains`, no passwords, kept apart from the other auths' identities.", au.Name)
 }
 
 func (au Auth) userTableNote() string {

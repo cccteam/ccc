@@ -20,14 +20,17 @@ concealed from logins that hold nothing there.
 - `pkg/sharedresources` is what every site's browser application needs in the same shape
   (the enumerations). The shared generator emits its TypeScript into each site's web
   application and generates nothing else.
-- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles
-  across the tenant roster against the union of the sites' generated collections — one
-  policy store, one role configuration, one identity across sites.
+- `pkg/deploy` holds the database steps a deployment runs: the schema migrations, then
+  the role policy check (`CheckRoles`), which prints what the store holds that this
+  release cannot use as written. The staff auth's role file validates against the union
+  of the sites' generated collections (`config.Collection`) when its engine opens: one
+  policy store, one role file, one identity across sites.
   `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it for the emulator
-  and adds the development tenants and logins. Its test runs each roles file through the
-  deploy-time validation (`access.ValidateRoles`) and pins the warnings the deploy would
-  print as typed values, none expected: a warning is accepted by pinning it there, or the
-  role is fixed.
+  and adds the development tenants and logins, each login with its memberships by where
+  they are held (`global`, `everyDomain`, `domains`). Its test runs each auth's role file
+  through the validation the engine performs when it opens (`access.ValidateRoles`) and
+  pins the warnings the deploy would print as typed values, none expected: a warning is
+  accepted by pinning it there, or the role is fixed.
   A development seed under `schema/devseed` (data files as migrations, tracked apart from
   the schema, so a seeded database takes nothing twice) is applied by `cmd/bootstrap` and
   by the migrate command with `-seed`, which the pipeline passes in test environments and
@@ -35,10 +38,13 @@ concealed from logins that hold nothing there.
 - `cmd/generate` runs the three generators: console, portal, shared. `impulse check`'s
   sites-generators check fails the build when a generator reads a different schema or the
   shared generator misses a site.
-- `schema/migrations` is the one schema; `schema/roles/staff.json` the role configuration. Every grant in it is proven live by `test/integration/grants_test.go`, which
-  provisions the file the way the deployment does and asks the engine about each
-  unconditional grant; a conditional grant is proven by a test case that names it through
-  `provesGrant`, and `impulse check` fails on one no case names.
+- `schema/migrations` is the one schema; `pkg/auth/staff/roles.json` the staff auth's
+  role file, the default roles the release ships, embedded in the binary. A domain role is
+  held in every tenant domain, so nothing provisions the file per tenant. Every grant in
+  it is proven live by `test/integration/grants_test.go`, which opens the auth the way
+  the deployment does and asks the engine about each unconditional grant; a conditional
+  grant is proven by a test case that names it through `provesGrant`, and
+  `impulse check` fails on one no case names.
 - `test/integration` serves both sites over one database and drives each the way its
   browser application does.
 

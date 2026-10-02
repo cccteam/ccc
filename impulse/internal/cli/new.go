@@ -63,7 +63,7 @@ func newNew() *cobra.Command {
 directory under the module path you name, and names the application's first auth: the
 population that signs in, as a lowercase plural (staff, members, partners, devices). The
 auth is a package, pkg/auth/<name>, and its name is also the prefix of its tables, its
-cookie, and the stem of its roles file, so it is asked for when --auth is not given, and
+cookie, and the stem of its role file, so it is asked for when --auth is not given, and
 there is no default: a default word would land in every application whose author skipped
 the question.
 
@@ -313,7 +313,7 @@ func (o *composedOptions) reference() string {
 // authQuestion is what a person at the terminal is asked when --auth is not given.
 const authQuestion = `Name the application's first auth: the population that signs in, plural, lowercase, one
 word (staff, members, partners, devices). It names the package pkg/auth/<name>, the
-tables, the cookie, and the roles file. There is no default.
+tables, the cookie, and the role file. There is no default.
 Auth name: `
 
 // askAuthName asks for the first auth's name when the flag did not give it and a person is

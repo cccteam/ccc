@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/cccteam/ccc"
@@ -43,6 +44,12 @@ func (s *stubPermissions) PermissionDigest(context.Context, accesstypes.Scope) (
 	return s.digest, nil
 }
 
+func (s *stubPermissions) HasGrants(_ context.Context, scope accesstypes.Scope) (bool, error) {
+	domain, ok := scope.Domain()
+
+	return ok && slices.Contains(s.domains, domain), nil
+}
+
 func (s *stubPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
 	return s.domains, nil
 }
@@ -70,8 +77,10 @@ func (s *stubRolePermissions) PermissionDigest(context.Context, accesstypes.Scop
 	return accesstypes.PermissionDigest{"documents": {accesstypes.Update: accesstypes.DigestGranted}}, nil
 }
 
-func (s *stubRolePermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
-	return []accesstypes.Domain{"tenant"}, nil
+func (s *stubRolePermissions) HasGrants(_ context.Context, scope accesstypes.Scope) (bool, error) {
+	domain, ok := scope.Domain()
+
+	return ok && domain == "tenant", nil
 }
 
 func sessionCtx(username string, imp *sessioninfo.Impersonation) context.Context {
@@ -96,6 +105,7 @@ func TestMasked(t *testing.T) {
 		wantGranted bool
 		wantChecked []accesstypes.Permission
 		wantDigest  accesstypes.PermissionDigest
+		wantDomains []accesstypes.Domain
 	}{
 		{
 			name:        "unrestricted mask returns the checker itself",
@@ -103,6 +113,7 @@ func TestMasked(t *testing.T) {
 			wantGranted: true,
 			wantChecked: []accesstypes.Permission{accesstypes.Update},
 			wantDigest:  fullDigest,
+			wantDomains: []accesstypes.Domain{"tenant"},
 		},
 		{
 			name:        "allowed permission delegates to policy",
@@ -111,6 +122,7 @@ func TestMasked(t *testing.T) {
 			wantGranted: true,
 			wantChecked: []accesstypes.Permission{accesstypes.Read},
 			wantDigest:  accesstypes.PermissionDigest{"documents": {accesstypes.Read: accesstypes.DigestGranted}},
+			wantDomains: []accesstypes.Domain{"tenant"},
 		},
 		{
 			name:        "masked permission is denied without consulting policy",
@@ -118,13 +130,15 @@ func TestMasked(t *testing.T) {
 			perm:        accesstypes.Update,
 			wantChecked: nil,
 			wantDigest:  accesstypes.PermissionDigest{"documents": {accesstypes.Read: accesstypes.DigestGranted}},
+			wantDomains: []accesstypes.Domain{"tenant"},
 		},
 		{
-			name:        "mask that allows nothing denies everything and empties the digest",
+			name:        "mask that allows nothing denies everything, empties the digest and lists no domain",
 			mask:        accesstypes.DenyAll(),
 			perm:        accesstypes.Read,
 			wantChecked: nil,
 			wantDigest:  accesstypes.PermissionDigest{},
+			wantDomains: []accesstypes.Domain{},
 		},
 	}
 	for _, tt := range tests {
@@ -159,8 +173,18 @@ func TestMasked(t *testing.T) {
 			}
 
 			domains, err := perms.Domains(context.Background())
-			if err != nil || len(domains) != 1 || domains[0] != "tenant" {
-				t.Errorf("Domains() = (%v, %v), want ([tenant], nil)", domains, err)
+			if err != nil {
+				t.Fatalf("Domains() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.wantDomains, domains); diff != "" {
+				t.Errorf("Domains() mismatch (-want +got):\n%s", diff)
+			}
+			has, err := perms.HasGrants(context.Background(), accesstypes.DomainScope("tenant"))
+			if err != nil {
+				t.Fatalf("HasGrants() error = %v", err)
+			}
+			if want := len(tt.wantDomains) > 0; has != want {
+				t.Errorf("HasGrants(tenant) = %v, want %v", has, want)
 			}
 			if perms.User() != "bob" {
 				t.Errorf("User() = %q, want bob", perms.User())
@@ -193,7 +217,7 @@ type checkerRecorder struct {
 func (r *checkerRecorder) forUser(user accesstypes.User) *stubPermissions {
 	r.users = append(r.users, user)
 
-	return &stubPermissions{user: user, digest: accesstypes.PermissionDigest{"documents": {accesstypes.Update: accesstypes.DigestGranted}}}
+	return &stubPermissions{user: user, digest: accesstypes.PermissionDigest{"documents": {accesstypes.Update: accesstypes.DigestGranted}}, domains: []accesstypes.Domain{"tenant"}}
 }
 
 func (r *checkerRecorder) forRole(role accesstypes.Role) *stubRolePermissions {
@@ -214,6 +238,10 @@ func TestSessionPermissions(t *testing.T) {
 		wantUser      accesstypes.User
 		wantUpdate    bool
 		wantDigestLen int
+		// wantDomains is the roster (tenant, other) filtered by the session's
+		// footholds: the checker holds a grant in tenant alone, and a mask
+		// that allows nothing it holds leaves no foothold.
+		wantDomains []accesstypes.Domain
 	}{
 		{
 			name:          "ordinary session routes to the user checker, unmasked",
@@ -222,6 +250,7 @@ func TestSessionPermissions(t *testing.T) {
 			wantUser:      "alice",
 			wantUpdate:    true,
 			wantDigestLen: 1,
+			wantDomains:   []accesstypes.Domain{"tenant"},
 		},
 		{
 			name: "impersonated user routes to the user checker for the impersonated user and is masked",
@@ -233,6 +262,7 @@ func TestSessionPermissions(t *testing.T) {
 			wantUsers:     []accesstypes.User{"bob"},
 			wantUser:      "bob",
 			wantDigestLen: 0,
+			wantDomains:   []accesstypes.Domain{},
 		},
 		{
 			name:          "role principal routes to the role checker, which has no User(); the session's effective identity is supplied",
@@ -241,6 +271,7 @@ func TestSessionPermissions(t *testing.T) {
 			wantUser:      "alice",
 			wantUpdate:    true,
 			wantDigestLen: 1,
+			wantDomains:   []accesstypes.Domain{"tenant"},
 		},
 		{
 			name: "masked role principal is attenuated like any other session",
@@ -252,13 +283,18 @@ func TestSessionPermissions(t *testing.T) {
 			wantRoles:     []accesstypes.Role{"PartnerViewer"},
 			wantUser:      "alice",
 			wantDigestLen: 0,
+			wantDomains:   []accesstypes.Domain{},
 		},
 		{
 			name:        "role principal without a role checker fails closed with the session's effective identity as User()",
 			ctx:         sessionCtx("alice", &sessioninfo.Impersonation{Actor: "alice", Principal: accesstypes.RolePrincipal("PartnerViewer")}),
 			unsupported: true,
 			wantUser:    "alice",
+			wantDomains: []accesstypes.Domain{},
 		},
+	}
+	roster := func(context.Context) ([]accesstypes.Domain, error) {
+		return []accesstypes.Domain{"tenant", "other"}, nil
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -267,9 +303,9 @@ func TestSessionPermissions(t *testing.T) {
 			rec := &checkerRecorder{}
 			var perms UserPermissions
 			if tt.unsupported {
-				perms = SessionPermissions(tt.ctx, rec.forUser, RolePrincipalsUnsupported)
+				perms = SessionPermissions(tt.ctx, rec.forUser, RolePrincipalsUnsupported, roster)
 			} else {
-				perms = SessionPermissions(tt.ctx, rec.forUser, rec.forRole)
+				perms = SessionPermissions(tt.ctx, rec.forUser, rec.forRole, roster)
 			}
 
 			if diff := cmp.Diff(tt.wantUsers, rec.users); diff != "" {
@@ -296,6 +332,14 @@ func TestSessionPermissions(t *testing.T) {
 			}
 			if len(digest) != tt.wantDigestLen {
 				t.Errorf("PermissionDigest() = %v, want %d entries", digest, tt.wantDigestLen)
+			}
+
+			domains, err := perms.Domains(context.Background())
+			if err != nil {
+				t.Fatalf("Domains() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.wantDomains, domains); diff != "" {
+				t.Errorf("Domains() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -334,6 +378,66 @@ func TestUserEvent(t *testing.T) {
 			}
 			if got, want := UserProcessEvent(tt.ctx, "nightly"), tt.want+": Process nightly"; got != want {
 				t.Errorf("UserProcessEvent() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestSessionPermissions_roster pins how the session's domains come from the
+// application's roster: each tenant the roster lists where the checker has a
+// foothold, sorted and without repeats; an application without tenants (nil
+// roster) lists none, never nil; a roster error is the answer's error.
+func TestSessionPermissions_roster(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		roster  DomainRoster
+		holds   []accesstypes.Domain
+		want    []accesstypes.Domain
+		wantErr bool
+	}{
+		{
+			name: "the roster filtered by footholds, sorted",
+			roster: func(context.Context) ([]accesstypes.Domain, error) {
+				return []accesstypes.Domain{"zeta", "alpha", "mid", "alpha"}, nil
+			},
+			holds: []accesstypes.Domain{"zeta", "alpha"},
+			want:  []accesstypes.Domain{"alpha", "zeta"},
+		},
+		{
+			name:   "no footholds lists nothing",
+			roster: func(context.Context) ([]accesstypes.Domain, error) { return []accesstypes.Domain{"alpha"}, nil },
+			want:   []accesstypes.Domain{},
+		},
+		{
+			name:  "an application without tenants lists nothing",
+			holds: []accesstypes.Domain{"alpha"},
+			want:  []accesstypes.Domain{},
+		},
+		{
+			name:    "a roster error is returned",
+			roster:  func(context.Context) ([]accesstypes.Domain, error) { return nil, errors.New("roster unavailable") },
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			forUser := func(user accesstypes.User) *stubPermissions {
+				return &stubPermissions{user: user, domains: tt.holds}
+			}
+			perms := SessionPermissions(sessionCtx("alice", nil), forUser, RolePrincipalsUnsupported, tt.roster)
+			got, err := perms.Domains(context.Background())
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Domains() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("Domains() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

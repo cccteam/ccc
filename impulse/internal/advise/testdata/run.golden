@@ -20,7 +20,7 @@ The accepted set is pinned in `cmd/generate/resourcegenerator/warnings_test.go` 
 
 ## Accepted role warnings
 
-The deploy-time validation of the roles files (`access.ValidateRoles`) prints a warning per grant it provisions as written but flags. The application accepts one by pinning its typed value in `pkg/deploy/deploy_test.go` (absent: no such test exists yet, so no role warning is accepted in code; `impulse check` (auths-wired) says where it belongs); each row of that test is one roles file, and an empty expected set means nothing is accepted. Read the pinned values there: they are role warnings to advise on too.
+The deploy-time validation of the role files (`access.ValidateRoles`) prints a warning per grant it provisions as written but flags. The application accepts one by pinning its typed value in `pkg/deploy/deploy_test.go` (absent: no such test exists yet, so no role warning is accepted in code; `impulse check` (auths-wired) says where it belongs); each row of that test is one role file, and an empty expected set means nothing is accepted. Read the pinned values there: they are role warnings to advise on too.
 
 ## How impulse reads each kind
 
@@ -54,7 +54,7 @@ A line's kind is told by its wording. The reading is impulse's and fixed; the qu
 
 *Question:* Whether the disclosure is intended: whether the row's existence is sensitive to this role, or the role is a writer who knows the rows anyway.
 
-*Edits on offer:* a Read or List grant on the row resource in the roles file, with a condition at least as wide as the write's; or the pinned `access.GrantWarning` in the deploy test.
+*Edits on offer:* a Read or List grant on the row resource in the role file, with a condition at least as wide as the write's; or the pinned `access.GrantWarning` in the deploy test.
 
 **Concealing key warning (a role warning, pinned in the deploy test)** (`role <Role>: List on <Resource>.<field> is granted under "<condition>", and <field> is the default order|a sort or filter key of <Resource> whose masked cells conceal ...`). A role lists a field under a condition, the field's masked cells conceal, and the role's other List grants on the resource leave the field's condition standing in the query, so a page ordered or filtered by the field sorts the tenant's whole partition on a CASE no index serves. Read from the line: whether the field is `the default order` (every page this role lists pays) or `a sort or filter key` (only a caller who asks for that sort or filter pays); and why the CASE stands, because the role `lists other fields unconditionally` or `also lists fields under` conditions the field's own does not cover. A table that never pages at volume does not care.
 
@@ -66,7 +66,7 @@ A line of a kind not listed here is read as written.
 
 ## Rules
 
-1. Answer per warning and finding, in prose: name it, apply the reading above to it (read the resource struct, its migrations, the roles file, and how the table is used, to say which branch of the reading holds), answer the question from what the code tells you, and name the edit you recommend, from the edits on offer or better, or say the warning should be accepted and where its pin goes (the program's warnings test for a schema warning, the deploy test for a role warning). The pinned values in those tests are warnings to advise on too.
+1. Answer per warning and finding, in prose: name it, apply the reading above to it (read the resource struct, its migrations, the role file, and how the table is used, to say which branch of the reading holds), answer the question from what the code tells you, and name the edit you recommend, from the edits on offer or better, or say the warning should be accepted and where its pin goes (the program's warnings test for a schema warning, the deploy test for a role warning). The pinned values in those tests are warnings to advise on too.
 2. Edit nothing. Run nothing that writes: no `go generate`, no `impulse` command, no test. Read the code.
 3. Where the code cannot answer the question (whether a table will grow, whether a field's rank is sensitive to a role), say so and state the question for the developer in one sentence.
 4. Finish with the edits you recommend as a list, in the order you would make them, each naming its file.

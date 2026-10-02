@@ -13,7 +13,7 @@ require (
 )
 
 require (
-	github.com/go-playground/pkg/v5 v5.21.3 // indirect
+	github.com/go-playground/pkg/v5 v5.31.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )

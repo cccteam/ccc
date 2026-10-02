@@ -411,7 +411,7 @@ func (r RemoveOutlet) Meaning() string {
 		fmt.Sprintf("The configuration: the fields read from `APP_%s_*` (a dist directory, an API key) and their lines in the environment template and the Procfile comments.", upper),
 		fmt.Sprintf("The members: a struct still annotated `@outlet(%s)` alone fails generation. For each, decide whether it moves to the default outlet (drop the annotation, and the console's people reach it) or leaves the application with its table (a migration drops the table). Then run `go generate ./...`.", r.Name),
 		"The tests: the integration tests that signed in or presented a key under the outlet's prefix, and the bootstrap identities that existed only for it (an API-key outlet's service account).",
-		"The auth the outlet was bound to stays, with its tables, store, and roles file, since another surface may bind to it; remove it separately when nothing does.",
+		"The auth the outlet was bound to stays, with its tables, store, and role file, since another surface may bind to it; remove it separately when nothing does.",
 	}
 	for i, item := range items {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, item)

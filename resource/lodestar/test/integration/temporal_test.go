@@ -21,7 +21,6 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
 )
 
@@ -56,17 +55,19 @@ func awayDays(zoneArg string, at time.Time) string {
 	return fmt.Sprintf("dayOfWeek(now, %s) IN ('%s', '%s')", zoneArg, dayNames[(day+3)%7], dayNames[(day+4)%7])
 }
 
-// provisionTemporalAccess migrates the scripted shift roles through the production
-// deploy path at Anvil and returns the live engine.
+// provisionTemporalAccess opens an engine whose role file is the scripted shift roles,
+// validated the way the production auths validate theirs, assigns the users their roles
+// at Anvil, and returns the live engine.
 func provisionTemporalAccess(ctx context.Context, t *testing.T, db *initiator.SpannerDB, conf *access.RoleConfig, users map[accesstypes.User][]accesstypes.Role, probe accesstypes.User) *access.Client {
 	t.Helper()
 
-	client := newAccessClient(t, db)
-	if err := access.MigrateRoles(ctx, client.UserManager(), router.Collection(), conf, anvil, bastion, cinder); err != nil {
-		t.Fatalf("access.MigrateRoles() error = %v", err)
+	file, err := json.Marshal(conf)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
 	}
+	client := newAccessClient(t, db, file)
 	for user, roles := range users {
-		if err := client.UserManager().AddUserRoles(ctx, accesstypes.DomainScope(anvil), user, roles...); err != nil {
+		if err := client.UserManager().AddUserRoles(ctx, accesstypes.DomainPolicyScope(anvil), user, roles...); err != nil {
 			t.Fatalf("AddUserRoles(%s) error = %v", user, err)
 		}
 	}
@@ -256,10 +257,10 @@ func TestShiftPairIsComplementary(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The shipped shift grants this suite proves, each pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "Dockmaster", "List", "Refits", "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'")
-	provesGrant(t, crew.RolesPath, "Dockmaster", "Read", "Refits", "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'")
-	provesGrant(t, crew.RolesPath, "NightWatch", "List", "Refits", "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'")
-	provesGrant(t, crew.RolesPath, "NightWatch", "Read", "Refits", "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'")
+	provesGrant(t, crew.Roles(), "Dockmaster", "List", "Refits", "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'")
+	provesGrant(t, crew.Roles(), "Dockmaster", "Read", "Refits", "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'")
+	provesGrant(t, crew.Roles(), "NightWatch", "List", "Refits", "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'")
+	provesGrant(t, crew.Roles(), "NightWatch", "Read", "Refits", "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'")
 
 	dara, daraBody := doRequestAs(t, h, "dock", http.MethodGet, sectorPath(anvil, "refits"), "")
 	nadia, nadiaBody := doRequestAs(t, h, "watch", http.MethodGet, sectorPath(anvil, "refits"), "")
@@ -287,7 +288,7 @@ func TestNightWatchWeekdayTasks(t *testing.T) {
 	_, _, h := demoWorld(t)
 
 	// The grant this suite proves, pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "NightWatch", "Update", "RefitTasks", "dayOfWeek(now, local) NOT IN ('sat', 'sun') AND state = 'in_refit'")
+	provesGrant(t, crew.Roles(), "NightWatch", "Update", "RefitTasks", "dayOfWeek(now, local) NOT IN ('sat', 'sun') AND state = 'in_refit'")
 
 	opsClock, err := time.LoadLocation("America/Denver")
 	if err != nil {

@@ -76,7 +76,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "tenancy-wired untenanted sites", fixture: "sites", check: tenancyWired{},
-			wantStatus: Pass, wantSummary: "not tenanted: no tenant-scoped resources, roles provisioned globally",
+			wantStatus: Pass, wantSummary: "not tenanted: no tenant-scoped resources",
 		},
 		{
 			name: "tenancy-wired no site", fixture: "badprogram", check: tenancyWired{},

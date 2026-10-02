@@ -235,9 +235,10 @@ func newAddAuth() *cobra.Command {
 		Short: "Add an auth: a population that signs in one way and holds roles in its own store",
 		Long: `auth adds an auth package, pkg/auth/<name>, copied from an auth the application already
 has with every name substituted, so the new population owns its own session and user
-tables, cookie, store prefix, and roles file from the start. Its table migrations are
-copied under the new prefix, an empty roles file is written beside the others, and the
-data level constructs it beside the auth it was copied from. The default is a password
+tables, cookie, store prefix, and role file from the start. Its table migrations are
+copied under the new prefix, an empty role file is written in the package (the file its
+Roles() embeds and hands to the permission engine), and the data level constructs it
+beside the auth it was copied from. The default is a password
 auth; --preauth swaps the constructor to the preauth flavor (the application proves who
 someone is and asks the session library for a session).
 
@@ -257,9 +258,9 @@ hand-assigned roles at the next login. For Google the directory's authority is i
 token), read by a group prefix the registration names, as far as the group lookup it names
 reaches (direct, or nested); under skipAuth the lookup is simulated from APP_ROLES.
 
-Binding a site or an outlet to the new auth, provisioning its roles, its development
-identities, and the tests that prove its people are strangers to the other auths are
-handed to the agent.`,
+Binding a site or an outlet to the new auth, checking its roles in the deploy, its
+development identities, and the tests that prove its people are strangers to the other
+auths are handed to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flavor := transition_.FlavorPassword

@@ -88,7 +88,7 @@ LABEL org.opencontainers.image.title="beacon" \
 
 COPY --from=build-env /build /
 
-# The migrate command reads schema (the migrations, the seed, the roles) relative to its
+# The migrate command reads schema (the migrations, the seed) relative to its
 # working directory, and the server serves each bundle from the directory its variable
 # names, so everything sits under the working directory set below.
 COPY --from=web-build-env /src/web/dist/console /home/nonroot/web/dist/console

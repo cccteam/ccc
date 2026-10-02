@@ -1,19 +1,16 @@
 // Package deploy holds the database steps a deployment runs and the development
-// bootstrap reuses: applying the schema migrations and reconciling the role
-// configuration into the permission engine's policy store.
+// bootstrap reuses: applying the schema migrations and checking the release's role policy
+// against what the permission engine's store holds.
 package deploy
 
 import (
 	"context"
-	"encoding/json"
-	"os"
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/cccteam/access"
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/config"
-	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/go-playground/errors/v5"
 )
@@ -70,32 +67,21 @@ func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) e
 	return nil
 }
 
-// MigrateRoles reconciles the committed role configuration into the policy store,
-// validated against the generated permission collection, across the given tenant
-// domains — the roster read from the Tenants table.
-func MigrateRoles(ctx context.Context, manager access.UserManager, rolesPath string, domains ...accesstypes.Domain) error {
-	roles, err := loadRoles(rolesPath)
+// CheckRoles reports what the deploy should hear about the named auth's role policy
+// before the release takes traffic: the warnings its role file raises, and what its
+// store holds that this release cannot use as written (a grant it skips, a custom role a
+// default role of the same name shadows, memberships naming a role nothing defines). Each
+// is printed on its own "Warning:" line. Nothing is written: the default roles travel with
+// the release, which validated them when it opened the engine, so there is nothing to
+// reconcile; a store that cannot be read is the error.
+func CheckRoles(ctx context.Context, client *access.Client, name string) error {
+	warnings, err := client.CheckPolicy(ctx)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "access.Client.CheckPolicy(): the %s auth", name)
 	}
-
-	if err := access.MigrateRoles(ctx, manager, router.Collection(), roles, domains...); err != nil {
-		return errors.Wrap(err, "access.MigrateRoles()")
+	for _, w := range warnings {
+		fmt.Printf("Warning: %s\n", w)
 	}
 
 	return nil
-}
-
-func loadRoles(path string) (*access.RoleConfig, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, errors.Wrapf(err, "os.ReadFile(%q)", path)
-	}
-
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		return nil, errors.Wrapf(err, "json.Unmarshal(%q)", path)
-	}
-
-	return &roles, nil
 }

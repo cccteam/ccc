@@ -642,6 +642,10 @@ func (*semanticPermissions) PermissionDigest(context.Context, accesstypes.Scope)
 	return accesstypes.PermissionDigest{}, nil
 }
 
+func (*semanticPermissions) HasGrants(context.Context, accesstypes.Scope) (bool, error) {
+	return false, nil
+}
+
 func (*semanticPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
 	return nil, nil
 }

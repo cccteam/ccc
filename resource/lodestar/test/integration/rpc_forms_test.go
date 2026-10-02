@@ -131,7 +131,7 @@ func TestReleaseConsignment_armedManifest(t *testing.T) {
 	t.Parallel()
 
 	// The droid's grant this suite proves through its own outlet, pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "DroidIngest", "Execute", "ReleaseConsignment", "releasedAt IS NULL")
+	provesGrant(t, crew.Roles(), "DroidIngest", "Execute", "ReleaseConsignment", "releasedAt IS NULL")
 
 	tests := []struct {
 		name        string

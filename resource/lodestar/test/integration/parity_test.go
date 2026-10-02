@@ -1,14 +1,15 @@
 package integration
 
-// The bootstrap-parity helpers: they provision the SHIPPED role configuration
-// (schema/roles/crew.json and members.json) and the SHIPPED personas
-// (cmd/bootstrap/users.json) through the real permission engines over the SHIPPED demo
+// The bootstrap-parity helpers: they open the real permission engines over the SHIPPED
+// role files (crew.Roles and members.Roles, embedded in the auth packages) and assign the
+// SHIPPED personas (cmd/bootstrap/users.json) their memberships over the SHIPPED demo
 // world, so what a human sees logging into the running demo is exactly what the suites
 // pin; the demo product and the regression suite cannot drift apart.
 //
-// Provisioning is expensive (MigrateRoles writes one mutation per grant row), so the
-// deploy path runs ONCE, for the shared world the read-only suites use, and every
-// mutating suite gets its own seeded database served over the shared engines.
+// The engines validate the role files as they open and the store holds no row for a
+// default role, so provisioning is the memberships alone. The shared world is still built
+// ONCE, for the read-only suites, and every mutating suite gets its own seeded database
+// served over the shared engines.
 
 import (
 	"context"
@@ -29,10 +30,12 @@ import (
 	initiator "github.com/cccteam/db-initiator"
 )
 
-// demoRoles mirrors the bootstrap's per-persona role assignment shape.
+// demoRoles mirrors the bootstrap's per-persona role assignment shape: where each
+// membership is held, the global partition, every sector, or one sector at a time.
 type demoRoles struct {
-	Global  []accesstypes.Role                        `json:"global"`
-	Domains map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
+	Global      []accesstypes.Role                        `json:"global"`
+	EveryDomain []accesstypes.Role                        `json:"everyDomain"`
+	Domains     map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
 }
 
 // demoUser is one persona as cmd/bootstrap/users.json declares it.
@@ -52,24 +55,12 @@ type demoIdentities struct {
 }
 
 // clientRoles is what the directory assigns Client Cleo: the groups APP_ROLES names in
-// development, swept across the global scope and every sector. The parity world assigns
-// them directly, since no login runs here.
+// development, the global role held in the global partition and the domain role held in
+// every sector, as role synchronization writes them. The parity world assigns them
+// directly, since no login runs here.
 var clientRoles = demoRoles{
-	Global:  []accesstypes.Role{"client-account"},
-	Domains: map[accesstypes.Domain][]accesstypes.Role{anvil: {"client-portal"}, bastion: {"client-portal"}, cinder: {"client-portal"}},
-}
-
-func loadRoleConfig(path string) (*access.RoleConfig, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
-	}
-	var roles access.RoleConfig
-	if err := json.Unmarshal(raw, &roles); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", path, err)
-	}
-
-	return &roles, nil
+	Global:      []accesstypes.Role{"client-account"},
+	EveryDomain: []accesstypes.Role{"client-portal"},
 }
 
 func loadIdentities() (*demoIdentities, error) {
@@ -97,13 +88,14 @@ func demoUsers(t *testing.T) []demoUser {
 	return identities.Users
 }
 
-// openEngine opens a real engine over one auth's store prefix.
-func openEngine(db *initiator.SpannerDB, prefix string) (*access.Client, error) {
+// openEngine opens a real engine over one auth's store prefix with the auth's role file,
+// validated against the generated collection the way the auth packages open theirs.
+func openEngine(db *initiator.SpannerDB, prefix string, roles access.RoleFile) (*access.Client, error) {
 	store, err := spannerstore.New(db.Client, spannerstore.WithPrefix(prefix))
 	if err != nil {
 		return nil, fmt.Errorf("spannerstore.New(): %w", err)
 	}
-	client, err := access.New(store)
+	client, err := access.New(store, access.WithDefaultRoles(router.Collection(), roles))
 	if err != nil {
 		return nil, fmt.Errorf("access.New(): %w", err)
 	}
@@ -111,17 +103,10 @@ func openEngine(db *initiator.SpannerDB, prefix string) (*access.Client, error) 
 	return client, nil
 }
 
-// provisionDemoAccess migrates both shipped role files through the production deploy
-// path, assigns the personas and the droid their roles in the crew store and the client
-// its directory roles in the members store, and waits for both snapshots.
+// provisionDemoAccess assigns the personas and the droid their roles in the crew store and
+// the client its directory roles in the members store, and waits for both snapshots. The
+// roles themselves are the engines' role files; nothing is written for them.
 func provisionDemoAccess(ctx context.Context, crewEngine, membersEngine *access.Client) error {
-	crewRoles, err := loadRoleConfig(crewRolesPath)
-	if err != nil {
-		return err
-	}
-	if err := access.MigrateRoles(ctx, crewEngine.UserManager(), router.Collection(), crewRoles, sectors...); err != nil {
-		return fmt.Errorf("access.MigrateRoles(crew): %w", err)
-	}
 	identities, err := loadIdentities()
 	if err != nil {
 		return err
@@ -137,13 +122,6 @@ func provisionDemoAccess(ctx context.Context, crewEngine, membersEngine *access.
 		}
 	}
 
-	membersRoles, err := loadRoleConfig(membersRolesPath)
-	if err != nil {
-		return err
-	}
-	if err := access.MigrateRoles(ctx, membersEngine.UserManager(), router.Collection(), membersRoles, sectors...); err != nil {
-		return fmt.Errorf("access.MigrateRoles(members): %w", err)
-	}
 	if err := assignDemoRoles(ctx, membersEngine, clientUser, clientRoles); err != nil {
 		return err
 	}
@@ -155,14 +133,21 @@ func provisionDemoAccess(ctx context.Context, crewEngine, membersEngine *access.
 	return waitForDecision(ctx, membersEngine, clientUser, cinder, accesstypes.Execute, "StandDownMission")
 }
 
+// assignDemoRoles writes the memberships where each is held: the global partition, every
+// sector, then one sector at a time.
 func assignDemoRoles(ctx context.Context, client *access.Client, user accesstypes.User, roles demoRoles) error {
 	if len(roles.Global) > 0 {
-		if err := client.UserManager().AddUserRoles(ctx, accesstypes.GlobalScope(), user, roles.Global...); err != nil {
+		if err := client.UserManager().AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), user, roles.Global...); err != nil {
 			return fmt.Errorf("AddUserRoles(%s, global): %w", user, err)
 		}
 	}
+	if len(roles.EveryDomain) > 0 {
+		if err := client.UserManager().AddUserRoles(ctx, accesstypes.EveryDomainPolicyScope(), user, roles.EveryDomain...); err != nil {
+			return fmt.Errorf("AddUserRoles(%s, every domain): %w", user, err)
+		}
+	}
 	for domain, domainRoles := range roles.Domains {
-		if err := client.UserManager().AddUserRoles(ctx, accesstypes.DomainScope(domain), user, domainRoles...); err != nil {
+		if err := client.UserManager().AddUserRoles(ctx, accesstypes.DomainPolicyScope(domain), user, domainRoles...); err != nil {
 			return fmt.Errorf("AddUserRoles(%s, %s): %w", user, domain, err)
 		}
 	}
@@ -170,8 +155,8 @@ func assignDemoRoles(ctx context.Context, client *access.Client, user accesstype
 	return nil
 }
 
-// waitForDecision blocks until the engine's snapshot reflects the migrated policy: the
-// store writes signal a reload, but the swap is asynchronous, so it polls the
+// waitForDecision blocks until the engine's snapshot reflects the written memberships:
+// the store writes signal a reload, but the swap is asynchronous, so it polls the
 // last-provisioned identity's authority until it stops being Denied.
 func waitForDecision(ctx context.Context, client *access.Client, user accesstypes.User, domain accesstypes.Domain, perm accesstypes.Permission, res accesstypes.Resource) error {
 	checker := client.ForUser(user)
@@ -199,11 +184,12 @@ func demoAccessClient(t *testing.T) *access.Client {
 	return client
 }
 
-// newAccessClient opens an unprovisioned crew-store engine over db, closed with the test.
-func newAccessClient(t *testing.T, db *initiator.SpannerDB) *access.Client {
+// newAccessClient opens a crew-store engine over db with the given role file, closed with
+// the test.
+func newAccessClient(t *testing.T, db *initiator.SpannerDB, roles access.RoleFile) *access.Client {
 	t.Helper()
 
-	client, err := openEngine(db, crew.TablePrefix)
+	client, err := openEngine(db, crew.TablePrefix, roles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,13 +255,13 @@ func sharedWorld(t *testing.T) (*initiator.SpannerDB, http.Handler, *access.Clie
 
 			return
 		}
-		crewEngine, err := openEngine(db, crew.TablePrefix)
+		crewEngine, err := openEngine(db, crew.TablePrefix, crew.Roles())
 		if err != nil {
 			sharedErr = err
 
 			return
 		}
-		membersEngine, err := openEngine(db, members.TablePrefix)
+		membersEngine, err := openEngine(db, members.TablePrefix, members.Roles())
 		if err != nil {
 			sharedErr = err
 

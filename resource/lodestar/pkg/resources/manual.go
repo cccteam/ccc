@@ -8,10 +8,10 @@ import "github.com/cccteam/ccc/accesstypes"
 // infrastructure, not a schema resource), so the permission registration the generator
 // cannot derive is declared manually, with the scope argument: @manualAddResource(List,
 // domain) puts List into the generated permission collection in the domain scope
-// (MigrateRoles validates grants against it, the TypeScript permission constants include
-// it) and the handler in the app package checks it. It carries no outlet annotation: the
-// route is mounted on the default outlet only, so the portal's TypeScript target does
-// not carry it.
+// (the role file validates against it when the auth opens, the TypeScript permission
+// constants include it) and the handler in the app package checks it. It carries no
+// outlet annotation: the route is mounted on the default outlet only, so the portal's
+// TypeScript target does not carry it.
 //
 // Demonstrates: @manualAddResource, @manualAddResource.scope, change-tracking.
 //

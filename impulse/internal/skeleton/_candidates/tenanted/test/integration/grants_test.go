@@ -2,10 +2,7 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
 	"maps"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -16,13 +13,14 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff"
 )
 
-// TestGrants_everyUnconditionalGrantIsServed proves the deploy path delivers the committed
-// roles files: for every auth the harness provisions, every role at its scope (a global role in the global scope, a domain role in the north tenant),
+// TestGrants_everyUnconditionalGrantIsServed proves the release delivers its role files:
+// for every auth the harness opens, every role at its scope (a global role in the global scope, a domain role in the north tenant),
 // and every unconditional grant with each of its fields, the engine answers granted for a
 // login holding the role. The expectation is the file itself; what the test proves is that
-// MigrateRoles delivers it through the application's own auth package and store prefix and
-// that the engine serves it. Conditional grants are left out, since their answer depends
-// on a row: each is proven by the case that names it through provesGrant.
+// the file embedded in the application's own auth package reaches the engine through
+// access.WithDefaultRoles and that the engine serves it. Conditional grants are left out,
+// since their answer depends on a row: each is proven by the case that names it through
+// provesGrant.
 func TestGrants_everyUnconditionalGrantIsServed(t *testing.T) {
 	t.Parallel()
 
@@ -30,26 +28,22 @@ func TestGrants_everyUnconditionalGrantIsServed(t *testing.T) {
 	s := newServed(ctx, t)
 
 	tests := []struct {
-		name      string
-		rolesPath string
-		engine    *access.Client
+		name   string
+		roles  access.RoleFile
+		engine *access.Client
 	}{
-		{name: "staff", rolesPath: staff.RolesPath, engine: s.access},
+		{name: "staff", roles: staff.Roles(), engine: s.access},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			raw, err := os.ReadFile(filepath.Join("..", "..", tt.rolesPath))
+			config, err := tt.roles.Parse()
 			if err != nil {
-				t.Fatalf("reading %s: %v", tt.rolesPath, err)
+				t.Fatalf("parsing the %s role file: %v", tt.name, err)
 			}
-			var roles access.RoleConfig
-			if err := json.Unmarshal(raw, &roles); err != nil {
-				t.Fatalf("parsing %s: %v", tt.rolesPath, err)
-			}
-			rows := unconditionalRows(accesstypes.GlobalScope(), roles.Roles.Global)
-			rows = append(rows, unconditionalRows(accesstypes.DomainScope(north), roles.Roles.Domain)...)
+			rows := unconditionalRows(accesstypes.GlobalScope(), config.Roles.Global)
+			rows = append(rows, unconditionalRows(accesstypes.DomainScope(north), config.Roles.Domain)...)
 			for i := range rows {
 				row := &rows[i]
 				t.Run(string(row.role), func(t *testing.T) {
@@ -62,7 +56,7 @@ func TestGrants_everyUnconditionalGrantIsServed(t *testing.T) {
 	}
 }
 
-// grantRow is one role of a roles file with its unconditional grants, each expanded to the
+// grantRow is one role of a role file with its unconditional grants, each expanded to the
 // resources the engine is asked about: the base resource and one per field.
 type grantRow struct {
 	scope  accesstypes.Scope
@@ -101,15 +95,16 @@ func unconditionalRows(scope accesstypes.Scope, roles []*access.Role) []grantRow
 	return rows
 }
 
-// checkGrantsServed assigns the row's role to a login of its own and asks the engine about
-// every resource of every unconditional grant. The store write signals a snapshot reload
-// and the swap is asynchronous, so each decision is polled until it is granted or the
-// deadline passes, when the last answer stands.
+// checkGrantsServed assigns the row's role to a login of its own, the membership held
+// where the row's scope is, and asks the engine about every resource of every
+// unconditional grant. The store write signals a snapshot reload and the swap is
+// asynchronous, so each decision is polled until it is granted or the deadline passes,
+// when the last answer stands.
 func checkGrantsServed(ctx context.Context, t *testing.T, engine *access.Client, row *grantRow) {
 	t.Helper()
 
 	user := accesstypes.User("grants-" + strings.ToLower(string(row.role)))
-	if err := engine.UserManager().AddUserRoles(ctx, row.scope, user, row.role); err != nil {
+	if err := engine.UserManager().AddUserRoles(ctx, row.scope.PolicyScope(), user, row.role); err != nil {
 		t.Fatalf("AddUserRoles(%s, %s) error = %v", user, row.role, err)
 	}
 	checker := engine.ForUser(user)
@@ -118,7 +113,7 @@ func checkGrantsServed(ctx context.Context, t *testing.T, engine *access.Client,
 		for _, res := range g.resources {
 			decision := decisionFor(ctx, t, checker, row.scope, g.permission, res, deadline)
 			if !decision.IsGranted() {
-				t.Errorf("%s %s for a login holding %s = %s, want granted: the roles file grants it and the engine does not serve it", g.permission, res, row.role, decision)
+				t.Errorf("%s %s for a login holding %s = %s, want granted: the role file grants it and the engine does not serve it", g.permission, res, row.role, decision)
 			}
 		}
 	}

@@ -21,8 +21,8 @@ func TestCapabilityEnvelope(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The Create grants this suite proves through the create-under-parent affordance, each pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "FlightLead", "Create", "Sorties", "state = 'underway'")
-	provesGrant(t, crew.RolesPath, "Engineer", "Create", "RefitTasks", "state IN ('inspected', 'in_refit')")
+	provesGrant(t, crew.Roles(), "FlightLead", "Create", "Sorties", "state = 'underway'")
+	provesGrant(t, crew.Roles(), "Engineer", "Create", "RefitTasks", "state IN ('inspected', 'in_refit')")
 
 	type wantCapability struct {
 		update []any

@@ -1,6 +1,6 @@
 // Package main is the deployment's migration step: it applies the schema migrations
-// and reconciles the role configuration into the permission engine. It reads the core
-// and data configuration levels and nothing above them.
+// and checks each auth's role policy against what its permission engine's store holds.
+// It reads the core and data configuration levels and nothing above them.
 package main
 
 import (
@@ -54,18 +54,16 @@ func run(ctx context.Context, seed bool) error {
 	}
 	defer data.Close()
 
-	// The roles are reconciled across the tenant roster the schema step may have just
-	// made readable. A tenant created after this deployment gets its partition when the
-	// application's tenant-creation path runs MigrateRoles for it.
-	domains, err := data.Domains(ctx)
-	if err != nil {
-		return errors.Wrap(err, "config.DataConfiguration.Domains()")
+	// The default roles travel with the release: opening the data level validated each
+	// auth's role file against the collection, so a release whose roles are wrong stopped
+	// above. A domain role is held in every tenant domain, so a tenant created after this
+	// deployment needs no step of its own. What is left is to print what each store holds
+	// that this release cannot use as written.
+	if err := deploy.CheckRoles(ctx, data.Staff().Access(), staff.Name); err != nil {
+		return errors.Wrap(err, "deploy.CheckRoles(staff)")
 	}
-	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath, domains...); err != nil {
-		return errors.Wrap(err, "deploy.MigrateRoles()")
-	}
-	if err := deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), members.RolesPath, domains...); err != nil {
-		return errors.Wrap(err, "deploy.MigrateRoles()")
+	if err := deploy.CheckRoles(ctx, data.Members().Access(), members.Name); err != nil {
+		return errors.Wrap(err, "deploy.CheckRoles(members)")
 	}
 
 	return nil

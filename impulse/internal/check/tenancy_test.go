@@ -11,47 +11,6 @@ import (
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// deployFile renders a deployment step calling access.MigrateRoles with the given
-// trailing arguments after the four fixed ones.
-func deployFile(trailing string) string {
-	call := `access.MigrateRoles(ctx, manager, router.Collection(), roles` + trailing + `)`
-
-	return `package deploy
-
-import (
-	"context"
-
-	"github.com/cccteam/access"
-	"github.com/cccteam/ccc/accesstypes"
-
-	"example.com/harbor/pkg/router"
-)
-
-func MigrateRoles(ctx context.Context, manager access.UserManager, roles *access.RoleConfig, domains ...accesstypes.Domain) error {
-	return ` + call + `
-}
-`
-}
-
-// bootstrapFile renders a caller of the deploy package's MigrateRoles wrapper with the
-// given trailing arguments after the wrapper's three fixed ones.
-func bootstrapFile(trailing string) string {
-	return `package main
-
-import (
-	"context"
-
-	"github.com/cccteam/access"
-
-	"example.com/harbor/pkg/deploy"
-)
-
-func run(ctx context.Context, manager access.UserManager, roles *access.RoleConfig) error {
-	return deploy.MigrateRoles(ctx, manager, roles` + trailing + `)
-}
-`
-}
-
 const (
 	tenantScopedResource = `package resources
 
@@ -102,30 +61,27 @@ func TestTenancyWired(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                    tenanted,
 				"pkg/resources/announcements.go":          tenantScopedResource,
-				"pkg/deploy/deploy.go":                    deployFile(", domains..."),
 				"schema/migrations/000005_Tenants.up.sql": tenantsMigration,
 			},
 			wantStatus:  Pass,
-			wantSummary: "tenant record Tenants (schema/migrations/000005_Tenants.up.sql); 1 tenant-scoped resource(s); roles provisioned per tenant in 1 place(s)",
+			wantSummary: "tenant record Tenants (schema/migrations/000005_Tenants.up.sql); 1 tenant-scoped resource(s)",
 		},
 		{
 			name: "tenanted with nothing behind it",
 			files: map[string]string{
 				"cmd/generate/main.go":              tenanted,
 				"pkg/resources/lenses.go":           globalResource,
-				"pkg/deploy/deploy.go":              deployFile(""),
 				"schema/migrations/000001_X.up.sql": "CREATE TABLE Lenses (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\n",
 			},
 			wantStatus:  Fail,
-			wantSummary: "3 tenancy wiring problem(s)",
+			wantSummary: "2 tenancy wiring problem(s)",
 			wantDetails: []string{
 				`WithDomainRoute("tenants"): no migration creates a table named like it (the tenant-record table)`,
 				"no struct is annotated @permissionScope(domain): every resource is global, and the tenant segment serves nothing",
-				"pkg/deploy/deploy.go:13: access.MigrateRoles is called without domains; roles never reach the tenants",
 			},
 		},
 		{
-			name: "tenanted without a role migration and with an unreadable source",
+			name: "tenanted, the table created in another spelling",
 			files: map[string]string{
 				"cmd/generate/main.go": program("pkg/resources",
 					`generation.GenerateHandlers("app"),`,
@@ -135,76 +91,28 @@ func TestTenancyWired(t *testing.T) {
 				"pkg/resources/announcements.go":                tenantScopedResource,
 				"schema/migrations/000005_SpaceStations.up.sql": "create table if not exists `SpaceStations` (Id STRING(64) NOT NULL) PRIMARY KEY (Id);\n",
 			},
-			wantStatus:  Fail,
-			wantSummary: "1 tenancy wiring problem(s)",
-			wantDetails: []string{
-				"no access.MigrateRoles call outside tests: roles are never provisioned",
-			},
+			wantStatus:  Pass,
+			wantSummary: "tenant record SpaceStations (schema/migrations/000005_SpaceStations.up.sql); 1 tenant-scoped resource(s)",
 		},
 		{
-			name: "untenanted and clean, with the wrapper's empty spread passed through",
+			name: "untenanted and clean",
 			files: map[string]string{
 				"cmd/generate/main.go":    untenanted,
 				"pkg/resources/lenses.go": globalResource,
-				"pkg/deploy/deploy.go":    deployFile(", domains..."),
 			},
 			wantStatus:  Pass,
-			wantSummary: "not tenanted: no tenant-scoped resources, roles provisioned globally",
+			wantSummary: "not tenanted: no tenant-scoped resources",
 		},
 		{
-			name: "untenanted with tenancy halves lying around",
+			name: "untenanted with a tenant-scoped resource lying around",
 			files: map[string]string{
 				"cmd/generate/main.go":           untenanted,
 				"pkg/resources/announcements.go": tenantScopedResource,
-				"pkg/deploy/deploy.go":           deployFile(`, "north", "south"`),
-			},
-			wantStatus:  Fail,
-			wantSummary: "2 tenancy wiring problem(s) in an untenanted application",
-			wantDetails: []string{
-				"pkg/resources/announcements.go:8: Announcement is @permissionScope(domain), but no WithDomainRoute names the tenant segment; it is served under the default /domain/{domain}/ pair",
-				"pkg/deploy/deploy.go:13: access.MigrateRoles receives 2 domain(s), but the application is not tenanted",
-			},
-		},
-		{
-			name: "tenanted, with the wrapper's callers passing the roster",
-			files: map[string]string{
-				"cmd/generate/main.go":                    tenanted,
-				"pkg/resources/announcements.go":          tenantScopedResource,
-				"pkg/deploy/deploy.go":                    deployFile(", domains..."),
-				"cmd/bootstrap/main.go":                   bootstrapFile(", domains..."),
-				"cmd/deployment/migrate/main.go":          bootstrapFile(`, "north"`),
-				"schema/migrations/000005_Tenants.up.sql": tenantsMigration,
-			},
-			wantStatus:  Pass,
-			wantSummary: "tenant record Tenants (schema/migrations/000005_Tenants.up.sql); 1 tenant-scoped resource(s); roles provisioned per tenant in 3 place(s)",
-		},
-		{
-			name: "tenanted, with a wrapper caller passing no domains",
-			files: map[string]string{
-				"cmd/generate/main.go":                    tenanted,
-				"pkg/resources/announcements.go":          tenantScopedResource,
-				"pkg/deploy/deploy.go":                    deployFile(", domains..."),
-				"cmd/bootstrap/main.go":                   bootstrapFile(""),
-				"schema/migrations/000005_Tenants.up.sql": tenantsMigration,
-			},
-			wantStatus:  Fail,
-			wantSummary: "1 tenancy wiring problem(s)",
-			wantDetails: []string{
-				"cmd/bootstrap/main.go:12: deploy.MigrateRoles is called without domains; roles never reach the tenants",
-			},
-		},
-		{
-			name: "untenanted, with a wrapper caller passing domains",
-			files: map[string]string{
-				"cmd/generate/main.go":    untenanted,
-				"pkg/resources/lenses.go": globalResource,
-				"pkg/deploy/deploy.go":    deployFile(", domains..."),
-				"cmd/bootstrap/main.go":   bootstrapFile(`, "north"`),
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 tenancy wiring problem(s) in an untenanted application",
 			wantDetails: []string{
-				"cmd/bootstrap/main.go:12: deploy.MigrateRoles receives 1 domain(s), but the application is not tenanted",
+				"pkg/resources/announcements.go:8: Announcement is @permissionScope(domain), but no WithDomainRoute names the tenant segment; it is served under the default /domain/{domain}/ pair",
 			},
 		},
 		{

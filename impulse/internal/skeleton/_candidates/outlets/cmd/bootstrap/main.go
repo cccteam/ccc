@@ -1,11 +1,11 @@
 // Package main bootstraps a development database in a Spanner emulator: it creates the
-// instance and database, runs the deployment's migration steps (schema, roles), seeds
-// the development tenants, and creates the development logins. It refuses to run
-// against anything but an emulator.
+// instance and database, runs the deployment's steps (the schema migrations, then the
+// role policy check of each auth), seeds the development tenants, and creates the
+// development logins. It refuses to run against anything but an emulator.
 //
-// The order matters: the tenants are seeded before the roles because the domain
-// universe MigrateRoles reconciles across is read from the Tenants table — tenancy is
-// data, not a compiled-in list.
+// Tenancy is data, not a compiled-in list: the tenants are seeded before the logins so
+// that a login's single-tenant membership names a tenant the roster lists. The roles
+// need no step per tenant, since a domain role is held in every tenant domain.
 package main
 
 import (
@@ -49,11 +49,14 @@ type devIdentities struct {
 	ServiceAccounts []devServiceAccount `json:"serviceAccounts"`
 }
 
-// devRoles is an identity's role assignments per scope; the global partition is its
-// own key, mirroring accesstypes.Scope.
+// devRoles is an identity's role memberships by where each is held, mirroring
+// accesstypes.PolicyScope: the global partition, every tenant domain (one membership
+// that reaches every tenant, the seeded ones and those created later), and single
+// tenant domains. Every identities file carries the three keys in this order.
 type devRoles struct {
-	Global  []accesstypes.Role                        `json:"global"`
-	Domains map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
+	Global      []accesstypes.Role                        `json:"global"`
+	EveryDomain []accesstypes.Role                        `json:"everyDomain"`
+	Domains     map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
 }
 
 // devUser is one development login.
@@ -133,19 +136,18 @@ func run(ctx context.Context) error {
 	}
 	defer data.Close()
 
-	domains, err := data.Domains(ctx)
-	if err != nil {
-		return errors.Wrap(err, "config.DataConfiguration.Domains()")
+	// The default roles travel with the release: opening the data level validated each
+	// auth's role file against the collection, so nothing provisions them. The deploy's
+	// check prints what each store holds that this release cannot use as written.
+	if err := deploy.CheckRoles(ctx, data.Staff().Access(), staff.Name); err != nil {
+		return errors.Wrap(err, "deploy.CheckRoles(staff)")
 	}
-	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath, domains...); err != nil {
-		return errors.Wrap(err, "deploy.MigrateRoles()")
-	}
-	fmt.Printf("Provisioned roles from %s across %v\n", staff.RolesPath, domains)
+	fmt.Printf("Checked the %s auth's role policy\n", staff.Name)
 
-	if err := deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), members.RolesPath, domains...); err != nil {
-		return errors.Wrap(err, "deploy.MigrateRoles()")
+	if err := deploy.CheckRoles(ctx, data.Members().Access(), members.Name); err != nil {
+		return errors.Wrap(err, "deploy.CheckRoles(members)")
 	}
-	fmt.Printf("Provisioned roles from %s across %v\n", members.RolesPath, domains)
+	fmt.Printf("Checked the %s auth's role policy\n", members.Name)
 
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
@@ -197,18 +199,24 @@ func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 	return nil
 }
 
-// assignRoles grants the identity its roles per scope: the global partition first, then
-// each domain in sorted order.
+// assignRoles writes the identity's memberships where each is held: the global partition
+// first, then every tenant domain, then each single domain in sorted order.
 func assignRoles(ctx context.Context, manager access.UserManager, user accesstypes.User, roles devRoles) error {
 	if len(roles.Global) > 0 {
-		if err := manager.AddUserRoles(ctx, accesstypes.GlobalScope(), user, roles.Global...); err != nil {
-			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in the global scope", user)
+		if err := manager.AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), user, roles.Global...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in the global partition", user)
 		}
-		fmt.Printf("Assigned %v to %s in the global scope\n", roles.Global, user)
+		fmt.Printf("Assigned %v to %s in the global partition\n", roles.Global, user)
+	}
+	if len(roles.EveryDomain) > 0 {
+		if err := manager.AddUserRoles(ctx, accesstypes.EveryDomainPolicyScope(), user, roles.EveryDomain...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in every domain", user)
+		}
+		fmt.Printf("Assigned %v to %s in every domain\n", roles.EveryDomain, user)
 	}
 	for _, domain := range slices.Sorted(maps.Keys(roles.Domains)) {
 		domainRoles := roles.Domains[domain]
-		if err := manager.AddUserRoles(ctx, accesstypes.DomainScope(domain), user, domainRoles...); err != nil {
+		if err := manager.AddUserRoles(ctx, accesstypes.DomainPolicyScope(domain), user, domainRoles...); err != nil {
 			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in domain %s", user, domain)
 		}
 		fmt.Printf("Assigned %v to %s in domain %s\n", domainRoles, user, domain)

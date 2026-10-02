@@ -1,6 +1,6 @@
 // Package main is the deployment's migration step: it applies the schema migrations
-// and reconciles the role configuration into the permission engine. It reads the core
-// and data configuration levels and nothing above them.
+// and checks the release's role policy against what the permission engine's store
+// holds. It reads the core and data configuration levels and nothing above them.
 package main
 
 import (
@@ -53,8 +53,12 @@ func run(ctx context.Context, seed bool) error {
 	}
 	defer data.Close()
 
-	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath); err != nil {
-		return errors.Wrap(err, "deploy.MigrateRoles()")
+	// The default roles travel with the release: opening the data level validated the
+	// staff role file against the collection, so a release whose roles are wrong stopped
+	// above. What is left is to print what the store holds that this release cannot use
+	// as written.
+	if err := deploy.CheckRoles(ctx, data.Staff().Access(), staff.Name); err != nil {
+		return errors.Wrap(err, "deploy.CheckRoles()")
 	}
 
 	return nil

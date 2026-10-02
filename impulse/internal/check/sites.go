@@ -19,16 +19,16 @@ import (
 )
 
 // sitesWired verifies that every site of an application in the sites layout is served and
-// provisioned: a main package under its directory, a process in the process file running
-// it on a port of its own, and a role migration whose collection knows the site's router.
-// The sites-generators check holds the generators' agreements; this one holds what runs
-// them.
+// known to the permission engine: a main package under its directory, a process in the
+// process file running it on a port of its own, and a collection handed to the engine
+// (access.WithDefaultRoles) that knows the site's router. The sites-generators check holds
+// the generators' agreements; this one holds what runs them.
 type sitesWired struct{}
 
 func (sitesWired) Name() string { return "sites-wired" }
 
 func (sitesWired) Describe() string {
-	return "every site has a main package, a process on its own port, and a role migration covering its router"
+	return "every site has a main package, a process on its own port, and a permission collection handed to the engine covering its router"
 }
 
 // portAssignRE finds a PORT assignment on a process line.
@@ -77,7 +77,7 @@ func (c sitesWired) Run(_ context.Context, env *Env) Result {
 		}
 	}
 
-	covered, err := c.roleCoverage(a, p)
+	covered, err := c.collectionCoverage(a, p)
 	if err != nil {
 		return fail(c.Name(), err.Error())
 	}
@@ -87,17 +87,19 @@ func (c sitesWired) Run(_ context.Context, env *Env) Result {
 		return fail(c.Name(), fmt.Sprintf("%d site wiring problem(s)", len(details)), details...)
 	}
 
-	return pass(c.Name(), fmt.Sprintf("%d site(s) wired: %s; every site's router is covered by a role migration", len(p.Sites), strings.Join(served, ", ")))
+	return pass(c.Name(), fmt.Sprintf("%d site(s) wired: %s; every site's router is in a collection handed to the permission engine", len(p.Sites), strings.Join(served, ", ")))
 }
 
-// roleCoverage checks that every site's router package is imported by some package that
-// calls access.MigrateRoles: the collection roles are reconciled against must know the
-// site's resources, and a router no migrating package imports is in none of them. One
-// migration may cover every site (the union collection) or each auth may run its
-// own over the sites it binds; either way every site is covered by one.
-func (sitesWired) roleCoverage(a *app.App, p app.Profile) ([]string, error) {
-	if len(a.RoleMigrations) == 0 {
-		return nil, nil // tenancy-wired reports a tenanted application without one
+// collectionCoverage checks that every site's router package is imported by some package
+// that passes a collection to access.WithDefaultRoles: the collection the engine validates
+// the roles against must know the site's resources, and a router no such package imports
+// is in none of them. One collection may cover every site (the union) or each auth may
+// take its own over the sites it binds; either way every site is covered by one. When the
+// call sits inside an auth package, the collection comes from the package's callers, so
+// the packages calling <auth>.New outside tests are read in its place.
+func (sitesWired) collectionCoverage(a *app.App, p app.Profile) ([]string, error) {
+	if len(a.DefaultRoles) == 0 {
+		return nil, nil // auths-wired reports an auth whose roles never reach the engine
 	}
 	modulePath := ""
 	if a.GoMod != nil && a.GoMod.Module != nil {
@@ -105,8 +107,7 @@ func (sitesWired) roleCoverage(a *app.App, p app.Profile) ([]string, error) {
 	}
 	imports := map[string]bool{}
 	var dirs []string
-	for _, m := range a.RoleMigrations {
-		dir := path.Dir(m.File)
+	for _, dir := range collectionDirs(a) {
 		if slices.Contains(dirs, dir) {
 			continue
 		}
@@ -129,11 +130,38 @@ func (sitesWired) roleCoverage(a *app.App, p app.Profile) ([]string, error) {
 		}
 		want := modulePath + "/" + routes
 		if !imports[want] {
-			details = append(details, fmt.Sprintf("no role migration covers site %s: %s is not imported by any package calling access.MigrateRoles (%s)", site.Name, want, strings.Join(dirs, ", ")))
+			details = append(details, fmt.Sprintf("no permission collection covers site %s: %s is not imported by any package passing a collection to access.WithDefaultRoles (%s)", site.Name, want, strings.Join(dirs, ", ")))
 		}
 	}
 
 	return details, nil
+}
+
+// collectionDirs lists the directories whose packages choose the collection handed to
+// access.WithDefaultRoles: the call's own, or its auth package's constructors' when the
+// call sits inside an auth package.
+func collectionDirs(a *app.App) []string {
+	var dirs []string
+	for _, d := range a.DefaultRoles {
+		dir := path.Dir(d.File)
+		inside := false
+		for i := range a.AuthPackages {
+			p := &a.AuthPackages[i]
+			if p.Dir != dir {
+				continue
+			}
+			inside = true
+			for _, file := range p.References(authNew, isTestFile) {
+				dirs = append(dirs, path.Dir(file))
+			}
+		}
+		if !inside {
+			dirs = append(dirs, dir)
+		}
+	}
+	slices.Sort(dirs)
+
+	return slices.Compact(dirs)
 }
 
 // processLine is one line of a process file.

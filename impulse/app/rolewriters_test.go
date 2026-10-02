@@ -29,7 +29,7 @@ func run(ctx context.Context, data *Data) error {
 	membersAuth := data.Members()
 	_ = membersAuth.Access().UserManager().DeleteUserRoles(ctx, scope, "client", "Administrator_Domain")
 
-	return deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), members.RolesPath)
+	return deploy.CheckRoles(ctx, data.Members().Access(), members.Name)
 }
 
 func assign(ctx context.Context, manager Manager, user string) error {

@@ -4,7 +4,7 @@ package integration
 // computed_conditional_test (design plan §9): the hazard board answers under the
 // analyst's row-free `now < '2099-01-01T00:00:00Z'` grant before the certification
 // instant and refuses after it (pinned through the engine at two instants), and a
-// row-bearing condition on the same grant is refused by MigrateRoles.
+// row-bearing condition on the same grant is refused when the role file is validated.
 
 import (
 	"net/http"
@@ -24,7 +24,7 @@ func TestComputedConditionalGrant(t *testing.T) {
 	_, h, client := sharedWorld(t)
 
 	// The grant this suite proves, pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "HazardAnalyst", "List", "SectorHazardBoards", "now < '2099-01-01T00:00:00Z'")
+	provesGrant(t, crew.Roles(), "HazardAnalyst", "List", "SectorHazardBoards", "now < '2099-01-01T00:00:00Z'")
 
 	t.Run("the board answers today", func(t *testing.T) {
 		t.Parallel()
@@ -78,17 +78,12 @@ func TestComputedConditionalGrant(t *testing.T) {
 }
 
 // TestComputedRowConditionRefused pins the deploy invariant: a computed resource has
-// no data layer to evaluate a row term against, so MigrateRoles refuses a
-// row-referencing condition on its grant.
+// no data layer to evaluate a row term against, so the validation a role file goes
+// through (access.ValidateRoles, the check access.New runs on the file an auth opens
+// with) refuses a row-referencing condition on its grant, and a release carrying one
+// does not start.
 func TestComputedRowConditionRefused(t *testing.T) {
 	t.Parallel()
-
-	ctx := t.Context()
-	db, err := prepareDatabase(ctx, t, migrationsSource, demoSeedSource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := newAccessClient(t, db)
 
 	conf := &access.RoleConfig{Roles: access.ScopedRoles{Domain: []*access.Role{{
 		Name: "BadAnalyst",
@@ -96,7 +91,7 @@ func TestComputedRowConditionRefused(t *testing.T) {
 			accesstypes.List: {{Resource: "SectorHazardBoards", Fields: []accesstypes.Tag{"shipName"}, Condition: "worstReading > 0.5"}},
 		},
 	}}}}
-	if err := access.MigrateRoles(ctx, client.UserManager(), router.Collection(), conf, anvil); err == nil {
-		t.Fatal("MigrateRoles accepted a row-bearing condition on a computed resource; want a refusal")
+	if _, err := access.ValidateRoles(router.Collection(), conf); err == nil {
+		t.Fatal("access.ValidateRoles() accepted a row-bearing condition on a computed resource; want a refusal")
 	}
 }

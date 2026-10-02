@@ -31,12 +31,12 @@ func TestClientPortal(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The portal grants this suite proves, each pinned to the roles file (conditions-proven).
-	provesGrant(t, members.RolesPath, "client-account", "List", "ClientContacts", "userId = subject")
-	provesGrant(t, members.RolesPath, "client-account", "Read", "ClientContacts", "userId = subject")
-	provesGrant(t, members.RolesPath, "client-portal", "List", "Missions", "client = subject.client")
-	provesGrant(t, members.RolesPath, "client-portal", "Read", "Missions", "client = subject.client")
-	provesGrant(t, members.RolesPath, "client-portal", "List", "DistressCalls", "filedBy = subject")
-	provesGrant(t, members.RolesPath, "client-portal", "Read", "DistressCalls", "filedBy = subject")
+	provesGrant(t, members.Roles(), "client-account", "List", "ClientContacts", "userId = subject")
+	provesGrant(t, members.Roles(), "client-account", "Read", "ClientContacts", "userId = subject")
+	provesGrant(t, members.Roles(), "client-portal", "List", "Missions", "client = subject.client")
+	provesGrant(t, members.Roles(), "client-portal", "Read", "Missions", "client = subject.client")
+	provesGrant(t, members.Roles(), "client-portal", "List", "DistressCalls", "filedBy = subject")
+	provesGrant(t, members.Roles(), "client-portal", "Read", "DistressCalls", "filedBy = subject")
 
 	t.Run("cleo sees only Halvard's missions, with the portal width", func(t *testing.T) {
 		t.Parallel()
@@ -151,7 +151,7 @@ func TestClientPortal(t *testing.T) {
 			t.Fatalf("decoding domains: %v", err)
 		}
 		if !slices.Equal(domains, sectors) {
-			t.Errorf("domains = %v, want %v (RoleSync sweeps every sector)", domains, sectors)
+			t.Errorf("domains = %v, want %v (the membership is held in every sector)", domains, sectors)
 		}
 	})
 
@@ -216,7 +216,7 @@ func TestClientPortalActions(t *testing.T) {
 	_, _, h := demoWorld(t)
 
 	// The grant this suite proves, pinned to the roles file (conditions-proven).
-	provesGrant(t, members.RolesPath, "client-portal", "Execute", "StandDownMission", "client = subject.client")
+	provesGrant(t, members.Roles(), "client-portal", "Execute", "StandDownMission", "client = subject.client")
 
 	t.Run("cleo files a call with her contact: the one PII field a client writes", func(t *testing.T) {
 		t.Parallel()

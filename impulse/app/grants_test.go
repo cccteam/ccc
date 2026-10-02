@@ -20,21 +20,18 @@ import (
 	crewauth "example.com/harbor/pkg/auth/crew"
 )
 
-const (
-	rolesFile = "schema/" + "roles/staff.json"
-	cadetRule = "hazard IN (1, 2)"
-)
+const cadetRule = "hazard IN (1, 2)"
 
 func TestConditions(t *testing.T) {
+	provesGrant(t, staff.Roles(), "Cadet", "List", "Missions", cadetRule)
+	provesGrant(t, crewauth.Roles(), "Pilot", "Read", "Ships", "hangarZone != 'quarantine'")
+	provesGrant(t, staff.Roles(), "Cadet", "List", "Missions")
+	provesGrant(t, roles, "Cadet", "List", "Missions", cadetRule)
 	provesGrant(t, staff.RolesPath, "Cadet", "List", "Missions", cadetRule)
-	provesGrant(t, crewauth.RolesPath, "Pilot", "Read", "Ships", "hangarZone != 'quarantine'")
-	provesGrant(t, rolesFile, "Auditor", "List", "Clients", "trusted = true")
-	provesGrant(t, "./schema/roles/staff.json", "Auditor", "Read", "Clients", "trusted = true")
-	provesGrant(t, staff.RolesPath, "Cadet", "List", "Missions")
-	provesGrant(t, rolesPath, "Cadet", "List", "Missions", cadetRule)
-	provesGrant(t, staff.RolesPath, role, "List", "Missions", cadetRule)
-	provesGrant(t, staff.RolesPath, "Cadet", "List", "Missions", tt.condition)
-	other.provesGrant(t, staff.RolesPath, "Cadet", "List", "Missions", cadetRule)
+	provesGrant(t, other.Roles(), "Cadet", "List", "Missions", cadetRule)
+	provesGrant(t, staff.Roles(), role, "List", "Missions", cadetRule)
+	provesGrant(t, staff.Roles(), "Cadet", "List", "Missions", tt.condition)
+	other.provesGrant(t, staff.Roles(), "Cadet", "List", "Missions", cadetRule)
 }
 `
 	tests := []struct {
@@ -46,14 +43,14 @@ func TestConditions(t *testing.T) {
 			name:  "every argument shape",
 			files: map[string]string{"test/integration/conditions_test.go": cases},
 			want: []GrantProof{
-				{File: "test/integration/conditions_test.go", Line: 16, RolesPackage: "example.com/harbor/pkg/auth/staff", Role: "Cadet", Permission: "List", Resource: "Missions", Condition: "hazard IN (1, 2)"},
-				{File: "test/integration/conditions_test.go", Line: 17, RolesPackage: "example.com/harbor/pkg/auth/crew", Role: "Pilot", Permission: "Read", Resource: "Ships", Condition: "hangarZone != 'quarantine'"},
-				{File: "test/integration/conditions_test.go", Line: 18, RolesPath: "schema/roles/staff.json", Role: "Auditor", Permission: "List", Resource: "Clients", Condition: "trusted = true"},
-				{File: "test/integration/conditions_test.go", Line: 19, RolesPath: "schema/roles/staff.json", Role: "Auditor", Permission: "Read", Resource: "Clients", Condition: "trusted = true"},
-				{File: "test/integration/conditions_test.go", Line: 20, Problem: "takes 6 arguments, found 5"},
-				{File: "test/integration/conditions_test.go", Line: 21, Problem: "argument rolesPath is neither a literal, a constant of the file, nor an imported package's RolesPath"},
-				{File: "test/integration/conditions_test.go", Line: 22, RolesPackage: "example.com/harbor/pkg/auth/staff", Problem: "argument role is not a literal or a constant of the file"},
-				{File: "test/integration/conditions_test.go", Line: 23, RolesPackage: "example.com/harbor/pkg/auth/staff", Role: "Cadet", Permission: "List", Resource: "Missions", Problem: "argument condition is not a literal or a constant of the file"},
+				{File: "test/integration/conditions_test.go", Line: 13, RolesPackage: "example.com/harbor/pkg/auth/staff", Role: "Cadet", Permission: "List", Resource: "Missions", Condition: "hazard IN (1, 2)"},
+				{File: "test/integration/conditions_test.go", Line: 14, RolesPackage: "example.com/harbor/pkg/auth/crew", Role: "Pilot", Permission: "Read", Resource: "Ships", Condition: "hangarZone != 'quarantine'"},
+				{File: "test/integration/conditions_test.go", Line: 15, Problem: "takes 6 arguments, found 5"},
+				{File: "test/integration/conditions_test.go", Line: 16, Problem: "argument roles is not an imported auth package's Roles()"},
+				{File: "test/integration/conditions_test.go", Line: 17, Problem: "argument roles is not an imported auth package's Roles()"},
+				{File: "test/integration/conditions_test.go", Line: 18, Problem: "argument roles is not an imported auth package's Roles()"},
+				{File: "test/integration/conditions_test.go", Line: 19, RolesPackage: "example.com/harbor/pkg/auth/staff", Problem: "argument role is not a literal or a constant of the file"},
+				{File: "test/integration/conditions_test.go", Line: 20, RolesPackage: "example.com/harbor/pkg/auth/staff", Role: "Cadet", Permission: "List", Resource: "Missions", Problem: "argument condition is not a literal or a constant of the file"},
 			},
 		},
 		{

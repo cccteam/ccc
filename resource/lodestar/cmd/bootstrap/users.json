@@ -12,17 +12,9 @@
           "CommandStaff",
           "BriefingClerk"
         ],
-        "domains": {
-          "anvil": [
-            "SectorMarshal"
-          ],
-          "bastion": [
-            "SectorMarshal"
-          ],
-          "cinder": [
-            "SectorMarshal"
-          ]
-        }
+        "everyDomain": [
+          "SectorMarshal"
+        ]
       }
     },
     {
@@ -296,17 +288,9 @@
           "CrewCommon",
           "ClientBrowser"
         ],
-        "domains": {
-          "anvil": [
-            "Archivist"
-          ],
-          "bastion": [
-            "Archivist"
-          ],
-          "cinder": [
-            "Archivist"
-          ]
-        }
+        "everyDomain": [
+          "Archivist"
+        ]
       }
     },
     {

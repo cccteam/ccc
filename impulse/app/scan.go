@@ -54,9 +54,6 @@ func (a *App) scan() error {
 		return errors.Wrap(err, "filepath.WalkDir()")
 	}
 
-	if err := a.followRoleWrappers(); err != nil {
-		return err
-	}
 	for _, g := range a.Generators {
 		g.ReadsWarnings = a.readsWarnings(g)
 	}
@@ -170,37 +167,122 @@ func (a *App) scanGoFile(abs, rel string) error {
 
 	a.goFiles = append(a.goFiles, rel)
 
-	return a.scanRoleMigrations(rel, data)
+	return a.scanRolePolicy(rel, data)
 }
 
-// scanRoleMigrations records the file's access.MigrateRoles calls and wrappers.
-func (a *App) scanRoleMigrations(rel string, data []byte) error {
-	if !bytes.Contains(data, []byte("MigrateRoles(")) {
-		return nil
+// scanRolePolicy records the file's access.WithDefaultRoles calls and its CheckPolicy
+// calls.
+func (a *App) scanRolePolicy(rel string, data []byte) error {
+	if bytes.Contains(data, []byte(defaultRolesFunc+"(")) {
+		calls, err := parseDefaultRoles(rel, data, a.packagePath(path.Dir(rel)))
+		if err != nil {
+			return err
+		}
+		a.DefaultRoles = append(a.DefaultRoles, calls...)
 	}
-	calls, wrappers, err := parseRoleMigrations(rel, data)
-	if err != nil {
-		return err
-	}
-	a.RoleMigrations = append(a.RoleMigrations, calls...)
-	for _, w := range wrappers {
-		w.Pkg = a.packagePath(path.Dir(rel))
-		a.roleWrappers = append(a.roleWrappers, w)
+	if bytes.Contains(data, []byte(checkPolicyFunc+"(")) {
+		checks, err := parsePolicyChecks(rel, data)
+		if err != nil {
+			return err
+		}
+		a.PolicyChecks = append(a.PolicyChecks, checks...)
 	}
 
 	return nil
 }
 
-// The validation entry point and the constant an auth package exports for its roles file.
+// The role-policy entry points the scan reads: the option handing a role file to the
+// engine, the deploy's policy check, the validation a test runs, and the function an auth
+// package exports its embedded role file through.
 const (
+	defaultRolesFunc  = "WithDefaultRoles"
+	checkPolicyFunc   = "CheckPolicy"
 	validateRolesFunc = "ValidateRoles"
-	rolesPathConst    = "RolesPath"
+	rolesFunc         = "Roles"
 )
 
+// parseDefaultRoles returns every access.WithDefaultRoles call in the file, each carrying
+// the package whose Roles() it hands over. ownPkg is the file's package import path, which
+// an unqualified Roles() names.
+func parseDefaultRoles(rel string, src []byte, ownPkg string) ([]DefaultRoles, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := localImportName(f, accessImportPath)
+	if pkg == "" {
+		return nil, nil
+	}
+	imports := fileImports(f)
+
+	var calls []DefaultRoles
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || !isQualified(call.Fun, pkg, defaultRolesFunc) {
+			return true
+		}
+		d := DefaultRoles{File: rel, Line: fset.Position(call.Pos()).Line}
+		if len(call.Args) == 2 {
+			d.RolesPackage = rolesCallPackage(call.Args[1], imports, ownPkg)
+		}
+		calls = append(calls, d)
+
+		return true
+	})
+
+	return calls, nil
+}
+
+// rolesCallPackage reads a Roles() call: the import path of the package it is called on,
+// ownPkg for an unqualified call, or empty for anything else.
+func rolesCallPackage(expr ast.Expr, imports map[string]string, ownPkg string) string {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) != 0 {
+		return ""
+	}
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		if fun.Name == rolesFunc {
+			return ownPkg
+		}
+	case *ast.SelectorExpr:
+		if id, ok := fun.X.(*ast.Ident); ok && fun.Sel.Name == rolesFunc {
+			return imports[id.Name]
+		}
+	}
+
+	return ""
+}
+
+// parsePolicyChecks returns every CheckPolicy call in the file: the deploy's policy check
+// on the auth's engine, whatever the receiver is called.
+func parsePolicyChecks(rel string, src []byte) ([]PolicyCheck, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	var checks []PolicyCheck
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == checkPolicyFunc {
+			checks = append(checks, PolicyCheck{File: rel, Line: fset.Position(call.Pos()).Line})
+		}
+
+		return true
+	})
+
+	return checks, nil
+}
+
 // parseRoleValidations returns every access.ValidateRoles call in a test file, each
-// carrying the auth packages whose RolesPath the file reads: a test that validates a roles
-// file reads the file at the path its auth package exports, so the selector names the
-// file the call validates.
+// carrying the auth packages whose Roles() the file calls: a test that validates a role
+// file parses the file its auth package embeds, so the call names the file the validation
+// is over.
 func parseRoleValidations(rel string, src []byte) ([]RoleValidation, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
@@ -212,6 +294,33 @@ func parseRoleValidations(rel string, src []byte) ([]RoleValidation, error) {
 		return nil, nil
 	}
 
+	imports := fileImports(f)
+	var rolesPackages []string
+	var calls []RoleValidation
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if isQualified(call.Fun, pkg, validateRolesFunc) {
+			calls = append(calls, RoleValidation{File: rel, Line: fset.Position(call.Pos()).Line})
+		}
+		if p := rolesCallPackage(call, imports, ""); p != "" && !slices.Contains(rolesPackages, p) {
+			rolesPackages = append(rolesPackages, p)
+		}
+
+		return true
+	})
+	slices.Sort(rolesPackages)
+	for i := range calls {
+		calls[i].RolesPackages = rolesPackages
+	}
+
+	return calls, nil
+}
+
+// fileImports maps the names a file imports packages under to their import paths.
+func fileImports(f *ast.File) map[string]string {
 	imports := map[string]string{}
 	for _, imp := range f.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
@@ -224,31 +333,8 @@ func parseRoleValidations(rel string, src []byte) ([]RoleValidation, error) {
 		}
 		imports[local] = p
 	}
-	var rolesPaths []string
-	var calls []RoleValidation
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch e := n.(type) {
-		case *ast.SelectorExpr:
-			id, ok := e.X.(*ast.Ident)
-			if ok && e.Sel.Name == rolesPathConst {
-				if p, imported := imports[id.Name]; imported && !slices.Contains(rolesPaths, p) {
-					rolesPaths = append(rolesPaths, p)
-				}
-			}
-		case *ast.CallExpr:
-			if isQualified(e.Fun, pkg, validateRolesFunc) {
-				calls = append(calls, RoleValidation{File: rel, Line: fset.Position(e.Pos()).Line})
-			}
-		}
 
-		return true
-	})
-	slices.Sort(rolesPaths)
-	for i := range calls {
-		calls[i].RolesPaths = rolesPaths
-	}
-
-	return calls, nil
+	return imports
 }
 
 // packagePath is the import path of a root-relative directory, or empty without a module
@@ -262,68 +348,6 @@ func (a *App) packagePath(dir string) string {
 	}
 
 	return a.GoMod.Module.Mod.Path + "/" + dir
-}
-
-// followRoleWrappers records the calls to the application's MigrateRoles wrappers as role
-// migrations, so the domains an application passes are checked where it passes them and
-// not only inside the wrapper that forwards them.
-func (a *App) followRoleWrappers() error {
-	if len(a.roleWrappers) == 0 {
-		return nil
-	}
-	for _, rel := range a.goFiles {
-		data, err := os.ReadFile(a.Abs(rel))
-		if err != nil {
-			return errors.Wrap(err, "os.ReadFile()")
-		}
-		for _, w := range a.roleWrappers {
-			if w.Pkg == "" || !bytes.Contains(data, []byte(w.Func+"(")) {
-				continue
-			}
-			calls, err := parseWrapperCalls(rel, data, w)
-			if err != nil {
-				return err
-			}
-			a.RoleMigrations = append(a.RoleMigrations, calls...)
-		}
-	}
-
-	return nil
-}
-
-// parseWrapperCalls returns the file's calls to the wrapper, through its import.
-func parseWrapperCalls(rel string, src []byte, w roleWrapper) ([]RoleMigration, error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-	local := localImportName(f, w.Pkg)
-	if local == "" {
-		return nil, nil
-	}
-	var calls []RoleMigration
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok || !isQualified(call.Fun, local, w.Func) {
-			return true
-		}
-		domains := len(call.Args) - w.Fixed
-		if call.Ellipsis.IsValid() {
-			domains--
-		}
-		calls = append(calls, RoleMigration{
-			File:    rel,
-			Line:    fset.Position(call.Pos()).Line,
-			Domains: max(domains, 0),
-			Spread:  call.Ellipsis.IsValid(),
-			Via:     local + "." + w.Func,
-		})
-
-		return true
-	})
-
-	return calls, nil
 }
 
 // findRefs returns one EmulatorRef per line of data matching re, whose first group is the
@@ -387,9 +411,6 @@ const (
 	permissionScopeKeyword = "permissionScope"
 	outletKeyword          = "outlet"
 	accessImportPath       = "github.com/cccteam/access"
-	// migrateRolesFixedArgs is how many arguments access.MigrateRoles takes before the
-	// domains: ctx, manager, collection, roles.
-	migrateRolesFixedArgs = 4
 )
 
 // domainScopeRE matches the @permissionScope(domain) struct annotation; outletRE
@@ -440,74 +461,6 @@ func parseStructDocs(rel string, src []byte) ([]structDoc, error) {
 	}
 
 	return docs, nil
-}
-
-// parseRoleMigrations returns every access.MigrateRoles call in the file, and the
-// functions that wrap it by passing their own variadic domains through, whose callers
-// are role migrations as well.
-func parseRoleMigrations(rel string, src []byte) (calls []RoleMigration, wrappers []roleWrapper, err error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-	pkg := localImportName(f, accessImportPath)
-	if pkg == "" {
-		return nil, nil, nil
-	}
-
-	for _, decl := range f.Decls {
-		fd, _ := decl.(*ast.FuncDecl)
-		ast.Inspect(decl, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok || !isQualified(call.Fun, pkg, "MigrateRoles") {
-				return true
-			}
-			domains := len(call.Args) - migrateRolesFixedArgs
-			if call.Ellipsis.IsValid() {
-				domains-- // the spread slice is not a domain
-			}
-			calls = append(calls, RoleMigration{
-				File:    rel,
-				Line:    fset.Position(call.Pos()).Line,
-				Domains: max(domains, 0),
-				Spread:  call.Ellipsis.IsValid(),
-			})
-			if w, ok := wrapperOf(fd, call); ok {
-				wrappers = append(wrappers, w)
-			}
-
-			return true
-		})
-	}
-
-	return calls, wrappers, nil
-}
-
-// wrapperOf reports whether the call spreads the enclosing top-level function's own
-// variadic parameter, which makes that function a MigrateRoles wrapper.
-func wrapperOf(fd *ast.FuncDecl, call *ast.CallExpr) (roleWrapper, bool) {
-	if fd == nil || fd.Recv != nil || !call.Ellipsis.IsValid() || len(call.Args) == 0 || fd.Type.Params == nil {
-		return roleWrapper{}, false
-	}
-	params := fd.Type.Params.List
-	if len(params) == 0 {
-		return roleWrapper{}, false
-	}
-	last := params[len(params)-1]
-	if _, variadic := last.Type.(*ast.Ellipsis); !variadic || len(last.Names) != 1 {
-		return roleWrapper{}, false
-	}
-	spread, ok := call.Args[len(call.Args)-1].(*ast.Ident)
-	if !ok || spread.Name != last.Names[0].Name {
-		return roleWrapper{}, false
-	}
-	fixed := 0
-	for _, p := range params[:len(params)-1] {
-		fixed += max(len(p.Names), 1)
-	}
-
-	return roleWrapper{Func: fd.Name.Name, Fixed: fixed}, true
 }
 
 // localImportName returns the name the file imports the path under, or empty when the

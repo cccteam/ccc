@@ -29,10 +29,12 @@ cp .envrc.template .envrc && direnv allow
 overmind start
 ```
 
-That starts a fresh emulator, bootstraps it (schema, the demo world, both auths' roles,
-the personas, the droid account; a database that already holds data is refused unless
-the bootstrap runs with `-reset`, which empties the data and seeds it again without
-touching the schema), serves the application on :8090, and runs `ng serve` for both browser apps:
+That starts a fresh emulator, bootstraps it (schema, the demo world, the personas, the
+droid account; the roles need no step, since each auth's role file rides in the binary and
+the bootstrap only checks the store against it; a database that already holds data is
+refused unless the bootstrap runs with `-reset`, which empties the data and seeds it
+again without touching the schema), serves the application on :8090, and runs `ng serve`
+for both browser apps:
 the crew console on :4300 (`/api` proxied) and the client portal on :4301 (`/portal/api`
 proxied). Browse http://127.0.0.1:4300 and sign in as any persona on the crew manifest;
 browse http://127.0.0.1:4301/portal/ and sign in through the simulated directory as
@@ -83,7 +85,8 @@ project the application credentials reach.
    `GOOGLE_CLOUD_SPANNER_PROJECT`, `GOOGLE_CLOUD_SPANNER_INSTANCE_ID`, and
    `GOOGLE_CLOUD_SPANNER_DATABASE_NAME` at the instance.
 3. `go run -tags skipAuth ./cmd/bootstrap` creates the database, applies the schema, seeds
-   the world, provisions both auths' roles, and creates the personas. Schema changes on a
+   the world, checks both auths' policy stores against their role files, and creates the
+   personas. Schema changes on a
    real instance are slow and counted against its limits (about six minutes for the
    thirty migrations, measured 2026-09-11), so this runs once per database; every later
    session starts with `go run -tags skipAuth ./cmd/bootstrap -reset`, which empties the
@@ -115,13 +118,18 @@ has a second page.
 ## Two populations, two auths
 
 The crew sign in with passwords at `/api/user/login`; their roles are the application's
-(`schema/roles/crew.json`, provisioned by `MigrateRoles`, assigned by the bootstrap from
-`cmd/bootstrap/users.json`). The clients sign in through their company's Google directory
-at `/portal/api/user/login`; their roles are the directory's groups (`RoleSync`),
-reconciled at every login, never assigned in the application; `schema/roles/members.json`
-only says what a role may do, in the lowercase names Google groups carry. Each auth is a
-package (`pkg/auth/crew`, `pkg/auth/members`) with its own session tables, permission
-store, and XSRF cookie (`crew-xsrf`, `members-xsrf`), and each outlet binds to one.
+(`pkg/auth/crew/roles.json`, embedded in the binary and validated against the generated
+permission collection when the auth opens, so a release whose roles are wrong does not
+start; the store holds no row for them, and the bootstrap assigns the memberships from
+`cmd/bootstrap/users.json`, a role held in every sector as one membership). The clients
+sign in through their company's Google directory at `/portal/api/user/login`; their roles
+are the directory's groups (`RoleSync`), reconciled at every login and never assigned in
+the application, a global role held in the global partition and a domain role in every
+sector; `pkg/auth/members/roles.json` only says what a role may do, in the lowercase names
+Google groups carry. The deploy's migrate step and the bootstrap print what each store
+holds that the release cannot use. Each auth is a package (`pkg/auth/crew`,
+`pkg/auth/members`) with its own session tables, permission store, role file, and XSRF
+cookie (`crew-xsrf`, `members-xsrf`), and each outlet binds to one.
 
 ## The personas
 
@@ -194,8 +202,9 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   passed through unmodelled ([`typescript.raw-json`](pkg/computedresources/briefing_templates.go)),
   and `DistressCall.Position` writes no JSON methods of its own any more
   ([`typescript.generated-json-methods`](pkg/resources/distress_calls.go)).
-- `pkg/auth/crew` and `pkg/auth/members`: the two populations; `schema/roles/*.json`:
-  every grant in §7 per auth; `cmd/bootstrap/users.json`: the personas and the droid.
+- `pkg/auth/crew` and `pkg/auth/members`: the two populations, each with its
+  `roles.json`, every grant in §7 per auth, embedded in the binary;
+  `cmd/bootstrap/users.json`: the personas and the droid.
 - `schema/migrations` and `schema/devseed`: the schema and the world the suites and the
   demo share; one mission's deadline is written as bootstrap time plus three minutes so the
   overseer's grant flips during a live walkthrough.

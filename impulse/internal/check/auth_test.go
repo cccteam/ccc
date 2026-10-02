@@ -50,7 +50,7 @@ const (
 		session.WithSessionTableName("StaffSessions"),
 	)`
 	azureAnchorless = `session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(client), nil, key, "issuer", "id", "secret", "http://localhost/callback", session.WithOIDCUserTableName("Ignored"))`
-	azureDirectory  = `session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(client, sessionstorage.WithOIDCUsers()), session.RoleSync(nil, nil), key, "issuer", "id", "secret", "http://localhost/callback", session.WithSessionTableName("MembersSessions"), session.WithOIDCUserTableName("MembersOIDCUsers"), session.WithCookieName("members"))`
+	azureDirectory  = `session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(client, sessionstorage.WithOIDCUsers()), session.RoleSync(nil), key, "issuer", "id", "secret", "http://localhost/callback", session.WithSessionTableName("MembersSessions"), session.WithOIDCUserTableName("MembersOIDCUsers"), session.WithCookieName("members"))`
 	forwarded       = `session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerPasswordAuth(client), key, opts...)`
 )
 

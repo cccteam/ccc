@@ -124,7 +124,10 @@ func TestTenancyScan(t *testing.T) {
 	if diff := cmp.Diff(wantResources, a.DomainResources); diff != "" {
 		t.Errorf("DomainResources mismatch (-want +got):\n%s", diff)
 	}
-	if len(a.RoleMigrations) != 0 {
-		t.Errorf("RoleMigrations = %v, want none", a.RoleMigrations)
+	if len(a.DefaultRoles) != 0 {
+		t.Errorf("DefaultRoles = %v, want none", a.DefaultRoles)
+	}
+	if len(a.PolicyChecks) != 0 {
+		t.Errorf("PolicyChecks = %v, want none", a.PolicyChecks)
 	}
 }

@@ -386,7 +386,7 @@ else
 fi
 
 # ---- portal ----
-r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists every sector: the directory's roles are swept across the roster" "$r" "rows == ['anvil','bastion','cinder']"
+r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists every sector: the directory's domain role is held in every sector" "$r" "rows == ['anvil','bastion','cinder']"
 r=$(req client GET "$PORTAL/sectors/anvil/missions?capabilities=Execute&limit=200"); check "cleo tracks Halvard's missions" 200 "$r"
 assert_py "portal width excludes assignedSquadronId/notes/settlement" "$r" "rows and all('assignedSquadronId' not in m and 'settlement' not in m for m in rows)"
 assert_py "Stand down lights only on her company's open, claimed, or on-hold rows" "$r" "all(('StandDownMission' in m['zzCapabilities']['Execute']) == (m['statusId'] in ('open','claimed','on_hold')) for m in rows)"

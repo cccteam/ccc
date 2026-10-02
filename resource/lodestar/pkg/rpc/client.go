@@ -4,7 +4,7 @@
 // from the wire (@state), so every mission and refit transition is an Execute-gated method
 // whose declared @transition owns edge legality, and only edge legality. What each role
 // may do in each state, and which rows a role may move at all, is conditional grants
-// (schema/roles/crew.json), never code here.
+// (pkg/auth/crew/roles.json), never code here.
 //
 // A method is a struct with an Execute whose signature says how it runs: the transaction
 // form (resource.ReadWriteTransaction second) runs inside the handler's transaction, the
@@ -33,7 +33,7 @@ import (
 )
 
 // PaymasterRole is the service role a body borrows to post a settlement: nobody signs in
-// as it, MigrateRoles provisions it from schema/roles/crew.json, and the ship's log names
+// as it, the crew auth's role file (pkg/auth/crew/roles.json) declares it, and the ship's log names
 // it beside the actor.
 //
 // Demonstrates: rpc.as-role.

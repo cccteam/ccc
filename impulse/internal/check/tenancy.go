@@ -16,17 +16,18 @@ import (
 )
 
 // tenancyWired verifies that the tenancy option is wired through the application: a
-// tenanted program has a tenant-record table behind its domain route, resources that are
-// actually tenant-scoped, and roles provisioned into the tenants; an untenanted program
-// has none of those halves lying around. The compiler holds the rest of the seam (the
-// DomainExists and DomainVisible contract), and the generator refuses a tenant-scoped
-// resource without its @domain binding, so this check covers what neither of them sees.
+// tenanted program has a tenant-record table behind its domain route and resources that
+// are actually tenant-scoped; an untenanted program has neither half lying around. The
+// compiler holds the rest of the seam (the DomainExists and DomainVisible contract), the
+// generator refuses a tenant-scoped resource without its @domain binding, and the
+// permission engine reaches every tenant with the roles held in every domain, so this
+// check covers what none of them sees.
 type tenancyWired struct{}
 
 func (tenancyWired) Name() string { return "tenancy-wired" }
 
 func (tenancyWired) Describe() string {
-	return "a tenanted application has its tenant-record table, tenant-scoped resources, and per-tenant roles; an untenanted one has none"
+	return "a tenanted application has its tenant-record table and tenant-scoped resources; an untenanted one has neither"
 }
 
 // createTableRE finds the table a migration statement creates.
@@ -59,45 +60,29 @@ func (c tenancyWired) Run(_ context.Context, env *Env) Result {
 	if len(a.DomainResources) == 0 {
 		details = append(details, "no struct is annotated @permissionScope(domain): every resource is global, and the tenant segment serves nothing")
 	}
-	if len(a.RoleMigrations) == 0 {
-		details = append(details, "no access.MigrateRoles call outside tests: roles are never provisioned")
-	}
-	for _, m := range a.RoleMigrations {
-		if !m.WithDomains() {
-			details = append(details, fmt.Sprintf("%s:%d: %s is called without domains; roles never reach the tenants", m.File, m.Line, m.Callee()))
-		}
-	}
 
 	if len(details) > len(unread) {
 		return fail(c.Name(), fmt.Sprintf("%d tenancy wiring problem(s)", len(details)-len(unread)), details...)
 	}
 
-	summary := fmt.Sprintf("tenant record %s; %d tenant-scoped resource(s); roles provisioned per tenant in %d place(s)",
-		strings.Join(tables, ", "), len(a.DomainResources), len(a.RoleMigrations))
+	summary := fmt.Sprintf("tenant record %s; %d tenant-scoped resource(s)", strings.Join(tables, ", "), len(a.DomainResources))
 
 	return passWithDetails(c.Name(), summary, unread...)
 }
 
-// untenanted reports the tenancy halves an application without WithDomainRoute must not
+// untenanted reports the tenancy half an application without WithDomainRoute must not
 // carry: a tenant-scoped resource would be served under the generator's default
-// /domain/{...} pair, and roles passed domains have no tenants to land in. A spread
-// argument (domains...) is not a finding: the skeleton's wrapper passes its own, empty,
-// variadic through so that adding tenancy later changes the callers and not the wrapper.
+// /domain/{...} pair.
 func (c tenancyWired) untenanted(a *app.App) Result {
-	var details []string
+	details := make([]string, 0, len(a.DomainResources))
 	for _, r := range a.DomainResources {
 		details = append(details, fmt.Sprintf("%s:%d: %s is @permissionScope(domain), but no WithDomainRoute names the tenant segment; it is served under the default /domain/{domain}/ pair", r.File, r.Line, r.Name))
-	}
-	for _, m := range a.RoleMigrations {
-		if m.Domains > 0 {
-			details = append(details, fmt.Sprintf("%s:%d: %s receives %d domain(s), but the application is not tenanted", m.File, m.Line, m.Callee(), m.Domains))
-		}
 	}
 	if len(details) > 0 {
 		return fail(c.Name(), fmt.Sprintf("%d tenancy wiring problem(s) in an untenanted application", len(details)), details...)
 	}
 
-	return pass(c.Name(), "not tenanted: no tenant-scoped resources, roles provisioned globally")
+	return pass(c.Name(), "not tenanted: no tenant-scoped resources")
 }
 
 // tenantTables lists the tables, across every site's file:// migration sources, whose

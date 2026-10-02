@@ -191,7 +191,7 @@ func authFiles(t *testing.T) map[string]string {
 	return map[string]string{
 		"pkg/auth/staff/staff.go":                             staffPackage(t),
 		"pkg/config/data.go":                                  authConfig,
-		"schema/roles/staff.json":                             "{\n  \"roles\": {\n    \"global\": [],\n    \"domain\": []\n  }\n}\n",
+		"pkg/auth/staff/roles.json":                           "{\n  \"roles\": {\n    \"global\": [],\n    \"domain\": []\n  }\n}\n",
 		"schema/migrations/000001_DataChangeEvents.up.sql":    "CREATE TABLE DataChangeEvents (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\n",
 		"schema/migrations/000002_StaffAccess.up.sql":         "CREATE TABLE StaffRoles (\n  Role STRING(128) NOT NULL,\n) PRIMARY KEY (Role);\n\nCREATE TABLE StaffUserRoles (\n  Role STRING(128) NOT NULL,\n) PRIMARY KEY (Role);\n",
 		"schema/migrations/000002_StaffAccess.down.sql":       "DROP TABLE StaffUserRoles;\nDROP TABLE StaffRoles;\n",
@@ -292,7 +292,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package, a copy of staff with its names substituted (tables PartnersSessions and PartnersSessionUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersSessionUsers, the partners auth's tables copied from the staff auth's under the Partners prefix",
-				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"ran go generate ./...",
 			},
@@ -311,7 +311,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package, a copy of staff with its names substituted (tables PartnersSessions and PartnersSessionUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersSessionUsers, the partners auth's tables copied from the staff auth's under the Partners prefix",
-				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"ran go generate ./...",
 			},
@@ -336,7 +336,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted, role membership the application's (session.DisableRoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
-				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_ISSUER_URL, _CLIENT_ID, _CLIENT_SECRET, and _REDIRECT_URL",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
@@ -352,7 +352,7 @@ func TestAuthApply(t *testing.T) {
 						t.Errorf("partners.go lacks %q", want)
 					}
 				}
-				for _, absent := range []string{"RoleSync(accessClient", "Domains session.DomainsProvider"} {
+				for _, absent := range []string{"RoleSync(accessClient", "settings.Domains"} {
 					if strings.Contains(pkg, absent) {
 						t.Errorf("partners.go still has %q", absent)
 					}
@@ -395,7 +395,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted and the constructor rewritten for Google (session.NewOIDCGoogle: a hosted domain in place of an issuer, a subject-keyed user anchor, no front-channel logout); read it over, since the rewrite is textual, role membership the application's (session.DisableRoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
-				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, and _HOSTED_DOMAIN",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
@@ -476,7 +476,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted and the constructor rewritten for Google (session.NewOIDCGoogle: a hosted domain in place of an issuer, a subject-keyed user anchor, no front-channel logout); read it over, since the rewrite is textual, role membership the directory's (session.GoogleRoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
-				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, _HOSTED_DOMAIN, _GROUP_PREFIX, and _GROUP_LOOKUP",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
@@ -490,8 +490,7 @@ func TestAuthApply(t *testing.T) {
 				for _, want := range []string{
 					"\t\"github.com/cccteam/session\"\n",
 					"lookup, err := session.ParseGroupLookup(settings.Directory.GroupLookup)",
-					"session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, lookup),",
-					"\tDomains session.DomainsProvider\n",
+					"session.GoogleRoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),",
 					"\tHostedDomain string\n\t// GroupPrefix is the local-part prefix",
 					"\tGroupLookup string\n}",
 					"Role membership is the\n// directory's (session.GoogleRoleSync)",
@@ -534,7 +533,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted, role membership the directory's (session.RoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
-				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
 				"ran go generate ./...",
@@ -547,7 +546,7 @@ func TestAuthApply(t *testing.T) {
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				pkg := read(t, a, "pkg/auth/partners/partners.go")
-				for _, want := range []string{"session.RoleSync(accessClient.UserManager(), settings.Domains),", "Domains session.DomainsProvider", "Role membership is the\n// directory's (session.RoleSync)"} {
+				for _, want := range []string{"session.RoleSync(accessClient.UserManager()),", "Role membership is the\n// directory's (session.RoleSync)"} {
 					if !strings.Contains(pkg, want) {
 						t.Errorf("partners.go lacks %q", want)
 					}
@@ -566,7 +565,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package, a copy of staff with its names substituted (tables PartnersSessions and PartnersSessionUsers, cookie partners, store prefix Partners)",
 				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersSessionUsers, the partners auth's tables copied from the staff auth's under the Partners prefix",
-				"schema/roles/partners.json: the partners auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
 				"ran go generate ./...",
 			},
@@ -602,7 +601,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/devices: the devices auth package, a copy of staff with its names substituted and the constructor swapped from password to preauth (tables DevicesSessions, cookie devices, store prefix Devices); read it over, since the swap is textual",
 				"schema/migrations: 000005_DevicesAccess, 000006_DevicesSessions, the devices auth's tables copied from the staff auth's under the Devices prefix",
-				"schema/roles/devices.json: the devices auth's role configuration, empty: author its roles when its surfaces are bound",
+				"pkg/auth/devices/roles.json: the devices auth's role file, empty: author its roles when its surfaces are bound",
 				"pkg/config/data.go: the devices auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/devices.go: its accessor Devices()",
 				"ran go generate ./...",
 			},

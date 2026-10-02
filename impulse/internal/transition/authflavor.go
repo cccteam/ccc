@@ -23,7 +23,7 @@ import (
 
 // AuthFlavor changes how an existing auth's people sign in: a password or preauth auth
 // moves to a directory (the OIDC flavors), or an OIDC auth moves between directories. The
-// auth keeps its name, its store, its roles file, and the surfaces bound to it; what
+// auth keeps its name, its store, its role file, and the surfaces bound to it; what
 // changes is the session manager and the tables it reads. The package is rewritten from
 // the reference OIDC auth under the auth's own name, the session tables are dropped and
 // created in the new shape by one migration, the data level's construction gains the
@@ -135,7 +135,7 @@ func (f AuthFlavor) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 	if err := f.rewritePrograms(a, cur, ch); err != nil {
 		return nil, err
 	}
-	if err := f.lowercaseRoles(a, ch); err != nil {
+	if err := f.lowercaseRoles(a, cur, ch); err != nil {
 		return nil, err
 	}
 	if err := au.tagProcfile(a, ch); err != nil {
@@ -675,11 +675,11 @@ func (f AuthFlavor) rewritePrograms(a *app.App, cur *app.Auth, ch *Change) error
 // and the store compares them verbatim; a role kept in the base's mixed case would never
 // be held and every login refused with no_roles. Only a fresh auth is renamed: a
 // swapped one carries roles a person authored, and the check names them instead.
-func (f AuthFlavor) lowercaseRoles(a *app.App, ch *Change) error {
+func (f AuthFlavor) lowercaseRoles(a *app.App, cur *app.Auth, ch *Change) error {
 	if !f.Fresh || f.Flavor != FlavorOIDCGoogle || f.Authority != AuthorityDirectory {
 		return nil
 	}
-	rolesFile := path.Join("schema/roles", f.Name+".json")
+	rolesFile := path.Join(path.Dir(cur.File), app.RolesFileName)
 	names, err := roleNamesOf(a, rolesFile)
 	if err != nil {
 		return err
@@ -724,7 +724,7 @@ func (f AuthFlavor) lowercaseRoles(a *app.App, ch *Change) error {
 	return nil
 }
 
-// roleNamesOf reads the role names the roles file defines, global and domain alike.
+// roleNamesOf reads the role names the role file defines, global and domain alike.
 func roleNamesOf(a *app.App, rolesFile string) ([]string, error) {
 	data, err := os.ReadFile(a.Abs(rolesFile))
 	if err != nil {
@@ -740,7 +740,7 @@ func roleNamesOf(a *app.App, rolesFile string) ([]string, error) {
 		} `json:"roles"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, errors.Wrapf(err, "%s is not a roles file", rolesFile)
+		return nil, errors.Wrapf(err, "%s is not a role file", rolesFile)
 	}
 	var names []string
 	for _, scope := range []string{"global", "domain"} {
@@ -759,7 +759,7 @@ const (
 	bootstrapUsersFile = "cmd/bootstrap/users.json"
 )
 
-// roleNamingFiles lists the files that name a role beside the roles file: the bootstrap
+// roleNamingFiles lists the files that name a role beside the role file: the bootstrap
 // identities, the environment template, the README and the test harnesses.
 func roleNamingFiles(a *app.App, rolesFile string) ([]string, error) {
 	tests, err := fs.Glob(os.DirFS(a.Root), "test/*/*_test.go")
@@ -813,11 +813,11 @@ func (f AuthFlavor) Meaning() string {
 	if f.Fresh {
 		fmt.Fprintf(&b, "The %s auth was composed into the creation in the %s flavor, so the application is born with its people signing in through the organization's directory over OpenID Connect (%s); the base's password shape was rewritten before anything ran against it. `pkg/auth/%s` constructs the %s session manager over `%sSessions` and `%sOIDCUsers` (the user anchor the directory's identifiers key): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. The data level reads the directory registration from the environment.\n\n", f.Name, f.Flavor, au.directoryLabel(), f.Name, f.Flavor, au.Pascal(), au.Pascal())
 	} else {
-		fmt.Fprintf(&b, "The %s auth keeps its name, its permission store (tables prefixed `%s`), its roles file, and every surface bound to it; how its people sign in changed. `pkg/auth/%s` now constructs the %s session manager over `%sSessions` and `%sOIDCUsers` (the user anchor the directory's identifiers key), and its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. The data level reads the directory registration from the environment.\n\n", f.Name, au.Pascal(), f.Name, f.Flavor, au.Pascal(), au.Pascal(), au.directoryLabel())
+		fmt.Fprintf(&b, "The %s auth keeps its name, its permission store (tables prefixed `%s`), its role file, and every surface bound to it; how its people sign in changed. `pkg/auth/%s` now constructs the %s session manager over `%sSessions` and `%sOIDCUsers` (the user anchor the directory's identifiers key), and its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. The data level reads the directory registration from the environment.\n\n", f.Name, au.Pascal(), f.Name, f.Flavor, au.Pascal(), au.Pascal(), au.directoryLabel())
 	}
 	switch f.Authority {
 	case AuthorityDirectory:
-		fmt.Fprintf(&b, "Role membership is now the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application may assign roles in the %s store any more, and the bootstrap seeds none; the roles file only defines the roles and their grants. In a tenanted application, pass the tenant roster as `%s.Settings.Domains`.\n\n", f.Name, f.Name)
+		fmt.Fprintf(&b, "Role membership is now the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application may assign roles in the %s store any more, and the bootstrap seeds none; the role file only defines the roles and their grants. A tenanted application needs no roster for the sweep: a membership the directory assigns is held in every domain.\n\n", f.Name)
 	default:
 		fmt.Fprintf(&b, "Role membership stays the application's (`session.DisableRoleSync`): the directory proves who someone is and the application decides what they may do. The bootstrap assigns the development %s identities their roles by username, with no password and no account to create, since the directory presents the name.\n\n", f.Name)
 	}
@@ -835,7 +835,7 @@ func (f AuthFlavor) Meaning() string {
 	}
 	if f.Fresh {
 		if f.Flavor == FlavorOIDCGoogle && f.Authority == AuthorityDirectory {
-			b.WriteString("\nRole names are lowercase: the directory's groups assign roles by name, a group email is lowercase by nature, and `session.GoogleRoleSync` lowercases every derived name while the store compares them verbatim, so a role in any other case is never held and its logins are refused with `no_roles`. The base's roles were renamed to lowercase in the roles file, the bootstrap identities, the environment template and the tests; name every new role in lowercase.\n")
+			b.WriteString("\nRole names are lowercase: the directory's groups assign roles by name, a group email is lowercase by nature, and `session.GoogleRoleSync` lowercases every derived name while the store compares them verbatim, so a role in any other case is never held and its logins are refused with `no_roles`. The base's roles were renamed to lowercase in the role file, the bootstrap identities, the environment template and the tests; name every new role in lowercase.\n")
 		}
 		b.WriteString("\nNo data consequence: the auth was created moments ago, so nobody signs in again and no role assignment existed to drop; the bootstrap's development identities are the only people it knows.\n")
 

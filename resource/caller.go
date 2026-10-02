@@ -80,9 +80,10 @@ func (c *Caller) As(perms UserPermissions) *Caller {
 // RolePrincipalPermissions is a checker acting as a role on behalf of a real
 // actor: the role's permissions answer the checks, and the actor's identity is
 // what row conditions bind and change events record — the same composition an
-// act-as-role session gets.
+// act-as-role session gets. It lists no domain: a body acting as a role asks
+// no tenant picker.
 func RolePrincipalPermissions(role RolePermissions, actor accesstypes.User) UserPermissions {
-	return rolePrincipalPermissions{RolePermissions: role, user: actor}
+	return rosterPermissions{UserPermissionChecker: rolePrincipalPermissions{RolePermissions: role, user: actor}}
 }
 
 var errNoCaller = errors.New("no caller is stamped on the context: Enforce and Check run under a generated RPC handler, which stamps the caller before Execute, or under a hand-written handler that called resource.WithCaller")

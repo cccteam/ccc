@@ -115,6 +115,12 @@ func (c *testConfigurer) Documents() *store.DirStore { return c.documents }
 // carries no outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return "authz-droids-key" }
 
+// Domains is the scripted roster: the one domain the generated matrix addresses. The
+// empty test schema holds no sector rows, so nothing is read.
+func (c *testConfigurer) Domains(context.Context) ([]accesstypes.Domain, error) {
+	return []accesstypes.Domain{"testDomain"}, nil
+}
+
 // DomainVisible recognizes the generated matrix's domain value and honors the scripted
 // grants, per the generated suite's concealed-domain contract: a case carrying no grants
 // has no foothold and is answered as if the domain did not exist. The empty test schema

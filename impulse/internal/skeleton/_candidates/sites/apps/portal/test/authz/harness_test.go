@@ -98,6 +98,12 @@ func (c *testConfigurer) LogExporter() logger.Exporter {
 
 func (c *testConfigurer) Dist() string { return "" }
 
+// Domains lists the scripted roster: the generated matrix's one domain value, which
+// resource.SessionPermissions filters by the case's grants.
+func (c *testConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error) {
+	return []accesstypes.Domain{"testDomain"}, nil
+}
+
 // DomainVisible recognizes the generated matrix's domain value and honors the scripted
 // grants, per the generated suite's concealed-domain contract: a case carrying no
 // grants has no foothold and is answered as if the domain did not exist. The empty

@@ -23,7 +23,7 @@ func TestOverseerClockFlip(t *testing.T) {
 	checker := client.ForUser("overseer")
 
 	// The grant this suite proves, pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "Overseer", "Update", "Missions", "state = 'claimed' AND deadline < now")
+	provesGrant(t, crew.Roles(), "Overseer", "Update", "Missions", "state = 'claimed' AND deadline < now")
 
 	// The engine's decision for a conditional grant is Conditional either way: a
 	// `deadline < now` term is a ROW term, so the engine defers it to the data layer,

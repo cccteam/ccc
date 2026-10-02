@@ -25,13 +25,13 @@ func TestExecuteConditionsOnRows(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The Execute grants this suite proves, each pinned to the roles file (conditions-proven).
-	provesGrant(t, crew.RolesPath, "Cadet", "Execute", "ClaimMission", "hazard IN (1, 2)")
-	provesGrant(t, crew.RolesPath, "Pilot", "Execute", "ClaimMission", "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)")
-	provesGrant(t, crew.RolesPath, "Pilot", "Execute", "HailShip", "hangarZone != 'quarantine'")
-	provesGrant(t, crew.RolesPath, "FlightLead", "Execute", "CompleteMission", "assignedSquadron IN subject.squadrons")
-	provesGrant(t, crew.RolesPath, "FlightLead", "Execute", "FailMission", "assignedSquadron IN subject.squadrons")
-	provesGrant(t, crew.RolesPath, "BookingAgent", "Execute", "StandDownMission", "bookedBy = subject")
-	provesGrant(t, crew.RolesPath, "Supercargo", "Execute", "ReleaseConsignment", "releasedAt IS NULL")
+	provesGrant(t, crew.Roles(), "Cadet", "Execute", "ClaimMission", "hazard IN (1, 2)")
+	provesGrant(t, crew.Roles(), "Pilot", "Execute", "ClaimMission", "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)")
+	provesGrant(t, crew.Roles(), "Pilot", "Execute", "HailShip", "hangarZone != 'quarantine'")
+	provesGrant(t, crew.Roles(), "FlightLead", "Execute", "CompleteMission", "assignedSquadron IN subject.squadrons")
+	provesGrant(t, crew.Roles(), "FlightLead", "Execute", "FailMission", "assignedSquadron IN subject.squadrons")
+	provesGrant(t, crew.Roles(), "BookingAgent", "Execute", "StandDownMission", "bookedBy = subject")
+	provesGrant(t, crew.Roles(), "Supercargo", "Execute", "ReleaseConsignment", "releasedAt IS NULL")
 
 	// Each case: the persona's per-row Execute envelope over one list, pinned for the
 	// rows the persona can see, followed by one refused fire on a row whose condition

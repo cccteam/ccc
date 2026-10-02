@@ -31,9 +31,9 @@ func TestUserDomains(t *testing.T) {
 		{name: "the hazard analyst holds Anvil and Cinder", user: "hazards", want: []accesstypes.Domain{anvil, cinder}},
 		{name: "the pilot holds Anvil and Bastion", user: "pilot", want: []accesstypes.Domain{anvil, bastion}},
 		{name: "the marshal's single sector, global roles excluded", user: "marshal", want: []accesstypes.Domain{anvil}},
-		// The client's roles are the directory's, reconciled across every sector at login
-		// (RoleSync sweeps the roster), so every sector lights; her rows are narrowed by
-		// company, not by sector.
+		// The client's roles are the directory's, reconciled at login; the membership is
+		// held in every sector, so every sector lights; her rows are narrowed by company,
+		// not by sector.
 		{name: "the client's directory roles light every sector", user: "client", want: []accesstypes.Domain{anvil, bastion, cinder}},
 		{name: "a session with no sector roles lists none, as an array", user: "visitor-nobody", want: []accesstypes.Domain{}},
 	}

@@ -7,14 +7,10 @@
         "global": [
           "Administrator_Global"
         ],
-        "domains": {
-          "north": [
-            "Administrator_Domain"
-          ],
-          "south": [
-            "Administrator_Domain"
-          ]
-        }
+        "everyDomain": [
+          "Administrator_Domain"
+        ],
+        "domains": {}
       }
     },
     {
@@ -22,6 +18,7 @@
       "password": "password",
       "roles": {
         "global": [],
+        "everyDomain": [],
         "domains": {
           "north": [
             "Administrator_Domain"

@@ -26,6 +26,10 @@ func (s *domainsStubPermissions) PermissionDigest(context.Context, accesstypes.S
 	return accesstypes.PermissionDigest{}, nil
 }
 
+func (s *domainsStubPermissions) HasGrants(context.Context, accesstypes.Scope) (bool, error) {
+	return len(s.domains) > 0, s.err
+}
+
 func (s *domainsStubPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
 	return s.domains, s.err
 }

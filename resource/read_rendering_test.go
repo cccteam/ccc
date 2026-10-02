@@ -41,6 +41,10 @@ func (renderStubPermissions) PermissionDigest(context.Context, accesstypes.Scope
 	return accesstypes.PermissionDigest{}, nil
 }
 
+func (renderStubPermissions) HasGrants(context.Context, accesstypes.Scope) (bool, error) {
+	return false, nil
+}
+
 func (renderStubPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
 	return []accesstypes.Domain{}, nil
 }

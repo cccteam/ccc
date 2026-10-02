@@ -88,7 +88,14 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "resource.NewCursorKey()")
 	}
 
-	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	// The auth's default roles validate against the union of the sites' generated
+	// collections when its engine opens; the union is built here, since the auth package
+	// imports no router.
+	collection, err := Collection()
+	if err != nil {
+		return nil, errors.Wrap(err, "Collection()")
+	}
+	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{Collection: collection, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}

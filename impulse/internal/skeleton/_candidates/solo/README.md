@@ -15,19 +15,24 @@ what they hold.
 - `app` holds the handlers: generated resource handlers plus the hand-written middleware
   and static-asset surface. `pkg/router` composes them behind the session.
 - `pkg/resources` holds the resource structs the generator reads; `schema/migrations`
-  the tables they describe; `schema/roles/staff.json` the role configuration the deployment
-  reconciles. It authors `Administrator_Global`, the development login's role, with no
-  grants yet: a new resource stays invisible to every login until a role in this file is
-  granted it. Every grant in it is proven live by `test/integration/grants_test.go`, which
-  provisions the file the way the deployment does and asks the engine about each
-  unconditional grant; a conditional grant is proven by a test case that names it through
+  the tables they describe; `pkg/auth/staff/roles.json` the staff auth's role file: the
+  default roles the release ships, embedded in the binary and validated against the
+  generated collection when the engine opens, so a release whose roles are wrong does not
+  start. It authors `Administrator_Global`, the development login's role, with no grants
+  yet: a new resource stays invisible to every login until a role in this file is granted
+  it. Every grant in it is proven live by `test/integration/grants_test.go`, which opens
+  the auth the way the deployment does and asks the engine about each unconditional
+  grant; a conditional grant is proven by a test case that names it through
   `provesGrant`, and `impulse check` fails on one no case names.
-- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles.
-  `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it to stand up an
-  emulator database and adds the development logins from `cmd/bootstrap/users.json`. Its
-  test runs each roles file through the deploy-time validation (`access.ValidateRoles`)
-  and pins the warnings the deploy would print as typed values, none expected: a warning
-  is accepted by pinning it there, or the role is fixed.
+- `pkg/deploy` holds the database steps a deployment runs: the schema migrations, then
+  the role policy check (`CheckRoles`), which prints what the store holds that this
+  release cannot use as written. `cmd/deployment/migrate` is the deploy step;
+  `cmd/bootstrap` reuses it to stand up an emulator database and adds the development
+  logins from `cmd/bootstrap/users.json`, each with its memberships by where they are
+  held (`global`, `everyDomain`, `domains`). Its test runs each auth's role file through
+  the validation the engine performs when it opens (`access.ValidateRoles`) and pins the
+  warnings the deploy would print as typed values, none expected: a warning is accepted
+  by pinning it there, or the role is fixed.
   A development seed under `schema/devseed` (data files as migrations, tracked apart from
   the schema, so a seeded database takes nothing twice) is applied by `cmd/bootstrap` and
   by the migrate command with `-seed`, which the pipeline passes in test environments and

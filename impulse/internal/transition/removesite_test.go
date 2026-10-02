@@ -73,7 +73,7 @@ func TestRemoveSiteApply(t *testing.T) {
 		"deleted cmd/generate/portalgenerator: the portal site's generator",
 		"cmd/generate/generate.go: no longer runs ./portalgenerator",
 		"cmd/generate/sharedgenerator/generator.go: no longer emits the shared TypeScript into the portal site",
-		"pkg/deploy/deploy.go: the portal site's router collection is out of the union",
+		"pkg/config/data.go: the portal site's router collection is out of the union",
 		"Procfile: removed the portal and portal-web process(es); the comments that describe them are still there",
 		"ran go generate ./...: every remaining site's generated code at its place, without the portal site's",
 	}
@@ -97,9 +97,9 @@ func TestRemoveSiteApply(t *testing.T) {
 	if strings.Contains(shared, "apps/portal") || !strings.Contains(shared, `GenerateTypescript("apps/console/web/console/src/app/core/service/shared"`) || !strings.Contains(shared, `GenerateTypescript("apps/kiosk/web/kiosk/src/app/core/service/shared"`) {
 		t.Errorf("sharedgenerator = %q", shared)
 	}
-	deploy := read(t, a, "pkg/deploy/deploy.go")
-	if strings.Contains(deploy, "portalrouter") || !strings.Contains(deploy, "access.UnionCollection(consolerouter.Collection(), kioskrouter.Collection())") {
-		t.Errorf("deploy.go = %q", deploy)
+	data := read(t, a, "pkg/config/data.go")
+	if strings.Contains(data, "portalrouter") || !strings.Contains(data, "access.UnionCollection(consolerouter.Collection(), kioskrouter.Collection())") {
+		t.Errorf("data.go = %q", data)
 	}
 	procfile := read(t, a, "Procfile")
 	if strings.Contains(procfile, "apps/portal") || !strings.Contains(procfile, "go run ./apps/console'") || !strings.Contains(procfile, "kiosk-web: ") {
@@ -118,8 +118,8 @@ func TestRemoveSiteApply(t *testing.T) {
 	if last := ch.Did[len(ch.Did)-1]; last != "the console site is the one left; the application keeps the sites layout, with the site under apps/console and the shared packages at the root" {
 		t.Errorf("last Did = %q", last)
 	}
-	if got := read(t, a, "pkg/deploy/deploy.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection())") {
-		t.Errorf("deploy.go = %q", got)
+	if got := read(t, a, "pkg/config/data.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection())") {
+		t.Errorf("data.go = %q", got)
 	}
 	p = mustDiscover(t, a.Root).Profile()
 	if p.Layout != app.LayoutSites || siteNames(p) != "console" || len(p.Shared) != 1 {

@@ -21,22 +21,28 @@ the digest for the selected tenant.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
   record, a global resource) and `Announcement` (tenant-scoped, `@domain` on its
   TenantId). `schema/migrations` holds the tables they describe; `schema/devseed` the
-  development tenants; `schema/roles/staff.json` the role configuration the deployment
-  reconciles across the tenant roster. It authors the development logins' roles,
+  development tenants; `pkg/auth/staff/roles.json` the staff auth's role file: the
+  default roles the release ships, embedded in the binary and validated against the
+  generated collection when the engine opens. It authors the development logins' roles,
   `Administrator_Global` over the tenant record and `Administrator_Domain` over every
-  tenant-scoped resource; a new resource stays invisible to every login until a role in
-  this file is granted it. Every grant in it is proven live by `test/integration/grants_test.go`, which
-  provisions the file the way the deployment does and asks the engine about each
-  unconditional grant; a conditional grant is proven by a test case that names it through
-  `provesGrant`, and `impulse check` fails on one no case names.
-- `pkg/deploy` holds the database steps a deployment runs: schema migrations, then roles
-  across the tenants read from the table. `cmd/deployment/migrate` is the deploy step;
+  tenant-scoped resource; a domain role is held in every tenant domain, the seeded ones
+  and those created later, so nothing provisions the file per tenant. A new resource
+  stays invisible to every login until a role in this file is granted it. Every grant in
+  it is proven live by `test/integration/grants_test.go`, which opens the auth the way
+  the deployment does and asks the engine about each unconditional grant; a conditional
+  grant is proven by a test case that names it through `provesGrant`, and `impulse check`
+  fails on one no case names.
+- `pkg/deploy` holds the database steps a deployment runs: the schema migrations, then
+  the role policy check (`CheckRoles`), which prints what the store holds that this
+  release cannot use as written. `cmd/deployment/migrate` is the deploy step;
   `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development
-  tenants first (the roster MigrateRoles reconciles across is data), and adds the
-  development logins from `cmd/bootstrap/users.json`. Its test runs each roles file
-  through the deploy-time validation (`access.ValidateRoles`) and pins the warnings the
-  deploy would print as typed values, none expected: a warning is accepted by pinning it
-  there, or the role is fixed.
+  tenants (tenancy is data), and adds the development logins from
+  `cmd/bootstrap/users.json`, each with its memberships by where they are held: the
+  administrator's domain role in every tenant domain (`everyDomain`), the member's in
+  north alone (`domains`), so concealment is observable. Its test runs each auth's role
+  file through the validation the engine performs when it opens (`access.ValidateRoles`)
+  and pins the warnings the deploy would print as typed values, none expected: a warning
+  is accepted by pinning it there, or the role is fixed.
   A development seed under `schema/devseed` (data files as migrations, tracked apart from
   the schema, so a seeded database takes nothing twice) is applied by `cmd/bootstrap` and
   by the migrate command with `-seed`, which the pipeline passes in test environments and

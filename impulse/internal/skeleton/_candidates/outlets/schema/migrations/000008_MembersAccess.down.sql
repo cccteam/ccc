@@ -1,6 +1,6 @@
 DROP TABLE MembersRoleGrants;
 
-DROP INDEX MembersMembersUserRolesByScopeUser;
+DROP INDEX MembersUserRolesByUser;
 
 DROP TABLE MembersUserRoles;
 

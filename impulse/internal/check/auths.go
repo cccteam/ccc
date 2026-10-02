@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"maps"
 	"os"
 	"path"
@@ -17,12 +20,12 @@ import (
 )
 
 // authsWired verifies that every auth package is wired through the application: the data
-// level constructs it, a roles migration provisions its store from its roles file, and a
-// surface binds to it, either an outlet declaring it (Auth, under the generated router)
-// in the flavor the package constructs, or a hand-written surface taking its type, so a
-// population the application declares can sign in somewhere and holds roles. session-tables
-// holds each authenticator to its tables; this holds each auth to the application around
-// it.
+// level constructs it, the release hands its embedded role file to the permission engine
+// (access.WithDefaultRoles), and a surface binds to it, either an outlet declaring it
+// (Auth, under the generated router) in the flavor the package constructs, or a
+// hand-written surface taking its type, so a population the application declares can
+// sign in somewhere and holds roles. session-tables holds each authenticator to its
+// tables; this holds each auth to the application around it.
 type authsWired struct{}
 
 // authsWiredName is the check's name.
@@ -31,14 +34,14 @@ const authsWiredName = "auths-wired"
 func (authsWired) Name() string { return authsWiredName }
 
 func (authsWired) Describe() string {
-	return "every auth package is constructed by the data level, provisioned from its roles file, and bound by a surface (an outlet's Auth declaration in the package's flavor, or a hand-written surface taking its type); no two auths share a session or XSRF cookie; a directory-run auth has no role writers in the application; and a provisioned roles file is validated by a test (WARN)"
+	return "every auth package is constructed by the data level, embeds its role file and hands it to the permission engine (access.WithDefaultRoles), and is bound by a surface (an outlet's Auth declaration in the package's flavor, or a hand-written surface taking its type); no two auths share a session or XSRF cookie; a directory-run auth has no role writers in the application; and a role file handed to the engine is validated by a test (WARN)"
 }
 
 // The identifiers an auth package exports that the wiring is read from.
 const (
-	authNew       = "New"
-	authRolesPath = "RolesPath"
-	authType      = "Auth"
+	authNew   = "New"
+	authRoles = "Roles"
+	authType  = "Auth"
 )
 
 func (c authsWired) Run(_ context.Context, env *Env) Result {
@@ -65,41 +68,35 @@ func (c authsWired) Run(_ context.Context, env *Env) Result {
 	if len(details) > 0 {
 		return fail(c.Name(), fmt.Sprintf("%d auth wiring problem(s)", len(details)), append(details, warnings...)...)
 	}
-	wired := fmt.Sprintf("%d auth(s) constructed, provisioned, and bound: %s", len(summaries), strings.Join(summaries, ", "))
+	wired := fmt.Sprintf("%d auth(s) constructed, roles handed to the engine, and bound: %s", len(summaries), strings.Join(summaries, ", "))
 	if len(warnings) > 0 {
-		return warn(c.Name(), fmt.Sprintf("%s; %d roles file(s) without a validation test", wired, len(warnings)), warnings...)
+		return warn(c.Name(), fmt.Sprintf("%s; %d role file(s) without a validation test", wired, len(warnings)), warnings...)
 	}
 
 	return pass(c.Name(), wired)
 }
 
 // packageFindings checks one auth against the application: the findings that fail the
-// check, and the warnings that do not (a provisioned roles file no test validates).
+// check, and the warnings that do not (a role file in the engine that no test validates).
 func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPackage) (details, warnings []string) {
 	if len(p.References(authNew, isTestFile)) == 0 {
 		details = append(details, fmt.Sprintf("%s: nothing outside tests calls %s.New; the %s auth is never constructed", p.Dir, p.Name, p.Name))
 	}
 
-	if refs := p.References(authRolesPath, isTestFile); len(refs) == 0 {
-		details = append(details, fmt.Sprintf("%s: nothing outside tests reads %s.RolesPath; the %s auth's roles are never provisioned", p.Dir, p.Name, p.Name))
-	} else {
-		provisioning := false
-		for _, file := range refs {
-			for _, m := range a.RoleMigrations {
-				if m.File == file {
-					provisioning = true
-				}
-			}
-		}
-		if !provisioning {
-			details = append(details, fmt.Sprintf("%s: %s.RolesPath is read (%s) but not by a file that migrates roles; the %s auth's roles are never provisioned", p.Dir, p.Name, strings.Join(refs, ", "), p.Name))
-		} else if !validated(a, p) {
-			warnings = append(warnings, fmt.Sprintf("%s: no test validates the %s auth's roles file (access.ValidateRoles over the collection, reading %s.RolesPath), so a warning the deploy prints is accepted nowhere in code; add the %s row to %s with its expected warnings empty", p.Dir, p.Name, p.Name, p.Name, ValidationTestFile(a)))
-		}
-		if rolesFile := rolesPathOf(a, p); rolesFile != "" {
-			if _, err := os.Stat(a.Abs(rolesFile)); err != nil {
-				details = append(details, fmt.Sprintf("%s: %s.RolesPath names %s, which does not exist", p.Dir, p.Name, rolesFile))
-			}
+	exported, embedded := rolesExport(a, p)
+	switch {
+	case !exported:
+		details = append(details, fmt.Sprintf("%s: the package exports no %s(); the %s auth's role file reaches the permission engine as %s.%s() handed to access.WithDefaultRoles", p.Dir, authRoles, p.Name, p.Name, authRoles))
+	case !embedded:
+		details = append(details, fmt.Sprintf("%s: no //go:embed %s directive in the package; the %s auth's role file does not travel with the release", p.Dir, app.RolesFileName, p.Name))
+	case len(defaultRolesOf(a, p)) == 0:
+		details = append(details, fmt.Sprintf("%s: nothing outside tests hands %s.%s() to access.WithDefaultRoles; the %s auth's default roles never reach its permission engine", p.Dir, p.Name, authRoles, p.Name))
+	case !validated(a, p):
+		warnings = append(warnings, fmt.Sprintf("%s: no test validates the %s auth's role file (access.ValidateRoles over the collection, parsing %s.%s()), so a warning the deploy prints is accepted nowhere in code; add the %s row to %s with its expected warnings empty", p.Dir, p.Name, p.Name, authRoles, p.Name, ValidationTestFile(a)))
+	}
+	if rolesFile := rolesFileOf(p); exported {
+		if _, err := os.Stat(a.Abs(rolesFile)); err != nil {
+			details = append(details, fmt.Sprintf("%s: %s does not exist; the %s auth embeds its role file from there", p.Dir, rolesFile, p.Name))
 		}
 	}
 
@@ -134,9 +131,9 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 // them verbatim; a role defined with an uppercase letter is therefore never assigned,
 // and a login in no role group is refused with no_roles.
 func uppercaseRoles(a *app.App, p *app.AuthPackage) []string {
-	rolesFile := rolesPathOf(a, p)
-	if rolesFile == "" {
-		return nil
+	rolesFile := rolesFileOf(p)
+	if _, err := os.Stat(a.Abs(rolesFile)); err != nil {
+		return nil // reported as missing already
 	}
 	names, err := roleNames(a.Abs(rolesFile))
 	if err != nil {
@@ -145,14 +142,14 @@ func uppercaseRoles(a *app.App, p *app.AuthPackage) []string {
 	var details []string
 	for _, name := range names {
 		if name != strings.ToLower(name) {
-			details = append(details, fmt.Sprintf("%s: role %s in %s can never be held: the directory's groups assign roles by lowercase name (session.GoogleRoleSync), so rename it %s in the roles file and everywhere it is named (the bootstrap identities, APP_ROLES in the environment template, the tests)", p.Dir, name, rolesFile, strings.ToLower(name)))
+			details = append(details, fmt.Sprintf("%s: role %s in %s can never be held: the directory's groups assign roles by lowercase name (session.GoogleRoleSync), so rename it %s in the role file and everywhere it is named (the bootstrap identities, APP_ROLES in the environment template, the tests)", p.Dir, name, rolesFile, strings.ToLower(name)))
 		}
 	}
 
 	return details
 }
 
-// roleNames reads the role names a roles file defines, global and domain alike, in
+// roleNames reads the role names a role file defines, global and domain alike, in
 // file order.
 func roleNames(file string) ([]string, error) {
 	data, err := os.ReadFile(file)
@@ -165,7 +162,7 @@ func roleNames(file string) ([]string, error) {
 		} `json:"roles"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, errors.Wrap(err, "json.Unmarshal(): not a roles file")
+		return nil, errors.Wrap(err, "json.Unmarshal(): not a role file")
 	}
 	var names []string
 	for _, scope := range []string{"global", "domain"} {
@@ -177,11 +174,11 @@ func roleNames(file string) ([]string, error) {
 	return names, nil
 }
 
-// validated reports whether a test calls access.ValidateRoles while reading the auth
-// package's RolesPath: the roles validation test with the auth's row.
+// validated reports whether a test calls access.ValidateRoles while parsing the auth
+// package's Roles(): the roles validation test with the auth's row.
 func validated(a *app.App, p *app.AuthPackage) bool {
 	for i := range a.RoleValidations {
-		if slices.Contains(a.RoleValidations[i].RolesPaths, p.Path) {
+		if slices.Contains(a.RoleValidations[i].RolesPackages, p.Path) {
 			return true
 		}
 	}
@@ -192,19 +189,76 @@ func validated(a *app.App, p *app.AuthPackage) bool {
 // skeletonValidationTest is where the skeletons keep the roles validation test.
 const skeletonValidationTest = "pkg/deploy/deploy_test.go"
 
-// ValidationTestFile is where the roles validation test lives: beside the file that calls
-// access.MigrateRoles itself (the deploy package), named after its package, or the
-// skeletons' file when no file does.
+// ValidationTestFile is where the roles validation test lives: beside the library file
+// that calls CheckPolicy on the engine (the deploy package), named after its package, or
+// the skeletons' file when only a main package does.
 func ValidationTestFile(a *app.App) string {
-	for _, m := range a.RoleMigrations {
-		if m.Via == "" {
-			dir := path.Dir(m.File)
-
-			return path.Join(dir, path.Base(dir)+"_test.go")
+	for _, c := range a.PolicyChecks {
+		dir := path.Dir(c.File)
+		if slices.Contains(a.MainPackages, dir) {
+			continue
 		}
+
+		return path.Join(dir, path.Base(dir)+"_test.go")
 	}
 
 	return skeletonValidationTest
+}
+
+// defaultRolesOf lists the access.WithDefaultRoles calls handing the auth package's
+// Roles() to the engine.
+func defaultRolesOf(a *app.App, p *app.AuthPackage) []app.DefaultRoles {
+	var calls []app.DefaultRoles
+	for _, d := range a.DefaultRoles {
+		if d.RolesPackage == p.Path {
+			calls = append(calls, d)
+		}
+	}
+
+	return calls
+}
+
+// rolesFileOf is the auth package's role file, root-relative: the file beside its source
+// that Roles() embeds.
+func rolesFileOf(p *app.AuthPackage) string {
+	return path.Join(p.Dir, app.RolesFileName)
+}
+
+// rolesExport reads the auth package's source for the two halves of its role file: a
+// package-level Roles() function, and a //go:embed directive naming the file.
+func rolesExport(a *app.App, p *app.AuthPackage) (exported, embedded bool) {
+	entries, err := os.ReadDir(a.Abs(p.Dir))
+	if err != nil {
+		return false, false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || isTestFile(e.Name()) {
+			continue
+		}
+		rel := path.Join(p.Dir, e.Name())
+		src, err := os.ReadFile(a.Abs(rel))
+		if err != nil {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.ParseComments|parser.SkipObjectResolution)
+		if err != nil {
+			continue
+		}
+		for _, decl := range f.Decls {
+			if fd, ok := decl.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Name.Name == authRoles {
+				exported = true
+			}
+		}
+		for _, group := range f.Comments {
+			for _, c := range group.List {
+				if strings.TrimSpace(c.Text) == "//go:embed "+app.RolesFileName {
+					embedded = true
+				}
+			}
+		}
+	}
+
+	return exported, embedded
 }
 
 // The session library's cookie names when a construction leaves them unset.
@@ -336,28 +390,6 @@ func directoryWriters(a *app.App, p *app.AuthPackage) []string {
 	}
 
 	return details
-}
-
-// rolesPathOf reads the auth package's RolesPath constant.
-func rolesPathOf(a *app.App, p *app.AuthPackage) string {
-	entries, err := os.ReadDir(a.Abs(p.Dir))
-	if err != nil {
-		return ""
-	}
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(a.Abs(path.Join(p.Dir, e.Name())))
-		if err != nil {
-			continue
-		}
-		if value, ok := app.ConstString(e.Name(), src, authRolesPath); ok {
-			return value
-		}
-	}
-
-	return ""
 }
 
 func isTestFile(file string) bool { return strings.HasSuffix(file, "_test.go") }

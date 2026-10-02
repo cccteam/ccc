@@ -147,7 +147,7 @@ func TestAuthFlavorApply(t *testing.T) {
 			name:   "a fresh Google directory auth's roles are lowercased everywhere the base names them",
 			flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory, Fresh: true},
 			extra: map[string]string{
-				"schema/roles/staff.json":          "{\n  \"roles\": {\n    \"global\": [\n      {\n        \"name\": \"Administrator_Global\",\n        \"grants\": []\n      }\n    ],\n    \"domain\": [\n      {\n        \"name\": \"viewer\",\n        \"grants\": []\n      }\n    ]\n  }\n}\n",
+				"pkg/auth/staff/roles.json":        "{\n  \"roles\": {\n    \"global\": [\n      {\n        \"name\": \"Administrator_Global\",\n        \"grants\": []\n      }\n    ],\n    \"domain\": [\n      {\n        \"name\": \"viewer\",\n        \"grants\": []\n      }\n    ]\n  }\n}\n",
 				"cmd/bootstrap/users.json":         "{\n  \"staff\": [\n    {\n      \"username\": \"admin\",\n      \"roles\": [\n        \"Administrator_Global\"\n      ]\n    }\n  ]\n}\n",
 				"README.md":                        "# beacon\n\nIt authors `Administrator_Global`, the development login's role, and `Administrator_Global_Extra` is another role.\n",
 				"test/integration/harness_test.go": "package integration\n\nconst adminRole = \"Administrator_Global\"\n",
@@ -159,7 +159,7 @@ func TestAuthFlavorApply(t *testing.T) {
 				"pkg/config/data.go: the staff auth's construction now passes the login page and the directory registration",
 				"app/app.go, pkg/router/router.go: session.PasswordAuthHandlers and *session.PasswordAuth[session.NoCustomData, session.NoCustomData] swapped for session.OIDCGoogleHandlers and *session.OIDCGoogle[session.NoCustomData, session.NoCustomData]",
 				"pkg/router/router.go: the password login route replaced by the directory's: GET /user/login (the redirect), GET /user/callback (the return)",
-				"schema/roles/staff.json, cmd/bootstrap/users.json, README.md, test/integration/harness_test.go: the staff auth's role(s) renamed Administrator_Global to administrator_global, since the directory's groups assign roles by lowercase name (session.GoogleRoleSync) and a role in another case is never held",
+				"pkg/auth/staff/roles.json, cmd/bootstrap/users.json, README.md, test/integration/harness_test.go: the staff auth's role(s) renamed Administrator_Global to administrator_global, since the directory's groups assign roles by lowercase name (session.GoogleRoleSync) and a role in another case is never held",
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the staff auth's directory is simulated in development and every staff login is APP_USERNAME",
 				".envrc.template: APP_USERNAME and APP_ROLES for the simulated directory, and the staff auth's APP_STAFF_OIDC_* registration, to fill in",
 				"ran go generate ./...",
@@ -167,7 +167,7 @@ func TestAuthFlavorApply(t *testing.T) {
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				for rel, want := range map[string]string{
-					"schema/roles/staff.json":          "\"name\": \"administrator_global\"",
+					"pkg/auth/staff/roles.json":        "\"name\": \"administrator_global\"",
 					"cmd/bootstrap/users.json":         "\"administrator_global\"",
 					"README.md":                        "`administrator_global`, the development login's role, and `Administrator_Global_Extra`",
 					"test/integration/harness_test.go": "adminRole = \"administrator_global\"",
@@ -176,8 +176,8 @@ func TestAuthFlavorApply(t *testing.T) {
 						t.Errorf("%s = %q, want it to contain %q", rel, got, want)
 					}
 				}
-				if got := read(t, a, "schema/roles/staff.json"); strings.Contains(got, "Administrator_Global") {
-					t.Errorf("roles file still names Administrator_Global:\n%s", got)
+				if got := read(t, a, "pkg/auth/staff/roles.json"); strings.Contains(got, "Administrator_Global") {
+					t.Errorf("role file still names Administrator_Global:\n%s", got)
 				}
 			},
 		},
@@ -216,7 +216,7 @@ func TestAuthFlavorApply(t *testing.T) {
 					"DROP TABLE StaffSessionUsers;", "DROP INDEX StaffSessions_Expired_idx;\nDROP TABLE StaffSessions;",
 					"CREATE TABLE StaffSessions (", "OidcSid", "CREATE INDEX StaffSessionsByOidcSid ON StaffSessions (OidcSid DESC);",
 					"CREATE TABLE StaffOIDCUsers (", "CREATE UNIQUE INDEX StaffOIDCUsersByTidOid ON StaffOIDCUsers (Tid, Oid);",
-					"DROP INDEX StaffStaffUserRolesByScopeUser;\n\nDROP TABLE StaffUserRoles;\n\nCREATE TABLE StaffUserRoles (", "INTERLEAVE IN PARENT StaffRoles ON DELETE NO ACTION;\n\nCREATE INDEX StaffStaffUserRolesByScopeUser ON StaffUserRoles (IsGlobal, Axis, Domain, User);",
+					"DROP INDEX StaffUserRolesByUser;\n\nDROP TABLE StaffUserRoles;\n\nCREATE TABLE StaffUserRoles (", ") PRIMARY KEY (Kind, Axis, Domain, Role, User);\n\nCREATE INDEX StaffUserRolesByUser ON StaffUserRoles (User, Kind, Axis, Domain);",
 				} {
 					at := strings.Index(up, want)
 					if at < 0 {
@@ -329,8 +329,8 @@ func TestAuthFlavorApply(t *testing.T) {
 				pkg := read(t, a, "pkg/auth/staff/staff.go")
 				for _, want := range []string{
 					"lookup, err := session.ParseGroupLookup(settings.Directory.GroupLookup)",
-					"session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, lookup),",
-					"\tGroupPrefix string\n", "\tGroupLookup string\n", "\tDomains session.DomainsProvider\n",
+					"session.GoogleRoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),",
+					"\tGroupPrefix string\n", "\tGroupLookup string\n",
 				} {
 					if !strings.Contains(pkg, want) {
 						t.Errorf("staff.go lacks %q:\n%s", want, pkg)
