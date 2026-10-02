@@ -71,6 +71,7 @@ type testConfigurer struct {
 	db        *initiator.SpannerDB
 	g         grants
 	documents *store.DirStore
+	live      *live.Fake
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
@@ -116,8 +117,15 @@ func (c *testConfigurer) Documents() *store.DirStore { return c.documents }
 // carries no outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return "authz-droids-key" }
 
-// Live serves no live pages in the matrix: nothing here subscribes.
-func (c *testConfigurer) Live() live.Service { return nil }
+// Live is an in-memory live service: the live service is required in every
+// application, so the matrix's App starts with a fake nothing subscribes through.
+func (c *testConfigurer) Live() live.Service {
+	if c.live == nil {
+		c.live = live.NewFake()
+	}
+
+	return c.live
+}
 
 // LiveOrigins names no change feed origin: the matrix serves no live pages.
 func (c *testConfigurer) LiveOrigins() []string { return nil }

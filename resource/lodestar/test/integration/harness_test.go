@@ -328,12 +328,11 @@ func (c *testConfigurer) PortalDist() string { return "" }
 func (c *testConfigurer) DroidsAPIKey() string { return droidsAPIKey }
 
 // Live is the live service the suite passed (newTestAppWithLive), an in-memory fake;
-// every other suite serves no live pages, so nothing there subscribes and a request
-// carrying X-Subscribe is refused. A nil field answers a nil interface, never a typed
-// nil, as production's accessor does.
+// a suite that passed none gets a fake of its own, since the live service is required
+// in every application and the App's Start follows the feature flags through it.
 func (c *testConfigurer) Live() live.Service {
 	if c.live == nil {
-		return nil
+		c.live = live.NewFake()
 	}
 
 	return c.live

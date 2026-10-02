@@ -138,8 +138,8 @@ func TestFeatureFlags_commendationsDesk(t *testing.T) {
 	fake := live.NewFake()
 	first := startInstance(t, "the first instance", db, crewEngine, membersEngine, fake)
 	second := startInstance(t, "the second instance", db, crewEngine, membersEngine, fake)
-	if got := fake.Watching(resource.FeaturesTopic); got != 2 {
-		t.Fatalf("instances watching the %s topic = %d, want 2: Start follows the topic", resource.FeaturesTopic, got)
+	if got := fake.Subscribers(live.KindFeatures); got != 2 {
+		t.Fatalf("instances subscribed to the %s kind = %d, want 2: Start follows the signals", live.KindFeatures, got)
 	}
 
 	steps := []flagStep{
@@ -197,8 +197,8 @@ func TestFeatureFlags_commendationsDesk(t *testing.T) {
 			check: func(t *testing.T, step string, body []byte) {
 				t.Helper()
 				assertSetFeature(t, step, body, true)
-				if got := fake.Broadcasts(); !slices.Equal(got, []string{resource.FeaturesTopic}) {
-					t.Errorf("%s: broadcasts = %v, want [%s]", step, got, resource.FeaturesTopic)
+				if got := fake.Signals(); !slices.Equal(got, []live.Kind{live.KindFeatures}) {
+					t.Errorf("%s: signals = %v, want [%s]", step, got, live.KindFeatures)
 				}
 			},
 		},
