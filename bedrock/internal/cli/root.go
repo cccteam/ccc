@@ -118,7 +118,6 @@ its own: the code and a placement are the inputs, the stack is the output.`,
 	root.AddCommand(newUpgrade(d))
 	root.AddCommand(newDomain(d))
 	root.AddCommand(newSecret(d))
-	root.AddCommand(newRepository(d))
 	root.AddCommand(newHotfix(d))
 	root.AddCommand(newRestore(d))
 	root.AddCommand(newDeploy(d))

@@ -9,6 +9,10 @@ terraform {
   }
   required_version = ">= 1.11.0"
   required_providers {
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.13"
+    }
     google = {
       source  = "hashicorp/google"
       version = "~> 7.0"
@@ -35,6 +39,13 @@ provider "google" {
 provider "google-beta" {
   user_project_override = true
   billing_project       = var.boot_project_id
+}
+
+# The applications' repositories (github.tf) are configured with the operator's
+# own GitHub sign-in: GITHUB_TOKEN, the token of an owner of the organization
+# (gh auth token). Nothing in this layer holds it.
+provider "github" {
+  owner = var.github_organization
 }
 
 data "google_organization" "this" {

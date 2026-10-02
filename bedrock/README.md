@@ -591,8 +591,8 @@ the release exists, and that the placement records the environment's project
 dispatches the repository's operations workflow (`.github/workflows/operations.yml`,
 rendered and owned by bedrock) as the person signed in to gh, and prints where to watch
 it; the Run workflow button on the Actions tab starts the same job. The job runs in the
-GitHub Environment named after the target environment, which `bedrock repository protect`
-puts in place so that it deploys from the default branch alone (the workflow file a
+GitHub Environment named after the target environment, which the organization's `1-org`
+layer declares so that it deploys from the default branch alone (the workflow file a
 restore runs is the committed one; a reviewer for an environment is the repository's
 setting to add). It holds no key: it exchanges GitHub's short-lived token for the
 environment's operations identity through the environment's workload identity pool
@@ -607,17 +607,6 @@ for any release; the GitHub side never holds a deploy right. The workflow run na
 started it, Cloud Build records the operations identity, and the deployment record
 carries the requester and the restore. An environment the placement records no project
 for is not wired: the job stops before touching anything and says what to record.
-
-## bedrock repository
-
-`repository protect` puts the release and branch rules on the application's GitHub
-repository, the one the command runs in, addressed through its origin remote: the
-default branch and the hotfix lines change by pull request only, and a `v*` or `*/v*`
-tag is created, moved or deleted by the release app alone, with no bypass for the
-repository's admins, which is what makes the pipeline's tag check sound. It also puts
-in place the GitHub Environments the operations workflow runs in, one per environment a
-restore may be started for (every one but production), each deploying from the default
-branch alone.
 
 ## bedrock domain
 
@@ -645,13 +634,32 @@ grants). Everything the seed decides is `REPLACEME` in the seeded values until i
 `org check` compares them and exits 1 on drift.
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
-applications, each layer's `applications.auto.tfvars` is rendered from it (2-env's list,
-2-shr's pushers and pullers, 2-spn's database admins, 2-net's hostnames with the
-wildcard for pull-request environments), and the apply sequence is printed: 2-env for
-every environment, then for every environment but the last again (each grants the next
-environment's deploy identity read on its records bucket, from state the first pass did
-not have), then 2-shr and 2-spn, then the application's own stack per environment, then
-2-net. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
+applications, each layer's `applications.auto.tfvars` is rendered from it (1-org's
+repositories, 2-env's list, 2-shr's pushers and pullers, 2-spn's database admins, 2-net's
+hostnames with the wildcard for pull-request environments), and the apply sequence is
+printed: 1-org, then 2-env for every environment, then for every environment but the last
+again (each grants the next environment's deploy identity read on its records bucket, from
+state the first pass did not have), then 2-shr and 2-spn, then the application's own
+stack per environment, then 2-net.
+
+The application's GitHub repository is configured by `1-org`, with the GitHub provider,
+never by a bedrock command: the repository itself (private; squash the only merge method,
+the squashed commit titled from the pull request; the head branch deleted on merge; never
+destroyed by the layer), its three rulesets (a `v*` or `*/v*` tag created, moved or
+deleted by the release app alone, with no bypass for the repository's admins, which is
+what makes the pipeline's tag check sound; the default branch and the hotfix lines
+changed by pull request alone, with the branch up to date with its base, the pull-request
+build and the infrastructure workflow's `bedrock check` passing on its latest commit,
+squash the only merge and, when the placement names an infrastructure team, that team's
+approval of a change to the workflow and Cloud Build files), and the GitHub Environments
+the operations workflow runs in (every environment but production, each deploying from
+the default branch alone). The operator applies it with their own sign-in, `GITHUB_TOKEN`
+from `gh auth token`, after reading the plan; the placement names the release app
+(`githubReleaseApp`), the default branch (`githubDefaultBranch`) and the team
+(`githubInfrastructureTeam`, empty for none). A repository that existed before the layer
+declared it is imported into the state first; `1-org/README.md` lists the commands.
+bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
+`hotfix` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
 decides. Once `placement.json` records the environment projects' ids and numbers
 (`projects` and `projectNumbers`, from 1-org's `project_ids` and `project_numbers`
 outputs), `org register` and `org render` print the `projects` block an application's
@@ -698,7 +706,7 @@ a model, `internal/render` writes the stack from templates (goldens under
 release assets, their checksums, the verified fetch), `internal/deploy`
 holds the pipeline's steps over the Cloud Build, Cloud Run, Artifact Registry and Cloud
 Storage APIs, `internal/org` renders the foundation, `internal/secret`, `internal/hotfix`,
-`internal/protect` and `internal/migration` hold the operations, and `internal/cli` is the
+and `internal/migration` hold the operations, and `internal/cli` is the
 command surface. Every rendered file carries a comment naming what it comes from; a
 change to a template is a change to the goldens, and the render test reads every golden
 file, comments included.

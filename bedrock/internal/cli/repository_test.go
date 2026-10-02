@@ -28,13 +28,12 @@ func harborRepo(t *testing.T, remote string) string {
 	return dir
 }
 
-// lab is the stand-in GitHub with the release app installed on impulseframework and
-// harbor at v0.1.4 (c4) on master, plus what the test adds.
+// labGitHub is the stand-in GitHub with harbor at v0.1.4 (c4) on master, plus what the
+// test adds.
 func labGitHub(t *testing.T) (*githubtest.Server, *githubtest.Repo) {
 	t.Helper()
 
 	server := githubtest.New(t)
-	server.Installations["impulseframework"] = []github.Installation{{AppID: 5080645, AppSlug: "impulseframework-release"}, {AppID: 10529, AppSlug: "google-cloud-build"}}
 	repo := server.AddRepo("impulseframework", "harbor", &githubtest.Repo{
 		Refs:     map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "c4"}, "refs/tags/v0.1.4": {Type: "commit", SHA: "c4"}},
 		Ancestry: map[string][]string{"c4": {"c4"}, "c5": {"c5", "c4"}},
@@ -45,7 +44,7 @@ func labGitHub(t *testing.T) (*githubtest.Server, *githubtest.Repo) {
 	return server, repo
 }
 
-func TestRepositoryProtectAndHotfix(t *testing.T) {
+func TestRestoreAndHotfix(t *testing.T) {
 	t.Parallel()
 
 	placement := filepath.Join(fixtureApp, "..", "placement.json")
@@ -61,26 +60,6 @@ func TestRepositoryProtectAndHotfix(t *testing.T) {
 		wantDispatch string
 		wantErr      string
 	}{
-		{
-			name:   "protect creates the three rulesets",
-			remote: "git@github.com:impulseframework/harbor.git",
-			args:   []string{"repository", "protect", "--placement", placement},
-			wantOut: []string{
-				"Repository impulseframework/harbor, release app impulseframework-release (app 5080645):",
-				"release tags     created (id 1000): tags v* and */v* are created, moved or deleted only by the release app",
-				"master branch    created (id 1001): changes to refs/heads/master arrive by pull request; no force push, no deletion",
-				"hotfix branches  created (id 1002): changes to refs/heads/hotfix/** arrive by pull request; no force push, no deletion",
-			},
-		},
-		{
-			name:   "protect puts the environments in place, deploying from the default branch alone",
-			remote: "git@github.com:impulseframework/harbor.git",
-			args:   []string{"repository", "protect", "--placement", placement},
-			wantOut: []string{
-				"environment tst  created: deploys from master alone; a reviewer is the repository's setting to add",
-				"environment stg  created: deploys from master alone; a reviewer is the repository's setting to add",
-			},
-		},
 		{
 			name:   "restore dispatches the operations workflow for a wired environment",
 			remote: "git@github.com:impulseframework/harbor.git",
@@ -115,17 +94,8 @@ func TestRepositoryProtectAndHotfix(t *testing.T) {
 			wantErr: `"qa" is not one of the environments (tst, stg, prd)`,
 		},
 		{
-			name:   "protect refuses when the release app is not installed",
-			remote: "https://github.com/impulseframework/harbor",
-			prepare: func(server *githubtest.Server, _ *githubtest.Repo) {
-				server.Installations["impulseframework"] = []github.Installation{{AppID: 10529, AppSlug: "google-cloud-build"}}
-			},
-			args:    []string{"repository", "protect", "--placement", placement},
-			wantErr: "the release app impulseframework-release is not installed on impulseframework (installed: google-cloud-build)",
-		},
-		{
 			name:    "the repository needs an origin on GitHub",
-			args:    []string{"repository", "protect", "--placement", placement},
+			args:    []string{"hotfix", "start", "v0.1.4", "--placement", placement},
 			wantErr: "names no origin remote",
 		},
 		{

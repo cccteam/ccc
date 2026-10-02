@@ -84,6 +84,10 @@ REPLACEME in the seeded values until the seed has run.`,
 func handSteps(p *org.Placement) string {
 	return fmt.Sprintf(`
 By hand, before the first apply (the commands are in 0-bootstrap/README.md):
+  0. On GitHub, in a browser: the organization, this infrastructure repository (never
+     managed by the layers), the release and deployer apps with their keys, installed on
+     the organization, the organization secrets, the Cloud Build app, and, if a team is to
+     approve changes to the applications' check files, that team (githubInfrastructureTeam).
   1. Seed, as %s: the terraform folder at the organization root (%s), the boot
      project %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its
      organization roles, and the state bucket %s-boot-gbl-state-<suffix>.
@@ -92,7 +96,8 @@ By hand, before the first apply (the commands are in 0-bootstrap/README.md):
      placement.json (stateBucket), and run bedrock org render for the backend blocks.
   3. Apply 0-bootstrap on local state, then migrate its state into the bucket.
   4. A billing administrator grants roles/billing.user on %s to the two identities.
-Then 1-org, the three shared layers, 2-env per environment, and the applications.
+Then 1-org (with GITHUB_TOKEN set to an organization owner's token, for the applications'
+repositories), the three shared layers, 2-env per environment, and the applications.
 `, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount)
 }
 
@@ -200,13 +205,14 @@ func newOrgRegister(_ deps) *cobra.Command {
 		Use:   "register <app>",
 		Short: "Register an application in the foundation",
 		Long: `register adds an application to the organization: its code goes into placement.json's
-applications, the layers' applications.auto.tfvars are rendered from it (2-env's list, 2-shr's
-pushers and pullers, 2-spn's database admins, 2-net's hostnames), and the apply sequence is
-printed: 2-env for every environment, then for every environment but the last again (each
-grants the next environment's deploy identity read on its records bucket, from state the first
-pass did not have), then 2-shr and 2-spn (the grants, on identities that exist now), then the
-application's own stack per environment, then 2-net (the hostnames, onto backends that exist
-now). An application code is 1 to 6 lowercase alphanumeric characters starting with a letter,
+applications, the layers' applications.auto.tfvars are rendered from it (1-org's repositories,
+2-env's list, 2-shr's pushers and pullers, 2-spn's database admins, 2-net's hostnames), and the
+apply sequence is printed: 1-org (the repository exists, configured: private, squash the only
+merge, its rulesets with the required checks, its Environments), then 2-env for every
+environment, then for every environment but the last again (each grants the next
+environment's deploy identity read on its records bucket, from state the first pass did not
+have), then 2-shr and 2-spn (the grants, on identities that exist now), then the application's
+own stack per environment, then 2-net (the hostnames, onto backends that exist now). An application code is 1 to 6 lowercase alphanumeric characters starting with a letter,
 registered once. Run from the repository root, or name it with --dir. Before 1-org has run, the
 placement records no environment projects and the rendered values carry REPLACEME; record
 1-org's project_ids in placement.json (projects) and run org render.`,
@@ -235,7 +241,7 @@ placement records no environment projects and the rendered values carry REPLACEM
 				return err
 			}
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the four applications.auto.tfvars among them.\n", app, placement, written.Owned)
+			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the five applications.auto.tfvars among them.\n", app, placement, written.Owned)
 			if missing := p.ProjectsMissing(); len(missing) > 0 {
 				fmt.Fprintf(out, "The placement records no project for %s: the rendered values carry REPLACEME there until 1-org's project_ids are recorded in placement.json (projects) and org render runs.\n", strings.Join(missing, ", "))
 			}
@@ -272,13 +278,16 @@ func applicationProjects(p *org.Placement, app string) string {
 func applySequence(app string) string {
 	return fmt.Sprintf(`
 Apply, in order (each layer from its directory; 2-env per environment, -var environment=<env>):
-  1. 2-env for tst, stg and prd: %s's identities, database, repository link and triggers.
-  2. 2-env for tst and stg again: each environment grants the next environment's deploy
+  1. 1-org, with GITHUB_TOKEN set to an organization owner's token: %s's repository exists,
+     private, squash the only merge, with its rulesets (the required checks, the release
+     tags) and its Environments; a repository made before this import first (1-org/README.md).
+  2. 2-env for tst, stg and prd: %s's identities, database, repository link and triggers.
+  3. 2-env for tst and stg again: each environment grants the next environment's deploy
      identity read on its records bucket, from state the first pass did not have.
-  3. 2-shr and 2-spn: the registry grants and the database admins, on identities that exist now.
-  4. %s's own stack, rendered in its repository (bedrock render), applied per environment.
-  5. 2-net: the hostnames, onto the backends the stack created.
-`, app, app)
+  4. 2-shr and 2-spn: the registry grants and the database admins, on identities that exist now.
+  5. %s's own stack, rendered in its repository (bedrock render), applied per environment.
+  6. 2-net: the hostnames, onto the backends the stack created.
+`, app, app, app)
 }
 
 // orgPlacement reads the placement named, or the one at the repository root.

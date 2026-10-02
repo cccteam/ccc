@@ -4,6 +4,12 @@ variable "allowed_contact_domains" {
   default     = ["@impulseframework.com", "@cloud-team.com"]
 }
 
+variable "applications" {
+  description = "The applications whose GitHub repositories this layer configures, one repository per application named after it. Rendered into applications.auto.tfvars by bedrock org register."
+  type        = list(string)
+  default     = []
+}
+
 variable "audit_log_retention_days" {
   description = "Retention period, in days, for the central audit log bucket in the log project. Only used when central_logging is true."
   type        = number
@@ -42,6 +48,30 @@ variable "gcp_secondary_region" {
   description = "Secondary GCP region, for resources that run in two regions. Nothing in this layer is regional; it is published as an output so every layer reads the same value."
   type        = string
   default     = "us-west3"
+}
+
+variable "github_default_branch" {
+  description = "The default branch of every application repository, from which alone the operations workflow's Environments deploy."
+  type        = string
+  default     = "master"
+}
+
+variable "github_infrastructure_team" {
+  description = "Slug of the organization's infrastructure team, whose approval a change to an application's workflow and Cloud Build files needs, given after the last push. Empty for none."
+  type        = string
+  default     = ""
+}
+
+variable "github_organization" {
+  description = "The GitHub organization that holds the application repositories."
+  type        = string
+  default     = "impulseframework"
+}
+
+variable "github_release_app" {
+  description = "Slug of the release GitHub App, the only actor that creates, moves or deletes a release tag."
+  type        = string
+  default     = "impulseframework-release"
 }
 
 variable "layer_roles" {

@@ -3,7 +3,6 @@ package github_test
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -59,22 +58,6 @@ func TestClient(t *testing.T) {
 			want: "ahead c1",
 		},
 		{
-			name: "the installed apps carry their app IDs",
-			call: func(ctx context.Context, c *github.Client) (string, error) {
-				apps, err := c.Installations(ctx, "acme")
-				if err != nil {
-					return "", err
-				}
-				var out []string
-				for _, app := range apps {
-					out = append(out, app.AppSlug+"="+itoa(app.AppID))
-				}
-
-				return strings.Join(out, ","), nil
-			},
-			want: "acme-release=77,acme-deployer=78",
-		},
-		{
 			name: "the token's user",
 			call: func(ctx context.Context, c *github.Client) (string, error) {
 				return c.User(ctx)
@@ -96,41 +79,6 @@ func TestClient(t *testing.T) {
 				return "", c.DispatchWorkflow(ctx, "acme", "quill", "operations.yml", "nowhere", nil)
 			},
 			wantErr: "answered 422: No ref found for: nowhere",
-		},
-		{
-			name: "an absent environment is not found",
-			call: func(ctx context.Context, c *github.Client) (string, error) {
-				_, err := c.Environment(ctx, "acme", "quill", "tst")
-
-				return "", err
-			},
-			wantErr: "answered 404: Not Found", notFound: true,
-		},
-		{
-			name: "an environment is put in place with its branch restriction and a policy",
-			call: func(ctx context.Context, c *github.Client) (string, error) {
-				if err := c.PutEnvironment(ctx, "acme", "quill", &github.Environment{Name: "tst", DeploymentBranchPolicy: &github.BranchPolicySetting{CustomBranchPolicies: true}}); err != nil {
-					return "", err
-				}
-				if _, err := c.CreateDeploymentBranchPolicy(ctx, "acme", "quill", "tst", &github.BranchPolicy{Name: "main"}); err != nil {
-					return "", err
-				}
-				e, err := c.Environment(ctx, "acme", "quill", "tst")
-				if err != nil {
-					return "", err
-				}
-				policies, err := c.DeploymentBranchPolicies(ctx, "acme", "quill", "tst")
-				if err != nil {
-					return "", err
-				}
-				var names []string
-				for _, p := range policies {
-					names = append(names, p.Name)
-				}
-
-				return e.Name + " custom=" + strconv.FormatBool(e.DeploymentBranchPolicy.CustomBranchPolicies) + " " + strings.Join(names, ","), nil
-			},
-			want: "tst custom=true main",
 		},
 		{
 			name: "the tags list every tag with its commit",
@@ -163,11 +111,11 @@ func TestClient(t *testing.T) {
 		{
 			name: "a refusal carries the status and the message",
 			call: func(ctx context.Context, c *github.Client) (string, error) {
-				_, err := github.New(c.Base(), "wrong").Installations(ctx, "acme")
+				_, err := github.New(c.Base(), "wrong").Tags(ctx, "acme", "quill")
 
 				return "", err
 			},
-			wantErr: "GitHub GET /orgs/acme/installations?per_page=100 answered 401: Bad credentials",
+			wantErr: "GitHub GET /repos/acme/quill/tags?per_page=100&page=1 answered 401: Bad credentials",
 		},
 	}
 	for _, tt := range tests {
@@ -175,7 +123,6 @@ func TestClient(t *testing.T) {
 			t.Parallel()
 
 			server := githubtest.New(t)
-			server.Installations["acme"] = []github.Installation{{ID: 1, AppID: 77, AppSlug: "acme-release"}, {ID: 2, AppID: 78, AppSlug: "acme-deployer"}}
 			repo := server.AddRepo("acme", "quill", &githubtest.Repo{
 				Refs: map[string]github.Object{
 					"refs/heads/main":  {Type: "commit", SHA: "c3"},
@@ -208,20 +155,6 @@ func TestClient(t *testing.T) {
 			}
 		})
 	}
-}
-
-func itoa(n int64) string {
-	const digits = "0123456789"
-	if n == 0 {
-		return "0"
-	}
-	var out []byte
-	for n > 0 {
-		out = append([]byte{digits[n%10]}, out...)
-		n /= 10
-	}
-
-	return string(out)
 }
 
 func TestIssueComments(t *testing.T) {

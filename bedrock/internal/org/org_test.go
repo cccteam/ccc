@@ -59,6 +59,9 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a long application", mutate: func(p *Placement) { p.Applications = []string{"lighthouse"} }, wantErr: `application "lighthouse"`},
 		{name: "a label without a value", mutate: func(p *Placement) { p.Labels = map[string]string{"team": ""} }, wantErr: "label"},
 		{name: "no spanner config", mutate: func(p *Placement) { p.Spanner.Config = "" }, wantErr: "spanner.config is empty"},
+		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseApp = "" }, wantErr: "githubReleaseApp is empty"},
+		{name: "no default branch", mutate: func(p *Placement) { p.GithubDefaultBranch = " " }, wantErr: "githubDefaultBranch is empty"},
+		{name: "no infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "" }},
 		{name: "project numbers for the environments", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "123456789012"} }},
 		{name: "a project number in an unknown environment", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"qa": "1"} }, wantErr: `projectNumbers names "qa", which is not one of tst, stg, prd`},
 		{name: "a project number that is not a number", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "imp-tst"} }, wantErr: `projectNumbers.tst "imp-tst" is not a project number (digits)`},
@@ -658,6 +661,80 @@ func TestApplicationProjects(t *testing.T) {
 			}
 			if got := strings.Join(missing, ","); got != tt.wantMissing {
 				t.Errorf("missing = %q, want %q", got, tt.wantMissing)
+			}
+		})
+	}
+}
+
+// TestRepositoryRules reads the repository module 1-org renders: the applications it
+// configures, the checks a pull request must pass (the infrastructure workflow's job and
+// the pull-request build under its trigger's name), squash as the only merge, the branch
+// up to date before it merges, the restorable environments, and the placement's values
+// as the variables' defaults.
+func TestRepositoryRules(t *testing.T) {
+	t.Parallel()
+
+	files, err := Render(testPlacement(t))
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.Path] = string(f.Content)
+	}
+	tests := []struct {
+		name string
+		path string
+		want []string
+	}{
+		{
+			name: "the applications are the repositories",
+			path: "1-org/applications.auto.tfvars",
+			want: []string{`applications = ["harbor", "beacon"]`},
+		},
+		{
+			name: "the rules name the two checks, squash alone and the branch up to date",
+			path: "1-org/github.tf",
+			want: []string{
+				`context        = "bedrock check"`,
+				`context        = "${var.prefix}-tst-${local.region_code}-${app}-pr"`,
+				`strict_required_status_checks_policy = true`,
+				`allowed_merge_methods           = ["squash"]`,
+				`require_last_push_approval      = var.github_infrastructure_team != ""`,
+				`restorable_environments = ["tst", "stg"]`,
+				`include = ["refs/tags/v*", "refs/tags/*/v*"]`,
+				`hotfix  = { name = "hotfix lines", include = ["refs/heads/hotfix/**"] }`,
+				`prevent_destroy = true`,
+			},
+		},
+		{
+			name: "the placement's values are the variables' defaults",
+			path: "1-org/variables.tf",
+			want: []string{
+				`default     = "impulseframework-release"`,
+				`default     = "master"`,
+				`default     = "impulseframework"`,
+				"variable \"github_infrastructure_team\" {\n  description = \"Slug of the organization's infrastructure team, whose approval a change to an application's workflow and Cloud Build files needs, given after the last push. Empty for none.\"\n  type        = string\n  default     = \"\"",
+			},
+		},
+		{
+			name: "the provider is pinned and takes the organization",
+			path: "1-org/initialize.tf",
+			want: []string{`source  = "integrations/github"`, `owner = var.github_organization`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content, ok := byPath[tt.path]
+			if !ok {
+				t.Fatalf("%s is not rendered", tt.path)
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks %q", tt.path, w)
+				}
 			}
 		})
 	}

@@ -54,6 +54,16 @@ type Placement struct {
 	// GithubOrganization is the GitHub organization holding the application
 	// repositories and this one.
 	GithubOrganization string `json:"githubOrganization"`
+	// GithubReleaseApp is the slug of the release GitHub App, the only actor that
+	// creates, moves or deletes a release tag of an application's repository.
+	GithubReleaseApp string `json:"githubReleaseApp"`
+	// GithubDefaultBranch is the default branch of every application repository, from
+	// which alone the operations workflow's Environments deploy.
+	GithubDefaultBranch string `json:"githubDefaultBranch"`
+	// GithubInfrastructureTeam is the slug of the organization's infrastructure team,
+	// whose approval a change to an application's workflow and Cloud Build files
+	// needs; empty for none.
+	GithubInfrastructureTeam string `json:"githubInfrastructureTeam,omitempty"`
 	// SourceRepo is this repository's name, the source_repo label every resource carries.
 	SourceRepo string `json:"sourceRepo"`
 	// StateBucket is the seeded state bucket every backend block names; empty until the
@@ -136,6 +146,7 @@ func (p *Placement) Validate() error {
 	for name, value := range map[string]string{
 		"organizationDomain": p.OrganizationDomain, "organizationId": p.OrganizationID, "billingAccount": p.BillingAccount,
 		"appsDomain": p.AppsDomain, "githubOrganization": p.GithubOrganization, "sourceRepo": p.SourceRepo,
+		"githubReleaseApp": p.GithubReleaseApp, "githubDefaultBranch": p.GithubDefaultBranch,
 		"operator": p.Operator, "spanner.config": p.Spanner.Config,
 	} {
 		if strings.TrimSpace(value) == "" {

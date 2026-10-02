@@ -25,8 +25,6 @@ import (
 
 // Repo is one repository's state.
 type Repo struct {
-	// Rulesets by ID.
-	Rulesets map[int64]*github.Ruleset
 	// Refs by full name (refs/heads/master, refs/tags/v0.1.0) to the object they point at.
 	Refs map[string]github.Object
 	// TagObjects by SHA: the commit each annotated tag object names.
@@ -57,16 +55,8 @@ type Repo struct {
 	PullRequests []github.PullRequest
 	// Deployments made through the API, oldest first, with their statuses.
 	Deployments []*Deployment
-	// Environments by name, as put in place through the API, with their custom branch
-	// policies; Dispatches the workflow_dispatch events started, oldest first.
-	Environments map[string]*Environment
-	Dispatches   []Dispatch
-}
-
-// Environment is one deployment environment and its custom branch policies.
-type Environment struct {
-	Setting  *github.BranchPolicySetting
-	Policies []github.BranchPolicy
+	// Dispatches is the workflow_dispatch events started, oldest first.
+	Dispatches []Dispatch
 }
 
 // Dispatch is one workflow_dispatch event: the workflow file, the ref and the inputs.
@@ -86,9 +76,8 @@ type Deployment struct {
 // Server is the stand-in.
 type Server struct {
 	*httptest.Server
-	mu            sync.Mutex
-	Installations map[string][]github.Installation
-	Repos         map[string]*Repo
+	mu    sync.Mutex
+	Repos map[string]*Repo
 	// AppID and AppKey are the GitHub App whose JWT the installation endpoints accept;
 	// AppInstallation is its installation's id. The installation token it mints is the
 	// token every other endpoint accepts.
@@ -107,33 +96,28 @@ type Server struct {
 }
 
 var (
-	rulesetsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/rulesets$`)
-	rulesetRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/rulesets/(\d+)$`)
-	refRE        = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/ref/(.+)$`)
-	refsRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/refs$`)
-	tagObjectRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/tags/([^/]+)$`)
-	compareRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/compare/(.+)\.{3}(.+)$`)
-	tagsRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/tags$`)
-	commitRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits/([^/]+)$`)
-	commitsRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits$`)
-	blobsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/blobs$`)
-	treesRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/trees$`)
-	contentsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/contents/(.+)$`)
-	installsRE   = regexp.MustCompile(`^/orgs/([^/]+)/installations$`)
-	issueRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)$`)
-	commentsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)/comments$`)
-	releaseRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/releases/tags/(.+)$`)
-	pullRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls/(\d+)$`)
-	pullsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls$`)
-	deploysRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments$`)
-	statusesRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments/(\d+)/statuses$`)
-	repoInstRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/installation$`)
-	tokensRE     = regexp.MustCompile(`^/app/installations/(\d+)/access_tokens$`)
-	userRE       = regexp.MustCompile(`^/user$`)
-	dispatchRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/workflows/([^/]+)/dispatches$`)
-	envRE        = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/environments/([^/]+)$`)
-	policiesRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/environments/([^/]+)/deployment-branch-policies$`)
-	rulesetIDMin = int64(1000)
+	refRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/ref/(.+)$`)
+	refsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/refs$`)
+	tagObjectRE = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/tags/([^/]+)$`)
+	compareRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/compare/(.+)\.{3}(.+)$`)
+	tagsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/tags$`)
+	commitRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits/([^/]+)$`)
+	commitsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits$`)
+	blobsRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/blobs$`)
+	treesRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/trees$`)
+	contentsRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/contents/(.+)$`)
+	issueRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)$`)
+	commentsRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)/comments$`)
+	releaseRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/releases/tags/(.+)$`)
+	pullRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls/(\d+)$`)
+	pullsRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls$`)
+	deploysRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments$`)
+	statusesRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments/(\d+)/statuses$`)
+	repoInstRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/installation$`)
+	tokensRE    = regexp.MustCompile(`^/app/installations/(\d+)/access_tokens$`)
+	userRE      = regexp.MustCompile(`^/user$`)
+	dispatchRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/workflows/([^/]+)/dispatches$`)
+	idMin       = int64(1000)
 )
 
 const (
@@ -147,7 +131,7 @@ const (
 func New(t *testing.T) *Server {
 	t.Helper()
 
-	s := &Server{Installations: map[string][]github.Installation{}, Repos: map[string]*Repo{}, nextID: rulesetIDMin}
+	s := &Server{Repos: map[string]*Repo{}, nextID: idMin}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 
@@ -163,9 +147,6 @@ func (s *Server) Client() *github.Client {
 func (s *Server) AddRepo(owner, name string, repo *Repo) *Repo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if repo.Rulesets == nil {
-		repo.Rulesets = map[int64]*github.Ruleset{}
-	}
 	if repo.Refs == nil {
 		repo.Refs = map[string]github.Object{}
 	}
@@ -212,16 +193,6 @@ type route struct {
 
 // routes are served in order; the first pattern to match wins.
 var routes = []route{
-	{installsRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
-		reply(w, http.StatusOK, map[string]any{"installations": s.Installations[m[1]]})
-	}},
-	{rulesetsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
-		s.rulesets(w, r, m[1]+"/"+m[2])
-	}},
-	{rulesetRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
-		id, _ := strconv.ParseInt(m[3], 10, 64)
-		s.ruleset(w, r, m[1]+"/"+m[2], id)
-	}},
 	{refsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
 		s.createRef(w, r, m[1]+"/"+m[2])
 	}},
@@ -287,12 +258,6 @@ var routes = []route{
 	{dispatchRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
 		s.dispatch(w, r, m[1]+"/"+m[2], m[3])
 	}},
-	{policiesRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
-		s.branchPolicies(w, r, m[1]+"/"+m[2], m[3])
-	}},
-	{envRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
-		s.environment(w, r, m[1]+"/"+m[2], m[3])
-	}},
 }
 
 // dispatch records a workflow_dispatch event; the workflow file must be one the
@@ -323,75 +288,6 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, key, file stri
 	}
 	repo.Dispatches = append(repo.Dispatches, Dispatch{File: file, Ref: body.Ref, Inputs: body.Inputs})
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// environment reads or puts a deployment environment.
-func (s *Server) environment(w http.ResponseWriter, r *http.Request, key, name string) {
-	repo, ok := s.repo(w, key)
-	if !ok {
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		if _, ok := repo.Environments[name]; !ok {
-			reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
-
-			return
-		}
-		reply(w, http.StatusOK, map[string]any{"name": name, "deployment_branch_policy": repo.Environments[name].Setting})
-	case http.MethodPut:
-		var body struct {
-			Setting *github.BranchPolicySetting `json:"deployment_branch_policy"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
-
-			return
-		}
-		if repo.Environments == nil {
-			repo.Environments = map[string]*Environment{}
-		}
-		e, ok := repo.Environments[name]
-		if !ok {
-			e = &Environment{}
-			repo.Environments[name] = e
-		}
-		e.Setting = body.Setting
-		reply(w, http.StatusOK, map[string]any{"name": name, "deployment_branch_policy": e.Setting})
-	default:
-		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
-	}
-}
-
-// branchPolicies lists or adds an environment's custom branch policies.
-func (s *Server) branchPolicies(w http.ResponseWriter, r *http.Request, key, name string) {
-	repo, ok := s.repo(w, key)
-	if !ok {
-		return
-	}
-	e, ok := repo.Environments[name]
-	if !ok {
-		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
-
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		reply(w, http.StatusOK, map[string]any{"total_count": len(e.Policies), "branch_policies": e.Policies})
-	case http.MethodPost:
-		p := github.BranchPolicy{}
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
-
-			return
-		}
-		p.ID = s.nextID
-		s.nextID++
-		e.Policies = append(e.Policies, p)
-		reply(w, http.StatusOK, p)
-	default:
-		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
-	}
 }
 
 // appRoutes are served to the app's JWT, before the token check the others take.
@@ -450,70 +346,6 @@ func (s *Server) repo(w http.ResponseWriter, key string) (*Repo, bool) {
 	}
 
 	return repo, ok
-}
-
-func (s *Server) rulesets(w http.ResponseWriter, r *http.Request, key string) {
-	repo, ok := s.repo(w, key)
-	if !ok {
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		list := make([]github.Ruleset, 0, len(repo.Rulesets))
-		for _, rs := range repo.Rulesets {
-			list = append(list, github.Ruleset{ID: rs.ID, Name: rs.Name, Target: rs.Target, Enforcement: rs.Enforcement})
-		}
-		reply(w, http.StatusOK, list)
-	case http.MethodPost:
-		rs := &github.Ruleset{}
-		if err := json.NewDecoder(r.Body).Decode(rs); err != nil {
-			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
-
-			return
-		}
-		for _, existing := range repo.Rulesets {
-			if existing.Name == rs.Name {
-				reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "Name has already been taken"})
-
-				return
-			}
-		}
-		rs.ID = s.nextID
-		s.nextID++
-		repo.Rulesets[rs.ID] = rs
-		reply(w, http.StatusCreated, rs)
-	default:
-		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
-	}
-}
-
-func (s *Server) ruleset(w http.ResponseWriter, r *http.Request, key string, id int64) {
-	repo, ok := s.repo(w, key)
-	if !ok {
-		return
-	}
-	rs, ok := repo.Rulesets[id]
-	if !ok {
-		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
-
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		reply(w, http.StatusOK, rs)
-	case http.MethodPut:
-		updated := &github.Ruleset{}
-		if err := json.NewDecoder(r.Body).Decode(updated); err != nil {
-			reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
-
-			return
-		}
-		updated.ID = id
-		repo.Rulesets[id] = updated
-		reply(w, http.StatusOK, updated)
-	default:
-		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
-	}
 }
 
 func (s *Server) ref(w http.ResponseWriter, key, ref string) {

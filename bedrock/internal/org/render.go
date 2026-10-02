@@ -146,6 +146,38 @@ func (*view) Prd() string {
 	return Environments[len(Environments)-1]
 }
 
+// FirstEnvironment is the first environment in promotion order, where the pull-request
+// build runs and its trigger is named.
+func (*view) FirstEnvironment() string {
+	return Environments[0]
+}
+
+// Restorable is the environments a restore may be started for: every one but
+// production, in promotion order.
+func (*view) Restorable() []string {
+	return Environments[:len(Environments)-1]
+}
+
+// RestorableEnvironmentsList is the restorable environments as an HCL list.
+func (v *view) RestorableEnvironmentsList() string {
+	return `["` + strings.Join(v.Restorable(), `", "`) + `"]`
+}
+
+// RestorableEnvironmentsProse is the restorable environments as prose, backticked:
+// `tst` and `stg`.
+func (v *view) RestorableEnvironmentsProse() string {
+	envs := v.Restorable()
+	quoted := make([]string, 0, len(envs))
+	for _, e := range envs {
+		quoted = append(quoted, "`"+e+"`")
+	}
+	if len(quoted) <= 1 {
+		return strings.Join(quoted, "")
+	}
+
+	return strings.Join(quoted[:len(quoted)-1], ", ") + " and " + quoted[len(quoted)-1]
+}
+
 // ApplicationsList is the applications as an HCL list.
 func (v *view) ApplicationsList() string {
 	if len(v.Applications) == 0 {

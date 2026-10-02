@@ -108,6 +108,18 @@ the boot project as `imp-org-gbl-tofu`.
   its own build. `roles/run.admin` would carry that permission together with
   the policy of every service.
 
+- The applications' GitHub repositories, from `applications.auto.tfvars`
+  (rendered by `bedrock org register`): each repository (private; squash the
+  only merge method, the squashed commit titled from the pull request; the head
+  branch deleted on merge; never destroyed by this layer), its three rulesets
+  (release tags `v*` and `*/v*` created, moved or deleted by the release app
+  alone, with no bypass for the repository's admins; the default branch and the
+  hotfix lines `hotfix/*` changed by pull request alone, no force push, no
+  deletion, with the branch up to date with its base, the required checks
+  passing and squash the only merge) and the GitHub Environments the operations
+  workflow runs in (`tst` and `stg`, each deploying from the
+  default branch alone). See "The applications' repositories" below.
+
 ## Applying
 
 In a terminal, in this directory, after `0-bootstrap` has been applied and its
@@ -129,6 +141,61 @@ Review the plan carefully. It creates folders, org policy, and projects with
 Set `essential_contact_emails` in `terraform.tfvars` before applying if you
 want Essential Contacts registered. Addresses must be in one of
 `allowed_contact_domains`.
+
+## The applications' repositories
+
+GitHub is configured here, by OpenTofu with the GitHub provider, never by a
+bedrock command: `github.tf` declares each application's repository, its rules
+and its Environments, and the operator applies it with their own sign-in. Set
+`GITHUB_TOKEN` to the token of an owner of the organization before `tofu plan`
+or `tofu apply` (`export GITHUB_TOKEN=$(gh auth token)` with gh signed in as
+that owner); the audit log then names the person. bedrock commands use the
+GitHub API only to act: `bedrock restore` dispatches a workflow, `bedrock
+hotfix` creates branches and pull requests, the pipeline talks back on a pull
+request.
+
+The required checks on the default branch and the hotfix lines are the
+pull-request build, which Cloud Build reports under the trigger's name
+(`imp-tst-<region>-<app>-pr`, set by the application's
+stack in tst), and the infrastructure workflow's job, `bedrock
+check`, which GitHub Actions reports. A pull request merges once both pass on
+its latest commit and its branch holds every commit of its base; the
+pull-request build runs on `/gcbrun`, so a pull request nobody built never
+merges, release-please's release pull requests included. A renamed check is
+one change to `github.tf`, timed with the release that renames the trigger;
+requiring both names would block every pull request.
+
+When `github_infrastructure_team` names a team of the organization (its slug;
+empty by default), a change to the files that define what the checks run
+(`.github/workflows/**` and `cloudbuild*.yaml`) needs one approval from that
+team, given after the last push, so no author merges a check change alone.
+The team and its members are the organization's own setting; this layer
+reads it.
+
+GitHub features this uses, on a private repository: rulesets with required
+status checks and required reviewers, and deployment branch policies on
+Environments. The layer asks GitHub nothing about the organization's plan; a
+feature the plan lacks is refused by GitHub, and that refusal is the message.
+
+A repository that exists before this layer declares it (one made by hand, or
+configured by the retired `bedrock repository protect`) is imported into the
+state before the first apply, so the apply changes it instead of making a
+second one. For each such application, in this directory, with `GITHUB_TOKEN`
+set (the ruleset ids come from `gh api repos/<org>/<app>/rulesets`, the
+deployment policy ids from
+`gh api repos/<org>/<app>/environments/<env>/deployment-branch-policies`):
+
+```bash
+tofu import 'github_repository.app["<app>"]' <app>
+tofu import 'github_repository_ruleset.release_tags["<app>"]' <app>:<id>
+tofu import 'github_repository_ruleset.branch["<app>:default"]' <app>:<id>
+tofu import 'github_repository_ruleset.branch["<app>:hotfix"]' <app>:<id>
+tofu import 'github_repository_environment.restorable["<app>-<env>"]' <app>:<env>
+tofu import 'github_repository_environment_deployment_policy.default_branch["<app>-<env>"]' <app>:<env>:<id>
+```
+
+The plan then shows what the declaration changes: the merge settings, the
+required checks, the rulesets' names.
 
 ## Inputs
 
