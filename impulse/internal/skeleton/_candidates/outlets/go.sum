@@ -56,8 +56,8 @@ github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69 h1:0fe0
 github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
 github.com/cccteam/ccc/cache v0.1.8-0.20260928033352-026459e32084 h1:h1wF4TEU7C3sr2SS8GkwlQZ0SgThOuQGOPGeT7jLm2w=
 github.com/cccteam/ccc/cache v0.1.8-0.20260928033352-026459e32084/go.mod h1:/k4vhq5Nmj4/DbidzIreBpWg0xJk2BwhfuOtC6Hs1XY=
-github.com/cccteam/ccc/impulse v0.0.0-20261002085031-9def152ec3ac h1:S++6amaYS86fndJAOtA9TmU/qbot3FKYvYHyMPmUlG0=
-github.com/cccteam/ccc/impulse v0.0.0-20261002085031-9def152ec3ac/go.mod h1:WGcS75SP04O5Gn2TsTGqgp8+RdNK09LUoz14Ku9wwgQ=
+github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363 h1:VEbj1GuIApoEuoJiyLEhbY5k2EF0Pz+sjp6V1nhP5L0=
+github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363/go.mod h1:WGcS75SP04O5Gn2TsTGqgp8+RdNK09LUoz14Ku9wwgQ=
 github.com/cccteam/ccc/pkg v0.1.4 h1:5KI2fUTSFXyUZsBE0+KUqZ9fFpCaI8oneralVyUPVlI=
 github.com/cccteam/ccc/pkg v0.1.4/go.mod h1:ByFJXBFztIob5Fn/rAJUu/XtyIsK4cYJyko/nAY/Gls=
 github.com/cccteam/ccc/resource v0.10.7-0.20261002083642-4162ab50501c h1:tnhZ2lUGWoa8Cc9+134hOO9X6r55odASxQR/g0jKoeE=
