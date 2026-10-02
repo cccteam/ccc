@@ -55,6 +55,11 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

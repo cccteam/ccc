@@ -276,11 +276,11 @@ func TestCompare(t *testing.T) {
 				return a
 			},
 			want: &ci.Difference{
-				Line: 135,
+				Line: 140,
 				Want: "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.",
 				Got:  "  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.",
 			},
-			wantText: `.github/workflows/ci.yml:135: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build."`,
+			wantText: `.github/workflows/ci.yml:140: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build."`,
 		},
 		{
 			name: "a file that ends early",
