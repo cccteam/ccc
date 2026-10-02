@@ -237,8 +237,11 @@ resource "google_storage_bucket_iam_member" "next_deploy_records_viewer" {
 #
 # A pull-request build plans the application's stack for every environment, so
 # the plan a reviewer approves is the plan of each environment, and it does so
-# as that environment's plan identity: a reader. roles/viewer on the project
-# refreshes what the stack manages; on the state bucket, the list and a read of
+# as that environment's plan identity: a reader. On the project it holds the
+# custom role applicationPlanReader (the reads of the resource types the stack
+# declares, and nothing of their data; locals.tf) beside roles/iam.securityReviewer
+# for the IAM policies the stack's grants are refreshed through; on the state
+# bucket, the list and a read of
 # the application's own state prefix and of the upstream states, the same
 # prefixes the apply identity reads, and no write (the plan runs without the
 # state lock). tst's deploy identity of the same application may impersonate
