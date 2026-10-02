@@ -90,6 +90,7 @@ type Ship struct { ... }
 | `@page` | `@resource`, `@virtual`, or `@computed` struct | `default: N` and/or `max: M` | Declares the list's page sizes: the page a request without `limit` receives, and the largest page a request may ask for. Both are positive integers; the default never exceeds the maximum, and a maximum alone must be at least the generator-wide default of 50. Undeclared, the list serves pages of 50 with no maximum. A request over the maximum is refused with a 400 naming it, never clamped, and a resource with a maximum refuses `limit=all`. The maximum is also the switch a picker reads: a resource with none is small enough to load whole, read in one request with `limit=all` and sort optional; a resource with a maximum is paged, one server page at a time, so its list needs an order (`@order`, or `sort` on the request) and a picker over it reads the chosen row by key, which is why a bounded picker source may not suppress its read (`@enumerate`). Declaring the maximum is the deliberate choice; nothing decides at runtime from an observed size. Refused on a `@computed` or `@virtual` struct with no `@primarykey`, naming the struct and the two ways out (declare the key, or drop `@page`): without a key the resource is a whole read-only list, with no read route and no paging, so a page size on it is a contradiction. The generated TypeScript descriptor carries both numbers. Example: [Mission](lodestar/pkg/resources/missions.go). |
 | `@order` | `@resource`, `@virtual`, or `@computed` struct | comma list of `Field [asc\|desc]` | Declares the order a list takes when the request carries no `sort`, naming Go fields of the struct; the direction defaults to `asc`. The primary key is appended at runtime so the order is total, and a request's `sort` replaces the declared order for that request. The declaration is optional, and every paged request needs an order from somewhere: a resource that declares none serves a request without `sort` only as the whole list (`limit=all`), which is not sorted — its table or view statement carries no `ORDER BY` and the rows arrive in the database's own order, a computed list keeps the order its body yielded — and refuses a bare GET or a `limit` with a 400 naming the resource and the way out (section 4). A nullable column renders as the plain direction and sorts in its database's own `NULL` placement, so an index on the column serves the order: Spanner places `NULL` first ascending and last descending, PostgreSQL last ascending and first descending. A computed resource follows the same placement: its handler sorts and pages the body's rows where the application's database would. On a computed resource only a leaf field may be named (a nested field is opaque). The generated TypeScript descriptor carries the declared order (`order: [{ field, direction }]`, JSON names), so a browser client knows a request without a `sort` is already ordered and pages by cursor; to a resource that declares none it sends a `sort` of its own or asks `limit=all`. On a table-backed resource with a bare `@domain`, generation warns when no index leads with the tenant column and then these columns in this order and direction, naming the index it wants (section 9). Example: [Mission](lodestar/pkg/resources/missions.go). |
 
+| `@feature` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct; field of a `@resource`, `@virtual`, or `@computed` struct | the flag's constant, `Debriefs` | Puts the resource, the field, or the method behind a feature flag, so it exists for the browser and the API only while the flag is on (section 15). The argument is the identifier of a `resource.Feature` constant declared in the resources package (`const Debriefs resource.Feature = "debriefs"`, its doc comment the flag's description); the constant's value is the flag's name, `[a-z][a-z0-9_]{0,63}`, and a name declared twice, a malformed name, an unknown identifier, or a value in place of the identifier is refused at generation naming the constants. On a struct every route of the resource or the method answers 404 while the flag is off, exactly as an unregistered route does, its consolidated arm answers as an unknown resource, and the resource, its fields and the method are absent from the permission digest. On a field the decoders answer the field as unknown while the flag is off (a 400 on `columns`, `sort`, `filter` and a patch body naming it) and the handlers leave it out of every response; a primary key, the tenant key, the state column, a `@file` key, and a column a create must supply (NOT NULL with no default, on a resource that serves a create) cannot be gated, and an `@rpc` struct's fields are not gated one by one. The TypeScript metadata and the descriptor carry `feature: '<name>'` on the gated entry, and the client file declares the `Feature` union and constants. |
 Exactly one of `@resource`, `@virtual`, `@computed`, or `@rpc` may appear on a struct. The generator refuses a struct carrying more than one, naming the kinds it found.
 
 ## 2. Struct tags you write (source structs)
@@ -189,6 +190,8 @@ Read back at runtime by the `resource` package; listed here for reading generate
 | `masking:"positional"` | Copied from the source struct; a sort, filter, or cursor on the field runs on the real column while the cell stays masked in the output. Absent on a concealing field. `positional` is the only value written; any other value in a request struct is a startup error (the stale-struct guard). |
 | `sqltype:"STRING(64)"` | The column's declared type, verbatim from the schema, on a patch request-struct field whose value the decoder sizes before anything is buffered (section 11): a string-kinded field on `STRING(n)`, `[]byte` on `BYTES(n)`, a decimal on `NUMERIC`, and a slice of one of those, named or not, on the matching `ARRAY<…>`. Absent on `MAX` columns, on keys and output-only fields (hidden from the patch wire), and on every other type. A value the runtime cannot pair with the field's type is a startup error (the stale-struct guard). |
 | `nullable:"true"` | On a patch request-struct field typed by a slice whose column allows NULL, and nowhere else: a Go slice has one form, so the decoder cannot read the fact off the field's type as it does off a pointer or a Null wrapper. The decoder accepts a JSON `null` for the field and stores the nil slice, which the Spanner client writes as NULL (section 12, nullable slices); a slice field without the tag refuses `null` with `<field> cannot be null`, since its column is NOT NULL. `true` is the only value written; any other value, or the tag on a field that is not a slice, is a startup error (the stale-struct guard). |
+
+| `feature:"debriefs"` | From `@feature` on the field: the flag the field is gated behind, on the list, read and patch request-struct fields alike. While the flag is off the decoders answer the field as an unknown column and the handlers leave it out of the response; the digest leaves `Resource.field` out. The value is the flag's name; a value that is not one is a startup error (the stale-struct guard). |
 
 ## 4. Reserved query parameters
 
@@ -1176,3 +1179,138 @@ max-age=300`, the bulk threshold 100, and the change document's shape (`kind` of
 `list` or `resource`; `resource`; `key` and `deleted` on a row; `domain` on a list; `at`
 and `expires`). The generated descriptor names the routes per outlet:
 `live: { renewRoute, unsubscribeRoute, tokenRoute }`.
+
+## 15. Feature flags
+
+A resource, a field, or a method can be put behind a flag that an administrator turns
+on and off at runtime, without a release: while the flag is off, the thing does not
+exist for the browser or the API, and when it is turned on, every instance serves it
+within a moment.
+
+**Declaring a flag.** A flag is a `resource.Feature` constant in the resources package;
+its value is the flag's name (`[a-z][a-z0-9_]{0,63}`) and its doc comment the
+description an administrator reads:
+
+```go
+// Debriefs lets a crew write and read mission debriefs after a return.
+const Debriefs resource.Feature = "debriefs"
+```
+
+`@feature(Debriefs)` on a `@resource`, `@virtual`, `@computed` or `@rpc` struct gates it
+whole; on a field of a table, view or computed struct it gates the field (section 1).
+The generator writes `zz_gen_features.go` into the resources package on every
+application: `Features()`, the declarations in constant order, and `FeatureGates()`,
+every gated resource (by its plural), field (`Resource.field`) and method (by name) with
+its flag. Both are written whether or not anything is declared, so the generated
+handlers call them unconditionally.
+
+**What a flag does while it is off.** A gated resource's and method's routes answer 404
+with the router's not-found body, before the handler runs: the generated route
+registration wraps exactly those routes in the application's `FeatureGuard` (outside
+the domain guard, where both apply), and a gated resource's arm of the consolidated
+patch answers `unknown resource`. A gated field is unknown to the decoders (`columns`,
+`sort`, `filter`, a patch body naming it: 400) and absent from every response. The
+permission digest leaves the resource, the field (`Resource.field`) and the method out,
+exactly as a denied target is left out, so the browser's navigation and forms never show
+them. Nothing is checked twice: the gate and the permission check are the same two
+answers a denied route gives, and a flag that is off never changes what a grant means.
+A `FeatureSet` that is nil (the application wired none) leaves every gated target off.
+
+**The table.** Every application has two tables, `FeatureFlags` (`Name` STRING(64) the
+key, `Description`, `Enabled`, `UpdatedAt` a commit timestamp, `UpdatedBy`) and
+`FeatureFlagChanges` (`Name`, `ChangedAt` a commit timestamp, `Enabled`, `ChangedBy`),
+the second a record of every flip written in the flip's own transaction; the rows outlive
+their flag, so there is no foreign key. `resource.FeatureFlagsDDL(dbType)` renders the
+statements for Spanner and for PostgreSQL, and an application copies them into a
+migration as Lodestar does in
+[000042_FeatureFlags.up.sql](lodestar/schema/migrations/000042_FeatureFlags.up.sql),
+pinned to the function by a test. The generator never derives a resource from the table:
+`FeatureFlags` has a `Description` column, which is how an enumeration table is
+recognized, and the table is excluded from that detection by name.
+
+**Deploying.** `resource.MigrateFeatures(ctx, client, resources.Features())` runs beside
+the role check, after the schema migration: a flag declared for the first time is
+inserted off, a known flag keeps its state and takes the release's description, and a
+flag the release no longer declares is deleted, all in one transaction, with
+`UpdatedBy` the process event. A flag's state therefore survives releases and never
+leaks a flag the code cannot serve; a new flag is always off until an administrator
+turns it on. Lodestar's deploy step is
+[pkg/deploy/deploy.go](lodestar/pkg/deploy/deploy.go), called from the migrate and
+bootstrap commands.
+
+**The copy every instance holds.** `resource.LoadFeatures(ctx, client)` reads the table
+into a `FeatureSet`, and `FeatureSet.Follow(ctx, topic)` keeps it current until ctx
+ends: on every signal the live service's application topic delivers on `features`, and
+at the five-minute backstop regardless, the table is reread; a failed reread is logged
+and the copy stays as it was. With no live service wired (`Follow(ctx, nil)`) the
+backstop alone keeps the copy current, so a flip reaches every instance within five
+minutes; with one, within a moment. The application exposes the copy as
+`FeatureSet() *resource.FeatureSet`, asserted on the application type beside
+`LiveService`, and the generated decoders, routes and digest read it. Lodestar reads it
+through the configuration's database client when the App is built and follows it from
+`Start`: [app/app.go](lodestar/app/app.go).
+
+**The routes**, generated on every application:
+
+```
+GET  <prefix>/features                       → 200 {"enabled":["debriefs", ...]}     anyone signed in, every outlet
+GET  <prefix>/feature-flags                  → the FeatureFlags list, sort=name       List on FeatureFlags (global)
+GET  <prefix>/feature-flags/{featureFlagName} → one flag                              Read on FeatureFlags (global)
+POST <prefix>/set-feature                    {"name":"debriefs","enabled":true}      Execute on SetFeature (global)
+                                             → 200 {"name","enabled","updatedAt"}; an undeclared flag is 404
+```
+
+The features route is open to anyone signed in: what the browser reads at start and
+again after a flip, and what the client's `features` state (`enabled(name)`,
+`subscribe`, `canSet()`) answers from. `FeatureFlags` is a read-only global resource the
+generator registers in every application's collection (List and Read over `description`,
+`enabled`, `updatedAt` and `updatedBy`, `name` the key, listed by name) and carries in
+the TypeScript constants, metadata and descriptor exactly as a generated resource, so
+the feature flags dialog reads it through an ordinary handle; the routes are the
+library's handlers (`resource.FeatureFlagsHandler`, `resource.FeatureFlagHandler`),
+delegated to from the generated `zz_gen_features.go` in the handler package, and a
+struct or a manual registration that would take the name `FeatureFlags` is refused.
+`SetFeature` is the library's method (`resource.SetFeatureHandler`), registered with
+Execute and carried as an RPC method entry: it writes the row and its change record in
+one transaction, honors `X-Dry-Run`, signals the other instances through the live
+service's application topic (`Broadcast(ctx, "features")`, bounded by two seconds, a
+failure logged), reloads this instance's copy, and answers the flag as written. An
+`@rpc` struct named `SetFeature` is refused.
+
+**The role.** A role that administers flags holds Execute on `SetFeature` and List and
+Read on `FeatureFlags` with its four non-key fields, in the global scope:
+
+```json
+{
+  "name": "FeatureAdministrator",
+  "permissions": {
+    "List": [{ "resource": "FeatureFlags", "fields": ["description", "enabled", "updatedAt", "updatedBy"] }],
+    "Read": [{ "resource": "FeatureFlags", "fields": ["description", "enabled", "updatedAt", "updatedBy"] }],
+    "Execute": [{ "resource": "SetFeature" }]
+  }
+}
+```
+
+The digest decides what the dialog may do: a user without Execute sees the flags and
+cannot flip them; a user without List is never shown the dialog.
+
+**Tests.** The generated authorization matrix carries the features route as an open
+case (200 without a grant), the FeatureFlags routes as query pairs, and SetFeature as
+denied-only with its dry run, on every outlet serving them. When anything is gated, the
+generator also writes `zz_gen_features_test.go` into the handler tests package: every
+gated route and field driven in both states of its flag, the flag flipped in the test
+database through `resource.SetFeatureEnabled` between them after
+`resource.MigrateFeatures` wrote every declared flag, so the suite proves the 404 and the
+unknown column off, and the matrix's answers on. The application's `newTestHandler`
+builds the App over the test database, which reads its flags as it is built.
+
+**The names the client library mirrors**: the routes `features`, `feature-flags`,
+`feature-flags/{featureFlagName}` and `set-feature` under the outlet's prefix; the
+features answer `{"enabled": [...]}`; the resource `FeatureFlags` with the JSON fields
+`name`, `description`, `enabled`, `updatedAt`, `updatedBy`; the method `SetFeature` with
+the body `{"name", "enabled"}` and the result `{"name", "enabled", "updatedAt"}`; the
+descriptor's `features: { route: 'features' }` on every application and `feature:
+'<name>'` on a gated resource's, method's and field's entry; and in the client file the
+`Feature` union of the declared names with the `Feature` constants keyed by the Go
+constants' identifiers (`Feature.Debriefs`). The topic the instances signal each other
+on is `features`, a document `application/features` in the Firestore layout.

@@ -78,4 +78,8 @@ const (
 	// allows NULL, the one nullability fact the decoder cannot read off the field's
 	// type (resourceField.NullableTag).
 	nullableOutTagKey = "nullable"
+	// featureOutTagKey names the feature flag a request struct field is gated behind
+	// (resourceField.FeatureTag); the decoders answer the field as unknown while the
+	// flag is off.
+	featureOutTagKey = "feature"
 )

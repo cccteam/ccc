@@ -449,6 +449,7 @@ func fileRouteFrom(read *generatedRoute, resourceName string, file *fileRoute) *
 		DomainScoped: read.DomainScoped,
 		TestURL:      read.TestURL + "/" + file.Segment,
 		TestParams:   slices.Clone(read.TestParams),
+		Feature:      read.Feature,
 	}
 }
 

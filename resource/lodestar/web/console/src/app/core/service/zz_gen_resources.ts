@@ -287,6 +287,15 @@ export interface StandingOrders {
   directive?: string;
 }
 
+/** A feature flag: one declared flag's row, as the feature flags dialog lists it. */
+export interface FeatureFlags {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  updatedAt?: Date;
+  updatedBy?: string;
+}
+
 const resourceMap: ResourceMap = {
   [Resources.Clients]: {
     route: 'clients',
@@ -665,6 +674,19 @@ const resourceMap: ResourceMap = {
       { fieldName: 'directive', displayType: 'string', required: false, isIndex: false },
     ],
   },
+  [Resources.FeatureFlags]: {
+    route: 'feature-flags',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'enabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'updatedAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'updatedBy', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
 };
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -710,6 +732,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.SectorHazardBoards]: PermissionScopes.domain,
   [Resources.ServiceLedgers]: PermissionScopes.global,
   [Resources.StandingOrders]: PermissionScopes.global,
+  [Resources.FeatureFlags]: PermissionScopes.global,
 };
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */

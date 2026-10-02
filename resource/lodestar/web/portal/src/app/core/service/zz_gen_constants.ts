@@ -23,12 +23,14 @@ export const Resources = {
   ClientRosters: 'ClientRosters' as Resource,
   ClientStatements: 'ClientStatements' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
+  FeatureFlags: 'FeatureFlags' as Resource,
   MissionDocuments: 'MissionDocuments' as Resource,
   Missions: 'Missions' as Resource,
 };
 
 export const Methods = {
   StandDownMission: 'StandDownMission' as Method,
+  SetFeature: 'SetFeature' as Method,
 };
 
 export namespace BriefingTemplates {
@@ -106,6 +108,23 @@ export namespace DistressCalls {
     severity: 'DistressCalls.severity' as Resource,
     summary: 'DistressCalls.summary' as Resource,
     transcript: 'DistressCalls.transcript' as Resource,
+  };
+}
+
+export namespace FeatureFlags {
+  export const fieldName = {
+    description: 'description' as FieldName,
+    enabled: 'enabled' as FieldName,
+    name: 'name' as FieldName,
+    updatedAt: 'updatedAt' as FieldName,
+    updatedBy: 'updatedBy' as FieldName,
+  };
+  export const resourceName = {
+    description: 'FeatureFlags.description' as Resource,
+    enabled: 'FeatureFlags.enabled' as Resource,
+    name: 'FeatureFlags.name' as Resource,
+    updatedAt: 'FeatureFlags.updatedAt' as Resource,
+    updatedBy: 'FeatureFlags.updatedBy' as Resource,
   };
 }
 

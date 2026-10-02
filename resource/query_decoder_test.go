@@ -494,7 +494,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 				t.Fatalf("NewQueryDecoder should not fail with default setup for test case %s: %v", tt.name, err)
 			}
 
-			parsedQuery, err := decoder.parseQuery(tt.queryValues)
+			parsedQuery, err := decoder.parseQuery(tt.queryValues, nil)
 			if err == nil && parsedQuery.FilterParser != nil {
 				_, err = parsedQuery.FilterParser(SpannerDBType)
 			}
@@ -855,7 +855,7 @@ func TestQueryDecoder_parseQuery_filterValidationTiming(t *testing.T) {
 				t.Fatalf("NewQueryDecoder() error = %v", err)
 			}
 
-			parsed, err := decoder.parseQuery(url.Values{"filter": []string{tt.filter}})
+			parsed, err := decoder.parseQuery(url.Values{"filter": []string{tt.filter}}, nil)
 			if tt.wantDecodeErr != "" {
 				if err == nil {
 					t.Fatal("parseQuery() expected an error, got nil")

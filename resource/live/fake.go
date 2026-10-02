@@ -22,12 +22,15 @@ type Fake struct {
 	// Err, when set, is every method's answer.
 	Err error
 
-	mu       sync.Mutex
-	subs     map[string]Subscription
-	changes  map[string][]FakeChange
-	revoked  []string
-	lookups  int
-	publishs []FakePublish
+	mu         sync.Mutex
+	subs       map[string]Subscription
+	changes    map[string][]FakeChange
+	revoked    []string
+	lookups    int
+	publishs   []FakePublish
+	broadcasts []string
+	watches    map[string]map[int]func()
+	nextWatch  int
 }
 
 // FakeChange is one change document the fake holds, with the fake's timestamp and the
@@ -57,6 +60,7 @@ func NewFake() *Fake {
 		Now:     time.Now,
 		subs:    make(map[string]Subscription),
 		changes: make(map[string][]FakeChange),
+		watches: make(map[string]map[int]func()),
 	}
 }
 
@@ -212,6 +216,72 @@ func (f *Fake) Revoke(_ context.Context, uid string) error {
 	f.revoked = append(f.revoked, uid)
 
 	return nil
+}
+
+// Broadcast remembers the topic and runs every watch on it, synchronously, so a test
+// sees the signal's effect when Broadcast returns.
+func (f *Fake) Broadcast(_ context.Context, topic string) error {
+	if f.Err != nil {
+		return f.Err
+	}
+	f.mu.Lock()
+	f.broadcasts = append(f.broadcasts, topic)
+	watching := make([]func(), 0, len(f.watches[topic]))
+	ids := make([]int, 0, len(f.watches[topic]))
+	for id := range f.watches[topic] {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		watching = append(watching, f.watches[topic][id])
+	}
+	f.mu.Unlock()
+
+	for _, onSignal := range watching {
+		onSignal()
+	}
+
+	return nil
+}
+
+// Watch registers onSignal on the topic until stop is called or ctx ends.
+func (f *Fake) Watch(ctx context.Context, topic string, onSignal func()) (func(), error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	f.mu.Lock()
+	id := f.nextWatch
+	f.nextWatch++
+	if f.watches[topic] == nil {
+		f.watches[topic] = make(map[int]func())
+	}
+	f.watches[topic][id] = onSignal
+	f.mu.Unlock()
+
+	stop := func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		delete(f.watches[topic], id)
+	}
+	context.AfterFunc(ctx, stop)
+
+	return stop, nil
+}
+
+// Broadcasts returns the topics broadcast so far, in order.
+func (f *Fake) Broadcasts() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.broadcasts)
+}
+
+// Watching returns how many watches the topic has.
+func (f *Fake) Watching(topic string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return len(f.watches[topic])
 }
 
 // Subscriptions returns every subscription the fake holds, expired ones included, in a

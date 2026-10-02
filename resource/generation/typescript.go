@@ -194,6 +194,9 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 	if err := t.registerEnumerations(resourcesPkg.NamedTypes); err != nil {
 		return nil, nil, err
 	}
+	if err := t.registerFeatures(resourcesPkg.Constants); err != nil {
+		return nil, nil, err
+	}
 
 	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 	if err != nil {
@@ -439,6 +442,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		DomainRouteParam:  t.domainRouteParam,
 		HasDomainScoped:   hasDomainScoped,
 		Workflows:         t.assembleWorkflows(),
+		FeatureFlags:      t.servesFeatureFlags(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -459,9 +463,10 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	log.Println("Starting method metadata generation...")
 
 	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, tsMethodsData{
-		File:       t,
-		RPCMethods: t.rpcMethods,
-		GenPrefix:  genPrefix,
+		File:         t,
+		RPCMethods:   t.rpcMethods,
+		GenPrefix:    genPrefix,
+		FeatureFlags: t.servesFeatureFlags(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -668,6 +673,22 @@ func rpcFieldsTypescriptType(method *rpcMethodInfo) error {
 	return nil
 }
 
+// servesFeatureFlags reports whether the collection carries the library's flags
+// resource: the run generated routes, so every session outlet serves FeatureFlags and
+// SetFeature.
+func (t *typescriptGenerator) servesFeatureFlags() bool {
+	return t.rc != nil && t.rc.ResourceExists(resource.FeatureFlagsResource)
+}
+
+// featureNameOf is the flag a gate names, empty for no gate.
+func featureNameOf(gate *featureGate) string {
+	if gate == nil {
+		return ""
+	}
+
+	return string(gate.Name)
+}
+
 // manualMethods returns the Execute registrations the collection carries without a
 // parsed RPC struct behind them — @manualAddResource(Execute) declarations on
 // hand-written handlers — so the Methods constants name every Execute-gated
@@ -718,7 +739,8 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 		DomainRouteParam:   t.domainRouteParam,
 		// A client is only generated for a session-serving outlet (validateOutlets),
 		// and every session outlet serves the live routes.
-		Live: true,
+		Live:     true,
+		Features: t.featureDeclarations,
 	}
 
 	outlet := t.targetOutlet()
@@ -745,11 +767,18 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 			Scope:    method.PermissionScope,
 			Answers:  method.Answers(),
 			Statuses: method.Statuses,
+			Feature:  featureNameOf(method.Feature),
 		}
 		if method.Upload != nil {
 			apiMethod.UploadMaxBytes = method.Upload.MaxBytes
 		}
 		data.Methods = append(data.Methods, apiMethod)
+	}
+	// The library's flags resource and method, served on every session outlet of an
+	// application that generates routes, carried exactly as the generated ones are.
+	if t.servesFeatureFlags() {
+		data.Resources = append(data.Resources, featureFlagsAPIResource())
+		data.Methods = append(data.Methods, setFeatureAPIMethod())
 	}
 
 	for _, res := range data.Resources {
@@ -786,6 +815,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 		PageMax:      res.PageMax,
 		Order:        apiOrder(res.DeclaredOrder),
 		Files:        fileSegments(res.Files),
+		Feature:      featureNameOf(res.Feature),
 	}
 
 	for _, field := range res.PrimaryKeys() {
@@ -885,6 +915,7 @@ func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIR
 		PageMax:     res.PageMax,
 		Order:       apiOrder(res.DeclaredOrder),
 		Files:       fileSegments(res.Files),
+		Feature:     featureNameOf(res.Feature),
 	}
 	for _, field := range res.PrimaryKeys() {
 		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})

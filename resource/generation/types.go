@@ -229,6 +229,11 @@ const (
 	servedRouterTestOutputName    = "router_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
 	collectionOutputName          = "collection"
+	// featuresOutputName names the feature flag files: the resources package's
+	// declarations and the handler package's handlers; featureTestsOutputName the
+	// generated feature gate tests.
+	featuresOutputName     = "features"
+	featureTestsOutputName = "features_test"
 )
 
 type informationSchemaResult struct {
@@ -353,6 +358,10 @@ type generatedRoute struct {
 	// TestURL is Path with each {param} placeholder replaced by its routeTestParam value.
 	TestURL    string
 	TestParams []routeTestParam
+	// Feature is the flag the route is gated behind (@feature on its resource or
+	// method): the generated route registration wraps exactly these in the
+	// application's FeatureGuard. Nil for an ungated route.
+	Feature *featureGate
 }
 
 // SharedHandler reports whether the route's handler is additionally registered
@@ -440,6 +449,9 @@ type rpcMethodInfo struct {
 	// takesFiles marks an Execute whose third parameter is resource.Files,
 	// read off the signature; @upload must accompany it.
 	takesFiles bool
+	// Feature is the method's @feature: the flag its route and its digest entry are
+	// gated behind; nil when the method is not gated.
+	Feature *featureGate
 }
 
 // rpcUpload is a method's @upload declaration.
@@ -688,6 +700,10 @@ type computedResource struct {
 	// Files are the resource's @file routes: a stored file per field-scope
 	// declaration, a rendered one for the struct-scope declaration.
 	Files []*fileRoute
+
+	// Feature is the resource's @feature: the flag its routes and its digest entries
+	// are gated behind; nil when the resource is not gated.
+	Feature *featureGate
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -812,6 +828,30 @@ type computedField struct {
 	// IsFileKey marks the store-key column of a @file declaration: off the wire in
 	// both directions, read by the file route's frame for itself.
 	IsFileKey bool
+
+	// Feature is the field's @feature: the flag the field is gated behind; nil when
+	// the field is not gated.
+	Feature *featureGate
+}
+
+// FeatureTag renders feature:"<name>" onto a request-struct field behind a flag, and
+// nothing onto every other field.
+func (c *computedField) FeatureTag() string {
+	if c.Feature == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("%s:%q", featureOutTagKey, c.Feature.Name)
+}
+
+// FeatureName is the flag the field is gated behind, for the TypeScript metadata;
+// empty when the field is not gated.
+func (c *computedField) FeatureName() string {
+	if c.Feature == nil {
+		return ""
+	}
+
+	return string(c.Feature.Name)
 }
 
 // MirrorType is the field's type in the handlers' local mirrors.
@@ -978,6 +1018,10 @@ type resourceInfo struct {
 	// Files are the resource's @file routes, one per field-scope declaration: a
 	// stored file served under the read route, its key column off the wire.
 	Files []*fileRoute
+
+	// Feature is the resource's @feature: the flag its routes, its digest entries and
+	// its consolidated arm are gated behind; nil when the resource is not gated.
+	Feature *featureGate
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -1323,6 +1367,31 @@ type resourceField struct {
 	// both directions (json:"-" on the read and the patch structs, absent from the
 	// TypeScript interface and metadata), read by the file route's frame for itself.
 	IsFileKey bool
+
+	// Feature is the field's @feature: the flag the field is gated behind; while it is
+	// off the decoders answer the field as unknown and the handlers leave it out. Nil
+	// when the field is not gated.
+	Feature *featureGate
+}
+
+// FeatureTag renders feature:"<name>" onto a request-struct field behind a flag, and
+// nothing onto every other field.
+func (f *resourceField) FeatureTag() string {
+	if f.Feature == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("%s:%q", featureOutTagKey, f.Feature.Name)
+}
+
+// FeatureName is the flag the field is gated behind, for the TypeScript metadata;
+// empty when the field is not gated.
+func (f *resourceField) FeatureName() string {
+	if f.Feature == nil {
+		return ""
+	}
+
+	return string(f.Feature.Name)
 }
 
 // HasDeclaredEnumeration reports whether a field-scope @enumerate names the field's
@@ -1820,6 +1889,7 @@ const (
 	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
 	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
 	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field])]; on a keyed @computed struct, @file[(segment)] rendered by <Name><Segment>
+	featureKeyword              string = "feature"              // Gates a resource, a field or an RPC method behind a feature flag, by the flag's constant: @feature(Debriefs)
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1854,6 +1924,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		rowsOfKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		typescriptKeyword:           {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
+		featureKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

@@ -68,6 +68,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/live/renew", method: http.MethodPost},
 		{url: "/droids/live/unsubscribe", method: http.MethodPost},
 		{url: "/droids/live/token", method: http.MethodGet},
+		{url: "/droids/feature-flags", method: http.MethodGet},
+		{url: "/droids/feature-flags", method: http.MethodPost},
+		{url: "/droids/feature-flags/testFeatureFlagName", method: http.MethodGet},
+		{url: "/droids/feature-flags/testFeatureFlagName", method: http.MethodPost},
+		{url: "/droids/set-feature", method: http.MethodPost},
 		{url: "/droids/clients", method: http.MethodGet},
 		{url: "/droids/clients", method: http.MethodPost},
 		{url: "/droids/clients/testClientID", method: http.MethodGet},
@@ -418,6 +423,7 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string{
+		"featureFlagName",
 		"sectorID",
 		"clientID",
 		"clientContactID",
@@ -1231,6 +1237,71 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/console/api/features", method: http.MethodGet,
+			handlerFunc: "Features",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/feature-flags", method: http.MethodGet,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/feature-flags", method: http.MethodPost,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/feature-flags/testFeatureFlagName", method: http.MethodGet,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/console/api/feature-flags/testFeatureFlagName", method: http.MethodPost,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/console/api/set-feature", method: http.MethodPost,
+			handlerFunc: "SetFeature",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/droids/features", method: http.MethodGet,
+			handlerFunc: "Features",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/features", method: http.MethodGet,
+			handlerFunc: "Features",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/feature-flags", method: http.MethodGet,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/feature-flags", method: http.MethodPost,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/feature-flags/testFeatureFlagName", method: http.MethodGet,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/portal/api/feature-flags/testFeatureFlagName", method: http.MethodPost,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/portal/api/set-feature", method: http.MethodPost,
+			handlerFunc: "SetFeature",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/console/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -1398,6 +1469,18 @@ func (s *generatedHandlersStub) FailMission() http.HandlerFunc {
 	return s.record("FailMission")
 }
 
+func (s *generatedHandlersStub) FeatureFlags() http.HandlerFunc {
+	return s.record("FeatureFlags")
+}
+
+func (s *generatedHandlersStub) FeatureFlag() http.HandlerFunc {
+	return s.record("FeatureFlag")
+}
+
+func (s *generatedHandlersStub) Features() http.HandlerFunc {
+	return s.record("Features")
+}
+
 func (s *generatedHandlersStub) FeeByKinds() http.HandlerFunc {
 	return s.record("FeeByKinds")
 }
@@ -1560,6 +1643,10 @@ func (s *generatedHandlersStub) SectorHazardBoard() http.HandlerFunc {
 
 func (s *generatedHandlersStub) ServiceLedgers() http.HandlerFunc {
 	return s.record("ServiceLedgers")
+}
+
+func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {
+	return s.record("SetFeature")
 }
 
 func (s *generatedHandlersStub) Ships() http.HandlerFunc {

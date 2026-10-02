@@ -52,12 +52,29 @@ type Identity interface {
 	Revoke(ctx context.Context, uid string) error
 }
 
-// Service is the live service an application wires: the record, the publisher and the
-// identity together. The generated handlers draw on it through the application's
-// LiveService accessor; nil means the application serves no live pages, and a request
-// carrying the subscribe header is refused.
+// ApplicationTopic is the application's own channel between its instances: a signal
+// on a named topic, delivered to every instance watching it, carrying nothing but the
+// fact that something changed. The feature flags use it (resource.FeaturesTopic): a flip
+// broadcasts, and every instance's FeatureSet watching the topic rereads the table. The
+// Firestore implementation keeps one document per topic, application/{topic}, and a
+// watch is a snapshot listener on it.
+type ApplicationTopic interface {
+	// Broadcast signals the topic: every watch on it, on every instance, runs its
+	// onSignal once.
+	Broadcast(ctx context.Context, topic string) error
+	// Watch runs onSignal on every broadcast of the topic after the watch began, on the
+	// watcher's own goroutine; the state at the start is not a signal. stop ends the
+	// watch, as does ctx ending.
+	Watch(ctx context.Context, topic string, onSignal func()) (stop func(), err error)
+}
+
+// Service is the live service an application wires: the record, the publisher, the
+// identity and the application topic together. The generated handlers draw on it
+// through the application's LiveService accessor; nil means the application serves no
+// live pages, and a request carrying the subscribe header is refused.
 type Service interface {
 	SubscriptionRecord
 	ChangePublisher
 	Identity
+	ApplicationTopic
 }

@@ -241,5 +241,11 @@ func migrate(ctx context.Context, settings config.SpannerSettings, seed bool) er
 		return errors.Wrap(err, "deploy.CheckRoles(members)")
 	}
 
+	// The feature flags are the release's too: the table takes this release's
+	// declarations, every flag's state kept.
+	if err := deploy.MigrateFeatures(ctx, data.ResourceClient()); err != nil {
+		return errors.Wrap(err, "deploy.MigrateFeatures()")
+	}
+
 	return nil
 }

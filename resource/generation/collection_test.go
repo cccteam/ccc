@@ -277,6 +277,21 @@ func Test_computeCollectionData(t *testing.T) {
 					},
 				},
 				{
+					// The library's feature flags resource, registered on every application
+					// that generates routes: List and Read over its wire fields, listed by name.
+					Name:        "FeatureFlags",
+					Scope:       accesstypes.GlobalPermissionScope,
+					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
+					Tags: []resource.TagData{
+						{Name: "description", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+						{Name: "enabled", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+						{Name: "name"},
+						{Name: "updatedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+						{Name: "updatedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					},
+					Order: []accesstypes.Tag{"name"},
+				},
+				{
 					// Consolidated and routing-disabled: no list/read routes, but the shared
 					// consolidated patch handler still registers it.
 					Name:        "Fossils",
@@ -296,6 +311,12 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
+				},
+				{
+					// The library's flip, registered beside the flags resource.
+					Name:        "SetFeature",
+					Scope:       accesstypes.GlobalPermissionScope,
+					Permissions: []accesstypes.Permission{accesstypes.Execute},
 				},
 				{
 					Name:        "Sprockets",

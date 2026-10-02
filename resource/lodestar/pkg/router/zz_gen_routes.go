@@ -112,6 +112,11 @@ type GeneratedHandlers interface {
 
 	FailMission() http.HandlerFunc
 
+	FeatureFlags() http.HandlerFunc
+	FeatureFlag() http.HandlerFunc
+
+	Features() http.HandlerFunc
+
 	FeeByKinds() http.HandlerFunc
 	FeeByKind() http.HandlerFunc
 
@@ -177,6 +182,8 @@ type GeneratedHandlers interface {
 	SectorHazardBoard() http.HandlerFunc
 
 	ServiceLedgers() http.HandlerFunc
+
+	SetFeature() http.HandlerFunc
 
 	Ships() http.HandlerFunc
 	Ship() http.HandlerFunc
@@ -293,6 +300,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Post("/console/api/sectors/{sectorID}/fail-flight-test", domainGuard(h.FailFlightTest()))
 
 	r.Post("/console/api/sectors/{sectorID}/fail-mission", domainGuard(h.FailMission()))
+
+	featureFlagsHandler := h.FeatureFlags()
+	r.Get("/console/api/feature-flags", featureFlagsHandler)
+	r.Post("/console/api/feature-flags", featureFlagsHandler)
+
+	featureFlagHandler := h.FeatureFlag()
+	r.Get("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	r.Post("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
+
+	r.Get("/console/api/features", h.Features())
 
 	feeByKindsHandler := h.FeeByKinds()
 	r.Get("/console/api/fee-by-kinds", feeByKindsHandler)
@@ -432,6 +449,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/console/api/service-ledgers", serviceLedgersHandler)
 	r.Post("/console/api/service-ledgers", serviceLedgersHandler)
 
+	r.Post("/console/api/set-feature", h.SetFeature())
+
 	shipsHandler := domainGuard(h.Ships())
 	r.Get("/console/api/sectors/{sectorID}/ships", shipsHandler)
 	r.Post("/console/api/sectors/{sectorID}/ships", shipsHandler)
@@ -519,6 +538,8 @@ type GeneratedDroidsHandlers interface {
 
 	DroidReports() http.HandlerFunc
 
+	Features() http.HandlerFunc
+
 	IngestDroidReports() http.HandlerFunc
 
 	ReleaseConsignment() http.HandlerFunc
@@ -543,6 +564,8 @@ func generatedDroidsRoutes(r chi.Router, h GeneratedDroidsHandlers) {
 	droidReportsHandler := domainGuard(h.DroidReports())
 	r.Get("/droids/sectors/{sectorID}/droid-reports", droidReportsHandler)
 	r.Post("/droids/sectors/{sectorID}/droid-reports", droidReportsHandler)
+
+	r.Get("/droids/features", h.Features())
 
 	r.Post("/droids/sectors/{sectorID}/ingest-droid-reports", domainGuard(h.IngestDroidReports()))
 
@@ -587,12 +610,19 @@ type GeneratedPortalHandlers interface {
 	DistressCalls() http.HandlerFunc
 	DistressCall() http.HandlerFunc
 
+	FeatureFlags() http.HandlerFunc
+	FeatureFlag() http.HandlerFunc
+
+	Features() http.HandlerFunc
+
 	Missions() http.HandlerFunc
 	Mission() http.HandlerFunc
 
 	MissionDocuments() http.HandlerFunc
 	MissionDocument() http.HandlerFunc
 	MissionDocumentContent() http.HandlerFunc
+
+	SetFeature() http.HandlerFunc
 
 	StandDownMission() http.HandlerFunc
 
@@ -640,6 +670,16 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	r.Get("/portal/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
 	r.Post("/portal/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
 
+	featureFlagsHandler := h.FeatureFlags()
+	r.Get("/portal/api/feature-flags", featureFlagsHandler)
+	r.Post("/portal/api/feature-flags", featureFlagsHandler)
+
+	featureFlagHandler := h.FeatureFlag()
+	r.Get("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	r.Post("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
+
+	r.Get("/portal/api/features", h.Features())
+
 	missionsHandler := domainGuard(h.Missions())
 	r.Get("/portal/api/sectors/{sectorID}/missions", missionsHandler)
 	r.Post("/portal/api/sectors/{sectorID}/missions", missionsHandler)
@@ -657,6 +697,8 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	r.Post("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
 
 	r.Get("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content", domainGuard(h.MissionDocumentContent()))
+
+	r.Post("/portal/api/set-feature", h.SetFeature())
 
 	r.Post("/portal/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
 

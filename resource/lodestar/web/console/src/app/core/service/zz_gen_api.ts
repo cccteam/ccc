@@ -2,8 +2,8 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullBoolean, ResourceHandle, UploadMethodHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders } from './zz_gen_resources';
-import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
+import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags } from './zz_gen_resources';
+import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Clients. Server-owned fields are
@@ -412,12 +412,16 @@ export type ServiceLedgersKey = [sectorId: string];
 /** The primary key of StandingOrders, in route order. */
 export type StandingOrdersKey = [];
 
+/** The primary key of FeatureFlags, in route order. */
+export type FeatureFlagsKey = [name: string];
+
 /** The generated API as the @cccteam/resource runtime addresses it. Routes carry no API prefix. */
 export const apiDescriptor: ApiDescriptor = {
   domainRoute: { segment: 'sectors', param: 'sectorID' },
   consolidatedRoute: 'resources',
   permissionDigestRoute: 'permission-digest',
   userDomainsRoute: 'user-domains',
+  features: { route: 'features' },
   live: { renewRoute: 'live/renew', unsubscribeRoute: 'live/unsubscribe', tokenRoute: 'live/token' },
   resources: {
     [Resources.Clients]: {
@@ -780,6 +784,17 @@ export const apiDescriptor: ApiDescriptor = {
       operations: ['list'],
       page: { default: 50 },
     },
+    [Resources.FeatureFlags]: {
+      resource: Resources.FeatureFlags,
+      property: 'featureFlags',
+      route: 'feature-flags',
+      scope: 'global',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
   },
   methods: {
     [Methods.AttachMissionDocument]: { method: Methods.AttachMissionDocument, property: 'attachMissionDocument', route: 'attach-mission-document', scope: 'domain', answers: true, upload: { maxBytes: 5242880 } },
@@ -801,6 +816,7 @@ export const apiDescriptor: ApiDescriptor = {
     [Methods.ScrapShip]: { method: Methods.ScrapShip, property: 'scrapShip', route: 'scrap-ship', scope: 'domain' },
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
     [Methods.StartFlightTest]: { method: Methods.StartFlightTest, property: 'startFlightTest', route: 'start-flight-test', scope: 'domain' },
+    [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
   },
 };
 
@@ -817,7 +833,9 @@ export interface GlobalApi {
   pilotCards: ResourceHandle<PilotCards, PilotCardsKey, 'list'>;
   serviceLedgers: ResourceHandle<ServiceLedgers, ServiceLedgersKey, 'list'>;
   standingOrders: ResourceHandle<StandingOrders, StandingOrdersKey, 'list'>;
+  featureFlags: ResourceHandle<FeatureFlags, FeatureFlagsKey, 'list' | 'read'>;
   issueBulletin: MethodHandle<IssueBulletin>;
+  setFeature: MethodHandle<SetFeature, SetFeatureResult>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */

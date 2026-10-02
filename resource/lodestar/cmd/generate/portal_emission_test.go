@@ -149,7 +149,8 @@ func TestPortalTargetEmission(t *testing.T) {
 
 	// The portal emits exactly its members' resource interfaces (the members with a
 	// struct, and with them the resources Mission's declared pickers name, which follow
-	// Mission onto every outlet it serves) and the console emits every one.
+	// Mission onto every outlet it serves, and the library's FeatureFlags, which every
+	// session outlet serves) and the console emits every one.
 	iface := regexp.MustCompile(`(?m)^export interface (\w+) \{`)
 	portalIfaces := iface.FindAllStringSubmatch(read("web/portal/src/app/core/service/zz_gen_resources.ts"), -1)
 	var names []string
@@ -161,7 +162,7 @@ func TestPortalTargetEmission(t *testing.T) {
 		}
 		names = append(names, m[1])
 	}
-	want := "ClientContacts,ClientRosters,DistressCalls,Missions,MissionDocuments,BriefingTemplates"
+	want := "ClientContacts,ClientRosters,DistressCalls,Missions,MissionDocuments,BriefingTemplates,FeatureFlags"
 	if strings.Join(names, ",") != want {
 		t.Errorf("portal resource interfaces = %v, want %s", names, want)
 	}

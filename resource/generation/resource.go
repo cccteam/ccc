@@ -67,6 +67,20 @@ func (r *resourceGenerator) Audit() []Finding {
 	return r.findings
 }
 
+// registerDeclarations reads what the resources package declares beside its structs,
+// before any struct is extracted: the enumerations its named types declare, and the
+// feature flags its resource.Feature constants declare, which every @feature names.
+func (r *resourceGenerator) registerDeclarations(resourcesPkg *parser.Package) error {
+	if err := r.registerEnumerations(resourcesPkg.NamedTypes); err != nil {
+		return err
+	}
+	if err := r.registerFeatures(resourcesPkg.Constants); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // allOutlets returns every declared router outlet: the default outlet first,
 // followed by the WithRouterOutlet declarations in option order. The default
 // outlet always serves browser sessions; extra outlets opt in (ServesSessions).
@@ -261,7 +275,7 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	resourcesPkg := parser.ParsePackage(pkg)
-	if err := r.registerEnumerations(resourcesPkg.NamedTypes); err != nil {
+	if err := r.registerDeclarations(resourcesPkg); err != nil {
 		return err
 	}
 	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
@@ -337,6 +351,12 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if err := r.extractAndGenerateRPC(packageMap, pkg); err != nil {
+		return err
+	}
+
+	// The feature declarations and gates render once every kind that can be gated is
+	// extracted, the RPC methods last.
+	if err := r.generateFeatureDeclarations(); err != nil {
 		return err
 	}
 

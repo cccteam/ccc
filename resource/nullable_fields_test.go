@@ -264,7 +264,7 @@ func TestDecodeToPatch_nullableSlice(t *testing.T) {
 			t.Parallel()
 
 			r := httptest.NewRequestWithContext(t.Context(), tt.method, "/", strings.NewReader(tt.body))
-			patchSet, _, err := decodeToPatch[nullableResource, nullableRequest](rSet, mapper, r, nil, tt.perm)
+			patchSet, _, err := decodeToPatch[nullableResource, nullableRequest](rSet, mapper, r, nil, tt.perm, nil)
 			if tt.wantMessage != "" {
 				if err == nil {
 					t.Fatalf("decodeToPatch() error = nil, want message %q", tt.wantMessage)

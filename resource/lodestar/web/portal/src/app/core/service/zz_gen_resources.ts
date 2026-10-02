@@ -77,6 +77,15 @@ export interface BriefingTemplates {
   layout?: unknown;
 }
 
+/** A feature flag: one declared flag's row, as the feature flags dialog lists it. */
+export interface FeatureFlags {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  updatedAt?: Date;
+  updatedBy?: string;
+}
+
 const resourceMap: ResourceMap = {
   [Resources.ClientContacts]: {
     route: 'client-contacts',
@@ -167,6 +176,19 @@ const resourceMap: ResourceMap = {
       { fieldName: 'layout', displayType: 'object', required: false, isIndex: false },
     ],
   },
+  [Resources.FeatureFlags]: {
+    route: 'feature-flags',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'enabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'updatedAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'updatedBy', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
 };
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -187,6 +209,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Missions]: PermissionScopes.domain,
   [Resources.MissionDocuments]: PermissionScopes.domain,
   [Resources.BriefingTemplates]: PermissionScopes.global,
+  [Resources.FeatureFlags]: PermissionScopes.global,
 };
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */

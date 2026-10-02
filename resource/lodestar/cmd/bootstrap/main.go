@@ -163,6 +163,12 @@ func run(ctx context.Context, reset bool) error {
 		return errors.Wrap(err, "deploy.CheckRoles(members)")
 	}
 
+	// The feature flags the binary declares, written off where the table has no row
+	// for them, as the deploy writes them.
+	if err := deploy.MigrateFeatures(ctx, data.ResourceClient()); err != nil {
+		return errors.Wrap(err, "deploy.MigrateFeatures()")
+	}
+
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
 	}

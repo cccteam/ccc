@@ -39,6 +39,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateLive()")
 	}
 
+	if err := r.generateFeatures(); err != nil {
+		return errors.Wrap(err, "generateFeatures()")
+	}
+
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
 		return err
 	}
@@ -349,6 +353,8 @@ func (r *resourceGenerator) generatePermissions() error {
 		ReceiverName:           r.receiverName,
 		RoutePrefix:            r.routePrefix,
 		HasExtraSessionOutlets: slices.ContainsFunc(r.extraOutlets, func(outlet routerOutlet) bool { return outlet.servesSessions }),
+		LocalPackageImports:    r.localPackageImports(),
+		ResourcePackage:        r.resource.Package(),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

@@ -152,7 +152,15 @@ func newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handle
 		}
 	})
 
-	return withIdentity(testUser, router.NewTestRouter(app.New(&testConfigurer{db: db, g: g, documents: documents})))
+	a := app.New(&testConfigurer{db: db, g: g, documents: documents})
+	// The App reads its feature flags as it is built, so a suite that flips a flag
+	// before newTestHandler drives the App in that state; Start reports a copy that
+	// could not be read and follows the table until the test ends.
+	if err := a.Start(t.Context()); err != nil {
+		t.Fatalf("app.Start() error = %v", err)
+	}
+
+	return withIdentity(testUser, router.NewTestRouter(a))
 }
 
 // withIdentity seeds the session identity the way the session middleware would, making

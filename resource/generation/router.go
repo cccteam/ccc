@@ -51,13 +51,21 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 	r.accumulateRPCRoutes(outlets, outletRoutes)
 
-	stubDomainGuard := false
+	// The feature flag routes: the features route on every outlet, the FeatureFlags
+	// routes and SetFeature on the session-serving ones.
+	routerTestRoutes = append(routerTestRoutes, accumulateFeatureRoutes(outlets, outletRoutes)...)
+
+	stubDomainGuard, stubFeatureGuard := false, false
 	for _, outlet := range outletRoutes {
 		for _, routes := range outlet.RoutesMap {
 			for _, route := range routes {
 				if route.DomainScoped {
 					outlet.HasDomainScopedRoutes = true
 					stubDomainGuard = true
+				}
+				if route.Feature != nil {
+					outlet.HasGatedRoutes = true
+					stubFeatureGuard = true
 				}
 			}
 		}
@@ -89,6 +97,9 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		ExtraOutlets:           extraOutlets,
 		ExtraStubHandlerFuncs:  extraStubHandlerFuncs(defaultOutlet, extraOutlets),
 		NegativeRouterTests:    negativeTests,
+		HasGatedRoutes:         defaultOutlet.HasGatedRoutes,
+		StubFeatureGuard:       stubFeatureGuard,
+		ResourcePackage:        r.resource.Package(),
 	}
 
 	routesDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routesOutputName))
@@ -280,6 +291,7 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix strin
 		HandlerFunc:  rpcStruct.Name(),
 		DomainScoped: rpcStruct.IsDomainScoped(),
 		TestURL:      testPath,
+		Feature:      rpcStruct.Feature,
 	}
 }
 
@@ -305,6 +317,7 @@ func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType, rou
 		HandlerType:  ht,
 		DomainScoped: res.IsDomainScoped(),
 		TestURL:      testBasePath,
+		Feature:      res.Feature,
 	}
 	if ht == ReadHandler {
 		if res.HasCompoundPrimaryKey() {
@@ -349,6 +362,7 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource, routeP
 			HandlerType:  ListHandler,
 			DomainScoped: res.IsDomainScoped(),
 			TestURL:      testBasePath,
+			Feature:      res.Feature,
 		}
 		route.prependDomainTestParam(r.domainRouteParam)
 
@@ -369,6 +383,7 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource, routeP
 			DomainScoped: res.IsDomainScoped(),
 			TestURL:      testBasePath,
 			TestParams:   readRouteTestParams(res.Name(), pkNames),
+			Feature:      res.Feature,
 		}
 		route.appendParamsToPaths()
 		if res.IsDomainScoped() {
@@ -458,6 +473,7 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]nega
 			negativeRouterTest{Method: httpMethodConstant(http.MethodPost), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.UnsubscribeRoute)},
 			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.TokenRoute)},
 		)
+		tests = append(tests, featureNegativeTests(outlet)...)
 	}
 
 	anyConsolidated, outletHasConsolidated := false, false

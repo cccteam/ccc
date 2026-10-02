@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
@@ -268,6 +269,11 @@ func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]*enu
 
 	enumResults := make(map[string][]*enumData, len(results))
 	for _, tnr := range results {
+		// The library's feature flags table carries a Description column too, keyed by
+		// name: it is the flags' row, never an enumeration.
+		if tnr.TableName == string(resource.FeatureFlagsResource) {
+			continue
+		}
 		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
 
 		var results []*enumData

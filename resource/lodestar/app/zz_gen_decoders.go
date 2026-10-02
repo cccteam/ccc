@@ -11,12 +11,13 @@ import (
 )
 
 // NewQueryDecoder builds a query decoder for a generated resource and request pair,
-// wired to the generated collection so conditional grants render into the query and
-// to the application's cursor key so its lists page. The Resourcer union keeps
+// wired to the generated collection so conditional grants render into the query, to
+// the application's cursor key so its lists page, and to its feature set so a field
+// gated behind a flag that is off is unknown to the request. The Resourcer union keeps
 // construction inside the generated universe: a decoder over any other struct is a
 // compile error.
 func NewQueryDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
-	return resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...).WithCursorKey(a.CursorKey())
+	return resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...).WithCursorKey(a.CursorKey()).WithFeatures(a.FeatureSet())
 }
 
 // NewComputedQueryDecoder builds a query decoder for a generated computed resource
@@ -26,7 +27,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](a *App, permissions ...acc
 // where the tables beside it do. The Resourcer union keeps construction inside the
 // generated universe: a decoder over any other struct is a compile error.
 func NewComputedQueryDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
-	return resource.MustNewComputedQueryDecoder[Resource, Request](a.ResourceClient().DBType(), permissions...).WithCursorKey(a.CursorKey())
+	return resource.MustNewComputedQueryDecoder[Resource, Request](a.ResourceClient().DBType(), permissions...).WithCursorKey(a.CursorKey()).WithFeatures(a.FeatureSet())
 }
 
 // NewDecoder builds a patch decoder for a generated resource and request pair,
@@ -34,7 +35,7 @@ func NewComputedQueryDecoder[Resource Resourcer, Request any](a *App, permission
 // mutations' live check. The Resourcer union keeps construction inside the
 // generated universe: a decoder over any other struct is a compile error.
 func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {
-	return resource.MustNewDecoder[Resource, Request](a, router.Collection(), permissions...)
+	return resource.MustNewDecoder[Resource, Request](a, router.Collection(), permissions...).WithFeatures(a.FeatureSet())
 }
 
 // NewRPCDecoder builds a decoder for a generated RPC method request. The Method

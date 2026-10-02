@@ -48,8 +48,8 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		}
 
 		// The annotations other kinds own: a method's frame, a view's table, and a
-		// field type's TypeScript type.
-		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource"), rejectTypescriptAnnotation(pStruct, annotations, "table-backed resource")); err != nil {
+		// field type's TypeScript type; and the name the library's flags resource holds.
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource"), rejectTypescriptAnnotation(pStruct, annotations, "table-backed resource"), c.rejectReservedResourceName(pStruct, "table-backed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -135,7 +135,13 @@ func (c *client) resolveResource(resource *resourceInfo, pStruct *parser.Struct,
 	}
 
 	// The read route is known only now, and a file hangs under it.
-	return resolveResourceFiles(resource, pStruct, annotations)
+	if err := resolveResourceFiles(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	// The gates resolve last: what a field is (a key, the tenant key, the state, a
+	// file key, a required column) is known only now.
+	return c.resolveResourceFeatures(resource, pStruct, annotations)
 }
 
 // resolveVirtualAnnotations applies a virtual resource's struct- and
@@ -371,6 +377,16 @@ func applyComputedSuppressDirectives(res *computedResource, suppressArgs iter.Se
 	return nil
 }
 
+// resolveVirtualResource resolves a view's annotations, then its gates: what a field is
+// (its key) is known only once the annotations are.
+func (c *client) resolveVirtualResource(resource *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	if err := resolveVirtualAnnotations(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	return c.resolveResourceFeatures(resource, pStruct, annotations)
+}
+
 func (c *client) structsToVirtualResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
 	resources := make([]*resourceInfo, 0, len(structs))
 	var errs []error
@@ -392,7 +408,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
-		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "virtual resource"), rejectTypescriptAnnotation(pStruct, annotations, "virtual resource")); err != nil {
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "virtual resource"), rejectTypescriptAnnotation(pStruct, annotations, "virtual resource"), c.rejectReservedResourceName(pStruct, "virtual resource")); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -449,7 +465,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			field.IsNullable = nullability
 		}
 
-		if err := resolveVirtualAnnotations(resource, pStruct, annotations); err != nil {
+		if err := c.resolveVirtualResource(resource, pStruct, annotations); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -704,7 +720,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 		// The annotations other kinds own: a resource's bindings, a view's table, and a
 		// field type's TypeScript type; and the masking tag, which a method's request
 		// never carries.
-		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method")); err != nil {
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method"), rejectReservedMethodName(s)); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -762,6 +778,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 		}
 
 		if err := resolveUpload(rpcMethod, s, annotations); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		if err := c.resolveRPCFeature(rpcMethod, annotations); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -887,7 +909,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 			continue
 		}
 
-		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource")); err != nil {
+		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource"), c.rejectReservedResourceName(s, "computed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -947,6 +969,12 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 		}
 
 		if err := resolveComputedFiles(res, s, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := c.resolveComputedFeatures(res, annotations); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue

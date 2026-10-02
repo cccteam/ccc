@@ -13,6 +13,22 @@ export interface StandDownMission {
   missionId: string;
 }
 
+/** The body SetFeature takes: the flag by name and the state to set. */
+export interface SetFeatureConfig {
+  name: string | FieldPointer;
+  enabled: boolean | FieldPointer;
+}
+export interface SetFeature {
+  name: string;
+  enabled: boolean;
+}
+/** The result SetFeature answers with: the flag as written. */
+export interface SetFeatureResult {
+  name: string;
+  enabled: boolean;
+  updatedAt: Date;
+}
+
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -31,6 +47,8 @@ export interface MethodTransition {
 
 export interface MethodMeta {
   route: string;
+  /** The feature flag the method is gated behind (@feature); absent when it is not gated. */
+  feature?: string;
   transition?: MethodTransition;
   /** Set when the method answers with a result body; absent methods resolve with nothing. */
   answers?: true;
@@ -49,6 +67,14 @@ const methodMap: MethodMap = {
     transition: { target: Resources.Missions, from: ['open', 'claimed', 'on_hold'], to: 'stood_down' },
     fields: [
       { fieldName: 'missionId', displayType: 'uuid' },
+    ],
+  },
+  [Methods.SetFeature]: {
+    route: 'set-feature',
+    answers: true,
+    fields: [
+      { fieldName: 'name', displayType: 'string' },
+      { fieldName: 'enabled', displayType: 'boolean' },
     ],
   },
 };

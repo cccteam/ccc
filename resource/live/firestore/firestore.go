@@ -11,6 +11,8 @@ package firestore
 
 import (
 	"context"
+	"os"
+	"strconv"
 	"time"
 
 	cloudfirestore "cloud.google.com/go/firestore"
@@ -19,6 +21,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -37,6 +40,10 @@ const (
 	// which a user reads for their own uid and nobody writes but the server.
 	UsersCollection   = "users"
 	ChangesCollection = "changes"
+	// ApplicationCollection is the application topics: application/{topic}, one
+	// server-owned document per topic, rewritten by every broadcast and listened to by
+	// every watch. No client reads it.
+	ApplicationCollection = "application"
 )
 
 // Config says which database the service uses and how the browser reaches it.
@@ -72,6 +79,9 @@ type Service struct {
 	auth *fbauth.Client
 	cfg  Config
 	now  func() time.Time
+	// instance identifies this process in the topic documents it broadcasts: the
+	// host and the process id, so a watcher's log can say who signaled.
+	instance string
 }
 
 var _ live.Service = (*Service)(nil)
@@ -95,7 +105,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Service, error) {
 	if cfg.ProjectID == "" {
 		return nil, errors.New("live/firestore: a project id is required")
 	}
-	s := &Service{cfg: cfg, now: time.Now}
+	s := &Service{cfg: cfg, now: time.Now, instance: instanceID()}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -465,6 +475,67 @@ func (s *Service) Revoke(ctx context.Context, uid string) error {
 	}
 
 	return nil
+}
+
+// instanceID names this process for the topic documents: host and process id.
+func instanceID() string {
+	host, err := os.Hostname()
+	if err != nil {
+		host = "unknown"
+	}
+
+	return host + "/" + strconv.Itoa(os.Getpid())
+}
+
+// topic returns a topic's document.
+func (s *Service) topic(name string) *cloudfirestore.DocumentRef {
+	return s.client.Collection(ApplicationCollection).Doc(name)
+}
+
+// Broadcast rewrites the topic's document with the server timestamp and this instance's
+// id: one write, which every watch on the topic observes as a change.
+func (s *Service) Broadcast(ctx context.Context, topic string) error {
+	if _, err := s.topic(topic).Set(ctx, map[string]any{
+		"at": cloudfirestore.ServerTimestamp,
+		"by": s.instance,
+	}); err != nil {
+		return errors.Wrap(err, "firestore.DocumentRef.Set()")
+	}
+
+	return nil
+}
+
+// Watch listens to the topic's document: the first snapshot is the state at the start
+// and signals nothing; every snapshot after it runs onSignal, on the watch's goroutine.
+// The listener ends when stop is called or ctx ends; a listener Firestore ends on its
+// own is logged, and the watcher falls back to whatever cadence it keeps without
+// signals.
+func (s *Service) Watch(ctx context.Context, topic string, onSignal func()) (func(), error) {
+	ctx, cancel := context.WithCancel(ctx)
+	snapshots := s.topic(topic).Snapshots(ctx)
+	// The first snapshot is read synchronously, so a broadcast after Watch returns is
+	// never mistaken for the state at the start.
+	if _, err := snapshots.Next(); err != nil {
+		snapshots.Stop()
+		cancel()
+
+		return nil, errors.Wrap(err, "firestore.DocumentSnapshotIterator.Next()")
+	}
+	go func() {
+		defer snapshots.Stop()
+		for {
+			if _, err := snapshots.Next(); err != nil {
+				if ctx.Err() == nil {
+					logger.FromCtx(ctx).Errorf("live: the watch on topic %q ended: %v", topic, err)
+				}
+
+				return
+			}
+			onSignal()
+		}
+	}()
+
+	return cancel, nil
 }
 
 // await ends the batch and reports the first write that failed.

@@ -61,6 +61,10 @@ func (r *resourceGenerator) runHandlerTestsGeneration() error {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
+	if err := r.generateFeatureTests(); err != nil {
+		return err
+	}
+
 	log.Printf("Generated handler test files in %s: %s", time.Since(begin), r.handlerTests.Dir())
 
 	return nil
@@ -119,6 +123,7 @@ func (r *resourceGenerator) authzMatrixCases() ([]authzCase, error) {
 	}
 	cases = append(cases, consolidated...)
 	cases = append(cases, r.rpcAuthzCases()...)
+	cases = append(cases, r.featureAuthzCases()...)
 
 	if r.concealedDomains {
 		// Concealed domains answer a caller with no grants as if the domain

@@ -1,11 +1,14 @@
 package deploy_test
 
 import (
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
@@ -84,5 +87,27 @@ func TestRoles_validateAgainstTheCollection(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestFeatureFlagsMigration pins the feature flags migration to the library's statements:
+// the tables the deploy's MigrateFeatures and the generated handlers read are the ones
+// resource.FeatureFlagsDDL declares, copied into the schema as every application copies
+// them.
+func TestFeatureFlagsMigration(t *testing.T) {
+	t.Parallel()
+
+	migration, err := os.ReadFile("../../schema/migrations/000042_FeatureFlags.up.sql")
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+	statements := resource.FeatureFlagsDDL(resource.SpannerDBType)
+	if len(statements) == 0 {
+		t.Fatal("resource.FeatureFlagsDDL(SpannerDBType) declares no statement")
+	}
+	for _, stmt := range statements {
+		if !strings.Contains(string(migration), stmt+";") {
+			t.Errorf("the migration does not carry the statement:\n%s", stmt)
+		}
 	}
 }

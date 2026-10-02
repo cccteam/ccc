@@ -32,7 +32,8 @@ type grants map[accesstypes.Permission]bool
 // which runs before required-field validation, defaults, or row reads. Mutation
 // success paths need valid request bodies the generator does not synthesize yet and
 // are left to manual testing. A transaction-form RPC method carries a second denied
-// case under X-Dry-Run: a dry run refuses exactly as the real call does.
+// case under X-Dry-Run: a dry run refuses exactly as the real call does. The features
+// route is open to anyone signed in and carries one case: 200 without a grant.
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
 // with the schema on every regeneration.
@@ -1873,6 +1874,106 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			body:         `{}`,
 			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "Features open",
+			method:       http.MethodGet,
+			target:       "/console/api/features",
+			wantStatuses: []int{http.StatusOK},
+		},
+		{
+			name:         "FeatureFlags denied",
+			method:       http.MethodGet,
+			target:       "/console/api/feature-flags",
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "FeatureFlags granted",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodGet,
+			target:       "/console/api/feature-flags",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "FeatureFlag denied",
+			method:       http.MethodGet,
+			target:       "/console/api/feature-flags/authz-test-key",
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "FeatureFlag granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/console/api/feature-flags/authz-test-key",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "SetFeature denied",
+			method:       http.MethodPost,
+			target:       "/console/api/set-feature",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "SetFeature dry run denied",
+			method:       http.MethodPost,
+			target:       "/console/api/set-feature",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "Features (droids) open",
+			method:       http.MethodGet,
+			target:       "/droids/features",
+			wantStatuses: []int{http.StatusOK},
+		},
+		{
+			name:         "Features (portal) open",
+			method:       http.MethodGet,
+			target:       "/portal/api/features",
+			wantStatuses: []int{http.StatusOK},
+		},
+		{
+			name:         "FeatureFlags (portal) denied",
+			method:       http.MethodGet,
+			target:       "/portal/api/feature-flags",
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "FeatureFlags (portal) granted",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodGet,
+			target:       "/portal/api/feature-flags",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "FeatureFlag (portal) denied",
+			method:       http.MethodGet,
+			target:       "/portal/api/feature-flags/authz-test-key",
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "FeatureFlag (portal) granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/portal/api/feature-flags/authz-test-key",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "SetFeature (portal) denied",
+			method:       http.MethodPost,
+			target:       "/portal/api/set-feature",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "SetFeature (portal) dry run denied",
+			method:       http.MethodPost,
+			target:       "/portal/api/set-feature",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusForbidden},
 		},
 	}
 

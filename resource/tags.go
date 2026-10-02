@@ -33,6 +33,11 @@ const (
 	// the runtime cannot pair with a slice field is rejected at Set construction, like a
 	// stale perm value.
 	nullableTagKey = "nullable"
+	// featureTagKey names the feature flag a request struct field is gated behind
+	// (feature.go). The generator writes it onto every field the source annotated
+	// @feature; while the flag is off the decoders answer the field as unknown and the
+	// handlers leave it out of every response.
+	featureTagKey = "feature"
 )
 
 // maskingPositional is the masking tag value the generator writes for a
@@ -55,6 +60,7 @@ var runtimeTagKeys = []string{
 	maskingTagKey,
 	sqltypeTagKey,
 	nullableTagKey,
+	featureTagKey,
 }
 
 // Reserved query-string parameter names consumed by QueryDecoder; they can never be used

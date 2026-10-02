@@ -67,6 +67,68 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	// cursorKey seals and opens the cursors of the pages this decoder builds
 	// (WithCursorKey); nil refuses paging past the first page.
 	cursorKey *CursorKey
+	// features is the application's FeatureSet (WithFeatures): a request struct field
+	// behind a flag that is off is unknown to the decoder, so a request naming it is
+	// refused as any unknown field is and the default projection leaves it out. Nil
+	// hides every gated field.
+	features *FeatureSet
+}
+
+// WithFeatures installs the FeatureSet the decoder reads the gated fields' flags
+// from; the generated wiring passes the application's. Without it every gated field
+// stays hidden.
+func (d *QueryDecoder[Resource, Request]) WithFeatures(features *FeatureSet) *QueryDecoder[Resource, Request] {
+	d.features = features
+
+	return d
+}
+
+// hiddenFields returns the request fields behind a flag that is off, nil when none.
+func (d *QueryDecoder[Resource, Request]) hiddenFields() map[accesstypes.Field]struct{} {
+	return d.resourceSet.hiddenFields(d.features)
+}
+
+// visibleFields returns the request type's fields less the hidden ones.
+func (d *QueryDecoder[Resource, Request]) visibleFields() []accesstypes.Field {
+	hidden := d.hiddenFields()
+	if len(hidden) == 0 {
+		return d.requestFieldMapper.Fields()
+	}
+
+	return slices.DeleteFunc(d.requestFieldMapper.Fields(), func(field accesstypes.Field) bool {
+		_, isHidden := hidden[field]
+
+		return isHidden
+	})
+}
+
+// visibleFilterFields returns the filterable fields less the hidden ones.
+func (d *QueryDecoder[Resource, Request]) visibleFilterFields(hidden map[accesstypes.Field]struct{}) map[jsonFieldName]FilterFieldInfo {
+	if len(hidden) == 0 {
+		return d.filterParserFields
+	}
+	visible := make(map[jsonFieldName]FilterFieldInfo, len(d.filterParserFields))
+	for name, info := range d.filterParserFields {
+		if _, isHidden := hidden[accesstypes.Field(info.GOFieldName)]; !isHidden {
+			visible[name] = info
+		}
+	}
+
+	return visible
+}
+
+// structFieldName resolves a wire name to a request field, a hidden field answered as
+// unknown.
+func (d *QueryDecoder[Resource, Request]) structFieldName(jsonName string, hidden map[accesstypes.Field]struct{}) (accesstypes.Field, bool) {
+	field, found := d.requestFieldMapper.StructFieldName(jsonName)
+	if !found {
+		return "", false
+	}
+	if _, isHidden := hidden[field]; isHidden {
+		return "", false
+	}
+
+	return field, true
 }
 
 // NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
@@ -193,14 +255,15 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	// kept first: every cursor the page issues is fingerprinted with it.
 	filterString := queryParams.Get(filterParam)
 
-	parsedQuery, err := d.parseQuery(queryParams)
+	hidden := d.hiddenFields()
+	parsedQuery, err := d.parseQuery(queryParams, hidden)
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.env = RequestEnvironment()
-	qSet.requestableFields = d.requestFieldMapper.Fields()
+	qSet.requestableFields = d.visibleFields()
 	qSet.collection = d.collection
 	qSet.jsonNames = d.requestFieldMapper.JSONNames()
 	qSet.SetFilterParser(parsedQuery.FilterParser)
@@ -274,7 +337,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQueryParams, error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values, hidden map[accesstypes.Field]struct{}) (*parsedQueryParams, error) {
 	var columnFields []accesstypes.Field
 	var sortFields []SortField
 	var filterParser func(DBType) (ExpressionNode, error)
@@ -282,7 +345,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	var err error
 
 	if sortParamValue := query.Get(sortParam); sortParamValue != "" {
-		sortFields, err = d.parseSortParam(sortParamValue)
+		sortFields, err = d.parseSortParam(sortParamValue, hidden)
 		if err != nil {
 			return nil, err
 		}
@@ -299,7 +362,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
 		for column := range strings.SplitSeq(cols, ",") {
-			if field, found := d.requestFieldMapper.StructFieldName(column); found {
+			if field, found := d.structFieldName(column, hidden); found {
 				columnFields = append(columnFields, field)
 			} else {
 				return nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
@@ -310,7 +373,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	}
 
 	if filterStr := query.Get(filterParam); filterStr != "" {
-		filterParser, err = d.filterExpressionParser(filterStr)
+		filterParser, err = d.filterExpressionParser(filterStr, hidden)
 		if err != nil {
 			return nil, err
 		}
@@ -456,7 +519,7 @@ func (d *QueryDecoder[Resource, Request]) parsePage(query url.Values) (pageReque
 	return page, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) ([]SortField, error) {
+func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string, hidden map[accesstypes.Field]struct{}) ([]SortField, error) {
 	var sortFields []SortField
 	sortParts := strings.Split(sortParamValue, ",")
 	if len(sortParts) > 0 {
@@ -473,7 +536,7 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 				return nil, httpio.NewBadRequestMessagef("sort field name cannot be empty")
 			}
 
-			goFieldName, found := d.requestFieldMapper.StructFieldName(jsonFieldName)
+			goFieldName, found := d.structFieldName(jsonFieldName, hidden)
 			if !found {
 				return nil, httpio.NewBadRequestMessagef("unknown sort field: %s", jsonFieldName)
 			}
@@ -501,8 +564,8 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 }
 
 // filterExpressionParser returns a filter parser.
-func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr string) (func(DBType) (ExpressionNode, error), error) {
-	parser, err := NewFilterParser(NewFilterLexer(filterStr), d.filterParserFields)
+func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr string, hidden map[accesstypes.Field]struct{}) (func(DBType) (ExpressionNode, error), error) {
+	parser, err := NewFilterParser(NewFilterLexer(filterStr), d.visibleFilterFields(hidden))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create filter expression parser")
 	}

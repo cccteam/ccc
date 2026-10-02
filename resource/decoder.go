@@ -40,6 +40,20 @@ type Decoder[Resource Resourcer, Request any] struct {
 	// check-SELECT; nil leaves conditions unrenderable (an error if one ever
 	// arrives).
 	collection *GeneratedCollection
+	// features is the application's FeatureSet (WithFeatures): a request field behind
+	// a flag that is off is unknown to the decoder, so a body naming it is refused as
+	// any unknown field is. Nil hides every gated field.
+	features *FeatureSet
+}
+
+// WithFeatures installs the FeatureSet the decoder reads the gated fields' flags
+// from; the generated wiring passes the application's. Without it every gated field
+// stays hidden.
+func (d *Decoder[Resource, Request]) WithFeatures(features *FeatureSet) *Decoder[Resource, Request] {
+	decoder := *d
+	decoder.features = features
+
+	return &decoder
 }
 
 // NewDecoder creates a new Decoder for a given Resource and Request type.
@@ -87,7 +101,7 @@ func (d *Decoder[Resource, Request]) WithValidator(v ValidatorFunc) *Decoder[Res
 
 // DecodeWithoutPermissions decodes an http.Request into a PatchSet without enforcing any user permissions.
 func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*PatchSet[Resource], error) {
-	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, accesstypes.NullPermission)
+	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, accesstypes.NullPermission, d.resourceSet.hiddenFields(d.features))
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +113,7 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 // Decode decodes an http.Request into a PatchSet and enables user permission enforcement
 // in the given domain partition.
 func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, scope accesstypes.Scope, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
-	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, requiredPermission)
+	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, requiredPermission, d.resourceSet.hiddenFields(d.features))
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +192,10 @@ func acceptsNull(nullableFields map[accesstypes.Field]struct{}, fieldName access
 	return nullable
 }
 
-func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission) (*PatchSet[Resource], *Request, error) {
+// decodeToPatch decodes the body into the request struct and a patch set. hidden names
+// the request fields behind a feature flag that is off: a body naming one is refused
+// as it would be for a field the struct does not declare.
+func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission, hidden map[accesstypes.Field]struct{}) (*PatchSet[Resource], *Request, error) {
 	request := new(Request)
 	pr, pw := io.Pipe()
 	tr := io.TeeReader(req.Body, pw)
@@ -218,6 +235,9 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 			if !ok {
 				return nil, nil, httpio.NewBadRequestMessagef("invalid field in json - %s", jsonField)
 			}
+		}
+		if _, isHidden := hidden[fieldName]; isHidden {
+			return nil, nil, httpio.NewBadRequestMessagef("invalid field in json - %s", jsonField)
 		}
 
 		if _, ok := changes[fieldName]; ok {

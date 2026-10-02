@@ -34,6 +34,9 @@ func fileTemplates() map[string]string {
 		"appContractTemplate":             appContractTemplate,
 		"handlerTestsMainTemplate":        handlerTestsMainTemplate,
 		"authzTestTemplate":               authzTestTemplate,
+		"featureDeclarationsTemplate":     featureDeclarationsTemplate,
+		"featuresTemplate":                featuresTemplate,
+		"featureTestsTemplate":            featureTestsTemplate,
 	}
 }
 
@@ -566,16 +569,17 @@ func Test_permissionsTemplate_sessionOutlets(t *testing.T) {
 	}{
 		{
 			name: "default outlet only keeps today's wording",
-			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api"},
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", ResourcePackage: "resources"},
 			wantContains: []string{
 				"registers it at GET /api/permission-digest.",
 				"GET /api/user-domains.",
+				"resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet())",
 			},
 			wantNotContains: []string{"additional session-serving"},
 		},
 		{
 			name: "extra session outlets extend the comments",
-			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true},
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true, ResourcePackage: "resources"},
 			wantContains: []string{
 				"registers it at GET /api/permission-digest and,",
 				"for each additional session-serving outlet (ServesSessions), under that outlet's prefix.",

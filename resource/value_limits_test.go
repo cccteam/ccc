@@ -630,7 +630,7 @@ func TestDecodeToPatch_valueLimits(t *testing.T) {
 			t.Parallel()
 
 			r := httptest.NewRequestWithContext(t.Context(), tt.method, "/", strings.NewReader(tt.body))
-			patchSet, _, err := decodeToPatch[limitResource, limitRequest](rSet, mapper, r, tt.validate, tt.perm)
+			patchSet, _, err := decodeToPatch[limitResource, limitRequest](rSet, mapper, r, tt.validate, tt.perm, nil)
 			if tt.wantMessage != "" {
 				if err == nil {
 					t.Fatalf("decodeToPatch() error = nil, want message %q", tt.wantMessage)

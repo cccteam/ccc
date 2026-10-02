@@ -605,6 +605,19 @@ func Collection() *resource.GeneratedCollection {
 				QueryKeys: []accesstypes.Tag{"name", "contactEmail"},
 			},
 			{
+				Name:        "FeatureFlags",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "description", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "enabled", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "name"},
+					{Name: "updatedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "updatedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+				},
+				Order: []accesstypes.Tag{"name"},
+			},
+			{
 				Name:        "FeeByKinds",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
@@ -692,6 +705,11 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "sectorId"},
 					{Name: "settlements", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
+			},
+			{
+				Name:        "SetFeature",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
 			},
 			{
 				Name:        "ShipClasses",

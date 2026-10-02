@@ -23,6 +23,13 @@ document, `domain` on a list document, `at` (the server timestamp), `expires`
 (timestamp, ten minutes after the write). The browser queries
 `where at > lastSeen order by at` and may read only its own set.
 
+`application/{topic}` is the application topic: one document per topic the server's
+instances signal each other on, set with `at` (the server timestamp) and `by` (the
+writing instance) on every `Broadcast`, and watched by every instance's `Watch`, which
+skips the snapshot it starts from and runs its callback on each later one. The one topic
+today is `features`: a feature flag flip signals every instance to reread its flags.
+No client reads it; the rules deny everything outside the change sets.
+
 ## Indexes
 
 `firestore.indexes.json` holds the three composite indexes the record's lookups use,

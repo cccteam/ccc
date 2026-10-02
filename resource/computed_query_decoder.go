@@ -77,6 +77,14 @@ func (d *ComputedQueryDecoder[Resource, Request]) WithPaging(paging Paging) *Com
 	return d
 }
 
+// WithFeatures installs the FeatureSet the gated fields' flags are read from (see
+// QueryDecoder.WithFeatures).
+func (d *ComputedQueryDecoder[Resource, Request]) WithFeatures(features *FeatureSet) *ComputedQueryDecoder[Resource, Request] {
+	d.inner.WithFeatures(features)
+
+	return d
+}
+
 // Decode decodes an http.Request into a QuerySet and checks user permissions in the
 // given domain partition. The semantics mirror the deferred enforcement table
 // resources get at execution time: a missing resource-level grant is Forbidden, an
@@ -180,7 +188,7 @@ func (d *ComputedQueryDecoder[Resource, Request]) addAccessibleFields(ctx contex
 		res   accesstypes.Resource
 	}
 
-	requestable := d.inner.requestFieldMapper.Fields()
+	requestable := d.inner.visibleFields()
 	candidates := make([]candidate, 0, len(requestable))
 	resources := make([]accesstypes.Resource, 0, len(requestable))
 

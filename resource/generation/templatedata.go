@@ -223,6 +223,20 @@ type routerFileData struct {
 	// NegativeRouterTests are the outlet-isolation cases: URLs that must fall through
 	// to 404 because the addressed outlet does not carry the resource.
 	NegativeRouterTests []negativeRouterTest
+	// HasGatedRoutes emits the FeatureGuard requirement on GeneratedHandlers and the
+	// wrapping in generatedRoutes for the default outlet; StubFeatureGuard emits the
+	// router-test stub's pass-through when any outlet has a gated route.
+	HasGatedRoutes   bool
+	StubFeatureGuard bool
+	// ResourcePackage qualifies the feature constants the gated routes name.
+	ResourcePackage string
+}
+
+// routeHandlerData feeds the routes template's handler expression for one route: the
+// route and the package its gate's constant lives in.
+type routeHandlerData struct {
+	Route           *generatedRoute
+	ResourcePackage string
 }
 
 // outletRouteData is one extra router outlet's registration surface: the routes the
@@ -243,6 +257,9 @@ type outletRouteData struct {
 	// iteration is name-sorted, keeping output deterministic).
 	RoutesMap             map[string][]*generatedRoute
 	HasDomainScopedRoutes bool
+	// HasGatedRoutes emits the FeatureGuard requirement and the wrapping for the
+	// outlet's gated routes.
+	HasGatedRoutes bool
 	// HasConsolidatedHandler emits the outlet's consolidated patch dispatcher
 	// (ConsolidatedHandlerFunc) at ConsolidatedPath.
 	HasConsolidatedHandler  bool
@@ -270,6 +287,40 @@ type permissionsData struct {
 	// HasExtraSessionOutlets extends the doc comments when additional outlets
 	// serve sessions (ServesSessions), whose routes the same handlers serve.
 	HasExtraSessionOutlets bool
+	// LocalPackageImports and ResourcePackage let the digest handler name the
+	// generated FeatureGates() in the resources package.
+	LocalPackageImports string
+	ResourcePackage     string
+}
+
+// featureDeclarationsData feeds the resources package's zz_gen_features.go.
+type featureDeclarationsData struct {
+	Source       string
+	Package      string
+	Declarations []resource.FeatureDeclaration
+	Gates        []featureGateEntry
+}
+
+// featuresData feeds the handler package's zz_gen_features.go: the feature flag
+// handlers as delegations to the library's.
+type featuresData struct {
+	Source              string
+	Package             string
+	LocalPackageImports string
+	ApplicationName     string
+	ReceiverName        string
+	// RouterPackage qualifies the generated collection the flags' decoders check
+	// grants against.
+	RouterPackage string
+	RoutePrefix   string
+	// HasExtraSessionOutlets extends the doc comments when additional outlets serve
+	// sessions, whose routes the same handlers serve.
+	HasExtraSessionOutlets bool
+	// HasRoutes emits the FeatureFlags and SetFeature handlers, which read the
+	// generated collection: only a run that generates routes has one.
+	HasRoutes bool
+	// HasGates emits the FeatureGuard, which the gated routes are wrapped in.
+	HasGates bool
 }
 
 type domainGuardData struct {
@@ -365,6 +416,9 @@ type authzCase struct {
 	DeniedStatus string
 	// Headers are request headers the case sends (the dry-run header).
 	Headers []authzHeader
+	// Open marks a route anyone signed in may call: the case carries no grant and
+	// expects 200 alone (the features route).
+	Open bool
 }
 
 // authzHeader is one request header a generated authorization case sends.
@@ -448,12 +502,18 @@ type tsResourcesData struct {
 	// the workflow itself. Empty for applications without workflows, which then
 	// emit nothing (byte-identical output).
 	Workflows []*workflowGraph
+	// FeatureFlags emits the library's FeatureFlags resource: its interface, its
+	// metadata and its scope, which every application that generates routes serves.
+	FeatureFlags bool
 }
 
 type tsMethodsData struct {
 	File       *typescriptGenerator
 	RPCMethods []*rpcMethodInfo
 	GenPrefix  string
+	// FeatureFlags emits the library's SetFeature method: its body and result
+	// interfaces and its metadata.
+	FeatureFlags bool
 }
 
 type tsEnumsData struct {
@@ -519,6 +579,9 @@ type tsAPIData struct {
 	// names them; every outlet a client is generated for serves sessions, and every
 	// session outlet serves them.
 	Live bool
+	// Features are the declared flags in constant order: the Feature union and the
+	// Feature constants the client file declares. Empty, neither is declared.
+	Features []resource.FeatureDeclaration
 }
 
 // HasUpload reports whether any method on this outlet is an @upload, so the client
@@ -621,6 +684,9 @@ type tsAPIResource struct {
 	// Files are the resource's @file segments, so the handle addresses a row's file
 	// (fileUrl); empty when the resource declares none.
 	Files []string
+	// Feature is the flag the resource is gated behind, as the descriptor carries it;
+	// empty when the resource is not gated.
+	Feature string
 }
 
 // tsAPISort is one entry of a descriptor's declared order.
@@ -679,6 +745,9 @@ type tsAPIMethod struct {
 	// UploadMaxBytes is the method's @upload maximum, 0 for a JSON method; the
 	// descriptor carries it so the client refuses an oversized upload locally.
 	UploadMaxBytes int64
+	// Feature is the flag the method is gated behind, as the descriptor carries it;
+	// empty when the method is not gated.
+	Feature string
 }
 
 // HandleType is the handle the client exposes the method under: an

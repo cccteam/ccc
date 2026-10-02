@@ -2,8 +2,8 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates } from './zz_gen_resources';
-import { StandDownMission } from './zz_gen_methods';
+import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates, FeatureFlags } from './zz_gen_resources';
+import { StandDownMission, SetFeature, SetFeatureResult } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating ClientContacts. Server-owned fields are
@@ -102,12 +102,16 @@ export type MissionDocumentsKey = [id: string];
 /** The primary key of BriefingTemplates, in route order. */
 export type BriefingTemplatesKey = [id: string];
 
+/** The primary key of FeatureFlags, in route order. */
+export type FeatureFlagsKey = [name: string];
+
 /** The generated API as the @cccteam/resource runtime addresses it. Routes carry no API prefix. */
 export const apiDescriptor: ApiDescriptor = {
   domainRoute: { segment: 'sectors', param: 'sectorID' },
   consolidatedRoute: 'resources',
   permissionDigestRoute: 'permission-digest',
   userDomainsRoute: 'user-domains',
+  features: { route: 'features' },
   live: { renewRoute: 'live/renew', unsubscribeRoute: 'live/unsubscribe', tokenRoute: 'live/token' },
   resources: {
     [Resources.ClientContacts]: {
@@ -180,9 +184,21 @@ export const apiDescriptor: ApiDescriptor = {
       operations: ['list'],
       page: { default: 50 },
     },
+    [Resources.FeatureFlags]: {
+      resource: Resources.FeatureFlags,
+      property: 'featureFlags',
+      route: 'feature-flags',
+      scope: 'global',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
   },
   methods: {
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
+    [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
   },
 };
 
@@ -190,6 +206,8 @@ export const apiDescriptor: ApiDescriptor = {
 export interface GlobalApi {
   clientContacts: ResourceHandle<ClientContacts, ClientContactsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', ClientContactsCreate, ClientContactsPatch>;
   briefingTemplates: ResourceHandle<BriefingTemplates, BriefingTemplatesKey, 'list'>;
+  featureFlags: ResourceHandle<FeatureFlags, FeatureFlagsKey, 'list' | 'read'>;
+  setFeature: MethodHandle<SetFeature, SetFeatureResult>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */

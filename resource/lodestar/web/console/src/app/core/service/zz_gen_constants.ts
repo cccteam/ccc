@@ -25,6 +25,7 @@ export const Resources = {
   Consignments: 'Consignments' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
   ExpenseManifests: 'ExpenseManifests' as Resource,
+  FeatureFlags: 'FeatureFlags' as Resource,
   FeeByKinds: 'FeeByKinds' as Resource,
   Hangars: 'Hangars' as Resource,
   MissionBoards: 'MissionBoards' as Resource,
@@ -73,6 +74,7 @@ export const Methods = {
   StandDownMission: 'StandDownMission' as Method,
   StartFlightTest: 'StartFlightTest' as Method,
   AssumeRole: 'AssumeRole' as Method,
+  SetFeature: 'SetFeature' as Method,
   ViewAsUser: 'ViewAsUser' as Method,
 };
 
@@ -212,6 +214,23 @@ export namespace ExpenseManifests {
     missionId: 'ExpenseManifests.missionId' as Resource,
     sorties: 'ExpenseManifests.sorties' as Resource,
     title: 'ExpenseManifests.title' as Resource,
+  };
+}
+
+export namespace FeatureFlags {
+  export const fieldName = {
+    description: 'description' as FieldName,
+    enabled: 'enabled' as FieldName,
+    name: 'name' as FieldName,
+    updatedAt: 'updatedAt' as FieldName,
+    updatedBy: 'updatedBy' as FieldName,
+  };
+  export const resourceName = {
+    description: 'FeatureFlags.description' as Resource,
+    enabled: 'FeatureFlags.enabled' as Resource,
+    name: 'FeatureFlags.name' as Resource,
+    updatedAt: 'FeatureFlags.updatedAt' as Resource,
+    updatedBy: 'FeatureFlags.updatedBy' as Resource,
   };
 }
 

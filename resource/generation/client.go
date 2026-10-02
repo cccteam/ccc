@@ -62,7 +62,13 @@ type client struct {
 	// rows are the program's constants, so a struct backing it is read-only and a
 	// foreign key into it renders from the generated values, not from a resource.
 	enumerateTables map[string]string
-	pluralOverrides map[string]string
+	// features are the feature flag declarations the resources package's
+	// resource.Feature constants make, by constant (registerFeatures); every
+	// @feature resolves against them. featureDeclarations is the same set in constant
+	// order, what Features() lists.
+	features            map[string]resource.FeatureDeclaration
+	featureDeclarations []resource.FeatureDeclaration
+	pluralOverrides     map[string]string
 	// loadedPackages are the packages the run loaded, by package name, so the
 	// @typescript reader finds a type's declaration without loading its package again.
 	loadedPackages map[string]*packages.Package
@@ -491,6 +497,26 @@ func (c *client) templateFuncs() map[string]any {
 		"ScopeConstant":           scopeConstant,
 		"MaskingConstant":         maskingConstant,
 		"BindingHops":             bindingHopsLiteral,
+		// The feature flag routes under an outlet's prefix and the read route's
+		// parameter, from the resource package's constants, so the routes, the router
+		// tests and the TypeScript descriptor spell them once.
+		"FeaturesRoute": func() string {
+			return resource.FeaturesRoute
+		},
+		"FeatureFlagsRoute": func() string {
+			return resource.FeatureFlagsRoute
+		},
+		"SetFeatureRoute": func() string {
+			return resource.SetFeatureRoute
+		},
+		"FeatureFlagNameParam": func() string {
+			return string(resource.FeatureFlagNameParam)
+		},
+		// RouteHandler pairs a route with the file's resource package for the routes
+		// template's handler expression, which names the gate's constant.
+		"RouteHandler": func(resourcePackage string, route *generatedRoute) routeHandlerData {
+			return routeHandlerData{Route: route, ResourcePackage: resourcePackage}
+		},
 		// The live routes under an outlet's prefix, from the live package's constants,
 		// so the routes, the router tests and the TypeScript descriptor spell them once.
 		"LiveRenewRoute": func() string {
@@ -924,7 +950,7 @@ func sanitizeEnumIdentifier(name string) string {
 
 func typescriptMethodImports(t *typescriptGenerator) string {
 	pkgs := make([]string, 0, 2)
-	if t.hasRPCMethods() {
+	if t.hasRPCMethods() || t.servesFeatureFlags() {
 		pkgs = append(pkgs, "Methods")
 	}
 	if t.hasRPCMethodWithEnumeratedResource() || t.hasRPCMethodWithTransition() {
@@ -939,7 +965,7 @@ func typescriptConsImports(t *typescriptGenerator, d *resource.TypescriptData) s
 	if len(d.ResourceTags) > 0 || len(t.rpcMethods) > 0 {
 		pkgs = append(pkgs, "FieldName")
 	}
-	if len(t.rpcMethods) > 0 {
+	if len(t.rpcMethods) > 0 || t.servesFeatureFlags() {
 		pkgs = append(pkgs, "Method")
 	}
 	if len(d.Permissions) > 0 {

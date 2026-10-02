@@ -72,7 +72,30 @@ type Set[Resource Resourcer] struct {
 	// nullableFields are the slice-typed fields whose columns allow NULL, from the
 	// generated nullable tags (nullable_fields.go); the decoder accepts a null for them.
 	nullableFields map[accesstypes.Field]struct{}
-	rMeta          *Metadata[Resource]
+	// gatedFields are the fields behind a feature flag, from the generated feature
+	// tags (feature.go): while a field's flag is off the decoders answer it as unknown.
+	gatedFields map[accesstypes.Field]Feature
+	rMeta       *Metadata[Resource]
+}
+
+// hiddenFields returns the gated fields whose flag is off in features, nil when the
+// struct gates nothing. A nil FeatureSet hides every gated field: an application that
+// wires no flags fails closed on every gate.
+func (r *Set[Resource]) hiddenFields(features *FeatureSet) map[accesstypes.Field]struct{} {
+	if len(r.gatedFields) == 0 {
+		return nil
+	}
+	hidden := make(map[accesstypes.Field]struct{})
+	for field, feature := range r.gatedFields {
+		if !features.Enabled(feature) {
+			hidden[field] = struct{}{}
+		}
+	}
+	if len(hidden) == 0 {
+		return nil
+	}
+
+	return hidden
 }
 
 // NewSet creates a new Set for a given Resource and Request type. Field-level
@@ -98,6 +121,7 @@ func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permissi
 		positionalFields: reg.positionalFields,
 		valueLimits:      reg.valueLimits,
 		nullableFields:   reg.nullableFields,
+		gatedFields:      reg.gatedFields,
 		rMeta:            NewMetadata[Resource](),
 	}, nil
 }
@@ -200,6 +224,24 @@ type setRegistration struct {
 	positionalFields map[accesstypes.Tag]struct{}
 	valueLimits      map[accesstypes.Field]valueLimit
 	nullableFields   map[accesstypes.Field]struct{}
+	gatedFields      map[accesstypes.Field]Feature
+}
+
+// recordFeature reads a field's feature tag: a gated field is recorded under the flag
+// it names; a tag the runtime cannot read as a flag name is the stale-struct guard.
+func (r *setRegistration) recordFeature(field *FieldTags) error {
+	if field.Feature == "" {
+		return nil
+	}
+	if !ValidFeatureName(field.Feature) {
+		return errors.Newf("feature:%q on field %s is not a feature name: regenerate this struct — the generator writes the flag's name, 1 to %d characters of [a-z0-9_] opening with a letter", field.Feature, field.Field, FeatureNameMaxLength)
+	}
+	if r.gatedFields == nil {
+		r.gatedFields = make(map[accesstypes.Field]Feature)
+	}
+	r.gatedFields[field.Field] = Feature(field.Feature)
+
+	return nil
 }
 
 func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (*setRegistration, error) {
@@ -331,6 +373,9 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 		}
 
 		if err := reg.recordMasking(&field); err != nil {
+			return nil, err
+		}
+		if err := reg.recordFeature(&field); err != nil {
 			return nil, err
 		}
 
