@@ -65,8 +65,9 @@ func (f *fakeAccess) decide(perm accesstypes.Permission, resources []accesstypes
 // owns no router, these suites compose the API surface through router.NewTestRouter,
 // and nothing on that path touches the session.
 type testConfigurer struct {
-	db *initiator.SpannerDB
-	g  grants
+	db   *initiator.SpannerDB
+	g    grants
+	live *live.Fake
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
@@ -99,10 +100,14 @@ func (c *testConfigurer) LogExporter() logger.Exporter {
 
 func (c *testConfigurer) ConsoleDist() string { return "" }
 
-// Live serves no live pages in the suites: nothing here subscribes, and a request
-// carrying X-Subscribe is refused.
+// Live is an in-memory live service: the live service is required in every
+// application, so the suites' App starts with a fake nothing subscribes through.
 func (c *testConfigurer) Live() live.Service {
-	return nil
+	if c.live == nil {
+		c.live = live.NewFake()
+	}
+
+	return c.live
 }
 
 // LiveOrigins names no change feed origin: the suites serve no live pages.

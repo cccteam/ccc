@@ -65,6 +65,7 @@ type servedConfigurer struct {
 	db      *initiator.SpannerDB
 	auth    *staff.Auth
 	members *members.Auth
+	live    *live.Fake
 }
 
 // Domains lists the development tenants: the roster the served stack filters by the
@@ -124,10 +125,10 @@ func (c *servedConfigurer) PortalDist() string { return "" }
 
 func (c *servedConfigurer) MachinesAPIKey() string { return machinesAPIKey }
 
-// Live serves no live pages in the suites: nothing here subscribes, and a request
-// carrying X-Subscribe is refused.
+// Live is the in-memory live service the auths' permission engines signal policy
+// changes through: the live service is required in every application.
 func (c *servedConfigurer) Live() live.Service {
-	return nil
+	return c.live
 }
 
 // LiveOrigins names no change feed origin: the suites serve no live pages.
@@ -156,7 +157,10 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	staffAuth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	// The live service both engines signal policy changes through and the App follows
+	// its feature flags from: in-memory in the suites.
+	svc := live.NewFake()
+	staffAuth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -175,6 +179,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// detail that matters.
 	membersAuth, err := members.New(ctx, db.Client, &members.Settings{
 		Collection:     router.Collection(),
+		Signals:        svc,
 		CookieKey:      testCookieKey,
 		SessionTimeout: time.Minute,
 		LoginURL:       "/portal/login",
@@ -225,7 +230,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	waitForDomains(ctx, t, accessClient, machinesUser, []accesstypes.Domain{north})
 	waitForDomains(ctx, t, membersAccess, clientUser, []accesstypes.Domain{north})
 
-	a := app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth})
+	a := app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth, live: svc})
 	// The App reads its feature flags as it is built; Start reports a copy that could
 	// not be read and follows the table until the test ends.
 	if err := a.Start(ctx); err != nil {

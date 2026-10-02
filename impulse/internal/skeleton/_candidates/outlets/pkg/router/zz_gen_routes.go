@@ -24,11 +24,6 @@ type GeneratedHandlers interface {
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 
-	// LiveService is the application's live service (resource/live): the subscription
-	// record the list and read handlers register in, the publisher the mutations write
-	// to, and the browser's identity. Nil serves no live pages, and a request carrying
-	// X-Subscribe is refused.
-	LiveService() live.Service
 	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
 	// outlet's prefix: a tab's subscriptions renewed against the user's grants, a tab
 	// or a logout leaving, and how the browser connects to its change set.
@@ -63,9 +58,9 @@ type GeneratedHandlers interface {
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when the application
-	// serves no live pages.
-	r = r.With(live.Subscribing(h.LiveService()))
+	// X-Subscribe is noted on its request log line and refused when its tab id is
+	// malformed.
+	r = r.With(live.Subscribing())
 	domainGuard := h.DomainGuard()
 
 	r.Get("/console/api/permission-digest", h.PermissionDigest())
@@ -112,9 +107,6 @@ type GeneratedPortalHandlers interface {
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 
-	// LiveService is the application's live service (resource/live); nil serves no
-	// live pages, and a request carrying X-Subscribe is refused.
-	LiveService() live.Service
 	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
 	// outlet's prefix.
 	LiveRenew() http.HandlerFunc
@@ -145,9 +137,9 @@ type GeneratedPortalHandlers interface {
 
 func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when the application
-	// serves no live pages.
-	r = r.With(live.Subscribing(h.LiveService()))
+	// X-Subscribe is noted on its request log line and refused when its tab id is
+	// malformed.
+	r = r.With(live.Subscribing())
 	domainGuard := h.DomainGuard()
 
 	r.Get("/portal/api/permission-digest", h.PermissionDigest())

@@ -83,7 +83,7 @@ func TestSelect(t *testing.T) {
 		wantErr string
 	}{
 		{name: "all", want: []string{
-			"generator-program", "options", "tenancy-wired", "outlet-wired", "outlet-shape", "sites-wired", "maintenance-switch", "session-tables", "auths-wired", "conditions-proven", "skipauth", "emulator-version", "prettier-ignore", "eslint-ignore",
+			"generator-program", "options", "tenancy-wired", "outlet-wired", "outlet-shape", "sites-wired", "maintenance-switch", "session-tables", "auths-wired", "change-signal", "conditions-proven", "skipauth", "emulator-version", "prettier-ignore", "eslint-ignore",
 			"resource-styles", "package-manager", "registry-pins", "test-runner", "ci-workflow",
 			"paging", "rpc-execute", "feature-flags", "sites-generators", "env-template", "pins", "gowork-off", "regen",
 		}},

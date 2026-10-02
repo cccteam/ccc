@@ -19,13 +19,14 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=tenanted
 # APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
 # generates an ephemeral key and sessions end when it restarts.
 # export APP_COOKIE_KEY=
-# The Firestore database the live pages run on, beside the Spanner database (pkg/config,
-# FirestoreSettings): the subscriptions the server registers and the change sets the browser
-# listens to. A deployment supplies APP_FIRESTORE_DATABASE (the database id) and
-# APP_FIREBASE_API_KEY (the web API key the browser initializes the SDK with); in development
-# the emulator below stands in and both stay unset. GOOGLE_CLOUD_FIRESTORE_PROJECT names the
-# database's project when it is not the Spanner project. With none of these and no emulator,
-# the application serves no live pages.
+# The Firestore database the live service runs on, beside the Spanner database (pkg/config,
+# FirestoreSettings): the subscriptions the server registers, the change sets the browser
+# listens to, and the signals document the application's instances tell each other through.
+# A deployment supplies APP_FIRESTORE_DATABASE (the database id) and APP_FIREBASE_API_KEY
+# (the web API key the browser initializes the SDK with); in development the emulator below
+# stands in and both stay unset. GOOGLE_CLOUD_FIRESTORE_PROJECT names the database's project
+# when it is not the Spanner project. The live service is required: with none of these and
+# no emulator, the process refuses to start.
 # export APP_FIRESTORE_DATABASE=
 # export APP_FIREBASE_API_KEY=
 # export GOOGLE_CLOUD_FIRESTORE_PROJECT=
@@ -37,8 +38,9 @@ export PORT=8092
 # --- local development only: the emulators the Procfile starts ---
 export SPANNER_EMULATOR_PORT=9015
 export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}
-# The Firestore emulator serves the live pages in development: the server registers
-# subscriptions and publishes changes there, and the token route hands the browser its host.
+# The Firestore emulator is the live service in development: the server registers
+# subscriptions, publishes changes and signals its other instances there, and the token
+# route hands the browser its host.
 export FIRESTORE_EMULATOR_PORT=9025
 export FIRESTORE_EMULATOR_HOST=127.0.0.1:${FIRESTORE_EMULATOR_PORT}
 # overmind otherwise takes PORT as its base and hands every process its own (base, base+100,

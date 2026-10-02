@@ -125,6 +125,7 @@ checks:
   maintenance-switch
   session-tables
   auths-wired
+  change-signal
   conditions-proven
   skipauth
   emulator-version

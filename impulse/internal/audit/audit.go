@@ -103,6 +103,7 @@ func Run(ctx context.Context, a *app.App, exec check.Execer, out io.Writer) (fai
 		}
 	}
 	WriteFeatures(out, a)
+	WriteEngines(out, a)
 
 	return failed
 }
@@ -155,6 +156,36 @@ func WriteFeatures(out io.Writer, a *app.App) {
 		if len(reads) > 0 {
 			fmt.Fprintf(out, "    read in %s\n", strings.Join(reads, ", "))
 		}
+	}
+}
+
+// The heading and lines of the permission engines section.
+const (
+	enginesHeading = "permission engines"
+	noEnginesLine  = "  none constructed"
+)
+
+// WriteEngines writes the permission engines section: every engine the application
+// constructs (access.New outside tests) by package, file and line, and whether it is
+// handed a change signal (access.WithChangeSignal), which the change-signal check fails
+// without.
+func WriteEngines(out io.Writer, a *app.App) {
+	fmt.Fprintln(out, enginesHeading)
+	if len(a.Engines) == 0 {
+		fmt.Fprintln(out, noEnginesLine)
+
+		return
+	}
+	for _, e := range a.Engines {
+		state := "handed a change signal (access.WithChangeSignal)"
+		switch {
+		case e.ChangeSignal:
+		case e.OptionsForwarded:
+			state = "forwards its options, so a change signal cannot be read here (the change-signal check fails on it)"
+		default:
+			state = "no change signal (the change-signal check fails on it)"
+		}
+		fmt.Fprintf(out, "  %s (%s:%d): %s\n", e.Package, e.File, e.Line, state)
 	}
 }
 

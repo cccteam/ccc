@@ -67,11 +67,25 @@ templates, this README, and the tool's source.
   five minutes. The server side is the data level's Firestore settings
   (`APP_FIRESTORE_DATABASE` in a deployment, `FIRESTORE_EMULATOR_HOST` in development)
   and the App's `LiveService`; the generated router serves the live routes
-  (`live/renew`, `live/unsubscribe`, `live/token`) on every session outlet, and an
-  application that wires no live service serves no live pages and refuses the header.
-  The skeletons carry the server side, the Firestore emulator in the Procfile, and the
-  rules and indexes the database needs under `schema/firestore`; the browser side is
-  the client packages' live option, which a page opts into.
+  (`live/renew`, `live/unsubscribe`, `live/token`) on every session outlet. The live
+  service is required: every application wires one, the data level refuses to start
+  with neither a database nor the emulator configured, and the test harnesses wire
+  `live.NewFake()`. The skeletons carry the server side, the Firestore emulator in the
+  Procfile, and the rules and indexes the database needs under `schema/firestore`; the
+  browser side is the client packages' live option, which a page opts into.
+- **Change signal**: the one channel an application's instances tell each other on that
+  something shared changed, carried by the live service: one document per application,
+  `application/signals`, with a field per kind of change (`features`, `tenants`,
+  `policy`; `resource.SignalKind`), written by `Signal(ctx, kind)` and followed by
+  `Subscribe(kind, onSignal)`. A signal carries nothing but the fact of a change; every
+  subscriber rereads what it keeps, and rereads at its own backstop regardless. A
+  feature flag flip rides the `features` kind, and every permission engine rides the
+  `policy` kind: each `access.New` takes `access.WithChangeSignal` over the live
+  service, which an auth package builds from the `Settings.Signals` the data level
+  passes (`access.ChangeSignalFunc(announcePolicy(signals), watchPolicy(signals))`), so
+  a role, grant or membership written on one instance reaches every instance's snapshot
+  at once rather than at the engine's next heartbeat. The `change-signal` check holds
+  every engine to it.
 - **Feature flag**: a release switch owned by the application: a feature's code ships
   before the feature is turned on, the switch differs per environment, and the flag is
   removed once the feature is permanent or abandoned. A flag is a `resource.Feature`
@@ -233,6 +247,7 @@ impulse check --list
 | `maintenance-switch` | Every site's main checks `maintenance.Requested()` before it builds the site configuration (`config.NewSiteConfiguration`), and serves `maintenance.Serve(ctx)` when it is set: the deploy pipeline starts a maintenance revision of the application's own image with `APP_MAINTENANCE` set before a release that replaces or interrupts the database, and that revision must open no database, session store or secret. A main that builds the configuration first, or checks the switch after it, fails; a main that builds no site configuration is a warning, since the check cannot tell where the switch belongs. |
 | `session-tables` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with its session and XSRF cookies when named, and an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
 | `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), carries its role file (`pkg/auth/<name>/roles.json`, embedded by a `//go:embed roles.json` directive, exported as `<name>.Roles()`, and handed to the permission engine by an `access.WithDefaultRoles` call outside tests, in the package or on the data level; the file exists), and bound by a surface: an outlet declaring `Auth("<module>/pkg/auth/<name>", <flavor>)` in the flavor the package constructs (the generated router mounts that flavor's login routes, so a disagreement is a finding), or a package outside `config` and `cmd/` taking `*<name>.Auth`. An outlet bound to a package that is no auth package is a finding. No two auth packages issue the same cookie, session or XSRF, a name left unset being the session library's default (`auth`, `XSRF-TOKEN`); the browser keeps one cookie of a name per host, so a login to one auth would overwrite the other's. An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. A role file handed to the engine that no test validates warns: a `_test.go` calling `access.ValidateRoles` while parsing the auth's `Roles()` is where the warnings the deploy prints are pinned as typed values, so without it a warning is accepted nowhere in code. Authenticators outside auth packages warn. |
+| `change-signal` | Every permission engine constructed outside tests (`access.New`) is handed a change signal: an `access.WithChangeSignal` option among the call's arguments, the skeletons' being `access.ChangeSignalFunc(announcePolicy(signals), watchPolicy(signals))` over the live service's `policy` kind. Without it a role, grant or membership written on one instance reaches the others at the engine's next heartbeat alone. A package constructing an engine without the option fails on its own line, naming each construction by file and line; a call forwarding its options (`opts...`) fails too, since the signal cannot be read there. Skipped when the application constructs no engine. |
 | `conditions-proven` | Every conditional grant in a role file the release hands to the permission engine (`pkg/auth/<auth>/roles.json`, the `<auth>.Roles()` an `access.WithDefaultRoles` call takes) is named by a test case calling the harness helper `provesGrant(t, <auth>.Roles(), role, permission, resource, condition)` with literal coordinates. The generated authorization matrix runs a fake engine with unconditional grants and the deploy-time validation reads the grammar, so whether a condition does what its author meant on real rows is proven only by a case over seeded rows: a row the condition admits answers, a row it refuses is refused. The check reads the call; the helper, in `test/integration/harness_test.go`, parses the role file when the test runs and fails when the grant is gone or its condition reads differently, so the case and the file hold each other from both sides. A grant no case names fails the check on its own line; a call naming a grant the file does not carry, or one the check cannot read, is a finding too; a file with no conditional grant reads "0 conditional grants". Unconditional grants need no case: the generic test `test/integration/grants_test.go` parses the auths' role files and proves the engine serves every one of them. When the check fails under `impulse handoff`, the brief carries the pattern a case follows. |
 | `skipauth` | When an auth signs in through a directory (the OIDC flavors), the simulated directory stays in development and tests: no application code reads `APP_USERNAME` or `APP_ROLES` (only the session library's `skipAuth` build does), and no build description (Dockerfile, cloudbuild, Makefile) carries the tag, which would let a deployed build accept any name as a login. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version; the process files and test harnesses that start the Firestore emulator (the Cloud SDK emulators image, `google-cloud-cli:<version>-emulators`) name one version of it. The summary states both; an application naming no Firestore emulator serves no live pages in development, which is said and not failed. |
@@ -266,11 +281,15 @@ resource that stores files on a table whose rows the database deletes by cascade
 the patch machinery, so the release of their objects never runs for them and the
 application's sweep removes the objects later. The section is one heading per program,
 `cmd/generate/resourcegenerator/generator.go (go run ./cmd/generate/resourcegenerator -audit)`,
-with the lines beneath it or `no findings`. A last section, `feature flags`, lists every
+with the lines beneath it or `no findings`. A section, `feature flags`, lists every
 declared flag with its description and where it is used: the resources, fields and
 methods its `@feature` gates and the Go and browser code that reads it (tests and specs
 marked), or that it gates nothing and is read nowhere, which the `feature-flags` check
-fails on; an application declaring none reads `none declared`.
+fails on; an application declaring none reads `none declared`. A last section,
+`permission engines`, lists every engine the application constructs (`access.New`
+outside tests) by package, file and line, and whether it is handed a change signal,
+which the `change-signal` check fails without; an application constructing none reads
+`none constructed`.
 
 ```sh
 impulse audit
@@ -459,7 +478,10 @@ The new package is a copy of an existing auth's with every name substituted, so 
 `<Name>Sessions`, `<Name>SessionUsers` (password only), the `<Name>` store prefix, the
 `<name>` and `<name>-xsrf` cookies, and `pkg/auth/<name>/roles.json` (empty, embedded by the package) from the start; its table migrations are
 copied under the new prefix; and the data level constructs it beside the auth it came
-from, with an accessor in a new file. `--preauth` swaps the constructor to the preauth
+from, with an accessor in a new file. The copy carries the engine's change signal over
+the live service as the auth it came from does (`access.WithChangeSignal`, built from
+the `Settings.Signals` the copied construction passes), so the `change-signal` check
+passes for the new package. `--preauth` swaps the constructor to the preauth
 flavor. Binding a surface to it, checking its roles in the deploy, its development identities, and
 the stranger tests are the agent's.
 

@@ -72,8 +72,8 @@ unknown to the decoders. The value lives in the `FeatureFlags` table (migration
 with `resource.FeatureFlagsDDL`): the deploy's `MigrateFeatures` writes a new flag off,
 keeps a known flag's state, and deletes what the release no longer declares, and every
 flip is recorded in `FeatureFlagChanges`. The App reads the table when it is built
-(`FeatureSet`) and follows it from `Start` (the live service's application topic when one
-is wired, the five-minute backstop reread regardless), so the generated routes, decoders,
+(`FeatureSet`) and follows it from `Start` (the live service's signals document, the
+`features` kind, and the five-minute backstop reread), so the generated routes, decoders,
 digest and features route answer from one copy. `GET /api/features` lists what is on to anyone signed in. Flipping is the generated
 `SetFeature` method, held by the `FeatureAdministrator` role in the staff role file
 (Execute on `SetFeature`, List and Read on `FeatureFlags`), which the development `admin`
@@ -160,15 +160,28 @@ the server holds no connection open.
 The server side is wired. The data level opens the live service over the Firestore
 database the configuration names: `APP_FIRESTORE_DATABASE` in a deployment, the emulator
 through `FIRESTORE_EMULATOR_HOST` in development (`pkg/config`, `FirestoreSettings`;
-the project defaults to the Spanner project). The App hands it to the generated handlers
-through `LiveService()`, and the generated router serves the live routes on the session outlet (`/api/live/renew`, `/api/live/unsubscribe`, `/api/live/token`). With neither a database nor the emulator configured the
-application serves no live pages, and a request carrying the header answers 400. The
+the project defaults to the Spanner project). The live service is required: with neither
+a database nor the emulator configured the data level refuses to start, naming the two
+variables. The App hands it to the generated handlers
+through `LiveService()`, and the generated router serves the live routes on the session outlet (`/api/live/renew`, `/api/live/unsubscribe`, `/api/live/token`). The
 content security policy the App sends names the change feed's origins beside the
 application (the emulator in development, Firebase's hosts in production), since the
 browser's feed connects to them directly rather than through the API.
 `schema/firestore` holds the rules the browser's reads run under and the indexes and
 time-to-live policies the subscription record needs; the Procfile's emulator runs the
 rules, and a deployment applies both files to the database.
+
+The live service also carries the one channel the application's instances signal each
+other on: one document per application, `application/signals`, with a field per kind of
+change the resource package declares (`features`, `tenants`, `policy`), written by
+`Signal(ctx, kind)` and followed by `Subscribe(kind, onSignal)`. This application uses
+two. A feature flag flip signals the `features` kind and every instance's `FeatureSet`
+rereads the table; the staff auth's permission engine is constructed with
+`access.WithChangeSignal` over the `policy` kind (`pkg/auth/staff`), so a role, grant or membership written on one
+instance reaches every instance's policy snapshot at once rather than at the engine's
+next heartbeat. The `change-signal` check proves every engine the application constructs
+is handed it, and the authorization and integration suites wire the in-memory
+`live.NewFake()`.
 
 The browser side is the client packages' live option: a list view or record view opting
 in (`live: true` in its view configuration) with the Firestore change feed provided at

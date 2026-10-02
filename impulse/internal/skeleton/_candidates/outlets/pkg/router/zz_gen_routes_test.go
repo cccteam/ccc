@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cccteam/ccc/resource/live"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -417,12 +416,6 @@ func (s *generatedHandlersStub) PermissionDigest() http.HandlerFunc {
 
 func (s *generatedHandlersStub) UserDomains() http.HandlerFunc {
 	return s.record("UserDomains")
-}
-
-// LiveService serves no live pages in the routing tests: nothing here subscribes, and
-// the live routes dispatch to their recording handlers like every other route.
-func (s *generatedHandlersStub) LiveService() live.Service {
-	return nil
 }
 
 func (s *generatedHandlersStub) LiveRenew() http.HandlerFunc {

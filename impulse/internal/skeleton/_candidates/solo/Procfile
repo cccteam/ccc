@@ -3,8 +3,9 @@
 #     cp .envrc.template .envrc && direnv allow && overmind start
 #
 # spanner:   a fresh Spanner emulator (--rm, so every start bootstraps from scratch).
-# firestore: a fresh Firestore emulator for the live pages: the subscriptions the server
-#            registers and the change sets the browser listens to, under the rules in
+# firestore: a fresh Firestore emulator, the live service in development: the subscriptions
+#            the server registers, the change sets the browser listens to and the signals
+#            document its instances tell each other through, under the rules in
 #            schema/firestore. Firestore needs no schema, so nothing bootstraps it.
 # server:    waits for both emulators, bootstraps the database (schema, roles, development
 #            logins), then serves the application. Bootstrap and serve share one process

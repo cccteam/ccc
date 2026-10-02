@@ -37,8 +37,9 @@ func (a *App) FeatureFlag() http.HandlerFunc {
 
 // SetFeature flips a flag for a caller holding Execute on SetFeature in the global
 // scope: the row and its change record are written in one transaction, the other
-// instances are signaled through the live service's application topic, this
-// instance's FeatureSet is reloaded, and the flag is answered as written. A flag the
+// instances are signaled through the live service (the features kind of the signals
+// document), this instance's FeatureSet is reloaded, and the flag is answered as
+// written. A flag the
 // package does not declare is 404. The generated router registers it at
 // POST /console/api/set-feature and, for each additional session-serving outlet,
 // under that outlet's prefix.

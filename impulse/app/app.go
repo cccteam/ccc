@@ -80,6 +80,9 @@ type App struct {
 	// AuthPackages are the auths: the packages under an auth directory constructing a
 	// session authenticator, with every reference to them, sorted by name.
 	AuthPackages []AuthPackage
+	// Engines are the permission engine constructions outside tests: every access.New
+	// call, with whether it hands the engine a change signal (access.WithChangeSignal).
+	Engines []Engine
 
 	// goFiles are the non-test Go files scanned, for the passes that follow the walk.
 	goFiles []string
@@ -169,6 +172,21 @@ type DefaultRoles struct {
 type PolicyCheck struct {
 	File string
 	Line int
+}
+
+// Engine is one construction of a permission engine outside tests: a call to access.New.
+type Engine struct {
+	File string
+	Line int
+	// Package is the root-relative directory of the package constructing the engine.
+	Package string
+	// ChangeSignal reports an access.WithChangeSignal option among the call's arguments:
+	// the engine is handed the signal that carries policy changes between the
+	// application's instances.
+	ChangeSignal bool
+	// OptionsForwarded reports a variadic pass-through (opts...) in the call: options the
+	// callers add are not visible here.
+	OptionsForwarded bool
 }
 
 // RoleValidation is one call to access.ValidateRoles in a test file: the role files it

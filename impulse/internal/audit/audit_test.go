@@ -113,8 +113,9 @@ func TestRun(t *testing.T) {
 			if failed != tt.wantFailed {
 				t.Errorf("Run() failed = %v, want %v", failed, tt.wantFailed)
 			}
-			// The fixtures declare no flag, so every run ends in the empty section.
-			if diff := cmp.Diff(tt.wantOut+featuresHeading+"\n"+noFeaturesLine+"\n", out.String()); diff != "" {
+			// The fixtures declare no flag and construct no engine, so every run ends in the
+			// two empty sections.
+			if diff := cmp.Diff(tt.wantOut+featuresHeading+"\n"+noFeaturesLine+"\n"+enginesHeading+"\n"+noEnginesLine+"\n", out.String()); diff != "" {
 				t.Errorf("output mismatch (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantCalls, exec.calls); diff != "" {
@@ -182,6 +183,66 @@ func TestWriteFeatures(t *testing.T) {
 			WriteFeatures(&out, a)
 			if diff := cmp.Diff(tt.want, out.String()); diff != "" {
 				t.Errorf("WriteFeatures() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestWriteEngines(t *testing.T) {
+	t.Parallel()
+
+	const (
+		signaled   = "package staff\n\nimport \"github.com/cccteam/access\"\n\nfunc New(signals access.ChangeSignal) error {\n\t_, err := access.New(nil, access.WithChangeSignal(signals))\n\n\treturn err\n}\n"
+		unsignaled = "package members\n\nimport \"github.com/cccteam/access\"\n\nfunc New() error {\n\t_, err := access.New(nil)\n\n\treturn err\n}\n"
+		forwarding = "package devices\n\nimport \"github.com/cccteam/access\"\n\nfunc New(opts ...access.Option) error {\n\t_, err := access.New(nil, opts...)\n\n\treturn err\n}\n"
+	)
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{
+			name: "no engine",
+			want: "permission engines\n  none constructed\n",
+		},
+		{
+			name: "every engine with whether it is handed a change signal",
+			files: map[string]string{
+				"pkg/auth/devices/devices.go": forwarding,
+				"pkg/auth/members/members.go": unsignaled,
+				"pkg/auth/staff/staff.go":     signaled,
+			},
+			want: "permission engines\n" +
+				"  pkg/auth/devices (pkg/auth/devices/devices.go:6): forwards its options, so a change signal cannot be read here (the change-signal check fails on it)\n" +
+				"  pkg/auth/members (pkg/auth/members/members.go:6): no change signal (the change-signal check fails on it)\n" +
+				"  pkg/auth/staff (pkg/auth/staff/staff.go:6): handed a change signal (access.WithChangeSignal)\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			files := map[string]string{"go.mod": "module example.com/harbor\n\ngo 1.26.6\n"}
+			for rel, content := range tt.files {
+				files[rel] = content
+			}
+			for rel, content := range files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a, err := app.Discover(root)
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			var out strings.Builder
+			WriteEngines(&out, a)
+			if diff := cmp.Diff(tt.want, out.String()); diff != "" {
+				t.Errorf("WriteEngines() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

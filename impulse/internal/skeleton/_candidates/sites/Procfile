@@ -3,8 +3,9 @@
 #     cp .envrc.template .envrc && direnv allow && overmind start
 #
 # spanner:   a fresh Spanner emulator (--rm, so every start bootstraps from scratch).
-# firestore: a fresh Firestore emulator for the live pages: the subscriptions the sites
-#            register and the change sets the browser listens to, under the rules in
+# firestore: a fresh Firestore emulator, the live service in development: the subscriptions
+#            the sites register, the change sets the browser listens to and the signals
+#            document the instances tell each other through, under the rules in
 #            schema/firestore, shared by the sites as the Spanner database is. Firestore
 #            needs no schema, so nothing bootstraps it.
 # console:   waits for both emulators, bootstraps the database (schema, development tenants,

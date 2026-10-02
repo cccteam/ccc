@@ -31,9 +31,8 @@ const (
 // cspPolicy writes the content security policy: the console's own assets plus the
 // Google Fonts hosts index.html links for the Roboto and Material Icons faces;
 // connections to the application itself and to the origins the live change feed is
-// reached at (the Firestore emulator in development, Firebase's hosts in production,
-// nothing more when no live pages are served), since the browser's feed connects to
-// them directly rather than through the API; and no page may frame the application
+// reached at (the Firestore emulator in development, Firebase's hosts in production),
+// since the browser's feed connects to them directly rather than through the API; and no page may frame the application
 // (frame-ancestors 'none'; X-Frame-Options DENY says the same to browsers that predate
 // it), so its pages cannot be overlaid or clickjacked.
 func cspPolicy(liveOrigins []string) string {
@@ -58,12 +57,12 @@ type Configurer interface {
 	// the App composes its login and session handlers from.
 	Staff() *staff.Auth
 	// Live is the live service the generated handlers subscribe through and publish to
-	// (LiveService): the Firestore service when a Firestore database or the emulator is
-	// configured, nil otherwise, which serves no live pages.
+	// (LiveService) and the feature flags follow (Start): the Firestore service over the
+	// database or the emulator the data level opened, required in every application.
 	Live() live.Service
 	// LiveOrigins are the origins the browser reaches the change feed at, which the
 	// content security policy names in connect-src: the Firestore emulator in
-	// development, Firebase's hosts in production, none when no live pages are served.
+	// development, Firebase's hosts in production.
 	LiveOrigins() []string
 	Validator() *validator.Validate
 	LogExporter() logger.Exporter
@@ -207,17 +206,16 @@ func (a *App) CursorKey() *resource.CursorKey {
 // LiveService is the live service the generated handlers draw on (resource/live): the
 // list and read handlers register a subscribing request's interest in it before the
 // query, the mutations publish their committed rows through it, and the generated live
-// routes renew, unsubscribe and mint the browser's identity against it. Nil when no
-// Firestore database and no emulator is configured: the application then serves no
-// live pages and refuses a request carrying X-Subscribe.
+// routes renew, unsubscribe and mint the browser's identity against it. Every
+// application wires one; the generated handlers assume it.
 func (a *App) LiveService() live.Service {
 	return a.live
 }
 
 // Start begins the App's background work and ends it when ctx does: the feature flags
-// are followed, so a flip on any instance (signaled through the live service's
-// application topic when one is wired) or the library's five-minute backstop reread
-// brings this instance's copy current. A copy that could not be read when the App was
+// are followed, so a flip on any instance (signaled through the live service's signals
+// document, the features kind) or the library's five-minute backstop reread brings
+// this instance's copy current. A copy that could not be read when the App was
 // built is reported here, as the start-up failure it is: the schema is behind the
 // release.
 func (a *App) Start(ctx context.Context) error {

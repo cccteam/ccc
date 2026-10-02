@@ -178,7 +178,47 @@ func (a *App) scanGoFile(abs, rel string) error {
 
 	a.goFiles = append(a.goFiles, rel)
 
-	return a.scanRolePolicy(rel, data)
+	return a.scanAccess(rel, data)
+}
+
+// The permission engine's constructor and the option handing it a change signal.
+const (
+	engineNewFunc    = "New"
+	changeSignalFunc = "WithChangeSignal"
+)
+
+// parseEngines returns every access.New call in the file, each with whether an
+// access.WithChangeSignal option is among its arguments and whether it forwards options
+// it cannot see.
+func parseEngines(rel string, src []byte) ([]Engine, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := localImportName(f, accessImportPath)
+	if pkg == "" {
+		return nil, nil
+	}
+
+	var engines []Engine
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || !isQualified(call.Fun, pkg, engineNewFunc) {
+			return true
+		}
+		e := Engine{File: rel, Line: fset.Position(call.Pos()).Line, Package: path.Dir(rel), OptionsForwarded: call.Ellipsis.IsValid()}
+		for _, arg := range call.Args {
+			if option, ok := arg.(*ast.CallExpr); ok && isQualified(option.Fun, pkg, changeSignalFunc) {
+				e.ChangeSignal = true
+			}
+		}
+		engines = append(engines, e)
+
+		return true
+	})
+
+	return engines, nil
 }
 
 // scanFeatures records the file's feature flag declarations (resource.Feature constants)
@@ -202,9 +242,16 @@ func (a *App) scanFeatures(rel string, data []byte) error {
 	return nil
 }
 
-// scanRolePolicy records the file's access.WithDefaultRoles calls and its CheckPolicy
-// calls.
-func (a *App) scanRolePolicy(rel string, data []byte) error {
+// scanAccess records what the file does with the permission engine: its constructions
+// (access.New), its access.WithDefaultRoles calls and its CheckPolicy calls.
+func (a *App) scanAccess(rel string, data []byte) error {
+	if bytes.Contains(data, []byte(accessImportPath)) {
+		engines, err := parseEngines(rel, data)
+		if err != nil {
+			return err
+		}
+		a.Engines = append(a.Engines, engines...)
+	}
 	if bytes.Contains(data, []byte(defaultRolesFunc+"(")) {
 		calls, err := parseDefaultRoles(rel, data, a.packagePath(path.Dir(rel)))
 		if err != nil {

@@ -147,6 +147,7 @@ func All() []Check {
 		maintenanceSwitch{},
 		sessionTables{},
 		authsWired{},
+		changeSignal{},
 		conditionsProven{},
 		skipAuth{},
 		emulatorVersion{},

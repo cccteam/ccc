@@ -53,6 +53,7 @@ const (
 type servedConfigurer struct {
 	db   *initiator.SpannerDB
 	auth *staff.Auth
+	live *live.Fake
 }
 
 // Domains lists the development tenants: the roster the served stack filters by the
@@ -100,10 +101,10 @@ func (c *servedConfigurer) LogExporter() logger.Exporter { return logger.NewCons
 
 func (c *servedConfigurer) Dist() string { return "" }
 
-// Live serves no live pages in the suites: nothing here subscribes, and a request
-// carrying X-Subscribe is refused.
+// Live is the in-memory live service the auths' permission engines signal policy
+// changes through: the live service is required in every application.
 func (c *servedConfigurer) Live() live.Service {
-	return nil
+	return c.live
 }
 
 // LiveOrigins names no change feed origin: the suites serve no live pages.
@@ -135,7 +136,10 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err != nil {
 		t.Fatalf("config.Collection() error = %v", err)
 	}
-	auth, err := staff.New(ctx, db.Client, staff.Settings{Collection: collection, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	// The live service the engine signals policy changes through and both sites' Apps
+	// follow their feature flags from: in-memory in the suites.
+	svc := live.NewFake()
+	auth, err := staff.New(ctx, db.Client, staff.Settings{Collection: collection, Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -175,7 +179,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// visible to the engine before serving.
 	waitForDomains(ctx, t, accessClient, clientUser, []accesstypes.Domain{north})
 
-	conf := &servedConfigurer{db: db, auth: auth}
+	conf := &servedConfigurer{db: db, auth: auth, live: svc}
 	// Each site's App reads its feature flags as it is built; Start reports a copy that
 	// could not be read and follows the table until the test ends.
 	consoleApp, portalApp := consoleapp.New(conf), portalapp.New(conf)
