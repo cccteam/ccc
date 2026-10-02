@@ -2158,7 +2158,18 @@ export interface FeatureFlags {
 }
 {{ end }}
 {{ $consolidatedRoute := .ConsolidatedRoute -}}
-const resourceMap: ResourceMap = {
+/**
+ * Keeps the literal types of the metadata while letting a client that predates a field
+ * ignore it: TypeScript checks the literal against the fields ResourceMap declares and no
+ * others, so this file compiles against a client package released before a field it
+ * carries, and the generator and the package release in either order. The intersection
+ * keeps the map indexable by a resource name when no resource is on the outlet.
+ */
+function defineResourceMap<T extends ResourceMap>(map: T): T & ResourceMap {
+  return map;
+}
+
+const resourceMap = defineResourceMap({
   {{- range $resource := $.Resources }}
   [Resources.{{ Pluralize $resource.Name }}]: {
     route: '{{ if $resource.IsDomainScoped }}{{ $.DomainRoutePrefix }}/{{ end }}{{ Kebab (Pluralize $resource.Name) }}',
@@ -2247,7 +2258,7 @@ const resourceMap: ResourceMap = {
     ],
   },
   {{- end }}
-};
+});
 
 export function resourceMeta(resource: Resource): ResourceMeta {
   if (resourceMap[resource] !== undefined) {
@@ -2519,8 +2530,18 @@ export type {{ $r.Name }}Patch = Record<never, never>;
 /** The primary key of {{ $r.Name }}, in route order. */
 export type {{ $r.Name }}Key = [{{ range $i, $k := $r.Keys }}{{ if $i }}, {{ end }}{{ $k.Name }}: {{ $k.Type }}{{ end }}];
 {{ end }}
+/**
+ * Keeps the literal types of the descriptor while letting a client that predates a field
+ * ignore it: TypeScript checks the literal against the fields ApiDescriptor declares and
+ * no others, so this file compiles against a client package released before a block it
+ * carries, and the generator and the package release in either order.
+ */
+function defineApiDescriptor<T extends ApiDescriptor>(descriptor: T): T {
+  return descriptor;
+}
+
 /** The generated API as the @cccteam/resource runtime addresses it. Routes carry no API prefix. */
-export const apiDescriptor: ApiDescriptor = {
+export const apiDescriptor = defineApiDescriptor({
 {{- if .HasDomainScoped }}
   domainRoute: { segment: '{{ .DomainRouteSegment }}', param: '{{ .DomainRouteParam }}' },
 {{- end }}
@@ -2564,7 +2585,7 @@ export const apiDescriptor: ApiDescriptor = {
     [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}'{{ if $m.Answers }}, answers: true{{ end }}{{ if $m.Statuses }}, statuses: {{ $m.StatusArray }}{{ end }}{{ if $m.UploadMaxBytes }}, upload: { maxBytes: {{ $m.UploadMaxBytes }} }{{ end }}{{ if $m.Feature }}, feature: '{{ $m.Feature }}'{{ end }} },
 {{- end }}
   },
-};
+});
 
 /** Handles for the global scope, available on the client root. */
 export interface GlobalApi {

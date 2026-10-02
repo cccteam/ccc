@@ -105,8 +105,18 @@ export type BriefingTemplatesKey = [id: string];
 /** The primary key of FeatureFlags, in route order. */
 export type FeatureFlagsKey = [name: string];
 
+/**
+ * Keeps the literal types of the descriptor while letting a client that predates a field
+ * ignore it: TypeScript checks the literal against the fields ApiDescriptor declares and
+ * no others, so this file compiles against a client package released before a block it
+ * carries, and the generator and the package release in either order.
+ */
+function defineApiDescriptor<T extends ApiDescriptor>(descriptor: T): T {
+  return descriptor;
+}
+
 /** The generated API as the @cccteam/resource runtime addresses it. Routes carry no API prefix. */
-export const apiDescriptor: ApiDescriptor = {
+export const apiDescriptor = defineApiDescriptor({
   domainRoute: { segment: 'sectors', param: 'sectorID' },
   consolidatedRoute: 'resources',
   permissionDigestRoute: 'permission-digest',
@@ -200,7 +210,7 @@ export const apiDescriptor: ApiDescriptor = {
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
   },
-};
+});
 
 /** Handles for the global scope, available on the client root. */
 export interface GlobalApi {

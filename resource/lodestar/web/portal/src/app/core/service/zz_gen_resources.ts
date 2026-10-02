@@ -86,7 +86,18 @@ export interface FeatureFlags {
   updatedBy?: string;
 }
 
-const resourceMap: ResourceMap = {
+/**
+ * Keeps the literal types of the metadata while letting a client that predates a field
+ * ignore it: TypeScript checks the literal against the fields ResourceMap declares and no
+ * others, so this file compiles against a client package released before a field it
+ * carries, and the generator and the package release in either order. The intersection
+ * keeps the map indexable by a resource name when no resource is on the outlet.
+ */
+function defineResourceMap<T extends ResourceMap>(map: T): T & ResourceMap {
+  return map;
+}
+
+const resourceMap = defineResourceMap({
   [Resources.ClientContacts]: {
     route: 'client-contacts',
     consolidatedRoute: 'resources',
@@ -189,7 +200,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'updatedBy', displayType: 'string', required: true, isIndex: false },
     ],
   },
-};
+});
 
 export function resourceMeta(resource: Resource): ResourceMeta {
   if (resourceMap[resource] !== undefined) {

@@ -964,6 +964,28 @@ display type `bytes`; and [Ship.CargoBays](lodestar/pkg/resources/ships.go), an
 `ARRAY<INT64>` column typed `[]int64`, `number[]` in the console's interface and its
 metadata.
 
+**The generated client files compile against an older client.** A regenerated
+`zz_gen_api.ts` and `zz_gen_resources.ts` compile against a `@cccteam/resource` release
+that predates a field they carry, so the generator and the client package release in
+either order. Each file hands the one literal the client types through a local generic
+identity function, `defineApiDescriptor<T extends ApiDescriptor>(descriptor: T): T` for
+the descriptor and `defineResourceMap<T extends ResourceMap>(map: T): T & ResourceMap`
+for the resource metadata (the intersection keeps an empty map indexable by a resource
+name): TypeScript checks a literal passed through a generic constraint against the fields
+the declaration knows and no others, the literal keeps its narrow types (`scope:
+'global'`, the display types), and the client reads an absent field as not served, since
+every field added to the client's types after the package's first release is optional.
+`zz_gen_methods.ts` types its map by the file's own `MethodMeta` and `zz_gen_constants.ts`
+casts each value on its own, so neither carries a literal the client types. The wrappers
+give up the excess-property check a typed literal had, so the generator's tests carry it
+instead: `Test_typescriptClientFiles_compile` type-checks the four emitted files against
+two declarations in [generation/testdata/clientdecl](generation/testdata/clientdecl), one
+standing for a client released before `live`, `features` and the feature gate and the one
+the next release publishes with every field today's generator emits, and the descriptor
+and the map taken out of their wrappers and typed directly must compile against the
+current one, so a field the generator learns is a field that declaration learns in the
+same change.
+
 ## 13. Files
 
 A row says which stored object is its file, and the generator serves that file under
