@@ -495,6 +495,10 @@ func TestViewPhrases(t *testing.T) {
 		{name: "no contact domains", placement: Placement{OrganizationDomain: "acme.com"}, check: func(v *view) string { return v.ContactDomainsList() }, want: `["@acme.com"]`},
 		{name: "seed labels", placement: Placement{SourceRepo: "acme-infrastructure", Labels: map[string]string{"team": "core"}}, check: func(v *view) string { return v.SeedLabels() }, want: "terraform=true,terraform_source_path=0-bootstrap,source_repo=acme-infrastructure,environment=boot,team=core"},
 		{name: "label prose", placement: Placement{Labels: map[string]string{"team": "core", "cost": "a"}}, check: func(v *view) string { return v.ExtraLabelsProse() + " / " + v.ExtraLabelKeys() }, want: "`cost = \"a\"`, `team = \"core\"` / `cost`, `team`"},
+		{name: "restorable environments prose", placement: Placement{}, check: func(v *view) string { return v.RestorableEnvironmentsProse() }, want: "`tst` and `stg`"},
+		{name: "impulse's checks: the list, as prose and backticked", placement: Placement{}, check: func(v *view) string {
+			return strings.Join(v.ImpulseChecks(), ",") + " / " + v.ImpulseChecksProse() + " / " + v.ImpulseChecksProseQuoted()
+		}, want: "title,go,image,secrets,migrations / title, go, image, secrets and migrations / `title`, `go`, `image`, `secrets` and `migrations`"},
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{
@@ -513,6 +517,30 @@ func TestViewPhrases(t *testing.T) {
 			p := tt.placement
 			if got := tt.check(&view{Placement: &p}); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProse(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		items []string
+		want  string
+	}{
+		{name: "none", want: ""},
+		{name: "one", items: []string{"a"}, want: "a"},
+		{name: "two", items: []string{"a", "b"}, want: "a and b"},
+		{name: "three", items: []string{"a", "b", "c"}, want: "a, b and c"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := prose(tt.items); got != tt.want {
+				t.Errorf("prose(%q) = %q, want %q", tt.items, got, tt.want)
 			}
 		})
 	}
@@ -745,10 +773,11 @@ func TestApplicationProjects(t *testing.T) {
 }
 
 // TestRepositoryRules reads the repository module 1-org renders: the applications it
-// configures, the checks a pull request must pass (the infrastructure workflow's job and
-// the pull-request build under its trigger's name and project), squash as the only merge, the branch
-// up to date before it merges, the restorable environments, and the placement's values
-// as the variables' defaults.
+// configures, the checks a pull request must pass (the infrastructure workflow's job, the
+// pull-request build under its trigger's name and project, and the five jobs of impulse's
+// CI workflow in the workflow's order), squash as the only merge, the branch up to date
+// before it merges, the restorable environments, and the placement's values as the
+// variables' defaults.
 func TestRepositoryRules(t *testing.T) {
 	t.Parallel()
 
@@ -771,11 +800,38 @@ func TestRepositoryRules(t *testing.T) {
 			want: []string{`applications = ["harbor", "beacon"]`},
 		},
 		{
-			name: "the rules name the two checks, squash alone and the branch up to date",
+			name: "the rules name the checks in order (bedrock check, the pull-request build, impulse's five jobs), squash alone and the branch up to date",
 			path: "1-org/github.tf",
 			want: []string{
-				`context        = "bedrock check"`,
-				`context        = "${var.prefix}-tst-${local.region_code}-${app}-pr (${module.project["tst"].project_id})"`,
+				`      {
+        context        = "bedrock check"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "${var.prefix}-tst-${local.region_code}-${app}-pr (${module.project["tst"].project_id})"
+        integration_id = tonumber(data.github_app.cloud_build.id)
+      },
+      {
+        context        = "title"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "go"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "image"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "secrets"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "migrations"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+    ]`,
 				`strict_required_status_checks_policy = true`,
 				`allowed_merge_methods           = ["squash"]`,
 				`require_last_push_approval      = var.github_infrastructure_team != ""`,

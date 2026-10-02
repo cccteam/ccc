@@ -26,11 +26,21 @@
 # The required checks are the pull-request build, which Cloud Build reports
 # under the trigger's name followed by the project in parentheses (the trigger
 # is set by the application's stack in the first environment, whose project
-# this layer makes), and the infrastructure workflow's job, bedrock check,
-# which GitHub Actions reports. The pull-request build runs on /gcbrun, so a pull
-# request nobody built never merges. A renamed check is one change here,
-# timed with the release that renames the trigger: requiring both names would
-# block every pull request, since each reports one.
+# this layer makes), the infrastructure workflow's job, bedrock check, which
+# GitHub Actions reports, and the jobs of the application's own CI workflow,
+# which impulse renders and GitHub Actions reports by their ids:
+# title, go, image, secrets and migrations. Every application's workflow
+# carries those; the list is read from impulse, so the names have one source.
+# The workflow's browser jobs (angular-<workspace>, one per browser
+# workspace) are not required by the rule, since the placement does not carry
+# each application's workspaces. A pull request merges once every required
+# check passes on its latest commit. The pull-request build runs on /gcbrun,
+# so a pull request nobody built never merges. A renamed check is one change
+# here, timed with the release that renames the trigger: requiring both names
+# would block every pull request, since each reports one. The rule requires
+# impulse's names once every application's workflow reports them: an
+# application takes the workflow (impulse render) before this layer is
+# applied, or its pull requests block.
 #
 # GitHub features this uses on a private repository: rulesets with required
 # status checks and required reviewers, and deployment branch policies on
@@ -40,9 +50,10 @@
 # ---------------------------------------------------------------------------
 
 # The apps that report the required checks: GitHub Actions the infrastructure
-# workflow's job, Google Cloud Build the pull-request build. Both are public, so
-# their ids are read by slug; the release app, the organization's own, is named
-# by its App ID (var.github_release_app_id).
+# workflow's job and the application's CI jobs, Google Cloud Build the
+# pull-request build. Both are public, so their ids are read by slug; the
+# release app, the organization's own, is named by its App ID
+# (var.github_release_app_id).
 data "github_app" "actions" {
   slug = "github-actions"
 }
@@ -62,7 +73,9 @@ locals {
   restorable_environments = ["tst", "stg"]
 
   # The checks a pull request into the default branch or a hotfix line must
-  # pass, each by the name it is reported under and the app that reports it.
+  # pass, each by the name it is reported under and the app that reports it:
+  # bedrock check, the pull-request build, then the application's CI jobs in
+  # the workflow's order.
   required_checks = {
     for app in var.applications : app => [
       {
@@ -72,6 +85,26 @@ locals {
       {
         context        = "${var.prefix}-tst-${local.region_code}-${app}-pr (${module.project["tst"].project_id})"
         integration_id = tonumber(data.github_app.cloud_build.id)
+      },
+      {
+        context        = "title"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "go"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "image"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "secrets"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "migrations"
+        integration_id = tonumber(data.github_app.actions.id)
       },
     ]
   }

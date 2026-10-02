@@ -16,6 +16,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/render"
+	"github.com/cccteam/ccc/impulse/ci"
 )
 
 //go:embed all:templates
@@ -158,6 +159,28 @@ func (*view) FirstEnvironment() string {
 	return Environments[0]
 }
 
+// ImpulseChecks is the job ids every application's CI workflow carries, as impulse
+// renders the workflow and GitHub Actions reports its jobs (title, go, image, secrets,
+// migrations), in the workflow's order: the check names the branch rulesets require
+// beside bedrock check and the pull-request build, read from impulse so the names have
+// one source. The browser jobs (angular-<workspace>, one per browser workspace) are not
+// among them, since the placement does not carry each application's workspaces.
+func (*view) ImpulseChecks() []string {
+	return ci.FixedChecks
+}
+
+// ImpulseChecksProse is the same job ids as prose, for a .tf comment: title, go, image,
+// secrets and migrations.
+func (*view) ImpulseChecksProse() string {
+	return prose(ci.FixedChecks)
+}
+
+// ImpulseChecksProseQuoted is the job ids as prose, backticked for a README: `title`,
+// `go`, `image`, `secrets` and `migrations`.
+func (*view) ImpulseChecksProseQuoted() string {
+	return prose(backticked(ci.FixedChecks))
+}
+
 // Restorable is the environments a restore may be started for: every one but
 // production, in promotion order.
 func (*view) Restorable() []string {
@@ -172,16 +195,7 @@ func (v *view) RestorableEnvironmentsList() string {
 // RestorableEnvironmentsProse is the restorable environments as prose, backticked:
 // `tst` and `stg`.
 func (v *view) RestorableEnvironmentsProse() string {
-	envs := v.Restorable()
-	quoted := make([]string, 0, len(envs))
-	for _, e := range envs {
-		quoted = append(quoted, "`"+e+"`")
-	}
-	if len(quoted) <= 1 {
-		return strings.Join(quoted, "")
-	}
-
-	return strings.Join(quoted[:len(quoted)-1], ", ") + " and " + quoted[len(quoted)-1]
+	return prose(backticked(v.Restorable()))
 }
 
 // ApplicationsList is the applications as an HCL list.
@@ -274,6 +288,26 @@ func (v *view) LabelsBlock(layer, environment string) string {
 // LabelsBlockQuoted is a layer's labels block, the environment given as a value.
 func (v *view) LabelsBlockQuoted(layer, environment string) string {
 	return v.LabelsBlock(layer, fmt.Sprintf("%q", environment))
+}
+
+// prose lists the items the way a sentence does: a, b and c. One item is itself; none
+// is empty.
+func prose(items []string) string {
+	if len(items) <= 1 {
+		return strings.Join(items, "")
+	}
+
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+}
+
+// backticked wraps each item in backticks, for Markdown.
+func backticked(items []string) []string {
+	quoted := make([]string, 0, len(items))
+	for _, item := range items {
+		quoted = append(quoted, "`"+item+"`")
+	}
+
+	return quoted
 }
 
 // Render renders every file of the organization's repository: the layers' owned files,

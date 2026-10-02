@@ -158,13 +158,23 @@ The required checks on the default branch and the hotfix lines are the
 pull-request build, which Cloud Build reports under the trigger's name,
 `{{.Prefix}}-{{.FirstEnvironment}}-<region>-<app>-pr`, followed by {{.FirstEnvironment}}'s project
 id in parentheses (the trigger is set by the application's stack in
-{{.FirstEnvironment}}, and the project is this layer's), and the infrastructure
-workflow's job, `bedrock check`, which GitHub Actions reports. A pull request merges once both pass on
-its latest commit and its branch holds every commit of its base; the
-pull-request build runs on `/gcbrun`, so a pull request nobody built never
-merges, release-please's release pull requests included. A renamed check is
-one change to `github.tf`, timed with the release that renames the trigger;
-requiring both names would block every pull request.
+{{.FirstEnvironment}}, and the project is this layer's), the infrastructure
+workflow's job, `bedrock check`, which GitHub Actions reports, and the jobs of
+the application's own CI workflow, `.github/workflows/ci.yml`, which `impulse
+render` writes and GitHub Actions reports by their ids:
+{{.ImpulseChecksProseQuoted}}. Every application's workflow
+carries those; bedrock reads the list from impulse when it renders
+`github.tf`, so the names have one source. The workflow's browser jobs
+(`angular-<workspace>`, one per browser workspace) are not required by the
+rule, since the placement does not carry each application's workspaces. A
+pull request merges once every required check passes on its latest commit and
+its branch holds every commit of its base; the pull-request build runs on
+`/gcbrun`, so a pull request nobody built never merges, release-please's
+release pull requests included. A renamed check is one change to `github.tf`,
+timed with the release that renames the trigger; requiring both names would
+block every pull request. The rule requires impulse's names once every
+application's workflow reports them: an application takes the workflow
+(`impulse render`) before this layer is applied, or its pull requests block.
 
 When `github_infrastructure_team` names a team of the organization (its slug;
 empty by default), a change to the files that define what the checks run

@@ -317,7 +317,7 @@ thing one step hands the next. In order:
   its plan identity (a reader, without the state lock, so a pull-request build in tst
   can change no environment), and runs the tests a tag build runs before its apply. One
   comment on the pull request carries every summary; a failing plan or test stops the
-  build, which is the required check. The plan the reviewer approves is each
+  build, which is a required check. The plan the reviewer approves is each
   environment's.
 - `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
   applied into its own state prefix as the apply identity. The plan is saved, the guard
