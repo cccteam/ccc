@@ -7,3 +7,6 @@
 # inline. Everything else in the module stays scanned.
 internal/check/check.go
 internal/handoff/agent.go
+# ci renders the CI workflow (YAML) from an embedded text template: the text/template XSS audit
+# is about HTML output and does not apply, as for bedrock's renderers.
+ci/ci.go

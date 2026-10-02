@@ -52,3 +52,6 @@ bedrock/internal/cli/upgrade_test.go
 # committed one: naming, not cryptography, so the weak-hash audit does not apply.
 bedrock/internal/deploy/exec.go
 bedrock/internal/migration/sequence.go
+# impulse/ci renders an application's CI workflow (YAML) from an embedded text template; the
+# XSS audit on text/template is about HTML output and does not apply, as for bedrock's renderers.
+impulse/ci/ci.go
