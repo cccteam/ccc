@@ -90,7 +90,8 @@ again does not, because its pull request is already labeled as tagged.
 - **Owned file**: a file bedrock writes on every render and compares on every check: the
   stack's `.tf` files and its README, the pipeline files at the application root
   (`cloudbuild.yaml`, `cloudbuild-sweep.yaml`), the generate-time step
-  (`cmd/generate/bedrock.go`) and the GitHub workflows (`.github/workflows/infrastructure.yml`,
+  (`cmd/generate/bedrock.go`, which runs the pinned bedrock through `go run` so `go
+  generate` needs no bedrock installed) and the GitHub workflows (`.github/workflows/infrastructure.yml`,
   `release-please.yml`). A person never edits one; the code or the placement changes and
   the file is rendered again.
 - **Seeded file**: a file bedrock writes once when it is absent and then leaves to a
@@ -512,7 +513,11 @@ environment project (by its labels) and the container (by its labels and the var
 to follow the default branch's highest index with no gap, keeping their order. A schema
 migration the default branch holds is never touched: git says which files are the
 branch's own, and the default branch is read from origin's copy of it when the repository
-has one, else from the local branch, so fetch first. A tracked file moves with `git mv`;
+has one, else from the local branch, so fetch first. `go generate ./...` runs it before the
+application's own generators through the owned `cmd/generate/bedrock.go`, whose directive
+is `go run <module>@<pinned version> migration renumber`: the Go toolchain builds the
+pinned bedrock from the module proxy the first time and caches it, so neither a developer
+nor the CI job installs bedrock for it. A tracked file moves with `git mv`;
 an untracked one is renamed on disk. A branch cut from a hotfix line
 (`hotfix/<major>.<minor>.x`, nearer to the branch in the history than the default branch
 is) follows the line instead, since a line is behind the default branch on purpose; the

@@ -75,7 +75,7 @@ func (c skipAuth) Run(_ context.Context, env *Env) Result {
 		if err != nil {
 			continue
 		}
-		if strings.Contains(string(src), "skipAuth") {
+		if strings.Contains(uncommented(string(src)), "skipAuth") {
 			details = append(details, fmt.Sprintf("%s: a deployable build carries the skipAuth tag, so the built application would accept any name as a directory login; the tag belongs to the Procfile and the test command only", rel))
 		}
 	}
@@ -116,4 +116,34 @@ func (skipAuth) buildFiles(a *app.App) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+// uncommented returns the build file without its comments: a Dockerfile's comment is a
+// line opening with #, and a YAML or Makefile comment runs from a # at the start of a line
+// or after whitespace to the end of the line. A comment that mentions the tag (bedrock's
+// Dockerfile explains where the tag belongs) is not a build that carries it.
+func uncommented(src string) string {
+	lines := strings.Split(src, "\n")
+	for i, line := range lines {
+		if at := commentStart(line); at >= 0 {
+			lines[i] = line[:at]
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// commentStart is the index the line's comment opens at, or -1 for none: a # at the
+// start of the line (after indentation) or after whitespace.
+func commentStart(line string) int {
+	for i, r := range line {
+		if r != '#' {
+			continue
+		}
+		if i == 0 || line[i-1] == ' ' || line[i-1] == '\t' {
+			return i
+		}
+	}
+
+	return -1
 }

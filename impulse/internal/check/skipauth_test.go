@@ -59,6 +59,15 @@ func TestSkipAuth(t *testing.T) {
 			wantDetails: []string{"deploy/Dockerfile: a deployable build carries the skipAuth tag, so the built application would accept any name as a directory login; the tag belongs to the Procfile and the test command only"},
 		},
 		{
+			name: "a comment in the Dockerfile that mentions the tag", files: with("Dockerfile", "FROM golang\n# never build with -tags skipAuth here: the tag belongs to the Procfile\nRUN go build -o app . # not skipAuth\n"),
+			wantStatus: Pass, wantSummary: "1 directory auth(s); the simulated directory is confined to development and tests",
+		},
+		{
+			name: "a comment beside a build that carries the tag does not hide it", files: with("cloudbuild.yaml", "steps:\n  - args: [go, build, -tags, skipAuth] # the comment\n"),
+			wantStatus: Fail, wantSummary: "1 simulated-directory problem(s)",
+			wantDetails: []string{"cloudbuild.yaml: a deployable build carries the skipAuth tag, so the built application would accept any name as a directory login; the tag belongs to the Procfile and the test command only"},
+		},
+		{
 			name: "build files under node_modules are not read", files: with("web/node_modules/left/Dockerfile", "RUN go build -tags skipAuth\n"),
 			wantStatus: Pass, wantSummary: "1 directory auth(s); the simulated directory is confined to development and tests",
 		},
