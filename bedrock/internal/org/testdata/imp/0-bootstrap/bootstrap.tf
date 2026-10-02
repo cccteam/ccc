@@ -95,7 +95,8 @@ module "boot_project" {
     "cloudtasks.googleapis.com",
     "compute.googleapis.com",
     "dns.googleapis.com",
-    "domains.googleapis.com", # Cloud Domains: registrations live in the net project (2-net), queried through this quota project
+    "domains.googleapis.com",         # Cloud Domains: registrations live in the net project (2-net), queried through this quota project
+    "identitytoolkit.googleapis.com", # Identity Platform: 2-env initializes Firebase Authentication on each environment project through this quota project
     "monitoring.googleapis.com",
     "run.googleapis.com",
     "secretmanager.googleapis.com",
