@@ -12,33 +12,53 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func createSpannerDB(ctx context.Context, emulatorVersion string, migrationSourceURLs []string) (*initiator.SpannerDB, error) {
+// createSpannerDB starts the emulator container and migrates the generator's database
+// in it. The container is the caller's to release through releaseSpannerContainer once
+// the database is read: the generator runs in a process that may have the testcontainers
+// reaper disabled (the owned CI workflow does), so nothing else stops the container.
+func createSpannerDB(ctx context.Context, emulatorVersion string, migrationSourceURLs []string) (*initiator.SpannerDB, *initiator.SpannerContainer, error) {
 	log.Println("Starting Spanner Container...")
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, emulatorVersion)
 	if err != nil {
-		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
+		return nil, nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
 	}
 
 	db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
 	if err != nil {
-		return nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
+		releaseSpannerContainer(ctx, spannerContainer)
+
+		return nil, nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
 	}
 
 	log.Println("Starting Spanner Migration...")
 	for _, migrationSource := range migrationSourceURLs {
 		if err := db.MigrateUp(migrationSource); err != nil {
-			return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
+			releaseSpannerContainer(ctx, spannerContainer)
+
+			return nil, nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
 		}
 	}
 
-	return db, nil
+	return db, spannerContainer, nil
+}
+
+// releaseSpannerContainer closes the container's clients and terminates the container
+// itself; a failure is logged, since the generator's output does not depend on it.
+func releaseSpannerContainer(ctx context.Context, spannerContainer *initiator.SpannerContainer) {
+	if err := spannerContainer.Close(); err != nil {
+		log.Print(errors.Wrap(err, "initiator.SpannerContainer.Close()"))
+	}
+	if err := spannerContainer.Terminate(ctx); err != nil {
+		log.Print(errors.Wrap(err, "testcontainers.Container.Terminate()"))
+	}
 }
 
 func (c *client) runSpanner(ctx context.Context, emulatorVersion string, migrationSourceURL []string) error {
-	db, err := createSpannerDB(ctx, emulatorVersion, migrationSourceURL)
+	db, spannerContainer, err := createSpannerDB(ctx, emulatorVersion, migrationSourceURL)
 	if err != nil {
 		return err
 	}
+	defer releaseSpannerContainer(ctx, spannerContainer)
 
 	tableMap, err := createTableMapUsingQuery(ctx, db.Client)
 	if err != nil {

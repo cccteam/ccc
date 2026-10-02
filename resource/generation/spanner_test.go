@@ -31,7 +31,7 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 	migrations := "file://" + filepath.Join(filepath.Dir(thisFile), "testdata", "migrations")
 
 	ctx := context.Background()
-	db, err := createSpannerDB(ctx, "1.5.56", []string{migrations})
+	db, spannerContainer, err := createSpannerDB(ctx, "1.5.56", []string{migrations})
 	if err != nil {
 		t.Fatalf("createSpannerDB() error = %v", err)
 	}
@@ -42,6 +42,7 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 		if err := db.Close(); err != nil {
 			t.Errorf("Close() error = %v", err)
 		}
+		releaseSpannerContainer(context.Background(), spannerContainer)
 	})
 
 	tableMap, err := createTableMapUsingQuery(ctx, db.Client)
