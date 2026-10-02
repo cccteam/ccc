@@ -69,6 +69,14 @@ and a `shared_vpc_id` that is null.
 - The deployment-record bucket `imp-<env>-gbl-records-<hex4>`, US
   multi-region, versioned, uniform access, public access prevented. Deploy
   identities may only create objects in it.
+- Firebase Authentication on the environment project (`identity-platform.tf`):
+  Identity Platform initialized once, with no sign-in provider and no sign-up
+  a browser could make on its own. An application that serves live pages
+  signs its browsers in with a custom token its server mints, and the
+  browser presents the application's web API key (its stack's) to exchange
+  it; the configuration is the project's, which is why it is here and not in
+  a stack (two applications in one project, or a pull-request stack beside
+  the environment's, cannot each own it).
 - The cross-project load balancer grants: `roles/compute.loadBalancerServiceUser`
   on the environment project for the net layer identity and the net
   project's Compute Engine service agent, so `2-net`'s URL map can reference
@@ -86,7 +94,11 @@ as its quota project), `roles/run.admin`, `roles/compute.loadBalancerAdmin`
 which the stack makes in this project and a tag build's plan reads),
 `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`,
 `roles/storage.admin`, `roles/cloudscheduler.admin`,
-`roles/cloudtasks.queueAdmin`, `roles/cloudbuild.builds.editor`,
+`roles/cloudtasks.queueAdmin`, `roles/datastore.owner` (its Firestore
+database, with the indexes and time-to-live policies on it),
+`roles/firebaserules.admin` (the database's security rules),
+`roles/serviceusage.apiKeysAdmin` (the web API key its browsers present),
+`roles/cloudbuild.builds.editor`,
 `roles/logging.admin`, `roles/monitoring.admin`,
 `roles/resourcemanager.projectIamAdmin`, and the custom organization role
 `secretContainerAdmin` from `1-org` (secrets as containers, never payloads). `roles/compute.networkUser` on the environment

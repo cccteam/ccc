@@ -221,8 +221,13 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     # The load balancer's backend services and serverless network endpoint groups.
     "compute.backendServices.get",
     "compute.regionNetworkEndpointGroups.get",
-    # Firestore: the database's metadata (what its read checks; databases.get is not).
+    # Firestore: the database's metadata (what its read checks; databases.get is not),
+    # and its composite indexes and field settings (the time-to-live policies).
     "datastore.databases.getMetadata",
+    "datastore.indexes.get",
+    # Firebase Rules: the database's security rules, the ruleset and its release.
+    "firebaserules.releases.get",
+    "firebaserules.rulesets.get",
     # Cloud Logging: the migrate job's log bucket and the sink that fills it (the stack's
     # logging.tf); never an entry.
     "logging.buckets.get",
@@ -236,6 +241,9 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     # pipeline checks after the plan that each exists and is enabled); never a payload.
     "secretmanager.secrets.get",
     "secretmanager.versions.get",
+    # API keys: the web API key the application's browsers present, by name and string
+    # (a public value by design).
+    "serviceusage.apiKeys.get",
     # Cloud Storage: the assets bucket, and not its objects.
     "storage.buckets.get",
   ]

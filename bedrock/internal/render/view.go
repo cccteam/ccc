@@ -175,6 +175,12 @@ type view struct {
 	// its level.
 	FirestoreDatabase  *derive.Variable
 	JobsReadsFirestore bool
+	// FirebaseAPIKey is the variable the Firebase web API key of the Firestore database
+	// is handed through, or nil when the code declares none.
+	FirebaseAPIKey *derive.Variable
+	// FirestoreFieldsProse names the fields the indexes file settles, with their policy:
+	// "subscriptions.expiry and changes.expires, each with a time-to-live policy".
+	FirestoreFieldsProse string
 	// IdentityLines are the aligned identity lines of the service-accounts header.
 	IdentityLines string
 	// LabelLines are the extra labels, aligned to the derived ones.
@@ -829,6 +835,38 @@ func (v *view) declarations() {
 	v.FirestoreDatabase = v.byRole(derive.RoleFirestoreDatabase)
 	if v.FirestoreDatabase != nil && v.Jobs != nil {
 		v.JobsReadsFirestore = v.Jobs.Reads(v.FirestoreDatabase.Level)
+	}
+	v.FirebaseAPIKey = v.byRole(derive.RoleFirebaseAPIKey)
+	if v.Firestore != nil {
+		v.FirestoreFieldsProse = firestoreFieldsProse(v.Firestore.Fields)
+	}
+}
+
+// firestoreFieldsProse names the fields the indexes file settles as a sentence
+// fragment: each as collection.field, and whether a time-to-live policy is on every one,
+// on some (named), or on none.
+func firestoreFieldsProse(fields []derive.FirestoreField) string {
+	if len(fields) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(fields))
+	var ttl []string
+	for i := range fields {
+		name := "`" + fields[i].Collection + "." + fields[i].Field + "`"
+		names = append(names, name)
+		if fields[i].TTL {
+			ttl = append(ttl, name)
+		}
+	}
+	switch {
+	case len(ttl) == len(fields) && len(fields) == 1:
+		return names[0] + ", with a time-to-live policy"
+	case len(ttl) == len(fields):
+		return joinAnd(names) + ", each with a time-to-live policy"
+	case len(ttl) == 0:
+		return joinAnd(names) + ", with no time-to-live policy"
+	default:
+		return joinAnd(names) + ", a time-to-live policy on " + joinAnd(ttl)
 	}
 }
 

@@ -83,9 +83,11 @@ the boot project as `imp-org-gbl-tofu`.
   application stack needs, found in the lab from the plans' refusals: Cloud
   Build builds (`cloudbuild.builds.get`, which answers a regional trigger's
   read), Cloud Scheduler jobs, Cloud Tasks queues, backend services and
-  serverless network endpoint groups, a Firestore database's metadata, Cloud
-  Run services and jobs and a service's tag bindings, secrets and the metadata
-  of their versions, and buckets; nothing of what those resources hold. `2-env`
+  serverless network endpoint groups, a Firestore database's metadata with its
+  indexes and field settings, a database's security rules (the ruleset and its
+  release), API keys, Cloud Run services and jobs and a service's tag bindings,
+  secrets and the metadata of their versions, and buckets; nothing of what those
+  resources hold. `2-env`
   grants it on each environment project to each application's plan identity
   in place of `roles/viewer`, which reads data as well: the rows of a Spanner
   database in the project, and the application's uploaded files through the
@@ -233,7 +235,7 @@ required checks, the rulesets' names.
 
 | Set | Roles |
 |---|---|
-| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, run.admin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin, `secretContainerAdmin` |
+| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, run.admin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin, `secretContainerAdmin` |
 | `shr` | artifactregistry.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin, `secretContainerAdmin` |
 | `net` | certificatemanager.editor, compute.loadBalancerAdmin, compute.networkAdmin, compute.securityAdmin, dns.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin |
 | `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |
@@ -242,7 +244,7 @@ required checks, the rulesets' names.
 
 | Set | APIs |
 |---|---|
-| `app` | artifactregistry, cloudbuild, cloudidentity, cloudscheduler, cloudtasks, cloudtrace, compute, iam, iamcredentials, logging, monitoring, run, secretmanager, spanner, sts |
+| `app` | apikeys, artifactregistry, cloudbuild, cloudidentity, cloudresourcemanager, cloudscheduler, cloudtasks, cloudtrace, compute, firebaserules, firestore, iam, iamcredentials, identitytoolkit, logging, monitoring, run, secretmanager, securetoken, serviceusage, spanner, storage, sts |
 | `shr` | artifactregistry, iam, iamcredentials, logging, monitoring, secretmanager, sts |
 | `net` | certificatemanager, compute, dns, iam, logging, monitoring |
 | `spn` | iam, logging, monitoring, spanner |

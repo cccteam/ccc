@@ -198,4 +198,6 @@ type dataConfig struct {
 
 	// FirestoreDatabase is the Firestore database the application keeps documents in, by id.
 	FirestoreDatabase string `env:"APP_FIRESTORE_DATABASE"`
+	// FirebaseAPIKey is the Firebase web API key the browser initializes the SDK with.
+	FirebaseAPIKey string `env:"APP_FIREBASE_API_KEY"`
 }

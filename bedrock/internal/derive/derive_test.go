@@ -1,6 +1,8 @@
 package derive
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -52,6 +54,9 @@ func TestDerive(t *testing.T) {
 		// wantHooks are the stages with a script, wantProgram the hooks program's.
 		wantHooks   []hook.Stage
 		wantProgram []hook.Stage
+		// wantFirestore is what the Firestore files say (firestoreLine), empty for no
+		// database.
+		wantFirestore string
 	}{
 		{
 			name:    "harbor",
@@ -67,7 +72,7 @@ func TestDerive(t *testing.T) {
 				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
 				"APP_STAFF_OIDC_CLIENT_ID", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_REDIRECT_URL", "APP_STAFF_OIDC_HOSTED_DOMAIN",
 				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_GROUP_LOOKUP",
-				varAssetsBucket, varTasksQueue, varFirestoreDatabase,
+				varAssetsBucket, varTasksQueue, varFirestoreDatabase, varFirebaseAPIKey,
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", varJobsJob},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
@@ -98,9 +103,11 @@ func TestDerive(t *testing.T) {
 				varAssetsBucket:                SupplyDerived,
 				varTasksQueue:                  SupplyDerived,
 				varFirestoreDatabase:           SupplyDerived,
+				varFirebaseAPIKey:              SupplyDerived,
 			},
-			wantGroupPfx: "staff-",
-			wantHooks:    []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
+			wantGroupPfx:  "staff-",
+			wantHooks:     []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
+			wantFirestore: "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
 		},
 		{
 			name:    "beacon, a password auth: no registration, no callback",
@@ -209,6 +216,9 @@ func TestDerive(t *testing.T) {
 			if (m.HookProgram == nil) != (tt.wantProgram == nil) || (m.HookProgram != nil && !slices.Equal(m.HookProgram.Stages, tt.wantProgram)) {
 				t.Errorf("HookProgram = %+v, want stages %v", m.HookProgram, tt.wantProgram)
 			}
+			if got := firestoreLine(m.Firestore); got != tt.wantFirestore {
+				t.Errorf("Firestore = %q, want %q", got, tt.wantFirestore)
+			}
 			for _, e := range m.Environments {
 				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
 					t.Errorf("Environment %s hostnames = %v, want %s", e.Name, e.Hostnames, want)
@@ -227,6 +237,30 @@ func TestDerive(t *testing.T) {
 			}
 		})
 	}
+}
+
+// firestoreLine is what the Firestore files say, on one line: the directory, the
+// indexes by resource name, the fields by resource name with their policy, and the
+// rules' first line; empty for no database.
+func firestoreLine(fs *Firestore) string {
+	if fs == nil {
+		return ""
+	}
+	indexes := make([]string, 0, len(fs.Indexes))
+	for i := range fs.Indexes {
+		indexes = append(indexes, fs.Indexes[i].Name())
+	}
+	fields := make([]string, 0, len(fs.Fields))
+	for i := range fs.Fields {
+		name := fs.Fields[i].Name()
+		if fs.Fields[i].TTL {
+			name += " (ttl)"
+		}
+		fields = append(fields, name)
+	}
+	rules, _, _ := strings.Cut(fs.Rules, "\n")
+
+	return fmt.Sprintf("%s: %d index(es) %s; %d field(s) %s; %s", fs.Dir, len(indexes), strings.Join(indexes, ", "), len(fields), strings.Join(fields, ", "), rules)
 }
 
 // variableNamed returns the variable by environment name, or nil.
@@ -402,6 +436,13 @@ func TestSecretFor(t *testing.T) {
 		{name: "tagged true with a plain name", v: Variable{Name: "APP_SMTP_PASS", SecretTag: "true"}, want: true},
 		{name: "tagged false with a credential-sounding name", v: Variable{Name: "APP_LICENSE_KEY", SecretTag: "false"}, want: false},
 		{name: "untagged plain name", v: Variable{Name: "APP_STAFF_OIDC_CLIENT_ID"}, want: false},
+		{name: "an untagged credential-sounding name in a role the stack derives is the stack's", v: Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey}, want: false},
+		{name: "a derived role tagged false is fine", v: Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, SecretTag: "false"}, want: false},
+		{
+			name:    "a derived role tagged true is refused",
+			v:       Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, SecretTag: "true", File: "pkg/config/data.go", Line: 20, Struct: "dataConfig", Field: "FirebaseAPIKey"},
+			wantErr: "pkg/config/data.go:20: APP_FIREBASE_API_KEY (dataConfig.FirebaseAPIKey) is a value the stack derives and sets on the process, not a secret: drop the secret tag",
+		},
 		{
 			name:    "untagged credential-sounding name is refused",
 			v:       Variable{Name: "APP_MAIL_API_KEY", File: "pkg/config/data.go", Line: 12, Struct: "dataConfig", Field: "MailAPIKey"},
@@ -613,6 +654,170 @@ func TestPlacementRestore(t *testing.T) {
 			}
 			if got := strings.Join(tt.p.Restorable(), ","); got != "tst,stg" {
 				t.Errorf("Restorable() = %q, want tst,stg", got)
+			}
+		})
+	}
+}
+
+// writeFirestoreFiles writes the application root a Firestore read works on: the
+// schema migrations directory's sibling with the files given (a nil content writes no
+// file), and returns the application.
+func writeFirestoreFiles(t *testing.T, files map[string]string) *app.App {
+	t.Helper()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "schema", FirestoreDir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return &app.App{Root: root}
+}
+
+func TestFirestore(t *testing.T) {
+	t.Parallel()
+
+	const (
+		rules   = "rules_version = '2';\nservice cloud.firestore {}\n"
+		indexes = `{"indexes":[{"collectionGroup":"subscriptions","queryScope":"COLLECTION","fields":[{"fieldPath":"resource","order":"ASCENDING"},{"fieldPath":"tags","arrayConfig":"CONTAINS"}]}],` +
+			`"fieldOverrides":[{"collectionGroup":"subscriptions","fieldPath":"expiry","ttl":true,"indexes":[{"order":"ASCENDING","queryScope":"COLLECTION"},{"arrayConfig":"CONTAINS","queryScope":"COLLECTION_GROUP"}]},` +
+			`{"collectionGroup":"changes","fieldPath":"body","indexes":[]},{"collectionGroup":"changes","fieldPath":"expires","ttl":true}]}`
+	)
+	database := Variable{Name: varFirestoreDatabase, Role: RoleFirestoreDatabase, Level: LevelData, Struct: "dataConfig", Field: "FirestoreDatabase"}
+	key := Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, Level: LevelData, Struct: "dataConfig", Field: "FirebaseAPIKey"}
+	tests := []struct {
+		name      string
+		variables []Variable
+		files     map[string]string
+		wantErr   string
+		// want is firestoreLine's reading; wantFields the fields' shapes, one per
+		// field: ttl, the index count, and whether the file lists indexes.
+		want       string
+		wantFields []string
+	}{
+		{
+			name:      "no database: nothing read",
+			variables: []Variable{{Name: "APP_OTHER", Level: LevelData}},
+		},
+		{
+			name:       "the two files are read",
+			variables:  []Variable{database, key},
+			files:      map[string]string{FirestoreIndexesFile: indexes, FirestoreRulesFile: rules},
+			want:       "schema/firestore: 1 index(es) subscriptions_resource_tags; 3 field(s) subscriptions_expiry (ttl), changes_body, changes_expires (ttl); rules_version = '2';",
+			wantFields: []string{"ttl, 2 index(es), listed", "no ttl, 0 index(es), listed", "ttl, 0 index(es), unlisted"},
+		},
+		{
+			name:      "the indexes file is missing",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreRulesFile: rules},
+			wantErr:   "APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) declares a Firestore database, and schema/firestore/firestore.indexes.json is missing: the stack applies the database's composite indexes, time-to-live policies and security rules from the files beside the schema migrations",
+		},
+		{
+			name:      "the rules file is missing",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: indexes},
+			wantErr:   "APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) declares a Firestore database, and schema/firestore/firestore.rules is missing",
+		},
+		{
+			name:      "the indexes file is not JSON",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: "{", FirestoreRulesFile: rules},
+			wantErr:   "schema/firestore/firestore.indexes.json",
+		},
+		{
+			name:      "an index without a collection",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"fields":[{"fieldPath":"a","order":"ASCENDING"}]}]}`, FirestoreRulesFile: rules},
+			wantErr:   "schema/firestore/firestore.indexes.json: indexes[0] names no collectionGroup",
+		},
+		{
+			name:      "an index without fields",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s"}]}`, FirestoreRulesFile: rules},
+			wantErr:   "indexes[0] on s lists no fields",
+		},
+		{
+			name:      "a field with both shapes",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","fields":[{"fieldPath":"a","order":"ASCENDING","arrayConfig":"CONTAINS"}]}]}`, FirestoreRulesFile: rules},
+			wantErr:   "indexes[0].fields[0] carries both an order and an arrayConfig; a field takes one",
+		},
+		{
+			name:      "a field with neither shape",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","fields":[{"fieldPath":"a"}]}]}`, FirestoreRulesFile: rules},
+			wantErr:   "indexes[0].fields[0] carries neither an order nor an arrayConfig",
+		},
+		{
+			name:      "an unknown order",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","fields":[{"fieldPath":"a","order":"UP"}]}]}`, FirestoreRulesFile: rules},
+			wantErr:   `indexes[0].fields[0]: order "UP" is not one of ASCENDING, DESCENDING`,
+		},
+		{
+			name:      "an unknown query scope",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","queryScope":"ALL","fields":[{"fieldPath":"a","order":"ASCENDING"}]}]}`, FirestoreRulesFile: rules},
+			wantErr:   `indexes[0]: queryScope "ALL" is not one of COLLECTION, COLLECTION_GROUP, COLLECTION_RECURSIVE`,
+		},
+		{
+			name:      "a field override without a path",
+			variables: []Variable{database},
+			files:     map[string]string{FirestoreIndexesFile: `{"fieldOverrides":[{"collectionGroup":"s","ttl":true}]}`, FirestoreRulesFile: rules},
+			wantErr:   "fieldOverrides[0] names no collectionGroup or no fieldPath",
+		},
+		{
+			name:      "the key without the database is refused",
+			variables: []Variable{key},
+			wantErr:   "APP_FIREBASE_API_KEY (dataConfig.FirebaseAPIKey) names the web API key of a Firestore database, and the config package declares no database (APP_FIRESTORE_DATABASE)",
+		},
+		{
+			name:      "the key at another level than the database is refused",
+			variables: []Variable{database, {Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, Level: LevelSite, Struct: "siteConfig", Field: "FirebaseAPIKey"}},
+			files:     map[string]string{FirestoreIndexesFile: indexes, FirestoreRulesFile: rules},
+			wantErr:   "APP_FIREBASE_API_KEY (siteConfig.FirebaseAPIKey) is declared at the site level and APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) at the data level; the stack sets both on the processes that construct the database's level, so they belong together",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := &Model{Variables: tt.variables, Schema: Schema{MigrationsDir: "schema/migrations"}}
+			err := m.firestore(writeFirestoreFiles(t, tt.files))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("firestore() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("firestore() error = %v", err)
+			}
+			if got := firestoreLine(m.Firestore); got != tt.want {
+				t.Errorf("Firestore = %q, want %q", got, tt.want)
+			}
+			if m.Firestore == nil {
+				return
+			}
+			var fields []string
+			for _, f := range m.Firestore.Fields {
+				ttl, listed := "no ttl", "unlisted"
+				if f.TTL {
+					ttl = "ttl"
+				}
+				if f.HasIndexes {
+					listed = "listed"
+				}
+				fields = append(fields, fmt.Sprintf("%s, %d index(es), %s", ttl, len(f.Indexes), listed))
+			}
+			if !slices.Equal(fields, tt.wantFields) {
+				t.Errorf("Fields = %v, want %v", fields, tt.wantFields)
 			}
 		})
 	}

@@ -103,6 +103,9 @@ locals {
   # The Firestore database (dataConfig.FirestoreDatabase), by id; a pull-request
   # stack has its own.
   firestore_database_id = local.is_pr ? "${local.pr_name}-fs" : "${local.name}-gbl-${local.app}-fs"
+  # The browser's web API key (dataConfig.FirebaseAPIKey), by name (firestore.tf); a
+  # pull-request stack has its own.
+  firebase_key_name = local.is_pr ? "${local.pr_name}-firebase" : "${local.name}-gbl-${local.app}-firebase"
 
   # The job process's template job (cmd/jobs), in the primary region, by name
   # and as the Cloud Run API names it; each build's job is named after it with the
@@ -223,8 +226,11 @@ locals {
 
   # dataConfig.FirestoreDatabase: the Firestore database (firestore.tf), for the
   # processes that construct the data level and run the application's own code.
+  # dataConfig.FirebaseAPIKey: the web API key the browser presents to sign in
+  # (firestore.tf), a public value by design, beside it.
   firestore_env = {
     APP_FIRESTORE_DATABASE = google_firestore_database.firestore.name
+    APP_FIREBASE_API_KEY   = google_apikeys_key.firebase.key_string
   }
 
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an

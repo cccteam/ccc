@@ -103,7 +103,20 @@ from `2-env`'s state.
   Spanner database; prd keeps point-in-time recovery on and resists deletion.
   The site and the job process hold `roles/datastore.user` under a
   condition naming this database alone, so nothing else in the shared
-  environment project is reachable.
+  environment project is reachable. With it, what live pages need of the
+  database, from the two files beside the schema migrations (`schema/firestore`):
+  the 3 composite index(es) of `schema/firestore/firestore.indexes.json` and the
+  fields its `fieldOverrides` settle,
+  `subscriptions.expiry` and `changes.expires`, each with a time-to-live policy;
+  the security rules of `schema/firestore/firestore.rules`, released to this database as
+  `cloud.firestore/<database id>` from `firestore.rules`, bedrock's owned copy
+  beside the `.tf` files; `roles/iam.serviceAccountTokenCreator` for the site
+  on its own account, for the custom tokens it mints through the IAM
+  Credentials API; and the web API key `imp-<env>-gbl-harbor-firebase`
+  the browser presents to sign in with one, restricted to the Identity Toolkit
+  and Secure Token APIs, handed to the processes that construct the data
+  level as `APP_FIREBASE_API_KEY` (`dataConfig.FirebaseAPIKey`). Firebase
+  Authentication on the environment project is `2-env`'s.
 - **Secret containers**, no versions, one per secret the code declares in
   `pkg/config/data.go`, named `imp-<env>-gbl-harbor-<name>`:
 
@@ -183,6 +196,7 @@ above them.
 | `APP_ASSETS_BUCKET` | data | the assets bucket | yes | | yes |
 | `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |
 | `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | | yes |
+| `APP_FIREBASE_API_KEY` | data | the Firebase web API key | yes | | yes |
 | `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |
 | `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |

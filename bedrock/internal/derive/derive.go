@@ -61,6 +61,11 @@ type Model struct {
 	Auths []Auth
 	// Schema is what the migration owns.
 	Schema Schema
+	// Firestore is what the application's Firestore database carries beyond the
+	// database itself (the composite indexes, the time-to-live policies and the security
+	// rules the files beside the schema migrations declare), or nil when the code
+	// declares no database.
+	Firestore *Firestore
 	// Environments are the placement's environments, with the hostnames each serves.
 	Environments []Environment
 	// Placement is the placement the model was derived for.
@@ -192,6 +197,10 @@ const (
 	// RoleFirestoreDatabase names the Firestore database to the processes that construct
 	// its level.
 	RoleFirestoreDatabase Role = "firestore-database"
+	// RoleFirebaseAPIKey hands the Firebase web API key of the Firestore database to the
+	// processes that construct its level: the key the browser presents to sign in with
+	// the custom token the site mints.
+	RoleFirebaseAPIKey Role = "firebase-api-key"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID     Role = "client-id"
@@ -209,7 +218,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue, RoleFirestoreDatabase:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue, RoleFirestoreDatabase, RoleFirebaseAPIKey:
 		return true
 	default:
 		return false
@@ -278,6 +287,11 @@ const (
 	// variable to its id and grants the processes that construct the variable's level
 	// on that database alone.
 	varFirestoreDatabase = "APP_FIRESTORE_DATABASE"
+	// varFirebaseAPIKey is the variable an application with a Firestore database declares
+	// to serve live pages to a browser: the stack creates a web API key restricted to the
+	// APIs the browser's sign-in calls and sets the variable to it. The key is a public
+	// value by design (the browser presents it), not a secret.
+	varFirebaseAPIKey = "APP_FIREBASE_API_KEY"
 )
 
 // MaintenanceVariable is the variable the pipeline sets on a maintenance revision, which
@@ -297,6 +311,7 @@ var wellKnown = map[string]Role{
 	varAssetsBucket:      RoleAssetsBucket,
 	varTasksQueue:        RoleTasksQueue,
 	varFirestoreDatabase: RoleFirestoreDatabase,
+	varFirebaseAPIKey:    RoleFirebaseAPIKey,
 }
 
 // directoryRoles maps the fields of an auth's Directory struct to their roles.
@@ -496,6 +511,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.schema(a); err != nil {
 		return nil, err
 	}
+	if err := m.firestore(a); err != nil {
+		return nil, err
+	}
 	if err := m.hooks(a); err != nil {
 		return nil, err
 	}
@@ -610,15 +628,22 @@ func (m *Model) Level(name string) (Level, bool) {
 
 // secretFor reads the variable's secret tag: "true" makes it a secret, "false" a plain
 // value. Any other value is refused, and so is a variable whose name sounds like a
-// credential and carries no tag, since the name alone decides nothing.
+// credential and carries no tag, since the name alone decides nothing. A variable in a
+// role the stack derives is the stack's to set, whatever its name sounds like (the
+// Firebase web API key is one), and tagging it a secret is refused: the stack sets it on
+// the process as a plain value and would never mount it.
 func secretFor(v *Variable) (bool, error) {
 	switch v.SecretTag {
 	case secretTrue:
+		if v.Role.Derived() {
+			return false, errors.Newf("%s:%d: %s (%s) is a value the stack derives and sets on the process, not a secret: drop the secret tag", v.File, v.Line, v.Name, v.Declaration())
+		}
+
 		return true, nil
 	case secretFalse:
 		return false, nil
 	case "":
-		if isSecret(v.Name) {
+		if isSecret(v.Name) && !v.Role.Derived() {
 			return false, errors.Newf("%s:%d: %s sounds like a credential (its name ends in %s) and %s carries no secret tag: add secret:\"true\" to mount it from Secret Manager, or secret:\"false\" if it is a plain value", v.File, v.Line, v.Name, suffixOf(v.Name), v.Declaration())
 		}
 

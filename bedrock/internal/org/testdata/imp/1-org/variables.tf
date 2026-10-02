@@ -95,6 +95,10 @@ variable "layer_roles" {
       "roles/iam.serviceAccountAdmin",
       "roles/iam.serviceAccountUser",
       "roles/iam.workloadIdentityPoolAdmin",
+      # 2-env initializes Identity Platform on the environment project, the
+      # Firebase Authentication the applications' live pages sign browsers in
+      # through.
+      "roles/identityplatform.admin",
       "roles/logging.admin",
       "roles/monitoring.admin",
       "roles/resourcemanager.projectIamAdmin",
@@ -308,6 +312,12 @@ variable "required_apis" {
     # storage ones included (the first 3-app apply, 2026-09-25, was refused:
     # "Cloud Resource Manager API has not been used in project ...").
     app = [
+      # An application's stack makes the web API key its browsers present to
+      # Firebase Authentication (apikeys), releases the security rules of its
+      # Firestore database (firebaserules), and signs its browsers in with
+      # custom tokens the Identity Toolkit API exchanges and the Secure Token
+      # API refreshes; 2-env initializes Identity Platform on the project.
+      "apikeys.googleapis.com",
       "artifactregistry.googleapis.com",
       "cloudbuild.googleapis.com",
       # The sign-in reads a login's role groups through the Cloud Identity
@@ -321,13 +331,16 @@ variable "required_apis" {
       "compute.googleapis.com",
       # An application that declares a Firestore database (APP_FIRESTORE_DATABASE)
       # gets one beside its Spanner database, in the environment project.
+      "firebaserules.googleapis.com",
       "firestore.googleapis.com",
       "iam.googleapis.com",
       "iamcredentials.googleapis.com",
+      "identitytoolkit.googleapis.com",
       "logging.googleapis.com",
       "monitoring.googleapis.com",
       "run.googleapis.com",
       "secretmanager.googleapis.com",
+      "securetoken.googleapis.com",
       "serviceusage.googleapis.com",
       "spanner.googleapis.com",
       "storage.googleapis.com",

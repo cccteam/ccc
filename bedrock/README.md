@@ -169,6 +169,19 @@ constructs that level, the job process; the generated router's outlets become th
 service's paths on the backend. The rendered README of the
 stack explains every file and names the declaration it comes from.
 
+A Firestore database also brings what the resource package's live pages need of it. The
+stack reads the two files beside the schema migrations, `schema/firestore/firestore.indexes.json`
+and `schema/firestore/firestore.rules` (the live package ships them and the skeleton copies
+them; a declared database without either is refused by name), and applies the composite
+indexes and the time-to-live policies the first declares and releases the rules of the
+second to the database (`cloud.firestore/<database id>`, from an owned copy
+`firestore.rules` in the stack, so a change to the rules shows as drift); it grants the
+site Token Creator on its own account for the custom tokens it mints through the IAM
+Credentials API, and, when the config also declares `APP_FIREBASE_API_KEY`, makes the web
+API key the browser presents, restricted to the Identity Toolkit and Secure Token APIs,
+and sets the variable to it. Firebase Authentication on the environment project is
+`2-env`'s, initialized once with no sign-in provider.
+
 ## bedrock check
 
 `check` renders the stack afresh and compares every owned file with the committed one,
@@ -207,6 +220,11 @@ It also refuses:
   that some environment's `build_secrets` in `terraform.tfvars` does not declare, naming
   the environments: a release that passed the earlier environments would fail in the
   image build of the one lacking it. An optional mount passes with nothing said.
+- a Firestore database (`APP_FIRESTORE_DATABASE`) without `schema/firestore/firestore.indexes.json`
+  or `schema/firestore/firestore.rules` beside the schema migrations, naming the missing
+  file: the stack applies the database's indexes, time-to-live policies and rules from
+  them, so render and check both stop before the stack is written. `APP_FIREBASE_API_KEY`
+  without the database, or at another level than it, is refused the same way.
 
 The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
 `bedrock check` on every pull request and on the default branch. It is rendered too: the

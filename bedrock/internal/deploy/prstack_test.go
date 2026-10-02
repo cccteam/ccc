@@ -124,6 +124,10 @@ func TestGuardPlan(t *testing.T) {
 	sleep := `{"address": "time_sleep.wait", "type": "time_sleep", "change": {"actions": ["create"], "after": {}}}`
 	noop := `{"address": "google_spanner_instance.shared", "type": "google_spanner_instance", "change": {"actions": ["no-op"], "after": {"name": "tst-shared"}}}`
 	foreign := `{"address": "google_cloud_run_v2_service.site_tst", "type": "google_cloud_run_v2_service", "change": {"actions": ["delete"], "before": {"name": "quill-app"}, "after": null}}`
+	// A Firestore ruleset is named by the service (name unknown at plan time); the stack
+	// names its source file for the database the rules are released to.
+	ownRuleset := `{"address": "google_firebaserules_ruleset.firestore", "type": "google_firebaserules_ruleset", "change": {"actions": ["create"], "after": {"name": null, "project": "p", "source": [{"files": [{"content": "rules_version = '2';", "name": "quill-pr7-fs.rules"}], "language": null}]}}}`
+	foreignRuleset := `{"address": "google_firebaserules_ruleset.firestore", "type": "google_firebaserules_ruleset", "change": {"actions": ["delete"], "before": {"name": "projects/p/rulesets/5c2a", "project": "p", "source": [{"files": [{"content": "rules_version = '2';", "name": "imp-tst-gbl-quill-fs.rules"}], "language": "FIREBASE_RULES"}]}, "after": null}}`
 	plan := func(changes ...string) string {
 		return `{"resource_changes": [` + strings.Join(changes, ",") + `]}`
 	}
@@ -140,6 +144,18 @@ func TestGuardPlan(t *testing.T) {
 			name:    "the pull request's own resources, its accounts' memberships and what shapes nothing pass",
 			plan:    plan(own, ownMember, sleep, noop),
 			wantOut: []string{"Guard passed: 3 planned change(s), all pull request 7's."},
+		},
+		{
+			name:    "a ruleset whose source is named for the pull request's database passes",
+			plan:    plan(own, ownRuleset),
+			wantOut: []string{"Guard passed: 2 planned change(s), all pull request 7's."},
+		},
+		{
+			name:        "a ruleset named for the environment's database is refused",
+			plan:        plan(own, foreignRuleset),
+			wantOut:     []string{"google_firebaserules_ruleset.firestore (delete)"},
+			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
+			wantComment: "A pull-request stack applies only resources named quill-pr7",
 		},
 		{
 			name:        "a resource that is not the pull request's is refused and posted",

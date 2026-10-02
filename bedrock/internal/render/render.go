@@ -84,6 +84,9 @@ const (
 	// //go:generate directive.
 	generateFile   = "bedrock.go"
 	dockerfileFile = "Dockerfile"
+	// rulesFile is the stack's copy of the application's Firestore security rules, which
+	// firestore.tf releases to the database; rendered only with a Firestore database.
+	rulesFile = derive.FirestoreRulesFile
 )
 
 // seeded are the files the tool writes once.
@@ -93,9 +96,10 @@ var seeded = map[string]bool{
 	dockerfileFile: true,
 }
 
-// placed are the root files whose place depends on the application: the generate-time
-// step goes beside the directive that runs the site generator, in a file that sorts
-// before the application's own; an application with no such directive gets none.
+// placed are the files whose place depends on the application: the generate-time step
+// goes beside the directive that runs the site generator, in a file that sorts before
+// the application's own, and an application with no such directive gets none; the
+// Firestore rules go into the stack of an application with a Firestore database.
 var placed = map[string]func(v *view) string{
 	generateFile: func(v *view) string {
 		if v.Schema.GenerateDir == "" {
@@ -103,6 +107,15 @@ var placed = map[string]func(v *view) string{
 		}
 
 		return path.Join(v.Schema.GenerateDir, generateFile)
+	},
+	// The Firestore security rules, beside the stack's .tf files, for an application
+	// with a Firestore database; none otherwise.
+	rulesFile: func(v *view) string {
+		if v.Firestore == nil {
+			return ""
+		}
+
+		return rulesFile
 	},
 	// The GitHub workflows, under .github/workflows: the infrastructure check, which
 	// gets the bedrock the placement pins and checks with it, and the release

@@ -335,10 +335,12 @@ func TestCustomRolePermissions(t *testing.T) {
 			permissions: []string{
 				"cloudbuild.builds.get", "cloudscheduler.jobs.get", "cloudtasks.queues.get",
 				"compute.backendServices.get", "compute.regionNetworkEndpointGroups.get",
-				"datastore.databases.getMetadata", "logging.buckets.get", "logging.sinks.get",
+				"datastore.databases.getMetadata", "datastore.indexes.get",
+				"firebaserules.releases.get", "firebaserules.rulesets.get",
+				"logging.buckets.get", "logging.sinks.get",
 				"run.jobs.get", "run.services.get", "run.services.listTagBindings",
 				"secretmanager.secrets.get", "secretmanager.versions.get",
-				"storage.buckets.get",
+				"serviceusage.apiKeys.get", "storage.buckets.get",
 			},
 		},
 	}

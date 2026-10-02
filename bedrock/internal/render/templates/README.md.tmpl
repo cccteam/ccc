@@ -107,7 +107,20 @@ from `2-env`'s state.
   Spanner database; {{.Production}} keeps point-in-time recovery on and resists deletion.
   The site{{if .JobsReadsFirestore}} and the job process{{end}} hold `roles/datastore.user` under a
   condition naming this database alone, so nothing else in the shared
-  environment project is reachable.
+  environment project is reachable. With it, what live pages need of the
+  database, from the two files beside the schema migrations (`{{.Firestore.Dir}}`):
+  the {{len .Firestore.Indexes}} composite index(es) of `{{.Firestore.IndexesFile}}` and the
+  fields its `fieldOverrides` settle,
+  {{.FirestoreFieldsProse}};
+  the security rules of `{{.Firestore.RulesFile}}`, released to this database as
+  `cloud.firestore/<database id>` from `firestore.rules`, bedrock's owned copy
+  beside the `.tf` files; `roles/iam.serviceAccountTokenCreator` for the site
+  on its own account, for the custom tokens it mints through the IAM
+  Credentials API{{if .FirebaseAPIKey}}; and the web API key `{{.Prefix}}-<env>-gbl-{{.App}}-firebase`
+  the browser presents to sign in with one, restricted to the Identity Toolkit
+  and Secure Token APIs, handed to the processes that construct the {{.FirebaseAPIKey.Level}}
+  level as `{{.FirebaseAPIKey.Name}}` (`{{.FirebaseAPIKey.Declaration}}`){{end}}. Firebase
+  Authentication on the environment project is `2-env`'s.
 {{- end}}
 - **Secret containers**, no versions, one per secret the code declares in
   `{{.SecretsFiles}}`, named `{{.Prefix}}-<env>-gbl-{{.App}}-<name>`:
@@ -198,6 +211,9 @@ above them.
 {{- end}}
 {{- if .FirestoreDatabase}}
 | `{{.FirestoreDatabase.Name}}` | {{.FirestoreDatabase.Level}} | the Firestore database | yes | |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
+{{- end}}
+{{- if .FirebaseAPIKey}}
+| `{{.FirebaseAPIKey.Name}}` | {{.FirebaseAPIKey.Level}} | the Firebase web API key | yes | |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .Directory}}
 | `{{.HostedDomain.Name}}` | {{.HostedDomain.Level}} | `var.{{.AuthVar}}_hosted_domain` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}

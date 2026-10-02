@@ -111,7 +111,10 @@ locals {
   # instance (identities.tf), not here. serviceUsageConsumer is what lets it
   # use the environment project as its quota project (user_project_override
   # in the stack), since nothing in this layer can grant it that on the boot
-  # project.
+  # project. With a Firestore database the stack also releases the database's
+  # security rules (firebaserules.admin) and makes the web API key its
+  # browsers present (apiKeysAdmin); the indexes and time-to-live policies are
+  # datastore.owner's.
   apply_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
     "roles/run.admin",
@@ -122,6 +125,8 @@ locals {
     "roles/cloudscheduler.admin",
     "roles/cloudtasks.queueAdmin",
     "roles/datastore.owner",
+    "roles/firebaserules.admin",
+    "roles/serviceusage.apiKeysAdmin",
     "roles/cloudbuild.builds.editor",
     "roles/logging.admin",
     "roles/monitoring.admin",

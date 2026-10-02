@@ -114,6 +114,11 @@ locals {
   # The Firestore database ({{.FirestoreDatabase.Declaration}}), by id; a pull-request
   # stack has its own.
   firestore_database_id = local.is_pr ? "${local.pr_name}-fs" : "${local.name}-gbl-${local.app}-fs"
+{{- if .FirebaseAPIKey}}
+  # The browser's web API key ({{.FirebaseAPIKey.Declaration}}), by name (firestore.tf); a
+  # pull-request stack has its own.
+  firebase_key_name = local.is_pr ? "${local.pr_name}-firebase" : "${local.name}-gbl-${local.app}-firebase"
+{{- end}}
 {{- end}}
 {{- if .Jobs}}
 
@@ -246,8 +251,15 @@ locals {
 
   # {{.FirestoreDatabase.Declaration}}: the Firestore database (firestore.tf), for the
   # processes that construct the {{.FirestoreDatabase.Level}} level and run the application's own code.
+{{- if .FirebaseAPIKey}}
+  # {{.FirebaseAPIKey.Declaration}}: the web API key the browser presents to sign in
+  # (firestore.tf), a public value by design, beside it.
+{{- end}}
   firestore_env = {
     {{.FirestoreDatabase.Name}} = google_firestore_database.firestore.name
+{{- if .FirebaseAPIKey}}
+    {{.FirebaseAPIKey.Name}} = google_apikeys_key.firebase.key_string
+{{- end}}
   }
 {{- end}}
 
