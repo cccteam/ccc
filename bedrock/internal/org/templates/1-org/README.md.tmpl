@@ -155,10 +155,11 @@ hotfix` creates branches and pull requests, the pipeline talks back on a pull
 request.
 
 The required checks on the default branch and the hotfix lines are the
-pull-request build, which Cloud Build reports under the trigger's name
-(`{{.Prefix}}-{{.FirstEnvironment}}-<region>-<app>-pr`, set by the application's
-stack in {{.FirstEnvironment}}), and the infrastructure workflow's job, `bedrock
-check`, which GitHub Actions reports. A pull request merges once both pass on
+pull-request build, which Cloud Build reports under the trigger's name followed
+by the project in parentheses (`{{.Prefix}}-{{.FirstEnvironment}}-<region>-<app>-pr
+(<{{.FirstEnvironment}}'s project>)`; the trigger is set by the application's stack in
+{{.FirstEnvironment}}, and the project is this layer's), and the infrastructure
+workflow's job, `bedrock check`, which GitHub Actions reports. A pull request merges once both pass on
 its latest commit and its branch holds every commit of its base; the
 pull-request build runs on `/gcbrun`, so a pull request nobody built never
 merges, release-please's release pull requests included. A renamed check is

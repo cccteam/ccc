@@ -24,9 +24,10 @@
 # the repository's setting to add).
 #
 # The required checks are the pull-request build, which Cloud Build reports
-# under the trigger's name (set by the application's stack in the first
-# environment), and the infrastructure workflow's job, bedrock check, which
-# GitHub Actions reports. The pull-request build runs on /gcbrun, so a pull
+# under the trigger's name followed by the project in parentheses (the trigger
+# is set by the application's stack in the first environment, whose project
+# this layer makes), and the infrastructure workflow's job, bedrock check,
+# which GitHub Actions reports. The pull-request build runs on /gcbrun, so a pull
 # request nobody built never merges. A renamed check is one change here,
 # timed with the release that renames the trigger: requiring both names would
 # block every pull request, since each reports one.
@@ -69,7 +70,7 @@ locals {
         integration_id = tonumber(data.github_app.actions.id)
       },
       {
-        context        = "${var.prefix}-tst-${local.region_code}-${app}-pr"
+        context        = "${var.prefix}-tst-${local.region_code}-${app}-pr (${module.project["tst"].project_id})"
         integration_id = tonumber(data.github_app.cloud_build.id)
       },
     ]

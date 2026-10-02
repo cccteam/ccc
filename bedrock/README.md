@@ -658,7 +658,8 @@ destroyed by the layer), its three rulesets (a `v*` or `*/v*` tag created, moved
 deleted by the release app alone, with no bypass for the repository's admins, which is
 what makes the pipeline's tag check sound; the default branch and the hotfix lines
 changed by pull request alone, with the branch up to date with its base, the pull-request
-build and the infrastructure workflow's `bedrock check` passing on its latest commit,
+build (which Cloud Build reports under the trigger's name followed by the project in
+parentheses) and the infrastructure workflow's `bedrock check` passing on its latest commit,
 squash the only merge and, when the placement names an infrastructure team, that team's
 approval of a change to the workflow and Cloud Build files), and the GitHub Environments
 the operations workflow runs in (every environment but production, each deploying from

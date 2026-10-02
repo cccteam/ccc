@@ -669,7 +669,7 @@ func TestApplicationProjects(t *testing.T) {
 
 // TestRepositoryRules reads the repository module 1-org renders: the applications it
 // configures, the checks a pull request must pass (the infrastructure workflow's job and
-// the pull-request build under its trigger's name), squash as the only merge, the branch
+// the pull-request build under its trigger's name and project), squash as the only merge, the branch
 // up to date before it merges, the restorable environments, and the placement's values
 // as the variables' defaults.
 func TestRepositoryRules(t *testing.T) {
@@ -698,7 +698,7 @@ func TestRepositoryRules(t *testing.T) {
 			path: "1-org/github.tf",
 			want: []string{
 				`context        = "bedrock check"`,
-				`context        = "${var.prefix}-tst-${local.region_code}-${app}-pr"`,
+				`context        = "${var.prefix}-tst-${local.region_code}-${app}-pr (${module.project["tst"].project_id})"`,
 				`strict_required_status_checks_policy = true`,
 				`allowed_merge_methods           = ["squash"]`,
 				`require_last_push_approval      = var.github_infrastructure_team != ""`,
