@@ -12,6 +12,7 @@ import { provideResourceClient } from '@cccteam/resource-angular/resource-client
 import {
   API_URL,
   BASE_URL,
+  CHANGE_FEED,
   FRONTEND_LOGIN_PATH,
   IDLE_KEEPALIVE_DURATION,
   IDLE_LOGOUT_ACTION,
@@ -24,6 +25,7 @@ import {
   RESOURCE_META,
   SESSION_PATH,
 } from '@cccteam/resource-angular/types';
+import { firestoreChangeFeed } from '@cccteam/resource-firestore';
 import { SectorService } from '@components/sector/sector.service';
 import { environment } from '@env';
 import { routes } from './app.routes';
@@ -104,6 +106,18 @@ export const appConfig: ApplicationConfig = {
     //
     // Demonstrates: client.login-redirect, client.uncaught-notice.
     provideResourceClient((options) => createApi({ baseUrl: environment.apiUrl, ...options })),
+    // The change feed the live pages listen through: the Firestore feed from its own
+    // package, so the client stays free of the SDK. AuthService starts the client's live
+    // session with it once the session is authenticated (fetching the tab's identity from
+    // the API's token route, which says whether to connect to the emulator or sign a custom
+    // token in) and stops it at logout, unsubscribing everything and revoking the identity
+    // before the session itself is logged out. Nothing Firestore-specific lives in the
+    // environment: the project, the database, the emulator host and the key all arrive in
+    // the token payload. A page is live only when its config says so (the Ships page); the
+    // provider alone makes nothing live.
+    //
+    // Demonstrates: live.pages.
+    { provide: CHANGE_FEED, useFactory: () => firestoreChangeFeed() },
     provideRouter(routes, withComponentInputBinding(), withRouterConfig({ paramsInheritanceStrategy: 'always' })),
     // The date adapter and the animations as standalone providers: the animations module,
     // imported through the module-to-providers bridge, carried the browser module's

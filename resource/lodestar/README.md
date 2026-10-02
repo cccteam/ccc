@@ -25,16 +25,18 @@ With [overmind](https://github.com/DarthSim/overmind), podman, and bun installed
 
 ```
 cp .envrc.template .envrc && direnv allow
-(cd web && bun install)           # the published @cccteam/resource and @cccteam/resource-angular
+(cd web && bun install)           # the published @cccteam/resource, @cccteam/resource-firestore and @cccteam/resource-angular
 overmind start
 ```
 
-That starts a fresh emulator, bootstraps it (schema, the demo world, the personas, the
-droid account; the roles need no step, since each auth's role file rides in the binary and
-the bootstrap only checks the store against it; a database that already holds data is
-refused unless the bootstrap runs with `-reset`, which empties the data and seeds it
-again without touching the schema), serves the application on :8090, and runs `ng serve`
-for both browser apps:
+That starts a fresh Spanner emulator and a fresh Firestore emulator (the live pages'
+subscription record and change sets, [below](#live-pages); Firestore needs no schema, so
+the bootstrap leaves it alone), bootstraps the database (schema, the demo world, the
+personas, the droid account; the roles need no step, since each auth's role file rides in
+the binary and the bootstrap only checks the store against it; a database that already
+holds data is refused unless the bootstrap runs with `-reset`, which empties the data and
+seeds it again without touching the schema), serves the application on :8090, and runs
+`ng serve` for both browser apps:
 the crew console on :4300 (`/console/api` proxied) and the client portal on :4301
 (`/portal/api` proxied). Browse http://127.0.0.1:4300/console/ and sign in as any persona
 on the crew manifest; browse http://127.0.0.1:4301/portal/ and sign in through the
@@ -52,7 +54,7 @@ push the rebuilt packages, restart the dev server, and reload the page:
     overmind restart console portal
 
 The dev server does not watch `node_modules`, so the restart is what picks the new build up.
-The two packages are bundled with the application code rather than prebundled by Vite (the
+The three packages are bundled with the application code rather than prebundled by Vite (the
 `prebundle` exclusion in `angular.json`), so a plain reload shows the new build in any
 browser profile: nothing is held behind an immutable URL, and no cache needs clearing.
 
@@ -67,6 +69,70 @@ to `/console/`; every other unmatched path is 404. Mission documents land in the
 file there under a minted key, the transaction's commit claims it, a failure before
 commit deletes it, and the generated file route reads it back; `store.DirStore.Sweep` is
 the application's safety net for an object no row claims, never the mechanism.
+
+## Live pages
+
+The console's Ships page is live. Sign in as `harbormaster` (Harbormaster Hollis), open
+Sector Ops, then Ships, and leave the fleet board on the screen. In a second browser
+profile sign in as `engineer` and clear a refit on the hangar deck, or hail a ship as
+`pilot`: the harbormaster's board changes without a reload, and so does a ship's own
+page when she has one open. Leave the board for the dashboard and come back inside five
+minutes: the page is drawn from the browser's own cache and the server sees no request.
+Nothing polls and the server holds no connection open. A page that asked to be live is
+told about a change through a change set of its user's own in Firestore, and asks for
+the page again itself, by the change's timestamp.
+
+To watch it in the emulator: the Firestore emulator answers Firestore's REST API on
+`FIRESTORE_EMULATOR_HOST`, and `Authorization: Bearer owner` reads everything, so with
+the stack running and `.envrc` loaded
+
+    curl -s -H 'Authorization: Bearer owner' \
+      "http://$FIRESTORE_EMULATOR_HOST/v1/projects/$GOOGLE_CLOUD_SPANNER_PROJECT/databases/(default)/documents/subscriptions"
+
+lists every live subscription (`principal`, `tab`, `resource`, `key` for a row or
+`domain` for a list, `expiry`), and `.../documents/users/harbormaster/changes` lists the
+documents written into Hollis's set: a `row` document for the ship she had open and a
+`list` document for the fleet board in Anvil, each with its server timestamp `at`, which
+is the version (`_v`) her page asks again by. The pilot watching Bastion's fleet gets no
+document for an Anvil refit, and a persona without List on Ships (the cadet) is never
+subscribed: the refused request answers 403 as it always did and writes no record. The
+walkthrough plays this scenario by curl (its "live pages" section), and
+[`live_test.go`](test/integration/live_test.go) pins it over an in-memory live service.
+
+How it is wired:
+
+- The stack. The Procfile starts the Firestore emulator beside the Spanner emulator, from
+  the Cloud SDK emulators image the resource package's own tests pin, with the live
+  package's security rules (`resource/live/firestore/firestore.rules`) mounted;
+  `.envrc.template` sets `FIRESTORE_EMULATOR_HOST`. A fresh emulator per start means an
+  empty record. In production `APP_FIRESTORE_DATABASE` names the database,
+  `GOOGLE_CLOUD_FIRESTORE_PROJECT` its project (the Spanner project when unset) and
+  `APP_FIREBASE_API_KEY` the browser's key; the composite indexes and the time-to-live
+  policies the live package's README lists are the infrastructure's to apply.
+- The server. `pkg/config/data.go` reads the Firestore settings at the data level and
+  constructs the live service (`resource/live/firestore`) once, when a database or the
+  emulator is configured; `app.LiveService()` hands it to the generated handlers, which
+  register a subscribing request's interest before the query runs, publish a commit's
+  touched rows after the commit and before the answer, and send
+  `Cache-Control: private, max-age=300` on a list or read answer whose request carried
+  `_v`. Both session outlets serve the generated `live/renew`, `live/unsubscribe` and
+  `live/token` routes; the droids outlet refuses `X-Subscribe` with a 400 naming the
+  header. The content security policy's `connect-src` names the feed's origin beside the
+  application, the emulator in development and Firebase's hosts in production, because
+  the browser's feed connects there directly ([`live.pages`](app/app.go)).
+- The browser. [`ships.config.ts`](web/console/src/app/configs/ships.config.ts) says
+  `live: true`, which makes the list page and its row page live and nothing else on them;
+  [`app.config.ts`](web/console/src/app/app.config.ts) provides `CHANGE_FEED` with the
+  Firestore feed from `@cccteam/resource-firestore`, and the library's `AuthService`
+  starts the feed after login with the identity `live/token` answers and stops it at
+  logout, unsubscribing everything first. The environments carry nothing
+  Firestore-specific: the project, the database, the emulator host and the key arrive in
+  the token payload.
+- The checks. The walkthrough section above, the integration suite, and a headless check
+  driven in Chrome (playwright-core and the system browser from a scratch project outside
+  the repository, as the console's other browser proofs are run) that leaves the fleet
+  board and comes back with no request to the server, then sees a hail produce a refetch
+  carrying the change's timestamp as `_v`.
 
 ## Running against a real Spanner instance
 
@@ -163,6 +229,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `assessor` | Assessor Asa | Prices cover before launch: one List grant on Missions, the title unconditionally and the hazard level under `state = 'open'`. Hazard is a named variant of INT64 (`type HazardLevel int64`), concealing and unindexed, so a grid that sorts by hazard without displaying it pages on the cursor's copy of the visible hazard, decoded into the field's own type where the Spanner client refuses a pointer to a pointer to it, and the missions no longer open walk through the NULL region in Spanner's placement. Demonstrates: paging.named-variant-key. |
 | `hazards` | Hazard Analyst Hale | A conditional (row-free `now`) grant on a computed resource, the whole board through `limit=all`. Demonstrates: computed.conditional-grant, paging.limit-all, computed.fold. |
 | `dock` / `watch` | Dockmaster Dara / Night Watch Nadia | `timeOfDay(now, local)` and the wrap-around `timeOfDay(now, 'America/Denver')` window; `dayOfWeek(now, local) NOT IN ('sat', 'sun')`. At any hour exactly one sees the hangar deck. Demonstrates: condition.time-of-day, condition.day-of-week, condition.local-zone. |
+| `harbormaster` | Harbormaster Hollis, Anvil | List and Read on Ships, nothing else of her own: the live fleet board. Her list and the ship she has open are subscribed when they are read, the engineer's refit (or a hail) lands on both without a reload, a board left and reopened inside five minutes is the browser's own, and the pilot watching Bastion's fleet and the cadet, who holds no List on Ships, receive nothing. Demonstrates: live.pages. |
 | `client` | Client Cleo, portal only | Signs in through her company's directory, whose groups are her roles; the second browser app over the second TypeScript target; `client = subject.client` from the ClientContact anchor; a conditional Execute fired from a portal session; a PII field an external user writes; the portal-only client statement. Demonstrates: auth.directory-roles, auth.skipauth-directory, typescript.second-target, outlet.session, @subjectValue.second-anchor, @manualAddResource.outlet. |
 | `droid-r7` | R7, service account, no login | The API-keyed droids outlet: telemetry with no human route, one reading per call, each carrying the firmware's raw frame, a type declared in the droid link's own package whose generated methods the generator writes there (`WithTypes`); releases through the shared method under its own read grant. Demonstrates: outlet.api-key, outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package. |
 

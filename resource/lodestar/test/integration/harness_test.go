@@ -133,6 +133,7 @@ const (
 	refitLanternID      = "a0000000-0000-4000-8000-000000000001" // anvil docked, InspectedAt NULL, estimate NULL
 	refitMuleID         = "a0000000-0000-4000-8000-000000000002" // anvil inspected, estimate 12000
 	refitSamaritanID    = "a0000000-0000-4000-8000-000000000003" // anvil in_refit, estimate 8000
+	refitHeronID        = "a0000000-0000-4000-8000-000000000008" // anvil in_refit, estimate 4000, the live-pages suite's
 	refitRustyAnchorID  = "a0000000-0000-4000-8000-000000000004" // anvil scrapped
 	refitBastionWatchID = "a0000000-0000-4000-8000-000000000005" // bastion flight_test
 	refitCinderMothID   = "a0000000-0000-4000-8000-000000000006" // cinder cleared
@@ -223,6 +224,7 @@ type testConfigurer struct {
 	crewAuth      *crew.Auth
 	membersAuth   *members.Auth
 	documents     *store.DirStore
+	live          live.Service
 }
 
 // Domains is the seeded roster, the list production's DataConfiguration reads from the
@@ -325,9 +327,21 @@ func (c *testConfigurer) PortalDist() string { return "" }
 // outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return droidsAPIKey }
 
-// Live serves no live pages in the suites: nothing here subscribes, and a request
-// carrying X-Subscribe is refused.
-func (c *testConfigurer) Live() live.Service { return nil }
+// Live is the live service the suite passed (newTestAppWithLive), an in-memory fake;
+// every other suite serves no live pages, so nothing there subscribes and a request
+// carrying X-Subscribe is refused. A nil field answers a nil interface, never a typed
+// nil, as production's accessor does.
+func (c *testConfigurer) Live() live.Service {
+	if c.live == nil {
+		return nil
+	}
+
+	return c.live
+}
+
+// LiveOrigins names no change feed origin: the suites drive the test router, which
+// carries no security headers.
+func (c *testConfigurer) LiveOrigins() []string { return nil }
 
 // newTestApp builds the application with the given permission table backing every
 // request, served through the generated test router.
@@ -339,6 +353,12 @@ func newTestApp(db *initiator.SpannerDB, g grants) http.Handler {
 // bootstrap-parity suites pass the real crew engine.
 func newTestAppWithAccess(db *initiator.SpannerDB, controller access.Controller) http.Handler {
 	return withHandWrittenRoutes(newApp(db, controller, nil))
+}
+
+// newTestAppWithLive builds the application with the given permission table and a live
+// service, so a suite can watch what the generated handlers register and publish.
+func newTestAppWithLive(db *initiator.SpannerDB, g grants, svc live.Service) http.Handler {
+	return withHandWrittenRoutes(app.New(&testConfigurer{db: db, access: &staticAccess{g: g}, live: svc}))
 }
 
 // newTestAppWithEngines builds the application over both real engines: the crew store
@@ -436,6 +456,14 @@ func doRequestRecorded(t *testing.T, h http.Handler, target string) *httptest.Re
 func doRequestRecordedAs(t *testing.T, h http.Handler, user accesstypes.User, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
 
+	return doRequestRecordedWithHeaders(t, h, user, method, target, body, nil)
+}
+
+// doRequestRecordedWithHeaders performs a request as the given user with the given
+// headers set on it, and returns the recorded response.
+func doRequestRecordedWithHeaders(t *testing.T, h http.Handler, user accesstypes.User, method, target, body string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+
 	// Generated mutation handlers derive their change-event source from the session,
 	// which production apps establish via session middleware. The harness injects a
 	// synthetic one.
@@ -453,6 +481,9 @@ func doRequestRecordedAs(t *testing.T, h http.Handler, user accesstypes.User, me
 	req := httptest.NewRequestWithContext(ctx, method, target, strings.NewReader(body))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 
 	rr := httptest.NewRecorder()

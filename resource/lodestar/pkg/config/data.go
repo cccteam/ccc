@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
@@ -69,6 +70,30 @@ type FirestoreSettings struct {
 // is.
 func (s FirestoreSettings) Enabled() bool {
 	return s.DatabaseID != "" || s.EmulatorHost != ""
+}
+
+// firebaseOrigins are the hosts the Firebase JS SDK reaches in production: Firestore's
+// endpoint, which the change feed listens through, and Firebase Auth's two, which the
+// custom token is signed in through and refreshed at.
+var firebaseOrigins = []string{
+	"https://firestore.googleapis.com",
+	"https://identitytoolkit.googleapis.com",
+	"https://securetoken.googleapis.com",
+}
+
+// BrowserOrigins returns the origins the browser connects to for the change feed, which
+// the content security policy's connect-src must name beside the application itself:
+// the emulator over plain HTTP in development (the token route hands the browser the
+// same host), Firebase's hosts in production, none when live pages are not served.
+func (s FirestoreSettings) BrowserOrigins() []string {
+	switch {
+	case s.EmulatorHost != "":
+		return []string{"http://" + s.EmulatorHost}
+	case s.DatabaseID != "":
+		return slices.Clone(firebaseOrigins)
+	default:
+		return nil
+	}
 }
 
 // DataConfiguration is the second level: every process that opens the database. It
@@ -235,6 +260,13 @@ func (c *DataConfiguration) Live() live.Service {
 	}
 
 	return c.live
+}
+
+// LiveOrigins returns the origins the browser reaches the change feed at, for the
+// content security policy: the Firestore emulator in development, Firebase's hosts in
+// production, none when no live pages are served.
+func (c *DataConfiguration) LiveOrigins() []string {
+	return c.env.Firestore.BrowserOrigins()
 }
 
 // ResourceClient returns the database client the resource layer uses, constructed over

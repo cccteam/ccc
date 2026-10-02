@@ -5,12 +5,14 @@ set -euo pipefail
 # package-manager equivalent of the go.work pattern: while attached, the published pins in
 # package.json are rewritten to file:.yalc specs, so a dirty `git status` IS the
 # off-baseline flag. Never commit the yalc-modified package.json; the .yalc/
-# machinery itself is gitignored. The checkout carries two packages: the
-# framework-neutral client @cccteam/resource (the generated zz_gen_api.ts imports
-# it) and the Angular library @cccteam/resource-angular, which depends on it.
+# machinery itself is gitignored. The checkout carries three packages this application
+# consumes: the framework-neutral client @cccteam/resource (the generated zz_gen_api.ts
+# imports it), the Firestore change feed @cccteam/resource-firestore (the console's live
+# pages listen through it), and the Angular library @cccteam/resource-angular, which
+# depends on the client.
 #
-#   ccclib.sh local     build both packages, publish them to the local yalc store, attach, bun install
-#   ccclib.sh push      rebuild both packages and update every attached consumer; then restart the
+#   ccclib.sh local     build the packages, publish them to the local yalc store, attach, bun install
+#   ccclib.sh push      rebuild the packages and update every attached consumer; then restart the
 #                       dev server (`overmind restart console portal`), which does not watch node_modules
 #   ccclib.sh restore   detach and reinstall the pinned registry versions
 
@@ -24,17 +26,18 @@ fi
 build_and_publish() {
   (cd "$CCC_LIB" && bun run build)
   (cd "$CCC_LIB/dist/resource" && yalc publish --push)
+  (cd "$CCC_LIB/dist/resource-firestore" && yalc publish --push)
   (cd "$CCC_LIB/dist/resource-angular" && yalc publish --push)
 }
 
 case "${1:-}" in
   local)
     build_and_publish
-    (cd "$GUI_DIR" && yalc add @cccteam/resource @cccteam/resource-angular && bun install)
+    (cd "$GUI_DIR" && yalc add @cccteam/resource @cccteam/resource-firestore @cccteam/resource-angular && bun install)
     ;;
   push)
     build_and_publish
-    # The dev server bundles the two packages with the application code (angular.json's serve
+    # The dev server bundles the three packages with the application code (angular.json's serve
     # options keep them out of Vite's prebundle), so a restart is all a push still needs: no
     # cache to clear, and a plain reload in the browser shows the new build.
     echo "ccclib.sh: packages pushed; restart the dev server to pick them up: overmind restart console portal"

@@ -2577,6 +2577,39 @@
         }
       },
       {
+        "name": "Harbormaster",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt",
+                "cargoBays"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt",
+                "cargoBays"
+              ]
+            }
+          ]
+        }
+      },
+      {
         "name": "DroidIngest",
         "permissions": {
           "Execute": [

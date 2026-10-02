@@ -52,6 +52,7 @@ export const CREW_MANIFEST: Persona[] = [
   { login: 'hazards', name: 'Hazard Analyst Hale', deck: 'Hazard board', proves: 'The hazard board under a certification that expires.' },
   { login: 'dock', name: 'Dockmaster Dara', deck: 'Hangar deck', proves: 'The hangar deck on the day shift, 06:00 to 18:00 headquarters time.' },
   { login: 'watch', name: 'Night Watch Nadia', deck: 'Hangar deck', proves: 'The same deck on the night shift; weekday-only task notes.' },
+  { login: 'harbormaster', name: 'Harbormaster Hollis', deck: 'Hangar deck', proves: "Watches the fleet board live: a refit or a hail shows up without a reload, and a board reopened within minutes needs no request." },
 ];
 
 @Component({

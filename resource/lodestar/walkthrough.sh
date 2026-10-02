@@ -137,7 +137,7 @@ if [ "$r" = "307 $B/console/" ]; then echo "PASS  the root alone redirects to th
 r=$(curl -s -o /dev/null -w '%{http_code}' "$B/nowhere")
 if [ "$r" = 404 ]; then echo "PASS  an unmatched path at the root is not found (404)"; else echo "FAIL  an unmatched path at the root: status $r, want 404"; fails=$((fails + 1)); fi
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch harbormaster; do
   login "$p"
 done
 login_portal client
@@ -339,6 +339,82 @@ r=$(req marshal PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/a
 r=$(req dock GET "$ANVIL/refits"); d=${r##*$'\n'}
 r=$(req watch GET "$ANVIL/refits"); n=${r##*$'\n'}
 if { [ "$d" = 200 ] && [ "$n" = 403 ]; } || { [ "$d" = 403 ] && [ "$n" = 200 ]; }; then echo "PASS  exactly one shift sees the hangar deck (dara=$d nadia=$n)"; else echo "FAIL  shift pair: dara=$d nadia=$n"; fails=$((fails+1)); fi
+
+# ---- live pages: the fleet board that stays current ----
+# The harbormaster's fleet board at Anvil and one ship open are two live requests: each carries the
+# tab's id in X-Subscribe and the version it last saw in _v, the server registers the subscription
+# before it runs the query and answers with a private Cache-Control, and the record is readable in
+# the emulator's REST API as the owner. The engineer's refit of the Patient Heron (in_refit ->
+# flight_test -> cleared) stamps the ship, so the commit publishes exactly two change documents into
+# Hollis's set, the row and the list, and both pages ask again by the document's timestamp. The
+# pilot watching Bastion's fleet receives nothing, and the cadet, with no List on Ships, is refused
+# as before and never subscribed. Skipped when the stack runs without the Firestore emulator.
+# Demonstrates: live.pages.
+FS=${FIRESTORE_EMULATOR_HOST:-}
+FS_PROJECT=${GOOGLE_CLOUD_FIRESTORE_PROJECT:-${GOOGLE_CLOUD_SPANNER_PROJECT:-lodestar-dev}}
+FS_DB=${APP_FIRESTORE_DATABASE:-(default)}
+HERON=70000000-0000-4000-8000-000000000009
+HERON_REFIT=a0000000-0000-4000-8000-000000000008
+TAB=walkthrough-$(date +%s)   # the tab id a browser mints: 1 to 64 of [A-Za-z0-9_-]
+SEED=seed-$(date +%s%N)       # the version a page asks by before any change arrived
+fsdocs() { # fsdocs <collection path>: the emulator's documents under the path, read as the owner (an empty collection answers {})
+  curl -s -H 'Authorization: Bearer owner' "http://$FS/v1/projects/$FS_PROJECT/databases/$FS_DB/documents/$1"
+}
+assert_fs() { # assert_fs <label> <collection path> <python expression over rows -> bool>: rows are the documents' fields flattened, with _at the server timestamp
+  local label=$1 path=$2 expr=$3
+  if fsdocs "$path" | python3 -c "import json,sys; docs=json.load(sys.stdin).get('documents',[]); rows=[{k:list(v.values())[0] for k,v in d.get('fields',{}).items()}|{'_at':d.get('fields',{}).get('at',{}).get('timestampValue','')} for d in docs]; sys.exit(0 if ($expr) else 1)" 2>/dev/null; then
+    echo "PASS  $label"
+  else
+    echo "FAIL  $label: $(fsdocs "$path" | head -c 300)"; fails=$((fails + 1))
+  fi
+}
+change_at() { # change_at <principal> <kind>: the server timestamp of the principal's change document of that kind, as unix microseconds, the _v the browser asks again by
+  fsdocs "users/$1/changes" | python3 -c "
+import json,sys,datetime
+docs=json.load(sys.stdin).get('documents',[])
+at=[d['fields']['at']['timestampValue'] for d in docs if d['fields']['kind']['stringValue']=='$2'][0]
+whole,_,frac=at[:-1].partition('.')
+t=datetime.datetime.strptime(whole,'%Y-%m-%dT%H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+print(int(t.timestamp())*1000000+int((frac+'000000')[:6]))"
+}
+cache_header() { # cache_header <label> <headers file> <want>: the response's Cache-Control is exactly <want>
+  local got; got=$(awk 'tolower($1)=="cache-control:" {sub(/^[^:]*: */,""); print}' "$2" | tr -d '\r' | tail -1)
+  if [ "$got" = "$3" ]; then echo "PASS  $1 (Cache-Control: $got)"; else echo "FAIL  $1: Cache-Control is '$got', want '$3'"; fails=$((fails + 1)); fi
+}
+if [ -z "$FS" ]; then echo "SKIP  live pages: FIRESTORE_EMULATOR_HOST is unset, the stack serves none"; else
+login harbormaster
+r=$(req harbormaster GET "$API/live/token"); check "the token route hands Hollis her identity on the emulator" 200 "$r"
+assert_py "the payload names her uid and the emulator host, with no custom token" "$r" "rows['uid']=='harbormaster' and rows['emulator']=='$FS' and rows['token']=='' and rows['project']=='$FS_PROJECT'"
+r=$(req harbormaster GET "$ANVIL/ships?_v=$SEED" "" -H "X-Subscribe: $TAB" -D "$S/live-list.h"); check "the fleet board at Anvil, live: X-Subscribe and _v" 200 "$r"
+cache_header "the live list is the browser's to cache for five minutes" "$S/live-list.h" "private, max-age=300"
+r=$(req harbormaster GET "$ANVIL/ships/$HERON?_v=$SEED" "" -H "X-Subscribe: $TAB" -D "$S/live-row.h"); check "the Patient Heron open on her board, live" 200 "$r"
+HERON_BEFORE=$(body "$r" | py "print(rows['lastRefitAt'])")   # the seeded stamp, which the pass replaces
+cache_header "the live read is cacheable the same way" "$S/live-row.h" "private, max-age=300"
+r=$(req harbormaster GET "$ANVIL/ships" "" -D "$S/plain-list.h"); check "the same list asked plainly" 200 "$r"
+cache_header "a request without _v stays uncached" "$S/plain-list.h" "no-cache, no-store, must-revalidate"
+assert_fs "two subscriptions are on record for her tab: the Heron's row and the Anvil list" subscriptions "sorted((d['resource'],d['key'],d['domain']) for d in rows if d['principal']=='harbormaster' and d['tab']=='$TAB')==[('Ships','','anvil'),('Ships','$HERON','')]"
+r=$(req pilot GET "$API/sectors/bastion/ships?_v=$SEED" "" -H "X-Subscribe: $TAB-pilot"); check "the pilot's fleet board at Bastion, live" 200 "$r"
+assert_fs "the pilot's Bastion list is on record" subscriptions "any(d['principal']=='pilot' and d['tab']=='$TAB-pilot' and d['resource']=='Ships' and d['domain']=='bastion' for d in rows)"
+r=$(req cadet GET "$ANVIL/ships"); check "the cadet holds no List on Ships" 403 "$r"
+r=$(req cadet GET "$ANVIL/ships?_v=$SEED" "" -H "X-Subscribe: $TAB-cadet"); check "asking live changes nothing for her: refused as before" 403 "$r"
+assert_fs "no record was written for the refused request" subscriptions "not any(d['principal']=='cadet' for d in rows)"
+r=$(req engineer POST "$ANVIL/start-flight-test" "{\"refitId\":\"$HERON_REFIT\"}"); check "the engineer starts the Heron's flight test" 200 "$r"
+r=$(req engineer POST "$ANVIL/pass-flight-test" "{\"refitId\":\"$HERON_REFIT\"}"); check "the Heron passes: the commit stamps the ship and publishes" 200 "$r"
+assert_fs "Hollis's set holds exactly two documents, the row and the list, each with its server timestamp" users/harbormaster/changes "sorted((d['kind'],d['resource'],d.get('key',''),d.get('domain',''),d.get('deleted',False)) for d in rows)==[('list','Ships','','anvil',False),('row','Ships','$HERON','',False)] and all(d['_at'] for d in rows)"
+LIST_V=$(change_at harbormaster list); ROW_V=$(change_at harbormaster row)
+r=$(req harbormaster GET "$ANVIL/ships?_v=$LIST_V" "" -H "X-Subscribe: $TAB" -D "$S/refetch-list.h"); check "the fleet board asks again by the list document's timestamp (_v=$LIST_V)" 200 "$r"
+cache_header "the refetched list is cacheable under its new version" "$S/refetch-list.h" "private, max-age=300"
+r=$(req harbormaster GET "$ANVIL/ships/$HERON?_v=$ROW_V" "" -H "X-Subscribe: $TAB"); check "the ship's page asks again by the row document's timestamp (_v=$ROW_V)" 200 "$r"
+assert_py "the refetched Heron carries a new LastRefitAt, the pass's commit timestamp" "$r" "rows['lastRefitAt'] is not None and rows['lastRefitAt'] != '$HERON_BEFORE'"
+assert_fs "the pilot watching Bastion's fleet received nothing" users/pilot/changes "len(rows)==0"
+assert_fs "the cadet, never subscribed, received nothing" users/cadet/changes "len(rows)==0"
+r=$(req harbormaster POST "$API/live/renew" "{\"tab\":\"$TAB\",\"subscriptions\":[{\"resource\":\"Ships\",\"domain\":\"anvil\"},{\"resource\":\"Ships\",\"key\":\"$HERON\",\"domain\":\"anvil\"},{\"resource\":\"Refits\",\"domain\":\"anvil\"}]}" -H "X-Subscribe: $TAB"); check "the tab renews its subscriptions" 200 "$r"
+assert_py "the two Ships subscriptions are kept and the Refits one, which her grants do not cover, is dropped" "$r" "[s['resource'] for s in rows['kept']]==['Ships','Ships'] and [s['resource'] for s in rows['dropped']]==['Refits'] and rows['expiresAt']"
+r=$(req harbormaster POST "$API/live/unsubscribe" "{\"tab\":\"$TAB\",\"all\":false}" -H "X-Subscribe: $TAB"); check "the tab leaves" 204 "$r"
+assert_fs "the tab's subscriptions are gone" subscriptions "not any(d['principal']=='harbormaster' and d['tab']=='$TAB' for d in rows)"
+r=$(req pilot POST "$API/live/unsubscribe" "{\"tab\":\"$TAB-pilot\",\"all\":true}"); check "the pilot logs out of live pages: everything of the principal's" 204 "$r"
+assert_fs "no subscription of the pilot's remains" subscriptions "not any(d['principal']=='pilot' for d in rows)"
+fi
 
 # ---- squadrons config page: the array config's request ----
 # The Squadrons page's "Other squadrons in this sector" is an arrayConfig over the same resource, its listFilter excluding the page's row by the indexed key; Squadrons declares a maximum, so the library asks one server page (the key column alone, with the count) and draws each row by the iterated config. Demonstrates: config.array.

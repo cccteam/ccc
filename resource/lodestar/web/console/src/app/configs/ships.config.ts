@@ -28,7 +28,17 @@ import {
 // chips, and edit mode keeps them read-only, so a save of another field never carries the
 // array; the array editor is a later item.
 //
-// Demonstrates: picker.paged, picker.whole, column.referenced-in, field.array.
+// The page is live, and its row page with it: the fleet board stays current without
+// polling and without asking again while nothing changed. Each list and read request
+// carries the tab's id in X-Subscribe and the version it last saw in _v, the server
+// registers the subscription before it runs the query and answers with a private
+// Cache-Control, a refit or a hail that touches a ship is published into the change set
+// of every subscribed user, the console's change feed (app.config.ts) hands the change to
+// this page, which asks again by the change's timestamp, and a page left and reopened
+// inside the window is the browser's own cache, with no request. The pickers and the
+// edit form on the same page stay plain: live is a page-level choice, not a request's.
+//
+// Demonstrates: picker.paged, picker.whole, column.referenced-in, field.array, live.pages.
 export const shipsConfig = rootConfig({
   nav: { navItem: { label: 'Ships (config page)' }, group: 'Sector Ops' },
   routeData: { route: 'sector/ships' },
@@ -36,6 +46,7 @@ export const shipsConfig = rootConfig({
     title: 'Ships',
     createTitle: 'Ship',
     primaryResource: Resources.Ships,
+    live: true,
     listColumns: [
       { id: Ships.fieldName.name },
       { id: Ships.fieldName.registry },
