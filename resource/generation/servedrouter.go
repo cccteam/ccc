@@ -85,8 +85,8 @@ var reservedHookFields = []string{"Outermost", "Root"}
 // validateRouterConfig checks the outlet declarations against GenerateRouter: without
 // the option the router-describing outlet options are refused (they would be silently
 // ignored), and with it every outlet says how it authenticates, the contradictions are
-// rejected, and the browser applications' mount paths are distinct and outside every
-// outlet's prefix.
+// rejected, and the browser applications' mount paths are distinct, outside every
+// outlet's prefix, and at / only when there is one browser application.
 func (r *resourceGenerator) validateRouterConfig() error {
 	outlets := r.allOutlets()
 	if !r.genRouter {
@@ -109,7 +109,6 @@ func (r *resourceGenerator) validateRouterConfig() error {
 		return nil
 	}
 
-	mounts := make(map[string]string, len(outlets))
 	for _, o := range outlets {
 		switch {
 		case o.auth != nil && o.apiKey:
@@ -127,6 +126,21 @@ func (r *resourceGenerator) validateRouterConfig() error {
 		if o.apiKey && caser.ToPascal(o.name)+"Auth" == bindAuthMethod {
 			return errors.Newf("outlet %q would take the Handlers method BindAuth, which the generated router reserves; choose another name", o.name)
 		}
+	}
+
+	return validateWebAppMounts(outlets)
+}
+
+// validateWebAppMounts checks the browser applications' mount paths: every application
+// has its own, none sits under an outlet's route prefix, and one at / is the only one.
+// An installed browser application's scope is every URL under its start, so with two
+// applications one at / would own the origin: the one under a prefix would never get its
+// own install prompt, and its notifications and links would be attributed to the
+// application at /. With several applications none is mounted at /, and the generated
+// router redirects the root to the default outlet's.
+func validateWebAppMounts(outlets []routerOutlet) error {
+	mounts := make(map[string]string, len(outlets))
+	for _, o := range outlets {
 		if o.webApp == "" {
 			continue
 		}
@@ -140,6 +154,18 @@ func (r *resourceGenerator) validateRouterConfig() error {
 				return errors.Newf("outlet %q declares WebApp(%q), which sits under outlet %q's route prefix /%s: a browser application is mounted beside the API prefixes, never under one", o.name, o.webApp, other.name, other.prefix)
 			}
 		}
+	}
+
+	root, ok := mounts["/"]
+	if !ok || len(mounts) == 1 {
+		return nil
+	}
+	for _, o := range outlets {
+		if o.webApp == "" || o.webApp == "/" {
+			continue
+		}
+
+		return errors.Newf(`outlet %q declares WebApp("/") beside outlet %q's WebApp(%q): an installed browser application's scope is every URL under its start, so the application at / owns the origin, the one under %s never gets its own install prompt, and its notifications and links are attributed to the application at /; with two browser applications none is mounted at /, so mount the %s outlet's application under a path such as /console`, root, o.name, o.webApp, o.webApp, root)
 	}
 
 	return nil
@@ -167,6 +193,13 @@ type servedRouterData struct {
 	// HasRootWebApp reports one mounted at "/", the catch-all.
 	WebApps       []*servedWebApp
 	HasRootWebApp bool
+	// RootRedirect is where GET / alone redirects when browser applications are served
+	// and none is mounted at /: the default outlet's mount path with a trailing slash,
+	// or the first declared outlet's that serves one when the default serves none.
+	// RootRedirectOutlet names that outlet. Both are empty with a root web app or no
+	// web app.
+	RootRedirect       string
+	RootRedirectOutlet string
 	// NotFoundPrefixes are the outlet prefixes as mounted paths ("/api/"), each given
 	// a not-found handler so an unknown API path never falls to a browser application.
 	NotFoundPrefixes []string
@@ -317,6 +350,7 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		return len(data.WebApps[i].Mount) > len(data.WebApps[j].Mount)
 	})
 	data.HasRootWebApp = slices.ContainsFunc(data.WebApps, func(w *servedWebApp) bool { return w.Mount == "/" })
+	data.RootRedirect, data.RootRedirectOutlet = rootRedirectOf(data)
 	for _, flavor := range []AuthFlavor{Password, OIDCGoogle, OIDCAzure} {
 		if f, ok := flavors[flavor]; ok {
 			data.Flavors = append(data.Flavors, f)
@@ -325,6 +359,22 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 	data.HandlersSummary = handlersSummary(data)
 
 	return data
+}
+
+// rootRedirectOf names where the root redirects and whose application it is: with
+// browser applications served and none at /, the default outlet's mount path with a
+// trailing slash, or the first declared outlet's that serves one. Empty otherwise.
+func rootRedirectOf(data *servedRouterData) (target, outlet string) {
+	if len(data.WebApps) == 0 || data.HasRootWebApp {
+		return "", ""
+	}
+	for _, o := range data.Outlets {
+		if o.WebApp != nil {
+			return o.WebApp.Mount + "/", o.Name
+		}
+	}
+
+	return "", ""
 }
 
 // servedOutletOf builds one outlet's payload from its declaration: its names, its
@@ -425,6 +475,9 @@ var (
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404.{{ if .WebApps }} Outside every prefix the browser
 // applications answer, longer mount paths first:{{ range $i, $w := .WebApps }}{{ if $i }},{{ end }} {{ $w.Mount }} ({{ $w.DeepLink }}, {{ $w.Assets }}){{ end }}.{{ end }}
+{{- if .RootRedirect }}
+// None is mounted at /: the root alone redirects to {{ .RootRedirect }}, the {{ .RootRedirectOutlet }} outlet's application.
+{{- end }}
 package {{ .Package }}
 
 import (
@@ -582,6 +635,16 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.{{ .DeepLink }})
 
 		r.Get("/*", h.{{ .Assets }}())
+	})
+{{- end }}
+{{- if .RootRedirect }}
+
+	// No browser application is mounted at /: an installed application's scope is every
+	// URL under its start, so one at / would own the origin and the others would never
+	// install on their own. The root alone sends the browser to the {{ .RootRedirectOutlet }} outlet's
+	// application; every other unmatched path is 404.
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, "{{ .RootRedirect }}", http.StatusTemporaryRedirect)
 	})
 {{- end }}
 
@@ -886,6 +949,46 @@ func TestGeneratedRouterWebApps(t *testing.T) {
 			want := slices.Concat(routerRootChain, []string{tt.deepLink})
 			if !slices.Equal(rec.chain, want) {
 				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
+			}
+		})
+	}
+}
+{{ end }}
+{{- if .RootRedirect }}
+// TestGeneratedRouterRoot proves that with no browser application at / the root alone
+// redirects to the {{ .RootRedirectOutlet }} outlet's application, calling no handler, and that an
+// unmatched path outside every prefix and every mount is 404: no application answers for
+// the whole origin.
+func TestGeneratedRouterRoot(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		url      string
+		code     int
+		location string
+	}{
+		{name: "the root redirects", url: "/", code: http.StatusTemporaryRedirect, location: "{{ .RootRedirect }}"},
+		{name: "an unmatched path is not found", url: "/generated-router-unmatched", code: http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			rr := serveGeneratedRouter(t, rec, Hooks{}, http.MethodGet, tt.url)
+
+			if got := rr.Code; got != tt.code {
+				t.Errorf("response.Code = %v, want %v", got, tt.code)
+			}
+			if got := rr.Header().Get("Location"); got != tt.location {
+				t.Errorf("Location = %q, want %q", got, tt.location)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Fatalf("expected no handler called, got: %v", rec.handlers)
+			}
+			if !slices.Equal(rec.chain, routerRootChain) {
+				t.Errorf("middleware chain = %v, want %v", rec.chain, routerRootChain)
 			}
 		})
 	}

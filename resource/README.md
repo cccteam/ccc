@@ -399,7 +399,7 @@ The auth behind a session outlet, `generation.Auth(importPath, flavor)`: the aut
 (the package exporting `Name`) and how its people sign in, `Password`, `OIDCGoogle`, or
 `OIDCAzure`. A machine outlet declares `generation.APIKey()` instead. And the browser
 application an outlet serves, when it serves one: `generation.WebApp(mountPath)`, `"/"`
-for the application at the root, `"/portal"` for one under a path. The default outlet
+for the application at the root, `"/console"` for one under a path. The default outlet
 declares them on `GenerateRoutes`, the others on `WithRouterOutlet`. A session `Auth`
 makes the outlet serve sessions exactly as `ServesSessions()` does; `ServesSessions()`
 stays for applications that keep a hand-written router. Lodestar's program:
@@ -408,7 +408,7 @@ stays for applications that keep a hand-written router. Lodestar's program:
 generation.GenerateRouter(),
 generation.GenerateRoutes("pkg/router", "api",
 	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.Password),
-	generation.WebApp("/"),
+	generation.WebApp("/console"),
 ),
 generation.WithRouterOutlet("droids", "droids", generation.APIKey()),
 generation.WithRouterOutlet("portal", "portal/api",
@@ -421,6 +421,17 @@ Under `GenerateRouter` every outlet says how it authenticates, one way: an outle
 neither `Auth` nor `APIKey`, or with both, fails generation, as do a machine outlet with
 a `WebApp`, two outlets on one mount path, and a browser application mounted under an
 API prefix. Without the option the three declarations are refused rather than ignored.
+
+A browser application at `"/"` must be the only one. An installed browser application's
+scope is every URL under its start, so beside a second application one at `/` would own
+the origin: the application under a prefix would never get its own install prompt, and
+its notifications and links would be attributed to the one at `/`. Generation refuses
+`WebApp("/")` declared beside any other `WebApp`, naming both outlets; one application
+at `/` with no other stays valid and is then the catch-all. With several applications
+none is mounted at `/`, and the router answers `GET /` alone with a temporary redirect
+to the default outlet's application, its mount path with a trailing slash (`/console/`),
+or to the first declared outlet's that serves one when the default outlet serves none.
+Nothing else changes at the root: every other unmatched path is 404.
 
 **The generated file** holds four things, in this order. The chain comment opens it as
 the package documentation: every outlet's middleware in order, outermost first, one line
@@ -463,8 +474,8 @@ refuses one that does not, at construction. `New(h Handlers, hooks Hooks) *chi.M
 written linear and inline, the way a hand router reads: `hooks.Outermost`, the logger,
 the security headers, and parameter capture; `hooks.Root`; one group per outlet, top to
 bottom; a not-found handler per outlet prefix, so an unknown API path is 404 and never a
-browser application's entry document; then the web apps, longer mount paths first so
-`"/"` is the catch-all.
+browser application's entry document; then the web apps, longer mount paths first, so an
+application at `"/"` is the catch-all; and, with several web apps, the root redirect.
 
 A session outlet's group is `BindAuth(<pkg>.Name)` (with two session auths), `NoCaching`,
 `CompressionMiddleware`, `StartSession`, `SetXSRFToken`; the flavor's login routes under
@@ -481,8 +492,9 @@ and asserts the middleware each request passed through, in order, for its outlet
 each flavor's session routes answer behind the group and before the guards; that under
 every prefix an unknown path is 404 and nothing under one outlet's prefix reaches another
 outlet's group; that each browser application answers at its mount path through its
-deep-link rewrite; and that the hooks sit where the chain comment says. The chain
-comment is proven, not stated. `NewTestRouter` and the route tests are unchanged, and the
+deep-link rewrite; with several applications, that the root alone redirects to the
+default outlet's and an unmatched path is 404; and that the hooks sit where the chain
+comment says. The chain comment is proven, not stated. `NewTestRouter` and the route tests are unchanged, and the
 application's own hooks are the application's suite's to exercise.
 
 **Adopting it.** Lodestar keeps one hand file in its router package, `hooks.go`: an

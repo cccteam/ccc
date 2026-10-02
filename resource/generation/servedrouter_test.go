@@ -76,8 +76,9 @@ func Test_routerOutletOptions(t *testing.T) {
 
 // Test_validateRouterConfig pins the agreements between GenerateRouter and the outlet
 // declarations: the router options are refused without the switch, every outlet
-// authenticates one way with it, the reserved names stay free, and the browser
-// applications' mount paths are distinct and beside the API prefixes.
+// authenticates one way with it, the reserved names stay free, the browser
+// applications' mount paths are distinct and beside the API prefixes, and an
+// application at / is the only one.
 func Test_validateRouterConfig(t *testing.T) {
 	t.Parallel()
 
@@ -117,10 +118,24 @@ func Test_validateRouterConfig(t *testing.T) {
 			name: "the full shape",
 			options: []ResourceOption{
 				GenerateRouter(),
-				GenerateRoutes("pkg/router", "api", staff, WebApp("/")),
+				GenerateRoutes("pkg/router", "api", staff, WebApp("/console")),
 				WithRouterOutlet("portal", "portal/api", members, WebApp("/portal")),
 				WithRouterOutlet("machines", "machines", APIKey()),
 			},
+		},
+		{
+			name:    "one browser application at the root alone",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, WebApp("/")), WithRouterOutlet("portal", "portal/api", members)},
+		},
+		{
+			name:    "a browser application at the root beside a second one",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, WebApp("/")), WithRouterOutlet("portal", "portal/api", members, WebApp("/portal"))},
+			wantErr: `outlet "default" declares WebApp("/") beside outlet "portal"'s WebApp("/portal"): an installed browser application's scope is every URL under its start, so the application at / owns the origin, the one under /portal never gets its own install prompt, and its notifications and links are attributed to the application at /; with two browser applications none is mounted at /, so mount the default outlet's application under a path such as /console`,
+		},
+		{
+			name:    "a second outlet's browser application at the root beside the default outlet's",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, WebApp("/console")), WithRouterOutlet("portal", "portal/api", members, WebApp("/"))},
+			wantErr: `outlet "portal" declares WebApp("/") beside outlet "default"'s WebApp("/console")`,
 		},
 		{
 			name:    "an outlet that says nothing",
@@ -205,7 +220,8 @@ func Test_validateRouterConfig(t *testing.T) {
 // Test_servedRouterData pins the payload the templates read: BindAuth and the auth
 // imports only with two distinct session auths, the default outlet's session handlers
 // embedded and an additional outlet's behind a getter, the flavor routes under each
-// prefix, and the browser applications longest mount first.
+// prefix, the browser applications longest mount first, and the root redirect only
+// when applications are served and none is at /.
 func Test_servedRouterData(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +256,9 @@ func Test_servedRouterData(t *testing.T) {
 				if len(data.WebApps) != 1 || data.WebApps[0].DeepLink != "DeepLink" || data.WebApps[0].Assets != "Assets" || !data.HasRootWebApp {
 					t.Errorf("web apps = %+v", data.WebApps)
 				}
+				if data.RootRedirect != "" || data.RootRedirectOutlet != "" {
+					t.Errorf("root redirect = %q to %q; want none with an application at /", data.RootRedirectOutlet, data.RootRedirect)
+				}
 				if len(data.Flavors) != 1 || data.Flavors[0].StubType != "routerOIDCAzureStub" {
 					t.Errorf("flavors = %+v", data.Flavors)
 				}
@@ -248,7 +267,7 @@ func Test_servedRouterData(t *testing.T) {
 		{
 			name: "two session auths and an API key",
 			outlets: []routerOutlet{
-				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/"},
+				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
 			},
@@ -268,11 +287,28 @@ func Test_servedRouterData(t *testing.T) {
 				if len(data.ExtraOutlets) != 2 || len(data.SessionOutlets) != 2 || len(data.APIKeyOutlets) != 1 {
 					t.Errorf("outlet groups = %d extra, %d session, %d api-key", len(data.ExtraOutlets), len(data.SessionOutlets), len(data.APIKeyOutlets))
 				}
-				if data.WebApps[0].Mount != "/portal" || data.WebApps[0].DeepLink != "PortalDeepLink" || data.WebApps[1].Mount != "/" {
-					t.Errorf("web apps = %+v, %+v; want /portal first", data.WebApps[0], data.WebApps[1])
+				if data.WebApps[0].Mount != "/console" || data.WebApps[0].DeepLink != "DeepLink" || data.WebApps[1].Mount != "/portal" || data.WebApps[1].DeepLink != "PortalDeepLink" || data.HasRootWebApp {
+					t.Errorf("web apps = %+v, %+v; want /console first and no root application", data.WebApps[0], data.WebApps[1])
+				}
+				if data.RootRedirect != "/console/" || data.RootRedirectOutlet != "default" {
+					t.Errorf("root redirect = %q to %q; want the default outlet's /console/", data.RootRedirectOutlet, data.RootRedirect)
 				}
 				if strings.Join(data.NotFoundPrefixes, ",") != "/api/,/droids/,/portal/api/" {
 					t.Errorf("not-found prefixes = %v", data.NotFoundPrefixes)
+				}
+			},
+		},
+		{
+			name: "a default outlet without a browser application redirects the root to the first outlet that serves one",
+			outlets: []routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew, webApp: "/kiosk"},
+				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
+			},
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				if data.RootRedirect != "/kiosk/" || data.RootRedirectOutlet != "kiosk" {
+					t.Errorf("root redirect = %q to %q; want the kiosk outlet's /kiosk/", data.RootRedirectOutlet, data.RootRedirect)
 				}
 			},
 		},
@@ -289,6 +325,9 @@ func Test_servedRouterData(t *testing.T) {
 				}
 				if len(data.Flavors) != 1 {
 					t.Errorf("flavors = %+v, want one", data.Flavors)
+				}
+				if data.RootRedirect != "" || data.RootRedirectOutlet != "" {
+					t.Errorf("root redirect = %q to %q; want none without a browser application", data.RootRedirectOutlet, data.RootRedirect)
 				}
 			},
 		},
@@ -307,7 +346,8 @@ func Test_servedRouterData(t *testing.T) {
 
 // Test_servedRouterTemplates pins the rendered shapes: the chain comment opens the file,
 // the flavor routes and guards render inline per outlet, BindAuth and the auth imports
-// appear only with two session auths, an API-key group carries no session handling, and
+// appear only with two session auths, an API-key group carries no session handling, the
+// root redirect and its test render only with browser applications and none at /, and
 // the test renders a recording stub per flavor in use.
 func Test_servedRouterTemplates(t *testing.T) {
 	t.Parallel()
@@ -340,10 +380,10 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\tr.Get(\"/api/user/logout\", h.FrontChannelLogout())\n",
 				"\t\t\tr.Use(h.ValidateSession)\n\t\t\tr.Use(h.ValidateXSRFToken)\n\n\t\t\tregisterGenerated(r, hooks.Default, \"Default\", func(r chi.Router) {\n\t\t\t\tgeneratedRoutes(r, h)\n\t\t\t})",
 				"\tfor _, prefix := range []string{\"/api/\"} {",
-				"\tr.Route(\"/\", func(r chi.Router) {\n\t\tr.Use(h.DeepLink)\n\n\t\tr.Get(\"/*\", h.Assets())\n\t})",
+				"\t// The default outlet's browser application at /, the catch-all.\n\tr.Route(\"/\", func(r chi.Router) {\n\t\tr.Use(h.DeepLink)\n\n\t\tr.Get(\"/*\", h.Assets())\n\t})\n\n\treturn r\n}",
 				"\tDefault func(r chi.Router, generated func(chi.Router))\n}",
 			},
-			wantNotRouter:       []string{"BindAuth", "Generated" + "PortalHandlers", "Auth(next http.Handler)"},
+			wantNotRouter:       []string{"BindAuth", "Generated" + "PortalHandlers", "Auth(next http.Handler)", "http.Redirect", "None is mounted at /"},
 			wantNoRouterImports: []string{"example.com/acme/beacon/pkg/config"},
 			wantRouterTest: []string{
 				"type routerOIDCAzureStub struct {\n\tsession.OIDCAzureHandlers",
@@ -351,14 +391,15 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\t{url: \"/api/user/logout\", suffix: \"/user/logout\", method: http.MethodGet, handler: \"FrontChannelLogout\"},",
 				"\t\tguards: []string{\"ValidateSession\", \"ValidateXSRFToken\"},",
 				"func TestGeneratedRouterWebApps(t *testing.T) {",
+				"nothing else, and that the\n// application at / is the catch-all.",
 				"\t\t{url: \"/generated-router-page/deep/link\", handler: \"Assets\", deepLink: \"DeepLink\"},",
 			},
-			wantNotRouterTest: []string{"BindAuth", "routerPasswordStub"},
+			wantNotRouterTest: []string{"BindAuth", "routerPasswordStub", "TestGeneratedRouterRoot"},
 		},
 		{
 			name: "two session auths and an API-key outlet",
 			outlets: []routerOutlet{
-				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/"},
+				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
 			},
@@ -377,10 +418,12 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\tr.Use(portalSession.StartSession)",
 				"\t\tr.Get(\"/portal/api/user/callback\", portalSession.CallbackOIDC())",
 				"\tfor _, prefix := range []string{\"/api/\", \"/droids/\", \"/portal/api/\"} {",
-				"\tr.Route(\"/portal\", func(r chi.Router) {\n\t\tr.Use(h.PortalDeepLink)\n\n\t\tr.Get(\"/*\", h.PortalAssets())\n\t})\n\n\t// The default outlet's browser application at /, the catch-all.\n\tr.Route(\"/\", func(r chi.Router) {",
+				"// applications answer, longer mount paths first: /console (DeepLink, Assets), /portal (PortalDeepLink, PortalAssets).\n// None is mounted at /: the root alone redirects to /console/, the default outlet's application.\npackage router",
+				"\t// The default outlet's browser application at /console.\n\tr.Route(\"/console\", func(r chi.Router) {\n\t\tr.Use(h.DeepLink)\n\n\t\tr.Get(\"/*\", h.Assets())\n\t})\n\n\t// The portal outlet's browser application at /portal.\n\tr.Route(\"/portal\", func(r chi.Router) {\n\t\tr.Use(h.PortalDeepLink)\n\n\t\tr.Get(\"/*\", h.PortalAssets())\n\t})\n\n\t// No browser application is mounted at /:",
+				"The root alone sends the browser to the default outlet's\n\t// application; every other unmatched path is 404.\n\tr.Get(\"/\", func(w http.ResponseWriter, req *http.Request) {\n\t\thttp.Redirect(w, req, \"/console/\", http.StatusTemporaryRedirect)\n\t})\n\n\treturn r\n}",
 				"\tDroids func(r chi.Router, generated func(chi.Router))",
 			},
-			wantNotRouter:     []string{"h.Portal().StartSession", "droidsSession"},
+			wantNotRouter:     []string{"h.Portal().StartSession", "droidsSession", "catch-all"},
 			wantRouterImports: []string{"example.com/acme/beacon/pkg/auth/crew", "example.com/acme/beacon/pkg/auth/members"},
 			wantRouterTest: []string{
 				"\t\tgroup:  []string{\"BindAuth(\" + crew.Name + \")\", \"NoCaching\", \"CompressionMiddleware\", \"StartSession\", \"SetXSRFToken\"},",
@@ -393,8 +436,29 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"func (s *routerHandlersStub) DroidsAuth(next http.Handler) http.Handler {",
 				"func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {",
 				"\t\t\tDroids: func(r chi.Router, generated func(chi.Router)) {",
+				"\t\t{url: \"/console/generated-router-page/deep/link\", handler: \"Assets\", deepLink: \"DeepLink\"},",
+				"// redirects to the default outlet's application, calling no handler, and that an\n",
+				"func TestGeneratedRouterRoot(t *testing.T) {",
+				"\t\t{name: \"the root redirects\", url: \"/\", code: http.StatusTemporaryRedirect, location: \"/console/\"},",
+				"\t\t{name: \"an unmatched path is not found\", url: \"/generated-router-unmatched\", code: http.StatusNotFound},",
 			},
-			wantNotRouterTest: []string{"routerOIDCAzureStub"},
+			wantNotRouterTest: []string{"routerOIDCAzureStub", "catch-all"},
+		},
+		{
+			name: "a default outlet without a browser application redirects the root to the first outlet that serves one",
+			outlets: []routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "portal", prefix: "portal/api", servesSessions: true, auth: crew, webApp: "/portal"},
+			},
+			wantRouter: []string{
+				"// None is mounted at /: the root alone redirects to /portal/, the portal outlet's application.",
+				"The root alone sends the browser to the portal outlet's\n\t// application; every other unmatched path is 404.\n\tr.Get(\"/\", func(w http.ResponseWriter, req *http.Request) {\n\t\thttp.Redirect(w, req, \"/portal/\", http.StatusTemporaryRedirect)\n\t})",
+			},
+			wantNotRouter: []string{"catch-all", "h.DeepLink", "h.Assets"},
+			wantRouterTest: []string{
+				"// redirects to the portal outlet's application, calling no handler, and that an\n",
+				"\t\t{name: \"the root redirects\", url: \"/\", code: http.StatusTemporaryRedirect, location: \"/portal/\"},",
+			},
 		},
 		{
 			name:    "an API-key default outlet alone imports no session package",
@@ -403,9 +467,9 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"//\tdefault (/api), API key:",
 				"\tDefaultAuth(next http.Handler) http.Handler\n",
 			},
-			wantNotRouter:       []string{"StartSession", "session.PasswordAuthHandlers", "session.OIDC"},
+			wantNotRouter:       []string{"StartSession", "session.PasswordAuthHandlers", "session.OIDC", "http.Redirect"},
 			wantNoRouterImports: []string{"github.com/cccteam/session"},
-			wantNotRouterTest:   []string{"session.PasswordAuthHandlers", "session.OIDC", "TestGeneratedRouterWebApps", "func TestGeneratedRouterSessionRoutes"},
+			wantNotRouterTest:   []string{"session.PasswordAuthHandlers", "session.OIDC", "TestGeneratedRouterWebApps", "func TestGeneratedRouterSessionRoutes", "TestGeneratedRouterRoot"},
 		},
 	}
 	r := &resourceGenerator{client: &client{}}

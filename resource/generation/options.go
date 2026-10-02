@@ -329,11 +329,17 @@ func APIKey() OutletOption {
 
 // WebApp declares the browser application a session outlet serves, for the generated
 // router (GenerateRouter): mountPath is where it is mounted ("/" for the application
-// at the root, "/portal" for one under a path), and the application supplies its
+// at the root, "/console" for one under a path), and the application supplies its
 // DeepLink and Assets handlers, prefixed with the outlet's name for an additional
 // outlet (PortalDeepLink, PortalAssets). The router mounts every web app after the
-// outlets, longer paths first, so "/" is the catch-all; an outlet without the
-// declaration mounts no assets.
+// outlets, longer paths first; an outlet without the declaration mounts no assets.
+//
+// An application at "/" must be the only one, and is then the catch-all. An installed
+// browser application's scope is every URL under its start, so beside a second
+// application one at / would own the origin and the other would never install on its
+// own: with several applications none is mounted at /, generation refuses WebApp("/"),
+// and the router answers the root alone with a temporary redirect to the default
+// outlet's application (or the first declared outlet's that serves one).
 func WebApp(mountPath string) OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		if mountPath == "" || !strings.HasPrefix(mountPath, "/") || strings.ContainsAny(mountPath, "{}* \t\n\"") || (mountPath != "/" && strings.HasSuffix(mountPath, "/")) {
