@@ -1334,8 +1334,15 @@ import (
 	"slices"
 	"strings"
 	"testing"
+{{- if .HasGates }}
+
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+{{- else }}
 
 	"github.com/cccteam/ccc/accesstypes"
+{{- end }}
 )
 
 // grants scripts the permission table for one test: the permissions the test user
@@ -1361,7 +1368,11 @@ type grants map[accesstypes.Permission]bool
 // route is open to anyone signed in and carries one case: 200 without a grant.
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
-// with the schema on every regeneration.
+// with the schema on every regeneration. When the application declares feature flags,
+// the suite puts every one of them on in its database first: a route or field gated
+// behind a flag (@feature) is absent while the flag is off, answering 404 before the
+// permission gate this suite pins, and the generated gate tests drive both states of
+// each flag on a database of their own.
 //
 // Conditional grants are outside this suite. The matrix pins the endpoint gate, which
 // rejects only a Denied decision: a granted case proves the request passed the gate
@@ -1431,6 +1442,17 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareDatabase() error = %v", err)
 	}
+{{- if .HasGates }}
+	client := resource.NewSpannerClient(db.Client)
+	if err := resource.MigrateFeatures(t.Context(), client, {{ .ResourcePackage }}.Features()); err != nil {
+		t.Fatalf("resource.MigrateFeatures() error = %v", err)
+	}
+	for _, declared := range {{ .ResourcePackage }}.Features() {
+		if err := resource.SetFeatureEnabled(t.Context(), client, declared.Name, true, "TestGeneratedAuthorizationMatrix"); err != nil {
+			t.Fatalf("resource.SetFeatureEnabled(%s) error = %v", declared.Name, err)
+		}
+	}
+{{- end }}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

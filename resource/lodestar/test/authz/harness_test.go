@@ -152,7 +152,6 @@ func newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handle
 		}
 	})
 
-	putDeclaredFeaturesOn(t, db)
 	a := app.New(&testConfigurer{db: db, g: g, documents: documents})
 	// The App reads its feature flags as it is built, so a suite that flips a flag
 	// before newTestHandler drives the App in that state; Start reports a copy that

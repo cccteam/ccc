@@ -54,9 +54,12 @@ func (r *resourceGenerator) runHandlerTestsGeneration() error {
 
 	authzPath := filepath.Join(r.handlerTests.Dir(), generatedGoFileName("authz_test"))
 	if err := r.writeFormattedGoFile(authzPath, "authzTestTemplate", authzTestTemplate, &authzTestData{
-		Source:  r.resource.Dir(),
-		Package: r.handlerTests.Package(),
-		Cases:   cases,
+		Source:              r.resource.Dir(),
+		Package:             r.handlerTests.Package(),
+		Cases:               cases,
+		HasGates:            r.hasGates(),
+		LocalPackageImports: r.localPackageImports(),
+		ResourcePackage:     r.resource.Package(),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

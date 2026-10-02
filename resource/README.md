@@ -1323,8 +1323,12 @@ generator also writes `zz_gen_features_test.go` into the handler tests package: 
 gated route and field driven in both states of its flag, the flag flipped in the test
 database through `resource.SetFeatureEnabled` between them after
 `resource.MigrateFeatures` wrote every declared flag, so the suite proves the 404 and the
-unknown column off, and the matrix's answers on. The application's `newTestHandler`
-builds the App over the test database, which reads its flags as it is built.
+unknown column off, and the matrix's answers on. The matrix puts every declared flag on
+in its own test database before it drives a route, because a gated route is absent while
+its flag is off and would answer 404 before the permission gate the matrix pins; the
+application's harness needs no rule of its own for that. The application's
+`newTestHandler` builds the App over the test database, which reads its flags as it is
+built.
 
 **The names the client library mirrors**: the routes `features`, `feature-flags`,
 `feature-flags/{featureFlagName}` and `set-feature` under the outlet's prefix; the

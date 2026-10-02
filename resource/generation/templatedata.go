@@ -431,6 +431,12 @@ type authzTestData struct {
 	Source  string
 	Package string
 	Cases   []authzCase
+	// HasGates says the application declares feature flags: the matrix then puts every
+	// one of them on in its database before driving the routes, since a gated route
+	// answers 404 before the permission gate while its flag is off.
+	HasGates            bool
+	LocalPackageImports string
+	ResourcePackage     string
 }
 
 type rpcFileData struct {
