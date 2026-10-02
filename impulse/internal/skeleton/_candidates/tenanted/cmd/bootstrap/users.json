@@ -5,7 +5,8 @@
       "password": "password",
       "roles": {
         "global": [
-          "Administrator_Global"
+          "Administrator_Global",
+          "FeatureAdministrator"
         ],
         "everyDomain": [
           "Administrator_Domain"

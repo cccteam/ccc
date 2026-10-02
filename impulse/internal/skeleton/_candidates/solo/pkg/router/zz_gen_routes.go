@@ -32,6 +32,13 @@ type GeneratedHandlers interface {
 	// where they hold at least one grant — the tenant picker's source, on the same
 	// foothold predicate as concealed tenancy.
 	UserDomains() http.HandlerFunc
+
+	FeatureFlags() http.HandlerFunc
+	FeatureFlag() http.HandlerFunc
+
+	Features() http.HandlerFunc
+
+	SetFeature() http.HandlerFunc
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
@@ -44,6 +51,18 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Post("/api/live/renew", h.LiveRenew())
 	r.Post("/api/live/unsubscribe", h.LiveUnsubscribe())
 	r.Get("/api/live/token", h.LiveToken())
+
+	featureFlagsHandler := h.FeatureFlags()
+	r.Get("/api/feature-flags", featureFlagsHandler)
+	r.Post("/api/feature-flags", featureFlagsHandler)
+
+	featureFlagHandler := h.FeatureFlag()
+	r.Get("/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	r.Post("/api/feature-flags/{featureFlagName}", featureFlagHandler)
+
+	r.Get("/api/features", h.Features())
+
+	r.Post("/api/set-feature", h.SetFeature())
 }
 
 // NewTestRouter serves the generated API routes bare, for test composition only: no

@@ -10,6 +10,13 @@ impulse add auth <name>
   --oidc-google bool
   --preauth bool
   --skip-generate bool
+impulse add feature <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --site string
+  --skip-generate bool
 impulse add outlet <name>
   --agent bool
   --agent-arg stringArray
@@ -74,6 +81,12 @@ impulse new <dir>
   --tenancy bool
   --tenant-table string (default Tenants)
 impulse remove
+impulse remove feature <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --skip-generate bool
 impulse remove outlet <name>
   --agent bool
   --agent-arg stringArray
@@ -124,6 +137,7 @@ checks:
   ci-workflow
   paging
   rpc-execute
+  feature-flags
   sites-generators
   env-template
   pins

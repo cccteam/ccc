@@ -111,6 +111,13 @@ func run(ctx context.Context) error {
 	}
 	fmt.Printf("Checked the %s auth's role policy\n", staff.Name)
 
+	// The feature flags the release declares, written off where the table has no row for
+	// them (the development seed's rows, applied above, keep their state), as the deploy
+	// writes them.
+	if err := deploy.MigrateFeatures(ctx, data.ResourceClient()); err != nil {
+		return errors.Wrap(err, "deploy.MigrateFeatures()")
+	}
+
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
 	}

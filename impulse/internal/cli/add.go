@@ -34,6 +34,41 @@ launches Claude Code on it and verifies the guardrails when it returns.`,
 	cmd.AddCommand(newAddTenancy())
 	cmd.AddCommand(newAddAuth())
 	cmd.AddCommand(newAddSite())
+	cmd.AddCommand(newAddFeature())
+
+	return cmd
+}
+
+func newAddFeature() *cobra.Command {
+	var (
+		f    transitionFlags
+		site string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "feature <name>",
+		Short: "Add a feature flag: its constant, its development seed row, regeneration, and a handoff for the gate",
+		Long: `feature declares a feature flag: a release switch whose code ships before the feature is
+turned on, differs per environment, and is removed once the feature is permanent or
+abandoned. The resources package gains a resource.Feature constant named after the flag
+(cargo_manifest becomes CargoManifest) with a doc stub, in ` + app.FeaturesFile + `; the development
+seed gains the flag's row, off, in schema/devseed (set Enabled to TRUE there to start
+development and the test environments with the feature on); and go generate runs, so the
+generated Features() lists the flag for the deploy's MigrateFeatures and the browser's
+Feature union carries it. In the sites layout --site names the site whose resources
+package declares it.
+
+What the flag gates (@feature(<Constant>) on a resource, a field or a method, or a read of
+it in Go or in the browser), the description, and where the flags dialog's link lives are
+handed to the agent; the feature-flags check fails while the flag gates nothing and is
+read nowhere.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTransition(cmd, &f, transition_.AddFeature{Name: args[0], Site: site}, "")
+		},
+	}
+	f.bind(cmd)
+	cmd.Flags().StringVar(&site, "site", "", "in the sites layout, the site whose resources package declares the flag")
 
 	return cmd
 }
@@ -367,6 +402,9 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	out := cmd.OutOrStdout()
 	exec := check.OSExec{}
 	var changes, meanings []string
+	// uses counts the hand-written uses a removal left behind, obligations the check
+	// cannot see, so the handoff happens for them even when the check is clean.
+	uses := 0
 	for _, t := range ts {
 		// Each transition reads the tree the one before it left.
 		a, err := app.Discover(f.appDir)
@@ -383,6 +421,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 		writeChange(out, change)
 		changes = append(changes, change.Text())
 		meanings = append(meanings, t.Meaning())
+		uses += len(change.Uses)
 	}
 
 	// The tree changed, so the application is read again for the checks.
@@ -406,7 +445,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 		return err
 	}
 	check.Report(out, results)
-	if !check.Failed(results) {
+	if !check.Failed(results) && uses == 0 {
 		if len(ts) == 1 {
 			fmt.Fprintf(out, "\nThe check is clean: the option is wired. Review the diff and open the pull request.\n")
 		} else {
@@ -416,15 +455,17 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 		return nil
 	}
 
-	referenceDir, err := renderReference(reference)
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %v\n", err)
+	referenceDir := ""
+	if reference != "" {
+		if referenceDir, err = renderReference(reference); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %v\n", err)
+		}
 	}
 	guard, err := handoff.Take(a, handoff.FromTree(a))
 	if err != nil {
 		return err
 	}
-	brief := &handoff.Brief{App: a, Change: strings.Join(changes, "\n"), Meaning: strings.Join(meanings, "\n\n"), Results: results, Reference: referenceDir, Guard: guard}
+	brief := &handoff.Brief{App: a, Change: strings.Join(changes, "\n"), Meaning: strings.Join(meanings, "\n\n"), Results: results, Reference: referenceDir, Guard: guard, Left: uses}
 	ag := &handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
 
 	return completeHandoff(ctx, out, f.appDir, env, repo, brief, ag, f.agent)
@@ -440,6 +481,12 @@ func writeChange(w io.Writer, change *transition_.Change) {
 		fmt.Fprintf(w, "Left to the agent:\n")
 		for _, s := range change.Skipped {
 			fmt.Fprintf(w, "  - %s\n", s)
+		}
+	}
+	if len(change.Uses) > 0 {
+		fmt.Fprintf(w, "Still named by the hand-written code (%s):\n", change.UsesNote)
+		for _, u := range change.Uses {
+			fmt.Fprintf(w, "  - %s\n", u)
 		}
 	}
 	fmt.Fprintln(w)

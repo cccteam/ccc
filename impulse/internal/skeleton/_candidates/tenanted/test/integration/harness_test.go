@@ -163,7 +163,13 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// visible to the engine before serving.
 	waitForDomains(ctx, t, accessClient, memberUser, []accesstypes.Domain{north})
 
-	handler := router.New(app.New(&servedConfigurer{db: db, auth: auth}), router.Hooks{})
+	a := app.New(&servedConfigurer{db: db, auth: auth})
+	// The App reads its feature flags as it is built; Start reports a copy that could
+	// not be read and follows the table until the test ends.
+	if err := a.Start(ctx); err != nil {
+		t.Fatalf("app.Start() error = %v", err)
+	}
+	handler := router.New(a, router.Hooks{})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 

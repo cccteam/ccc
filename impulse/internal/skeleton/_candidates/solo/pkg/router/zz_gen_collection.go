@@ -3,13 +3,35 @@
 
 package router
 
-import "github.com/cccteam/ccc/resource"
+import (
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+)
 
 // Collection returns the application's permission collection, computed by the Resource
 // Generator from the resource definitions and generated routes, for deployment tooling
 // such as role migration and bootstrap.
 func Collection() *resource.GeneratedCollection {
 	return resource.MustNewGeneratedCollection(resource.CollectionData{
-		Resources: []resource.CollectionResource{},
+		Resources: []resource.CollectionResource{
+			{
+				Name:        "FeatureFlags",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "description", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "enabled", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "name"},
+					{Name: "updatedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "updatedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+				},
+				Order: []accesstypes.Tag{"name"},
+			},
+			{
+				Name:        "SetFeature",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+			},
+		},
 	})
 }

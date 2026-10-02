@@ -42,7 +42,13 @@ func Main() error {
 	}
 	defer conf.Close()
 
-	if err := server.New(conf.Addr()).Start(ctx, router.New(app.New(conf), router.Hooks{})); err != nil {
+	a := app.New(conf)
+	// The App's background work: the feature flags are followed until the server stops,
+	// and a copy that could not be read when the App was built stops the start here.
+	if err := a.Start(ctx); err != nil {
+		return errors.Wrap(err, "app.Start()")
+	}
+	if err := server.New(conf.Addr()).Start(ctx, router.New(a, router.Hooks{})); err != nil {
 		return errors.Wrap(err, "server exited unexpectedly")
 	}
 

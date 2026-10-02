@@ -225,7 +225,13 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	waitForDomains(ctx, t, accessClient, machinesUser, []accesstypes.Domain{north})
 	waitForDomains(ctx, t, membersAccess, clientUser, []accesstypes.Domain{north})
 
-	server.Config.Handler = router.New(app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth}), router.Hooks{})
+	a := app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth})
+	// The App reads its feature flags as it is built; Start reports a copy that could
+	// not be read and follows the table until the test ends.
+	if err := a.Start(ctx); err != nil {
+		t.Fatalf("app.Start() error = %v", err)
+	}
+	server.Config.Handler = router.New(a, router.Hooks{})
 	server.Start()
 
 	return &served{server: server, access: accessClient, members: membersAccess}

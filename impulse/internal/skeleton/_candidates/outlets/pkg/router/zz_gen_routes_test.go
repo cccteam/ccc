@@ -77,6 +77,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/machines/live/renew", method: http.MethodPost},
 		{url: "/machines/live/unsubscribe", method: http.MethodPost},
 		{url: "/machines/live/token", method: http.MethodGet},
+		{url: "/machines/feature-flags", method: http.MethodGet},
+		{url: "/machines/feature-flags", method: http.MethodPost},
+		{url: "/machines/feature-flags/testFeatureFlagName", method: http.MethodGet},
+		{url: "/machines/feature-flags/testFeatureFlagName", method: http.MethodPost},
+		{url: "/machines/set-feature", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/announcements", method: http.MethodGet},
 		{url: "/machines/tenants/testDomain/announcements", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet},
@@ -181,6 +186,7 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string{
+		"featureFlagName",
 		"tenantID",
 		"announcementID",
 		"readingID",
@@ -293,6 +299,71 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"tenantID": "testTenantID"},
 		},
 		{
+			url: "/console/api/features", method: http.MethodGet,
+			handlerFunc: "Features",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/feature-flags", method: http.MethodGet,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/feature-flags", method: http.MethodPost,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/feature-flags/testFeatureFlagName", method: http.MethodGet,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/console/api/feature-flags/testFeatureFlagName", method: http.MethodPost,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/console/api/set-feature", method: http.MethodPost,
+			handlerFunc: "SetFeature",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/features", method: http.MethodGet,
+			handlerFunc: "Features",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/feature-flags", method: http.MethodGet,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/feature-flags", method: http.MethodPost,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/feature-flags/testFeatureFlagName", method: http.MethodGet,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/portal/api/feature-flags/testFeatureFlagName", method: http.MethodPost,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/portal/api/set-feature", method: http.MethodPost,
+			handlerFunc: "SetFeature",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/machines/features", method: http.MethodGet,
+			handlerFunc: "Features",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/console/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -378,6 +449,22 @@ func (s *generatedHandlersStub) Announcements() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Announcement() http.HandlerFunc {
 	return s.record("Announcement")
+}
+
+func (s *generatedHandlersStub) FeatureFlags() http.HandlerFunc {
+	return s.record("FeatureFlags")
+}
+
+func (s *generatedHandlersStub) FeatureFlag() http.HandlerFunc {
+	return s.record("FeatureFlag")
+}
+
+func (s *generatedHandlersStub) Features() http.HandlerFunc {
+	return s.record("Features")
+}
+
+func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {
+	return s.record("SetFeature")
 }
 
 func (s *generatedHandlersStub) Tenants() http.HandlerFunc {

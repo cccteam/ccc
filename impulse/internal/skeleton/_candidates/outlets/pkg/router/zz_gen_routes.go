@@ -48,6 +48,13 @@ type GeneratedHandlers interface {
 	Announcements() http.HandlerFunc
 	Announcement() http.HandlerFunc
 
+	FeatureFlags() http.HandlerFunc
+	FeatureFlag() http.HandlerFunc
+
+	Features() http.HandlerFunc
+
+	SetFeature() http.HandlerFunc
+
 	Tenants() http.HandlerFunc
 	Tenant() http.HandlerFunc
 
@@ -74,6 +81,18 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	announcementHandler := domainGuard(h.Announcement())
 	r.Get("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
 	r.Post("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+
+	featureFlagsHandler := h.FeatureFlags()
+	r.Get("/console/api/feature-flags", featureFlagsHandler)
+	r.Post("/console/api/feature-flags", featureFlagsHandler)
+
+	featureFlagHandler := h.FeatureFlag()
+	r.Get("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	r.Post("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
+
+	r.Get("/console/api/features", h.Features())
+
+	r.Post("/console/api/set-feature", h.SetFeature())
 
 	tenantsHandler := h.Tenants()
 	r.Get("/console/api/tenants", tenantsHandler)
@@ -114,6 +133,13 @@ type GeneratedPortalHandlers interface {
 	Announcements() http.HandlerFunc
 	Announcement() http.HandlerFunc
 
+	FeatureFlags() http.HandlerFunc
+	FeatureFlag() http.HandlerFunc
+
+	Features() http.HandlerFunc
+
+	SetFeature() http.HandlerFunc
+
 	PatchPortalResources() http.HandlerFunc
 }
 
@@ -138,6 +164,18 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	r.Get("/portal/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
 	r.Post("/portal/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
 
+	featureFlagsHandler := h.FeatureFlags()
+	r.Get("/portal/api/feature-flags", featureFlagsHandler)
+	r.Post("/portal/api/feature-flags", featureFlagsHandler)
+
+	featureFlagHandler := h.FeatureFlag()
+	r.Get("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	r.Post("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
+
+	r.Get("/portal/api/features", h.Features())
+
+	r.Post("/portal/api/set-feature", h.SetFeature())
+
 	r.Patch("/portal/api/resources", h.PatchPortalResources())
 }
 
@@ -147,6 +185,8 @@ type GeneratedMachinesHandlers interface {
 	// DomainGuard wraps every domain-scoped route below: it rejects requests for
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
+
+	Features() http.HandlerFunc
 
 	Readings() http.HandlerFunc
 	Reading() http.HandlerFunc
@@ -159,6 +199,8 @@ func generatedMachinesRoutes(r chi.Router, h GeneratedMachinesHandlers) {
 	// carrying X-Subscribe is refused naming the header.
 	r = r.With(live.Refusing())
 	domainGuard := h.DomainGuard()
+
+	r.Get("/machines/features", h.Features())
 
 	readingsHandler := domainGuard(h.Readings())
 	r.Get("/machines/tenants/{tenantID}/readings", readingsHandler)

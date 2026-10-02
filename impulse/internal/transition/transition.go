@@ -26,6 +26,13 @@ type Change struct {
 	// so they reach the command's output and the brief instead of ending in a swallowed
 	// clean run.
 	Warnings []string
+	// Uses lists what the hand-written code still names after a removal, one line per
+	// use (file:line: what), and UsesNote the sentence that says what to do about them.
+	// The check cannot see them all (a browser use fails the browser's own build, not
+	// the check), so a change with uses is handed to the agent even when the check is
+	// clean.
+	Uses     []string
+	UsesNote string
 }
 
 func (c *Change) didf(format string, args ...any) {
@@ -47,6 +54,12 @@ func (c *Change) Text() string {
 		b.WriteString("\nIt could not make these; they are yours:\n\n")
 		for _, s := range c.Skipped {
 			fmt.Fprintf(&b, "- %s\n", s)
+		}
+	}
+	if len(c.Uses) > 0 {
+		fmt.Fprintf(&b, "\n%s\n\n", c.UsesNote)
+		for _, u := range c.Uses {
+			fmt.Fprintf(&b, "- %s\n", u)
 		}
 	}
 	if len(c.Warnings) > 0 {

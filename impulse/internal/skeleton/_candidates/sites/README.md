@@ -22,7 +22,8 @@ concealed from logins that hold nothing there.
   application and generates nothing else.
 - `pkg/deploy` holds the database steps a deployment runs: the schema migrations, then
   the role policy check (`CheckRoles`), which prints what the store holds that this
-  release cannot use as written. The staff auth's role file validates against the union
+  release cannot use as written. Then `MigrateFeatures` brings the `FeatureFlags` table to the
+  flags the release declares (section Feature flags). The staff auth's role file validates against the union
   of the sites' generated collections (`config.Collection`) when its engine opens: one
   policy store, one role file, one identity across sites.
   `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it for the emulator
@@ -65,6 +66,29 @@ never rows; a method that only answers a question is a computed resource; and a
 transaction-form body keeps its effects inside the transaction, so `X-Dry-Run` tells
 the truth. Bodies are trusted by default; `Enforce(caller)` on a generated builder
 arms a write or read against the caller's own grants.
+
+## Feature flags
+
+A feature flag is a release switch: a `resource.Feature` constant in a site's `pkg/resources` (each site's generator resolves `@feature` against its own package, and `MigrateFeatures` writes both sites' declarations into the one table)
+(`impulse add feature <name>` declares one, with a doc comment that is its description),
+`@feature(<Constant>)` on a resource, a field or an RPC method to put it behind the flag,
+and off means absent: 404 on its routes, left out of the permission digest, a gated field
+unknown to the decoders. The value lives in the `FeatureFlags` table (migration
+`000008_FeatureFlags`, the library's own statements, which `impulse check` compares
+with `resource.FeatureFlagsDDL`): the deploy's `MigrateFeatures` writes a new flag off,
+keeps a known flag's state, and deletes what the release no longer declares, and every
+flip is recorded in `FeatureFlagChanges`. The App reads the table when it is built
+(`FeatureSet`) and follows it from `Start` (the live service's application topic when one
+is wired, the five-minute backstop reread regardless), so the generated routes, decoders,
+digest and features route answer from one copy. Each site serves `features` under its `/api`. Flipping is the generated
+`SetFeature` method, held by the `FeatureAdministrator` role in the staff role file
+(Execute on `SetFeature`, List and Read on `FeatureFlags`), which the development `admin`
+login holds; the library's `FeatureFlagsDialog` calls it, and the console decides
+where its link lives once the browser side takes the released client. A flag's
+development state is its row in `schema/devseed/<n>_dev_feature_flags.up.sql`, which
+`impulse add feature` writes off (set it to TRUE to start development and the test
+environments with the feature on) and `impulse remove feature` deletes with the constant
+and every `@feature` naming it. The application declares no flag yet.
 
 ## Lists and paging
 

@@ -122,7 +122,9 @@ type generatedRouterTest struct {
 }
 
 func generatedRouteParameters() []string {
-	keys := []string{}
+	keys := []string{
+		"featureFlagName",
+	}
 
 	return keys
 }
@@ -148,6 +150,36 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/api/live/token", method: http.MethodGet,
 			handlerFunc: "LiveToken",
+		},
+		{
+			url: "/api/features", method: http.MethodGet,
+			handlerFunc: "Features",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/feature-flags", method: http.MethodGet,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/feature-flags", method: http.MethodPost,
+			handlerFunc: "FeatureFlags",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/feature-flags/testFeatureFlagName", method: http.MethodGet,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/api/feature-flags/testFeatureFlagName", method: http.MethodPost,
+			handlerFunc: "FeatureFlag",
+			parameters:  map[string]string{"featureFlagName": "testFeatureFlagName"},
+		},
+		{
+			url: "/api/set-feature", method: http.MethodPost,
+			handlerFunc: "SetFeature",
+			parameters:  map[string]string{},
 		},
 	}
 
@@ -189,4 +221,20 @@ func (s *generatedHandlersStub) LiveUnsubscribe() http.HandlerFunc {
 
 func (s *generatedHandlersStub) LiveToken() http.HandlerFunc {
 	return s.record("LiveToken")
+}
+
+func (s *generatedHandlersStub) FeatureFlags() http.HandlerFunc {
+	return s.record("FeatureFlags")
+}
+
+func (s *generatedHandlersStub) FeatureFlag() http.HandlerFunc {
+	return s.record("FeatureFlag")
+}
+
+func (s *generatedHandlersStub) Features() http.HandlerFunc {
+	return s.record("Features")
+}
+
+func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {
+	return s.record("SetFeature")
 }

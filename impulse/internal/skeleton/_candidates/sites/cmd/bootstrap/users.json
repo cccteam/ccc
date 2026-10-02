@@ -3,7 +3,7 @@
     {
       "user": "admin",
       "password": "password",
-      "roles": { "global": ["Administrator_Global"], "everyDomain": ["Administrator_Domain"], "domains": {} }
+      "roles": { "global": ["Administrator_Global", "FeatureAdministrator"], "everyDomain": ["Administrator_Domain"], "domains": {} }
     },
     {
       "user": "member",

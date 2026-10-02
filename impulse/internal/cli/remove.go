@@ -19,6 +19,34 @@ what the option's wiring looks like so it is recognizable on the way out.`,
 	}
 	cmd.AddCommand(newRemoveOutlet())
 	cmd.AddCommand(newRemoveSite())
+	cmd.AddCommand(newRemoveFeature())
+
+	return cmd
+}
+
+func newRemoveFeature() *cobra.Command {
+	var f transitionFlags
+
+	cmd := &cobra.Command{
+		Use:   "feature <name>",
+		Short: "Remove a feature flag: its constant, every @feature naming it, and its seed row",
+		Long: `feature retires a feature flag, the step that makes a feature permanent or abandons it.
+The resource.Feature constant goes (and its file, when it declared nothing else), every
+@feature(<Constant>) annotation naming it goes, so the resources, fields and methods it
+gated are served unconditionally, the flag's row leaves the development seed, and go
+generate runs, so Features() and the browser's Feature union lose the name. The hand-written
+Go and TypeScript that still read the flag are listed by file and line: each fails to
+compile until it changes, and the remaining code runs unconditionally, so the on branch is
+inlined to make the feature permanent or the feature's code is deleted to abandon it.
+--agent hands that list to the agent as the other transitions do. Nothing in the database
+refuses the removal: the next deploy's MigrateFeatures deletes the row, and the flip
+records stay.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTransition(cmd, &f, transition_.RemoveFeature{Name: args[0]}, "")
+		},
+	}
+	f.bind(cmd)
 
 	return cmd
 }

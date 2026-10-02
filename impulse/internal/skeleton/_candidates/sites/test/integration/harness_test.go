@@ -176,9 +176,18 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	waitForDomains(ctx, t, accessClient, clientUser, []accesstypes.Domain{north})
 
 	conf := &servedConfigurer{db: db, auth: auth}
-	console := httptest.NewServer(consolerouter.New(consoleapp.New(conf), consolerouter.Hooks{}))
+	// Each site's App reads its feature flags as it is built; Start reports a copy that
+	// could not be read and follows the table until the test ends.
+	consoleApp, portalApp := consoleapp.New(conf), portalapp.New(conf)
+	if err := consoleApp.Start(ctx); err != nil {
+		t.Fatalf("console app.Start() error = %v", err)
+	}
+	if err := portalApp.Start(ctx); err != nil {
+		t.Fatalf("portal app.Start() error = %v", err)
+	}
+	console := httptest.NewServer(consolerouter.New(consoleApp, consolerouter.Hooks{}))
 	t.Cleanup(console.Close)
-	portal := httptest.NewServer(portalrouter.New(portalapp.New(conf), portalrouter.Hooks{}))
+	portal := httptest.NewServer(portalrouter.New(portalApp, portalrouter.Hooks{}))
 	t.Cleanup(portal.Close)
 
 	return &served{console: console, portal: portal, access: accessClient}

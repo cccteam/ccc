@@ -6,6 +6,7 @@ package app
 import (
 	"net/http"
 
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/resources"
 	"github.com/cccteam/ccc/resource"
 )
 
@@ -13,10 +14,11 @@ import (
 // structural grant enumeration the frontend renders navigation and forms from.
 // The scope is the request's input (?domain= names a tenant partition, absent
 // means global) and the payload is advisory and fail-closed: denied targets are
-// absent. The generated router registers it at GET /console/api/permission-digest and,
+// absent, and so is every resource, field and method gated behind a feature flag
+// that is off (resources.FeatureGates). The generated router registers it at GET /console/api/permission-digest and,
 // for each additional session-serving outlet (ServesSessions), under that outlet's prefix.
 func (a *App) PermissionDigest() http.HandlerFunc {
-	return resource.PermissionDigestHandler(a.UserPermissions)
+	return resource.PermissionDigestHandler(a.UserPermissions, resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet()))
 }
 
 // UserDomains serves the session user's domain membership — the sorted list of

@@ -43,6 +43,10 @@ type Brief struct {
 	Reference string
 	// Guard names the files the agent must not move.
 	Guard Snapshot
+	// Left counts the obligations the change itself lists (the hand-written uses a
+	// removal leaves), which the check cannot see; the brief is written for them even
+	// when no check fails.
+	Left int
 }
 
 // Write renders the brief as Markdown.
@@ -68,9 +72,13 @@ func (b *Brief) Write(w io.Writer) {
 		fmt.Fprintf(w, "\nThis is read from the generator programs, never from a record. It must read the same when you are done.\n\n")
 	}
 
-	fmt.Fprintf(w, "## The failing checks\n\nThis is the output of `%s`, failing checks only. Each line under a check is one obligation.\n\n```\n", CheckCommand)
-	check.Report(w, b.failing())
-	fmt.Fprintf(w, "```\n\n")
+	if failing := b.failing(); len(failing) > 0 {
+		fmt.Fprintf(w, "## The failing checks\n\nThis is the output of `%s`, failing checks only. Each line under a check is one obligation.\n\n```\n", CheckCommand)
+		check.Report(w, failing)
+		fmt.Fprintf(w, "```\n\n")
+	} else {
+		fmt.Fprintf(w, "## The failing checks\n\n`%s` reports no FAIL. The obligations are the lines listed under \"What changed\", which the check cannot see.\n\n", CheckCommand)
+	}
 
 	if b.Reference != "" {
 		fmt.Fprintf(w, "## Reference\n\nThe application at `%s` has these options wired and its check clean. Read it for the shape of the wiring. Do not copy its resources, names, or data into this application.\n\n", b.Reference)

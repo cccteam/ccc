@@ -151,6 +151,12 @@ func (a *App) scanGoFile(abs, rel string) error {
 		}
 	}
 
+	if !generated {
+		if err := a.scanFeatures(rel, data); err != nil {
+			return err
+		}
+	}
+
 	if bytes.Contains(data, []byte("//go:generate")) {
 		a.GoGenerate = append(a.GoGenerate, findDirectives(rel, data)...)
 	}
@@ -173,6 +179,27 @@ func (a *App) scanGoFile(abs, rel string) error {
 	a.goFiles = append(a.goFiles, rel)
 
 	return a.scanRolePolicy(rel, data)
+}
+
+// scanFeatures records the file's feature flag declarations (resource.Feature constants)
+// and its @feature annotations.
+func (a *App) scanFeatures(rel string, data []byte) error {
+	if bytes.Contains(data, []byte(resourceImportPath)) && bytes.Contains(data, []byte(featureTypeName)) {
+		flags, err := parseFeatureFlags(rel, data, a.packagePath(path.Dir(rel)))
+		if err != nil {
+			return err
+		}
+		a.Features = append(a.Features, flags...)
+	}
+	if bytes.Contains(data, []byte("@"+featureKeyword)) {
+		gates, err := parseFeatureGates(rel, data)
+		if err != nil {
+			return err
+		}
+		a.FeatureGates = append(a.FeatureGates, gates...)
+	}
+
+	return nil
 }
 
 // scanRolePolicy records the file's access.WithDefaultRoles calls and its CheckPolicy

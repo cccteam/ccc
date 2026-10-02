@@ -46,6 +46,13 @@ type GeneratedHandlers interface {
 	Announcements() http.HandlerFunc
 	Announcement() http.HandlerFunc
 
+	FeatureFlags() http.HandlerFunc
+	FeatureFlag() http.HandlerFunc
+
+	Features() http.HandlerFunc
+
+	SetFeature() http.HandlerFunc
+
 	PatchResources() http.HandlerFunc
 }
 
@@ -69,6 +76,18 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	announcementHandler := domainGuard(h.Announcement())
 	r.Get("/api/tenants/{domain}/announcements/{announcementID}", announcementHandler)
 	r.Post("/api/tenants/{domain}/announcements/{announcementID}", announcementHandler)
+
+	featureFlagsHandler := h.FeatureFlags()
+	r.Get("/api/feature-flags", featureFlagsHandler)
+	r.Post("/api/feature-flags", featureFlagsHandler)
+
+	featureFlagHandler := h.FeatureFlag()
+	r.Get("/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	r.Post("/api/feature-flags/{featureFlagName}", featureFlagHandler)
+
+	r.Get("/api/features", h.Features())
+
+	r.Post("/api/set-feature", h.SetFeature())
 
 	r.Patch("/api/resources", h.PatchResources())
 }

@@ -72,6 +72,19 @@ templates, this README, and the tool's source.
   The skeletons carry the server side, the Firestore emulator in the Procfile, and the
   rules and indexes the database needs under `schema/firestore`; the browser side is
   the client packages' live option, which a page opts into.
+- **Feature flag**: a release switch owned by the application: a feature's code ships
+  before the feature is turned on, the switch differs per environment, and the flag is
+  removed once the feature is permanent or abandoned. A flag is a `resource.Feature`
+  constant in the resources package (`const Debriefs resource.Feature = "debriefs"`, the
+  doc comment its description, declared by `impulse add feature`); `@feature(Debriefs)`
+  gates a resource, a field or a method, and off means absent (404 on the routes, left
+  out of the permission digest, the field unknown). Its value lives in the application's
+  `FeatureFlags` table, one row per environment, written by the deploy's
+  `MigrateFeatures` from the declarations and flipped through the generated `SetFeature`
+  method, which the `FeatureAdministrator` role in the roles file holds; the development
+  seed's row (`schema/devseed/..._dev_feature_flags.up.sql`) is the flag's state in
+  development and the test environments. Per-user and per-tenant enablement are
+  permissions, not flags.
 - **Warning**: a schema finding the generator raises on every run and prints as a
   `Warning:` line (an index a listed tenant-scoped resource wants, a tenant resolved
   through a join path, an enumeration table too large to bake): a performance matter the
@@ -232,6 +245,7 @@ impulse check --list
 | `ci-workflow` | The committed `.github/workflows/ci.yml` equals what impulse renders from the code: one browser job per workspace, and the action and tool pins this impulse carries. A missing file fails: the pull requests run no checks at all. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it; tests and specs are not read, since a spec describes the server's answer (whose page state carries an `offset` field) as often as a request. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
+| `feature-flags` | The `FeatureFlags` and `FeatureFlagChanges` tables the generated feature flag routes and the deploy's `MigrateFeatures` read are created by a migration as the resource module the application pins declares them: the check reads `resource.FeatureFlagsDDL(resource.SpannerDBType)` from that module's source (found through `go list -m`, so the comparison is against the library the application builds with, a replace or a workspace included) and compares each statement with the migration's, whitespace aside; a table that differs is brought to the library's statement by a new migration. Every declared flag (`resource.Feature` constant) gates something (`@feature(<Constant>)` on a resource, a field or a method) or is read somewhere outside tests (`a.FeatureSet().Enabled(resources.<Constant>)` in Go, `Feature.<Constant>` in a browser application), or it is a switch wired to nothing and fails by name and position; a flag declared twice and an annotation naming no declared constant fail too. Skipped when the generator emits no feature flags (no `zz_gen_features.go` in a resources package) and none is declared. |
 | `sites-generators` | In the sites layout, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
 | `env-template` | Every `env` struct tag without a default appears in the development environment template (`.envrc.template`, `.env.template`, or `.env.example`). `--fix` adds the missing lines. |
 | `pins` | Framework pins in `go.mod` are released versions; pseudo-versions and local replaces warn but do not fail. `go.mod` carries the `tool github.com/cccteam/ccc/impulse` directive and a require of impulse, or the check fails with the commands that add it (`go get -tool github.com/cccteam/ccc/impulse@<version>`, `go tool impulse render`, `go tool impulse check`). When the running impulse was built from a module version (`go tool impulse`, `go install github.com/cccteam/ccc/impulse@<version>`) and that version is not the pin, the check fails with the same three commands to move the pin; an impulse built from a checkout is a development build, noted and not compared. |
@@ -252,7 +266,11 @@ resource that stores files on a table whose rows the database deletes by cascade
 the patch machinery, so the release of their objects never runs for them and the
 application's sweep removes the objects later. The section is one heading per program,
 `cmd/generate/resourcegenerator/generator.go (go run ./cmd/generate/resourcegenerator -audit)`,
-with the lines beneath it or `no findings`.
+with the lines beneath it or `no findings`. A last section, `feature flags`, lists every
+declared flag with its description and where it is used: the resources, fields and
+methods its `@feature` gates and the Go and browser code that reads it (tests and specs
+marked), or that it gates nothing and is read nowhere, which the `feature-flags` check
+fails on; an application declaring none reads `none declared`.
 
 ```sh
 impulse audit
@@ -530,6 +548,35 @@ impulse add site portal --existing console   # promotes a flat application, then
 impulse add site kiosk                    # a third site, copied from the first
 ```
 
+### add feature
+
+`add feature <name>` declares a feature flag. The resources package gains a
+`resource.Feature` constant named after the flag (`cargo_manifest` becomes
+`CargoManifest`) with a doc stub, in `features.go` (started when the package has none);
+the development seed gains the flag's row, off, in
+`schema/devseed/<n>_dev_feature_flags.up.sql` (started at the next data migration number
+when the seed has none), where setting `Enabled` to `TRUE` starts development and the
+test environments with the feature on, since the deploy's `MigrateFeatures` keeps
+`Enabled` where a row exists and production has no seed; and `go generate` runs, so the
+generated `Features()` lists the flag for the deploy and the browser's `Feature` union
+carries it. The name is 1 to 64 characters of `[a-z0-9_]` opening with a letter, and a
+name already declared is refused. In the sites layout `--site` names the site whose
+resources package declares the flag, since each site's generator resolves `@feature`
+against its own package.
+
+The check then fails on `feature-flags`, because the new flag gates nothing and is read
+nowhere, and the brief hands the agent what is left: what to gate (`@feature(<Constant>)`
+on a resource, a field or a method, or a read in Go or in the browser), the description to
+write in place of the stub, how a flag is flipped (the generated `SetFeature` method
+under the `FeatureAdministrator` role, which the development login holds), and where the
+library's `FeatureFlagsDialog` link lives (`openFeatureFlagsDialog(inject(MatDialog))`
+from `@cccteam/resource-angular/ccc-feature-flags`; the application decides the place).
+
+```sh
+impulse add feature cargo_manifest --agent
+impulse add feature debriefs --site console
+```
+
 ### swap auth
 
 `swap auth <name>` moves an existing auth to a directory: `--oidc-azure` or `--oidc-google`,
@@ -595,9 +642,25 @@ deployment configuration outside the repository, and the tables only the site's 
 declared (declare them in the site that serves them now, or drop them by migration) are
 the agent's.
 
+`remove feature <name>` retires a feature flag, the step that makes a feature permanent or
+abandons it. The constant goes (and `features.go` with it when it declared nothing else,
+or the resource import when nothing else reads it), every `@feature(<Constant>)`
+annotation naming it goes (a line of its own whole, a shared line keeping its other
+text), so the resources, fields and methods it gated are served unconditionally, the
+flag's row leaves the development seed, and `go generate` runs, so `Features()` and the
+browser's `Feature` union lose the name. The hand-written Go and TypeScript that still
+read the flag are listed by file and line: each fails to compile until it changes, and the
+remaining code runs unconditionally, so the on branch is inlined to make the feature
+permanent or the feature's code is deleted to abandon it. That list is handed to the agent
+in the brief even when the check is clean (a browser use fails the browser's own build,
+not the check), and `--agent` launches it. Nothing in the database refuses the removal:
+the next deploy's `MigrateFeatures` deletes the row, and the `FeatureFlagChanges` rows
+stay as the record of every flip.
+
 ```sh
 impulse remove outlet portal --agent
 impulse remove site kiosk
+impulse remove feature debriefs --agent
 ```
 
 ## Templates

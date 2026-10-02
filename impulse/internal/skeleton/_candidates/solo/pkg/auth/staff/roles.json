@@ -4,6 +4,38 @@
       {
         "name": "Administrator_Global",
         "permissions": {}
+      },
+      {
+        "name": "FeatureAdministrator",
+        "permissions": {
+          "Execute": [
+            {
+              "resource": "SetFeature"
+            }
+          ],
+          "List": [
+            {
+              "resource": "FeatureFlags",
+              "fields": [
+                "description",
+                "enabled",
+                "updatedAt",
+                "updatedBy"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "FeatureFlags",
+              "fields": [
+                "description",
+                "enabled",
+                "updatedAt",
+                "updatedBy"
+              ]
+            }
+          ]
+        }
       }
     ],
     "domain": []

@@ -7,10 +7,15 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cccteam/access"
+	consoleresources "github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/console/pkg/resources"
+	portalresources "github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/resources"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/config"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/sharedresources"
+	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/go-playground/errors/v5"
 )
@@ -143,6 +148,24 @@ func CheckRoles(ctx context.Context, client *access.Client, name string) error {
 	for _, w := range warnings {
 		fmt.Printf("Warning: %s\n", w)
 	}
+
+	return nil
+}
+
+// MigrateFeatures brings the FeatureFlags table to the release's declarations, every
+// site's Features() and the shared package's together since the sites share the one table
+// (a name declared by two packages is refused): a flag declared for the first time is inserted off, a known flag
+// keeps its state and takes the release's description, and a flag the release no longer
+// declares is deleted. It runs after the schema migration, so the table exists,
+// and after the role check, before the release takes traffic, so every instance's copy
+// lists the same flags; the development seed's rows, applied before it, decide a flag's
+// state in development and the test environments.
+func MigrateFeatures(ctx context.Context, client resource.Client) error {
+	declared := slices.Concat(consoleresources.Features(), portalresources.Features(), sharedresources.Features())
+	if err := resource.MigrateFeatures(ctx, client, declared); err != nil {
+		return errors.Wrap(err, "resource.MigrateFeatures()")
+	}
+	fmt.Printf("Migrated the feature flags: %d declared\n", len(declared))
 
 	return nil
 }

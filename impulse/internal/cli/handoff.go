@@ -100,7 +100,7 @@ func completeHandoff(ctx context.Context, out io.Writer, appDir string, env *che
 	if err := os.WriteFile(a.Abs(handoff.File), []byte(brief.String()), 0o600); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	report := handoffReport{results: brief.Results, agent: ag, reference: brief.Reference, styled: isTerminal(out)}
+	report := handoffReport{results: brief.Results, left: brief.Left, agent: ag, reference: brief.Reference, styled: isTerminal(out)}
 	if !launch {
 		report.write(out)
 
@@ -156,13 +156,16 @@ func removeBrief(a *app.App) error {
 // handoffReport tells the user what was written and how to run the agent by hand.
 type handoffReport struct {
 	results []check.Result
-	agent   *handoff.Agent
+	// left counts the obligations the change listed itself, outside the checks.
+	left  int
+	agent *handoff.Agent
 	// reference is the finished application the brief points at, or empty.
 	reference string
 	styled    bool
 }
 
-// obligations counts the failing checks' detail lines and the checks they fall under.
+// obligations counts the failing checks' detail lines and the checks they fall under,
+// and the obligations the change listed itself.
 func (r *handoffReport) obligations() string {
 	checks, lines := 0, 0
 	for _, res := range r.results {
@@ -171,6 +174,9 @@ func (r *handoffReport) obligations() string {
 		}
 		checks++
 		lines += max(len(res.Details), 1)
+	}
+	if r.left > 0 {
+		return fmt.Sprintf("%d obligation(s) under %d failing check(s), and %d listed by the change", lines, checks, r.left)
 	}
 
 	return fmt.Sprintf("%d obligation(s) under %d failing check(s)", lines, checks)

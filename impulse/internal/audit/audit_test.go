@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -112,11 +113,75 @@ func TestRun(t *testing.T) {
 			if failed != tt.wantFailed {
 				t.Errorf("Run() failed = %v, want %v", failed, tt.wantFailed)
 			}
-			if diff := cmp.Diff(tt.wantOut, out.String()); diff != "" {
+			// The fixtures declare no flag, so every run ends in the empty section.
+			if diff := cmp.Diff(tt.wantOut+featuresHeading+"\n"+noFeaturesLine+"\n", out.String()); diff != "" {
 				t.Errorf("output mismatch (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantCalls, exec.calls); diff != "" {
 				t.Errorf("commands mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestWriteFeatures(t *testing.T) {
+	t.Parallel()
+
+	const (
+		declared = "package resources\n\nimport \"github.com/cccteam/ccc/resource\"\n\n// Debriefs lets crews debrief.\nconst Debriefs resource.Feature = \"debriefs\"\n\n// Hyperdrive jumps.\nconst Hyperdrive resource.Feature = \"hyperdrive\"\n"
+		gated    = "package resources\n\n// Debrief is gated.\n//\n// @resource\n// @feature(Debriefs)\ntype Debrief struct {\n\tID string `spanner:\"Id\"`\n}\n"
+	)
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{
+			name: "no flag",
+			want: "feature flags\n  none declared\n",
+		},
+		{
+			name: "every flag with its gates and reads, tests marked, or that nothing uses it",
+			files: map[string]string{
+				"pkg/resources/features.go":       declared,
+				"pkg/resources/debriefs.go":       gated,
+				"app/debriefs.go":                 "package app\n\nimport \"example.com/harbor/pkg/resources\"\n\nvar on = resources.Debriefs\n",
+				"web/angular.json":                "{}\n",
+				"web/console/src/app/nav.spec.ts": "expect(Feature.Debriefs).toBe('debriefs');\n",
+			},
+			want: "feature flags\n" +
+				"  Debriefs (debriefs, pkg/resources/features.go:6): Debriefs lets crews debrief.\n" +
+				"    gates Debrief (pkg/resources/debriefs.go:6)\n" +
+				"    read in app/debriefs.go:5, web/console/src/app/nav.spec.ts:1 (test)\n" +
+				"  Hyperdrive (hyperdrive, pkg/resources/features.go:9): Hyperdrive jumps.\n" +
+				"    gates nothing and is read nowhere (the feature-flags check fails on it)\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			files := map[string]string{"go.mod": "module example.com/harbor\n\ngo 1.26.6\n"}
+			for rel, content := range tt.files {
+				files[rel] = content
+			}
+			for rel, content := range files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a, err := app.Discover(root)
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			var out strings.Builder
+			WriteFeatures(&out, a)
+			if diff := cmp.Diff(tt.want, out.String()); diff != "" {
+				t.Errorf("WriteFeatures() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

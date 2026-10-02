@@ -23,6 +23,7 @@ import (
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/jtwatson/spaassets"
 )
@@ -116,7 +117,12 @@ type App struct {
 	portalDist     string
 	machinesAPIKey string
 	live           live.Service
-	csp            string
+	// features is the application's copy of its feature flags, read through the
+	// configuration's database client when the App is built; featuresErr is why it
+	// could not be, which Start reports.
+	features    *resource.FeatureSet
+	featuresErr error
+	csp         string
 }
 
 // New constructs an App from its dependencies.
@@ -135,6 +141,14 @@ func New(cfg Configurer) *App {
 		machinesAPIKey: cfg.MachinesAPIKey(),
 		live:           cfg.Live(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
+	}
+	// The feature flags: the application's copy of the FeatureFlags table, read as the
+	// App is built so the generated handlers answer from it at once; Start keeps it
+	// current. A copy that could not be read leaves every gated target off (the set is
+	// nil, which fails closed) until Start reports the failure.
+	a.features, a.featuresErr = resource.LoadFeatures(context.Background(), a.resourceClient)
+	if a.featuresErr != nil {
+		a.features = nil
 	}
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
@@ -317,4 +331,30 @@ func (a *App) CursorKey() *resource.CursorKey {
 // serves no live pages and every outlet refuses the header.
 func (a *App) LiveService() live.Service {
 	return a.live
+}
+
+// Start begins the App's background work and ends it when ctx does: the feature flags
+// are followed, so a flip on any instance (signaled through the live service's
+// application topic when one is wired) or the library's five-minute backstop reread
+// brings this instance's copy current. A copy that could not be read when the App was
+// built is reported here, as the start-up failure it is: the schema is behind the
+// release.
+func (a *App) Start(ctx context.Context) error {
+	if a.featuresErr != nil {
+		return errors.Wrap(a.featuresErr, "resource.LoadFeatures()")
+	}
+	if err := a.features.Follow(ctx, a.live); err != nil {
+		return errors.Wrap(err, "resource.FeatureSet.Follow()")
+	}
+
+	return nil
+}
+
+// FeatureSet is the application's copy of its feature flags: the generated route
+// registration answers a gated route 404 while its flag is off, the generated decoders
+// answer a gated field as unknown, the permission digest leaves gated targets out, and
+// the generated features route lists what is on. The copy is read when the App is
+// built and kept current by Start.
+func (a *App) FeatureSet() *resource.FeatureSet {
+	return a.features
 }

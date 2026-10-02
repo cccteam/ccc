@@ -48,6 +48,12 @@ type App struct {
 	// DomainResources are the structs the application's own code annotates
 	// @permissionScope(domain): the tenant-scoped resources.
 	DomainResources []DomainResource
+	// Features are the feature flags the application declares: the resource.Feature
+	// constants of its resources packages, in file order.
+	Features []FeatureFlag
+	// FeatureGates are the @feature annotations in the application's own code: the
+	// resources, methods and fields behind a flag.
+	FeatureGates []FeatureGate
 	// DefaultRoles are the calls to access.WithDefaultRoles outside tests: where a
 	// release hands its default roles, an auth package's embedded role file, to the
 	// permission engine.

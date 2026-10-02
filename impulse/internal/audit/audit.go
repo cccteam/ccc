@@ -102,8 +102,69 @@ func Run(ctx context.Context, a *app.App, exec check.Execer, out io.Writer) (fai
 			}
 		}
 	}
+	WriteFeatures(out, a)
 
 	return failed
+}
+
+// The headings and lines of the feature flags section.
+const (
+	featuresHeading  = "feature flags"
+	noFeaturesLine   = "  none declared"
+	featureUsesError = "  the uses could not be read: %v"
+)
+
+// WriteFeatures writes the feature flags section: every declared flag with its
+// description, then where it is used (the resources, fields and methods its @feature
+// gates, and the Go and browser code that reads it, tests and specs marked), or that it
+// gates nothing and is read nowhere, which the feature-flags check fails on.
+func WriteFeatures(out io.Writer, a *app.App) {
+	fmt.Fprintln(out, featuresHeading)
+	if len(a.Features) == 0 {
+		fmt.Fprintln(out, noFeaturesLine)
+
+		return
+	}
+	uses, err := a.FeatureUses()
+	if err != nil {
+		fmt.Fprintf(out, featureUsesError+"\n", err)
+	}
+	for i := range a.Features {
+		flag := &a.Features[i]
+		fmt.Fprintf(out, "  %s (%s, %s:%d): %s\n", flag.Constant, flag.Name, flag.File, flag.Line, descriptionOf(flag))
+		gates := a.GatesOf(flag.Constant)
+		var reads []string
+		for _, u := range uses {
+			if u.Constant != flag.Constant {
+				continue
+			}
+			line := fmt.Sprintf("%s:%d", u.File, u.Line)
+			if u.Test {
+				line += " (test)"
+			}
+			reads = append(reads, line)
+		}
+		if len(gates) == 0 && len(reads) == 0 {
+			fmt.Fprintln(out, "    gates nothing and is read nowhere (the feature-flags check fails on it)")
+
+			continue
+		}
+		for _, g := range gates {
+			fmt.Fprintf(out, "    gates %s (%s:%d)\n", g.Target, g.File, g.Line)
+		}
+		if len(reads) > 0 {
+			fmt.Fprintf(out, "    read in %s\n", strings.Join(reads, ", "))
+		}
+	}
+}
+
+// descriptionOf is a flag's description, or says it has none.
+func descriptionOf(flag *app.FeatureFlag) string {
+	if flag.Description == "" {
+		return "(no description)"
+	}
+
+	return flag.Description
 }
 
 // findings returns the warning and audit lines of a program's output, prefixes included,

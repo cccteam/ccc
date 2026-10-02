@@ -16,12 +16,15 @@ import (
 // LiveService is the live service (resource/live) the list and read handlers register
 // a subscribing request in before the query and the mutations publish their committed
 // rows through; nil serves no live pages, and a request carrying X-Subscribe is
-// refused.
+// refused. FeatureSet is the application's copy of its feature flags
+// (resource.LoadFeatures): what the gated routes, the decoders and the digest answer
+// from; nil leaves every gated target off.
 type resourceApp interface {
 	UserPermissions(r *http.Request) resource.UserPermissions
 	ResourceClient() resource.Client
 	CursorKey() *resource.CursorKey
 	LiveService() live.Service
+	FeatureSet() *resource.FeatureSet
 }
 
 var _ resourceApp = (*App)(nil)

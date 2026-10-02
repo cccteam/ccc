@@ -29,6 +29,24 @@ func Collection() *resource.GeneratedCollection {
 				Order:     []accesstypes.Tag{"title"},
 				QueryKeys: []accesstypes.Tag{"tenantId", "kindId", "title"},
 			},
+			{
+				Name:        "FeatureFlags",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "description", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "enabled", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "name"},
+					{Name: "updatedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "updatedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+				},
+				Order: []accesstypes.Tag{"name"},
+			},
+			{
+				Name:        "SetFeature",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+			},
 		},
 	})
 }

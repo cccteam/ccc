@@ -14,7 +14,27 @@ export interface Tenants {
   name?: string;
 }
 
-const resourceMap: ResourceMap = {
+/** A feature flag: one declared flag's row, as the feature flags dialog lists it. */
+export interface FeatureFlags {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  updatedAt?: Date;
+  updatedBy?: string;
+}
+
+/**
+ * Keeps the literal types of the metadata while letting a client that predates a field
+ * ignore it: TypeScript checks the literal against the fields ResourceMap declares and no
+ * others, so this file compiles against a client package released before a field it
+ * carries, and the generator and the package release in either order. The intersection
+ * keeps the map indexable by a resource name when no resource is on the outlet.
+ */
+function defineResourceMap<T extends ResourceMap>(map: T): T & ResourceMap {
+  return map;
+}
+
+const resourceMap = defineResourceMap({
   [Resources.Announcements]: {
     route: 'tenants/{tenantID}/announcements',
     consolidatedRoute: 'resources',
@@ -33,7 +53,20 @@ const resourceMap: ResourceMap = {
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
     ],
   },
-};
+  [Resources.FeatureFlags]: {
+    route: 'feature-flags',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'enabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'updatedAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'updatedBy', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
+});
 
 export function resourceMeta(resource: Resource): ResourceMeta {
   if (resourceMap[resource] !== undefined) {
@@ -49,4 +82,5 @@ export const DomainRouteParam = 'tenantID';
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Announcements]: PermissionScopes.domain,
   [Resources.Tenants]: PermissionScopes.global,
+  [Resources.FeatureFlags]: PermissionScopes.global,
 };
