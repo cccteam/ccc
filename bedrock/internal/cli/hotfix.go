@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 
+	"github.com/go-playground/errors/v5"
+
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/hotfix"
@@ -63,6 +65,8 @@ that already has its branch is reported and left as it is.`,
 			out := cmd.OutOrStdout()
 			where := rc.owner + "/" + rc.repo
 			switch {
+			case result.Existed && !result.Carries:
+				return errors.Newf("%s already exists in %s at %s, which does not carry %s: the line started from an earlier release and serves the patches after it, so a hotfix of %s has no line to start on while that branch stands (the repository rules forbid deleting a hotfix branch)", result.Branch, where, short(result.BranchCommit), result.Tag, result.Tag)
 			case result.Existed:
 				fmt.Fprintf(out, "%s already exists in %s at %s: open the fix pull request against it.\n", result.Branch, where, short(result.BranchCommit))
 			case result.Skipped != "":

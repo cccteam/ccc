@@ -122,7 +122,13 @@ func TestStart(t *testing.T) {
 			name:     "an existing line is reported, not recreated",
 			existing: "c21",
 			tag:      "v0.1.21",
-			want:     hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c21"},
+			want:     hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c21", Carries: true},
+		},
+		{
+			name:     "an existing line started from an earlier release does not carry the hotfix",
+			existing: "c20",
+			tag:      "v0.1.21",
+			want:     hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c20"},
 		},
 		{
 			name:    "a release off the default branch is refused",

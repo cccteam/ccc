@@ -155,6 +155,17 @@ func TestRestoreAndHotfix(t *testing.T) {
 			wantOut: []string{"hotfix/0.1.x already exists in impulseframework/harbor at c4: open the fix pull request against it."},
 		},
 		{
+			name:   "hotfix start refuses an existing line that does not carry the release",
+			remote: "git@github.com:impulseframework/harbor.git",
+			prepare: func(_ *githubtest.Server, repo *githubtest.Repo) {
+				repo.Refs["refs/heads/hotfix/0.1.x"] = github.Object{Type: "commit", SHA: "c3"}
+				repo.Ancestry["c3"] = []string{"c3"}
+				repo.Ancestry["c4"] = []string{"c4", "c3"}
+			},
+			args:    []string{"hotfix", "start", "v0.1.4", "--placement", placement},
+			wantErr: "hotfix/0.1.x already exists in impulseframework/harbor at c3, which does not carry v0.1.4: the line started from an earlier release and serves the patches after it",
+		},
+		{
 			name:    "hotfix start refuses a tag of the wrong shape",
 			remote:  "git@github.com:impulseframework/harbor.git",
 			args:    []string{"hotfix", "start", "0.1.4", "--placement", placement},

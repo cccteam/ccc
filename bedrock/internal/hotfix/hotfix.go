@@ -52,6 +52,10 @@ type Result struct {
 	Tag    string
 	Commit string
 	Branch string
+	// Carries is true, for a branch that existed, when it holds the release's commit:
+	// the line started from that release or a later one. A line started from an
+	// earlier release serves the patches after it and cannot take this hotfix.
+	Carries bool
 	// Existed is true when the line already had its branch; BranchCommit is then the
 	// commit at its tip, and nothing was created.
 	Existed      bool
@@ -129,6 +133,11 @@ func Start(ctx context.Context, client *github.Client, req Request) (*Result, er
 	ref, err := client.Ref(ctx, req.Owner, req.Repo, "heads/"+branch)
 	if err == nil {
 		result.Existed, result.BranchCommit = true, ref.Object.SHA
+		cmp, err := client.Compare(ctx, req.Owner, req.Repo, commit, ref.Object.SHA)
+		if err != nil {
+			return nil, errors.Wrapf(err, "comparing %s with %s", req.Tag, branch)
+		}
+		result.Carries = cmp.Status == statusAhead || cmp.Status == statusIdentical
 
 		return result, nil
 	}

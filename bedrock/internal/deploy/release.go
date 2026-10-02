@@ -194,7 +194,9 @@ func hotfixGate(ctx context.Context, open StoreFunc, subs map[string]string, w W
 }
 
 // behindRecord says what the environment's database holds, by its live record, that the
-// files under the workspace do not carry: the refusal's sentence, or nothing. what names
+// files under the workspace do not carry: the refusal's sentence, or nothing. The record
+// names the release live when it was written, not the one that applied each file, and
+// the sentence says so. what names
 // the candidate ("hotfix v1.2.4", "this pull request") and restoreTo what the environment
 // is restored to ("v1.2.4", "the hotfix"); production, never restored by a run, is told
 // to start the line from the release it runs instead.
@@ -208,9 +210,9 @@ func behindRecord(w Workspace, live *Record, env, what, restoreTo string) (strin
 		file := path.Join(m.Dir, m.Name)
 		switch {
 		case hash == "":
-			return fmt.Sprintf("%s's database holds %s (applied by %s), which %s does not carry; %s", env, file, live.Version, what, advice), nil
+			return fmt.Sprintf("%s's database holds %s (in %s's record), which %s does not carry; %s", env, file, live.Version, what, advice), nil
 		case hash != m.Hash:
-			return fmt.Sprintf("%s's database holds %s as %s applied it, with other content than %s carries; %s", env, file, live.Version, what, advice), nil
+			return fmt.Sprintf("%s's database holds %s with other content than %s carries (by %s's record); %s", env, file, what, live.Version, advice), nil
 		}
 	}
 
