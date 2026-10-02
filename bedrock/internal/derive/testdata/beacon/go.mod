@@ -2,22 +2,19 @@ module github.com/impulseframework/beacon
 
 go 1.26.6
 
-replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migrate/v4 v4.19.2-beta.0
-
 require (
 	cloud.google.com/go/logging v1.19.1
-	cloud.google.com/go/spanner v1.94.0
+	cloud.google.com/go/spanner v1.95.0
 	github.com/cccteam/access v0.9.12-0.20260922183556-eaff0afa2ad4
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260922183153-31dedfd272da
 	github.com/cccteam/ccc/resource v0.10.7-0.20260922183153-31dedfd272da
-	github.com/cccteam/db-initiator v0.3.14
+	github.com/cccteam/db-initiator v0.4.0
 	github.com/cccteam/httpio v0.7.18
 	github.com/cccteam/logger v0.1.27
 	github.com/cccteam/session v0.11.2-0.20260922184536-a333790eda73
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.30.3
-	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/jtwatson/server v0.2.2
 	github.com/jtwatson/spaassets v0.0.0-20160917192555-583a733b0a63
 	github.com/sethvargo/go-envconfig v1.4.3
@@ -28,7 +25,7 @@ require (
 	aidanwoods.dev/go-result v0.3.1 // indirect
 	cel.dev/expr v0.25.3 // indirect
 	cloud.google.com/go v0.123.0 // indirect
-	cloud.google.com/go/auth v0.23.1 // indirect
+	cloud.google.com/go/auth v0.23.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.13.0 // indirect
@@ -83,7 +80,7 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.21 // indirect
-	github.com/googleapis/gax-go/v2 v2.23.0 // indirect
+	github.com/googleapis/gax-go/v2 v2.24.0 // indirect
 	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -93,12 +90,11 @@ require (
 	github.com/jtwatson/shutdown v0.1.1 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/lib/pq v1.12.3 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5 // indirect
 	github.com/magiconair/properties v1.18.11 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.3.3 // indirect
-	github.com/moby/moby/api v1.55.0 // indirect
+	github.com/moby/moby/api v1.56.0 // indirect
 	github.com/moby/moby/client v0.5.1 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
@@ -141,10 +137,10 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
-	google.golang.org/api v0.293.0 // indirect
+	google.golang.org/api v0.297.0 // indirect
 	google.golang.org/genproto v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260818201246-1b0934165a6f // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260818201246-1b0934165a6f // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
