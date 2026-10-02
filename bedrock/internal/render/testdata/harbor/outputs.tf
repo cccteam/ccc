@@ -26,7 +26,7 @@ output "database" {
 }
 
 output "firestore_database" {
-  description = "The Firestore database the site and the job process read and write, as APP_FIRESTORE_DATABASE names it to them."
+  description = "The Firestore database the site, the migrate command and the job process read and write, as APP_FIRESTORE_DATABASE names it to them."
   value       = google_firestore_database.firestore.name
 }
 

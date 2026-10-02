@@ -84,7 +84,7 @@ from `2-env`'s state.
   (`{{.AssetsBucket.Declaration}}` names it to the processes that construct the
   {{.AssetsBucket.Level}} level), in the primary region, uniform access, no public
   access, unversioned; {{.Production}}'s survives a destroy. The site{{if .JobsReadsAssets}} and the job
-  process{{end}} hold `roles/storage.objectUser` on it; the migrate command gets
+  process{{end}} hold{{if not .JobsReadsAssets}}s{{end}} `roles/storage.objectUser` on it; the migrate command gets
   neither the name nor a grant.
 {{- end}}
 {{- if .TasksQueue}}
@@ -92,7 +92,7 @@ from `2-env`'s state.
   (`{{.TasksQueue.Declaration}}` names it to the processes that construct the
   {{.TasksQueue.Level}} level), in the primary region, `var.tasks_max_concurrent` tasks
   in flight and `var.tasks_max_attempts` attempts each. The site{{if .JobsReadsTasks}} and the
-  job process{{end}} hold `roles/cloudtasks.enqueuer` on it and
+  job process{{end}} hold{{if not .JobsReadsTasks}}s{{end}} `roles/cloudtasks.enqueuer` on it and
   `roles/iam.serviceAccountUser` on their own account, so a task carries the
   enqueuer's OIDC token for the call back. A pull-request stack enqueues on
   {{.Integration}}'s queue, since a deleted queue's name stays reserved for seven
@@ -105,9 +105,11 @@ from `2-env`'s state.
   (`{{.FirestoreDatabase.Declaration}}` names it to the processes that construct
   the {{.FirestoreDatabase.Level}} level), Native mode, in the primary region, beside the
   Spanner database; {{.Production}} keeps point-in-time recovery on and resists deletion.
-  The site{{if .JobsReadsFirestore}} and the job process{{end}} hold `roles/datastore.user` under a
-  condition naming this database alone, so nothing else in the shared
-  environment project is reachable. With it, what live pages need of the
+  The site{{if .MigrateReadsFirestore}}{{if .JobsReadsFirestore}},{{else}} and{{end}} the migrate command (its role migration is a
+  policy write the running instances hear through this database){{end}}{{if .JobsReadsFirestore}} and the
+  job process{{end}} hold{{if not (or .MigrateReadsFirestore .JobsReadsFirestore)}}s{{end}} `roles/datastore.user` under a condition naming this
+  database alone, so nothing else in the shared environment project is
+  reachable. With it, what live pages need of the
   database, from the two files beside the schema migrations (`{{.Firestore.Dir}}`):
   the {{len .Firestore.Indexes}} composite index(es) of `{{.Firestore.IndexesFile}}` and the
   fields its `fieldOverrides` settle,
@@ -210,10 +212,10 @@ above them.
 | `{{.TasksQueue.Name}}` | {{.TasksQueue.Level}} | the task queue | yes | |{{if .Jobs}} {{if .JobsReadsTasks}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .FirestoreDatabase}}
-| `{{.FirestoreDatabase.Name}}` | {{.FirestoreDatabase.Level}} | the Firestore database | yes | |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
+| `{{.FirestoreDatabase.Name}}` | {{.FirestoreDatabase.Level}} | the Firestore database | yes |{{if .MigrateReadsFirestore}} yes{{end}} |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .FirebaseAPIKey}}
-| `{{.FirebaseAPIKey.Name}}` | {{.FirebaseAPIKey.Level}} | the Firebase web API key | yes | |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
+| `{{.FirebaseAPIKey.Name}}` | {{.FirebaseAPIKey.Level}} | the Firebase web API key | yes |{{if .MigrateReadsFirestore}} yes{{end}} |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .Directory}}
 | `{{.HostedDomain.Name}}` | {{.HostedDomain.Level}} | `var.{{.AuthVar}}_hosted_domain` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
@@ -228,7 +230,10 @@ above them.
 | {{.SecretsCell}} | {{.CookieKeySecret.Variable.Level}} | secret, at the pinned version | yes | |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
 
 {{if .Directory}}The migrate job{{if .JobsReadsData}} and the job process{{end}} carr{{if .JobsReadsData}}y{{else}}ies{{end}} the hosted domain and group prefix because the session
-library refuses to construct without them. {{end}}Not set: `{{.Version.Name}}` (the
+library refuses to construct without them. {{end}}{{if .MigrateReadsFirestore}}The migrate job carries the Firestore
+database because the {{.FirestoreDatabase.Level}} level opens its live service when it is constructed, and
+the release's role migration signals the running instances through it{{if .FirebaseAPIKey}}; the web
+API key rides beside it, a public value{{end}}. {{end}}Not set: `{{.Version.Name}}` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables),{{if .Jobs}} `{{.JobsJob.Name}}` (baked into the image the same way, the job of
 that build),{{end}} {{.CodeDefaultsCell}}, `{{.Port.Name}}` (Cloud Run

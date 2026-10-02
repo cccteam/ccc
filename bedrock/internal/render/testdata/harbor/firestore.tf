@@ -9,7 +9,9 @@
 # documents. One database per environment beside the Spanner database, a
 # pull-request stack's own for a pull request, Native mode, in the primary
 # region; prd keeps point-in-time recovery on and resists deletion. The
-# migrate command receives neither the name nor a grant: its work is known.
+# migrate command constructs the data level too, whose live service signals the
+# policy kind when the release's roles are written, so it receives the name and
+# the grant as well.
 #
 # With the database, what the live pages need of it, from the two files beside
 # the schema migrations (schema/firestore): the composite indexes and the field
@@ -45,6 +47,22 @@ resource "google_project_iam_member" "firestore_app" {
   }
 
   depends_on = [google_firestore_database.firestore, google_service_account.app]
+}
+
+# The migrate command's: the release's role migration is a policy write the
+# running instances hear through the signals document it writes here.
+resource "google_project_iam_member" "firestore_migrate" {
+  project = local.project_id
+  role    = "roles/datastore.user"
+  member  = local.migrate_member
+
+  condition {
+    title       = "${local.firestore_database_id} only"
+    description = "The application's own Firestore database in this project."
+    expression  = "resource.name == \"projects/${local.project_id}/databases/${local.firestore_database_id}\""
+  }
+
+  depends_on = [google_firestore_database.firestore, google_service_account.migrate]
 }
 
 resource "google_project_iam_member" "firestore_jobs" {

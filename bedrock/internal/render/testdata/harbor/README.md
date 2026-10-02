@@ -101,9 +101,11 @@ from `2-env`'s state.
   (`dataConfig.FirestoreDatabase` names it to the processes that construct
   the data level), Native mode, in the primary region, beside the
   Spanner database; prd keeps point-in-time recovery on and resists deletion.
-  The site and the job process hold `roles/datastore.user` under a
-  condition naming this database alone, so nothing else in the shared
-  environment project is reachable. With it, what live pages need of the
+  The site, the migrate command (its role migration is a
+  policy write the running instances hear through this database) and the
+  job process hold `roles/datastore.user` under a condition naming this
+  database alone, so nothing else in the shared environment project is
+  reachable. With it, what live pages need of the
   database, from the two files beside the schema migrations (`schema/firestore`):
   the 3 composite index(es) of `schema/firestore/firestore.indexes.json` and the
   fields its `fieldOverrides` settle,
@@ -195,8 +197,8 @@ above them.
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
 | `APP_ASSETS_BUCKET` | data | the assets bucket | yes | | yes |
 | `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |
-| `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | | yes |
-| `APP_FIREBASE_API_KEY` | data | the Firebase web API key | yes | | yes |
+| `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | yes | yes |
+| `APP_FIREBASE_API_KEY` | data | the Firebase web API key | yes | yes | yes |
 | `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |
 | `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
@@ -206,7 +208,10 @@ above them.
 | `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
 The migrate job and the job process carry the hosted domain and group prefix because the session
-library refuses to construct without them. Not set: `APP_VERSION` (the
+library refuses to construct without them. The migrate job carries the Firestore
+database because the data level opens its live service when it is constructed, and
+the release's role migration signals the running instances through it; the web
+API key rides beside it, a public value. Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables), `APP_JOBS_JOB` (baked into the image the same way, the job of
 that build), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run

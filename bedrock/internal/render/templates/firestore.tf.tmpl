@@ -9,8 +9,11 @@
 # application in the shared environment project reaches no other application's
 # documents. One database per environment beside the Spanner database, a
 # pull-request stack's own for a pull request, Native mode, in the primary
-# region; {{.Production}} keeps point-in-time recovery on and resists deletion. The
-# migrate command receives neither the name nor a grant: its work is known.
+# region; {{.Production}} keeps point-in-time recovery on and resists deletion.{{if .MigrateReadsFirestore}} The
+# migrate command constructs the {{.FirestoreDatabase.Level}} level too, whose live service signals the
+# policy kind when the release's roles are written, so it receives the name and
+# the grant as well.{{else}} The migrate command does not construct the {{.FirestoreDatabase.Level}} level,
+# so it receives neither the name nor a grant.{{end}}
 #
 # With the database, what the live pages need of it, from the two files beside
 # the schema migrations ({{.Firestore.Dir}}): the composite indexes and the field
@@ -47,6 +50,24 @@ resource "google_project_iam_member" "firestore_app" {
 
   depends_on = [google_firestore_database.firestore, google_service_account.app]
 }
+{{- if .MigrateReadsFirestore}}
+
+# The migrate command's: the release's role migration is a policy write the
+# running instances hear through the signals document it writes here.
+resource "google_project_iam_member" "firestore_migrate" {
+  project = local.project_id
+  role    = "roles/datastore.user"
+  member  = local.migrate_member
+
+  condition {
+    title       = "${local.firestore_database_id} only"
+    description = "The application's own Firestore database in this project."
+    expression  = "resource.name == \"projects/${local.project_id}/databases/${local.firestore_database_id}\""
+  }
+
+  depends_on = [google_firestore_database.firestore, google_service_account.migrate]
+}
+{{- end}}
 {{- if .JobsReadsFirestore}}
 
 resource "google_project_iam_member" "firestore_jobs" {
@@ -207,12 +228,13 @@ resource "google_firebaserules_release" "firestore" {
 # APP_FIRESTORE_DATABASE, at the level whose processes read and write it (the
 # data level as a rule). The stack then creates {{.Prefix}}-<env>-gbl-{{.App}}-fs in
 # Native mode in the primary region, sets the variable to its id, and grants
-# the site (and the job process, when it constructs that level) datastore.user
-# on that database alone. With it, from the two files beside the schema
-# migrations (schema/firestore), the database's composite indexes, its
-# time-to-live policies and its security rules; Token Creator for the site on
-# its own account, for the custom tokens live pages sign a browser in with;
-# and, when the code also declares APP_FIREBASE_API_KEY, the web API key the
-# browser presents, that variable set to it.
+# the site and, when they construct that level, the migrate command (whose
+# role migration signals the running instances through it) and the job
+# process datastore.user on that database alone. With it, from the two files
+# beside the schema migrations (schema/firestore), the database's composite
+# indexes, its time-to-live policies and its security rules; Token Creator for
+# the site on its own account, for the custom tokens live pages sign a browser
+# in with; and, when the code also declares APP_FIREBASE_API_KEY, the web API
+# key the browser presents, that variable set to it.
 # ---------------------------------------------------------------------------
 {{end -}}

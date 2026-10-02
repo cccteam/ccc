@@ -224,8 +224,10 @@ locals {
     APP_TASKS_QUEUE = local.tasks_queue
   }
 
-  # dataConfig.FirestoreDatabase: the Firestore database (firestore.tf), for the
-  # processes that construct the data level and run the application's own code.
+  # dataConfig.FirestoreDatabase: the Firestore database (firestore.tf), for every
+  # process that constructs the data level, the migrate command too:
+  # the level opens the database when it is constructed, and the release's role
+  # migration signals the running instances through it.
   # dataConfig.FirebaseAPIKey: the web API key the browser presents to sign in
   # (firestore.tf), a public value by design, beside it.
   firestore_env = {
@@ -239,7 +241,7 @@ locals {
   service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.assets_env, local.tasks_env, local.firestore_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them.
-  job_env = merge(local.core_env, local.data_env, {
+  job_env = merge(local.core_env, local.data_env, local.firestore_env, {
     APP_SERVICE_NAME = "${local.app}-migrate"
   })
 

@@ -172,9 +172,13 @@ type view struct {
 	JobsReadsTasks bool
 	// FirestoreDatabase is the variable naming the Firestore database, or nil when the
 	// code declares none; JobsReadsFirestore reports that the job process constructs
-	// its level.
-	FirestoreDatabase  *derive.Variable
-	JobsReadsFirestore bool
+	// its level, and MigrateReadsFirestore that the migrate command does: the level
+	// opens the database's live service when it is constructed, and the release's
+	// role migration signals the running instances through it, so the migrate command
+	// receives the database's name and a grant on it like any process of that level.
+	FirestoreDatabase     *derive.Variable
+	JobsReadsFirestore    bool
+	MigrateReadsFirestore bool
 	// FirebaseAPIKey is the variable the Firebase web API key of the Firestore database
 	// is handed through, or nil when the code declares none.
 	FirebaseAPIKey *derive.Variable
@@ -822,7 +826,8 @@ func (v *view) blocks() {
 }
 
 // declarations finds the resources the code declares by a well-known variable (the
-// assets bucket, the task queue) and whether the job process constructs their levels.
+// assets bucket, the task queue, the Firestore database) and whether the job process,
+// and for the Firestore database the migrate command, constructs their levels.
 func (v *view) declarations() {
 	v.AssetsBucket = v.byRole(derive.RoleAssetsBucket)
 	if v.AssetsBucket != nil && v.Jobs != nil {
@@ -833,6 +838,9 @@ func (v *view) declarations() {
 		v.JobsReadsTasks = v.Jobs.Reads(v.TasksQueue.Level)
 	}
 	v.FirestoreDatabase = v.byRole(derive.RoleFirestoreDatabase)
+	if v.FirestoreDatabase != nil {
+		v.MigrateReadsFirestore = v.Migrate.Reads(v.FirestoreDatabase.Level)
+	}
 	if v.FirestoreDatabase != nil && v.Jobs != nil {
 		v.JobsReadsFirestore = v.Jobs.Reads(v.FirestoreDatabase.Level)
 	}
