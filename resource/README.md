@@ -1137,7 +1137,10 @@ before its answer: for each row it wrote, the subscribers of the row get a row d
 and the subscribers of the resource's list in the row's domain a list document; above
 100 rows of one resource in one request, every subscriber of the resource gets one
 resource document instead. Writes to one target within one second coalesce. The publish
-is bounded by two seconds and a failure is logged; it never fails the request. The
+is bounded by two seconds and a failure is logged; it never fails the request. A
+request's calls on the subscription record and the identity (register, renew,
+unsubscribe, revoke, token) are bounded by five seconds (`live.RecordTimeout`), so a
+backend that stops answering never holds a request open. The
 browser listens to its own change set (`users/{uid}/changes`, timestamps after the last
 one it saw) and refetches the row or list with `_v=<the change's timestamp>` (section 4),
 and such a response carries `Cache-Control: private, max-age=300` so a remount inside

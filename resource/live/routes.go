@@ -104,6 +104,8 @@ func RenewHandler(svc Service, userPermissions func(r *http.Request) resource.Us
 			subs = append(subs, renewed.Normalized())
 		}
 		if len(subs) > 0 {
+			ctx, cancel := context.WithTimeout(ctx, RecordTimeout)
+			defer cancel()
 			if err := svc.Renew(ctx, subs); err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -177,6 +179,8 @@ func UnsubscribeHandler(svc Service) http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		principal := PrincipalID(ctx)
+		ctx, cancel := context.WithTimeout(ctx, RecordTimeout)
+		defer cancel()
 		switch {
 		case req.All:
 			if err := svc.UnsubscribeAll(ctx, principal); err != nil {
@@ -205,6 +209,8 @@ func TokenHandler(svc Service) http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
+		ctx, cancel := context.WithTimeout(ctx, RecordTimeout)
+		defer cancel()
 		payload, err := svc.Token(ctx, PrincipalID(ctx))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)

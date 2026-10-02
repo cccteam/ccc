@@ -107,6 +107,8 @@ func Subscribe(ctx context.Context, r *http.Request, svc Service, gate Gate, sub
 	registered.Principal = PrincipalID(ctx)
 	registered.Tab = tab
 	registered.Expiry = time.Now().Add(SubscriptionTTL)
+	ctx, cancel := context.WithTimeout(ctx, RecordTimeout)
+	defer cancel()
 	if err := svc.Register(ctx, []Subscription{registered}); err != nil {
 		logger.FromCtx(ctx).Errorf("live: registering the %s subscription of tab %s failed; the page is served without it: %v", sub.Resource, tab, err)
 	}

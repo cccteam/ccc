@@ -85,6 +85,10 @@ const (
 	// PublishTimeout bounds a request's publish: past it the failure is logged and the
 	// request answers.
 	PublishTimeout = 2 * time.Second
+	// RecordTimeout bounds a request's calls on the subscription record and the identity
+	// (register, renew, unsubscribe, revoke, token): past it the call fails as any
+	// failure of it does, so a backend that stops answering never holds a request open.
+	RecordTimeout = 5 * time.Second
 )
 
 // tabPattern is the shape of a tab id.
