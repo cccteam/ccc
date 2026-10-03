@@ -1,11 +1,11 @@
 import { Methods, Resources, IssueBulletin, Sectors } from '@app/service/zz_gen_constants';
 import { field, listViewConfig, rootConfig, rpcConfig, section } from '@cccteam/resource-angular/types';
 
-// Sectors is the tenant table itself: rows here ARE the permission domains, read at
-// startup as the roster a session's sectors are filtered from; the star chart's "chart
-// every sector" roster comes from this resource's own generated (permission-checked)
-// List. Issue Bulletin is the global, row-free Execute gated for the Bulletin Officer by
-// `now < ...`.
+// Sectors is the tenant record itself: rows here ARE the permission domains, and every
+// instance holds a roster of them that keeps up without a restart, so a sector the
+// surveyor creates on this page is served at once; the star chart's "chart every sector"
+// roster comes from this resource's own generated (permission-checked) List. Issue
+// Bulletin is the global, row-free Execute gated for the Bulletin Officer by `now < ...`.
 export const sectorsConfig = rootConfig({
   nav: { navItem: { label: 'Sectors' }, group: 'Headquarters' },
   rpcConfigs: [

@@ -17,7 +17,7 @@
 # Demonstrates: walkthrough.
 set -u
 S=$(mktemp -d)
-SECOND_PID=   # the feature flags section's second server process, killed with the run
+SECOND_PID=   # the second server process the feature flags section starts and the one-channel and charted-sector sections reuse, killed with the run
 trap '[ -n "$SECOND_PID" ] && kill "$SECOND_PID" 2>/dev/null; rm -rf "$S"' EXIT
 B=${LODESTAR_URL:-http://127.0.0.1:${PORT:-8090}}
 # Each browser outlet's API sits under its application's mount path.
@@ -138,7 +138,7 @@ if [ "$r" = "307 $B/console/" ]; then echo "PASS  the root alone redirects to th
 r=$(curl -s -o /dev/null -w '%{http_code}' "$B/nowhere")
 if [ "$r" = 404 ]; then echo "PASS  an unmatched path at the root is not found (404)"; else echo "FAIL  an unmatched path at the root: status $r, want 404"; fails=$((fails + 1)); fi
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch harbormaster adjutant; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch harbormaster adjutant surveyor; do
   login "$p"
 done
 login_portal client
@@ -528,6 +528,45 @@ r=$(req cadet GET "$ANVIL/ships"); check "refused again on the instance that wro
 if [ -n "$SECOND_PID" ]; then
   tries=0; for i in $(seq 1 40); do tries=$i; r=$(req cadet.2 GET "$API2/sectors/anvil/ships"); [ "${r##*$'\n'}" = 403 ] && break; sleep 0.25; done
   check "and on the second instance at its next request (try $tries)" 403 "$r"
+fi
+
+# ---- a sector charted at run time: the roster keeps up ----
+# Sectors is the tenant record (@tenant): its rows are the sectors every sector-scoped URL
+# names, and every instance holds a roster of them that the generated guard asks first. The
+# surveyor, who holds Create and Update on Sectors and SectorCrew in every sector, charts
+# sector Dawn through the consolidated patch, the key in the operation's path: the instance
+# that wrote adds Dawn to its roster after the commit and signals the tenants kind, so her
+# star chart lights Dawn and Dawn's wings answer her with no restart, no migrate job and no
+# new login; the marshal's chart does not light it and Dawn answers her as a sector that
+# does not exist; the client's portal, whose directory role is held in every sector, opens
+# Dawn at once, as the governor and the archivist see it with nothing written for them; and
+# the second process serves Dawn at its next request, its roster reloaded on the signal
+# rather than at the five-minute backstop. Demonstrates: tenancy.run-time-tenant.
+DAWN=$API/sectors/dawn
+r=$(req surveyor GET "$API/user-domains"); assert_py "the surveyor's chart lights the three charted sectors: SectorCrew held in every sector" "$r" "rows == ['anvil','bastion','cinder']"
+r=$(req surveyor GET "$DAWN/wings"); check "Dawn is not on the chart yet: a sector that does not exist" 404 "$r"
+if [ -n "$SECOND_PID" ]; then
+  login_second surveyor
+  r=$(req surveyor.2 GET "$API2/sectors/dawn/wings"); check "nor on the second process" 404 "$r"
+fi
+r=$(req marshal PATCH "$API/resources" '[{"op":"add","path":"/sectors/dawn","value":{"name":"Dawn","region":"Outer frontier","established":"2226-10-02"}}]'); check "the marshal holds no Create on Sectors" 403 "$r"
+r=$(req surveyor PATCH "$API/resources" '[{"op":"add","path":"/sectors/dawn","value":{"name":"Dawn","region":"Outer frontier","established":"2226-10-02"}}]'); check "the surveyor charts sector Dawn (Create on Sectors; the key rides in the path)" 200 "$r"
+r=$(req surveyor GET "$API/sectors"); assert_py "the sector list carries Dawn, in name order" "$r" "[s['name'] for s in rows]==['Anvil','Bastion','Cinder','Dawn']"
+r=$(req surveyor GET "$API/user-domains"); assert_py "her star chart lights Dawn at once: no restart, no migrate job, no new login" "$r" "rows == ['anvil','bastion','cinder','dawn']"
+r=$(req surveyor GET "$DAWN/wings"); check "Dawn's wings answer her: SectorCrew, held in every sector, reached Dawn with nothing written" 200 "$r"
+assert_py "an empty wing list: Dawn is charted, not yet crewed" "$r" "rows == []"
+r=$(req surveyor PATCH "$API/resources" '[{"op":"patch","path":"/sectors/dawn","value":{"region":"Far frontier"}}]'); check "the surveyor corrects Dawn's region (Update on Sectors)" 200 "$r"
+r=$(req marshal GET "$API/user-domains"); assert_py "the marshal's chart does not light Dawn" "$r" "rows == ['anvil']"
+r=$(req marshal GET "$DAWN/wings"); check "Dawn's routes answer the marshal 404: a sector that does not exist for her" 404 "$r"
+r=$(req governor GET "$API/user-domains"); assert_py "the governor, marshal in every sector, sees Dawn" "$r" "rows == ['anvil','bastion','cinder','dawn']"
+r=$(req governor GET "$DAWN/missions"); check "Dawn's flight deck answers the governor, empty" 200 "$r"
+r=$(req archivist GET "$API/user-domains"); assert_py "the archivist, held in every sector, sees Dawn" "$r" "rows == ['anvil','bastion','cinder','dawn']"
+r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists Dawn at once: the directory's role is held in every sector" "$r" "rows == ['anvil','bastion','cinder','dawn']"
+r=$(req client GET "$PORTAL/sectors/dawn/missions"); check "Dawn's tracker opens for her, empty" 200 "$r"
+if [ -n "$SECOND_PID" ]; then
+  tries=0; for i in $(seq 1 40); do tries=$i; r=$(req surveyor.2 GET "$API2/sectors/dawn/wings"); [ "${r##*$'\n'}" = 200 ] && break; sleep 0.25; done
+  check "the second process serves Dawn at its next request: the tenants kind's signal, not the five-minute backstop (answered on try $tries)" 200 "$r"
+  r=$(req surveyor.2 GET "$API2/user-domains"); assert_py "and her chart there lights Dawn" "$r" "rows == ['anvil','bastion','cinder','dawn']"
   kill "$SECOND_PID" 2>/dev/null; wait "$SECOND_PID" 2>/dev/null; SECOND_PID=
 fi
 
@@ -586,7 +625,7 @@ else
 fi
 
 # ---- portal ----
-r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists every sector: the directory's domain role is held in every sector" "$r" "rows == ['anvil','bastion','cinder']"
+r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists every sector, Dawn charted above among them: the directory's domain role is held in every sector" "$r" "rows == ['anvil','bastion','cinder','dawn']"
 r=$(req client GET "$PORTAL/sectors/anvil/missions?capabilities=Execute&limit=200"); check "cleo tracks Halvard's missions" 200 "$r"
 assert_py "portal width excludes assignedSquadronId/notes/settlement" "$r" "rows and all('assignedSquadronId' not in m and 'settlement' not in m for m in rows)"
 assert_py "Stand down lights only on her company's open, claimed, or on-hold rows" "$r" "all(('StandDownMission' in m['zzCapabilities']['Execute']) == (m['statusId'] in ('open','claimed','on_hold')) for m in rows)"

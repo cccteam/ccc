@@ -14,6 +14,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
+	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
@@ -98,9 +99,10 @@ func (s FirestoreSettings) BrowserOrigins() []string {
 
 // DataConfiguration is the second level: every process that opens the database. It
 // owns the Spanner client, the document store, the resource client over both, the live
-// service over the Firestore database, and the two auths (each its permission engine
-// and session manager), whose engines announce and watch policy changes through the
-// live service.
+// service over the Firestore database, the tenant roster (the Sectors table's keys,
+// loaded here and kept current through the live service's tenants signal), and the two
+// auths (each its permission engine and session manager), whose engines announce and
+// watch policy changes through the live service.
 type DataConfiguration struct {
 	*coreConfiguration
 	env            *dataConfig
@@ -109,14 +111,16 @@ type DataConfiguration struct {
 	resourceClient *resource.SpannerClient
 	cursorKey      *resource.CursorKey
 	crew           *crew.Auth
-	tenants        tenantRoster
+	tenants        *resource.TenantRoster
 	members        *members.Auth
 	live           *livefirestore.Service
 }
 
 // NewDataConfiguration loads the core and data levels and opens their clients. Each
 // auth's permission engine validates its role file against the generated permission
-// collection and blocks until its first policy snapshot is loaded.
+// collection and blocks until its first policy snapshot is loaded, and the tenant roster
+// is loaded once before the level is handed out, so a process never serves on a roster
+// it could not fill.
 func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	core, err := newCoreConfiguration(ctx)
 	if err != nil {
@@ -195,18 +199,33 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "store.NewDirStore()")
 	}
 
+	resourceClient := resource.NewSpannerClient(spannerClient, resource.WithFileStore(documents))
+
+	// The tenant roster: every instance's copy of the Sectors table's keys, built by the
+	// generated constructor (Sector is the @tenant record) and started here beside the
+	// engines, so the start fails when the first read does. It subscribes to the tenants
+	// kind on the live service, the one channel the engines and the feature flags ride:
+	// a sector charted on any instance is served by this one at its next request, with
+	// the library's five-minute reread as the backstop; no restart, no migrate job and no
+	// new login is needed, since a role held in every sector reaches the new one with
+	// nothing written. Tenancy is data, not a compiled-in list.
+	//
+	// Demonstrates: tenancy.run-time-tenant.
+	tenants := app.NewSectorRoster(resourceClient, resource.WithTenantSignals(liveService))
+	if err := tenants.Start(ctx); err != nil {
+		return nil, errors.Wrap(err, "resource.TenantRoster.Start()")
+	}
+
 	conf := &DataConfiguration{
 		coreConfiguration: core,
 		env:               env,
 		spannerClient:     spannerClient,
 		documents:         documents,
-		resourceClient:    resource.NewSpannerClient(spannerClient, resource.WithFileStore(documents)),
+		resourceClient:    resourceClient,
 		cursorKey:         cursorKey,
 		crew:              crewAuth,
+		tenants:           tenants,
 		live:              liveService,
-	}
-	if err := conf.loadTenants(ctx); err != nil {
-		return nil, errors.Wrap(err, "loadTenants()")
 	}
 
 	// The members auth: the portal's people, whose roles are the directory's. Its role
@@ -317,14 +336,10 @@ func (c *DataConfiguration) UserManagement() access.Handlers {
 	return c.crew.Access().Handlers(httpio.Log)
 }
 
-// engine returns the permission engine of the auth the request came through: the members
-// auth's for a request its session group bound, the crew auth's otherwise.
-func (c *DataConfiguration) engine(ctx context.Context) *access.Client {
-	if auth.Name(ctx) == members.Name {
-		return c.members.Access()
-	}
-
-	return c.crew.Access()
+// TenantRoster returns the tenant roster: the sectors this instance serves, loaded when
+// the level opened and kept current until the context the level opened under ends.
+func (c *DataConfiguration) TenantRoster() *resource.TenantRoster {
+	return c.tenants
 }
 
 // cookieKey returns the configured session cookie key, or an ephemeral one when none is

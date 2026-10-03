@@ -26,6 +26,10 @@ import (
 // permitted to do per test via grants.
 const testUser = "authz-user"
 
+// testDomain is the domain value the generated matrix addresses every domain-scoped
+// route with; newTestHandler adds it to the application's tenant roster.
+const testDomain accesstypes.Domain = "testDomain"
+
 // fakeAccess scripts access.Controller's permission checks. Every Controller method
 // the pipeline does not consume panics through the embedded nil interface, keeping the
 // fake honest about what the pipeline actually draws on.
@@ -40,6 +44,15 @@ func (f *fakeAccess) ForUser(user accesstypes.User) *access.UserChecker {
 
 func (f *fakeAccess) ForRole(role accesstypes.Role) *access.RoleChecker {
 	return access.NewRoleChecker(f, role)
+}
+
+// UserHasGrants answers the concealed-domain foothold question the generated DomainGuard
+// and the consolidated dispatcher ask after the tenant roster: the scripted table is
+// domain-blind, so any grant at all is a foothold in the matrix's domain, and a case
+// carrying no grants has no foothold and is answered as if the domain did not exist, per
+// the generated suite's contract.
+func (f *fakeAccess) UserHasGrants(_ context.Context, _ accesstypes.User, _ accesstypes.Scope) (bool, error) {
+	return len(f.g) > 0, nil
 }
 
 func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
@@ -72,6 +85,7 @@ type testConfigurer struct {
 	g         grants
 	documents *store.DirStore
 	live      *live.Fake
+	tenants   *resource.TenantRoster
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
@@ -134,18 +148,14 @@ func (c *testConfigurer) LiveOrigins() []string { return nil }
 // router, which never mounts them.
 func (c *testConfigurer) UserManagement() access.Handlers { return nil }
 
-// Domains is the scripted roster: the one domain the generated matrix addresses. The
-// empty test schema holds no sector rows, so nothing is read.
-func (c *testConfigurer) Domains(context.Context) ([]accesstypes.Domain, error) {
-	return []accesstypes.Domain{"testDomain"}, nil
-}
-
-// DomainVisible recognizes the generated matrix's domain value and honors the scripted
-// grants, per the generated suite's concealed-domain contract: a case carrying no grants
-// has no foothold and is answered as if the domain did not exist. The empty test schema
-// holds no sector rows, so the roster is scripted rather than read.
-func (c *testConfigurer) DomainVisible(_ context.Context, _ accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	return domain == "testDomain" && len(c.g) > 0, nil
+// TenantRoster is the matrix's roster: the generated constructor over the test client,
+// holding the one domain the generated matrix addresses, added by newTestHandler. The
+// empty test schema holds no sector rows, so nothing is read and the roster is never
+// started; under concealed domains a case carrying no grants has no foothold and is
+// answered as if the domain did not exist, which the scripted engine's UserHasGrants
+// decides.
+func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
+	return c.tenants
 }
 
 // newTestHandler composes the pipeline under test: the application's generated
@@ -164,7 +174,12 @@ func newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handle
 		}
 	})
 
-	a := app.New(&testConfigurer{db: db, g: g, documents: documents})
+	// The suite's domain value is added to the roster with Add, the generated matrix's
+	// contract: the empty schema holds no tenant row for Start to read.
+	tenants := app.NewSectorRoster(resource.NewSpannerClient(db.Client, resource.WithFileStore(documents)))
+	tenants.Add(testDomain)
+
+	a := app.New(&testConfigurer{db: db, g: g, documents: documents, tenants: tenants})
 	// The App reads its feature flags as it is built, so a suite that flips a flag
 	// before newTestHandler drives the App in that state; Start reports a copy that
 	// could not be read and follows the table until the test ends.

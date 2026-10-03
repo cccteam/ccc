@@ -102,7 +102,14 @@ type Configurer interface {
 	// permission checks; nil where those routes are never mounted (the test router's
 	// suites), since mounting them draws on it.
 	UserManagement() access.Handlers
-	TenancyConfigurer
+	// TenantRoster is the application's tenant roster: the Sectors table's keys, built by
+	// the generated NewSectorRoster over the resource client and started by the
+	// configuration, so it is loaded before the App is built and keeps up through the
+	// live service's tenants signal. The generated DomainGuard asks it before every
+	// sector-scoped request runs, the generated Sector write paths add and remove sectors
+	// in it after their commit, and a session's sector list is this roster filtered by
+	// where the session holds a grant. A test harness builds one with Add alone.
+	TenantRoster() *resource.TenantRoster
 }
 
 // operationsClock is the zone the bare word local resolves to in temporal grant
@@ -142,8 +149,7 @@ type App struct {
 	consoleDist    string
 	portalDist     string
 	droidsAPIKey   string
-	domains        resource.DomainRoster
-	domainVisible  DomainVisibleFunc
+	tenants        *resource.TenantRoster
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
 	documents      *store.DirStore
@@ -176,8 +182,7 @@ func New(cfg Configurer) *App {
 		consoleDist:    cfg.ConsoleDist(),
 		portalDist:     cfg.PortalDist(),
 		droidsAPIKey:   cfg.DroidsAPIKey(),
-		domains:        cfg.Domains,
-		domainVisible:  cfg.DomainVisible,
+		tenants:        cfg.TenantRoster(),
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, documents),
 		computedClient: computedresources.NewClient(),
 		documents:      documents,
@@ -343,14 +348,27 @@ func serveSPA(assets http.Handler) http.HandlerFunc {
 // session's principal: the engine of the auth the request came through, bound to the
 // user for an ordinary or impersonated-user session, bound to the role for a session
 // established as a role, and attenuated by the session's permission mask. The sectors
-// the session lists are the application's roster filtered by where the checker holds a
-// grant, so the star chart and the sector guard can never disagree.
+// the session lists are the tenant roster filtered by where the checker holds a grant,
+// so the star chart and the sector guard can never disagree, and a sector charted a
+// moment ago lights for everyone whose role is held in every sector.
 //
 // Demonstrates: impersonation.session-permissions.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
 	engine := a.engine(r.Context())
 
-	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole, a.domains)
+	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole, a.tenants.Domains)
+}
+
+// TenantRoster is the application's tenant roster (resource.TenantRoster): the sectors
+// every instance serves, which the generated DomainGuard and the consolidated dispatcher
+// ask before a sector-scoped request runs (Has: no read, no wait) and the generated
+// Sector write paths add to and remove from after their commit. The configuration builds
+// it with the generated NewSectorRoster and starts it over the live service's signals,
+// so a sector charted on any instance is served here at the next request.
+//
+// Demonstrates: tenancy.run-time-tenant.
+func (a *App) TenantRoster() *resource.TenantRoster {
+	return a.tenants
 }
 
 // Validator returns the request validator the generated decoder constructors draw on.

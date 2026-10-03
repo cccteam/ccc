@@ -386,6 +386,19 @@
           ]
         }
       }
+    },
+    {
+      "user": "surveyor",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "Surveyor"
+        ],
+        "everyDomain": [
+          "SectorCrew"
+        ]
+      }
     }
   ],
   "serviceAccounts": [

@@ -219,6 +219,19 @@ a second server process built from the tree (the walkthrough starts one on
 board at its next request, with no restart and without waiting for its heartbeat; unseat
 her (`DELETE` on the same route) and it refuses again.
 
+To see the tenants kind: sign in as `surveyor` and chart a sector (`PATCH
+/console/api/resources` with
+`[{"op":"add","path":"/sectors/dawn","value":{"name":"Dawn","region":"Outer frontier","established":"2226-10-02"}}]`).
+`Sectors` is the tenant record (`@tenant`): the data configuration builds the roster with
+the generated `NewSectorRoster` over the live service and starts it beside the engines
+(`pkg/config/data.go`), the generated create path adds Dawn to the writing instance's
+roster after the commit and signals the kind, and the second process serves
+`/console/api/sectors/dawn/...` at its next request, the roster's own five-minute reread
+left as the backstop. Nothing is written to the permission store: the surveyor's
+`SectorCrew`, the governor's `SectorMarshal`, the archivist's role and the client's
+directory role are each held in every sector, so Dawn lights on their charts with nothing
+written for it.
+
 How it is wired:
 
 - The adapter. [`pkg/auth/signal.go`](pkg/auth/signal.go) builds the engines' change
@@ -345,6 +358,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `dock` / `watch` | Dockmaster Dara / Night Watch Nadia | `timeOfDay(now, local)` and the wrap-around `timeOfDay(now, 'America/Denver')` window; `dayOfWeek(now, local) NOT IN ('sat', 'sun')`. At any hour exactly one sees the hangar deck. Demonstrates: condition.time-of-day, condition.day-of-week, condition.local-zone. |
 | `harbormaster` | Harbormaster Hollis, Anvil | List and Read on Ships, nothing else of her own: the live fleet board. Her list and the ship she has open are subscribed when they are read, the engineer's refit (or a hail) lands on both without a reload, a board left and reopened inside five minutes is the browser's own, and the pilot watching Bastion's fleet and the cadet, who holds no List on Ships, receive nothing. Demonstrates: live.pages. |
 | `adjutant` | Adjutant Alba, headquarters | The commendations desk, the one resource behind a feature flag, and the key that turns it: `FeatureAdministrator` (List and Read on `FeatureFlags`, Execute on `SetFeature`, global) beside `Adjutant` (List, Read and Create on `Commendations`). Off, the desk's routes answer the router's own 404, the digest leaves the desk and the card's `commendations` field out, and the field named in a request is unknown; she turns the flag on through `SetFeature`, the desk answers, Pax's card counts his citations, and a second server process serves the desk at its next request with no restart; off again, both refuse. Demonstrates: @feature, @feature.field. |
+| `surveyor` | Surveyor Shen, headquarters | Charts new sectors: `Surveyor` (Create and Update on `Sectors`, global) beside `SectorCrew` held in every sector. `Sectors` is the tenant record (`@tenant`) and every instance holds a roster of it: when she charts Dawn through the consolidated patch, the instance that wrote adds Dawn to its roster after the commit and signals the tenants kind, so her star chart lights Dawn and Dawn's wings answer her at once, with no restart, no migrate job and no new login; the marshal's chart stays dark and Dawn answers her as a sector that does not exist; the client's portal, the governor and the archivist, all held in every sector, see Dawn with nothing written for them; and a second server process serves Dawn at its next request. Demonstrates: tenancy.run-time-tenant. |
 | `client` | Client Cleo, portal only | Signs in through her company's directory, whose groups are her roles; the second browser app over the second TypeScript target; `client = subject.client` from the ClientContact anchor; a conditional Execute fired from a portal session; a PII field an external user writes; the portal-only client statement. Demonstrates: auth.directory-roles, auth.skipauth-directory, typescript.second-target, outlet.session, @subjectValue.second-anchor, @manualAddResource.outlet. |
 | `droid-r7` | R7, service account, no login | The API-keyed droids outlet: telemetry with no human route, one reading per call, each carrying the firmware's raw frame, a type declared in the droid link's own package whose generated methods the generator writes there (`WithTypes`); releases through the shared method under its own read grant. Demonstrates: outlet.api-key, outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package. |
 

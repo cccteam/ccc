@@ -21,6 +21,7 @@ type Demonstration struct {
 var Demonstrations = []Demonstration{
 	// Tenancy.
 	{"tenancy.tenant-record", "The tenant record (@tenant): a table whose rows are the permission domains, read into a roster that keeps up without a restart; the route segment and parameter derive from the record and its key, and a tenant created at run time is served by every instance at once."},
+	{"tenancy.run-time-tenant", "A tenant created at run time: the tenant record's generated create path adds the tenant to the writing instance's roster after the commit and signals the tenants kind, so every instance serves the new tenant at its next request, a role held in every tenant domain reaches it with nothing written, and no restart, migration or new login is needed."},
 	{"tenancy.concealed", "WithConcealedDomains: a domain the caller holds no grant in answers exactly like one that does not exist."},
 	{"tenancy.user-domains", "The generated user-domains endpoint: the domains where the session holds at least one grant, on the same foothold predicate as concealed tenancy."},
 	{"star-chart", "A picker drawn from user-domains, with a labeled bypass of the digest-first rule so a concealed refusal can be shown in a browser."},

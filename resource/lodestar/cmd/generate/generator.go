@@ -44,9 +44,9 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.OIDCGoogle),
 			generation.WebApp("/portal"),
 		),
-		// Sector-scoped resources and methods are served under /console/api/sectors/{sectorID}/;
-		// a sector the caller holds no grant in answers like one that does not exist.
-		generation.WithDomainRoute("sectors"),
+		// Sector-scoped resources and methods are served under /console/api/sectors/{sectorID}/,
+		// the segment and the parameter derived from the @tenant record (Sector, keyed by
+		// ID); a sector the caller holds no grant in answers like one that does not exist.
 		generation.WithConcealedDomains(),
 		generation.WithRPC("pkg/rpc"),
 		generation.WithVirtualResources("pkg/virtualresources"),

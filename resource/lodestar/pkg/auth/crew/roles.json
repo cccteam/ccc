@@ -412,6 +412,31 @@
             }
           ]
         }
+      },
+      {
+        "name": "Surveyor",
+        "permissions": {
+          "Create": [
+            {
+              "resource": "Sectors",
+              "fields": [
+                "name",
+                "region",
+                "established"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Sectors",
+              "fields": [
+                "name",
+                "region",
+                "established"
+              ]
+            }
+          ]
+        }
       }
     ],
     "domain": [

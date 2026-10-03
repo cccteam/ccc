@@ -36,7 +36,6 @@ import (
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -226,33 +225,24 @@ type testConfigurer struct {
 	documents     *store.DirStore
 	live          live.Service
 	management    access.Handlers
+	tenants       *resource.TenantRoster
 }
 
-// Domains is the seeded roster, the list production's DataConfiguration reads from the
-// Sectors table at startup: what a session's sector list is filtered from.
-func (c *testConfigurer) Domains(context.Context) ([]accesstypes.Domain, error) {
-	return sectors, nil
-}
-
-// DomainVisible composes the seeded roster with the foothold answer of the engine of the
-// auth the request came through, the same composition production's
-// DataConfiguration.DomainVisible performs. Sector existence is concealed: a caller with
-// no grants in a sector is answered as if the sector did not exist.
-func (c *testConfigurer) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	if !slices.Contains(sectors, domain) {
-		return false, nil
+// TenantRoster is the application's tenant roster as production's DataConfiguration
+// starts it: the generated constructor over the test client, holding the seeded sectors.
+// A suite that passed none gets one holding the seed by Add, never read and never
+// started; the run-time tenant suite passes a started roster of its own, so a sector it
+// charts reaches the roster the way a served instance's does. The guard's foothold
+// question is the engine's, through UserPermissions.HasGrants.
+func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
+	if c.tenants == nil {
+		c.tenants = app.NewSectorRoster(c.ResourceClient())
+		for _, sector := range sectors {
+			c.tenants.Add(sector)
+		}
 	}
 
-	engine := c.access
-	if auth.Name(ctx) == members.Name && c.membersAccess != nil {
-		engine = c.membersAccess
-	}
-	visible, err := engine.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
-	if err != nil {
-		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
-	}
-
-	return visible, nil
+	return c.tenants
 }
 
 // Documents is the document store the upload frame streams into; a suite that asserts on
