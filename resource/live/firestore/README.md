@@ -26,8 +26,8 @@ document, `domain` on a list document, `at` (the server timestamp), `expires`
 
 `application/signals` is the application's signals document: the one document the
 server's instances signal each other through. It has a field per kind (`features`,
-`tenants`, `policy`), each a map `{at: <server timestamp>, by: <host/pid of the
-writing instance>}`; a `Signal` of a kind sets that kind's field alone (a merge write
+`tenants`, `policy`), each a map `{at: <server timestamp>, by: <the writing instance:
+its Cloud Run revision or job execution, else its host, and its process id>}`; a `Signal` of a kind sets that kind's field alone (a merge write
 on the field path), so two kinds never clobber each other, and one snapshot after
 quick signals of different kinds carries both. Every instance holds one snapshot
 listener on the document (`Subscribe`, which opens it and waits on nothing): each

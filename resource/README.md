@@ -1196,7 +1196,7 @@ in `zz_gen_live.go` as delegations to the library's handlers.
 **The signals document.** The live service is also how an application's instances tell
 each other that something shared changed. One document per application,
 `application/signals`, has a field per kind of change, `features`, `tenants` and
-`policy`, each `{at: <server timestamp>, by: <host/pid of the writer>}`; a
+`policy`, each `{at: <server timestamp>, by: <the writer: its Cloud Run revision or job execution, else its host, and its process id>}`; a
 `Signal(ctx, kind)` writes that kind's field alone (a merge write on the field path),
 so two kinds never clobber each other, and one snapshot after quick signals of two
 kinds carries both. Each instance holds one snapshot listener on the document

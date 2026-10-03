@@ -42,7 +42,8 @@ const (
 	ChangesCollection = "changes"
 	// ApplicationCollection and SignalsDocument are the application's signals:
 	// application/signals, one server-owned document per application with a field per
-	// kind, each {at: <server timestamp>, by: <host/pid of the signaling instance>}. A
+	// kind, each {at: <server timestamp>, by: <the signaling instance: its Cloud Run revision
+	// or job execution, else its host, and its process id>}. A
 	// signal writes its kind's field alone, and every instance's one listener watches
 	// the document. No client reads it.
 	ApplicationCollection = "application"
@@ -82,8 +83,9 @@ type Service struct {
 	auth *fbauth.Client
 	cfg  Config
 	now  func() time.Time
-	// instance identifies this process in the signals it writes: the host and the
-	// process id, so a reader of the document can say who signaled.
+	// instance identifies this process in the signals it writes: the Cloud Run revision
+	// or job execution when the platform names one, else the host, and the process id,
+	// so a reader of the document can say who signaled.
 	instance string
 	// lifetime is the service's own context, carrying New's values without its
 	// cancelation: the signals listener and the following writes run under it, and
@@ -500,14 +502,38 @@ func (s *Service) Revoke(ctx context.Context, uid string) error {
 	return nil
 }
 
-// instanceID names this process in the signals it writes: host and process id.
+// instanceID names this process in the signals it writes: the Cloud Run revision or job
+// execution when the platform names one (a container's hostname there is localhost),
+// else the host, and the process id.
 func instanceID() string {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
 	}
 
-	return host + "/" + strconv.Itoa(os.Getpid())
+	return instanceName(os.LookupEnv, host, os.Getpid())
+}
+
+// The platform's variables naming the writer: a Cloud Run service's revision and a Cloud
+// Run job's execution.
+const (
+	revisionEnv  = "K_REVISION"
+	executionEnv = "CLOUD_RUN_EXECUTION"
+)
+
+// instanceName composes the writer's name from what the platform tells: the revision,
+// else the job execution, else the host; then the process id.
+func instanceName(lookup func(string) (string, bool), host string, pid int) string {
+	name := host
+	for _, env := range []string{revisionEnv, executionEnv} {
+		if v, ok := lookup(env); ok && v != "" {
+			name = v
+
+			break
+		}
+	}
+
+	return name + "/" + strconv.Itoa(pid)
 }
 
 // await ends the batch and reports the first write that failed.
