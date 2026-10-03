@@ -13,9 +13,12 @@ import (
 )
 
 // The waits the signals tests allow: a signal reaches a listener within settle, and a
-// kind that must stay quiet is watched for quiet.
+// kind that must stay quiet is watched for quiet. settle is long because it is only ever
+// waited out on a failure: on a loaded runner the emulator has taken over ten seconds to
+// establish a listener on a database created a moment before, and a passing wait ends
+// the instant the signal arrives.
 const (
-	settle = 10 * time.Second
+	settle = 45 * time.Second
 	quiet  = 500 * time.Millisecond
 )
 
