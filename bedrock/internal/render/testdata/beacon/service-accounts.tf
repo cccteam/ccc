@@ -51,7 +51,12 @@ resource "google_service_account_iam_member" "deploy_uses_app" {
 # takes it out of the release's image): its output is the build's log, and the
 # Spanner client writes its client-side metrics, which log a denial every minute
 # without metricWriter. The identity is 2-env's, so nothing here is depended on.
+# The environment's stack alone grants it: a pull-request build runs as the same
+# identity, which the environment's grant covers, and a pull-request stack applies
+# only what is the pull request's own.
 resource "google_project_iam_member" "deploy_metrics" {
+  count = local.is_pr ? 0 : 1
+
   project = local.project_id
   role    = "roles/monitoring.metricWriter"
   member  = local.identities.deploy_identity_member

@@ -873,7 +873,7 @@ func TestMigrationGrants(t *testing.T) {
 			}
 			present := map[string][]string{
 				"spanner.tf":                            {`resource "google_spanner_database_iam_member" "deploy_admin" {`, "  role     = \"roles/spanner.databaseAdmin\"\n  member   = local.identities.deploy_identity_member"},
-				"service-accounts.tf":                   {`resource "google_project_iam_member" "deploy_metrics" {`, "  role    = \"roles/monitoring.metricWriter\"\n  member  = local.identities.deploy_identity_member"},
+				"service-accounts.tf":                   {`resource "google_project_iam_member" "deploy_metrics" {`, "  count = local.is_pr ? 0 : 1\n", "  role    = \"roles/monitoring.metricWriter\"\n  member  = local.identities.deploy_identity_member"},
 				"cloud-build.tf":                        {"_MIGRATE_ENV             = jsonencode(local.migrate_env)", "_MIGRATE_DATABASES       = jsonencode(local.migrate_databases)"},
 				"locals.tf":                             {"migrate_env = merge(local.core_env, local.data_env", "migrate_databases = concat(\n    [\"projects/${local.instance.project}/instances/${local.instance.name}/databases/${local.database_name}\"],"},
 				"logging.tf":                            {`resource.labels.build_trigger_id`, `"operations_reads_migrate_logs"`},
