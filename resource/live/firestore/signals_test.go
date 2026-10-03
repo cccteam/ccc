@@ -14,11 +14,12 @@ import (
 
 // The waits the signals tests allow: a signal reaches a listener within settle, and a
 // kind that must stay quiet is watched for quiet. settle is long because it is only ever
-// waited out on a failure: on a loaded runner the emulator has taken over ten seconds to
-// establish a listener on a database created a moment before, and a passing wait ends
-// the instant the signal arrives.
+// waited out on a failure: on a loaded runner, where the Firestore emulator shares the
+// machine with the Spanner emulator and the generation suite, it has taken over ten
+// seconds, and once over forty-five, to establish a listener on a database created a
+// moment before, and a passing wait ends the instant the signal arrives.
 const (
-	settle = 45 * time.Second
+	settle = 2 * time.Minute
 	quiet  = 500 * time.Millisecond
 )
 
@@ -135,6 +136,17 @@ func none() expect {
 // atLeast expects n wakes or more.
 func atLeast(n int) expect {
 	return expect{n: n, floor: true}
+}
+
+// logSnapshotsOnFailure prints what each instance's listener received when the test
+// fails, so a wait that ran out is read off the snapshots that did or did not arrive.
+func logSnapshotsOnFailure(t *testing.T, first, second *snapshotLog) {
+	t.Helper()
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("the first instance's snapshots: %s\nthe second instance's snapshots: %s", first, second)
+		}
+	})
 }
 
 // checkCounts compares the counts with the expectations and explains a mismatch with
@@ -296,6 +308,7 @@ func TestService_signals(t *testing.T) {
 			first := newServiceIn(t, database)
 			second := newServiceIn(t, database)
 			firstLog, secondLog := logSnapshots(first), logSnapshots(second)
+			logSnapshotsOnFailure(t, firstLog, secondLog)
 			checkCounts(t, "signal counts", tt.want, tt.run(t, first, second), firstLog, secondLog)
 		})
 	}
@@ -315,6 +328,7 @@ func TestService_signals_reopen(t *testing.T) {
 	first := newServiceIn(t, database, backoff)
 	second := newServiceIn(t, database, backoff)
 	firstLog, secondLog := logSnapshots(first), logSnapshots(second)
+	logSnapshotsOnFailure(t, firstLog, secondLog)
 	firstFeatures := subscribe(t, first, live.KindFeatures)
 	firstTenants := subscribe(t, first, live.KindTenants)
 	firstPolicy := subscribe(t, first, live.KindPolicy)
