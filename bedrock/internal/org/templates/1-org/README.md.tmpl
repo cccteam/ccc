@@ -99,13 +99,18 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   triggers and reads the builds they start (`cloudbuild.builds.create`,
   `cloudbuild.builds.get`, `cloudbuild.builds.list`, `cloudbuild.triggers.get`,
   `cloudbuild.triggers.list`) and nothing else. A restore of an environment to
-  a release is started from GitHub: the application's operations workflow
-  exchanges its token for the environment's operations identity and runs the
-  environment's version trigger with the restore instruction, and the pipeline
-  does the work as the deploy identity. `2-env` grants the role on each
-  environment project to each application's operations identity, in every
-  environment but production, and in tst to each application's deploy
-  identity as well, as which Cloud Scheduler runs the hourly sweep trigger.
+  a release, and a release run again, are started from GitHub: the
+  application's operations workflow exchanges its token for the environment's
+  operations identity and runs the environment's version trigger with the
+  instruction, and the pipeline does the work as the deploy identity. `2-env`
+  grants the role on each environment project to each application's
+  operations identity, in every environment (in production for the rerun
+  alone), and in tst to each application's deploy identity as well, as which
+  Cloud Scheduler runs the hourly sweep trigger. `cloudbuild.builds.create`
+  also submits a build without a trigger, and Cloud Build evaluates no
+  resource condition that would narrow the role to the version trigger; no
+  person holds it, and the operations identity's bound is who may become it
+  (`2-env/operations.tf`).
 - The custom organization role `cloudBuildBuildReader`: reads Cloud Build
   builds (`cloudbuild.builds.get`) and nothing else. The pipeline's first step
   reads the build it runs in (the trigger's kind, the tag or the pull request,
@@ -186,8 +191,9 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   hotfix lines `hotfix/*` changed by pull request alone, no force push, no
   deletion, with the branch up to date with its base, the required checks
   passing and squash the only merge) and the GitHub Environments the operations
-  workflow runs in ({{.RestorableEnvironmentsProse}}, each deploying from the
-  default branch alone). See "The applications' repositories" below.
+  workflow runs in ({{.EnvironmentsProse}}, each deploying from the default
+  branch alone; production's for the rerun of a release, since it is never
+  restored by a run). See "The applications' repositories" below.
 
 ## Applying
 
@@ -288,7 +294,7 @@ tofu import 'github_repository.app["<app>"]' <app>
 tofu import 'github_repository_ruleset.release_tags["<app>"]' <app>:<id>
 tofu import 'github_repository_ruleset.branch["<app>:default"]' <app>:<id>
 tofu import 'github_repository_ruleset.branch["<app>:hotfix"]' <app>:<id>
-tofu import 'github_repository_environment.restorable["<app>-<env>"]' <app>:<env>
+tofu import 'github_repository_environment.operations["<app>-<env>"]' <app>:<env>
 tofu import 'github_repository_environment_deployment_policy.default_branch["<app>-<env>"]' <app>:<env>:<id>
 ```
 

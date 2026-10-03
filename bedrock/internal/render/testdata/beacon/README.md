@@ -168,7 +168,9 @@ container the project holds and this state does not is imported at plan time,
 so the apply reconciles it instead of failing to create it. A pull-request
 stack reads tst's containers and adopts none. Creating a
 container and adding a version is the `secretOperator` role 1-org defines,
-granted on the environment project to 2-env's `secret_operators`.
+which nobody holds standing: a member of the environment's team group asks
+for the secret operator entitlement (2-env's `team-group.tf`) and holds the
+role for the time asked.
 
 ### Build secrets
 
@@ -212,7 +214,9 @@ substitutions and this stack's outputs:
   as those identities to say where the hotfix will be refused; `_APPLY_IDENTITY`, the identity the tag build applies this
   environment's stack as, and the pull-request build a pull request's stack
   as; `_RESTORE` and `_REQUESTER`, empty on a tag's own build and set on a
-  restore run (what replaces the environment's database, and who asked);
+  restore run (what replaces the environment's database, and who asked), the
+  requester alone on a rerun (`bedrock rerun`: the release's tag build again,
+  production included);
   `_MIGRATE_ACTION`, `_MIGRATE_TABLE` and `_MIGRATE_VERSION`, empty on a tag's
   own build and set by the operations workflow's migration job (`version`,
   `rerun` or `force` on the environment's migrations, with `_REQUESTER` naming

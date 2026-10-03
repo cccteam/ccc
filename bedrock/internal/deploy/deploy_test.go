@@ -105,6 +105,8 @@ func TestNewRecordRequest(t *testing.T) {
 		wantRestore     *Restore
 		wantMaintenance *Maintenance
 		wantForce       *Force
+		// wantRequester is who asked for the run through the operations workflow.
+		wantRequester string
 		// wantWindow is the window a release that needed one records.
 		wantWindow *Window
 		wantErr    string
@@ -126,20 +128,30 @@ func TestNewRecordRequest(t *testing.T) {
 			wantWindow:  &Window{Reason: "every release waits for tst's window (releases: all)", Slot: "anytime", Opened: "2026-10-04T07:00:00Z"},
 		},
 		{
-			name:        "a run that forced a migration version records the table, the version and who asked",
-			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport MIGRATE_FORCED_TABLE=\"schema\"\nexport MIGRATE_FORCED_VERSION=\"40\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATE_ACTION": "force", "_MIGRATE_VERSION": "40", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
-			wantStatus:  Live,
-			wantRegions: "us-central1,us-west3",
-			wantForce:   &Force{Table: "schema", Version: 40, Requester: "octocat"},
+			name:          "a run that forced a migration version records the table, the version and who asked",
+			files:         map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport MIGRATE_FORCED_TABLE=\"schema\"\nexport MIGRATE_FORCED_VERSION=\"40\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATE_ACTION": "force", "_MIGRATE_VERSION": "40", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
+			wantObject:    "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:    Live,
+			wantRegions:   "us-central1,us-west3",
+			wantForce:     &Force{Table: "schema", Version: 40, Requester: "octocat"},
+			wantRequester: "octocat",
 		},
 		{
-			name:        "a run that forced no version to the data table records -1",
-			files:       map[string]string{EnvironmentFile: liveEnvironment + "export MIGRATE_FORCED_TABLE=\"data\"\nexport MIGRATE_FORCED_VERSION=\"-1\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
-			wantStatus:  Live,
-			wantRegions: "us-central1,us-west3",
-			wantForce:   &Force{Table: "data", Version: -1, Requester: "octocat"},
+			name:          "a run that forced no version to the data table records -1",
+			files:         map[string]string{EnvironmentFile: liveEnvironment + "export MIGRATE_FORCED_TABLE=\"data\"\nexport MIGRATE_FORCED_VERSION=\"-1\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
+			wantObject:    "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:    Live,
+			wantRegions:   "us-central1,us-west3",
+			wantForce:     &Force{Table: "data", Version: -1, Requester: "octocat"},
+			wantRequester: "octocat",
+		},
+		{
+			name:          "a rerun records who asked and nothing of a restore",
+			files:         map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
+			wantObject:    "harbor/prd/v1.2.3/b-1.json",
+			wantStatus:    Live,
+			wantRegions:   "us-central1,us-west3",
+			wantRequester: "octocat",
 		},
 		{
 			name:        "a version run records nothing and says why",
@@ -283,6 +295,9 @@ func TestNewRecordRequest(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantForce, r.Force); diff != "" {
 				t.Errorf("Force mismatch (-want +got):\n%s", diff)
+			}
+			if r.Requester != tt.wantRequester {
+				t.Errorf("Requester = %q, want %q", r.Requester, tt.wantRequester)
 			}
 			if diff := cmp.Diff(tt.wantWindow, r.Window); diff != "" {
 				t.Errorf("Window mismatch (-want +got):\n%s", diff)

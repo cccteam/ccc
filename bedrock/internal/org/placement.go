@@ -460,13 +460,11 @@ func (p *Placement) WorkflowUnwired() []string {
 // ApplicationProjects is the block an application's placement records for its
 // environments' projects (id and number, as 1-org's project_ids and project_numbers
 // outputs name them), for the environments this placement records both of, and the
-// environments it does not. Production is left out: it is never restored by a run.
+// environments it does not. Production is among them: a release is run again there from
+// GitHub (bedrock rerun), though it is never restored by a run.
 func (p *Placement) ApplicationProjects() (block string, missing []string) {
 	var lines []string
 	for _, env := range Environments {
-		if env == prdEnvironment {
-			continue
-		}
 		id, number := p.Projects[env], p.ProjectNumbers[env]
 		if id == "" || number == "" {
 			missing = append(missing, env)

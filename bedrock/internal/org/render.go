@@ -330,15 +330,14 @@ func (*view) ImpulseChecksProseQuoted() string {
 	return prose(backticked(ci.FixedChecks))
 }
 
-// Restorable is the environments a restore may be started for: every one but
-// production, in promotion order.
-func (*view) Restorable() []string {
-	return Environments[:len(Environments)-1]
+// EnvironmentsList is the environments as an HCL list, and EnvironmentsProse the same
+// as prose, backticked: `tst`, `stg` and `prd`.
+func (*view) EnvironmentsList() string {
+	return hclList(Environments)
 }
 
-// RestorableEnvironmentsList is the restorable environments as an HCL list.
-func (v *view) RestorableEnvironmentsList() string {
-	return hclList(v.Restorable())
+func (*view) EnvironmentsProse() string {
+	return prose(backticked(Environments))
 }
 
 // ApprovalEnvironmentsList is the approval environments as an HCL list, and
@@ -424,12 +423,6 @@ var numberWords = map[int]string{2: "two", 3: "three", 4: "four", 5: "five", 6: 
 // hclList is the items as an HCL list of strings.
 func hclList(items []string) string {
 	return `["` + strings.Join(items, `", "`) + `"]`
-}
-
-// RestorableEnvironmentsProse is the restorable environments as prose, backticked:
-// `tst` and `stg`.
-func (v *view) RestorableEnvironmentsProse() string {
-	return prose(backticked(v.Restorable()))
 }
 
 // ApplicationsList is the applications as an HCL list.

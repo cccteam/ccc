@@ -52,6 +52,10 @@ type Record struct {
 	// applied, made in this build): its counts and changes. Absent in a pull-request
 	// build, which applies no environment's stack, and on a bedrock before the step.
 	Stack *StackPlan `json:"stack,omitempty"`
+	// Requester is who asked for the run through the operations workflow: a restore, a
+	// rerun of the release (bedrock rerun) or a migration operation. Absent for a tag's
+	// own build.
+	Requester string `json:"requester,omitempty"`
 	// Restore says the build was a restore run: what the environment's database was
 	// replaced with, who asked, and what the stack replaced. Absent otherwise.
 	Restore *Restore `json:"restore,omitempty"`
@@ -265,6 +269,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Build:       build.ID,
 		Migrations:  applied,
 		Stack:       stack,
+		Requester:   build.Substitutions[requesterSub],
 		Restore:     restore,
 		Maintenance: maintenance,
 		Force:       forceOf(env, build),

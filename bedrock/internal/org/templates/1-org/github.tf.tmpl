@@ -19,9 +19,9 @@
 # only merge and, when var.github_infrastructure_team names a team, that
 # team's approval of a change to the workflow and Cloud Build files, given
 # after the last push), and the GitHub Environments the operations workflow
-# runs in (one per environment a restore may be started for, every one but
-# production, each deploying from the default branch alone; a reviewer is
-# the repository's setting to add).
+# runs in (one per environment, production included, since a release is run
+# again there from GitHub, each deploying from the default branch alone; a
+# reviewer is the repository's setting to add).
 #
 # The required checks are the pull-request build, which Cloud Build reports
 # under the trigger's name followed by the project in parentheses (the trigger
@@ -69,8 +69,9 @@ data "github_team" "infrastructure" {
 }
 
 locals {
-  # The environments a restore may be started for: every one but production.
-  restorable_environments = {{.RestorableEnvironmentsList}}
+  # The environments the operations workflow runs in: every one. A restore
+  # reaches every environment but production, a rerun of a release every one.
+  operations_environments = {{.EnvironmentsList}}
 
   # The checks a pull request into the default branch or a hotfix line must
   # pass, each by the name it is reported under and the app that reports it:
@@ -112,7 +113,7 @@ locals {
   }
 
   repository_environments = {
-    for pair in setproduct(var.applications, local.restorable_environments) :
+    for pair in setproduct(var.applications, local.operations_environments) :
     "${pair[0]}-${pair[1]}" => { app = pair[0], environment = pair[1] }
   }
 }
@@ -226,7 +227,7 @@ resource "github_repository_ruleset" "branch" {
   }
 }
 
-resource "github_repository_environment" "restorable" {
+resource "github_repository_environment" "operations" {
   for_each = local.repository_environments
 
   repository  = github_repository.app[each.value.app].name
@@ -238,10 +239,17 @@ resource "github_repository_environment" "restorable" {
   }
 }
 
+# The Environments were the restorable environments' alone at first; the
+# state's instances keep their place under the new name.
+moved {
+  from = github_repository_environment.restorable
+  to   = github_repository_environment.operations
+}
+
 resource "github_repository_environment_deployment_policy" "default_branch" {
   for_each = local.repository_environments
 
   repository     = github_repository.app[each.value.app].name
-  environment    = github_repository_environment.restorable[each.key].environment
+  environment    = github_repository_environment.operations[each.key].environment
   branch_pattern = var.github_default_branch
 }

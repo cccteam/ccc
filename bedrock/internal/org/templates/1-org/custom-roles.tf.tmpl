@@ -130,17 +130,21 @@ resource "google_organization_iam_custom_role" "spanner_database_creator" {
   ]
 }
 
-# A restore of an environment to a release is started from GitHub: the
-# application's operations workflow exchanges its token for the environment's
-# operations identity and runs the environment's version trigger with the
-# restore instruction, and the pipeline does the work as the deploy identity.
-# That identity starts a trigger's build and reads how it went, and nothing
-# else: roles/cloudbuild.builds.editor would also cancel and retry builds and
-# write every trigger. Granted on the environment project to each
-# application's operations identity by 2-env, in every environment but
-# production, which is never restored by a run; and in tst to each
-# application's deploy identity, as which Cloud Scheduler runs the hourly
-# sweep trigger.
+# A restore of an environment to a release, and a release run again, are
+# started from GitHub: the application's operations workflow exchanges its
+# token for the environment's operations identity and runs the environment's
+# version trigger with the instruction, and the pipeline does the work as the
+# deploy identity. That identity starts a trigger's build and reads how it
+# went, and nothing else: roles/cloudbuild.builds.editor would also cancel and
+# retry builds and write every trigger. Granted on the environment project to
+# each application's operations identity by 2-env, in every environment (in
+# production for the rerun alone, since production is never restored by a
+# run); and in tst to each application's deploy identity, as which Cloud
+# Scheduler runs the hourly sweep trigger. cloudbuild.builds.create also
+# submits a build without a trigger, and Cloud Build evaluates no resource
+# condition that would narrow the role to the version trigger: no person holds
+# it, and the operations identity's bound is who may become it
+# (2-env/operations.tf).
 resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
   org_id      = local.org_id
   role_id     = "cloudBuildTriggerRunner"

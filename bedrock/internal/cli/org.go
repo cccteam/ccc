@@ -293,14 +293,14 @@ placement.json (projects) and run org render.`,
 }
 
 // applicationProjects is the block the application's placement records for the
-// operations workflow (a restore started from GitHub names the environment's identity
-// provider and operations identity by the project's id and number), or what the
+// operations workflow (a restore or a rerun started from GitHub names the environment's
+// identity provider and operations identity by the project's id and number), or what the
 // organization's placement still lacks for it.
 func applicationProjects(p *org.Placement, app string) string {
 	block, missing := p.ApplicationProjects()
 	var b strings.Builder
 	if block != "" {
-		fmt.Fprintf(&b, "\nRecord in %s's placement.json (infrastructure/placement.json), for the operations workflow that starts a restore of an environment from GitHub:\n%s\n", app, block)
+		fmt.Fprintf(&b, "\nRecord in %s's placement.json (infrastructure/placement.json), for the operations workflow that starts a restore or a rerun of an environment from GitHub (production's for the rerun alone):\n%s\n", app, block)
 	}
 	if len(missing) > 0 {
 		fmt.Fprintf(&b, "\nThe operations workflow cannot be wired for %s yet: record 1-org's project_ids and project_numbers in placement.json (projects, projectNumbers), then run org register's print again with org render.\n", strings.Join(missing, ", "))

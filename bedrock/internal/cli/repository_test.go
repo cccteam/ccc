@@ -72,6 +72,21 @@ func TestRestoreAndHotfix(t *testing.T) {
 			wantDispatch: "operations.yml master action=restore environment=tst release=v0.1.4",
 		},
 		{
+			name:   "rerun dispatches the operations workflow with the run action, production included",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"rerun", "prd", "v0.1.4", "--placement", placement},
+			wantOut: []string{
+				"Asked, as octocat, for prd to run v0.1.4 again: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). The release's tag build runs again from the start, waits for its approval in Cloud Build where prd requires one, and its record names you.",
+			},
+			wantDispatch: "operations.yml master action=run environment=prd release=v0.1.4",
+		},
+		{
+			name:    "rerun refuses a release that does not exist",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rerun", "stg", "v0.9.9", "--placement", placement},
+			wantErr: "no release v0.9.9 in impulseframework/harbor: an operation names a release that exists",
+		},
+		{
 			name:    "restore refuses production",
 			remote:  "git@github.com:impulseframework/harbor.git",
 			args:    []string{"restore", "prd", "v0.1.4", "--placement", placement},
@@ -274,7 +289,7 @@ func TestMigrationOperations(t *testing.T) {
 			name:        "production is refused before any call",
 			args:        []string{"migration", "version", "prd", "--release", "v0.1.4", "--placement", placement},
 			wantNoCalls: true,
-			wantErr:     "prd is production: the operations workflow reaches no production identity, and production's migrations are the platform operator's, with the commands the README gives under When the migrate job fails",
+			wantErr:     "prd is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migrate job fails); a release is run again in production with bedrock rerun",
 		},
 		{
 			name:        "a force in production is refused before any call",

@@ -1,7 +1,7 @@
 // operations.go is what the commands that start the operations workflow share (restore,
-// migration version, rerun and force): the repository and its placement, the checks on
-// the environment and the release, and the dispatch as the signed-in person with the
-// inputs the workflow declares.
+// rerun, migration version, rerun and force): the repository and its placement, the
+// checks on the environment and the release, and the dispatch as the signed-in person
+// with the inputs the workflow declares.
 
 package cli
 
@@ -18,14 +18,17 @@ import (
 )
 
 // The operations workflow's inputs (its environment input is named like the label) and
-// the actions its action input takes: the restore, and the three operations on an
-// environment's migrations.
+// the actions its action input takes: the restore, the run (bedrock rerun: the release's
+// tag build again, production included; the migration job's rerun option was named
+// first, so the release's action is run), and the three operations on an environment's
+// migrations.
 const (
 	actionInput   = "action"
 	releaseInput  = "release"
 	tableInput    = "table"
 	versionInput  = "version"
 	actionRestore = "restore"
+	actionRun     = "run"
 	actionVersion = "version"
 	actionRerun   = "rerun"
 	actionForce   = "force"

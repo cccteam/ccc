@@ -208,31 +208,41 @@ list the application at all.
 
 ### Application operations identity `{{.Prefix}}-<env>-gbl-<app>-ops`
 
-A restore of the environment to a release (`bedrock restore <env> <release>`)
-and an operation on its migrations (`bedrock migration version|rerun|force`)
-are started from GitHub: the application's operations workflow runs the
-environment's version trigger with the instruction, and the pipeline does the
-work as the deploy identity, as for any release. The workflow's job
-holds no key. It exchanges GitHub's short-lived token for this identity
-through the environment's workload identity pool
-`{{.Prefix}}-<env>-github` (`operations.tf`), whose provider trusts tokens of
-the organization's repositories alone, from the operations workflow file, run
-in the GitHub Environment named after this environment, and whose binding on
+A restore of the environment to a release (`bedrock restore <env> <release>`),
+a release run again (`bedrock rerun <env> <release>`) and an operation on the
+environment's migrations (`bedrock migration version|rerun|force`) are started
+from GitHub: the application's operations workflow runs the environment's
+version trigger with the instruction, and the pipeline does the work as the
+deploy identity, as for any release. The workflow's job holds no key. It
+exchanges GitHub's short-lived token for this identity through the
+environment's workload identity pool `{{.Prefix}}-<env>-github`
+(`operations.tf`), whose provider trusts tokens of the organization's
+repositories alone, from the operations workflow file, run in the GitHub
+Environment named after this environment (`1-org` declares one per
+environment, deploying from the default branch alone), and whose binding on
 the identity narrows that to the application's own repository. The identity
 holds `cloudBuildTriggerRunner` (`1-org`'s custom role: starts a trigger's
 build and reads how it went) on the environment project, and
 `roles/iam.serviceAccountUser` on the application's deploy identity, which
-starting a trigger whose builds run as it requires, and nothing else here. The
-application's own stack adds one bounded read (its `logging.tf`):
-`roles/logging.viewAccessor` on the view over the migrate job's own log
-bucket, so the workflow's migration job prints the lines the migrate job wrote
-and reads no other log. The
-application's placement records the environment project's id and number
-(`projects`, printed by `bedrock org register` once `placement.json` here
-records `projects` and `projectNumbers`), and bedrock renders the workflow
-with the provider's name (`github_identity_provider`) and the identity's email
-from them. None of this exists in `{{.Prd}}`: production is never restored by a
-run.
+starting a trigger whose builds run as it requires, and nothing else here.
+Below production the application's own stack adds one bounded read (its
+`logging.tf`): `roles/logging.viewAccessor` on the view over the migrate
+job's own log bucket, so the workflow's migration job prints the lines the
+migrate job wrote and reads no other log. In `{{.Prd}}` the identity serves the
+rerun alone and holds those two grants and nothing more: the workflow and the
+pipeline refuse the restore instruction there, no migration operation reaches
+it, and it reads no log view. The role carries `cloudbuild.builds.create`,
+which also submits a build without a trigger, and Cloud Build evaluates no
+resource condition that would narrow it to the version trigger, so the
+identity's bound is who may become it (the application's own operations
+workflow, in the environment's GitHub Environment, from the default branch);
+a release a rerun starts waits for its approval in Cloud Build as any
+release does, and no person holds the role anywhere. The application's
+placement records the environment project's id and number (`projects`,
+printed by `bedrock org register` once `placement.json` here records
+`projects` and `projectNumbers`; production's for the rerun), and bedrock
+renders the workflow with the provider's name (`github_identity_provider`)
+and the identity's email from them.
 
 ### The team group
 

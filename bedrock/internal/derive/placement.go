@@ -82,9 +82,10 @@ type Placement struct {
 	// Projects are the environment projects by environment, as the organization's
 	// apply chose them: the id and the number (bedrock org register prints the block
 	// once the organization's placement records both). The operations workflow, which
-	// starts a restore of an environment from GitHub, names the environment's workload
-	// identity provider and operations identity by them; an environment without an
-	// entry is not wired for it. Production needs none: it is never restored by a run.
+	// starts a restore or a rerun of an environment from GitHub, names the environment's
+	// workload identity provider and operations identity by them; an environment without
+	// an entry is not wired for it. Production's serves the rerun alone: it is never
+	// restored by a run.
 	Projects map[string]Project `json:"projects,omitempty"`
 }
 

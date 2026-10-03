@@ -79,7 +79,8 @@ no /gcbrun comment, an unknown option, and shared-db with reload-db. A tag build
 restore instruction (_RESTORE: empty, or production-backup for the environment on production's
 instance; _REQUESTER names who asked): the environment's database is replaced before the release
 deploys, which the facts carry on (RESTORE, RESTORE_REQUESTER); a pull-request build carries none,
-and production is never restored by a run. In an environment on the placement's seed list (_SEED
+and production is never restored by a run. A requester alone is a rerun (bedrock rerun: the
+release's tag build again, production included), which the record names. In an environment on the placement's seed list (_SEED
 true) a tag build decides a restore itself when the tree no longer carries a seed file as the
 environment's live release applied it (the release's record lists the seed files with their
 hashes): the release is the requester and the reason is a fact of its own (RESTORE_REASON), on the

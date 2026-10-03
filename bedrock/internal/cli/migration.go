@@ -77,7 +77,7 @@ func (f *operationFlags) migrationTarget(d deps, env string) (*repositoryContext
 		return nil, err
 	}
 	if env == rc.placement.Production() {
-		return nil, errors.Newf("%s is production: the operations workflow reaches no production identity, and production's migrations are the platform operator's, with the commands the README gives under When the migrate job fails", env)
+		return nil, errors.Newf("%s is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migrate job fails); a release is run again in production with bedrock rerun", env)
 	}
 
 	return rc, nil

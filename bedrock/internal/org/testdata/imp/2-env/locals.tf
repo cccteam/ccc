@@ -16,7 +16,6 @@ locals {
   name = "${local.prefix}-${var.environment}"
 
   is_tst = var.environment == "tst"
-  is_prd = var.environment == "prd"
 
   # The environment after this one in the promotion order, and its deploy
   # identities (by application), which may read this environment's deployment

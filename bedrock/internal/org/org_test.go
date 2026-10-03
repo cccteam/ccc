@@ -880,7 +880,7 @@ func TestViewPhrases(t *testing.T) {
 		{name: "no contact domains", placement: Placement{OrganizationDomain: "acme.com"}, check: func(v *view) string { return v.ContactDomainsList() }, want: `["@acme.com"]`},
 		{name: "seed labels", placement: Placement{SourceRepo: "acme-infrastructure", Labels: map[string]string{"team": "core"}}, check: func(v *view) string { return v.SeedLabels() }, want: "terraform=true,terraform_source_path=0-bootstrap,source_repo=acme-infrastructure,environment=boot,team=core"},
 		{name: "label prose", placement: Placement{Labels: map[string]string{"team": "core", "cost": "a"}}, check: func(v *view) string { return v.ExtraLabelsProse() + " / " + v.ExtraLabelKeys() }, want: "`cost = \"a\"`, `team = \"core\"` / `cost`, `team`"},
-		{name: "restorable environments prose", placement: Placement{}, check: func(v *view) string { return v.RestorableEnvironmentsProse() }, want: "`tst` and `stg`"},
+		{name: "the environments, as a list and as prose", placement: Placement{}, check: func(v *view) string { return v.EnvironmentsList() + " " + v.EnvironmentsProse() }, want: "[\"tst\", \"stg\", \"prd\"] `tst`, `stg` and `prd`"},
 		{name: "the approval environments, as a list and as prose", placement: Placement{}, check: func(v *view) string { return v.ApprovalEnvironmentsList() + " " + v.ApprovalEnvironmentsProse() }, want: "[\"stg\", \"prd\"] `stg` and `prd`"},
 		{name: "the team groups as a variable's default", placement: Placement{TeamGroups: map[string]string{"tst": "a@x.com", "stg": "b@x.com", "prd": "c@x.com"}}, check: func(v *view) string { return v.TeamGroupLines() }, want: "    tst = \"a@x.com\"\n    stg = \"b@x.com\"\n    prd = \"c@x.com\""},
 		{name: "the shared instance's environments with their groups and approvals", placement: Placement{TeamGroups: map[string]string{"tst": "a@x.com", "stg": "b@x.com", "prd": "c@x.com"}}, check: func(v *view) string { return v.SharedInstanceEntitlementLines() }, want: "    stg = { group = \"b@x.com\", approval = true }\n    prd = { group = \"c@x.com\", approval = true }"},
@@ -1163,19 +1163,19 @@ func TestApplicationProjects(t *testing.T) {
 		wantMissing string
 	}{
 		{
-			name:      "both recorded for every environment: the block for tst and stg, never prd",
+			name:      "both recorded for every environment: the block for all three, production's for the rerun",
 			projects:  map[string]string{"tst": "imp-tst-gbl-core-b241", "stg": "imp-stg-gbl-core-0fa7", "prd": "imp-prd-gbl-core-abe8"},
 			numbers:   map[string]string{"tst": "1", "stg": "2", "prd": "3"},
-			wantBlock: "  \"projects\": {\n    \"tst\": {\"id\": \"imp-tst-gbl-core-b241\", \"number\": \"1\"},\n    \"stg\": {\"id\": \"imp-stg-gbl-core-0fa7\", \"number\": \"2\"}\n  }",
+			wantBlock: "  \"projects\": {\n    \"tst\": {\"id\": \"imp-tst-gbl-core-b241\", \"number\": \"1\"},\n    \"stg\": {\"id\": \"imp-stg-gbl-core-0fa7\", \"number\": \"2\"},\n    \"prd\": {\"id\": \"imp-prd-gbl-core-abe8\", \"number\": \"3\"}\n  }",
 		},
 		{
 			name:        "a number missing leaves its environment out and names it",
 			projects:    map[string]string{"tst": "imp-tst-gbl-core-b241", "stg": "imp-stg-gbl-core-0fa7"},
 			numbers:     map[string]string{"tst": "1"},
 			wantBlock:   "  \"projects\": {\n    \"tst\": {\"id\": \"imp-tst-gbl-core-b241\", \"number\": \"1\"}\n  }",
-			wantMissing: "stg",
+			wantMissing: "stg,prd",
 		},
-		{name: "nothing recorded", wantMissing: "tst,stg"},
+		{name: "nothing recorded", wantMissing: "tst,stg,prd"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1629,8 +1629,8 @@ func TestPublicInvoker(t *testing.T) {
 // configures, the checks a pull request must pass (the infrastructure workflow's job, the
 // pull-request build under its trigger's name and project, and the five jobs of impulse's
 // CI workflow in the workflow's order), squash as the only merge, the branch up to date
-// before it merges, the restorable environments, and the placement's values as the
-// variables' defaults.
+// before it merges, the environments the operations workflow runs in (every one), and the
+// placement's values as the variables' defaults.
 func TestRepositoryRules(t *testing.T) {
 	t.Parallel()
 
@@ -1688,7 +1688,11 @@ func TestRepositoryRules(t *testing.T) {
 				`strict_required_status_checks_policy = true`,
 				`allowed_merge_methods           = ["squash"]`,
 				`require_last_push_approval      = var.github_infrastructure_team != ""`,
-				`restorable_environments = ["tst", "stg"]`,
+				`operations_environments = ["tst", "stg", "prd"]`,
+				`moved {
+  from = github_repository_environment.restorable
+  to   = github_repository_environment.operations
+}`,
 				`include = ["refs/tags/v*", "refs/tags/*/v*"]`,
 				`hotfix  = { name = "hotfix lines", include = ["refs/heads/hotfix/**"] }`,
 				`prevent_destroy = true`,

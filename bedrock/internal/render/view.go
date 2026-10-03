@@ -68,13 +68,16 @@ type view struct {
 	// SeedList is the HCL list of the environments whose migrate job applies the
 	// development seed.
 	SeedList string
-	// Operations are the environments a restore may be started for from GitHub, every
-	// one but production, with what the operations workflow needs of each; an
+	// Operations are the environments the operations workflow acts on from GitHub, every
+	// one (a rerun of a release reaches production; a restore and the migration
+	// operations every environment but it), with what the workflow needs of each; an
 	// environment the placement records no project for is listed unwired.
-	// OperationsProse spells them. AuthAction and GcloudAction are the pinned GitHub
-	// Actions the workflow uses; PrimaryRegion is where the version triggers are.
+	// OperationsProse spells them, RestorableProse the ones a restore reaches. AuthAction
+	// and GcloudAction are the pinned GitHub Actions the workflow uses; PrimaryRegion is
+	// where the version triggers are.
 	Operations      []operationsEnv
 	OperationsProse string
+	RestorableProse string
 	AuthAction      string
 	GcloudAction    string
 	PrimaryRegion   string
@@ -708,10 +711,13 @@ func (v *view) environments() {
 // after the project, as 2-env creates them), the version trigger, the restore a run
 // makes there, the migrate template job (whose copies a build runs) and the log bucket
 // holding the job's lines (both named as the application stack names them). Wired is
-// false for an environment the placement records no project for.
+// false for an environment the placement records no project for. Restorable is false
+// for production, which is never restored by a run and whose migrations are the
+// platform operator's: a rerun of a release alone reaches it.
 type operationsEnv struct {
 	Env        string
 	Wired      bool
+	Restorable bool
 	Project    string
 	Provider   string
 	Identity   string
@@ -728,17 +734,20 @@ const (
 	gcloudAction = "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
 )
 
-// operations lists the environments the operations workflow may act on: every one but
-// production.
+// operations lists the environments the operations workflow acts on: every one, a
+// rerun reaching production and the rest every environment but it.
 func (v *view) operations() {
 	v.AuthAction, v.GcloudAction = authAction, gcloudAction
 	v.PrimaryRegion = v.P.Regions[0].Name
-	for _, env := range v.P.Restorable() {
+	for _, env := range v.P.Environments {
 		o := operationsEnv{
-			Env: env, Restore: v.P.RestoreKind(env),
+			Env: env, Restorable: env != v.Production,
 			Trigger:    v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-version",
 			MigrateJob: v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-migrate",
 			Logs:       v.Prefix + "-" + env + "-gbl-" + v.App + "-migrate-logs",
+		}
+		if o.Restorable {
+			o.Restore = v.P.RestoreKind(env)
 		}
 		if project, ok := v.P.Project(env); ok {
 			o.Wired = true
@@ -748,7 +757,8 @@ func (v *view) operations() {
 		}
 		v.Operations = append(v.Operations, o)
 	}
-	v.OperationsProse = joinOr(v.P.Restorable())
+	v.OperationsProse = joinOr(v.P.Environments)
+	v.RestorableProse = joinOr(v.P.Restorable())
 }
 
 // regions spells the regions.

@@ -35,6 +35,10 @@
     "stg": {
       "id": "imp-stg-gbl-core-0fa7",
       "number": "234567890123"
+    },
+    "prd": {
+      "id": "imp-prd-gbl-core-abe8",
+      "number": "345678901234"
     }
   }
 }

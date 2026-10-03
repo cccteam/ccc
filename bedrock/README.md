@@ -338,7 +338,9 @@ thing one step hands the next. In order:
   instruction (`_RESTORE`: `empty`, or `production-backup` for the environment on
   production's instance, with `_REQUESTER` naming who asked): the environment's database
   is replaced before the release deploys. A pull-request build carries none, and
-  production is never restored by a run. In an environment on the placement's seed list
+  production is never restored by a run. `_REQUESTER` alone is a rerun (`bedrock rerun`:
+  the release's tag build again, production included), which the record names. In an
+  environment on the placement's seed list
   (`_SEED` true), a tag build decides a restore itself when the tree no longer carries a
   seed file as the environment's live release applied it (its record lists the seed files
   with their hashes; edited, renumbered or removed since): the release is the requester,
@@ -871,13 +873,18 @@ workflow's `action` input and the `bedrock migration` command that dispatches it
    to the release: action `restore`, `bedrock restore <env> <release>`, which replaces
    the database and runs the migrations the release carries (bedrock restore, below).
 
-In production the door does not exist: no developer credential reaches `prd`, the
-operations identity is not created there, and the pipeline reads no log view there. The
-platform operator runs the same operations with their own credential, through the
-environment's version trigger, since that is where a migrate job on the release's image
-exists: the stack's template job runs no image of its own, and each build's copy of it is
-deleted at the end of the migrate step. The trigger run takes the same substitutions the
-door passes, and the pipeline does the rest as everywhere, the record naming the operator:
+In production the door is narrower. No developer credential reaches `prd`, and the
+operations identity there serves one action: `run`, which `bedrock rerun prd <release>`
+dispatches (bedrock rerun, below). That is the release's tag build again, from the start,
+with no instruction, and it waits for its approval in Cloud Build as every production
+release does; so a migrate job that stopped at a statement continues from it once the
+cause is fixed, and the record names who asked. The version and the force do not reach
+production, and the pipeline reads no log view there: the platform operator runs those
+two with their own credential, through the environment's version trigger, since that is
+where a migrate job on the release's image exists (the stack's template job runs no image
+of its own, and each build's copy of it is deleted at the end of the migrate step). The
+trigger run takes the same substitutions the door passes, and the pipeline does the rest
+as everywhere, the record naming the operator:
 
 ```sh
 # The version: the migrate job prints it and nothing else deploys.
@@ -887,15 +894,12 @@ gcloud builds triggers run <prefix>-prd-<region code>-<app>-version --tag <relea
 gcloud builds triggers run <prefix>-prd-<region code>-<app>-version --tag <release> \
   --region <region> --project <project> \
   --substitutions _MIGRATE_ACTION=force,_MIGRATE_TABLE=schema,_MIGRATE_VERSION=40,_REQUESTER=<you>
-# A rerun: the release's tag build again.
-gcloud builds triggers run <prefix>-prd-<region code>-<app>-version --tag <release> \
-  --region <region> --project <project>
 ```
 
 The build log prints the Cloud Logging query that finds the job's lines (the step reads
 no view in production); the operator reads them in the console or with `gcloud logging
-read '<query>' --project <project>`. A release in production waits for its approval in
-Cloud Build as any release does.
+read '<query>' --project <project>`. Nobody runs the trigger by hand for a rerun, in
+production or anywhere: `bedrock rerun` is its door.
 
 ## bedrock restore
 
@@ -923,6 +927,28 @@ for any release; the GitHub side never holds a deploy right. The workflow run na
 started it, Cloud Build records the operations identity, and the deployment record
 carries the requester and the restore. An environment the placement records no project
 for is not wired: the job stops before touching anything and says what to record.
+
+## bedrock rerun
+
+`rerun <env> <release>` runs a release again in an environment, production included,
+through the same door as a restore: the command checks that the release exists and that
+the placement records the environment's project, dispatches the operations workflow with
+the `run` action as the person signed in to gh, and prints where to watch it. The job
+exchanges its token for the environment's operations identity in the environment's
+GitHub Environment, as a restore does, and runs the version trigger for the release with
+`_REQUESTER` alone: no restore, no migration operation. The build is the release's tag
+build again, from the start, as the deploy identity: the image is built, the stack
+applied, the migrations run (a migrate job that stopped at a statement continues from it
+once the cause is fixed), the revision deploys, traffic moves, and the record names who
+asked. Nothing of a rerun is a restore, so production is reached like any environment:
+its operations identity exists for this action alone, the workflow and the pipeline
+refuse the restore instruction and the migration operations there, and a rerun in
+production waits for its approval in Cloud Build as every production release does. The
+migration job's `rerun` option (`bedrock migration rerun`) was named first and runs the
+release again below production with the migrate job's lines printed in the run; the
+release's own action is `run`, and `bedrock rerun` is its command. Nobody runs a trigger
+or submits a build by hand: every build starts from a trigger, and a release is run again
+through this door.
 
 ## bedrock domain
 
@@ -994,8 +1020,9 @@ build (which Cloud Build reports under the trigger's name followed by the projec
 parentheses) and the infrastructure workflow's `bedrock check` passing on its latest commit,
 squash the only merge and, when the placement names an infrastructure team, that team's
 approval of a change to the workflow and Cloud Build files), and the GitHub Environments
-the operations workflow runs in (every environment but production, each deploying from
-the default branch alone). The workflow applies it with the infrastructure GitHub App's
+the operations workflow runs in (every environment, production's for the rerun of a
+release, each deploying from the default branch alone). The workflow applies it with the
+infrastructure GitHub App's
 installation token, minted in the run; a person applying by hand uses their own sign-in,
 `GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
 App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
@@ -1007,8 +1034,9 @@ bedrock's commands use the GitHub API only to act: `restore` dispatches a workfl
 decides. Once `placement.json` records the environment projects' ids and numbers
 (`projects` and `projectNumbers`, from 1-org's `project_ids` and `project_numbers`
 outputs), `org register` and `org render` print the `projects` block an application's
-placement records for the operations workflow, which starts a restore of an
-environment, started from GitHub (`bedrock restore`); production is left out of it.
+placement records for the operations workflow, which starts a restore or a rerun of an
+environment from GitHub (`bedrock restore`, `bedrock rerun`); production's entry serves
+the rerun alone.
 
 ## The application's pipeline
 

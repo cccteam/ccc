@@ -302,7 +302,9 @@ type Facts struct {
 	Down         bool
 	// Restore is a release build's restore instruction (empty, or production-backup):
 	// the environment's database is replaced before the release deploys, and Requester
-	// says who asked. Both empty for an ordinary build.
+	// says who asked. A requester with no restore and no migration operation is a rerun
+	// (bedrock rerun: the release's tag build again, production included), and the
+	// record names them. Both empty for a tag's own build.
 	Restore   string
 	Requester string
 	// RestoreReason is set with Restore when the build decided the restore itself (the
@@ -415,12 +417,18 @@ func newFacts(data []byte) (*Facts, error) {
 // database is its own and recreated on /gcbrun reload-db, carries none; production is
 // never restored by a run; the instruction names one of the two restores, and who asked.
 // An empty database is any environment's but production's; production's backup is
-// restored into stg, the environment on production's instance where its backups are.
+// restored into stg, the environment on production's instance where its backups are. A
+// requester with no restore and no migration operation is a rerun: the operations
+// workflow ran the release's version trigger again with nothing but who asked (bedrock
+// rerun), in any environment, production included, and the build runs as the tag's did.
 func (f *Facts) restore() error {
 	restore, requester := f.Substitutions[restoreSub], f.Substitutions[requesterSub]
 	if restore == "" {
 		if requester != "" && f.Substitutions[migrateActionSub] == "" {
-			return errors.Newf("%s names %s but %s and %s are empty: a requester comes with a restore or a migration operation", requesterSub, requester, restoreSub, migrateActionSub)
+			if f.Tag == "" {
+				return errors.Newf("%s=%s on a pull-request build: a rerun is a release build's; a pull request is built again with a /gcbrun comment", requesterSub, requester)
+			}
+			f.Requester = requester
 		}
 
 		return nil
@@ -508,11 +516,13 @@ func (f *Facts) trigger(ctx context.Context, comments CommentsFunc, out io.Write
 	if f.Tag != "" {
 		fmt.Fprintf(out, "Triggered by tag %s\n", f.Tag)
 		f.Version, f.Release = f.Tag, f.Tag
-		if f.Restore != "" {
+		switch {
+		case f.Restore != "":
 			fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, asked for by %s.\n", f.Environment, f.Restore, f.Tag, f.Requester)
-		}
-		if f.Migration != nil {
+		case f.Migration != nil:
 			fmt.Fprintf(out, "Migration operation %s.\n", f.Migration)
+		case f.Requester != "":
+			fmt.Fprintf(out, "Rerun: %s runs again in %s, asked for by %s.\n", f.Tag, f.Environment, f.Requester)
 		}
 
 		return nil

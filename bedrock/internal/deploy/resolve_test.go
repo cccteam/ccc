@@ -270,9 +270,24 @@ func TestResolve(t *testing.T) {
 			wantErr: "_RESTORE=empty names no requester (_REQUESTER): a restore says who asked for it",
 		},
 		{
-			name:    "a requester without a restore or a migration operation is a mistake",
+			name:    "a requester alone is a rerun: the tag build again, naming who asked",
 			subs:    tagBuild(map[string]string{requesterSub: "octocat"}),
-			wantErr: "_REQUESTER names octocat but _RESTORE and _MIGRATE_ACTION are empty: a requester comes with a restore or a migration operation",
+			want:    withComment(tag, "", func(o *outcome) { o.Requester = "octocat" }),
+			wantOut: []string{"Rerun: v1.2.3 runs again in tst, asked for by octocat."},
+		},
+		{
+			name: "a rerun reaches production",
+			subs: tagBuild(map[string]string{requesterSub: "octocat", "_ENV": "prd"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.Requester, o.ImageTag, o.CommitTag = "octocat", "v1.2.3-prd", "deadbeefcafe-prd"
+			}),
+			wantOut: []string{"Rerun: v1.2.3 runs again in prd, asked for by octocat."},
+		},
+		{
+			name:     "a pull-request build is not rerun through the door",
+			subs:     prBuild(map[string]string{requesterSub: "octocat"}),
+			comments: []string{"/gcbrun"},
+			wantErr:  "_REQUESTER=octocat on a pull-request build: a rerun is a release build's; a pull request is built again with a /gcbrun comment",
 		},
 		{
 			name:     "a pull-request build carries no restore",
