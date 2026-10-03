@@ -1370,7 +1370,7 @@ func noComments(context.Context, string, string, int) ([]github.Comment, error) 
 func TestDeployResolve(t *testing.T) {
 	// No t.Parallel(): the command reads the build's id, project and location from the
 	// process environment, as the pipeline passes them to the step.
-	build := `{"id": "b-1", "substitutions": {"TAG_NAME": "v1.2.3", "_ENV": "tst", "_SERVICES": "us-central1=quill-app", "_MIGRATE_JOB": "us-central1=quill-migrate", "_REPO_CONNECTION_NAME": "CONNECTION_NOT_AUTHORIZED_IN_2-ENV", "_REPO_NAME": "quill", "_REGISTRY": "reg", "_APP": "quill", "COMMIT_SHA": "deadbeefcafe", "SHORT_SHA": "deadbee", "_THEME": "dusk"}}`
+	build := `{"id": "b-1", "substitutions": {"TAG_NAME": "v1.2.3", "_ENV": "tst", "_SERVICES": "us-central1=quill-app", "_MIGRATE_JOB": "us-central1=quill-migrate", "_REPO_CONNECTION_NAME": "imp-tst-github", "_REPO_NAME": "quill", "REPO_FULL_NAME": "impulseframework/quill", "_REGISTRY": "reg", "_APP": "quill", "COMMIT_SHA": "deadbeefcafe", "SHORT_SHA": "deadbee", "_THEME": "dusk"}}`
 	tests := []struct {
 		name    string
 		env     map[string]string

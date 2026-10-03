@@ -975,7 +975,13 @@ Everything the seed decides is `REPLACEME` in the seeded values until it has run
 
 `org render` rewrites the owned files from the placement, seeds the absent ones and says
 what the workflow still lacks in the placement; `org check` compares the owned files, the
-workflow among them, and exits 1 on drift.
+workflow among them, and exits 1 on drift. `org check` then lists each person (a `user:`
+member) holding `roles/owner` on an environment project the placement records, with the
+project: the grant a project's creator receives, which the first apply of 1-org by hand
+leaves the bootstrap administrator with on every project it creates, temporary by design
+and removed by hand once the workflow applies the layers (`1-org/README.md`, "Applying").
+The listing reads the projects' IAM policies with the run's Google credentials (`gcloud
+auth application-default login`); without any it says so, and it never fails the check.
 
 The layers workflow plans every layer a pull request changes, as that layer's plan
 identity, and posts each plan on the pull request; the merge applies those layers as their

@@ -331,8 +331,9 @@ steps:
 options:
   logging: CLOUD_LOGGING_ONLY
   # The bedrock deploy steps read the build's substitutions through the API, so this file
-  # no longer names every one a trigger or a hand submission passes; without this, Cloud
-  # Build refuses a hand-submitted build for a key the file does not mention.
+  # names none of the ones the trigger passes; without this, Cloud Build refuses a build
+  # for a substitution key the file does not mention (the operations workflow's
+  # _RESTORE, _REQUESTER and _MIGRATE_* among them).
   substitutionOption: ALLOW_LOOSE
 
 # The whole run: Cloud Build's ceiling, so that a window release may wait inside the run
@@ -344,10 +345,10 @@ timeout: 86400s
 
 # Defaults a trigger may override. _PR_NUMBER is not one of them: the pull-request
 # event sets it, and a default here would win over the event and leave it empty
-# (the first triggered pull-request build, 2026-09-26). The version trigger and a
-# hand-submitted build pass _PR_NUMBER as the empty string themselves. Everything
-# else (the target: _ENV, _APP, _PROJECT, the services and the job, the registry,
-# the records bucket, the connection) comes from the trigger, which the
-# application's infrastructure layer creates with those values.
+# (the first triggered pull-request build, 2026-09-26). The version trigger passes
+# _PR_NUMBER as the empty string itself. Everything else (the target: _ENV, _APP,
+# _PROJECT, the services and the job, the registry, the records bucket, the
+# connection) comes from the trigger, which the application's infrastructure layer
+# creates with those values; every build starts from a trigger.
 substitutions:
   _DEFAULT_BRANCH: master

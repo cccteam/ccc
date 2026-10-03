@@ -4,10 +4,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
+	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -111,7 +114,16 @@ By hand, before the layers workflow can run (the commands are in 0-bootstrap/REA
   4. A billing administrator grants roles/billing.user on %s to the two identities.
   5. Apply 1-org, with GITHUB_TOKEN set to an organization owner's token, and record its
      project_ids and project_numbers in placement.json (projects, projectNumbers); then
-     bedrock org render, so the workflow names every layer's identities.
+     bedrock org render, so the workflow names every layer's identities. The apply leaves
+     you Owner on each project it creates, as the seed left you Folder Admin and Folder
+     Editor on the folder: a creator's grants, temporary, removed by hand once the
+     workflow applies the layers (bedrock org check lists each person still holding
+     roles/owner on an environment project).
+  6. In the tst project's Cloud Build console, signed in to GitHub as the organization's
+     machine account: the Cloud Build GitHub App's authorization (2-env/README.md, "The
+     GitHub authorization, before the first application"); its installation id and the
+     token secret's version go into 2-env/terraform.tfvars, applied through the workflow.
+     bedrock org register refuses the first application until both are set.
 From then on the layers workflow (%s) applies every layer, these two included: a pull
 request plans the layers it touches as their plan identities and posts the plans, the
 merge applies them as their apply identities, in layer order. The shared layers, 2-env per
@@ -175,7 +187,7 @@ with --dir.`,
 	return cmd
 }
 
-func newOrgCheck(_ deps) *cobra.Command {
+func newOrgCheck(d deps) *cobra.Command {
 	var (
 		dir       string
 		placement string
@@ -188,7 +200,13 @@ func newOrgCheck(_ deps) *cobra.Command {
 owned file with the one in the repository. It exits 1 when any differs or is missing, listing
 each with the first line that differs: the drift between the placement and the committed
 infrastructure. Seeded files (each layer's terraform.tfvars, the journal, the ignore rules)
-are a person's and are not compared.`,
+are a person's and are not compared. It then lists each person (a user: member) holding
+roles/owner on an environment project the placement records: the grant a project's creator
+receives, which the first apply of 1-org by hand leaves the bootstrap administrator with on
+every project it creates, temporary by design and removed by hand once the layers workflow
+applies the layers. That listing reads the projects' IAM policies with the run's Google
+credentials (gcloud auth application-default login); without any it says so, and it never
+fails the check.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
@@ -210,6 +228,7 @@ are a person's and are not compared.`,
 			for _, path := range r.Unseeded {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: not seeded yet (org render writes it)\n", path)
 			}
+			ownerReport(cmd.Context(), d, p, cmd.OutOrStdout())
 			if !r.Clean() {
 				fmt.Fprintf(cmd.OutOrStdout(), "%d of %d owned file(s) differ from what the placement renders\n", len(r.Findings), r.Checked)
 
@@ -224,6 +243,48 @@ are a person's and are not compared.`,
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// ownerReport lists each person holding roles/owner on an environment project the
+// placement records: the grant a project's creator receives, which the first apply of
+// 1-org by hand leaves the bootstrap administrator with on every project it creates, and
+// which a hand step removes once the layers workflow applies the layers (1-org/README.md,
+// Applying). The read needs Google credentials; without any the report says so and what
+// it would have done. Nothing here fails the check: the drift between the placement and
+// the repository is the check's verdict, and the grants are a person's to remove.
+func ownerReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
+	const does = "org check lists each person (a user: member) holding roles/owner on an environment project, the creator's temporary grant, when it runs with Google credentials that read the projects' IAM policies (gcloud auth application-default login)"
+	if d.policies == nil {
+		fmt.Fprintf(out, "Owners not checked: no IAM policy reader is wired; %s.\n", does)
+
+		return
+	}
+	reader, err := d.policies(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "Owners not checked (%v): %s.\n", errors.Cause(err), does)
+
+		return
+	}
+	defer reader.Close()
+	owners, unrecorded, err := org.Owners(ctx, p, reader)
+	if err != nil {
+		fmt.Fprintf(out, "Owners not checked (%v): %s.\n", errors.Cause(err), does)
+
+		return
+	}
+	if len(unrecorded) > 0 {
+		fmt.Fprintf(out, "Owners not checked in %s: the placement records no project there (projects).\n", strings.Join(unrecorded, ", "))
+	}
+	if len(owners) == 0 {
+		if len(unrecorded) < len(org.Environments) {
+			fmt.Fprintln(out, "No person holds roles/owner on an environment project.")
+		}
+
+		return
+	}
+	for _, o := range owners {
+		fmt.Fprintf(out, "%s (%s): %s holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the layers workflow applies the layers (1-org/README.md, Applying).\n", o.Environment, o.Project, o.Member)
+	}
 }
 
 func newOrgRegister(_ deps) *cobra.Command {
@@ -249,7 +310,12 @@ later pull request carries stay in the working tree until then. An application c
 lowercase alphanumeric characters starting with a letter, registered once. Run from the
 repository root, or name it with --dir. Before 1-org has run, the placement records no
 environment projects and the rendered values carry REPLACEME; record 1-org's project_ids in
-placement.json (projects) and run org render.`,
+placement.json (projects) and run org render. The Cloud Build GitHub App's browser
+authorization comes before the first application: register refuses while 2-env's
+terraform.tfvars leaves github_app_installation_id or github_oauth_token_secret_version
+unset (2-env/README.md, "The GitHub authorization, before the first application"), since
+the applications' triggers exist once 2-env holds the connection and nothing is built by
+hand before them.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := args[0]
@@ -262,6 +328,13 @@ placement.json (projects) and run org render.`,
 			}
 			if err := p.Register(app); err != nil {
 				return err
+			}
+			unset, err := org.ConnectionUnset(dir)
+			if err != nil {
+				return err
+			}
+			if len(unset) > 0 {
+				return errors.Newf("%s leaves %s unset: the Cloud Build GitHub App's browser authorization comes before the first application (2-env/README.md, \"The GitHub authorization, before the first application\"); set both and register again", org.EnvTfvars, strings.Join(unset, " and "))
 			}
 			if err := p.Write(placement); err != nil {
 				return err

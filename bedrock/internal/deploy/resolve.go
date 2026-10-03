@@ -25,10 +25,6 @@ const (
 	// BuildArgsFile holds the image build's arguments, one NAME=value per line: the
 	// declared substitutions resolve writes, then what a hook before the build appends.
 	BuildArgsFile = "build-args.txt"
-	// notAuthorized starts the connection name the stack passes before 2-env holds the
-	// environment's GitHub connection: only a hand-submitted build reaches the pipeline
-	// then, and the GitHub checks are skipped with a notice.
-	notAuthorized = "CONNECTION_NOT_AUTHORIZED"
 	// gcbrun starts the comment that runs a pull-request build; the words after it are
 	// its options.
 	gcbrun = "/gcbrun"
@@ -284,10 +280,9 @@ type Facts struct {
 	Environment string
 	// Comment is the /gcbrun comment a pull-request build ran on.
 	Comment string
-	// Token is the repository's GitHub token, minted from the connection; empty for a
-	// hand-submitted build before the environment holds one, with Notice saying so.
-	Token  string
-	Notice string
+	// Token is the repository's GitHub token, minted from the connection the trigger
+	// reads the repository through.
+	Token string
 	// The facts the environment file exports, as the later steps read them. JobsJob
 	// names the job process's Cloud Run job, empty for an application without one.
 	Services   string
@@ -356,7 +351,7 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 		return nil, err
 	}
 	f.Project, f.Location = req.Project, req.Location
-	if err := f.mint(ctx, builds, req, out); err != nil {
+	if err := f.mint(ctx, builds, req); err != nil {
 		return nil, err
 	}
 	if err := f.trigger(ctx, clients.Comments, out); err != nil {
@@ -478,28 +473,25 @@ func (f *Facts) migration() error {
 }
 
 // mint takes a GitHub token for the repository from the Cloud Build connection the
-// trigger reads it through; the deploy identity needs Read Token Accessor on it.
-// Before the environment holds a connection (3-app passes CONNECTION_NOT_AUTHORIZED_IN_
-// 2-ENV), only a build submitted by hand reaches here, and the GitHub checks are skipped
-// with a notice; a triggered build always has a connection.
-func (f *Facts) mint(ctx context.Context, builds Builds, req *ResolveRequest, out io.Writer) error {
-	connection := f.Substitutions["_REPO_CONNECTION_NAME"]
-	if strings.HasPrefix(connection, notAuthorized) {
-		f.Notice = fmt.Sprintf("Notice: no Cloud Build connection in %s yet; the branch check and the pull-request comment are skipped (hand-submitted build).", f.Environment)
-		fmt.Fprintln(out, f.Notice)
-
-		return nil
+// trigger reads it through; the deploy identity needs Read Token Accessor on it. Every
+// build starts from a trigger, and the triggers exist once 2-env holds the environment's
+// connection and the repository's link, so a build whose connection or repository name
+// is empty is one no trigger started, and the step refuses it: nothing is submitted by
+// hand.
+func (f *Facts) mint(ctx context.Context, builds Builds, req *ResolveRequest) error {
+	connection, repo := f.Substitutions["_REPO_CONNECTION_NAME"], f.Substitutions["_REPO_NAME"]
+	if connection == "" || repo == "" {
+		return errors.Newf("_REPO_CONNECTION_NAME=%q _REPO_NAME=%q: every build starts from a trigger, which passes the environment's Cloud Build connection and the repository's link (both exist once 2-env holds the GitHub authorization); nothing is submitted by hand", connection, repo)
 	}
-	repository := "projects/" + req.Project + "/locations/" + req.Location + "/connections/" + connection + "/repositories/" + f.Substitutions["_REPO_NAME"]
+	// The branch check and the comment read address the repository by its full name, a
+	// trigger built-in; an empty name is a build no trigger started.
+	if f.Substitutions["REPO_FULL_NAME"] == "" {
+		return errors.New("REPO_FULL_NAME is not set: a trigger passes it as <organization>/<repository>, and every build starts from a trigger")
+	}
+	repository := "projects/" + req.Project + "/locations/" + req.Location + "/connections/" + connection + "/repositories/" + repo
 	token, err := builds.ReadToken(ctx, repository)
 	if err != nil {
 		return errors.Wrapf(err, "could not mint a GitHub token from connection %s", connection)
-	}
-	// The branch check and the comment read address the repository by its full name, a
-	// trigger built-in; a hand-submitted build passes it, or the compare answers 404 for
-	// an empty name.
-	if f.Substitutions["REPO_FULL_NAME"] == "" {
-		return errors.New("REPO_FULL_NAME is not set; a hand-submitted build passes it as <organization>/<repository>")
 	}
 	f.Token = token
 

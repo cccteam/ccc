@@ -104,7 +104,12 @@ First-time setup, by hand, before any identity can run:
    own GitHub token. Its `project_ids` and `project_numbers` outputs go into
    `placement.json` (`projects`, `projectNumbers`), and `bedrock org render`
    names every layer's identities in the workflow. From here on the workflow
-   applies every layer, these two included.
+   applies every layer, these two included. The creator's grants that steps 2
+   to 4 leave behind (Owner on each project made, Folder Admin and Folder
+   Editor on each folder, which Google gives whoever creates them) are
+   temporary: once the workflow applies the layers, a hand step removes them
+   (`1-org/README.md`, "Applying"), and `bedrock org check` lists each person
+   still holding `roles/owner` on an environment project until then.
 5. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
    infrastructure GitHub App"): created on GitHub, its key added to the boot
    project's container, its App ID and the key's version recorded in
@@ -112,7 +117,12 @@ First-time setup, by hand, before any identity can run:
    and stops.
 6. **The Cloud Build GitHub App's browser authorization**, in the tst
    project's console, before the first application is registered
-   (`2-env/README.md`, "The GitHub token, once").
+   (`2-env/README.md`, "The GitHub authorization, before the first
+   application"): its installation ID and the token secret's version go into
+   `2-env/terraform.tfvars` and through the workflow. `bedrock org register`
+   refuses the first application until both are set, since the applications'
+   triggers exist once `2-env` holds the connection and nothing is built by
+   hand before them.
 
 `bedrock org register <app>` prints the pull requests a registration takes.
 

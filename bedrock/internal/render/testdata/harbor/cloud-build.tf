@@ -13,9 +13,10 @@
 #            request build is a command, not a side effect of a push.
 #
 # Both wait on the repository link: until 2-env holds the environment's
-# GitHub connection (its two GitHub values set), neither trigger exists and
-# a build is submitted by hand with the same substitutions (README). The rest
-# of this layer applies either way.
+# GitHub connection (its two GitHub values set, the authorization that comes
+# before the first application is registered), neither trigger exists, and no
+# build runs: every build starts from a trigger, and the pipeline refuses one
+# whose connection is empty. The rest of this layer applies either way.
 #
 # The substitutions are everything the pipeline needs to know about this
 # environment that the code does not: the environment, the project, the
@@ -41,13 +42,13 @@ locals {
     _JOBS_JOB                = "${google_cloud_run_v2_job.jobs.location}=${google_cloud_run_v2_job.jobs.name}"                           # region=job; the pipeline updates it to the image, the application runs it
     _REGISTRY                = coalesce(local.registry, "REGISTRY_NOT_REGISTERED_IN_2-SHR")
     _RECORDS_BUCKET          = local.env.records_bucket
-    _REPO_CONNECTION_NAME    = coalesce(try(local.env.connection_name, null), "CONNECTION_NOT_AUTHORIZED_IN_2-ENV")          # the pipeline mints a GitHub token from the connection for the tag check and the comment read; a null output is absent from remote state, hence try
-    _REPO_NAME               = coalesce(local.env.applications[local.app].repository_name, "REPOSITORY_NOT_LINKED_IN_2-ENV") # null until 2-env holds the connection
-    _RELEASE_ACTORS          = "impulseframework-release[bot]"                                                               # the logins whose GitHub Releases the tag check accepts, comma-separated: release-please runs as the release app
-    _PREVIOUS_ENV            = local.previous_environment                                                                    # the environment whose live deployment record a release needs first; empty in the first environment
-    _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                                                 # that environment's records bucket, which 2-env there lets this deploy identity read
-    _ENVIRONMENTS            = join(",", local.environments)                                                                 # the promotion order; a pull-request build plans the stack for each
-    _PLAN_IDENTITIES         = local.plan_identities                                                                         # env=identity; the reader a pull-request build plans each environment as
+    _REPO_CONNECTION_NAME    = try(coalesce(local.env.connection_name), "")                         # the pipeline mints a GitHub token from the connection for the tag check and the comment read; empty until 2-env holds the connection (a null output is absent from remote state, hence try), when no trigger exists and the pipeline refuses a build
+    _REPO_NAME               = try(coalesce(local.env.applications[local.app].repository_name), "") # the repository's link under the connection; empty until 2-env holds it, with the triggers
+    _RELEASE_ACTORS          = "impulseframework-release[bot]"                                      # the logins whose GitHub Releases the tag check accepts, comma-separated: release-please runs as the release app
+    _PREVIOUS_ENV            = local.previous_environment                                           # the environment whose live deployment record a release needs first; empty in the first environment
+    _PREVIOUS_RECORDS_BUCKET = local.previous_records_bucket                                        # that environment's records bucket, which 2-env there lets this deploy identity read
+    _ENVIRONMENTS            = join(",", local.environments)                                        # the promotion order; a pull-request build plans the stack for each
+    _PLAN_IDENTITIES         = local.plan_identities                                                # env=identity; the reader a pull-request build plans each environment as
     _RECORDS_BUCKETS         = local.records_buckets
     _APPLY_IDENTITY          = local.identities.apply_identity_email # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
     _TASKS_QUEUE             = local.tasks_queue                     # the task queue a maintenance step pauses while the database is replaced or migrated and resumes after traffic moves

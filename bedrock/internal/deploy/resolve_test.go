@@ -120,9 +120,9 @@ func buildFor(t *testing.T, subs map[string]string) string {
 
 // outcome is what a test compares of the facts.
 type outcome struct {
-	Version, Release, Image, ImageTag, CommitTag, Comment, Token  string
-	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Notice bool
-	ReloadReason, Restore, Requester, RestoreReason               string
+	Version, Release, Image, ImageTag, CommitTag, Comment, Token string
+	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic        bool
+	ReloadReason, Restore, Requester, RestoreReason              string
 	// Migration is the migration operation in words, empty for none.
 	Migration string
 	Declared  []string
@@ -131,7 +131,7 @@ type outcome struct {
 func summarize(f *Facts) outcome {
 	o := outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
-		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Notice: f.Notice != "",
+		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic,
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
 	}
 	if f.Migration != nil {
@@ -356,10 +356,14 @@ func TestResolve(t *testing.T) {
 			wantErr: "_MIGRATE_ACTION=rerun with _RESTORE=empty: a restore replaces the database, so there is no migration state to operate on",
 		},
 		{
-			name:    "a hand-submitted build without a connection skips the GitHub checks",
-			subs:    tagBuild(map[string]string{"_REPO_CONNECTION_NAME": "CONNECTION_NOT_AUTHORIZED_IN_2-ENV"}),
-			want:    withComment(tag, "", func(o *outcome) { o.Token = ""; o.Notice = true }),
-			wantOut: []string{"Notice: no Cloud Build connection in tst yet; the branch check and the pull-request comment are skipped (hand-submitted build)."},
+			name:    "a build without a connection is one no trigger started, and is refused",
+			subs:    tagBuild(map[string]string{"_REPO_CONNECTION_NAME": ""}),
+			wantErr: `_REPO_CONNECTION_NAME="" _REPO_NAME="harbor": every build starts from a trigger, which passes the environment's Cloud Build connection and the repository's link (both exist once 2-env holds the GitHub authorization); nothing is submitted by hand`,
+		},
+		{
+			name:    "a build without the repository's link is refused the same way",
+			subs:    tagBuild(map[string]string{"_REPO_NAME": ""}),
+			wantErr: `_REPO_CONNECTION_NAME="imp-tst-github" _REPO_NAME="": every build starts from a trigger`,
 		},
 		{
 			name:      "a build with nothing declared says so",
@@ -600,9 +604,9 @@ func TestResolve(t *testing.T) {
 			wantErr: "a pull-request build deploys only to tst (this trigger's _ENV is stg)",
 		},
 		{
-			name:    "a pull request needs the connection",
-			subs:    prBuild(map[string]string{"_REPO_CONNECTION_NAME": "CONNECTION_NOT_AUTHORIZED_IN_2-ENV"}),
-			wantErr: "a pull-request build needs the Cloud Build connection to read its /gcbrun comment",
+			name:    "a pull-request build without a connection is refused too",
+			subs:    prBuild(map[string]string{"_REPO_CONNECTION_NAME": ""}),
+			wantErr: `_REPO_CONNECTION_NAME="" _REPO_NAME="harbor": every build starts from a trigger`,
 		},
 		{
 			name:    "a pull request number is a number",
@@ -631,9 +635,9 @@ func TestResolve(t *testing.T) {
 			wantErr: "could not mint a GitHub token from connection imp-tst-github",
 		},
 		{
-			name:    "a hand-submitted build with a connection names the repository",
+			name:    "a build without the repository's full name is refused before the token is minted",
 			subs:    tagBuild(map[string]string{"REPO_FULL_NAME": ""}),
-			wantErr: "REPO_FULL_NAME is not set; a hand-submitted build passes it as <organization>/<repository>",
+			wantErr: "REPO_FULL_NAME is not set: a trigger passes it as <organization>/<repository>, and every build starts from a trigger",
 		},
 	}
 	for _, tt := range tests {

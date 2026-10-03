@@ -17,6 +17,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
 	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/prompt"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
@@ -53,11 +54,13 @@ func Main(args []string) int {
 // where the discovery of the repository starts, and whether a person is at the terminal
 // to be asked. newRoot wires the real ones; tests pass fakes.
 type deps struct {
-	// domains opens Cloud Domains, secrets Secret Manager, and projects Cloud Resource
-	// Manager.
+	// domains opens Cloud Domains, secrets Secret Manager, projects Cloud Resource
+	// Manager's project search, and policies its IAM policy read (org check's owner
+	// report).
 	domains  domain.ClientFunc
 	secrets  secret.ClientFunc
 	projects where.ProjectClientFunc
+	policies org.PolicyReaderFunc
 	// github opens the GitHub API client with the token found for the account.
 	github github.ClientFunc
 	// cwd is where the repository is looked for when --dir is not given; empty means
@@ -89,6 +92,7 @@ func newRoot() *cobra.Command {
 		domains:     domain.NewCloudDomains,
 		secrets:     secret.NewSecretManager,
 		projects:    where.NewProjects,
+		policies:    org.NewPolicyReader,
 		github:      github.Open,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,

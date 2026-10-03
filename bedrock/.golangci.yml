@@ -88,6 +88,10 @@ linters:
             # project by its labels through Cloud Resource Manager. Both clients page
             # their answers through the iterator package.
             - cloud.google.com/go/secretmanager
+            # org check lists the people holding roles/owner on the environment projects:
+            # it reads each project's IAM policy through the Cloud Resource Manager
+            # client, whose request and policy types are the IAM API's.
+            - cloud.google.com/go/iam/apiv1/iampb
             - cloud.google.com/go/resourcemanager
             - google.golang.org/api/iterator
             # In the application layout the application is named by the module at the

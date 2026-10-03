@@ -102,8 +102,7 @@ func splitRepo(fullName string) (owner, repo string, err error) {
 // checkout's router package (routerDir) and the environment's newest live record, and
 // whether the run can wait for the window; what can never proceed is refused here,
 // before anything is built. A pull-request build has no release to validate, and
-// previews the window instead; a hand-submitted build without a connection (no token)
-// skips the GitHub checks. A tag build first says which bedrock runs it (bedrock, the
+// previews the window instead. A tag build first says which bedrock runs it (bedrock, the
 // running version), and whether that is a commit pin: a release may be deployed by a
 // bedrock built from an unreleased commit, and the log says so rather than refusing it.
 func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock, routerDir string, out io.Writer) error {
@@ -141,19 +140,22 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	} else {
 		fmt.Fprintf(out, "This tag build runs bedrock %s.\n", bedrock)
 	}
-	var hotfix *hotfixLine
-	if token := env["GITHUB_TOKEN"]; token != "" {
-		window, line, err := validateTag(ctx, clients.GitHub(token), subs, out)
-		if err != nil {
+	// Every build carries the repository's token: deploy resolve mints it from the
+	// connection the trigger reads the repository through, and every build starts from a
+	// trigger. A build without one skips no check; it is refused.
+	token := env["GITHUB_TOKEN"]
+	if token == "" {
+		return errors.New("GITHUB_TOKEN is empty in the environment file: deploy resolve mints it from the trigger's connection, and every build starts from a trigger")
+	}
+	window, hotfix, err := validateTag(ctx, clients.GitHub(token), subs, out)
+	if err != nil {
+		return err
+	}
+	if window {
+		fmt.Fprintf(out, "Breaking changes: the release notes of %s carry a breaking-changes section (a commit with ! after its type, or a BREAKING CHANGE footer), recorded (%s); whether the release deploys inside the maintenance window is decided below from the release file's oldest answered release, not from the notes.\n", subs[tagSub], windowReleaseFact)
+		if err := w.Append(map[string]string{windowReleaseFact: trueValue}); err != nil {
 			return err
 		}
-		if window {
-			fmt.Fprintf(out, "Breaking changes: the release notes of %s carry a breaking-changes section (a commit with ! after its type, or a BREAKING CHANGE footer), recorded (%s); whether the release deploys inside the maintenance window is decided below from the release file's oldest answered release, not from the notes.\n", subs[tagSub], windowReleaseFact)
-			if err := w.Append(map[string]string{windowReleaseFact: trueValue}); err != nil {
-				return err
-			}
-		}
-		hotfix = line
 	}
 	if err := gate(ctx, clients.Storage, subs, out); err != nil {
 		return err

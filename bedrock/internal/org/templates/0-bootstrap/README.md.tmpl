@@ -50,6 +50,17 @@ Steps 1 and 4 happen once, by hand. Everything step 1 creates is adopted by an
 `import` block in step 2, so nothing stays outside OpenTofu except the bucket
 and, while `manage_billing_iam` is false, the two billing grants.
 
+The person who runs them is left with what Google gives a creator: Owner on
+the boot project, and Folder Admin and Folder Editor on the `terraform`
+folder; `1-org`'s first apply leaves the same on every folder and project it
+creates. Those grants are temporary. The layers run as their identities, and
+a person's access to an environment comes from its team group; once the
+layers workflow applies the layers, a hand step removes them
+(`1-org/README.md`, "Applying"), and `bedrock org check` lists each person
+still holding `roles/owner` on an environment project until then. The
+organization-level roles the seed names stay with the bootstrap
+administrator for recovery ("Recovery, by hand", below).
+
 ### 1. Seed with gcloud
 
 In a terminal, as the bootstrap administrator (`{{.Operator}}`), who holds

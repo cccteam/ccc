@@ -275,8 +275,12 @@ func TestValidateRelease(t *testing.T) {
 			wantWindow: map[string]string{windowNeededFact: trueValue, windowBreakingFact: trueValue},
 		},
 		{
-			name:      "a skipped step is breaking: production on an older release than the oldest answered one",
-			env:       "export GITHUB_TOKEN=\"\"\nexport SKIP_DEPLOY=\"\"\n",
+			name: "a skipped step is breaking: production on an older release than the oldest answered one",
+			env:  connected,
+			repo: func(r *githubtest.Repo) {
+				r.Refs["refs/tags/v1.6.0"] = github.Object{Type: "commit", SHA: "c3"}
+				r.Releases["v1.6.0"] = github.Release{TagName: "v1.6.0", Author: github.User{Login: "release-app[bot]"}}
+			},
 			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			routerDir: routerDir,
 			placement: testPlacement(`{"prd": "anytime"}`),
@@ -285,8 +289,12 @@ func TestValidateRelease(t *testing.T) {
 			wantOut:   []string{"Maintenance window: v1.6.0 is a breaking release for prd (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); the window is anytime."},
 		},
 		{
-			name:      "the same release once production runs the oldest answered one deploys at any time",
-			env:       "export GITHUB_TOKEN=\"\"\nexport SKIP_DEPLOY=\"\"\n",
+			name: "the same release once production runs the oldest answered one deploys at any time",
+			env:  connected,
+			repo: func(r *githubtest.Repo) {
+				r.Refs["refs/tags/v1.6.0"] = github.Object{Type: "commit", SHA: "c3"}
+				r.Releases["v1.6.0"] = github.Release{TagName: "v1.6.0", Author: github.User{Login: "release-app[bot]"}}
+			},
 			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			routerDir: routerDir,
 			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.5.0/b-8.json": liveIn("prd", "v1.5.0")},
@@ -294,8 +302,12 @@ func TestValidateRelease(t *testing.T) {
 			wantOut:   []string{"No maintenance window: the default outlet answers 1.5.0 at the oldest, which prd's v1.5.0 is not older than; v1.6.0 deploys at any time."},
 		},
 		{
-			name:      "production without a maintenance setting refuses a breaking release at the start of the run",
-			env:       "export GITHUB_TOKEN=\"\"\nexport SKIP_DEPLOY=\"\"\n",
+			name: "production without a maintenance setting refuses a breaking release at the start of the run",
+			env:  connected,
+			repo: func(r *githubtest.Repo) {
+				r.Refs["refs/tags/v1.6.0"] = github.Object{Type: "commit", SHA: "c3"}
+				r.Releases["v1.6.0"] = github.Release{TagName: "v1.6.0", Author: github.User{Login: "release-app[bot]"}}
+			},
 			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			routerDir: routerDir,
 			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0")},
@@ -543,10 +555,10 @@ func TestValidateRelease(t *testing.T) {
 			wantOut: []string{"Tag v1.2.3 validated: its commit is on master"},
 		},
 		{
-			name:    "a hand-submitted build without a token skips the GitHub checks",
+			name:    "a build without a token is one no trigger started, and is refused before any check",
 			env:     "export GITHUB_TOKEN=\"\"\nexport SKIP_DEPLOY=\"\"\n",
 			objects: live,
-			wantOut: []string{"Gate passed: v1.2.3 is live in tst"},
+			wantErr: "GITHUB_TOKEN is empty in the environment file: deploy resolve mints it from the trigger's connection, and every build starts from a trigger",
 		},
 		{
 			name: "a tag without a release is refused",

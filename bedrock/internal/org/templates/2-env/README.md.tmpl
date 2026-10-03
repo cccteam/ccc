@@ -306,10 +306,14 @@ Creating the entitlements needs `roles/privilegedaccessmanager.admin` on the
 project, in `1-org`'s `app` role set, with the Privileged Access Manager API
 in its `app` API set; the set is completed by refusal.
 
-## The GitHub token, once
+## The GitHub authorization, before the first application
 
 The connection authorizes with a GitHub OAuth token that only a browser can
-produce. Once per organization:
+produce. Once per organization, after `1-org` has made the tst project and
+before the first application is registered: `bedrock org register` refuses
+the first application while either value below is unset, since the
+applications' triggers exist once this layer holds the connection and the
+repository's link, and nothing is built by hand before them.
 
 1. In the Google Cloud console, in the **tst** project, open Cloud Build >
    Repositories (2nd gen) > Create host connection > GitHub. Sign in to GitHub
@@ -323,7 +327,8 @@ produce. Once per organization:
    (`projects/<tst project>/secrets/<name>/versions/<n>`). Put both in
    `terraform.tfvars` as `github_app_installation_id` and
    `github_oauth_token_secret_version`.
-3. Apply tst. Besides its own connection it grants
+3. Apply this layer through the workflow (the pull request that sets the two
+   values). Besides tst's own connection, the tst apply grants
    `roles/secretmanager.secretAccessor` on that secret to the Cloud Build
    service agent of each of the three environment projects, so stg and prd
    reuse the same version rather than repeating the browser step.

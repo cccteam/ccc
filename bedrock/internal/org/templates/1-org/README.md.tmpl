@@ -219,6 +219,27 @@ Review the plan carefully. It creates folders, org policy, and projects with
 and run `bedrock org render`: the layers workflow names every layer's
 identities by them.
 
+The apply leaves the person with what Google gives a creator: `roles/owner`
+on each project it made, and Folder Admin and Folder Editor on each folder
+(the seed left the same on the boot project and the `terraform` folder).
+Nothing here grants them, and they are temporary: the layers run as their
+identities, and a person's access to an environment comes from its team
+group (`2-env/README.md`, "The team group"). Once the workflow applies the
+layers, remove them by hand, per project in `project_ids` and per folder in
+`folder_ids`:
+
+```bash
+gcloud projects remove-iam-policy-binding <project id> --member="user:<person>" --role=roles/owner
+gcloud resource-manager folders remove-iam-policy-binding <folder id> --member="user:<person>" --role=roles/resourcemanager.folderAdmin
+gcloud resource-manager folders remove-iam-policy-binding <folder id> --member="user:<person>" --role=roles/resourcemanager.folderEditor
+```
+
+`bedrock org check` lists each person still holding `roles/owner` on an
+environment project, with the project, when it runs with Google credentials
+that read the projects' IAM policies; without any it says so. The
+organization-level roles the seed names stay with the bootstrap
+administrator for recovery (`0-bootstrap/README.md`, "Recovery, by hand").
+
 From then on the layers workflow (`{{.WorkflowPath}}`) applies this layer as
 `{{.Prefix}}-org-gbl-tofu` on a merge into `{{.GithubDefaultBranch}}` and plans it on a
 pull request as `{{.Prefix}}-org-gbl-plan`, the plan identity this layer makes for

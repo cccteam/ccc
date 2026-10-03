@@ -310,8 +310,9 @@ substitutions and this stack's outputs:
   this stack addresses them, comma-separated, which a restore run in {{.Integration}}
   replaces with the database;{{end}} `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
-  `_REPO_CONNECTION_NAME` and `_REPO_NAME` (placeholders until 2-env holds the
-  connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
+  `_REPO_CONNECTION_NAME` and `_REPO_NAME` (empty until 2-env holds the
+  connection and the repository's link, when the triggers exist; the
+  pipeline refuses a build whose connection is empty); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
   check accepts (the release app as `<slug>[bot]`); `_PREVIOUS_ENV` and
   `_PREVIOUS_RECORDS_BUCKET`, the environment before this one and its records
   bucket, empty in the first environment; `_ENVIRONMENTS`, the promotion
@@ -342,9 +343,11 @@ substitutions and this stack's outputs:
   seeded database takes nothing twice): always on the pull-request trigger, a
   pull request's database being new; on a release build only in the
   placement's `seed` environments, none by default and never production, so a
-  database holding data is seeded only where the placement says so. Output
-  `substitutions` is the same map, for a build submitted by hand before the
-  triggers exist.
+  database holding data is seeded only where the placement says so. Every
+  build starts from a trigger: the triggers exist once 2-env holds the
+  environment's GitHub connection and the repository's link, and the pipeline
+  refuses a build whose connection or repository name is empty, so nothing is
+  submitted by hand.
 - The services are deployed through the Cloud Run API by `bedrock deploy
   service`, which changes the image and the labels and leaves the template's
   variables, secrets and identity alone: the revision template is this stack's.
