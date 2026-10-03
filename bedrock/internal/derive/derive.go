@@ -70,6 +70,10 @@ type Model struct {
 	// rules the files beside the schema migrations declare), or nil when the code
 	// declares no database.
 	Firestore *Firestore
+	// FileStores are the Cloud Storage buckets the file-store variables declare, in
+	// declaration order: the default store (APP_FILE_STORE) and the named ones
+	// (APP_FILE_STORE_<NAME>); none when the code declares no store.
+	FileStores []FileStore
 	// Environments are the placement's environments, with the hostnames each serves.
 	Environments []Environment
 	// Placement is the placement the model was derived for.
@@ -194,8 +198,9 @@ const (
 	RoleCookieKey        Role = "cookie-key"
 	// RoleJobsJob names the job process's Cloud Run job to the site, which runs it.
 	RoleJobsJob Role = "jobs-job"
-	// RoleAssetsBucket names the assets bucket to the processes that construct its level.
-	RoleAssetsBucket Role = "assets-bucket"
+	// RoleFileStore hands a file store, a Cloud Storage bucket of the application's own,
+	// to the processes that construct its level as a gs:// URL.
+	RoleFileStore Role = "file-store"
 	// RoleTasksQueue names the task queue to the processes that construct its level.
 	RoleTasksQueue Role = "tasks-queue"
 	// RoleFirestoreProject names the Firestore database's project to the processes that
@@ -227,7 +232,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey:
 		return true
 	default:
 		return false
@@ -282,10 +287,12 @@ const (
 	// varJobsJob is the variable a site declares to run the job process: the stack sets
 	// it to the job's resource name and grants the site's identity on the job.
 	varJobsJob = "APP_JOBS_JOB"
-	// varAssetsBucket is the variable an application declares to keep files in Cloud
-	// Storage: the stack creates the bucket, sets the variable to its name and grants the
-	// processes that construct the variable's level on it.
-	varAssetsBucket = "APP_ASSETS_BUCKET"
+	// varFileStore is the variable an application declares to keep files in Cloud
+	// Storage, its default file store; a named store is varFileStore, an underscore and
+	// the store's name in upper snake case (APP_FILE_STORE_DOCUMENTS). The stack creates
+	// one bucket per such variable, sets the variable to the bucket's gs:// URL and grants
+	// the processes that construct the variable's level on it.
+	varFileStore = "APP_FILE_STORE"
 	// varTasksQueue is the variable an application declares to enqueue Cloud Tasks: the
 	// stack creates the queue, sets the variable to its resource name and grants the
 	// processes that construct the variable's level to enqueue on it and to sign as
@@ -313,7 +320,8 @@ const (
 // the stack declares empty on the service (see varMaintenance).
 const MaintenanceVariable = varMaintenance
 
-// wellKnown are the well-known variables by name.
+// wellKnown are the well-known variables by their exact name. The file-store variables
+// are matched by prefix instead (fileStoreName); roleOf consults both.
 var wellKnown = map[string]Role{
 	varServiceName:       RoleServiceName,
 	varLoggingProject:    RoleLoggingProject,
@@ -323,11 +331,91 @@ var wellKnown = map[string]Role{
 	varDatabaseName:      RoleDatabaseName,
 	varPort:              RolePort,
 	varJobsJob:           RoleJobsJob,
-	varAssetsBucket:      RoleAssetsBucket,
 	varTasksQueue:        RoleTasksQueue,
 	varFirestoreDatabase: RoleFirestoreDatabase,
 	varFirestoreProject:  RoleFirestoreProject,
 	varFirebaseAPIKey:    RoleFirebaseAPIKey,
+}
+
+// roleOf is the table's lookup for a variable: a well-known variable by its exact name,
+// then a file-store variable by its prefix, else no role.
+func roleOf(variable string) Role {
+	if role, ok := wellKnown[variable]; ok {
+		return role
+	}
+	if _, ok := fileStoreName(variable); ok {
+		return RoleFileStore
+	}
+
+	return RoleNone
+}
+
+// fileStoreRE matches a file-store variable: varFileStore exactly, or varFileStore, an
+// underscore and a name in upper snake case (APP_FILE_STORE_DOCUMENTS,
+// APP_FILE_STORE_CLIENT_FILES). A variable that merely continues the letters
+// (APP_FILE_STOREROOM), one with nothing after the underscore, or one whose name is not
+// upper snake case is not a store.
+var fileStoreRE = regexp.MustCompile(`^` + regexp.QuoteMeta(varFileStore) + `(?:_([A-Z0-9]+(?:_[A-Z0-9]+)*))?$`)
+
+// fileStoreName reports whether the variable declares a file store and, when it does,
+// the store's name: empty for the default store, else the variable's suffix in lower
+// case with hyphens for its underscores (DOCUMENTS gives documents, CLIENT_FILES gives
+// client-files).
+func fileStoreName(variable string) (string, bool) {
+	m := fileStoreRE.FindStringSubmatch(variable)
+	if m == nil {
+		return "", false
+	}
+
+	return strings.ToLower(strings.ReplaceAll(m[1], "_", "-")), true
+}
+
+// fileStoreResource is the stack's resource name for the default store's bucket, and the
+// stem of a named store's (files_documents); bucketResourceType is the bucket's resource
+// type in the stack, which with the resource name addresses the bucket.
+const (
+	fileStoreResource  = "files"
+	bucketResourceType = "google_storage_bucket"
+)
+
+// FileStore is one Cloud Storage bucket the application declares by a file-store
+// variable: APP_FILE_STORE for its default store, APP_FILE_STORE_<NAME> for a named one.
+// The stack creates the bucket, sets the variable to the bucket's gs:// URL, and grants
+// the processes that construct the variable's level on its objects.
+type FileStore struct {
+	// Variable is the variable the store is declared by.
+	Variable *Variable
+	// Name is the store's name: empty for the default store, else the variable's suffix
+	// in lower case with hyphens (documents, client-files).
+	Name string
+	// Resource is the bucket's resource name in the stack: files for the default store,
+	// files_<name> with underscores for a named one (files_client_files), since a
+	// resource name admits no hyphen.
+	Resource string
+	// Suffix is the segment the bucket's name ends in before the project number: files
+	// for the default store, files-<name> for a named one (files-client-files).
+	Suffix string
+}
+
+// newFileStore is the store the variable declares under the name.
+func newFileStore(v *Variable, name string) FileStore {
+	s := FileStore{Variable: v, Name: name, Resource: fileStoreResource, Suffix: fileStoreResource}
+	if name != "" {
+		s.Resource += "_" + strings.ReplaceAll(name, "-", "_")
+		s.Suffix += "-" + name
+	}
+
+	return s
+}
+
+// Address is the bucket's address in the stack: google_storage_bucket.<resource>.
+func (s *FileStore) Address() string {
+	return bucketResourceType + "." + s.Resource
+}
+
+// Default reports the application's default store, the one APP_FILE_STORE declares.
+func (s *FileStore) Default() bool {
+	return s.Name == ""
 }
 
 // directoryRoles maps the fields of an auth's Directory struct to their roles.
@@ -547,7 +635,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 func (m *Model) classify(cfg *config) error {
 	for i := range m.Variables {
 		v := &m.Variables[i]
-		v.Role = wellKnown[v.Name]
+		v.Role = roleOf(v.Name)
 		if v.Role == RoleNone && v.Field == cookieKeyField {
 			v.Role = RoleCookieKey
 		}
@@ -578,8 +666,21 @@ func (m *Model) classify(cfg *config) error {
 		return errors.Newf("the config package declares no database identity (%s)", strings.Join(databaseVariables(), ", "))
 	}
 	m.Database.Struct = m.Database.Project.Struct
+	m.fileStores()
 
 	return nil
+}
+
+// fileStores collects the stores the file-store variables declare, in declaration order.
+func (m *Model) fileStores() {
+	for i := range m.Variables {
+		v := &m.Variables[i]
+		if v.Role != RoleFileStore {
+			continue
+		}
+		name, _ := fileStoreName(v.Name)
+		m.FileStores = append(m.FileStores, newFileStore(v, name))
+	}
 }
 
 // databaseVariables lists the well-known database variables in order.

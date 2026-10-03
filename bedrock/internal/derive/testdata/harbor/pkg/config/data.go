@@ -189,8 +189,9 @@ type dataConfig struct {
 	StaffGroupPrefix  string `env:"APP_STAFF_OIDC_GROUP_PREFIX"`
 	StaffGroupLookup  string `env:"APP_STAFF_OIDC_GROUP_LOOKUP"`
 
-	// AssetsBucket is the Cloud Storage bucket the application's files live in, by name.
-	AssetsBucket string `env:"APP_ASSETS_BUCKET"`
+	// FileStore is the application's default file store: the Cloud Storage bucket its
+	// files live in, as a gs:// URL.
+	FileStore string `env:"APP_FILE_STORE"`
 
 	// TasksQueue is the Cloud Tasks queue the application enqueues its deferred work on,
 	// as the Cloud Tasks API names it (projects/<project>/locations/<region>/queues/<name>).

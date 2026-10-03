@@ -57,6 +57,9 @@ func TestDerive(t *testing.T) {
 		// wantFirestore is what the Firestore files say (firestoreLine), empty for no
 		// database.
 		wantFirestore string
+		// wantFileStores are the file stores (fileStoreLine), none for an application
+		// that declares no store.
+		wantFileStores []string
 	}{
 		{
 			name:    "harbor",
@@ -72,7 +75,7 @@ func TestDerive(t *testing.T) {
 				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
 				"APP_STAFF_OIDC_CLIENT_ID", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_REDIRECT_URL", "APP_STAFF_OIDC_HOSTED_DOMAIN",
 				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_GROUP_LOOKUP",
-				varAssetsBucket, varTasksQueue, varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey,
+				varFileStore, varTasksQueue, varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey,
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", varJobsJob},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
@@ -100,15 +103,16 @@ func TestDerive(t *testing.T) {
 				"APP_CONSOLE_DIST":             SupplyImage,
 				"APP_PORTAL_DIST":              SupplyImage,
 				varJobsJob:                     SupplyImage,
-				varAssetsBucket:                SupplyDerived,
+				varFileStore:                   SupplyDerived,
 				varTasksQueue:                  SupplyDerived,
 				varFirestoreProject:            SupplyDerived,
 				varFirestoreDatabase:           SupplyDerived,
 				varFirebaseAPIKey:              SupplyDerived,
 			},
-			wantGroupPfx:  "staff-",
-			wantHooks:     []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
-			wantFirestore: "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
+			wantGroupPfx:   "staff-",
+			wantHooks:      []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
+			wantFirestore:  "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
+			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files"},
 		},
 		{
 			name:    "beacon, a password auth: no registration, no callback",
@@ -220,6 +224,13 @@ func TestDerive(t *testing.T) {
 			if got := firestoreLine(m.Firestore); got != tt.wantFirestore {
 				t.Errorf("Firestore = %q, want %q", got, tt.wantFirestore)
 			}
+			var stores []string
+			for i := range m.FileStores {
+				stores = append(stores, fileStoreLine(&m.FileStores[i]))
+			}
+			if !slices.Equal(stores, tt.wantFileStores) {
+				t.Errorf("FileStores = %v, want %v", stores, tt.wantFileStores)
+			}
 			for _, e := range m.Environments {
 				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
 					t.Errorf("Environment %s hostnames = %v, want %s", e.Name, e.Hostnames, want)
@@ -262,6 +273,71 @@ func firestoreLine(fs *Firestore) string {
 	rules, _, _ := strings.Cut(fs.Rules, "\n")
 
 	return fmt.Sprintf("%s: %d index(es) %s; %d field(s) %s; %s", fs.Dir, len(indexes), strings.Join(indexes, ", "), len(fields), strings.Join(fields, ", "), rules)
+}
+
+// fileStoreLine is what a file store says about itself on one line: the variable, its
+// level and declaration, then the store's name (default for the default store), the
+// bucket's resource name, the bucket name's suffix and the bucket's address.
+func fileStoreLine(s *FileStore) string {
+	name := s.Name
+	if s.Default() {
+		name = "default"
+	}
+
+	return fmt.Sprintf("%s %s %s: %s, %s, %s, %s", s.Variable.Name, s.Variable.Level, s.Variable.Declaration(), name, s.Resource, s.Suffix, s.Address())
+}
+
+func TestFileStoreName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		variable string
+		// wantStore reports a file-store variable; wantName, wantResource, wantSuffix and
+		// wantAddress are the store it declares. wantRole is what the table says of the
+		// variable either way.
+		wantStore    bool
+		wantName     string
+		wantResource string
+		wantSuffix   string
+		wantAddress  string
+		wantRole     Role
+	}{
+		{name: "the default store", variable: "APP_FILE_STORE", wantStore: true, wantName: "", wantResource: "files", wantSuffix: "files", wantAddress: "google_storage_bucket.files", wantRole: RoleFileStore},
+		{name: "a named store", variable: "APP_FILE_STORE_DOCUMENTS", wantStore: true, wantName: "documents", wantResource: "files_documents", wantSuffix: "files-documents", wantAddress: "google_storage_bucket.files_documents", wantRole: RoleFileStore},
+		{name: "a two-word name: underscores become hyphens in the bucket's name and stay in the resource's", variable: "APP_FILE_STORE_CLIENT_FILES", wantStore: true, wantName: "client-files", wantResource: "files_client_files", wantSuffix: "files-client-files", wantAddress: "google_storage_bucket.files_client_files", wantRole: RoleFileStore},
+		{name: "a name with a digit", variable: "APP_FILE_STORE_V2", wantStore: true, wantName: "v2", wantResource: "files_v2", wantSuffix: "files-v2", wantAddress: "google_storage_bucket.files_v2", wantRole: RoleFileStore},
+		{name: "letters that continue the prefix are not a store", variable: "APP_FILE_STOREROOM", wantRole: RoleNone},
+		{name: "nothing after the underscore is not a store", variable: "APP_FILE_STORE_", wantRole: RoleNone},
+		{name: "a name that is not upper snake case is not a store", variable: "APP_FILE_STORE_documents", wantRole: RoleNone},
+		{name: "a name with two underscores in a row is not a store", variable: "APP_FILE_STORE__DOCUMENTS", wantRole: RoleNone},
+		{name: "a prefix of the variable is not a store", variable: "APP_FILE", wantRole: RoleNone},
+		{name: "a well-known variable keeps its exact-name role", variable: "APP_TASKS_QUEUE", wantRole: RoleTasksQueue},
+		{name: "a variable of the application's own has no role", variable: "APP_DEFAULT_SESSION_TIMEOUT", wantRole: RoleNone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			name, ok := fileStoreName(tt.variable)
+			if ok != tt.wantStore || name != tt.wantName {
+				t.Fatalf("fileStoreName(%s) = %q, %t, want %q, %t", tt.variable, name, ok, tt.wantName, tt.wantStore)
+			}
+			if got := roleOf(tt.variable); got != tt.wantRole {
+				t.Errorf("roleOf(%s) = %q, want %q", tt.variable, got, tt.wantRole)
+			}
+			if !ok {
+				return
+			}
+			s := newFileStore(&Variable{Name: tt.variable, Level: LevelData}, name)
+			if s.Resource != tt.wantResource || s.Suffix != tt.wantSuffix || s.Address() != tt.wantAddress {
+				t.Errorf("newFileStore(%s) = resource %q, suffix %q, address %q, want %q, %q, %q", tt.variable, s.Resource, s.Suffix, s.Address(), tt.wantResource, tt.wantSuffix, tt.wantAddress)
+			}
+			if s.Default() != (tt.wantName == "") {
+				t.Errorf("Default() = %t, want %t", s.Default(), tt.wantName == "")
+			}
+		})
+	}
 }
 
 // variableNamed returns the variable by environment name, or nil.

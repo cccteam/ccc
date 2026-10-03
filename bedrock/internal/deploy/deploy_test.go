@@ -156,11 +156,11 @@ func TestNewRecordRequest(t *testing.T) {
 		},
 		{
 			name:        "a restore run records what replaced the database and who asked",
-			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0],google_storage_bucket.assets\"\nexport RESTORE_CLEARED=\"google_firestore_database.firestore\"\nexport RESTORE_BACKUP=\"projects/p/instances/i/backups/b-20261001\"\nexport RESTORE_BACKUP_TIME=\"2026-10-01T02:00:00Z\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0],google_storage_bucket.files\"\nexport RESTORE_CLEARED=\"google_firestore_database.firestore\"\nexport RESTORE_BACKUP=\"projects/p/instances/i/backups/b-20261001\"\nexport RESTORE_BACKUP_TIME=\"2026-10-01T02:00:00Z\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
 			wantObject:  "harbor/tst/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
-			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_storage_bucket.assets"}, Cleared: []string{"google_firestore_database.firestore"}, Backup: "projects/p/instances/i/backups/b-20261001", BackupTime: "2026-10-01T02:00:00Z"},
+			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_storage_bucket.files"}, Cleared: []string{"google_firestore_database.firestore"}, Backup: "projects/p/instances/i/backups/b-20261001", BackupTime: "2026-10-01T02:00:00Z"},
 		},
 		{
 			name:        "a release that restored a seeded environment on its own records the reason beside the restore",
@@ -202,11 +202,11 @@ func TestNewRecordRequest(t *testing.T) {
 		},
 		{
 			name:        "a tag build's apply of the environment's stack is recorded from its saved plan",
-			files:       map[string]string{EnvironmentFile: liveEnvironment, BuildFile: buildJSON, RevisionsFile: revisionsLines, StackPlanJSONFile: `{"resource_changes": [{"address": "google_storage_bucket.assets", "type": "google_storage_bucket", "change": {"actions": ["create"], "after": {}}}]}`},
+			files:       map[string]string{EnvironmentFile: liveEnvironment, BuildFile: buildJSON, RevisionsFile: revisionsLines, StackPlanJSONFile: `{"resource_changes": [{"address": "google_storage_bucket.files", "type": "google_storage_bucket", "change": {"actions": ["create"], "after": {}}}]}`},
 			wantObject:  "harbor/tst/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
-			wantStack:   &StackPlan{Add: 1, Changes: []StackChange{{Address: "google_storage_bucket.assets", Actions: []string{actionCreate}}}},
+			wantStack:   &StackPlan{Add: 1, Changes: []StackChange{{Address: "google_storage_bucket.files", Actions: []string{actionCreate}}}},
 		},
 		{
 			name:        "a pull request's revision under its tag is a preview",

@@ -82,13 +82,13 @@ from `2-env`'s state.
   (`2-env` output `spanner_instance`: {{.Integration}}'s own, the spn instance for {{.SharedInstanceEnvsWrapped}}), GoogleSQL, no schema (the migrations own it). {{.Production}}: deletion and drop
   protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
   incremental one (02:00 UTC), each kept 90 days.
-{{- if .AssetsBucket}}
-- **The assets bucket** `{{.Prefix}}-<env>-gbl-{{.App}}-assets-<project number>`
-  (`{{.AssetsBucket.Declaration}}` names it to the processes that construct the
-  {{.AssetsBucket.Level}} level), in the primary region, uniform access, no public
-  access, unversioned; {{.Production}}'s survives a destroy. The site{{if .JobsReadsAssets}} and the job
-  process{{end}} hold{{if not .JobsReadsAssets}}s{{end}} `roles/storage.objectUser` on it; the migrate command gets
-  neither the name nor a grant.
+{{- range .FileStores}}
+- **{{.Title}}** `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Suffix}}-<project number>`
+  (`{{.Variable.Declaration}}` names it to the processes that construct the
+  {{.Variable.Level}} level, as a `gs://` URL), in the primary region, uniform access, no public
+  access, unversioned; {{$.Production}}'s survives a destroy. The site{{if .JobsReads}} and the job
+  process{{end}} hold{{if not .JobsReads}}s{{end}} `roles/storage.objectUser` on it; the migrate command gets
+  neither the URL nor a grant.
 {{- end}}
 {{- if .TasksQueue}}
 - **The task queue** `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-tasks`
@@ -218,8 +218,8 @@ above them.
 | `{{.ServiceName.Name}}` | {{.ServiceName.Level}} | `{{.App}}` / `{{.App}}-migrate`{{if .Jobs}} / `{{.App}}-jobs`{{end}} | yes | yes |{{if .Jobs}} yes |{{end}}
 | `{{.LoggingProject.Name}}` | {{.LoggingProject.Level}} | the environment project | yes | yes |{{if .Jobs}} yes |{{end}}
 | {{.DatabaseVariablesCell}} | {{.Database.Project.Level}} | the database | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
-{{- if .AssetsBucket}}
-| `{{.AssetsBucket.Name}}` | {{.AssetsBucket.Level}} | the assets bucket | yes | |{{if .Jobs}} {{if .JobsReadsAssets}}yes{{end}} |{{end}}
+{{- range .FileStores}}
+| `{{.Variable.Name}}` | {{.Variable.Level}} | {{.Label}}, as a `gs://` URL | yes | |{{if $.Jobs}} {{if .JobsReads}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .TasksQueue}}
 | `{{.TasksQueue.Name}}` | {{.TasksQueue.Level}} | the task queue | yes | |{{if .Jobs}} {{if .JobsReadsTasks}}yes{{end}} |{{end}}
@@ -304,7 +304,9 @@ substitutions and this stack's outputs:
 
 - `_ENV`, `_APP`, `_PROJECT`; `_SERVICES` as `<region>=<service>` per region,
   comma-separated; `_MIGRATE_JOB` as `<region>=<job>`{{if .Jobs}}, and `_JOBS_JOB` the
-  same for the job process{{end}}; `_REGISTRY` as
+  same for the job process{{end}};{{if .FileStores}} `_FILE_STORES`, the file stores' buckets as
+  this stack addresses them, comma-separated, which a restore run in {{.Integration}}
+  replaces with the database;{{end}} `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
   `_REPO_CONNECTION_NAME` and `_REPO_NAME` (placeholders until 2-env holds the
   connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
@@ -448,7 +450,7 @@ placement's `seed` list is restored by the next release whose tree no longer
 carries a seed file as the environment's live release applied it (edited,
 renumbered or removed). That release runs as a restore run the release itself
 asks for: the application serves its maintenance page while the database (and
-the file bucket) is replaced and the Firestore documents are deleted, the
+the file stores' buckets) is replaced and the Firestore documents are deleted, the
 migrations and the seed apply from the start, and the record carries the
 reason. A seed file added beside the applied ones is applied as a new data
 migration and recreates nothing; an environment off the list never applied the
@@ -595,8 +597,8 @@ Per environment, after the first apply:
 
 | Name | Description |
 |---|---|
-{{- if .AssetsBucket}}
-| `assets_bucket` | The assets bucket's name. |
+{{- if .FileStores}}
+| `file_stores` | The file stores' bucket URLs, by variable. |
 {{- end}}
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
 | `database` | `{ project, instance, name }`. |

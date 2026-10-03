@@ -51,6 +51,7 @@ locals {
     _RECORDS_BUCKETS         = local.records_buckets
     _APPLY_IDENTITY          = local.identities.apply_identity_email # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
     _TASKS_QUEUE             = local.tasks_queue                     # the task queue a maintenance step pauses while the database is replaced or migrated and resumes after traffic moves
+    _FILE_STORES             = "google_storage_bucket.files"         # the file stores' buckets as this stack addresses them, comma-separated; a restore run in tst replaces them with the database
     _RESTORE                 = ""                                    # a restore run's instruction (empty, or production-backup): the environment's database is replaced before the release deploys; set by bedrock restore when it runs the trigger, never on a tag's own build, and refused in prd
     _REQUESTER               = ""                                    # who asked for the restore or the migration operation; the record carries it
     _MIGRATE_ACTION          = ""                                    # a migration operation (version, rerun or force) the operations workflow asks the migrate job for (bedrock migration); empty on a tag's own build

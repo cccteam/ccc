@@ -1,10 +1,10 @@
 # What the pipeline reads, and what 2-net reads to route this environment's
 # hostnames. Readable by anything that can read the state bucket; no secrets.
 
-{{if .AssetsBucket -}}
-output "assets_bucket" {
-  description = "The assets bucket the site{{if .JobsReadsAssets}} and the job process{{end}} read and write, as {{.AssetsBucket.Name}} names it to them."
-  value       = google_storage_bucket.assets.name
+{{if .FileStores -}}
+output "file_stores" {
+  description = "The file stores the site{{if .JobsFileStores}} and the job process{{end}} read and write: each variable and the gs:// URL of its bucket, as the processes receive them."
+  value       = local.files_env
 }
 
 {{end -}}

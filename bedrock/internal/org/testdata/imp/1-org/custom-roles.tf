@@ -247,7 +247,7 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     # stack hands the site, apikeys.keys.getKeyString.
     "apikeys.keys.get",
     "apikeys.keys.getKeyString",
-    # Cloud Storage: the assets bucket, and not its objects.
+    # Cloud Storage: the file stores' buckets, and not their objects.
     "storage.buckets.get",
   ]
 }

@@ -423,6 +423,154 @@ func TestWrite(t *testing.T) {
 	}
 }
 
+// store is a derived file store at the level, for the file-store tests.
+func store(variable, level, name string) derive.FileStore {
+	resource, suffix := "files", "files"
+	if name != "" {
+		resource += "_" + strings.ReplaceAll(name, "-", "_")
+		suffix += "-" + name
+	}
+
+	return derive.FileStore{Variable: &derive.Variable{Name: variable, Level: level, Struct: "dataConfig", Field: "Store"}, Name: name, Resource: resource, Suffix: suffix}
+}
+
+func TestNewFileStore(t *testing.T) {
+	t.Parallel()
+
+	data := &derive.Process{Name: "jobs", Dir: "cmd/jobs", Levels: []string{derive.LevelCore, derive.LevelData}}
+	tests := []struct {
+		name          string
+		store         derive.FileStore
+		jobs          *derive.Process
+		wantValue     string
+		wantLabel     string
+		wantTitle     string
+		wantJobsReads bool
+	}{
+		{
+			name:          "the default store: the bucket's gs:// URL from its name, read by a job process that constructs its level",
+			store:         store("APP_FILE_STORE", derive.LevelData, ""),
+			jobs:          data,
+			wantValue:     `"gs://${google_storage_bucket.files.name}"`,
+			wantLabel:     "the default file store",
+			wantTitle:     "The default file store",
+			wantJobsReads: true,
+		},
+		{
+			name:          "a named store: the resource with underscores in the URL, the name in the label",
+			store:         store("APP_FILE_STORE_DOCUMENTS", derive.LevelData, "documents"),
+			jobs:          data,
+			wantValue:     `"gs://${google_storage_bucket.files_documents.name}"`,
+			wantLabel:     "the documents file store",
+			wantTitle:     "The documents file store",
+			wantJobsReads: true,
+		},
+		{
+			name:      "a two-word name",
+			store:     store("APP_FILE_STORE_CLIENT_FILES", derive.LevelData, "client-files"),
+			wantValue: `"gs://${google_storage_bucket.files_client_files.name}"`,
+			wantLabel: "the client-files file store",
+			wantTitle: "The client-files file store",
+		},
+		{
+			name:      "a store at a level the job process does not construct",
+			store:     store("APP_FILE_STORE", derive.LevelSite, ""),
+			jobs:      data,
+			wantValue: `"gs://${google_storage_bucket.files.name}"`,
+			wantLabel: "the default file store",
+			wantTitle: "The default file store",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := newFileStore(tt.store, tt.jobs)
+			if got.Value != tt.wantValue || got.Label != tt.wantLabel || got.Title != tt.wantTitle || got.JobsReads != tt.wantJobsReads {
+				t.Errorf("newFileStore() = value %s, label %q, title %q, jobs %t; want %s, %q, %q, %t", got.Value, got.Label, got.Title, got.JobsReads, tt.wantValue, tt.wantLabel, tt.wantTitle, tt.wantJobsReads)
+			}
+		})
+	}
+}
+
+func TestFileStores(t *testing.T) {
+	t.Parallel()
+
+	data := &derive.Process{Name: "jobs", Dir: "cmd/jobs", Levels: []string{derive.LevelCore, derive.LevelData}}
+	tests := []struct {
+		name   string
+		stores []derive.FileStore
+		jobs   *derive.Process
+		// wantEnv is the aligned block of every store, wantJobsEnv the job process's own
+		// block (empty when it reads every store's level or none), wantJobs the stores it
+		// reads, and wantAddresses the buckets for the pipeline's substitution.
+		wantEnv       string
+		wantJobsEnv   string
+		wantJobs      []string
+		wantAddresses string
+	}{
+		{name: "no store", stores: nil, jobs: data},
+		{
+			name:          "one store the job process reads: one block serves both",
+			stores:        []derive.FileStore{store("APP_FILE_STORE", derive.LevelData, "")},
+			jobs:          data,
+			wantEnv:       `    APP_FILE_STORE = "gs://${google_storage_bucket.files.name}"`,
+			wantJobs:      []string{"APP_FILE_STORE"},
+			wantAddresses: "google_storage_bucket.files",
+		},
+		{
+			name:          "two stores at the data level, aligned, in declaration order",
+			stores:        []derive.FileStore{store("APP_FILE_STORE", derive.LevelData, ""), store("APP_FILE_STORE_DOCUMENTS", derive.LevelData, "documents")},
+			jobs:          data,
+			wantEnv:       "    APP_FILE_STORE           = \"gs://${google_storage_bucket.files.name}\"\n    APP_FILE_STORE_DOCUMENTS = \"gs://${google_storage_bucket.files_documents.name}\"",
+			wantJobs:      []string{"APP_FILE_STORE", "APP_FILE_STORE_DOCUMENTS"},
+			wantAddresses: "google_storage_bucket.files,google_storage_bucket.files_documents",
+		},
+		{
+			name:          "a store at a level the job process does not construct gets the job process a block of its own",
+			stores:        []derive.FileStore{store("APP_FILE_STORE", derive.LevelData, ""), store("APP_FILE_STORE_DOCUMENTS", derive.LevelSite, "documents")},
+			jobs:          data,
+			wantEnv:       "    APP_FILE_STORE           = \"gs://${google_storage_bucket.files.name}\"\n    APP_FILE_STORE_DOCUMENTS = \"gs://${google_storage_bucket.files_documents.name}\"",
+			wantJobsEnv:   `    APP_FILE_STORE = "gs://${google_storage_bucket.files.name}"`,
+			wantJobs:      []string{"APP_FILE_STORE"},
+			wantAddresses: "google_storage_bucket.files,google_storage_bucket.files_documents",
+		},
+		{
+			name:          "no job process: every store is the site's alone",
+			stores:        []derive.FileStore{store("APP_FILE_STORE", derive.LevelData, "")},
+			wantEnv:       `    APP_FILE_STORE = "gs://${google_storage_bucket.files.name}"`,
+			wantAddresses: "google_storage_bucket.files",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			v := &view{Model: &derive.Model{FileStores: tt.stores, Jobs: tt.jobs}}
+			v.fileStores()
+			if len(v.FileStores) != len(tt.stores) {
+				t.Errorf("FileStores has %d, want %d", len(v.FileStores), len(tt.stores))
+			}
+			if v.FileStoreEnv != tt.wantEnv {
+				t.Errorf("FileStoreEnv =\n%s\nwant\n%s", v.FileStoreEnv, tt.wantEnv)
+			}
+			if v.JobsFileStoreEnv != tt.wantJobsEnv {
+				t.Errorf("JobsFileStoreEnv =\n%s\nwant\n%s", v.JobsFileStoreEnv, tt.wantJobsEnv)
+			}
+			var jobs []string
+			for i := range v.JobsFileStores {
+				jobs = append(jobs, v.JobsFileStores[i].Variable.Name)
+			}
+			if !slices.Equal(jobs, tt.wantJobs) {
+				t.Errorf("JobsFileStores = %v, want %v", jobs, tt.wantJobs)
+			}
+			if v.FileStoreAddresses != tt.wantAddresses {
+				t.Errorf("FileStoreAddresses = %q, want %q", v.FileStoreAddresses, tt.wantAddresses)
+			}
+		})
+	}
+}
+
 func TestAligned(t *testing.T) {
 	t.Parallel()
 

@@ -477,7 +477,7 @@ and each change, appends the summary (STACK_PLAN) for the record, and runs the t
 authoritative IAM resource in the stack, and every secret version a planned revision template pins
 exists and is enabled, read as the apply identity. A failing plan or test stops the build with the
 stack unapplied. In a restore run (RESTORE=empty) the plan replaces the Spanner database and,
-in tst, the file bucket, each when the stack has it (tofu state list), so the migrations apply
+in tst, the file stores' buckets, each when the stack has it (tofu state list), so the migrations apply
 afresh (and the seed, where the placement's seed list names the environment); what it replaces is
 appended (RESTORE_REPLACED) for the record. The Firestore database is not replaced, since Firestore
 keeps a deleted database's id unavailable for minutes: the apply step deletes its documents. In a

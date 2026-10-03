@@ -83,12 +83,12 @@ from `2-env`'s state.
   prd), GoogleSQL, no schema (the migrations own it). prd: deletion and drop
   protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
   incremental one (02:00 UTC), each kept 90 days.
-- **The assets bucket** `imp-<env>-gbl-harbor-assets-<project number>`
-  (`dataConfig.AssetsBucket` names it to the processes that construct the
-  data level), in the primary region, uniform access, no public
+- **The default file store** `imp-<env>-gbl-harbor-files-<project number>`
+  (`dataConfig.FileStore` names it to the processes that construct the
+  data level, as a `gs://` URL), in the primary region, uniform access, no public
   access, unversioned; prd's survives a destroy. The site and the job
   process hold `roles/storage.objectUser` on it; the migrate command gets
-  neither the name nor a grant.
+  neither the URL nor a grant.
 - **The task queue** `imp-<env>-uc1-harbor-tasks`
   (`dataConfig.TasksQueue` names it to the processes that construct the
   data level), in the primary region, `var.tasks_max_concurrent` tasks
@@ -208,7 +208,7 @@ above them.
 | `APP_SERVICE_NAME` | core | `harbor` / `harbor-migrate` / `harbor-jobs` | yes | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes | yes |
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
-| `APP_ASSETS_BUCKET` | data | the assets bucket | yes | | yes |
+| `APP_FILE_STORE` | data | the default file store, as a `gs://` URL | yes | | yes |
 | `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |
 | `GOOGLE_CLOUD_FIRESTORE_PROJECT` | data | the environment project (the Firestore database's) | yes | yes | yes |
 | `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | yes | yes |
@@ -282,7 +282,9 @@ substitutions and this stack's outputs:
 
 - `_ENV`, `_APP`, `_PROJECT`; `_SERVICES` as `<region>=<service>` per region,
   comma-separated; `_MIGRATE_JOB` as `<region>=<job>`, and `_JOBS_JOB` the
-  same for the job process; `_REGISTRY` as
+  same for the job process; `_FILE_STORES`, the file stores' buckets as
+  this stack addresses them, comma-separated, which a restore run in tst
+  replaces with the database; `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
   `_REPO_CONNECTION_NAME` and `_REPO_NAME` (placeholders until 2-env holds the
   connection); `_RELEASE_ACTORS`, the logins whose GitHub Releases the tag
@@ -426,7 +428,7 @@ placement's `seed` list is restored by the next release whose tree no longer
 carries a seed file as the environment's live release applied it (edited,
 renumbered or removed). That release runs as a restore run the release itself
 asks for: the application serves its maintenance page while the database (and
-the file bucket) is replaced and the Firestore documents are deleted, the
+the file stores' buckets) is replaced and the Firestore documents are deleted, the
 migrations and the seed apply from the start, and the record carries the
 reason. A seed file added beside the applied ones is applied as a new data
 migration and recreates nothing; an environment off the list never applied the
@@ -558,7 +560,7 @@ Per environment, after the first apply:
 
 | Name | Description |
 |---|---|
-| `assets_bucket` | The assets bucket's name. |
+| `file_stores` | The file stores' bucket URLs, by variable. |
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
 | `database` | `{ project, instance, name }`. |
 | `firestore_database` | The Firestore database's id. |

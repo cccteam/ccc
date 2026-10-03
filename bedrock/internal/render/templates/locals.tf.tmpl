@@ -96,11 +96,11 @@ locals {
   # stack then only reads by name and grants its app identity on.
   own_database  = !(local.is_pr && var.shared_database)
   database_name = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
-{{- if .AssetsBucket}}
+{{- range .FileStores}}
 
-  # The assets bucket ({{.AssetsBucket.Declaration}}): a pull-request stack has its
+  # {{.Title}} ({{.Variable.Declaration}}): a pull-request stack has its
   # own, and the environment project's number makes the name unique.
-  assets_bucket_name = "${local.name}-gbl-${local.is_pr ? local.pr_name : local.app}-assets-${local.env.project_number}"
+  {{.Resource}}_bucket_name = "${local.name}-gbl-${local.is_pr ? local.pr_name : local.app}-{{.Suffix}}-${local.env.project_number}"
 {{- end}}
 {{- if .TasksQueue}}
 
@@ -231,13 +231,23 @@ locals {
   # {{.JobsJob.Declaration}} is not set here: the image build bakes it in as the job
   # of that build (Dockerfile, ARG JOBS_JOB), so each revision starts its own.
 {{- end}}
-{{- if .AssetsBucket}}
+{{- if .FileStores}}
 
-  # {{.AssetsBucket.Declaration}}: the assets bucket (storage.tf), for the processes that
-  # construct the {{.AssetsBucket.Level}} level and run the application's own code.
-  assets_env = {
-    {{.AssetsBucket.Name}} = google_storage_bucket.assets.name
+  # The file stores (storage.tf), each as the gs:// URL of its bucket, for the
+  # processes that construct its level and run the application's own code:
+{{- range .FileStores}}
+  # {{.Variable.Declaration}}, {{.Label}} ({{.Variable.Level}} level).
+{{- end}}
+  files_env = {
+{{.FileStoreEnv}}
   }
+{{- if .JobsFileStoreEnv}}
+
+  # The stores among them whose level {{.Jobs.Dir}} constructs.
+  jobs_files_env = {
+{{.JobsFileStoreEnv}}
+  }
+{{- end}}
 {{- end}}
 {{- if .TasksQueue}}
 
@@ -271,7 +281,7 @@ locals {
   # {{.SiteLevel.FileBase}}: {{.Port.Name}} is set by Cloud Run itself (reserved; setting it is an
   # error) and {{.SiteImageVars}} is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .AssetsBucket}}, local.assets_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}})
+  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}})
 
   # {{.Migrate.Dir}} reads {{.MigrateLevels}} and nothing above them.
   job_env = merge(local.core_env, local.data_env{{if .MigrateReadsFirestore}}, local.firestore_env{{end}}, {
@@ -281,7 +291,7 @@ locals {
 
   # {{.Jobs.Dir}} reads {{.JobsLevels}} and nothing above them: the job process, the
   # application's own code as a Cloud Run job.
-  jobs_env = merge(local.core_env{{if .JobsReadsData}}, local.data_env{{end}}{{if .JobsReadsAssets}}, local.assets_env{{end}}{{if .JobsReadsTasks}}, local.tasks_env{{end}}{{if .JobsReadsFirestore}}, local.firestore_env{{end}}, {
+  jobs_env = merge(local.core_env{{if .JobsReadsData}}, local.data_env{{end}}{{if .JobsFileStoreEnv}}, local.jobs_files_env{{else if .JobsFileStores}}, local.files_env{{end}}{{if .JobsReadsTasks}}, local.tasks_env{{end}}{{if .JobsReadsFirestore}}, local.firestore_env{{end}}, {
     {{.ServiceName.Name}} = "${local.app}-jobs"
   })
 {{- end}}

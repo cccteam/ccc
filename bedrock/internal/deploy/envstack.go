@@ -31,6 +31,10 @@ const (
 	// pull-request build plans that environment as.
 	environmentsSub   = "_ENVIRONMENTS"
 	planIdentitiesSub = "_PLAN_IDENTITIES"
+	// fileStoresSub lists the file stores' buckets as the stack addresses them,
+	// comma-separated, rendered from the same declarations as the buckets; absent when
+	// the stack has no store.
+	fileStoresSub = "_FILE_STORES"
 	// StackPlanFile is the tag build's saved plan of the environment's stack, in the
 	// workspace, which the apply applies.
 	StackPlanFile = "stack.plan"
@@ -155,7 +159,7 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 			return err
 		}
 	default:
-		replace, err := s.replaceForRestore(ctx, subs[appSub], subs[envSub], env, subs[seedSub] == trueValue, w)
+		replace, err := s.replaceForRestore(ctx, subs, env, subs[seedSub] == trueValue, w)
 		if err != nil {
 			return err
 		}
@@ -275,23 +279,24 @@ func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]st
 
 // replaceForRestore is a restore run's -replace of what the environment's database
 // holds: the Spanner database, which the migrations (and the seed, in an environment the
-// placement's seed list names) then fill afresh, and, in tst, the file bucket, whose
-// objects refer to rows that are gone (stg's are kept: production's backup predates some
-// of them, and the record says so). The Firestore database, whose documents refer to those
-// rows too, is not replaced: Firestore keeps a deleted database's id unavailable for
-// minutes, so the apply step deletes its documents instead (clearFirestore). Each when
-// the stack has it; what is replaced is noted
-// for the record. The restore from production's backup is a different path
-// (restoreFromBackup): the database is dropped and restored before the plan, not replaced.
-func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts map[string]string, seeded bool, w Workspace) ([]string, error) {
-	kind, requester := facts[restoreFact], facts[requesterFact]
+// placement's seed list names) then fill afresh, and, in tst, the file stores' buckets
+// (every one the stack's _FILE_STORES names), whose objects refer to rows that are gone
+// (stg's are kept: production's backup predates some of them, and the record says so).
+// The Firestore database, whose documents refer to those rows too, is not replaced:
+// Firestore keeps a deleted database's id unavailable for minutes, so the apply step
+// deletes its documents instead (clearFirestore). Each when the stack has it; what is
+// replaced is noted for the record. The restore from production's backup is a different
+// path (restoreFromBackup): the database is dropped and restored before the plan, not
+// replaced.
+func (s *stack) replaceForRestore(ctx context.Context, subs, facts map[string]string, seeded bool, w Workspace) ([]string, error) {
+	app, env, kind, requester := subs[appSub], subs[envSub], facts[restoreFact], facts[requesterFact]
 	listed, err := s.tofuOutput(ctx, "state", "list")
 	if err != nil {
 		return nil, err
 	}
 	addresses := []string{"google_spanner_database." + app + "[0]"}
 	if env == tstEnvironment {
-		addresses = append(addresses, "google_storage_bucket.assets")
+		addresses = append(addresses, fileStoreAddresses(subs)...)
 	}
 	var replace, replaced []string
 	for _, address := range addresses {
@@ -316,6 +321,20 @@ func (s *stack) replaceForRestore(ctx context.Context, app, env string, facts ma
 	}
 
 	return replace, nil
+}
+
+// fileStoreAddresses are the file stores' buckets as the stack addresses them, from the
+// substitution the stack renders beside the buckets (_FILE_STORES); none when the stack
+// has no store.
+func fileStoreAddresses(subs map[string]string) []string {
+	var addresses []string
+	for _, address := range strings.Split(subs[fileStoresSub], ",") {
+		if address = strings.TrimSpace(address); address != "" {
+			addresses = append(addresses, address)
+		}
+	}
+
+	return addresses
 }
 
 // ApplyEnvironmentStack applies the plan PlanEnvironmentStack saved, in a tag build, as the

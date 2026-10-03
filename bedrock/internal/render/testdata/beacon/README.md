@@ -342,7 +342,7 @@ placement's `seed` list is restored by the next release whose tree no longer
 carries a seed file as the environment's live release applied it (edited,
 renumbered or removed). That release runs as a restore run the release itself
 asks for: the application serves its maintenance page while the database (and
-the file bucket) is replaced and the Firestore documents are deleted, the
+the file stores' buckets) is replaced and the Firestore documents are deleted, the
 migrations and the seed apply from the start, and the record carries the
 reason. A seed file added beside the applied ones is applied as a new data
 migration and recreates nothing; an environment off the list never applied the

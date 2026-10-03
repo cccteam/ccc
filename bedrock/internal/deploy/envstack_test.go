@@ -21,7 +21,7 @@ import (
 // template pinning a version by full name), a secret replaced, and a data read.
 const stackPlanJSON = `{"resource_changes": [
  {"address": "google_cloud_run_v2_service.app[\"uc1\"]", "type": "google_cloud_run_v2_service", "change": {"actions": ["update"], "after": {"project": "p-stg", "template": [{"containers": [{"env": [{"name": "APP_COOKIE_KEY", "value_source": [{"secret_key_ref": [{"secret": "quill-cookie-key", "version": "3"}]}]}]}]}]}}},
- {"address": "google_storage_bucket.assets", "type": "google_storage_bucket", "change": {"actions": ["create"], "after": {}}},
+ {"address": "google_storage_bucket.files", "type": "google_storage_bucket", "change": {"actions": ["create"], "after": {}}},
  {"address": "google_cloud_run_v2_job.migrate", "type": "google_cloud_run_v2_job", "change": {"actions": ["no-op"], "after": {"project": "p-stg", "template": [{"template": [{"containers": [{"env": [{"name": "APP_DB", "value_source": [{"secret_key_ref": [{"secret": "projects/p-stg/secrets/quill-db", "version": "latest"}]}]}]}]}]}]}}},
  {"address": "google_secret_manager_secret.old", "type": "google_secret_manager_secret", "change": {"actions": ["delete", "create"], "before": {}, "after": {}}},
  {"address": "data.google_project.p", "type": "google_project", "change": {"actions": ["read"]}}
@@ -51,7 +51,7 @@ func TestStackPlan(t *testing.T) {
 			data: stackPlanJSON,
 			want: &StackPlan{Add: 2, Change: 1, Destroy: 1, Changes: []StackChange{
 				{Address: `google_cloud_run_v2_service.app["uc1"]`, Actions: []string{actionUpdate}},
-				{Address: "google_storage_bucket.assets", Actions: []string{actionCreate}},
+				{Address: "google_storage_bucket.files", Actions: []string{actionCreate}},
 				{Address: "google_secret_manager_secret.old", Actions: []string{actionDelete, actionCreate}},
 			}},
 		},
@@ -116,9 +116,9 @@ func TestPlannedMounts(t *testing.T) {
 	}
 }
 
-// tagSubs are a tag build's substitutions for stg.
+// tagSubs are a tag build's substitutions for stg, for a stack with one file store.
 func tagSubs() map[string]string {
-	return map[string]string{appSub: "quill", envSub: stgEnvironment, projectSub: "p-stg", applyIdentitySub: "quill-apply@p-stg.iam.gserviceaccount.com", commitSub: "c9", repoFullNameSub: "acme/quill"}
+	return map[string]string{appSub: "quill", envSub: stgEnvironment, projectSub: "p-stg", applyIdentitySub: "quill-apply@p-stg.iam.gserviceaccount.com", commitSub: "c9", repoFullNameSub: "acme/quill", fileStoresSub: "google_storage_bucket.files"}
 }
 
 // tstSubs are a tag build's substitutions in tst, with stg's identity and project, so
@@ -146,6 +146,22 @@ func seededSubs() map[string]string {
 	return subs
 }
 
+// storesSubs is tst for a stack with the default file store and two named ones.
+func storesSubs() map[string]string {
+	subs := tstSubs()
+	subs[fileStoresSub] = "google_storage_bucket.files,google_storage_bucket.files_documents,google_storage_bucket.files_client_files"
+
+	return subs
+}
+
+// storelessSubs is tst for a stack that names no file store.
+func storelessSubs() map[string]string {
+	subs := tstSubs()
+	delete(subs, fileStoresSub)
+
+	return subs
+}
+
 func TestPlanEnvironmentStack(t *testing.T) {
 	t.Parallel()
 
@@ -156,7 +172,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 	)
 	const (
 		restoreEnv = "export SKIP_DEPLOY=\"\"\nexport RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
-		stateList  = "google_spanner_database.quill[0]\ngoogle_firestore_database.firestore\ngoogle_storage_bucket.assets\ngoogle_cloud_run_v2_service.app[\"uc1\"]\n"
+		stateList  = "google_spanner_database.quill[0]\ngoogle_firestore_database.firestore\ngoogle_storage_bucket.files\ngoogle_cloud_run_v2_service.app[\"uc1\"]\n"
 	)
 	tests := []struct {
 		name          string
@@ -180,15 +196,15 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		wantErr    string
 	}{
 		{
-			name:         "a restore run replaces the database, the Firestore database and, in tst, the file bucket",
+			name:         "a restore run replaces the database, the Firestore database and, in tst, the file store's bucket",
 			subs:         tstSubs(),
 			pins:         enabledPins(),
 			env:          restoreEnv,
 			state:        stateList,
-			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.assets is replaced in tst's stack; the migrations then apply afresh ===", "The Firestore database stays (Firestore keeps a deleted database's id unavailable for minutes); the apply deletes its documents instead.", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.assets", showLine},
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations then apply afresh ===", "The Firestore database stays (Firestore keeps a deleted database's id unavailable for minutes); the apply deletes its documents instead.", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
-			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
+			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
 		},
 		{
 			name:         "a restore run in maintenance tells the plan the maintenance variable's live value, so the apply leaves the service alone",
@@ -196,10 +212,10 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:         enabledPins(),
 			env:          restoreEnv + "export MAINTENANCE=\"true\"\n",
 			state:        stateList,
-			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.assets is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -var maintenance=1 -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.assets", showLine},
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -var maintenance=1 -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
-			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
+			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
 		},
 		{
 			name:     "a run that was not in maintenance keeps a service an earlier run's maintenance left so, until the release's revision clears it",
@@ -225,17 +241,39 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:         enabledPins(),
 			env:          restoreEnv,
 			state:        stateList,
-			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.assets is replaced in tst's stack; the migrations and the seed then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.assets", showLine},
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations and the seed then apply afresh ===", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
-			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.assets",
+			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
 		},
 		{
-			name:         "stg keeps its file bucket through a restore, and a stack without Firestore replaces the database alone",
+			name:         "a restore run in tst replaces every file store's bucket the stack names, the named stores with the default",
+			subs:         storesSubs(),
+			pins:         enabledPins(),
+			env:          restoreEnv,
+			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.files\ngoogle_storage_bucket.files_documents\ngoogle_storage_bucket.files_client_files\n",
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files, google_storage_bucket.files_documents, google_storage_bucket.files_client_files is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files -replace=google_storage_bucket.files_documents -replace=google_storage_bucket.files_client_files", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files,google_storage_bucket.files_documents,google_storage_bucket.files_client_files",
+		},
+		{
+			name:         "a restore run in tst of a stack that names no file store replaces the database alone, whatever buckets the state holds",
+			subs:         storelessSubs(),
+			pins:         enabledPins(),
+			env:          restoreEnv,
+			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.files\n",
+			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0] is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0]", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0]",
+		},
+		{
+			name:         "stg keeps its file store's bucket through a restore, and a stack without Firestore replaces the database alone",
 			subs:         tagSubs(),
 			pins:         enabledPins(),
 			env:          restoreEnv,
-			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.assets\n",
+			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.files\n",
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0] is replaced in stg's stack"},
 			wantTofu:     []string{initLine, "tofu state list", planLine + " -replace=google_spanner_database.quill[0]", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",

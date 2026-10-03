@@ -162,10 +162,19 @@ type view struct {
 	// JobsJob is the site's variable naming the job process's Cloud Run job, or nil
 	// when the site declares none.
 	JobsJob *derive.Variable
-	// AssetsBucket is the variable naming the assets bucket, or nil when the code
-	// declares none; JobsReadsAssets reports that the job process constructs its level.
-	AssetsBucket    *derive.Variable
-	JobsReadsAssets bool
+	// FileStores are the file stores the code declares, prepared for the templates, in
+	// declaration order (this field stands in front of the model's list of the same
+	// name); none when the code declares no store. FileStoreEnv is their aligned
+	// assignment block for locals.tf, and FileStoreAddresses lists their buckets as the
+	// stack addresses them, comma-separated, for the pipeline's substitution.
+	// JobsFileStores are the stores whose level the job process constructs;
+	// JobsFileStoreEnv is their aligned block when they are some of the stores and not
+	// all, so the job process gets a map of its own, and empty otherwise.
+	FileStores         []fileStore
+	FileStoreEnv       string
+	FileStoreAddresses string
+	JobsFileStores     []fileStore
+	JobsFileStoreEnv   string
 	// TasksQueue is the variable naming the task queue, or nil when the code declares
 	// none; JobsReadsTasks reports that the job process constructs its level.
 	TasksQueue     *derive.Variable
@@ -205,6 +214,38 @@ type view struct {
 	HostnamesProse string
 	// IntegrationHost is the integration environment's canonical hostname.
 	IntegrationHost string
+}
+
+// fileStore is one file store as the templates name it: the derived store, the value
+// the stack hands its variable (the bucket's gs:// URL, as an OpenTofu interpolation of
+// the bucket's name), its label and title for the comments and the README ("the
+// documents file store", "The documents file store"), and whether the job process
+// constructs its level.
+type fileStore struct {
+	derive.FileStore
+	Value     string
+	Label     string
+	Title     string
+	JobsReads bool
+}
+
+// defaultStoreLabel is the default store's label; a named store's names it.
+const defaultStoreLabel = "the default file store"
+
+// newFileStore prepares one store for the templates.
+func newFileStore(s derive.FileStore, jobs *derive.Process) fileStore {
+	label := defaultStoreLabel
+	if !s.Default() {
+		label = "the " + s.Name + " file store"
+	}
+
+	return fileStore{
+		FileStore: s,
+		Value:     `"gs://${` + s.Address() + `.name}"`,
+		Label:     label,
+		Title:     "The" + strings.TrimPrefix(label, "the"),
+		JobsReads: jobs != nil && jobs.Reads(s.Variable.Level),
+	}
 }
 
 // The width the labels block aligns to: its longest derived key.
@@ -831,13 +872,10 @@ func (v *view) blocks() {
 }
 
 // declarations finds the resources the code declares by a well-known variable (the
-// assets bucket, the task queue, the Firestore database) and whether the job process,
+// file stores, the task queue, the Firestore database) and whether the job process,
 // and for the Firestore database the migrate command, constructs their levels.
 func (v *view) declarations() {
-	v.AssetsBucket = v.byRole(derive.RoleAssetsBucket)
-	if v.AssetsBucket != nil && v.Jobs != nil {
-		v.JobsReadsAssets = v.Jobs.Reads(v.AssetsBucket.Level)
-	}
+	v.fileStores()
 	v.TasksQueue = v.byRole(derive.RoleTasksQueue)
 	if v.TasksQueue != nil && v.Jobs != nil {
 		v.JobsReadsTasks = v.Jobs.Reads(v.TasksQueue.Level)
@@ -853,6 +891,32 @@ func (v *view) declarations() {
 	v.FirebaseAPIKey = v.byRole(derive.RoleFirebaseAPIKey)
 	if v.Firestore != nil {
 		v.FirestoreFieldsProse = firestoreFieldsProse(v.Firestore.Fields)
+	}
+}
+
+// fileStores prepares the file stores for the templates: each store with its value and
+// label, the aligned block of locals.tf, the buckets' addresses for the pipeline, and
+// the stores whose level the job process constructs, with a block of their own when
+// they are some of the stores and not all.
+func (v *view) fileStores() {
+	stores := v.Model.FileStores
+	all := make([][2]string, 0, len(stores))
+	addresses := make([]string, 0, len(stores))
+	var jobs [][2]string
+	for i := range stores {
+		s := newFileStore(stores[i], v.Jobs)
+		v.FileStores = append(v.FileStores, s)
+		all = append(all, [2]string{s.Variable.Name, s.Value})
+		addresses = append(addresses, s.Address())
+		if s.JobsReads {
+			v.JobsFileStores = append(v.JobsFileStores, s)
+			jobs = append(jobs, [2]string{s.Variable.Name, s.Value})
+		}
+	}
+	v.FileStoreEnv = aligned("    ", all)
+	v.FileStoreAddresses = strings.Join(addresses, ",")
+	if len(jobs) > 0 && len(jobs) < len(all) {
+		v.JobsFileStoreEnv = aligned("    ", jobs)
 	}
 }
 

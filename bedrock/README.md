@@ -161,9 +161,13 @@ build's image as the name of that build's job, with `run.invoker` for the site's
 identity on the template job, copied by the pipeline onto each build's job, so the
 running service, and only it, starts the job of its own build through the Cloud Run API
 (a schedule calls an endpoint on the service; the pipeline runs only the migrate job); a config variable
-`APP_ASSETS_BUCKET` becomes a Cloud Storage bucket in the primary region, named to the
-processes that construct its level, with `objectUser` for the site and, when it
-constructs that level, the job process; a config variable `APP_TASKS_QUEUE` becomes a
+`APP_FILE_STORE` (the application's default file store) or `APP_FILE_STORE_<NAME>` (a
+named store, `APP_FILE_STORE_DOCUMENTS`) becomes a Cloud Storage bucket in the primary
+region, one per variable, named `<app>-files-<project number>` or
+`<app>-files-<name>-<project number>` with the name in lower case and hyphens, the
+variable set to the bucket's `gs://` URL for the processes that construct its level, with
+`objectUser` for the site and, when it constructs that level, the job process, and
+neither the URL nor a grant for the migrate command; a config variable `APP_TASKS_QUEUE` becomes a
 Cloud Tasks queue in the primary region (a pull-request stack enqueues on the
 integration environment's), the variable set to its resource name, with `enqueuer` on
 the queue and Service Account User on its own account for the site and, when it
@@ -420,10 +424,11 @@ thing one step hands the next. In order:
   running service (add first, remove later); one that is not is declared breaking in
   release-please's way and becomes a window release. The first apply of an environment
   stays by hand, before any release exists there. In a restore run (`_RESTORE=empty`) the
-  plan replaces the Spanner database and, in the first environment, the file bucket, each
-  when the stack has it, so the migrations apply afresh, and the seed where the placement's
-  seed list names the environment; the environment on production's instance keeps its file
-  bucket. The Firestore database is not replaced (Firestore keeps a deleted database's id
+  plan replaces the Spanner database and, in the first environment, the file stores'
+  buckets (every one the stack's `_FILE_STORES` names), each when the stack has it, so
+  the migrations apply afresh, and the seed where the placement's seed list names the
+  environment; the environment on production's instance keeps its file stores'
+  buckets. The Firestore database is not replaced (Firestore keeps a deleted database's id
   unavailable for minutes): after the apply, the step deletes its documents as the apply
   identity, since they refer to rows the restore replaced (`RESTORE_CLEARED`). In a
   restore from production's backup (`_RESTORE=production-backup`, the environment on
@@ -808,7 +813,7 @@ production's instance) and `_REQUESTER`. Everything that changes the environment
 inside that run, in the pipeline's order: the release is validated (the record gate
 holds; the hotfix check is skipped, since the database is about to be replaced), the
 image is built, the stack's plan replaces the database (and, in the first environment,
-the file bucket) and the apply deletes the Firestore database's documents, the jobs are
+the file stores' buckets) and the apply deletes the Firestore database's documents, the jobs are
 created, the migrations apply
 (and the seed, where the placement's seed list names the environment), the revision
 deploys, traffic moves, and the record carries the reason and the requester. Before the
