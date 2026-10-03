@@ -3,9 +3,13 @@
 An application in the sites layout on the cccteam resource stack. Two sites — the console
 and the portal — each its own server, hostname, router, browser application, and
 generator, over one database, one policy store, and one session store. Tenancy as data, as
-in a flat application: the `Tenants` table is the domain universe,
-tenant-scoped routes live under `/api/tenants/{tenantID}/`, and tenant existence is
-concealed from logins that hold nothing there.
+in a flat application: the `Tenant` record (`@tenant`) over the `Tenants` table is the
+domain universe, declared in both sites' resource packages (the console serves it, the
+portal's declaration has its handlers and routes suppressed), tenant-scoped routes live
+under `/api/tenants/{tenantID}/`, the shared data level's tenant roster keeps the tenants
+current on every instance of both sites (a tenant created through the console's API is
+usable at once, without a restart), and tenant existence is concealed from logins that
+hold nothing there.
 
 ## Layout
 

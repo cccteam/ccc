@@ -32,7 +32,7 @@ function defineResourceMap<T extends ResourceMap>(map: T): T & ResourceMap {
 
 const resourceMap = defineResourceMap({
   [Resources.Announcements]: {
-    route: 'tenants/{domain}/announcements',
+    route: 'tenants/{tenantID}/announcements',
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
@@ -66,7 +66,7 @@ export function resourceMeta(resource: Resource): ResourceMeta {
   }
 }
 
-export const DomainRouteParam = 'domain';
+export const DomainRouteParam = 'tenantID';
 
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Announcements]: PermissionScopes.domain,

@@ -44,6 +44,11 @@ func TestParseGeneratorProblems(t *testing.T) {
 			wantProblems: []string{"unknown option generation.WithFrobnicator"},
 		},
 		{
+			name:         "retired option",
+			options:      `generation.WithDomainRoute("tenants"),`,
+			wantProblems: []string{"retired option generation.WithDomainRoute: the tenant segment derives from the tenant record, the resource struct annotated @tenant; remove the option and annotate the record"},
+		},
+		{
 			name:         "non-literal argument",
 			options:      `generation.GenerateHandlers(dir),`,
 			wantProblems: []string{"GenerateHandlers argument dir is not a literal"},

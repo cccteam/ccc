@@ -362,3 +362,46 @@ func constructionOf(fd *ast.FuncDecl, typeName string) ast.Stmt {
 
 	return nil
 }
+
+// ReplaceNilArgument rewrites, inside the named method or function, the first call to
+// a function or method named callee whose last argument is the identifier nil, so that
+// argument reads replacement. The result is formatted.
+func ReplaceNilArgument(rel string, src []byte, funcName, callee, replacement string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	var fd *ast.FuncDecl
+	for _, d := range p.file.Decls {
+		if f, ok := d.(*ast.FuncDecl); ok && f.Name.Name == funcName {
+			fd = f
+
+			break
+		}
+	}
+	if fd == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
+	}
+	var arg ast.Expr
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		if arg != nil {
+			return false
+		}
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) == 0 || calleeName(call.Fun) != callee {
+			return true
+		}
+		if id, ok := call.Args[len(call.Args)-1].(*ast.Ident); ok && id.Name == "nil" {
+			arg = id
+
+			return false
+		}
+
+		return true
+	})
+	if arg == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s makes no %s call whose last argument is nil", rel, funcName, callee)
+	}
+
+	return p.splice(rel, p.offset(arg.Pos()), p.offset(arg.End()), replacement)
+}

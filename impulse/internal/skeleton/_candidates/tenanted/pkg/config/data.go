@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	stderrors "errors"
 	"fmt"
 	"log"
 	"slices"
@@ -12,7 +11,7 @@ import (
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
-	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/app"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
 	"github.com/cccteam/ccc/resource"
@@ -20,7 +19,6 @@ import (
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
-	"google.golang.org/api/iterator"
 )
 
 // SpannerSettings identifies the application's database. It is the first half of the
@@ -110,8 +108,7 @@ type DataConfiguration struct {
 	resourceClient *resource.SpannerClient
 	cursorKey      *resource.CursorKey
 	staff          *staff.Auth
-	domains        []accesstypes.Domain
-	domainSet      map[accesstypes.Domain]bool
+	tenants        *resource.TenantRoster
 	live           *livefirestore.Service
 }
 
@@ -168,8 +165,8 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		staff:             staffAuth,
 		live:              liveService,
 	}
-	if err := conf.loadDomains(ctx); err != nil {
-		return nil, errors.Wrap(err, "loadDomains()")
+	if err := conf.startTenants(ctx); err != nil {
+		return nil, errors.Wrap(err, "startTenants()")
 	}
 
 	return conf, nil
@@ -261,55 +258,27 @@ func (c *DataConfiguration) LiveOrigins() []string {
 	return c.env.Firestore.BrowserOrigins()
 }
 
-// Domains lists the tenants as permission domains, from the roster read at startup.
-func (c *DataConfiguration) Domains(_ context.Context) ([]accesstypes.Domain, error) {
-	return c.domains, nil
+// startTenants builds the tenant roster over the Tenant record with the generated
+// constructor and starts it: the roster reads the Tenants table once, fails the start
+// when it cannot (the schema is behind the release), and keeps the set current until
+// ctx ends, rereading on the tenants signal the record's generated write paths publish
+// through the live service (a tenant created or deleted on any instance) and at its
+// backstop. The generated DomainGuard and the consolidated dispatcher ask it before a
+// tenant-scoped request runs, with no read and no wait, so a new tenant is usable at
+// once, on every instance, without a restart.
+func (c *DataConfiguration) startTenants(ctx context.Context) error {
+	c.tenants = app.NewTenantRoster(c.resourceClient, resource.WithTenantSignals(c.live))
+	if err := c.tenants.Start(ctx); err != nil {
+		return errors.Wrap(err, "resource.TenantRoster.Start()")
+	}
+
+	return nil
 }
 
-// DomainVisible reports whether the domain is a known tenant AND the user holds at
-// least one grant in it — existence from the startup roster, foothold from the
-// permission engine's in-memory policy snapshot (no store read, so it is safe inside
-// the consolidated handler's mutation transaction). Tenant existence is concealed: a
-// caller with no foothold is answered exactly like the tenant does not exist.
-func (c *DataConfiguration) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	if !c.domainSet[domain] {
-		return false, nil
-	}
-
-	visible, err := c.staff.Access().UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
-	if err != nil {
-		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
-	}
-
-	return visible, nil
-}
-
-// loadDomains reads the tenant roster from the Tenants table once at startup. The
-// roster is cached rather than queried per check: the generated consolidated handler
-// consults DomainVisible inside the mutation transaction, where opening another read
-// is illegal on the emulator. A process restart picks up new tenants.
-func (c *DataConfiguration) loadDomains(ctx context.Context) error {
-	iter := c.spannerClient.Single().Query(ctx, cloudspanner.Statement{SQL: "SELECT Id FROM Tenants ORDER BY Id"})
-	defer iter.Stop()
-
-	c.domainSet = make(map[accesstypes.Domain]bool)
-	for {
-		row, err := iter.Next()
-		if err != nil {
-			if stderrors.Is(err, iterator.Done) {
-				return nil
-			}
-
-			return errors.Wrap(err, "spanner.RowIterator.Next()")
-		}
-
-		var id string
-		if err := row.Columns(&id); err != nil {
-			return errors.Wrap(err, "spanner.Row.Columns()")
-		}
-		c.domains = append(c.domains, accesstypes.Domain(id))
-		c.domainSet[accesstypes.Domain(id)] = true
-	}
+// TenantRoster returns the application's tenant roster: the tenants as the generated
+// guard knows them, and the roster a session's tenant list is filtered from.
+func (c *DataConfiguration) TenantRoster() *resource.TenantRoster {
+	return c.tenants
 }
 
 // cookieKey returns the configured session cookie key, or an ephemeral one when none is

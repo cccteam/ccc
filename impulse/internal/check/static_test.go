@@ -72,7 +72,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			name: "tenancy-wired untenanted with a tenant-scoped struct", fixture: "flat", check: tenancyWired{},
 			wantStatus: Fail, wantSummary: "1 tenancy wiring problem(s) in an untenanted application",
 			wantDetails: []string{
-				"pkg/resources/beacons.go:8: Beacon is @permissionScope(domain), but no WithDomainRoute names the tenant segment; it is served under the default /domain/{domain}/ pair",
+				"pkg/resources/beacons.go:8: Beacon is @permissionScope(domain), but no struct in pkg/resources is annotated @tenant; a tenant-scoped resource needs a tenant record, the global resource whose rows are the tenants",
 			},
 		},
 		{
@@ -167,6 +167,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 				"Spanner   1.5.44     cmd/generate/resourcegenerator_pilots/main.go",
 				"Spanner   1.5.44     cmd/generate/resourcegenerator_shared/main.go",
 				"Spanner   1.5.44     cmd/generate/resourcegenerator_tugs/main.go",
+				"no process file or test harness starts the Firestore emulator (the Cloud SDK emulators image, google-cloud-cli:<version>-emulators); development cannot start without it, since the data level refuses to start with neither APP_FIRESTORE_DATABASE nor FIRESTORE_EMULATOR_HOST set",
 			},
 		},
 		{

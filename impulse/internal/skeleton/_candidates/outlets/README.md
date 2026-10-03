@@ -9,9 +9,11 @@ like any user. Every browser outlet's API sits under its application's mount pat
 application is mounted at `/`: an installed browser application's scope is every URL under
 its start, so one at `/` would own the origin and the other would never get its own install
 prompt. The root alone redirects to `/console/`; every other unmatched path is 404.
-Tenancy as data: the `Tenants` table is the domain universe, tenant-scoped routes live
-under `/console/api/tenants/{tenantID}/`, and tenant existence is concealed from logins that hold
-nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
+Tenancy as data: the `Tenant` record (`@tenant`) over the `Tenants` table is the domain
+universe, tenant-scoped routes live under `/console/api/tenants/{tenantID}/` (and under each
+outlet's prefix), the data level's tenant roster keeps the tenants current on every
+instance (a tenant created through the API is usable at once, without a restart), and
+tenant existence is concealed from logins that hold nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
 is where it holds a grant, and a grant needs a tenant-scoped resource to land on, so the
 application ships one. `Reading` is machines-only. The console and the portal each show who
 is signed in, the tenants they can pick, and the digest for the selected tenant.

@@ -17,7 +17,6 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/app"
-	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
@@ -66,33 +65,15 @@ type servedConfigurer struct {
 	auth    *staff.Auth
 	members *members.Auth
 	live    *live.Fake
+	tenants *resource.TenantRoster
 }
 
-// Domains lists the development tenants: the roster the served stack filters by the
-// foothold answer of the engine of the auth the request came through, as production's
-// DataConfiguration.Domains lists the table.
-func (c *servedConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error) {
-	return []accesstypes.Domain{north, south}, nil
-}
-
-// DomainVisible composes the development roster with the foothold answer of the engine
-// of the auth the request came through — the same composition production's
-// DataConfiguration.DomainVisible performs.
-func (c *servedConfigurer) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	if domain != north && domain != south {
-		return false, nil
-	}
-
-	engine := c.auth.Access()
-	if auth.Name(ctx) == members.Name {
-		engine = c.members.Access()
-	}
-	visible, err := engine.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
-	if err != nil {
-		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
-	}
-
-	return visible, nil
+// TenantRoster is the tenant roster over the test database, read from the Tenants table
+// the development seed filled and kept current as production's data level keeps it: a
+// tenant written through the API reaches it after the commit, and the served stack
+// filters it by the foothold answer of the engine of the auth the request came through.
+func (c *servedConfigurer) TenantRoster() *resource.TenantRoster {
+	return c.tenants
 }
 
 func (c *servedConfigurer) ResourceClient() resource.Client {
@@ -157,9 +138,15 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	// The live service both engines signal policy changes through and the App follows
-	// its feature flags from: in-memory in the suites.
+	// The live service both engines signal policy changes through, the App follows its
+	// feature flags from, and the tenant roster reloads on: in-memory in the suites.
 	svc := live.NewFake()
+	// The tenant roster, started over the seeded tenants as production's data level
+	// starts it; a tenant the suites create through the API reaches it after the commit.
+	roster := app.NewTenantRoster(resource.NewSpannerClient(db.Client), resource.WithTenantSignals(svc))
+	if err := roster.Start(ctx); err != nil {
+		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
+	}
 	staffAuth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
@@ -230,7 +217,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	waitForDomains(ctx, t, accessClient, machinesUser, []accesstypes.Domain{north})
 	waitForDomains(ctx, t, membersAccess, clientUser, []accesstypes.Domain{north})
 
-	a := app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth, live: svc})
+	a := app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth, live: svc, tenants: roster})
 	// The App reads its feature flags as it is built; Start reports a copy that could
 	// not be read and follows the table until the test ends.
 	if err := a.Start(ctx); err != nil {

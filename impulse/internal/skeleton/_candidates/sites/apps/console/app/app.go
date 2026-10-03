@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/cccteam/access"
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
@@ -46,22 +45,26 @@ func cspPolicy(liveOrigins []string) string {
 }
 
 // Configurer carries the dependencies for an App: the database client, the permission
-// engine the handlers check against, the tenancy seam, the session manager, the request
+// engine the handlers check against, the tenant roster, the session manager, the request
 // validator, the log exporter, and where the site's built bundle lives. Tenant
-// existence is concealed (generation.WithConcealedDomains): DomainVisible answers
-// whether the tenant exists AND the caller holds at least one grant in it, so a prober
-// cannot confirm a tenant exists from the rejection shape.
+// existence is concealed (generation.WithConcealedDomains): the generated DomainGuard
+// asks the roster whether the tenant exists and the session's permissions whether the
+// caller holds at least one grant in it, and answers both "no" alike, so a prober cannot
+// confirm a tenant exists from the rejection shape.
 type Configurer interface {
 	ResourceClient() resource.Client
 	// CursorKey seals the cursors every paged list issues: one key per application,
 	// derived from the cookie key, so a cursor is never a cookie.
 	CursorKey() *resource.CursorKey
 	Access() access.Controller
-	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
-	// Domains lists the application's tenants, the roster a session's tenant list is
-	// filtered from: the permission engine holds no tenant list, so the picker's question
-	// is this roster asked, tenant by tenant, whether the session holds a grant there.
-	Domains(ctx context.Context) ([]accesstypes.Domain, error)
+	// TenantRoster is the application's tenant roster, shared by the sites as the data
+	// level is: the tenants as the running application knows them, built by the data
+	// level with the console site's generated constructor (NewTenantRoster) and kept
+	// current on every instance without a restart. The generated DomainGuard asks it
+	// whether a domain is a tenant, and a session's tenant list is its Domains filtered
+	// by where the principal holds a grant, since the permission engine holds no tenant
+	// list.
+	TenantRoster() *resource.TenantRoster
 	// Staff returns the auth this surface binds to: the staff auth, whose session manager
 	// the App composes its login and session handlers from.
 	Staff() *staff.Auth
@@ -87,8 +90,7 @@ type App struct {
 	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
-	domainVisible  func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
-	domains        resource.DomainRoster
+	tenants        *resource.TenantRoster
 	validate       *validator.Validate
 	logExporter    logger.Exporter
 	dist           string
@@ -107,8 +109,7 @@ func New(cfg Configurer) *App {
 		access:         cfg.Access(),
 		resourceClient: cfg.ResourceClient(),
 		cursorKey:      cfg.CursorKey(),
-		domainVisible:  cfg.DomainVisible,
-		domains:        cfg.Domains,
+		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
 		dist:           cfg.Dist(),
@@ -199,14 +200,15 @@ func serveSPA(assets http.Handler) http.HandlerFunc {
 // listing the tenants of the application's roster where the principal holds a grant,
 // and attenuated by the session's permission mask.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
-	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.domains)
+	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.tenants.Domains)
 }
 
-// DomainVisible reports whether the tenant exists and the user holds at least one grant
-// in it; the generated DomainGuard middleware and the consolidated dispatcher answer
-// "no" with the same not-found an unknown tenant gets.
-func (a *App) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	return a.domainVisible(ctx, user, domain)
+// TenantRoster returns the application's tenant roster, the generated contract's
+// accessor: the generated DomainGuard and the consolidated dispatcher ask it whether a
+// domain is a tenant before a tenant-scoped request runs, and the Tenant record's
+// generated write paths (the console's) add and remove tenants in it after their commit.
+func (a *App) TenantRoster() *resource.TenantRoster {
+	return a.tenants
 }
 
 // Validator returns the request validator the generated decoder constructors draw on.

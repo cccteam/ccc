@@ -47,30 +47,18 @@ const (
 // database, the real permission engine, and a real session manager, so the suites
 // exercise the same served stack main composes.
 type servedConfigurer struct {
-	db   *initiator.SpannerDB
-	auth *staff.Auth
-	live *live.Fake
+	db      *initiator.SpannerDB
+	auth    *staff.Auth
+	live    *live.Fake
+	tenants *resource.TenantRoster
 }
 
-// Domains lists the development tenants: the roster the served stack filters by the
-// engine's foothold answer, as production's DataConfiguration.Domains lists the table.
-func (c *servedConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error) {
-	return []accesstypes.Domain{north, south}, nil
-}
-
-// DomainVisible composes the development roster with the engine's foothold answer — the
-// same composition production's DataConfiguration.DomainVisible performs.
-func (c *servedConfigurer) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	if domain != north && domain != south {
-		return false, nil
-	}
-
-	visible, err := c.auth.Access().UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
-	if err != nil {
-		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
-	}
-
-	return visible, nil
+// TenantRoster is the tenant roster over the test database, read from the Tenants table
+// the development seed filled and kept current as production's data level keeps it: a
+// tenant written through the API reaches it after the commit, and the served stack
+// filters it by the engine's foothold answer.
+func (c *servedConfigurer) TenantRoster() *resource.TenantRoster {
+	return c.tenants
 }
 
 func (c *servedConfigurer) ResourceClient() resource.Client {
@@ -125,9 +113,15 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	// The live service the engine signals policy changes through and the App follows
-	// its feature flags from: in-memory in the suites.
+	// The live service the engine signals policy changes through, the App follows its
+	// feature flags from, and the tenant roster reloads on: in-memory in the suites.
 	svc := live.NewFake()
+	// The tenant roster, started over the seeded tenants as production's data level
+	// starts it; a tenant the suites create through the API reaches it after the commit.
+	roster := app.NewTenantRoster(resource.NewSpannerClient(db.Client), resource.WithTenantSignals(svc))
+	if err := roster.Start(ctx); err != nil {
+		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
+	}
 	auth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
@@ -167,7 +161,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// visible to the engine before serving.
 	waitForDomains(ctx, t, accessClient, memberUser, []accesstypes.Domain{north})
 
-	a := app.New(&servedConfigurer{db: db, auth: auth, live: svc})
+	a := app.New(&servedConfigurer{db: db, auth: auth, live: svc, tenants: roster})
 	// The App reads its feature flags as it is built; Start reports a copy that could
 	// not be read and follows the table until the test ends.
 	if err := a.Start(ctx); err != nil {

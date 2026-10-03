@@ -37,7 +37,7 @@ function defineApiDescriptor<T extends ApiDescriptor>(descriptor: T): T {
 
 /** The generated API as the @cccteam/resource runtime addresses it. Routes carry no API prefix. */
 export const apiDescriptor = defineApiDescriptor({
-  domainRoute: { segment: 'tenants', param: 'domain' },
+  domainRoute: { segment: 'tenants', param: 'tenantID' },
   consolidatedRoute: 'resources',
   permissionDigestRoute: 'permission-digest',
   userDomainsRoute: 'user-domains',

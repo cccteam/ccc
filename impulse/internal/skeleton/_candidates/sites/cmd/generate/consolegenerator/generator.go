@@ -27,10 +27,11 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		),
 		generation.GenerateHandlerTests("apps/console/test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment
-		// pair: /api/tenants/{tenantID}/... . The tenant is the permission domain.
-		generation.WithDomainRoute("tenants"),
-		// Tenant existence is concealed: a tenant the caller holds no grant in answers
-		// exactly like a tenant that does not exist.
+		// pair, /api/tenants/{tenantID}/..., which the generator derives from the tenant
+		// record: Tenant, the resource struct annotated @tenant in this site's resource
+		// package. The tenant is the permission domain. Tenant existence is concealed: a
+		// tenant the caller holds no grant in answers exactly like a tenant that does not
+		// exist.
 		generation.WithConcealedDomains(),
 		generation.WithConsolidatedHandlers("resources", true),
 		generation.WithSpannerEmulatorVersion("1.5.56"),

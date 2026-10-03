@@ -21,8 +21,12 @@ import (
 )
 
 // testUser is the assumed identity every request carries; the suites script what it is
-// permitted to do per test via grants.
-const testUser = "authz-user"
+// permitted to do per test via grants. testDomain is the generated matrix's one domain
+// value, which newTestHandler adds to the test application's tenant roster.
+const (
+	testUser   = "authz-user"
+	testDomain = "testDomain"
+)
 
 // fakeAccess scripts access.Controller's permission checks. Every Controller method
 // the pipeline does not consume panics through the embedded nil interface, keeping the
@@ -38,6 +42,15 @@ func (f *fakeAccess) ForUser(user accesstypes.User) *access.UserChecker {
 
 func (f *fakeAccess) ForRole(role accesstypes.Role) *access.RoleChecker {
 	return access.NewRoleChecker(f, role)
+}
+
+// UserHasGrants answers the concealed-domain foothold question the generated DomainGuard
+// and the consolidated dispatcher ask after the tenant roster: the scripted table is
+// domain-blind, so any grant at all is a foothold in the matrix's domain, and a case
+// carrying no grants has no foothold and is answered as if the domain did not exist, per
+// the generated suite's contract.
+func (f *fakeAccess) UserHasGrants(_ context.Context, _ accesstypes.User, _ accesstypes.Scope) (bool, error) {
+	return len(f.g) > 0, nil
 }
 
 func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
@@ -66,9 +79,10 @@ func (f *fakeAccess) decide(perm accesstypes.Permission, resources []accesstypes
 // owns no router, these suites compose the API surface through router.NewTestRouter,
 // and nothing on that path touches the session.
 type testConfigurer struct {
-	db   *initiator.SpannerDB
-	g    grants
-	live *live.Fake
+	db      *initiator.SpannerDB
+	g       grants
+	live    *live.Fake
+	tenants *resource.TenantRoster
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
@@ -124,18 +138,13 @@ func (c *testConfigurer) LiveOrigins() []string {
 	return nil
 }
 
-// Domains lists the scripted roster: the generated matrix's one domain value, which
-// resource.SessionPermissions filters by the case's grants.
-func (c *testConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error) {
-	return []accesstypes.Domain{"testDomain"}, nil
-}
-
-// DomainVisible recognizes the generated matrix's domain value and honors the scripted
-// grants, per the generated suite's concealed-domain contract: a case carrying no
-// grants has no foothold and is answered as if the domain did not exist. The empty
-// test schema holds no tenant rows, so the roster is scripted rather than read.
-func (c *testConfigurer) DomainVisible(_ context.Context, _ accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	return domain == "testDomain" && len(c.g) > 0, nil
+// TenantRoster is the suites' tenant roster: the generated matrix's one domain value,
+// added rather than read, since the empty test schema holds no tenant row and nothing
+// starts the roster. resource.SessionPermissions filters it by the case's grants, and
+// under concealed domains a case carrying no grants has no foothold and is answered as
+// if the domain did not exist, which the scripted engine's UserHasGrants decides.
+func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
+	return c.tenants
 }
 
 // newTestHandler composes the pipeline under test: the application's generated
@@ -144,7 +153,9 @@ func (c *testConfigurer) DomainVisible(_ context.Context, _ accesstypes.User, do
 func newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handler {
 	t.Helper()
 
-	a := app.New(&testConfigurer{db: db, g: g})
+	roster := app.NewTenantRoster(resource.NewSpannerClient(db.Client))
+	roster.Add(testDomain)
+	a := app.New(&testConfigurer{db: db, g: g, tenants: roster})
 	// The App reads its feature flags as it is built, so a suite that flips a flag
 	// before newTestHandler drives the App in that state; Start reports a copy that
 	// could not be read and follows the table until the test ends.

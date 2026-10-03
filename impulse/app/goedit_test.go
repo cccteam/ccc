@@ -90,10 +90,10 @@ func TestGoEdits(t *testing.T) {
 		{
 			name: "a literal element on a single-line literal",
 			edit: func() ([]byte, error) {
-				return AddLiteralElement("app.go", []byte(appSource), "New", "App", "domainVisible: cfg.DomainVisible")
+				return AddLiteralElement("app.go", []byte(appSource), "New", "App", "tenants: cfg.TenantRoster()")
 			},
 			want: strings.Replace(appSource, "\treturn &App{access: cfg.Access(), consoleDist: cfg.ConsoleDist()}\n",
-				"\treturn &App{access: cfg.Access(), consoleDist: cfg.ConsoleDist(),\n\t\tdomainVisible: cfg.DomainVisible,\n\t}\n", 1),
+				"\treturn &App{access: cfg.Access(), consoleDist: cfg.ConsoleDist(),\n\t\ttenants: cfg.TenantRoster(),\n\t}\n", 1),
 		},
 		{
 			name: "a literal element on a multi-line literal",

@@ -431,7 +431,7 @@ func (s *generatedHandlersStub) LiveToken() http.HandlerFunc {
 }
 
 // DomainGuard passes requests through unchecked: the routing tests exercise dispatch,
-// not the guard (guard behavior is covered where DomainExists is real).
+// not the guard (guard behavior is covered where the tenant roster is real).
 func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc { return next }
 }

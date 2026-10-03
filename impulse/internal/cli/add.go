@@ -238,14 +238,18 @@ func newAddTenancy() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tenancy",
 		Short: "Make the application tenanted: a tenant table as the domain universe",
-		Long: `tenancy makes a flat, untenanted application tenanted. The generator program gains
-WithDomainRoute (the table's kebab-case name) and WithConcealedDomains; the tenant table
-becomes the next schema migration, with two development tenants seeded as a data
-migration beside it; the tenant-record struct is added to the resource package as a
-global resource; the data level gains the tenant roster read at startup and the
-DomainVisible seam (a new file plus a field and the load in DataConfiguration); the app
-exposes the seam to the generated code (a new file plus the Configurer and App edits);
-and the reference's tenant service is copied into the browser app.
+		Long: `tenancy makes a flat, untenanted application tenanted. The tenant table becomes the
+next schema migration, with two development tenants seeded as a data migration beside
+it; the tenant-record struct is added to the resource package as a global resource
+annotated @tenant, from which the generator derives the tenant segment and emits the
+constructor of the tenant roster; the generator program gains WithConcealedDomains; the
+data level gains the roster, built with that constructor over the live service's tenants
+signal and started where the configuration is built (a new file plus a field and the
+start in DataConfiguration), so a tenant created on any instance is usable at once,
+without a restart; the app exposes the roster to the generated code as TenantRoster()
+and hands its Domains to the session permissions (a new file plus the Configurer, App
+and UserPermissions edits); and the reference's tenant service is copied into the
+browser app.
 
 Which resources become tenant-scoped and how their rows are assigned, the bootstrap
 order, the harnesses, the tests, and the tenant picker are handed to the agent with the

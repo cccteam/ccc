@@ -142,6 +142,14 @@ func FlavorIdent(flavor string) string {
 	return ""
 }
 
+// retiredOptions are the generation option constructors an earlier release knew and the
+// framework has since removed, each with where its declaration went. A program still
+// using one fails the generator-program check naming the replacement, since the
+// framework no longer compiles it.
+var retiredOptions = map[string]string{
+	"WithDomainRoute": "the tenant segment derives from the tenant record, the resource struct annotated @tenant; remove the option and annotate the record",
+}
+
 // optionSpec describes one known option constructor: what it returns and what it takes.
 type optionSpec struct {
 	kind     optionKind
@@ -161,7 +169,6 @@ var knownOptions = map[string]optionSpec{
 	optGenerateRoutes:            {kind: kindResourceOption, params: []paramKind{paramString, paramString}, variadic: paramOutletOption},
 	optGenerateRouter:            {kind: kindResourceOption},
 	"WithRouterOutlet":           {kind: kindResourceOption, params: []paramKind{paramString, paramString}, variadic: paramOutletOption},
-	"WithDomainRoute":            {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithConcealedDomains":       {kind: kindResourceOption},
 	optGenerateTypescript:        {kind: kindResourceOption, params: []paramKind{paramString}, variadic: paramTSOption},
 	"WithManualResources":        {kind: kindResourceOption, variadic: paramComposite},

@@ -33,20 +33,70 @@ type Lens struct {
 	ID string ` + "`spanner:\"Id\"`" + `
 }
 `
-	tenantsMigration = "CREATE TABLE Tenants (\n  Id STRING(64) NOT NULL,\n) PRIMARY KEY (Id);\n"
+	// tenantRecord is the tenant record, annotated @tenant (line 8).
+	tenantRecord = `package resources
+
+type (
+	// Tenant is the tenant record.
+	//
+	// @resource
+	// @tenant
+	Tenant struct {
+		ID   string ` + "`spanner:\"Id\"`" + `
+		Name string ` + "`spanner:\"Name\"`" + `
+	}
+)
+`
+	// configHeader opens a data level holding the roster; each shape below constructs it
+	// on line 15.
+	configHeader = `package config
+
+import (
+	"context"
+
+	"example.com/harbor/app"
+	"github.com/cccteam/ccc/resource"
+)
+
+type DataConfiguration struct {
+	tenants *resource.TenantRoster
+}
+
+`
+	// wiredConfig builds the roster with the generated constructor, hands it the tenants
+	// signal, and starts it.
+	wiredConfig = configHeader + `func (c *DataConfiguration) startTenants(ctx context.Context, client resource.Client, signals resource.TenantSignals) error {
+	c.tenants = app.NewTenantRoster(client, resource.WithTenantSignals(signals))
+
+	return c.tenants.Start(ctx)
+}
+`
+	// bareConfig builds the roster without the signal and never starts it.
+	bareConfig = configHeader + `func (c *DataConfiguration) build(client resource.Client) {
+	c.tenants = app.NewTenantRoster(client)
+}
+`
+	// returnedConfig returns the roster from a helper, so nothing binds it to a name.
+	returnedConfig = configHeader + `func newRoster(client resource.Client, signals resource.TenantSignals) *resource.TenantRoster {
+	return app.NewTenantRoster(client, resource.WithTenantSignals(signals))
+}
+`
 )
 
 func TestTenancyWired(t *testing.T) {
 	t.Parallel()
 
-	tenanted := program("pkg/resources",
+	site := program("pkg/resources",
 		`generation.GenerateHandlers("app"),`,
 		`generation.GenerateRoutes("pkg/router", "api"),`,
-		`generation.WithDomainRoute("tenants"),`,
 	)
-	untenanted := program("pkg/resources",
-		`generation.GenerateHandlers("app"),`,
-		`generation.GenerateRoutes("pkg/router", "api"),`,
+	consoleSite := program("apps/console/pkg/resources",
+		`generation.GenerateHandlers("apps/console/app"),`,
+		`generation.GenerateRoutes("apps/console/pkg/router", "api"),`,
+	)
+	portalSite := program("apps/portal/pkg/resources",
+		`generation.GenerateHandlers("apps/portal/app"),`,
+		`generation.GenerateRoutes("apps/portal/pkg/router", "api"),`,
 	)
 
 	tests := []struct {
@@ -59,45 +109,75 @@ func TestTenancyWired(t *testing.T) {
 		{
 			name: "tenanted and wired",
 			files: map[string]string{
-				"cmd/generate/main.go":                    tenanted,
-				"pkg/resources/announcements.go":          tenantScopedResource,
-				"schema/migrations/000005_Tenants.up.sql": tenantsMigration,
+				"cmd/generate/main.go":           site,
+				"pkg/resources/announcements.go": tenantScopedResource,
+				"pkg/resources/tenants.go":       tenantRecord,
+				"pkg/config/data.go":             wiredConfig,
 			},
 			wantStatus:  Pass,
-			wantSummary: "tenant record Tenants (schema/migrations/000005_Tenants.up.sql); 1 tenant-scoped resource(s)",
+			wantSummary: "tenant record Tenant; 1 tenant-scoped resource(s); roster built by NewTenantRoster at pkg/config/data.go:15",
 		},
 		{
-			name: "tenanted with nothing behind it",
+			name: "tenanted with nothing behind the record",
 			files: map[string]string{
-				"cmd/generate/main.go":              tenanted,
-				"pkg/resources/lenses.go":           globalResource,
-				"schema/migrations/000001_X.up.sql": "CREATE TABLE Lenses (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\n",
+				"cmd/generate/main.go":     site,
+				"pkg/resources/lenses.go":  globalResource,
+				"pkg/resources/tenants.go": tenantRecord,
 			},
 			wantStatus:  Fail,
 			wantSummary: "2 tenancy wiring problem(s)",
 			wantDetails: []string{
-				`WithDomainRoute("tenants"): no migration creates a table named like it (the tenant-record table)`,
-				"no struct is annotated @permissionScope(domain): every resource is global, and the tenant segment serves nothing",
+				"cmd/generate/main.go: no struct in pkg/resources is annotated @permissionScope(domain): every resource is global, and the tenant segment serves nothing",
+				"pkg/resources/tenants.go:8: no file outside tests calls NewTenantRoster, the generated constructor of the tenant roster over Tenant; build the roster in the data level (NewTenantRoster(client, resource.WithTenantSignals(<live service>))) and start it (Start) before serving, so the generated DomainGuard knows the tenants and a tenant created on one instance reaches the others",
 			},
 		},
 		{
-			name: "tenanted, the table created in another spelling",
+			name: "a roster handed no signal and never started",
 			files: map[string]string{
-				"cmd/generate/main.go": program("pkg/resources",
-					`generation.GenerateHandlers("app"),`,
-					`generation.GenerateRoutes("pkg/router", "api"),`,
-					`generation.WithDomainRoute("space-stations"),`,
-				),
-				"pkg/resources/announcements.go":                tenantScopedResource,
-				"schema/migrations/000005_SpaceStations.up.sql": "create table if not exists `SpaceStations` (Id STRING(64) NOT NULL) PRIMARY KEY (Id);\n",
+				"cmd/generate/main.go":           site,
+				"pkg/resources/announcements.go": tenantScopedResource,
+				"pkg/resources/tenants.go":       tenantRecord,
+				"pkg/config/data.go":             bareConfig,
+			},
+			wantStatus:  Fail,
+			wantSummary: "2 tenancy wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/data.go:15: NewTenantRoster is handed no resource.WithTenantSignals; pass the live service the data level opens, so a tenant created on another instance reaches this one at once rather than at the roster's backstop",
+				"pkg/config/data.go:15: no file in pkg/config calls Start on the roster NewTenantRoster builds (tenants), so it is never loaded and the generated DomainGuard knows no tenant; start it where the data level is built and fail the start on its error",
+			},
+		},
+		{
+			name: "a roster returned from a helper is noted, not followed",
+			files: map[string]string{
+				"cmd/generate/main.go":           site,
+				"pkg/resources/announcements.go": tenantScopedResource,
+				"pkg/resources/tenants.go":       tenantRecord,
+				"pkg/config/data.go":             returnedConfig,
 			},
 			wantStatus:  Pass,
-			wantSummary: "tenant record SpaceStations (schema/migrations/000005_SpaceStations.up.sql); 1 tenant-scoped resource(s)",
+			wantSummary: "tenant record Tenant; 1 tenant-scoped resource(s); roster built by NewTenantRoster at pkg/config/data.go:15",
+			wantDetails: []string{
+				"pkg/config/data.go:15: NewTenantRoster's result is not bound to a variable or a field here, so whether Start is called on it was not read",
+			},
+		},
+		{
+			name: "sites sharing one roster",
+			files: map[string]string{
+				"cmd/generate/console/main.go":                consoleSite,
+				"cmd/generate/portal/main.go":                 portalSite,
+				"apps/console/pkg/resources/announcements.go": tenantScopedResource,
+				"apps/console/pkg/resources/tenants.go":       tenantRecord,
+				"apps/portal/pkg/resources/announcements.go":  tenantScopedResource,
+				"apps/portal/pkg/resources/tenants.go":        tenantRecord,
+				"pkg/config/data.go":                          wiredConfig,
+			},
+			wantStatus:  Pass,
+			wantSummary: "tenant record Tenant; 2 tenant-scoped resource(s); roster built by NewTenantRoster at pkg/config/data.go:15",
 		},
 		{
 			name: "untenanted and clean",
 			files: map[string]string{
-				"cmd/generate/main.go":    untenanted,
+				"cmd/generate/main.go":    site,
 				"pkg/resources/lenses.go": globalResource,
 			},
 			wantStatus:  Pass,
@@ -106,13 +186,13 @@ func TestTenancyWired(t *testing.T) {
 		{
 			name: "untenanted with a tenant-scoped resource lying around",
 			files: map[string]string{
-				"cmd/generate/main.go":           untenanted,
+				"cmd/generate/main.go":           site,
 				"pkg/resources/announcements.go": tenantScopedResource,
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 tenancy wiring problem(s) in an untenanted application",
 			wantDetails: []string{
-				"pkg/resources/announcements.go:8: Announcement is @permissionScope(domain), but no WithDomainRoute names the tenant segment; it is served under the default /domain/{domain}/ pair",
+				"pkg/resources/announcements.go:8: Announcement is @permissionScope(domain), but no struct in pkg/resources is annotated @tenant; a tenant-scoped resource needs a tenant record, the global resource whose rows are the tenants",
 			},
 		},
 		{

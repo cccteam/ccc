@@ -130,28 +130,10 @@ func (a *App) scanGoFile(abs, rel string) error {
 		a.EnvTags = append(a.EnvTags, tags...)
 	}
 
-	if (bytes.Contains(data, []byte("@"+permissionScopeKeyword)) || bytes.Contains(data, []byte("@"+outletKeyword))) && !generated {
-		docs, err := parseStructDocs(rel, data)
-		if err != nil {
+	if !generated {
+		if err := a.scanAnnotations(rel, data); err != nil {
 			return err
 		}
-		for _, d := range docs {
-			if domainScopeRE.MatchString(d.Doc) {
-				a.DomainResources = append(a.DomainResources, DomainResource{File: rel, Line: d.Line, Name: d.Name})
-			}
-			for _, m := range outletRE.FindAllStringSubmatch(d.Doc, -1) {
-				member := OutletMember{File: rel, Line: d.Line, Name: d.Name}
-				for _, name := range strings.Split(m[1], ",") {
-					if name = strings.TrimSpace(name); name != "" {
-						member.Outlets = append(member.Outlets, name)
-					}
-				}
-				a.OutletMembers = append(a.OutletMembers, member)
-			}
-		}
-	}
-
-	if !generated {
 		if err := a.scanFeatures(rel, data); err != nil {
 			return err
 		}
@@ -219,6 +201,141 @@ func parseEngines(rel string, src []byte) ([]Engine, error) {
 	})
 
 	return engines, nil
+}
+
+// scanAnnotations records the file's struct annotations (@permissionScope(domain),
+// @tenant, @outlet) and its constructions of a tenant roster.
+func (a *App) scanAnnotations(rel string, data []byte) error {
+	if bytes.Contains(data, []byte("@"+permissionScopeKeyword)) || bytes.Contains(data, []byte("@"+outletKeyword)) || bytes.Contains(data, []byte("@"+tenantKeyword)) {
+		docs, err := parseStructDocs(rel, data)
+		if err != nil {
+			return err
+		}
+		for _, d := range docs {
+			if domainScopeRE.MatchString(d.Doc) {
+				a.DomainResources = append(a.DomainResources, DomainResource{File: rel, Line: d.Line, Name: d.Name})
+			}
+			if tenantRE.MatchString(d.Doc) {
+				a.TenantRecords = append(a.TenantRecords, TenantRecord{File: rel, Line: d.Line, Name: d.Name})
+			}
+			for _, m := range outletRE.FindAllStringSubmatch(d.Doc, -1) {
+				member := OutletMember{File: rel, Line: d.Line, Name: d.Name}
+				for _, name := range strings.Split(m[1], ",") {
+					if name = strings.TrimSpace(name); name != "" {
+						member.Outlets = append(member.Outlets, name)
+					}
+				}
+				a.OutletMembers = append(a.OutletMembers, member)
+			}
+		}
+	}
+
+	if bytes.Contains(data, []byte(rosterConstructorSuffix+"(")) {
+		rosters, err := parseRosterConstructions(rel, data)
+		if err != nil {
+			return err
+		}
+		a.RosterConstructions = append(a.RosterConstructions, rosters...)
+	}
+
+	return nil
+}
+
+// The generated tenant roster constructor's shape (New<Record>Roster) and the option
+// handing it the tenants signal.
+const (
+	rosterConstructorSuffix = "Roster"
+	tenantSignalsFunc       = "WithTenantSignals"
+)
+
+// rosterConstructorRE matches a generated tenant roster constructor's name.
+var rosterConstructorRE = regexp.MustCompile(`^New[A-Z][A-Za-z0-9]*` + rosterConstructorSuffix + `$`)
+
+// parseRosterConstructions returns every call in the file to a generated tenant roster
+// constructor, each with the name its result is bound to and whether a
+// resource.WithTenantSignals option is among its arguments.
+func parseRosterConstructions(rel string, src []byte) ([]RosterConstruction, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+
+	holders := rosterHolders(f)
+	var rosters []RosterConstruction
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name := calleeName(call.Fun)
+		if !rosterConstructorRE.MatchString(name) {
+			return true
+		}
+		r := RosterConstruction{File: rel, Line: fset.Position(call.Pos()).Line, Package: path.Dir(rel), Constructor: name, Holder: holders[call]}
+		for _, arg := range call.Args {
+			if option, ok := arg.(*ast.CallExpr); ok && calleeName(option.Fun) == tenantSignalsFunc {
+				r.Signals = true
+			}
+		}
+		rosters = append(rosters, r)
+
+		return true
+	})
+
+	return rosters, nil
+}
+
+// rosterHolders maps each call that is the right side of a definition or assignment, the
+// value of a declared variable, or the value of a composite literal element to the name
+// its result is bound to.
+func rosterHolders(f *ast.File) map[*ast.CallExpr]string {
+	holders := map[*ast.CallExpr]string{}
+	bind := func(target ast.Expr, value ast.Expr) {
+		call, ok := value.(*ast.CallExpr)
+		if !ok {
+			return
+		}
+		if name := calleeName(target); name != "" {
+			holders[call] = name
+		}
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			if len(n.Lhs) == len(n.Rhs) {
+				for i := range n.Lhs {
+					bind(n.Lhs[i], n.Rhs[i])
+				}
+			}
+		case *ast.ValueSpec:
+			if len(n.Names) == len(n.Values) {
+				for i := range n.Names {
+					bind(n.Names[i], n.Values[i])
+				}
+			}
+		case *ast.KeyValueExpr:
+			bind(n.Key, n.Value)
+		}
+
+		return true
+	})
+
+	return holders
+}
+
+// calleeName is the final name of an identifier or selector expression: the name a call
+// is made by, or the name a value is bound to (tenants for conf.tenants); empty for any
+// other expression.
+func calleeName(fun ast.Expr) string {
+	switch fun := fun.(type) {
+	case *ast.Ident:
+		return fun.Name
+	case *ast.SelectorExpr:
+		return fun.Sel.Name
+	default:
+		return ""
+	}
 }
 
 // scanFeatures records the file's feature flag declarations (resource.Feature constants)
@@ -489,14 +606,17 @@ func stripLeadingComments(data []byte) []byte {
 const (
 	permissionScopeKeyword = "permissionScope"
 	outletKeyword          = "outlet"
+	tenantKeyword          = "tenant"
 	accessImportPath       = "github.com/cccteam/access"
 )
 
 // domainScopeRE matches the @permissionScope(domain) struct annotation; outletRE
-// captures the names an @outlet(...) annotation lists.
+// captures the names an @outlet(...) annotation lists; tenantRE matches the @tenant
+// struct annotation, a line of its own in the doc comment.
 var (
 	domainScopeRE = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
 	outletRE      = regexp.MustCompile(`@` + outletKeyword + `\(([^)]*)\)`)
+	tenantRE      = regexp.MustCompile(`(?m)^\s*@` + tenantKeyword + `\s*$`)
 )
 
 // structDoc is one struct type declaration with its doc comment.

@@ -18,8 +18,10 @@ import (
 // outletWired verifies that every router outlet a program declares is wired through the
 // application: the router mounts the outlet's generated routes (the generated router by
 // construction, a hand-written one by calling generated<Outlet>Routes, which nothing else
-// makes it do), a session-serving outlet has a browser client generated for it, and that
-// client's development proxy forwards the outlet's prefix. The generator holds the rest:
+// makes it do), a session-serving outlet has a browser client generated for it, that
+// client's development proxy forwards the outlet's prefix, and the App hands the generated
+// handlers a live service rather than nil, since every session outlet serves the live
+// routes. The generator holds the rest:
 // an @outlet naming an undeclared outlet fails generation, a generated router whose
 // outlets do not each say how they authenticate fails generation, and the outlets' URL
 // spaces are proven disjoint by the generated tests.
@@ -67,7 +69,7 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 		}
 		live[i] = wiring
 		if wiring == liveUnwired {
-			notes = append(notes, fmt.Sprintf("%s: the App's %s returns nil, so no outlet serves live pages and a request carrying X-Subscribe is refused; hand it the live service the data level opens to serve them", pos, liveMethod))
+			details = append(details, fmt.Sprintf("%s: the App's %s returns nil, but the live service is required in every application: the generated router mounts the live routes on every session outlet and the generated handlers draw the service from this method; hand it the live service the data level opens", pos, liveMethod))
 		}
 		// The generated router mounts every declared outlet by construction and the
 		// regeneration check holds it to the program; a hand-written router is read.
@@ -118,9 +120,11 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 
 // liveWiring is how a site's App answers LiveService, the accessor the generated
 // handlers draw the live service from: absent (no such method; the application's
-// resource pin predates live pages), unwired (the method returns a bare nil, so no
-// outlet serves live pages), or wired. The generated router mounts the live routes on
-// every session outlet, so a wired App makes every session outlet live.
+// resource pin predates live pages), unwired (the method returns a bare nil), or wired.
+// The generated router mounts the live routes on every session outlet, so a wired App
+// makes every session outlet live, and an unwired App fails the check: the live service
+// is required in every application, whose data level refuses to start without one, so
+// an App answering nil serves live routes that would fail on every request.
 type liveWiring int
 
 const (

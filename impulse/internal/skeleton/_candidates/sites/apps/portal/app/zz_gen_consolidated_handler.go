@@ -58,14 +58,17 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 				switch httpio.Param[string](op.Req, "resource") {
 				case "tenants":
-					op, err := op.WithPrefixPattern("/tenants/{domain}/{resource}")
+					op, err := op.WithPrefixPattern("/tenants/{tenantID}/{resource}")
 					if err != nil {
 						return errors.Wrap(err, "resource.Operation.WithPrefixPattern()")
 					}
 
 					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
-					if ok, err := a.DomainVisible(ctx, userPermissions.User(), domain); err != nil {
-						return errors.Wrap(err, "DomainVisible()")
+					if !a.TenantRoster().Has(domain) {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
+					if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {
+						return errors.Wrap(err, "resource.UserPermissions.HasGrants()")
 					} else if !ok {
 						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 					}
@@ -77,7 +80,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "announcementDecoder.DecodeOperation()")
 						}
 
-						req, err := op.ReqWithPattern("/tenants/{domain}/{resource}/{id}")
+						req, err := op.ReqWithPattern("/tenants/{tenantID}/{resource}/{id}")
 						if err != nil {
 							return errors.Wrap(err, "op.ReqWithPattern()")
 						}

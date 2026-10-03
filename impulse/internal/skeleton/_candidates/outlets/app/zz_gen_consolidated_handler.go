@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -45,12 +46,17 @@ func (a *App) PatchResources() http.HandlerFunc {
 		)
 		userPermissions := a.UserPermissions(r)
 
+		// The roster follows the commit: the tenants this transaction creates and
+		// deletes reach it once the commit lands, never inside the transaction.
+		var tenantsAdded, tenantsRemoved []accesstypes.Domain
+
 		// The rows the transaction writes are collected for the live pages, published
 		// once the commit lands and before the answer, each under the domain its
 		// operation was decoded in.
 		ctx, touched := resource.CollectTouchedRows(ctx)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
+			tenantsAdded, tenantsRemoved = nil, nil
 			r, err := resource.CloneRequest(r)
 			if err != nil {
 				return errors.Wrap(err, "resource.CloneRequest()")
@@ -80,6 +86,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := resources.NewTenantCreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.TenantCreatePatch.Buffer()")
 							}
+							tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))
 						case resource.OperationUpdate:
 							id := httpio.Param[string](req, "id")
 							if err := resources.NewTenantUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
@@ -90,6 +97,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := resources.NewTenantDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.TenantDeletePatch.Buffer()")
 							}
+							tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))
 						}
 
 						continue
@@ -100,8 +108,11 @@ func (a *App) PatchResources() http.HandlerFunc {
 					}
 
 					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
-					if ok, err := a.DomainVisible(ctx, userPermissions.User(), domain); err != nil {
-						return errors.Wrap(err, "DomainVisible()")
+					if !a.TenantRoster().Has(domain) {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
+					if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {
+						return errors.Wrap(err, "resource.UserPermissions.HasGrants()")
 					} else if !ok {
 						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 					}
@@ -152,6 +163,17 @@ func (a *App) PatchResources() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		live.Publish(ctx, a.LiveService(), "", touched)
+		for _, domain := range tenantsAdded {
+			a.TenantRoster().Add(domain)
+		}
+		for _, domain := range tenantsRemoved {
+			a.TenantRoster().Remove(domain)
+		}
+		if len(tenantsAdded)+len(tenantsRemoved) > 0 {
+			if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {
+				logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
+			}
+		}
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})

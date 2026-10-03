@@ -123,7 +123,7 @@ type generatedRouterTest struct {
 func generatedRouteParameters() []string {
 	keys := []string{
 		"featureFlagName",
-		"domain",
+		"tenantID",
 		"announcementID",
 	}
 
@@ -155,22 +155,22 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/api/tenants/testDomain/announcements", method: http.MethodGet,
 			handlerFunc: "Announcements",
-			parameters:  map[string]string{"domain": "testDomain"},
+			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
 			url: "/api/tenants/testDomain/announcements", method: http.MethodPost,
 			handlerFunc: "Announcements",
-			parameters:  map[string]string{"domain": "testDomain"},
+			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
 			url: "/api/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet,
 			handlerFunc: "Announcement",
-			parameters:  map[string]string{"domain": "testDomain", "announcementID": "testAnnouncementID"},
+			parameters:  map[string]string{"tenantID": "testDomain", "announcementID": "testAnnouncementID"},
 		},
 		{
 			url: "/api/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodPost,
 			handlerFunc: "Announcement",
-			parameters:  map[string]string{"domain": "testDomain", "announcementID": "testAnnouncementID"},
+			parameters:  map[string]string{"tenantID": "testDomain", "announcementID": "testAnnouncementID"},
 		},
 		{
 			url: "/api/features", method: http.MethodGet,
@@ -243,7 +243,7 @@ func (s *generatedHandlersStub) LiveToken() http.HandlerFunc {
 }
 
 // DomainGuard passes requests through unchecked: the routing tests exercise dispatch,
-// not the guard (guard behavior is covered where DomainExists is real).
+// not the guard (guard behavior is covered where the tenant roster is real).
 func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc { return next }
 }

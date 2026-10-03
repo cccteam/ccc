@@ -42,11 +42,11 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.WithRouterOutlet("machines", "machines", generation.APIKey()),
 		generation.GenerateHandlerTests("test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment
-		// pair: /console/api/tenants/{tenantID}/... . The tenant is the permission domain, and
-		// Tenant is the tenant-record resource.
-		generation.WithDomainRoute("tenants"),
-		// Tenant existence is concealed: a tenant the caller holds no grant in answers
-		// exactly like a tenant that does not exist.
+		// pair, /console/api/tenants/{tenantID}/... on each outlet's prefix, which the
+		// generator derives from the tenant record: Tenant, the resource struct annotated
+		// @tenant. The tenant is the permission domain. Tenant existence is concealed: a
+		// tenant the caller holds no grant in answers exactly like a tenant that does not
+		// exist.
 		generation.WithConcealedDomains(),
 		generation.WithConsolidatedHandlers("resources", true),
 		generation.WithSpannerEmulatorVersion("1.5.56"),

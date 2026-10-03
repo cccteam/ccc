@@ -93,14 +93,12 @@ func run(ctx context.Context) error {
 		return errors.Wrap(err, "deploy.MigrateSchema()")
 	}
 
-	// The development seed: the same data migrations the migrate command applies with
-	// -seed in test environments, so development and a pull-request environment start
-	// from the same data.
-	if err := deploy.SeedDevelopmentData(ctx, settings); err != nil {
-		return errors.Wrap(err, "deploy.SeedDevelopmentData()")
-	}
 	fmt.Println("Applied the schema migrations")
 
+	// The development seed: the same data migrations the migrate command applies with
+	// -seed in test environments, so development and a pull-request environment start
+	// from the same data. Before the data level opens, since its tenant roster reads the
+	// table at its start.
 	if err := deploy.SeedDevelopmentData(ctx, settings); err != nil {
 		return errors.Wrap(err, "deploy.SeedDevelopmentData()")
 	}

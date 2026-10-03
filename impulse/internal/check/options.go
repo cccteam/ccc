@@ -25,7 +25,7 @@ func (options) Describe() string {
 // singleOptions may be passed once per program; a repeat means the later call silently
 // overrides the earlier.
 var singleOptions = []string{
-	"GenerateHandlers", "GenerateRoutes", "GenerateRouter", "GenerateHandlerTests", "WithDomainRoute", "WithConcealedDomains",
+	"GenerateHandlers", "GenerateRoutes", "GenerateRouter", "GenerateHandlerTests", "WithConcealedDomains",
 	"WithRPC", "ApplicationName", "WithSpannerEmulatorVersion", "WithConsolidatedHandlers",
 }
 
@@ -142,7 +142,7 @@ func (c options) siteFindings(a *app.App, s *app.Site) []string {
 		}
 	}
 	if s.ConcealedDomains && !s.Tenanted() {
-		details = append(details, fmt.Sprintf("%s: WithConcealedDomains without WithDomainRoute; there are no domains to conceal", g.File))
+		details = append(details, fmt.Sprintf("%s: WithConcealedDomains without a tenant record; no struct in %s is annotated @tenant, so there are no domains to conceal", g.File, g.ResourcePackageDir))
 	}
 	details = append(details, c.routerFindings(a, s)...)
 
@@ -253,7 +253,8 @@ func (options) layoutFindings(p app.Profile) []string {
 }
 
 // tenancyFindings checks that the sites agree on tenancy: one schema means one tenancy
-// model, so every site declares the same domain route and concealment.
+// model, so every site's resource package declares the same tenant record and every
+// site the same concealment.
 func (options) tenancyFindings(p app.Profile) []string {
 	if len(p.Sites) < 2 {
 		return nil
@@ -262,7 +263,7 @@ func (options) tenancyFindings(p app.Profile) []string {
 	var details []string
 	for i := range p.Sites[1:] {
 		s := &p.Sites[i+1]
-		if s.DomainRoute != first.DomainRoute || s.ConcealedDomains != first.ConcealedDomains {
+		if tenancy(s) != tenancy(first) {
 			details = append(details, fmt.Sprintf("sites disagree on tenancy: %s is %s but %s is %s", first.Name, tenancy(first), s.Name, tenancy(s)))
 		}
 	}
@@ -270,16 +271,17 @@ func (options) tenancyFindings(p app.Profile) []string {
 	return details
 }
 
-// tenancy renders a site's tenancy declaration.
+// tenancy renders a site's tenancy declaration: the tenant record its resource package
+// declares, and whether tenant existence is concealed.
 func tenancy(s *app.Site) string {
 	if !s.Tenanted() {
 		return "not tenanted"
 	}
 	if s.ConcealedDomains {
-		return fmt.Sprintf("tenanted on %q (concealed)", s.DomainRoute)
+		return fmt.Sprintf("tenanted (record %s, concealed)", s.TenantRecord.Name)
 	}
 
-	return fmt.Sprintf("tenanted on %q", s.DomainRoute)
+	return fmt.Sprintf("tenanted (record %s)", s.TenantRecord.Name)
 }
 
 // profileSummary is the one-line option set: layout, sites, tenancy, outlets.

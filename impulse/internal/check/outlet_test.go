@@ -52,7 +52,8 @@ func (a *App) LiveService() live.Service {
 	return a.live
 }
 `
-	// unwiredApp answers the accessor with nil: no outlet serves live pages.
+	// unwiredApp answers the accessor with nil, which every session outlet's live routes
+	// would fail on.
 	unwiredApp = `package app
 
 import "github.com/cccteam/ccc/resource/live"
@@ -114,17 +115,17 @@ func TestOutletWired(t *testing.T) {
 			wantDetails: []string{"outlet machines has no @outlet(machines) members yet"},
 		},
 		{
-			name: "an App wiring no live service is noted, not failed",
+			name: "an App wiring no live service fails",
 			files: map[string]string{
 				"cmd/generate/main.go":           declared,
 				"app/app.go":                     unwiredApp,
 				"pkg/router/router.go":           fullRouter,
 				"pkg/resources/announcements.go": outletMembers,
 			},
-			wantStatus:  Pass,
-			wantSummary: "3 outlet(s) mounted: default (/api), portal (/portal/api, sessions), machines (/machines)",
+			wantStatus:  Fail,
+			wantSummary: "1 outlet wiring problem(s)",
 			wantDetails: []string{
-				"app/app.go:7: the App's LiveService returns nil, so no outlet serves live pages and a request carrying X-Subscribe is refused; hand it the live service the data level opens to serve them",
+				"app/app.go:7: the App's LiveService returns nil, but the live service is required in every application: the generated router mounts the live routes on every session outlet and the generated handlers draw the service from this method; hand it the live service the data level opens",
 				"outlet machines has no @outlet(machines) members yet",
 			},
 		},

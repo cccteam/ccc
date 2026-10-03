@@ -3,6 +3,7 @@ package transition
 import (
 	"context"
 	"fmt"
+	"go/format"
 	"io/fs"
 	"os"
 	"path"
@@ -20,16 +21,29 @@ import (
 )
 
 // Tenancy makes a flat, untenanted application tenanted: the tenant record becomes a
-// table and a global resource, the generator serves tenant-scoped resources under the
-// tenant segment with tenant existence concealed, the data level carries the tenant
-// roster and the visibility seam, and the app exposes the seam to the generated code.
-// Which resources become tenant-scoped, how existing rows are assigned, the bootstrap
-// order, the tests, and the tenant picker are the agent's.
+// table and a global resource annotated @tenant, from which the generator derives the
+// tenant segment, serves the tenant-scoped resources under it with tenant existence
+// concealed, and emits the constructor of the tenant roster; the data level builds the
+// roster and starts it, and the app exposes it to the generated code. Which resources
+// become tenant-scoped, how existing rows are assigned, the bootstrap order, the tests,
+// and the tenant picker are the agent's.
 type Tenancy struct {
 	// Table is the tenant-record table, PascalCase and plural: Tenants. The domain route
 	// segment is its kebab-case form (tenants), and the resource struct its singular.
 	Table string
 }
+
+// The tenant roster as the application wires it: the accessor the generated contract
+// (domainScopedApp) asks the App for, the data level's method that builds the roster and
+// starts it, and the packages the wiring draws on.
+const (
+	rosterAccessor      = "TenantRoster"
+	rosterStart         = "startTenants"
+	resourceImportPath  = "github.com/cccteam/ccc/resource"
+	liveFirestoreImport = "github.com/cccteam/ccc/resource/live/firestore"
+	spannerImportPath   = "cloud.google.com/go/spanner"
+	errorsImportPath    = "github.com/go-playground/errors/v5"
+)
 
 // TenancyReferenceCandidate is the embedded skeleton with tenancy wired.
 const TenancyReferenceCandidate = "tenanted"
@@ -65,7 +79,7 @@ func (tn Tenancy) Validate(a *app.App) error {
 	}
 	site := &p.Sites[0]
 	if site.Tenanted() {
-		return errors.Newf("%s: the application is already tenanted on %q", site.Generator.File, site.DomainRoute)
+		return errors.Newf("%s:%d: the application is already tenanted; %s is its tenant record", site.TenantRecord.File, site.TenantRecord.Line, site.TenantRecord.Name)
 	}
 	if len(site.Generator.MigrationSources) == 0 || !strings.HasPrefix(site.Generator.MigrationSources[0], "file://") {
 		return errors.Newf("%s: the tenant table migration needs a file:// migration source", site.Generator.File)
@@ -96,7 +110,7 @@ func (tn Tenancy) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Ch
 	if err := tn.writeRecord(a, g.ResourcePackageDir, ch); err != nil {
 		return nil, err
 	}
-	if err := tn.editConfig(a, ch); err != nil {
+	if err := tn.editConfig(a, g, ch); err != nil {
 		return nil, err
 	}
 	if err := tn.editApp(a, ch); err != nil {
@@ -106,29 +120,26 @@ func (tn Tenancy) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Ch
 		return nil, err
 	}
 
-	generate(ctx, a, exec, ch, "go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s resource and the tenant segment pair under /%s/{%sID}", tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record())))
+	generate(ctx, a, exec, ch, "go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s resource, the tenant segment pair under /%s/{%sID}, and the roster constructor New%sRoster", tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record()), tn.Record()))
 
 	return ch, nil
 }
 
-// editProgram adds the tenancy options after GenerateRoutes.
+// editProgram adds WithConcealedDomains after GenerateRoutes; the tenant segment itself
+// derives from the record, so the program names none.
 func (tn Tenancy) editProgram(a *app.App, g *app.Generator, ch *Change) error {
 	src, mode, err := readFile(a, g.File)
 	if err != nil {
 		return err
 	}
-	options := []string{
-		fmt.Sprintf("generation.WithDomainRoute(%q)", tn.Segment()),
-		"generation.WithConcealedDomains()",
-	}
-	edited, err := app.InsertOptions(g.File, src, "GenerateRoutes", options)
+	edited, err := app.InsertOptions(g.File, src, "GenerateRoutes", []string{"generation.WithConcealedDomains()"})
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(a.Abs(g.File), edited, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: added WithDomainRoute(%q) and WithConcealedDomains()", g.File, tn.Segment())
+	ch.didf("%s: added WithConcealedDomains(); the tenant segment /%s derives from the %s record", g.File, tn.Segment(), tn.Record())
 
 	return nil
 }
@@ -186,32 +197,22 @@ func (tn Tenancy) writeSeed(a *app.App, dir string, ch *Change) error {
 func (tn Tenancy) writeRecord(a *app.App, resourceDir string, ch *Change) error {
 	rel := path.Join(resourceDir, strings.ToLower(tn.Table)+".go")
 	if _, err := os.Stat(a.Abs(rel)); err == nil {
-		ch.skipf("%s already exists, so the %s resource struct was not written; make sure it is a global @resource with a slug Id and a Name", rel, tn.Record())
+		ch.skipf("%s already exists, so the %s resource struct was not written; make sure it is a global @resource annotated @tenant, with a slug Id and a Name", rel, tn.Record())
 
 		return nil
 	}
-	pkg := path.Base(resourceDir)
-	if entries, err := os.ReadDir(a.Abs(resourceDir)); err == nil {
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
-				if src, err := os.ReadFile(a.Abs(path.Join(resourceDir, e.Name()))); err == nil {
-					if name, err := app.PackageName(e.Name(), src); err == nil {
-						pkg = name
-
-						break
-					}
-				}
-			}
-		}
-	}
+	pkg := packageNameOf(a, resourceDir)
 	src := fmt.Sprintf(`package %s
 
 type (
-	// %[2]s is the tenant record: its route name equals the domain route segment, so
-	// /%[3]s lists the tenants while /%[3]s/{%[4]sID}/... serves the tenant-scoped routes.
-	// The application derives its domain universe from this table rather than a fixed
-	// in-code list: the data level reads it into the roster a login's tenant list is
-	// answered from and the DomainVisible seam checks it, so the tenant list is data.
+	// %[2]s is the tenant record (@tenant): the global resource whose rows are the
+	// tenants. Its route name is the segment the tenant-scoped routes are served under,
+	// so /%[3]s lists the tenants while /%[3]s/{%[4]sID}/... serves them, and its key is
+	// the domain in every tenant-scoped URL. The generator derives the segment from it
+	// and emits New%[2]sRoster, the constructor of the tenant roster the data level builds
+	// and starts: the tenants as the generated guard knows them, kept current on every
+	// instance by this record's generated write paths, so a tenant created here is
+	// usable at once, without a restart.
 	//
 	// The primary key is a human-readable slug, not a UUID: tenant identifiers appear in
 	// every tenant-scoped URL and in role provisioning, and the schema enforces the slug
@@ -221,6 +222,7 @@ type (
 	// concern.
 	//
 	// @resource
+	// @tenant
 	%[2]s struct {
 		ID   string `+"`spanner:\"Id\"`"+`
 		Name string `+"`spanner:\"Name\"`"+`
@@ -235,178 +237,185 @@ type (
 	return nil
 }
 
-// editConfig gives the data level the tenant roster and the visibility seam: a new file
-// with the methods, a field on DataConfiguration, and the roster load at construction.
-func (tn Tenancy) editConfig(a *app.App, ch *Change) error {
+// editConfig gives the data level the tenant roster: a field on DataConfiguration, a new
+// file whose startTenants builds the roster with the record's generated constructor and
+// starts it and whose TenantRoster accessor hands it to the app, and the start inserted
+// where the configuration is built.
+func (tn Tenancy) editConfig(a *app.App, g *app.Generator, ch *Change) error {
+	handlersPath := a.GoMod.Module.Mod.Path + "/" + g.HandlersDir()
+	handlersPkg := packageNameOf(a, g.HandlersDir())
+	constructor := handlersPkg + ".New" + tn.Record() + "Roster"
 	rel, src, mode, err := findDeclaringFile(a, "DataConfiguration")
 	if err != nil {
 		return err
 	}
 	if rel == "" {
-		ch.skipf("no file declares a DataConfiguration struct, so the tenant roster and DomainVisible were not added to the data level; add a roster read from %s at startup, Domains() listing it, and DomainVisible(ctx, user, domain) answering roster membership AND access.UserHasGrants", tn.Table)
+		ch.skipf("no file declares a DataConfiguration struct, so the tenant roster was not added to the data level; build it where the database is opened with %s(client, resource.WithTenantSignals(<the live service>)), start it (Start) and fail the start on its error, and expose it as %s()", constructor, rosterAccessor)
 
 		return nil
 	}
-	spannerField, err := app.StructFieldOfType(rel, src, "DataConfiguration", "cloud.google.com/go/spanner", "Client")
+	client, err := clientExpression(rel, src)
 	if err != nil {
 		return err
 	}
-	engine, err := tn.engineField(a, rel, src)
-	if err != nil {
-		return err
-	}
-	if spannerField == "" || engine == "" {
-		ch.skipf("%s: DataConfiguration holds no *spanner.Client field and no permission engine (an *access.Client, or an auth package's *Auth) the roster and the visibility check could read through, so the tenant roster and DomainVisible were not added; add them", rel)
+	if client == "" {
+		ch.skipf("%s: DataConfiguration holds no *resource.SpannerClient and no *spanner.Client field the roster could read through, so the tenant roster was not added; build it with %s over the database client, start it, and expose it as %s()", rel, constructor, rosterAccessor)
 
 		return nil
+	}
+	liveField, err := app.StructFieldOfType(rel, src, "DataConfiguration", liveFirestoreImport, "Service")
+	if err != nil {
+		return err
 	}
 	pkg, err := app.PackageName(rel, src)
 	if err != nil {
 		return err
 	}
-	edited, err := app.AddStructField(rel, src, "DataConfiguration", "tenants tenantRoster")
+	gained, err := addRosterField(a, rel, src, mode, ch)
 	if err != nil {
 		return err
 	}
-	wrapErr := "err"
-	if ok, _ := app.HasImport(rel, src, "github.com/go-playground/errors/v5"); ok {
-		wrapErr = `errors.Wrap(err, "loadTenants()")`
-	}
-	// An anchor miss leaves the file as edited so far: the working copy is only
-	// replaced by a result the editor produced.
-	gained := "the field and the load"
-	wrapped, err := app.WrapReturn(rel, edited, "NewDataConfiguration", "DataConfiguration", "conf", "conf.loadTenants(ctx)", wrapErr)
-	switch {
-	case errors.Is(err, app.ErrNoAnchor):
-		gained = "the field"
-		ch.skipf("%s: NewDataConfiguration does not end in \"return &DataConfiguration{...}, nil\", so the roster load was not inserted; call conf.loadTenants(ctx) once the configuration is built", rel)
-	case err != nil:
-		return err
-	default:
-		edited = wrapped
-	}
-	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
-		return errors.Wrap(err, "os.WriteFile()")
-	}
 	tenancyFile := path.Join(path.Dir(rel), "tenancy.go")
-	if err := writeNew(a, tenancyFile, tn.configSource(pkg, spannerField, engine)); err != nil {
+	source, err := tn.configSource(pkg, handlersPath, handlersPkg, client, liveField)
+	if err != nil {
 		return err
 	}
-	ch.didf("%s: the tenant roster (tenantRoster, loaded from %s at startup), Domains(), and DomainVisible() on DataConfiguration; %s gained %s", tenancyFile, tn.Table, rel, gained)
+	if err := writeNew(a, tenancyFile, source); err != nil {
+		return err
+	}
+	if liveField == "" {
+		ch.skipf("%s: DataConfiguration holds no *firestore.Service field (resource/live/firestore), so the roster is built without resource.WithTenantSignals and reloads at its backstop alone; pass the live service the level opens, so a tenant created on another instance reaches this one at once", tenancyFile)
+	}
+	ch.didf("%s: the tenant roster (%s builds it with %s and starts it) and %s() on DataConfiguration; %s gained %s", tenancyFile, rosterStart, constructor, rosterAccessor, rel, gained)
 
 	return nil
 }
 
-// engineField returns the expression on DataConfiguration that reaches the permission
-// engine the visibility check asks: an *access.Client field as it is, or an auth
-// package's *Auth field through its Access() accessor (the first auth's, when the data
-// level holds several: the tenant roster is one and the sites' auths share it).
-func (Tenancy) engineField(a *app.App, rel string, src []byte) (string, error) {
-	field, err := app.StructFieldOfType(rel, src, "DataConfiguration", "github.com/cccteam/access", "Client")
+// addRosterField gives DataConfiguration the roster field (and the resource import its
+// type needs) and inserts the roster's start where the configuration is built, writing
+// the file; gained says which of the two the file took. An anchor miss for the start
+// leaves the file as edited so far: the working copy is only replaced by a result the
+// editor produced.
+func addRosterField(a *app.App, rel string, src []byte, mode os.FileMode, ch *Change) (gained string, err error) {
+	edited, err := app.AddStructField(rel, src, "DataConfiguration", "tenants *resource.TenantRoster")
+	if err != nil {
+		return "", err
+	}
+	edited, err = app.AddImport(rel, edited, resourceImportPath)
+	if err != nil {
+		return "", err
+	}
+	wrapErr := "err"
+	if ok, _ := app.HasImport(rel, src, errorsImportPath); ok {
+		wrapErr = `errors.Wrap(err, "` + rosterStart + `()")`
+	}
+	gained = "the field and the start"
+	wrapped, err := app.WrapReturn(rel, edited, "NewDataConfiguration", "DataConfiguration", "conf", "conf."+rosterStart+"(ctx)", wrapErr)
+	switch {
+	case errors.Is(err, app.ErrNoAnchor):
+		gained = "the field"
+		ch.skipf("%s: NewDataConfiguration does not end in \"return &DataConfiguration{...}, nil\", so the roster's start was not inserted; call conf.%s(ctx) once the configuration is built, and fail the start on its error", rel, rosterStart)
+	case err != nil:
+		return "", err
+	default:
+		edited = wrapped
+	}
+	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
+		return "", errors.Wrap(err, "os.WriteFile()")
+	}
+
+	return gained, nil
+}
+
+// clientExpression is the expression, on a DataConfiguration method's receiver c, of the
+// client the roster reads through: a *resource.SpannerClient field as it is, or a
+// *spanner.Client field wrapped as a resource client; empty when the level holds neither.
+func clientExpression(rel string, src []byte) (string, error) {
+	field, err := app.StructFieldOfType(rel, src, "DataConfiguration", resourceImportPath, "SpannerClient")
 	if err != nil {
 		return "", err
 	}
 	if field != "" {
-		return field, nil
+		return "c." + field, nil
 	}
-	for i := range a.AuthPackages {
-		pkg := &a.AuthPackages[i]
-		if pkg.Path == "" {
-			continue
-		}
-		field, err := app.StructFieldOfType(rel, src, "DataConfiguration", pkg.Path, "Auth")
-		if err != nil {
-			return "", err
-		}
-		if field != "" {
-			return field + ".Access()", nil
-		}
+	field, err = app.StructFieldOfType(rel, src, "DataConfiguration", spannerImportPath, "Client")
+	if err != nil {
+		return "", err
+	}
+	if field != "" {
+		return "resource.NewSpannerClient(c." + field + ")", nil
 	}
 
 	return "", nil
 }
 
-func (tn Tenancy) configSource(pkg, spannerField, accessField string) string {
-	return fmt.Sprintf(`package %[1]s
+// configSource is the data level's tenancy file: startTenants building the roster with
+// the generated constructor over the client and the live service's tenants signal (a
+// comment stands where the level has no live service field) and starting it, and the
+// accessor the app's Configurer asks for. The source is formatted, so the imports sort
+// whatever the handlers package's path is.
+func (tn Tenancy) configSource(pkg, handlersPath, handlersPkg, client, liveField string) (string, error) {
+	alias := ""
+	if handlersPkg != path.Base(handlersPath) {
+		alias = handlersPkg + " "
+	}
+	construction := fmt.Sprintf("c.tenants = %s.New%sRoster(%s, resource.WithTenantSignals(c.%s))", handlersPkg, tn.Record(), client, liveField)
+	if liveField == "" {
+		construction = fmt.Sprintf("// No live service field was found on DataConfiguration, so the roster reloads at\n"+
+			"\t// its backstop alone; pass resource.WithTenantSignals(<the live service>) so a tenant\n"+
+			"\t// created on another instance reaches this one at once.\n"+
+			"\tc.tenants = %s.New%sRoster(%s)", handlersPkg, tn.Record(), client)
+	}
+	src := fmt.Sprintf(`package %[1]s
 
 import (
 	"context"
-	stderrors "errors"
 
-	cloudspanner "cloud.google.com/go/spanner"
-	"github.com/cccteam/ccc/accesstypes"
+	%[2]s"%[3]s"
+	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
-	"google.golang.org/api/iterator"
 )
 
-// tenantRoster is the tenant list read from the %[2]s table once at startup. It is
-// cached rather than queried per check: the generated consolidated handler consults
-// DomainVisible inside the mutation transaction, where opening another read is illegal
-// on the emulator. A process restart picks up new tenants.
-type tenantRoster struct {
-	domains []accesstypes.Domain
-	set     map[accesstypes.Domain]bool
-}
-
-// Domains lists the tenants as permission domains, from the roster read at startup.
-func (c *DataConfiguration) Domains(_ context.Context) ([]accesstypes.Domain, error) {
-	return c.tenants.domains, nil
-}
-
-// DomainVisible reports whether the domain is a known tenant AND the user holds at least
-// one grant in it: existence from the startup roster, foothold from the permission
-// engine's in-memory policy snapshot (no store read, so it is safe inside the
-// consolidated handler's mutation transaction). Tenant existence is concealed: a caller
-// with no foothold is answered exactly like the tenant does not exist.
-func (c *DataConfiguration) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	if !c.tenants.set[domain] {
-		return false, nil
+// startTenants builds the tenant roster over the %[4]s record with the generated
+// constructor and starts it: the roster reads the %[5]s table once, fails the start when
+// it cannot, and keeps the set current until ctx ends, rereading on the tenants signal
+// (a tenant created or deleted on any instance, published by the record's generated
+// write paths) and at its backstop. The generated DomainGuard asks it before a
+// tenant-scoped request runs, so a new tenant is usable at once, without a restart.
+func (c *DataConfiguration) startTenants(ctx context.Context) error {
+	%[6]s
+	if err := c.tenants.Start(ctx); err != nil {
+		return errors.Wrap(err, "resource.TenantRoster.Start()")
 	}
 
-	visible, err := c.%[4]s.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+	return nil
+}
+
+// TenantRoster returns the application's tenant roster: the tenants as the generated
+// guard knows them, and the roster a session's tenant list is filtered from.
+func (c *DataConfiguration) TenantRoster() *resource.TenantRoster {
+	return c.tenants
+}
+`, pkg, alias, handlersPath, tn.Record(), tn.Table, construction)
+	formatted, err := format.Source([]byte(src))
 	if err != nil {
-		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
+		return "", errors.Wrap(err, "format.Source()")
 	}
 
-	return visible, nil
+	return string(formatted), nil
 }
 
-// loadTenants reads the tenant roster from the %[2]s table.
-func (c *DataConfiguration) loadTenants(ctx context.Context) error {
-	iter := c.%[3]s.Single().Query(ctx, cloudspanner.Statement{SQL: "SELECT Id FROM %[2]s ORDER BY Id"})
-	defer iter.Stop()
-
-	c.tenants.set = make(map[accesstypes.Domain]bool)
-	for {
-		row, err := iter.Next()
-		if err != nil {
-			if stderrors.Is(err, iterator.Done) {
-				return nil
-			}
-
-			return errors.Wrap(err, "spanner.RowIterator.Next()")
-		}
-
-		var id string
-		if err := row.Columns(&id); err != nil {
-			return errors.Wrap(err, "spanner.Row.Columns()")
-		}
-		c.tenants.domains = append(c.tenants.domains, accesstypes.Domain(id))
-		c.tenants.set[accesstypes.Domain(id)] = true
-	}
-}
-`, pkg, tn.Table, spannerField, accessField)
-}
-
-// editApp exposes the seam to the generated code: the Configurer requires it, the App
-// carries it, and a new file declares the types and the method.
+// editApp exposes the roster to the generated code, whose contract (domainScopedApp) asks
+// the App for TenantRoster(): the Configurer requires it, the App carries it and hands its
+// Domains to the session permissions, and a new file declares the interface and the
+// accessor.
 func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 	rel, src, mode, err := findDeclaringFile(a, "Configurer")
 	if err != nil {
 		return err
 	}
 	if rel == "" {
-		ch.skipf("no file declares a Configurer interface, so DomainVisible was not exposed on the app; the generated code needs DomainVisible(ctx, user, domain) (bool, error) on the handlers")
+		ch.skipf("no file declares a Configurer interface, so the tenant roster was not exposed on the app; the generated code needs %s() *resource.TenantRoster on the handlers, answering the roster the data level built", rosterAccessor)
 
 		return nil
 	}
@@ -418,22 +427,26 @@ func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 	if err != nil {
 		return err
 	}
-	edited, err = app.AddStructField(rel, edited, "App", "domainVisible DomainVisibleFunc")
+	edited, err = app.AddStructField(rel, edited, "App", "tenants *resource.TenantRoster")
 	if errors.Is(err, app.ErrNoAnchor) {
-		ch.skipf("%s: no App struct to carry the seam; give the handlers a DomainVisible method that defers to the configurer", rel)
+		ch.skipf("%s: no App struct to carry the roster; give the handlers a %s method answering the configurer's", rel, rosterAccessor)
 		edited = nil
 	} else if err != nil {
 		return err
 	}
 	if edited != nil {
-		edited, err = app.AddLiteralElement(rel, edited, "New", "App", "domainVisible: cfg.DomainVisible")
+		edited, err = app.AddLiteralElement(rel, edited, "New", "App", "tenants: cfg."+rosterAccessor+"()")
 		if errors.Is(err, app.ErrNoAnchor) {
-			ch.skipf("%s: New builds no App literal; set domainVisible from the configurer where the App is constructed", rel)
+			ch.skipf("%s: New builds no App literal; set tenants from the configurer's %s() where the App is constructed", rel, rosterAccessor)
 		} else if err != nil {
 			return err
 		}
 	}
 	if edited != nil {
+		edited, err = app.AddImport(rel, edited, resourceImportPath)
+		if err != nil {
+			return err
+		}
 		if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
 			return errors.Wrap(err, "os.WriteFile()")
 		}
@@ -442,7 +455,38 @@ func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 	if err := writeNew(a, tenancyFile, tn.appSource(pkg)); err != nil {
 		return err
 	}
-	ch.didf("%s: TenancyConfigurer (embedded in Configurer), DomainVisibleFunc, and App.DomainVisible; %s gained the field and its assignment", tenancyFile, rel)
+	ch.didf("%s: TenancyConfigurer (embedded in Configurer) and App.%s(); %s gained the field and its assignment", tenancyFile, rosterAccessor, rel)
+	if edited != nil {
+		if err := tn.editPermissions(a, rel, ch); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// editPermissions hands the roster's Domains to the session permissions: the
+// resource.SessionPermissions call of the App's UserPermissions passed nil where an
+// untenanted application lists no domain, and a login's tenant list is the roster
+// filtered by the principal's footholds.
+func (Tenancy) editPermissions(a *app.App, rel string, ch *Change) error {
+	src, mode, err := readFile(a, rel)
+	if err != nil {
+		return err
+	}
+	edited, err := app.ReplaceNilArgument(rel, src, "UserPermissions", "SessionPermissions", "a.tenants.Domains")
+	switch {
+	case errors.Is(err, app.ErrNoAnchor):
+		ch.skipf("%s: UserPermissions passes no nil roster to resource.SessionPermissions, so the roster's Domains were not handed to it; pass a.tenants.Domains where the session permissions are composed, so a login's tenant list is the roster filtered by its footholds", rel)
+
+		return nil
+	case err != nil:
+		return err
+	}
+	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
+		return errors.Wrap(err, "os.WriteFile()")
+	}
+	ch.didf("%s: UserPermissions passes the roster's Domains to resource.SessionPermissions", rel)
 
 	return nil
 }
@@ -450,30 +494,47 @@ func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 func (tn Tenancy) appSource(pkg string) string {
 	return fmt.Sprintf(`package %s
 
-import (
-	"context"
+import "github.com/cccteam/ccc/resource"
 
-	"github.com/cccteam/ccc/accesstypes"
-)
-
-// TenancyConfigurer is the tenancy seam the configuration provides. Tenant existence is
-// concealed (generation.WithConcealedDomains): DomainVisible answers whether the tenant
-// exists AND the caller holds at least one grant in it, so a prober cannot confirm a
-// tenant exists from the rejection shape.
+// TenancyConfigurer is what the configuration provides for tenancy: the tenant roster the
+// data level built with the generated constructor and started. The generated DomainGuard
+// and the consolidated dispatcher ask it whether a domain is a tenant, and since tenant
+// existence is concealed (generation.WithConcealedDomains) they ask the caller's foothold
+// next, so a prober cannot confirm a tenant exists from the rejection shape.
 type TenancyConfigurer interface {
-	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
+	%[2]s() *resource.TenantRoster
 }
 
-// DomainVisibleFunc is the seam as the App carries it.
-type DomainVisibleFunc = func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
-
-// DomainVisible reports whether the tenant exists and the user holds at least one grant
-// in it; the generated DomainGuard middleware and the consolidated dispatcher answer "no"
-// with the same not-found an unknown tenant gets.
-func (a *App) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-	return a.domainVisible(ctx, user, domain)
+// %[2]s returns the application's tenant roster, the generated contract's accessor
+// (domainScopedApp); UserPermissions hands its Domains to resource.SessionPermissions, so
+// a session's tenant list is the roster filtered by the principal's footholds.
+func (a *App) %[2]s() *resource.TenantRoster {
+	return a.tenants
 }
-`, pkg)
+`, pkg, rosterAccessor)
+}
+
+// packageNameOf is the package clause of the non-test Go files under a root-relative
+// directory, or the directory's name when none can be read.
+func packageNameOf(a *app.App, dir string) string {
+	entries, err := os.ReadDir(a.Abs(dir))
+	if err != nil {
+		return path.Base(dir)
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(a.Abs(path.Join(dir, e.Name())))
+		if err != nil {
+			continue
+		}
+		if name, err := app.PackageName(e.Name(), src); err == nil {
+			return name
+		}
+	}
+
+	return path.Base(dir)
 }
 
 // copyTenantService lays the reference candidate's tenant service into the default
@@ -633,13 +694,13 @@ func singular(table string) string {
 func (tn Tenancy) Meaning() string {
 	var b strings.Builder
 	seg, rec := tn.Segment(), tn.Record()
-	fmt.Fprintf(&b, "Tenancy is data. The %s table is the domain universe: a permission domain per row, read into a roster at startup, and every struct annotated `@permissionScope(domain)` is served under the tenant segment pair `/%s/{%sID}/...` with the tenant as its permission domain. `%s` itself is a global resource, since administering the tenant list is a global concern. Tenant existence is concealed (`WithConcealedDomains`): the generated guard asks `DomainVisible`, which answers whether the tenant exists AND the caller holds at least one grant in it, so a login with no foothold gets the same not-found an unknown tenant gets. A login's tenant list (`user-domains`) is the set of tenants where it holds a grant, and a grant needs a tenant-scoped resource to land on.\n\n", tn.Table, seg, strcase.ToCamel(rec), rec)
+	fmt.Fprintf(&b, "Tenancy is data. The %[1]s table is the domain universe, a permission domain per row, and `%[2]s`, the global resource over it, is the tenant record (`@tenant`): the generator derives the tenant segment from it, so every struct annotated `@permissionScope(domain)` is served under `/%[3]s/{%[4]sID}/...` with the tenant as its permission domain, and emits `New%[2]sRoster`, the constructor of the tenant roster. The data level builds the roster with it over the database client and the live service's tenants signal and starts it; the roster reads the table once, rereads when the record's generated write paths publish the tenants signal (a tenant created or deleted on any instance) and at its backstop, so a new tenant is usable at once, without a restart. The generated DomainGuard asks the roster whether a domain is a tenant and, since tenant existence is concealed (`WithConcealedDomains`), the caller's foothold next, so a login with no foothold gets the same not-found an unknown tenant gets. A login's tenant list (`user-domains`) is the roster filtered by the tenants where it holds a grant, and a grant needs a tenant-scoped resource to land on.\n\n", tn.Table, rec, seg, strcase.ToCamel(rec))
 	b.WriteString("Left to wire, in this order:\n\n")
 	items := []string{
-		"The bootstrap and the deployment. Seed the development tenants (`schema/devseed`, a data migration applied with the migrator's data step) BEFORE the logins, and hand the roster (`Domains()`) to the App, which passes it to `resource.SessionPermissions` so a login's tenant list is read from it; the roles need no provisioning per tenant, since a membership held in every domain (`EveryDomainPolicyScope`) reaches every tenant the roster names. Give the development logins roles in the tenants (the bootstrap identities file): the administrator under `everyDomain`, and add a member login that holds a role in one tenant only under `domains`, so concealment is observable.",
+		"The bootstrap and the deployment. Seed the development tenants (`schema/devseed`, a data migration applied with the migrator's data step) BEFORE the logins and before the data level opens, since the roster's start reads the table; the App's `UserPermissions` passes the roster's `Domains` (`a.tenants.Domains`) to `resource.SessionPermissions` so a login's tenant list is read from it. The roles need no provisioning per tenant, since a membership held in every domain (`EveryDomainPolicyScope`) reaches every tenant the roster names. Give the development logins roles in the tenants (the bootstrap identities file): the administrator under `everyDomain`, and add a member login that holds a role in one tenant only under `domains`, so concealment is observable.",
 		"Tenant-scoped resources. Decide which existing resources belong to a tenant: give each a `TenantId` column referencing the tenant table (a migration, with a data step assigning existing rows to a tenant), annotate the struct `@permissionScope(domain)` and the column `// @domain`, then run `go generate ./...`. If none of the application's resources is tenant-scoped yet, add a first one so the option is observable from the first sign-in; the reference has one. `tenancy-wired` requires at least one.",
-		"The test harnesses. The authorization suite's configurer needs `DomainVisible` recognizing the generated matrix's domain (`testDomain`) when the case carries grants, and `Domains()` listing it; the integration harness needs `DomainVisible` composed with `UserHasGrants` over the development tenants, the dev seed applied beside the schema, the member's assignments in its tenant (`DomainPolicyScope`), and a wait for the engine's snapshot to show them.",
-		"Integration tests: the administrator lists both tenants and reads a tenant's digest; the member lists one and gets not-found in the other and in an unknown tenant; the tenant list is global.",
+		fmt.Sprintf("The test harnesses. The authorization suite's configurer builds the roster with `New%[1]sRoster` over the test client and adds the generated matrix's domain to it (`Add(\"testDomain\")`; the empty test schema holds no tenant row, and `Start` is not needed), and answers it as `%[2]s()`; the integration harness builds it over the test database with `live.NewFake()` as its signals and starts it once the dev seed is applied beside the schema, gives the member its assignments in its tenant (`DomainPolicyScope`), and waits for the engine's snapshot to show them.", rec, rosterAccessor),
+		"Integration tests: the administrator lists both tenants and reads a tenant's digest; the member lists one and gets not-found in the other and in an unknown tenant; the tenant list is global; a tenant created through the API is readable at once, without a restart.",
 		"The browser app: a tenant picker in the header bound to the tenant service (its tenants, current, and select), and the pages reading permissions through it, so the digest follows the selected tenant.",
 	}
 	for i, item := range items {

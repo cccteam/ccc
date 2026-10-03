@@ -320,7 +320,9 @@ func (r *reader) readCall(expr ast.Expr, want optionKind) (Call, bool) {
 
 	c := Call{Name: sel.Sel.Name, Pos: r.pos(ce)}
 	spec, known := knownOptions[c.Name]
-	if !known {
+	if replacement, retired := retiredOptions[c.Name]; retired {
+		r.problemf(ce, "retired option %s.%s: %s", r.pkg, c.Name, replacement)
+	} else if !known {
 		r.problemf(ce, "unknown option %s.%s: this impulse release does not know it", r.pkg, c.Name)
 	} else if spec.kind != want {
 		r.problemf(ce, "%s is a %s, but a %s is expected here", c.Name, spec.kind, want)

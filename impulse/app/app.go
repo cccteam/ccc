@@ -48,6 +48,12 @@ type App struct {
 	// DomainResources are the structs the application's own code annotates
 	// @permissionScope(domain): the tenant-scoped resources.
 	DomainResources []DomainResource
+	// TenantRecords are the structs the application's own code annotates @tenant: each
+	// resource package's tenant record, the global resource whose rows are the tenants.
+	TenantRecords []TenantRecord
+	// RosterConstructions are the constructions of a tenant roster outside tests: the
+	// calls to a generated New<Record>Roster constructor, with what each is handed.
+	RosterConstructions []RosterConstruction
 	// Features are the feature flags the application declares: the resource.Feature
 	// constants of its resources packages, in file order.
 	Features []FeatureFlag
@@ -154,6 +160,34 @@ type DomainResource struct {
 	File string
 	Line int
 	Name string
+}
+
+// TenantRecord is one struct annotated @tenant: the tenant record, the global resource
+// whose rows are the tenants, whose route name is the segment tenant-scoped routes are
+// served under, and whose generated constructor builds the application's tenant roster.
+type TenantRecord struct {
+	File string
+	Line int
+	Name string
+}
+
+// RosterConstruction is one call outside tests to a generated tenant roster constructor
+// (New<Record>Roster).
+type RosterConstruction struct {
+	File string
+	Line int
+	// Package is the root-relative directory of the package constructing the roster.
+	Package string
+	// Constructor is the constructor's name (NewTenantRoster for a record named Tenant).
+	Constructor string
+	// Holder is the name the construction's result is bound to: the variable of a
+	// definition or assignment (the field's name when the left side is a selector), or
+	// the key of a composite literal element; empty when the result is used some other
+	// way, such as returned.
+	Holder string
+	// Signals reports a resource.WithTenantSignals option among the call's arguments:
+	// the roster reloads on the tenants signal, not at its backstop alone.
+	Signals bool
 }
 
 // DefaultRoles is one call to access.WithDefaultRoles outside tests: a release handing a

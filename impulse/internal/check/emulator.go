@@ -13,8 +13,10 @@ import (
 // by emulator: the Spanner emulator's version in the generator option, the process
 // files' image tags, and the test harnesses; the Firestore emulator's in the process
 // files and test harnesses that start it from the Cloud SDK emulators image. An
-// application naming no Firestore emulator serves no live pages in development, which
-// the summary says and nothing fails on.
+// application whose process files and test harnesses name no Firestore emulator fails:
+// the live service is required in every application, and its data level refuses to
+// start with neither a Firestore database nor the emulator configured, so development
+// cannot start without one.
 type emulatorVersion struct{}
 
 func (emulatorVersion) Name() string { return "emulator-version" }
@@ -22,6 +24,13 @@ func (emulatorVersion) Name() string { return "emulator-version" }
 func (emulatorVersion) Describe() string {
 	return "generator, process files, and test harnesses name one Spanner emulator version and one Firestore emulator version"
 }
+
+// firestoreEmulator names the emulator the live service runs on in development, and
+// firestoreMissing is the finding when nothing starts it.
+const (
+	firestoreEmulator = "Firestore"
+	firestoreMissing  = "no process file or test harness starts the Firestore emulator (the Cloud SDK emulators image, google-cloud-cli:<version>-emulators); development cannot start without it, since the data level refuses to start with neither APP_FIRESTORE_DATABASE nor FIRESTORE_EMULATOR_HOST set"
+)
 
 // emulatorRefs is every place one emulator's version is named.
 type emulatorRefs struct {
@@ -44,8 +53,11 @@ func (c emulatorVersion) Run(_ context.Context, env *Env) Result {
 	}
 
 	var summaries, details []string
-	for _, e := range []emulatorRefs{{name: "Spanner", refs: spanner}, {name: "Firestore", refs: a.FirestoreEmulatorImages}} {
+	for _, e := range []emulatorRefs{{name: "Spanner", refs: spanner}, {name: firestoreEmulator, refs: a.FirestoreEmulatorImages}} {
 		summary, lines := agreement(e)
+		if e.name == firestoreEmulator && len(e.refs) == 0 {
+			lines = []string{firestoreMissing}
+		}
 		summaries = append(summaries, e.name+": "+summary)
 		details = append(details, lines...)
 	}

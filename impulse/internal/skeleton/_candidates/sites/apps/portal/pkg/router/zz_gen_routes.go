@@ -13,7 +13,7 @@ import (
 
 const (
 	// Domain is the route parameter carrying the permission domain for domain-scoped routes.
-	Domain         httpio.ParamType = "domain"
+	Domain         httpio.ParamType = "tenantID"
 	AnnouncementID httpio.ParamType = "announcementID"
 )
 
@@ -65,12 +65,12 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/live/token", h.LiveToken())
 
 	announcementsHandler := domainGuard(h.Announcements())
-	r.Get("/api/tenants/{domain}/announcements", announcementsHandler)
-	r.Post("/api/tenants/{domain}/announcements", announcementsHandler)
+	r.Get("/api/tenants/{tenantID}/announcements", announcementsHandler)
+	r.Post("/api/tenants/{tenantID}/announcements", announcementsHandler)
 
 	announcementHandler := domainGuard(h.Announcement())
-	r.Get("/api/tenants/{domain}/announcements/{announcementID}", announcementHandler)
-	r.Post("/api/tenants/{domain}/announcements/{announcementID}", announcementHandler)
+	r.Get("/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+	r.Post("/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
 
 	featureFlagsHandler := h.FeatureFlags()
 	r.Get("/api/feature-flags", featureFlagsHandler)

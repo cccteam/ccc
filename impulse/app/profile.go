@@ -40,9 +40,9 @@ func (l Layout) String() string {
 const sitesDir = "apps"
 
 // Profile is the option set in force across an application: the axes of the composed
-// skeleton — layout, sites, tenancy, outlets — as the generator programs declare them.
-// It is read, never recorded: a transition that adds an option is done when the profile
-// shows it.
+// skeleton — layout, sites, tenancy, outlets — as the generator programs declare them,
+// tenancy from the resource package's tenant record (@tenant). It is read, never
+// recorded: a transition that adds an option is done when the profile shows it.
 type Profile struct {
 	Layout Layout
 	// Sites are the generators that emit handlers, one per site, in generator order.
@@ -62,8 +62,11 @@ type Site struct {
 	// sites layout, "." in the flat layout.
 	Dir       string
 	Generator *Generator
-	// DomainRoute is the WithDomainRoute segment, or empty when the site is not tenanted.
-	DomainRoute string
+	// TenantRecord is the @tenant struct of the site's resource package, nil when the
+	// site is not tenanted: the generator derives the tenant segment and its route
+	// parameter from the record and emits the constructor of the roster the application
+	// builds over it.
+	TenantRecord *TenantRecord
 	// ConcealedDomains reports WithConcealedDomains.
 	ConcealedDomains bool
 	// GeneratedRouter reports GenerateRouter: the router is generated from the outlet
@@ -111,8 +114,8 @@ type OutletAuth struct {
 // oidc-azure).
 func (a OutletAuth) LoginFlavor() string { return authFlavorIdents[a.Flavor] }
 
-// Tenanted reports whether the site declares a domain route.
-func (s *Site) Tenanted() bool { return s.DomainRoute != "" }
+// Tenanted reports whether the site's resource package declares a tenant record.
+func (s *Site) Tenanted() bool { return s.TenantRecord != nil }
 
 // AllOutlets lists the site's outlets, the default first.
 func (s *Site) AllOutlets() []Outlet {
@@ -142,8 +145,12 @@ func (a *App) site(g *Generator) Site {
 	if s.Dir != "." {
 		s.Name = path.Base(s.Dir)
 	}
-	if c, ok := g.Option("WithDomainRoute"); ok && len(c.Args) > 0 && c.Args[0].Kind == ArgString {
-		s.DomainRoute = c.Args[0].Str
+	for i := range a.TenantRecords {
+		if path.Dir(a.TenantRecords[i].File) == g.ResourcePackageDir {
+			s.TenantRecord = &a.TenantRecords[i]
+
+			break
+		}
 	}
 	_, s.ConcealedDomains = g.Option("WithConcealedDomains")
 	_, s.GeneratedRouter = g.Option(optGenerateRouter)

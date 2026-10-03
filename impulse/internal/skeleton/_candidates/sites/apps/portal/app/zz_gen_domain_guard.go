@@ -13,11 +13,12 @@ import (
 )
 
 // DomainGuard is the middleware generated route registration wraps around every
-// domain-scoped route. Domains are concealed (generation.WithConcealedDomains): a
-// domain the caller holds no grant in answers exactly like a domain that does not
-// exist, so tenant existence cannot be probed from the rejection shape. A caller
-// with any foothold in the domain passes the guard and receives ordinary 403s for
-// the permissions they lack.
+// domain-scoped route: it resolves the route's domain and answers 404 before the
+// handler runs when the application's tenant roster (Tenants) does not hold it.
+// Domains are concealed (generation.WithConcealedDomains), so a domain the caller holds
+// no grant in answers exactly like a domain that does not exist, and tenant existence
+// cannot be probed from the rejection shape. A caller with any foothold in the domain
+// passes the guard and receives ordinary 403s for the permissions they lack.
 func (a *App) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -25,7 +26,10 @@ func (a *App) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
 			defer span.End()
 
 			domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-			if ok, err := a.DomainVisible(ctx, a.UserPermissions(r).User(), domain); err != nil {
+			if !a.TenantRoster().Has(domain) {
+				return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
+			}
+			if ok, err := a.UserPermissions(r).HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			} else if !ok {
 				return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
