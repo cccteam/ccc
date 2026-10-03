@@ -80,6 +80,7 @@ linters:
             - github.com/shopspring/decimal
             - go.uber.org/mock/gomock
             - golang.org/x/crypto/hkdf
+            - golang.org/x/mod/semver
             - go/ast
             - go/constant
             - go/format

@@ -3,6 +3,8 @@ package generation
 import (
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // Test_routerOutletOptions pins the outlet options' own checks: an import path and a
@@ -39,6 +41,25 @@ func Test_routerOutletOptions(t *testing.T) {
 		{name: "a trailing slash", options: []OutletOption{WebApp("/portal/")}, wantErr: "without a trailing '/'"},
 		{name: "a wildcard mount path", options: []OutletOption{WebApp("/portal/*")}, wantErr: "requires a mount path"},
 		{name: "two web apps", options: []OutletOption{WebApp("/"), WebApp("/portal")}, wantErr: "redeclares the outlet's browser application"},
+		{
+			name:    "an oldest answered release is remembered as written",
+			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/staff", Password), OldestAnswered("1.5.0")},
+			want:    routerOutlet{servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/staff", flavor: Password}, oldestAnswered: "1.5.0", declaredOldest: true},
+		},
+		{
+			name:    "an oldest answered release with a leading v",
+			options: []OutletOption{OldestAnswered("v2.0.0-rc1")},
+			want:    routerOutlet{oldestAnswered: "v2.0.0-rc1", declaredOldest: true},
+		},
+		{
+			name:    "this release as the oldest answered",
+			options: []OutletOption{OldestAnswered(ThisRelease)},
+			want:    routerOutlet{oldestAnswered: ThisRelease, declaredOldest: true},
+		},
+		{name: "an empty oldest answered", options: []OutletOption{OldestAnswered("")}, wantErr: `OldestAnswered("") names no release`},
+		{name: "an oldest answered that is not a release", options: []OutletOption{OldestAnswered("dev")}, wantErr: `OldestAnswered("dev") names no release: write a semantic version such as "1.5.0", or ThisRelease`},
+		{name: "an oldest answered with four parts", options: []OutletOption{OldestAnswered("1.5.0.2")}, wantErr: "names no release"},
+		{name: "two oldest answered releases", options: []OutletOption{OldestAnswered("1.5.0"), OldestAnswered("1.6.0")}, wantErr: `OldestAnswered("1.6.0") redeclares the outlet's oldest answered release ("1.5.0")`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -61,7 +82,7 @@ func Test_routerOutletOptions(t *testing.T) {
 			if err != nil {
 				t.Fatalf("applyToOutlet() error = %v", err)
 			}
-			if got.servesSessions != tt.want.servesSessions || got.declaredSessions != tt.want.declaredSessions || got.apiKey != tt.want.apiKey || got.webApp != tt.want.webApp {
+			if got.servesSessions != tt.want.servesSessions || got.declaredSessions != tt.want.declaredSessions || got.apiKey != tt.want.apiKey || got.webApp != tt.want.webApp || got.oldestAnswered != tt.want.oldestAnswered || got.declaredOldest != tt.want.declaredOldest {
 				t.Errorf("outlet = %+v, want %+v", got, tt.want)
 			}
 			switch {
@@ -108,6 +129,25 @@ func Test_validateRouterConfig(t *testing.T) {
 			name:    "WebApp without the switch",
 			options: []ResourceOption{GenerateRoutes("pkg/router", "api", WebApp("/"))},
 			wantErr: `outlet "default" declares WebApp`,
+		},
+		{
+			name:    "OldestAnswered without the switch",
+			options: []ResourceOption{GenerateRoutes("pkg/router", "api", OldestAnswered("1.5.0"))},
+			wantErr: `outlet "default" declares OldestAnswered, which describes the generated router`,
+		},
+		{
+			name: "oldest answered releases on the session outlets",
+			options: []ResourceOption{
+				GenerateRouter(),
+				GenerateRoutes("pkg/router", "api", staff, WebApp("/console"), OldestAnswered("1.5.0")),
+				WithRouterOutlet("portal", "portal/api", members, WebApp("/portal"), OldestAnswered(ThisRelease)),
+				WithRouterOutlet("machines", "machines", APIKey()),
+			},
+		},
+		{
+			name:    "an API key with an oldest answered release",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", APIKey(), OldestAnswered("1.5.0"))},
+			wantErr: `outlet "machines" declares APIKey and OldestAnswered("1.5.0"): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet`,
 		},
 		{
 			name:    "the switch without routes",
@@ -229,9 +269,10 @@ func Test_servedRouterData(t *testing.T) {
 	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", flavor: OIDCAzure}
 
 	tests := []struct {
-		name    string
-		outlets []routerOutlet
-		check   func(t *testing.T, data *servedRouterData)
+		name       string
+		outlets    []routerOutlet
+		fileRoutes map[string][]*generatedRoute
+		check      func(t *testing.T, data *servedRouterData)
 	}{
 		{
 			name:    "one session auth binds nothing and imports nothing",
@@ -244,6 +285,12 @@ func Test_servedRouterData(t *testing.T) {
 				o := data.Outlets[0]
 				if o.AuthPackage != "" || o.Getter != "" || o.Receiver != "h" || o.HookField != "Default" || o.SessionHandlers != "session.OIDCAzureHandlers" {
 					t.Errorf("default outlet = %+v", o)
+				}
+				if o.OldestAnswered != "" || o.OldestAnsweredExpr != "" || o.OldestAnsweredNote != "" || o.AnswersSentence != "every release up to the server's own is answered" || len(o.FileRoutes) != 0 {
+					t.Errorf("version check of an outlet with no oldest answered = %+v", o)
+				}
+				if want := (versionProbes{Server: probeServer, InRange: probeFirstRelease, Above: probeAboveServer}); o.Probes != want {
+					t.Errorf("probes = %+v, want %+v", o.Probes, want)
 				}
 				paths := make([]string, 0, len(o.Routes))
 				for _, route := range o.Routes {
@@ -331,6 +378,48 @@ func Test_servedRouterData(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "the version checks: a release, this release, and the stored-file routes by outlet",
+			outlets: []routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew, oldestAnswered: "1.5.0", declaredOldest: true},
+				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, oldestAnswered: ThisRelease, declaredOldest: true},
+			},
+			fileRoutes: map[string][]*generatedRoute{
+				"default": {
+					{Path: "/api/widgets/{widgetID}/thumbnail", TestURL: "/api/widgets/testWidgetID/thumbnail", HandlerFunc: "WidgetThumbnail", HandlerType: fileHandler},
+					{Path: "/api/widgets/{widgetID}/content", TestURL: "/api/widgets/testWidgetID/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler},
+				},
+				"droids": {{Path: "/droids/beacons/{beaconID}/content", TestURL: "/droids/beacons/testBeaconID/content", HandlerFunc: "BeaconContent", HandlerType: fileHandler}},
+			},
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				o := data.Outlets[0]
+				if o.OldestAnswered != "1.5.0" || o.OldestAnsweredExpr != `"1.5.0"` || o.OldestAnsweredNote != " (oldest answered 1.5.0)" || o.AnswersSentence != "releases from 1.5.0 up to the server's own are answered" {
+					t.Errorf("default outlet's version check = %+v", o)
+				}
+				if want := (versionProbes{Server: "1.6.0", InRange: "1.5.0", Below: probeBelowAnyRelease, Above: "1.6.1"}); o.Probes != want {
+					t.Errorf("default probes = %+v, want %+v", o.Probes, want)
+				}
+				wantFiles := []servedFileRoute{
+					{Pattern: "/api/widgets/{widgetID}/content", TestURL: "/api/widgets/testWidgetID/content", Handler: "WidgetContent"},
+					{Pattern: "/api/widgets/{widgetID}/thumbnail", TestURL: "/api/widgets/testWidgetID/thumbnail", Handler: "WidgetThumbnail"},
+				}
+				if diff := cmp.Diff(wantFiles, o.FileRoutes); diff != "" {
+					t.Errorf("default file routes mismatch (-want +got):\n%s", diff)
+				}
+				if droids := data.Outlets[1]; len(droids.FileRoutes) != 0 || droids.OldestAnsweredExpr != "" {
+					t.Errorf("an API-key outlet carries no version check, got %+v", droids)
+				}
+				portal := data.Outlets[2]
+				if portal.OldestAnswered != ThisRelease || portal.OldestAnsweredExpr != "resource.ThisRelease" || portal.OldestAnsweredNote != " (oldest answered this release)" || portal.AnswersSentence != "only the server's own release is answered" || len(portal.FileRoutes) != 0 {
+					t.Errorf("portal outlet's version check = %+v", portal)
+				}
+				if want := (versionProbes{Server: probeServer, InRange: probeServer, Below: probeBeforeServer, Above: probeAboveServer}); portal.Probes != want {
+					t.Errorf("portal probes = %+v, want %+v", portal.Probes, want)
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -339,7 +428,35 @@ func Test_servedRouterData(t *testing.T) {
 			r := &resourceGenerator{client: &client{}}
 			r.router = packageDir("pkg/router")
 			r.resource = packageDir("pkg/resources")
-			tt.check(t, r.servedRouterData(tt.outlets, nil))
+			tt.check(t, r.servedRouterData(tt.outlets, nil, tt.fileRoutes))
+		})
+	}
+}
+
+// Test_versionProbesFor pins the releases the generated test sends through a check:
+// the server one minor release past the oldest answered, the oldest answered itself in
+// range, a release below it unless nothing is below, and one past the server's.
+func Test_versionProbesFor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		oldest string
+		want   versionProbes
+	}{
+		{oldest: "", want: versionProbes{Server: probeServer, InRange: probeFirstRelease, Above: probeAboveServer}},
+		{oldest: ThisRelease, want: versionProbes{Server: probeServer, InRange: probeServer, Below: probeBeforeServer, Above: probeAboveServer}},
+		{oldest: "1.5.0", want: versionProbes{Server: "1.6.0", InRange: "1.5.0", Below: probeBelowAnyRelease, Above: "1.6.1"}},
+		{oldest: "v3.12.4", want: versionProbes{Server: "3.13.0", InRange: "v3.12.4", Below: probeBelowAnyRelease, Above: "3.13.1"}},
+		{oldest: "2.0.0-rc1", want: versionProbes{Server: "2.1.0", InRange: "2.0.0-rc1", Below: probeBelowAnyRelease, Above: "2.1.1"}},
+		{oldest: probeBelowAnyRelease, want: versionProbes{Server: "0.1.0", InRange: probeBelowAnyRelease, Above: "0.1.1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.oldest, func(t *testing.T) {
+			t.Parallel()
+
+			if got := versionProbesFor(tt.oldest); got != tt.want {
+				t.Errorf("versionProbesFor(%q) = %+v, want %+v", tt.oldest, got, tt.want)
+			}
 		})
 	}
 }
@@ -358,6 +475,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 	tests := []struct {
 		name                string
 		outlets             []routerOutlet
+		fileRoutes          map[string][]*generatedRoute
 		wantRouter          []string
 		wantNotRouter       []string
 		wantRouterTest      []string
@@ -373,17 +491,19 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"//\tevery request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams",
 				"//\tdefault (/api), Azure directory sessions:",
 				"//\t  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/login, GET /api/user/callback, GET /api/user/session, DELETE /api/user/session, GET /api/user/logout",
-				"//\t  + ValidateSession, ValidateXSRFToken: hooks.Default, generatedRoutes",
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes",
 				"\tsession.OIDCAzureHandlers\n",
+				"\tServerVersion() string\n",
 				"func New(h Handlers, hooks Hooks) *chi.Mux {",
+				"\tr := chi.NewRouter()\n\t// The release this server was built from, which every session outlet's version\n\t// check compares a browser application's X-Api-Version against.\n\tserverVersion := h.ServerVersion()\n",
 				"\tr.Use(hooks.Outermost...)\n\tr.Use(h.LoggerMiddleware())\n\tr.Use(h.SecurityHeaders)\n\tr.Use(httpio.WithParams)\n",
 				"\t\tr.Get(\"/api/user/logout\", h.FrontChannelLogout())\n",
-				"\t\t\tr.Use(h.ValidateSession)\n\t\t\tr.Use(h.ValidateXSRFToken)\n\n\t\t\tregisterGenerated(r, hooks.Default, \"Default\", func(r chi.Router) {\n\t\t\t\tgeneratedRoutes(r, h)\n\t\t\t})",
+				"\t\t\tr.Use(h.ValidateSession)\n\t\t\tr.Use(h.ValidateXSRFToken)\n\t\t\t// The version check: a browser application sends its release in X-Api-Version,\n\t\t\t// and every release up to the server's own is answered. An application outside that\n\t\t\t// range is refused with 412 naming the server's release, before its body is read;\n\t\t\t// a request without the header, the session routes above are answered at any release.\n\t\t\tr.Use(resource.CheckAPIVersion(resource.APIVersionCheck{\n\t\t\t\tServerVersion: serverVersion,\n\t\t\t}))\n\n\t\t\tregisterGenerated(r, hooks.Default, \"Default\", func(r chi.Router) {\n\t\t\t\tgeneratedRoutes(r, h)\n\t\t\t})",
 				"\tfor _, prefix := range []string{\"/api/\"} {",
 				"\t// The default outlet's browser application at /, the catch-all.\n\tr.Route(\"/\", func(r chi.Router) {\n\t\tr.Use(h.DeepLink)\n\n\t\tr.Get(\"/*\", h.Assets())\n\t})\n\n\treturn r\n}",
 				"\tDefault func(r chi.Router, generated func(chi.Router))\n}",
 			},
-			wantNotRouter:       []string{"BindAuth", "Generated" + "PortalHandlers", "Auth(next http.Handler)", "http.Redirect", "None is mounted at /"},
+			wantNotRouter:       []string{"BindAuth", "Generated" + "PortalHandlers", "Auth(next http.Handler)", "http.Redirect", "None is mounted at /", "OldestAnswered:", "Exempt:"},
 			wantNoRouterImports: []string{"example.com/acme/beacon/pkg/config"},
 			wantRouterTest: []string{
 				"type routerOIDCAzureStub struct {\n\tsession.OIDCAzureHandlers",
@@ -393,8 +513,62 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"func TestGeneratedRouterWebApps(t *testing.T) {",
 				"nothing else, and that the\n// application at / is the catch-all.",
 				"\t\t{url: \"/generated-router-page/deep/link\", handler: \"Assets\", deepLink: \"DeepLink\"},",
+				"func TestGeneratedRouterAPIVersion(t *testing.T) {",
+				"\t\t{\n\t\t\tprefix: \"/api/\", server: \"2.0.0\", inRange: \"0.0.1\", below: \"\", above: \"2.0.1\",\n\t\t},",
+				"\tserverVersion string\n}\n\nfunc (s *routerHandlersStub) ServerVersion() string {\n\treturn s.serverVersion\n}",
+				"\t\t\tDefault: func(r chi.Router, generated func(chi.Router)) {\n\t\t\t\tr.Use(rec.Middleware(\"DefaultHook\"))\n\t\t\t\tgenerated(r)\n\t\t\t},",
 			},
-			wantNotRouterTest: []string{"BindAuth", "routerPasswordStub", "TestGeneratedRouterRoot"},
+			wantNotRouterTest: []string{"BindAuth", "routerPasswordStub", "TestGeneratedRouterRoot", "files: []routerFileRoute"},
+		},
+		{
+			name: "oldest answered on the default outlet with a stored-file route",
+			outlets: []routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/", oldestAnswered: "1.5.0", declaredOldest: true},
+			},
+			fileRoutes: map[string][]*generatedRoute{
+				"default": {{Path: "/api/widgets/{widgetID}/content", TestURL: "/api/widgets/testWidgetID/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler}},
+			},
+			wantRouter: []string{
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 1.5.0): hooks.Default, generatedRoutes",
+				"\t\t\t// The version check: a browser application sends its release in X-Api-Version,\n\t\t\t// and releases from 1.5.0 up to the server's own are answered. An application outside that\n\t\t\t// range is refused with 412 naming the server's release, before its body is read;\n\t\t\t// a request without the header, the session routes above and the stored-file\n\t\t\t// routes are answered at any release.\n\t\t\tr.Use(resource.CheckAPIVersion(resource.APIVersionCheck{\n\t\t\t\tServerVersion:  serverVersion,\n\t\t\t\tOldestAnswered: \"1.5.0\",\n\t\t\t\tExempt: []string{\n\t\t\t\t\t\"/api/widgets/{widgetID}/content\",\n\t\t\t\t},\n\t\t\t}))\n",
+			},
+			wantRouterImports: []string{"github.com/cccteam/ccc/resource"},
+			wantRouterTest: []string{
+				"\t\t{\n\t\t\tprefix: \"/api/\", server: \"1.6.0\", inRange: \"1.5.0\", below: \"0.0.0\", above: \"1.6.1\",\n\t\t\tfiles: []routerFileRoute{\n\t\t\t\t{url: \"/api/widgets/testWidgetID/content\", handler: \"WidgetContent\"},\n\t\t\t},\n\t\t},",
+				"\t\t\tchecked(\"the oldest answered release\", probe.server, probe.inRange),",
+				"\t\t\trefused(\"a release above the server's\", probe.above),",
+				"\t\tif probe.below != \"\" {\n\t\t\ttests = append(tests, refused(\"a release below the oldest answered\", probe.below))\n\t\t}",
+				"\t\t\t\tif body.read {\n\t\t\t\t\tt.Error(\"the refused request's body was read\")\n\t\t\t\t}",
+				"\t\t\tif got := slices.Contains(rr.Header().Values(\"Vary\"), resource.APIVersionHeader); got != tt.varied {",
+				"\tt.Run(\"a refused request never reaches the hook\", func(t *testing.T) {",
+			},
+			wantNotRouterTest: []string{"outlet is not checked"},
+		},
+		{
+			name: "oldest answered on an additional session outlet and this release on another",
+			outlets: []routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, oldestAnswered: "3.2.0", declaredOldest: true},
+				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew, oldestAnswered: ThisRelease, declaredOldest: true},
+			},
+			wantRouter: []string{
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes",
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 3.2.0): hooks.Portal, generatedPortalRoutes",
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered this release): hooks.Kiosk, generatedKioskRoutes",
+				"\t\t\tr.Use(h.ValidateXSRFToken)\n\t\t\t// The version check: a browser application sends its release in X-Api-Version,\n\t\t\t// and every release up to the server's own is answered.",
+				"\t\t\tr.Use(portalSession.ValidateXSRFToken)\n\t\t\t// The version check: a browser application sends its release in X-Api-Version,\n\t\t\t// and releases from 3.2.0 up to the server's own are answered.",
+				"\t\t\t\tServerVersion:  serverVersion,\n\t\t\t\tOldestAnswered: \"3.2.0\",\n\t\t\t}))",
+				"\t\t\tr.Use(kioskSession.ValidateXSRFToken)\n\t\t\t// The version check: a browser application sends its release in X-Api-Version,\n\t\t\t// and only the server's own release is answered.",
+				"\t\t\t\tServerVersion:  serverVersion,\n\t\t\t\tOldestAnswered: resource.ThisRelease,\n\t\t\t}))",
+				"\t\tr.Use(h.DroidsAuth)\n\n\t\tregisterGenerated(r, hooks.Droids, \"Droids\"",
+			},
+			wantRouterTest: []string{
+				"\t\t{\n\t\t\tprefix: \"/api/\", server: \"2.0.0\", inRange: \"0.0.1\", below: \"\", above: \"2.0.1\",\n\t\t},",
+				"\t\t{\n\t\t\tprefix: \"/portal/api/\", server: \"3.3.0\", inRange: \"3.2.0\", below: \"0.0.0\", above: \"3.3.1\",\n\t\t},",
+				"\t\t{\n\t\t\tprefix: \"/kiosk/api/\", server: \"2.0.0\", inRange: \"2.0.0\", below: \"1.9.9\", above: \"2.0.1\",\n\t\t},",
+				"\tfor _, route := range generatedRouterTests() {\n\t\tif strings.HasPrefix(route.url, \"/droids/\") {\n\t\t\ttests = append(tests, versionCase{name: \"droids outlet is not checked\", server: \"2.0.0\", app: \"99.0.0\", method: route.method, url: route.url, handler: route.handlerFunc})",
+			},
 		},
 		{
 			name: "two session auths and an API-key outlet",
@@ -466,10 +640,11 @@ func Test_servedRouterTemplates(t *testing.T) {
 			wantRouter: []string{
 				"//\tdefault (/api), API key:",
 				"\tDefaultAuth(next http.Handler) http.Handler\n",
+				"\tServerVersion() string\n",
 			},
-			wantNotRouter:       []string{"StartSession", "session.PasswordAuthHandlers", "session.OIDC", "http.Redirect"},
-			wantNoRouterImports: []string{"github.com/cccteam/session"},
-			wantNotRouterTest:   []string{"session.PasswordAuthHandlers", "session.OIDC", "TestGeneratedRouterWebApps", "func TestGeneratedRouterSessionRoutes", "TestGeneratedRouterRoot"},
+			wantNotRouter:       []string{"StartSession", "session.PasswordAuthHandlers", "session.OIDC", "http.Redirect", "r.Use(resource.CheckAPIVersion(", "serverVersion :="},
+			wantNoRouterImports: []string{"github.com/cccteam/session", "github.com/cccteam/ccc/resource"},
+			wantNotRouterTest:   []string{"session.PasswordAuthHandlers", "session.OIDC", "TestGeneratedRouterWebApps", "func TestGeneratedRouterSessionRoutes", "TestGeneratedRouterRoot", "TestGeneratedRouterAPIVersion", "routerVersionProbe"},
 		},
 	}
 	r := &resourceGenerator{client: &client{}}
@@ -479,7 +654,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data := r.servedRouterData(tt.outlets, nil)
+			data := r.servedRouterData(tt.outlets, nil, tt.fileRoutes)
 
 			router := render(t, r, "servedRouterTemplate", servedRouterTemplate, data)
 			for _, want := range tt.wantRouter {

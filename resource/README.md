@@ -493,6 +493,33 @@ user/logout`, the directory's front-channel logout. An API-key outlet's group is
 `NoCaching`, `CompressionMiddleware`, `<Outlet>Auth`, then the hook and the routes: no
 session handling and no XSRF guard.
 
+**Release versions.** A browser application and the server each carry the release they
+were built from, and the server refuses an application it no longer answers. The
+application sends its release in `X-Api-Version` with every request. The server's is
+`Handlers.ServerVersion()`, which the application answers from its configuration's
+`APP_VERSION` (`dev` where no release built it), and the generator program declares how
+far back a session outlet answers with `generation.OldestAnswered("1.5.0")` on
+`GenerateRoutes` or `WithRouterOutlet`, or `generation.OldestAnswered(generation.ThisRelease)`
+for a release that changes the API inside a maintenance window, when only the server's
+own release is answered. Without the option every release that sends the header is
+answered. The check (`resource.CheckAPIVersion`) sits behind the outlet's guards and
+ahead of its hook, so it covers the generated routes and the hook's own: a request whose
+release is between the oldest answered and the server's, inclusive, is answered; any
+other is refused with 412 and `X-Api-Version: <server release>` before any handler runs
+and before its body is read. A request without the header is answered, so file links in
+`<img>` and `<a>`, navigations, curl, and bundles built before the header shipped keep
+working, and a version that is not a release on either side (`dev`, or anything that is
+not a semantic version) never refuses and is never refused. The session routes (login,
+callback, `/user/session`) sit outside the check, and the stored-file routes (`@file`)
+are exempt, so a login always works and a file link never fails on a version. An API-key
+outlet is not checked, and refuses the option. Every response on a checked route carries
+`Vary: X-Api-Version`, so a browser never serves one release's cached answer to another.
+Versions compare as semantic versions, with or without a leading `v`. The chain comment
+names the check per outlet with its oldest answered release, and the generated test
+proves it: in range answered, below or above refused with the header and no handler run
+and no body read, no header and `dev` answered, session and file routes answered at any
+release, the API-key outlets unchecked, and the refusal landing before the hook.
+
 **The generated test** drives every generated route through `New` with recording stubs
 and asserts the middleware each request passed through, in order, for its outlet; that
 each flavor's session routes answer behind the group and before the guards; that under

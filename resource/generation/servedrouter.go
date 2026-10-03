@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/mod/semver"
 )
 
 // Names the flavor table and the generated code share.
@@ -99,6 +101,8 @@ func (r *resourceGenerator) validateRouterConfig() error {
 				declared = "APIKey"
 			case o.webApp != "":
 				declared = "WebApp"
+			case o.declaredOldest:
+				declared = "OldestAnswered"
 			default:
 				continue
 			}
@@ -119,6 +123,8 @@ func (r *resourceGenerator) validateRouterConfig() error {
 			return errors.Newf("outlet %q declares APIKey and ServesSessions: an API-key outlet serves no browser sessions", o.name)
 		case o.apiKey && o.webApp != "":
 			return errors.Newf("outlet %q declares APIKey and WebApp(%q): a machine outlet serves no browser application", o.name, o.webApp)
+		case o.apiKey && o.declaredOldest:
+			return errors.Newf("outlet %q declares APIKey and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
 		}
 		if field := caser.ToPascal(o.name); slices.Contains(reservedHookFields, field) {
 			return errors.Newf("outlet %q would take the Hooks field %s, which the generated router reserves; choose another name", o.name, field)
@@ -248,6 +254,106 @@ type servedOutlet struct {
 	// Routes are the flavor's routes under the prefix.
 	Routes []servedRoute
 	WebApp *servedWebApp
+	// The session outlet's version check. OldestAnswered is the declaration as written
+	// ("" for none, ThisRelease, or a release); OldestAnsweredExpr the Go expression
+	// the router passes, empty for none; OldestAnsweredNote the chain comment's
+	// parenthetical; AnswersSentence the check comment's clause. FileRoutes are the
+	// outlet's stored-file routes, answered at any release, and Probes the releases
+	// the generated test sends through the check.
+	OldestAnswered     string
+	OldestAnsweredExpr string
+	OldestAnsweredNote string
+	AnswersSentence    string
+	FileRoutes         []servedFileRoute
+	Probes             versionProbes
+}
+
+// servedFileRoute is one stored-file route of a session outlet: the pattern the check
+// exempts, and the URL and handler the generated test drives it with.
+type servedFileRoute struct {
+	Pattern string
+	TestURL string
+	Handler string
+}
+
+// versionProbes are the releases the generated test sends through one session outlet's
+// check: Server is the release the stub reports; InRange the oldest answered release,
+// or the first release where every release is answered; Below a release under the
+// oldest answered, empty where every release is answered; Above a release past the
+// server's.
+type versionProbes struct {
+	Server  string
+	InRange string
+	Below   string
+	Above   string
+}
+
+// The probes where no release is written: the server the generated test reports when
+// every release or the server's own is answered, the release past it, the first
+// release, the release before the server's, and the release below any oldest answered.
+const (
+	probeServer          = "2.0.0"
+	probeAboveServer     = "2.0.1"
+	probeFirstRelease    = "0.0.1"
+	probeBeforeServer    = "1.9.9"
+	probeBelowAnyRelease = "0.0.0"
+)
+
+// versionProbesFor derives the probes from an outlet's oldest answered declaration.
+func versionProbesFor(oldest string) versionProbes {
+	switch oldest {
+	case "":
+		return versionProbes{Server: probeServer, InRange: probeFirstRelease, Above: probeAboveServer}
+	case ThisRelease:
+		return versionProbes{Server: probeServer, InRange: probeServer, Below: probeBeforeServer, Above: probeAboveServer}
+	}
+
+	canonical := oldest
+	if !strings.HasPrefix(canonical, "v") {
+		canonical = "v" + canonical
+	}
+	canonical = semver.Canonical(canonical)
+	var major, minor int
+	if _, err := fmt.Sscanf(semver.MajorMinor(canonical), "v%d.%d", &major, &minor); err != nil {
+		panic(fmt.Sprintf("versionProbesFor(%q): %v; the option accepted no release", oldest, err))
+	}
+	probes := versionProbes{
+		Server:  fmt.Sprintf("%d.%d.0", major, minor+1),
+		InRange: oldest,
+		Above:   fmt.Sprintf("%d.%d.1", major, minor+1),
+	}
+	if semver.Compare(canonical, "v"+probeBelowAnyRelease) > 0 {
+		probes.Below = probeBelowAnyRelease
+	}
+
+	return probes
+}
+
+// versionCheckOf renders the outlet's declaration for the router: the expression the
+// check receives, the chain comment's parenthetical, and the check comment's clause.
+func versionCheckOf(oldest string) (expr, note, sentence string) {
+	switch oldest {
+	case "":
+		return "", "", "every release up to the server's own is answered"
+	case ThisRelease:
+		return "resource.ThisRelease", " (oldest answered this release)", "only the server's own release is answered"
+	default:
+		return strconv.Quote(oldest), " (oldest answered " + oldest + ")", "releases from " + oldest + " up to the server's own are answered"
+	}
+}
+
+// servedFileRoutesOf renders an outlet's stored-file routes for the check and the
+// test, in path order.
+func servedFileRoutesOf(routes []*generatedRoute) []servedFileRoute {
+	files := make([]servedFileRoute, 0, len(routes))
+	for _, route := range routes {
+		files = append(files, servedFileRoute{Pattern: route.Path, TestURL: route.TestURL, Handler: route.HandlerFunc})
+	}
+	slices.SortFunc(files, func(a, b servedFileRoute) int {
+		return strings.Compare(a.Pattern, b.Pattern)
+	})
+
+	return files
 }
 
 // servedRoute is one session route as mounted.
@@ -279,10 +385,11 @@ type servedFlavor struct {
 }
 
 // runServedRouterGeneration renders the served router and its test (GenerateRouter)
-// beside the route tables.
-func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, negativeTests []negativeRouterTest) error {
+// beside the route tables. fileRoutes are each outlet's stored-file routes by outlet
+// name, which the session outlets' version checks exempt.
+func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes map[string][]*generatedRoute) error {
 	begin := time.Now()
-	data := r.servedRouterData(outlets, negativeTests)
+	data := r.servedRouterData(outlets, negativeTests, fileRoutes)
 
 	destination := filepath.Join(r.router.Dir(), generatedGoFileName(servedRouterOutputName))
 	if err := r.writeFormattedGoFile(destination, "servedRouterTemplate", servedRouterTemplate, data); err != nil {
@@ -300,8 +407,9 @@ func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, ne
 	return nil
 }
 
-// servedRouterData builds the template payload from the validated outlet declarations.
-func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTests []negativeRouterTest) *servedRouterData {
+// servedRouterData builds the template payload from the validated outlet declarations
+// and each outlet's stored-file routes by outlet name.
+func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes map[string][]*generatedRoute) *servedRouterData {
 	authPaths := make(map[string]struct{})
 	for _, o := range outlets {
 		if o.auth != nil {
@@ -338,6 +446,7 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 				spec := authFlavors[o.auth.flavor]
 				flavors[o.auth.flavor] = &servedFlavor{Flavor: o.auth.flavor, StubType: spec.stub, Handlers: spec.handlers, Routes: spec.routes}
 			}
+			so.FileRoutes = servedFileRoutesOf(fileRoutes[o.name])
 			data.SessionOutlets = append(data.SessionOutlets, so)
 		}
 		data.Outlets = append(data.Outlets, so)
@@ -417,6 +526,9 @@ func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 			so.StubField = caser.ToCamel(o.name)
 			so.StubPrefix = so.HookField
 		}
+		so.OldestAnswered = o.oldestAnswered
+		so.OldestAnsweredExpr, so.OldestAnsweredNote, so.AnswersSentence = versionCheckOf(o.oldestAnswered)
+		so.Probes = versionProbesFor(o.oldestAnswered)
 		so.Routes = make([]servedRoute, 0, len(spec.routes))
 		for _, route := range spec.routes {
 			so.Routes = append(so.Routes, servedRoute{
@@ -468,7 +580,7 @@ var (
 {{- else }}
 //	{{ .Name }} (/{{ .Prefix }}), {{ .FlavorLabel }}{{ if .AuthPackage }} of the {{ .AuthPackage }} auth{{ end }}:
 //	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: {{ range $i, $route := .Routes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
-//	  + ValidateSession, ValidateXSRFToken: hooks.{{ .HookField }}, {{ .RoutesFunc }}
+//	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion{{ .OldestAnsweredNote }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- end }}
 {{- end }}
 //
@@ -487,6 +599,7 @@ import (
 {{- range .AuthImports }}
 	"{{ . }}"
 {{- end }}
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
@@ -517,6 +630,11 @@ type Handlers interface {
 	// request to a service identity in place of a browser session.
 	{{ .AuthMiddleware }}(next http.Handler) http.Handler
 {{- end }}
+	// ServerVersion is the release this server was built from, the configuration's
+	// APP_VERSION: what each session outlet checks a browser application's
+	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
+	// dev for one, checks nothing.
+	ServerVersion() string
 
 	// Every request.
 	LoggerMiddleware() func(http.Handler) http.Handler
@@ -563,6 +681,11 @@ type Hooks struct {
 // a not-found handler per outlet prefix, and the browser applications.
 func New(h Handlers, hooks Hooks) *chi.Mux {
 	r := chi.NewRouter()
+{{- if .SessionOutlets }}
+	// The release this server was built from, which every session outlet's version
+	// check compares a browser application's X-Api-Version against.
+	serverVersion := h.ServerVersion()
+{{- end }}
 
 	// Every request.
 	r.Use(hooks.Outermost...)
@@ -610,6 +733,24 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Group(func(r chi.Router) {
 			r.Use({{ .Receiver }}.ValidateSession)
 			r.Use({{ .Receiver }}.ValidateXSRFToken)
+			// The version check: a browser application sends its release in X-Api-Version,
+			// and {{ .AnswersSentence }}. An application outside that
+			// range is refused with 412 naming the server's release, before its body is read;
+			// a request without the header, the session routes above{{ if .FileRoutes }} and the stored-file
+			// routes{{ end }} are answered at any release.
+			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
+				ServerVersion: serverVersion,
+{{- if .OldestAnsweredExpr }}
+				OldestAnswered: {{ .OldestAnsweredExpr }},
+{{- end }}
+{{- if .FileRoutes }}
+				Exempt: []string{
+{{- range .FileRoutes }}
+					"{{ .Pattern }}",
+{{- end }}
+				},
+{{- end }}
+			}))
 
 			registerGenerated(r, hooks.{{ .HookField }}, "{{ .HookField }}", func(r chi.Router) {
 				{{ .RoutesFunc }}(r, h)
@@ -678,6 +819,7 @@ func registerGenerated(r chi.Router, hook func(chi.Router, func(chi.Router)), na
 package {{ .Package }}
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -687,6 +829,7 @@ import (
 {{- range .AuthImports }}
 	"{{ . }}"
 {{- end }}
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
@@ -758,8 +901,17 @@ func routerSessionRoutes() []routerSessionRoute {
 func serveGeneratedRouter(t *testing.T, rec *routerCallRecorder, hooks Hooks, method, url string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	router := New(newRouterHandlersStub(rec), hooks)
-	req := httptest.NewRequestWithContext(t.Context(), method, url, http.NoBody)
+	return serveGeneratedRouterRequest(t, rec, "", hooks, httptest.NewRequestWithContext(t.Context(), method, url, http.NoBody))
+}
+
+// serveGeneratedRouterRequest builds the router over recording stubs whose server
+// reports serverVersion, with the given hooks, and serves req through it.
+func serveGeneratedRouterRequest(t *testing.T, rec *routerCallRecorder, serverVersion string, hooks Hooks, req *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+
+	stub := newRouterHandlersStub(rec)
+	stub.serverVersion = serverVersion
+	router := New(stub, hooks)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -1091,6 +1243,181 @@ var prefixHookFields = map[string]string{
 	"{{ .NotFoundPrefix }}": "{{ .HookField }}",
 {{- end }}
 }
+{{ if .SessionOutlets }}
+// routerVersionProbe is one session outlet's version check as the generator declared
+// it: the prefix its routes sit under, the releases the test sends through it, and the
+// stored-file routes answered at any release.
+type routerVersionProbe struct {
+	prefix string
+	// server is the release the stub reports; inRange the oldest answered release, or
+	// the first release where every release is answered; below a release under the
+	// oldest answered, empty where every release is answered; above a release past the
+	// server's.
+	server, inRange, below, above string
+	files                         []routerFileRoute
+}
+
+// routerFileRoute is one stored-file route: its test URL and handler.
+type routerFileRoute struct {
+	url, handler string
+}
+
+// routerVersionProbes lists every session outlet's probe.
+func routerVersionProbes() []routerVersionProbe {
+	return []routerVersionProbe{
+{{- range .SessionOutlets }}
+		{
+			prefix: "{{ .NotFoundPrefix }}", server: "{{ .Probes.Server }}", inRange: "{{ .Probes.InRange }}", below: "{{ .Probes.Below }}", above: "{{ .Probes.Above }}",
+{{- if .FileRoutes }}
+			files: []routerFileRoute{
+{{- range .FileRoutes }}
+				{url: "{{ .TestURL }}", handler: "{{ .Handler }}"},
+{{- end }}
+			},
+{{- end }}
+		},
+{{- end }}
+	}
+}
+
+// routerUnreadBody fails a case that reads it: a refused request's body is never read.
+type routerUnreadBody struct {
+	read bool
+}
+
+func (b *routerUnreadBody) Read([]byte) (int, error) {
+	b.read = true
+
+	return 0, io.EOF
+}
+
+// TestGeneratedRouterAPIVersion proves each session outlet's version check: a request
+// whose X-Api-Version is between the outlet's oldest answered release and the server's
+// is answered with Vary: X-Api-Version, one below or above is refused with 412 and the
+// server's release in X-Api-Version before any handler runs or its body is read, a
+// request without the header or with a version that is not a release on either side
+// is answered, the session routes and the stored-file routes answer at any release,
+// an API-key outlet is never checked, and the check sits behind the outlet's guards
+// and ahead of its hook.
+func TestGeneratedRouterAPIVersion(t *testing.T) {
+	t.Parallel()
+
+	type versionCase struct {
+		name    string
+		server  string
+		app     string
+		method  string
+		url     string
+		handler string
+		refused bool
+		varied  bool
+	}
+	var tests []versionCase
+	for _, probe := range routerVersionProbes() {
+		where := strings.ReplaceAll(probe.prefix, "/", "-")
+		digest := probe.prefix + "permission-digest"
+		checked := func(name, server, app string) versionCase {
+			return versionCase{name: where + name, server: server, app: app, method: http.MethodGet, url: digest, handler: "PermissionDigest", varied: true}
+		}
+		refused := func(name, app string) versionCase {
+			return versionCase{name: where + name, server: probe.server, app: app, method: http.MethodGet, url: digest, refused: true}
+		}
+		tests = append(tests,
+			checked("the oldest answered release", probe.server, probe.inRange),
+			checked("the server's release", probe.server, probe.server),
+			checked("no header", probe.server, ""),
+			checked("an application that is not a release", probe.server, "dev"),
+			checked("a server that is not a release", "dev", probe.above),
+			refused("a release above the server's", probe.above),
+		)
+		if probe.below != "" {
+			tests = append(tests, refused("a release below the oldest answered", probe.below))
+		}
+		for _, route := range routerSessionRoutes() {
+			if strings.HasPrefix(route.url, probe.prefix) {
+				tests = append(tests, versionCase{name: where + "a session route at any release " + route.method + strings.ReplaceAll(route.suffix, "/", "-"), server: probe.server, app: probe.above, method: route.method, url: route.url, handler: route.handler})
+			}
+		}
+		for _, file := range probe.files {
+			tests = append(tests, versionCase{name: where + "a stored-file route at any release " + file.handler, server: probe.server, app: probe.above, method: http.MethodGet, url: file.url, handler: file.handler})
+		}
+	}
+{{- range .APIKeyOutlets }}
+	for _, route := range generatedRouterTests() {
+		if strings.HasPrefix(route.url, "{{ .NotFoundPrefix }}") {
+			tests = append(tests, versionCase{name: "{{ .Name }} outlet is not checked", server: "2.0.0", app: "99.0.0", method: route.method, url: route.url, handler: route.handlerFunc})
+
+			break
+		}
+	}
+{{- end }}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			body := &routerUnreadBody{}
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, body)
+			if tt.app != "" {
+				req.Header.Set(resource.APIVersionHeader, tt.app)
+			}
+			rr := serveGeneratedRouterRequest(t, rec, tt.server, Hooks{}, req)
+
+			if tt.refused {
+				if got := rr.Code; got != http.StatusPreconditionFailed {
+					t.Fatalf("response.Code = %v, want %v", got, http.StatusPreconditionFailed)
+				}
+				if got := rr.Header().Get(resource.APIVersionHeader); got != tt.server {
+					t.Errorf("%s = %q, want the server's %q", resource.APIVersionHeader, got, tt.server)
+				}
+				if cnt := len(rec.handlers); cnt != 0 {
+					t.Errorf("expected no handler called, got: %v", rec.handlers)
+				}
+				if body.read {
+					t.Error("the refused request's body was read")
+				}
+
+				return
+			}
+			if got := rr.Code; got != http.StatusOK {
+				t.Fatalf("response.Code = %v, want %v", got, http.StatusOK)
+			}
+			if cnt := rec.handlers[tt.handler]; cnt != 1 || len(rec.handlers) != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %v", tt.handler, rec.handlers)
+			}
+			if got := slices.Contains(rr.Header().Values("Vary"), resource.APIVersionHeader); got != tt.varied {
+				t.Errorf("Vary carries %s = %v, want %v", resource.APIVersionHeader, got, tt.varied)
+			}
+		})
+	}
+
+	// The check sits behind the outlet's guards and ahead of its hook: a refused request
+	// passes the group and the guards and never reaches the hook's middleware.
+	t.Run("a refused request never reaches the hook", func(t *testing.T) {
+		t.Parallel()
+
+		probe := routerVersionProbes()[0]
+		rec := newRouterCallRecorder()
+		hooks := Hooks{
+			{{ (index .SessionOutlets 0).HookField }}: func(r chi.Router, generated func(chi.Router)) {
+				r.Use(rec.Middleware("{{ (index .SessionOutlets 0).HookField }}Hook"))
+				generated(r)
+			},
+		}
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, probe.prefix+"permission-digest", http.NoBody)
+		req.Header.Set(resource.APIVersionHeader, probe.above)
+		rr := serveGeneratedRouterRequest(t, rec, probe.server, hooks, req)
+
+		if got := rr.Code; got != http.StatusPreconditionFailed {
+			t.Fatalf("response.Code = %v, want %v", got, http.StatusPreconditionFailed)
+		}
+		chain := routerChainFor(t, probe.prefix+"permission-digest")
+		if want := slices.Concat(routerRootChain, chain.group, chain.guards); !slices.Equal(rec.chain, want) {
+			t.Errorf("middleware chain = %v, want %v", rec.chain, want)
+		}
+	})
+}
+{{ end }}
 
 // routerCallRecorder records the order middleware ran in, beside the handler and
 // route-parameter recording the routes test's recorder provides.
@@ -1159,6 +1486,13 @@ type routerHandlersStub struct {
 	{{ .StubField }} *{{ .StubType }}
 {{- end }}
 {{- end }}
+	// serverVersion is the release the stub reports; empty, no release, so a case that
+	// sets none is never refused.
+	serverVersion string
+}
+
+func (s *routerHandlersStub) ServerVersion() string {
+	return s.serverVersion
 }
 
 func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {

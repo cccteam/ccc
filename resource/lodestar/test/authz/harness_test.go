@@ -120,6 +120,9 @@ func (c *testConfigurer) LogExporter() logger.Exporter {
 	return logger.NewConsoleExporter()
 }
 
+// AppVersion is dev: the matrix drives the bare test router, which checks no version.
+func (c *testConfigurer) AppVersion() string { return "dev" }
+
 func (c *testConfigurer) ConsoleDist() string { return "" }
 
 func (c *testConfigurer) PortalDist() string { return "" }

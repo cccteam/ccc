@@ -14,10 +14,12 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/securehash"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 	"github.com/shopspring/decimal"
+	"golang.org/x/mod/semver"
 )
 
 type (
@@ -171,6 +173,12 @@ type routerOutlet struct {
 	webApp string
 	// declaredSessions records an explicit ServesSessions(), which contradicts APIKey.
 	declaredSessions bool
+	// oldestAnswered is the oldest release of the browser application the outlet
+	// still answers (OldestAnswered): a release, ThisRelease, or empty for every
+	// release that sends the header. declaredOldest records the declaration, which
+	// contradicts APIKey and describes the generated router.
+	oldestAnswered string
+	declaredOldest bool
 }
 
 // outletAuth is one Auth declaration: the auth package a session outlet binds to and the
@@ -352,6 +360,51 @@ func WebApp(mountPath string) OutletOption {
 
 		return nil
 	})
+}
+
+// ThisRelease names the server's own release as an outlet's oldest answered: only a
+// browser application built from the same release is answered. A generator program
+// writes it for a release that changes the API inside a maintenance window.
+const ThisRelease = resource.ThisRelease
+
+// OldestAnswered declares the oldest release of the browser application a session
+// outlet still answers, for the generated router (GenerateRouter). A browser
+// application sends the release it was built from in X-Api-Version with every request,
+// and the server answers releases from this one up to its own, the configuration's
+// APP_VERSION the application reports through Handlers.ServerVersion; an application
+// outside that range is refused with 412 naming the server's release, before its body
+// is read, and picks up the current build. release is a semantic version such as
+// "1.5.0", or ThisRelease for a release that changes the API inside a maintenance
+// window, when only the server's own release is answered. The default outlet declares
+// it on GenerateRoutes, an additional outlet on WithRouterOutlet; without it every
+// release that sends the header is answered. A machine outlet (APIKey) carries no
+// release and refuses the option.
+func OldestAnswered(release string) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if release != ThisRelease && !isRelease(release) {
+			return errors.Newf("OldestAnswered(%q) names no release: write a semantic version such as \"1.5.0\", or ThisRelease", release)
+		}
+		if o.declaredOldest {
+			return errors.Newf("OldestAnswered(%q) redeclares the outlet's oldest answered release (%q): an outlet answers from one release", release, o.oldestAnswered)
+		}
+		o.oldestAnswered = release
+		o.declaredOldest = true
+
+		return nil
+	})
+}
+
+// isRelease reports whether version is a semantic version, with or without the
+// leading v, as the server's check reads one.
+func isRelease(version string) bool {
+	if version == "" {
+		return false
+	}
+	if !strings.HasPrefix(version, "v") {
+		version = "v" + version
+	}
+
+	return semver.IsValid(version)
 }
 
 // outletNamePattern constrains outlet names to lowerCamelCase identifiers so the

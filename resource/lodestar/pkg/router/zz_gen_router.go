@@ -7,12 +7,12 @@
 //	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
 //	default (/console/api), password sessions of the crew auth:
 //	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /console/api/user/login, GET /console/api/user/session, DELETE /console/api/user/session
-//	  + ValidateSession, ValidateXSRFToken: hooks.Default, generatedRoutes
+//	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes
 //	droids (/droids), API key:
 //	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
 //	portal (/portal/api), Google directory sessions of the members auth:
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/login, GET /portal/api/user/callback, GET /portal/api/user/session, DELETE /portal/api/user/session
-//	  + ValidateSession, ValidateXSRFToken: hooks.Portal, generatedPortalRoutes
+//	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Portal, generatedPortalRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/httpio"
@@ -46,6 +47,11 @@ type Handlers interface {
 	// DroidsAuth authenticates the droids outlet's machine clients, binding each
 	// request to a service identity in place of a browser session.
 	DroidsAuth(next http.Handler) http.Handler
+	// ServerVersion is the release this server was built from, the configuration's
+	// APP_VERSION: what each session outlet checks a browser application's
+	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
+	// dev for one, checks nothing.
+	ServerVersion() string
 
 	// Every request.
 	LoggerMiddleware() func(http.Handler) http.Handler
@@ -95,6 +101,9 @@ type Hooks struct {
 // a not-found handler per outlet prefix, and the browser applications.
 func New(h Handlers, hooks Hooks) *chi.Mux {
 	r := chi.NewRouter()
+	// The release this server was built from, which every session outlet's version
+	// check compares a browser application's X-Api-Version against.
+	serverVersion := h.ServerVersion()
 
 	// Every request.
 	r.Use(hooks.Outermost...)
@@ -124,6 +133,19 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
 			r.Use(h.ValidateXSRFToken)
+			// The version check: a browser application sends its release in X-Api-Version,
+			// and every release up to the server's own is answered. An application outside that
+			// range is refused with 412 naming the server's release, before its body is read;
+			// a request without the header, the session routes above and the stored-file
+			// routes are answered at any release.
+			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
+				ServerVersion: serverVersion,
+				Exempt: []string{
+					"/console/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}/content",
+					"/console/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content",
+					"/console/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}/photo",
+				},
+			}))
 
 			registerGenerated(r, hooks.Default, "Default", func(r chi.Router) {
 				generatedRoutes(r, h)
@@ -160,6 +182,17 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Group(func(r chi.Router) {
 			r.Use(portalSession.ValidateSession)
 			r.Use(portalSession.ValidateXSRFToken)
+			// The version check: a browser application sends its release in X-Api-Version,
+			// and every release up to the server's own is answered. An application outside that
+			// range is refused with 412 naming the server's release, before its body is read;
+			// a request without the header, the session routes above and the stored-file
+			// routes are answered at any release.
+			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
+				ServerVersion: serverVersion,
+				Exempt: []string{
+					"/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content",
+				},
+			}))
 
 			registerGenerated(r, hooks.Portal, "Portal", func(r chi.Router) {
 				generatedPortalRoutes(r, h)

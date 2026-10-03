@@ -4,12 +4,14 @@
 package router
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/session"
@@ -83,8 +85,17 @@ func routerSessionRoutes() []routerSessionRoute {
 func serveGeneratedRouter(t *testing.T, rec *routerCallRecorder, hooks Hooks, method, url string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	router := New(newRouterHandlersStub(rec), hooks)
-	req := httptest.NewRequestWithContext(t.Context(), method, url, http.NoBody)
+	return serveGeneratedRouterRequest(t, rec, "", hooks, httptest.NewRequestWithContext(t.Context(), method, url, http.NoBody))
+}
+
+// serveGeneratedRouterRequest builds the router over recording stubs whose server
+// reports serverVersion, with the given hooks, and serves req through it.
+func serveGeneratedRouterRequest(t *testing.T, rec *routerCallRecorder, serverVersion string, hooks Hooks, req *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+
+	stub := newRouterHandlersStub(rec)
+	stub.serverVersion = serverVersion
+	router := New(stub, hooks)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -697,6 +708,180 @@ var prefixHookFields = map[string]string{
 	"/portal/api/":  "Portal",
 }
 
+// routerVersionProbe is one session outlet's version check as the generator declared
+// it: the prefix its routes sit under, the releases the test sends through it, and the
+// stored-file routes answered at any release.
+type routerVersionProbe struct {
+	prefix string
+	// server is the release the stub reports; inRange the oldest answered release, or
+	// the first release where every release is answered; below a release under the
+	// oldest answered, empty where every release is answered; above a release past the
+	// server's.
+	server, inRange, below, above string
+	files                         []routerFileRoute
+}
+
+// routerFileRoute is one stored-file route: its test URL and handler.
+type routerFileRoute struct {
+	url, handler string
+}
+
+// routerVersionProbes lists every session outlet's probe.
+func routerVersionProbes() []routerVersionProbe {
+	return []routerVersionProbe{
+		{
+			prefix: "/console/api/", server: "2.0.0", inRange: "0.0.1", below: "", above: "2.0.1",
+			files: []routerFileRoute{
+				{url: "/console/api/sectors/testDomain/expense-manifests/testExpenseManifestMissionID/content", handler: "ExpenseManifestContent"},
+				{url: "/console/api/sectors/testDomain/mission-documents/testMissionDocumentID/content", handler: "MissionDocumentContent"},
+				{url: "/console/api/sectors/testDomain/refit-tasks/testRefitTaskRefitID/testRefitTaskTaskNumber/photo", handler: "RefitTaskPhoto"},
+			},
+		},
+		{
+			prefix: "/portal/api/", server: "2.0.0", inRange: "0.0.1", below: "", above: "2.0.1",
+			files: []routerFileRoute{
+				{url: "/portal/api/sectors/testDomain/mission-documents/testMissionDocumentID/content", handler: "MissionDocumentContent"},
+			},
+		},
+	}
+}
+
+// routerUnreadBody fails a case that reads it: a refused request's body is never read.
+type routerUnreadBody struct {
+	read bool
+}
+
+func (b *routerUnreadBody) Read([]byte) (int, error) {
+	b.read = true
+
+	return 0, io.EOF
+}
+
+// TestGeneratedRouterAPIVersion proves each session outlet's version check: a request
+// whose X-Api-Version is between the outlet's oldest answered release and the server's
+// is answered with Vary: X-Api-Version, one below or above is refused with 412 and the
+// server's release in X-Api-Version before any handler runs or its body is read, a
+// request without the header or with a version that is not a release on either side
+// is answered, the session routes and the stored-file routes answer at any release,
+// an API-key outlet is never checked, and the check sits behind the outlet's guards
+// and ahead of its hook.
+func TestGeneratedRouterAPIVersion(t *testing.T) {
+	t.Parallel()
+
+	type versionCase struct {
+		name    string
+		server  string
+		app     string
+		method  string
+		url     string
+		handler string
+		refused bool
+		varied  bool
+	}
+	var tests []versionCase
+	for _, probe := range routerVersionProbes() {
+		where := strings.ReplaceAll(probe.prefix, "/", "-")
+		digest := probe.prefix + "permission-digest"
+		checked := func(name, server, app string) versionCase {
+			return versionCase{name: where + name, server: server, app: app, method: http.MethodGet, url: digest, handler: "PermissionDigest", varied: true}
+		}
+		refused := func(name, app string) versionCase {
+			return versionCase{name: where + name, server: probe.server, app: app, method: http.MethodGet, url: digest, refused: true}
+		}
+		tests = append(tests,
+			checked("the oldest answered release", probe.server, probe.inRange),
+			checked("the server's release", probe.server, probe.server),
+			checked("no header", probe.server, ""),
+			checked("an application that is not a release", probe.server, "dev"),
+			checked("a server that is not a release", "dev", probe.above),
+			refused("a release above the server's", probe.above),
+		)
+		if probe.below != "" {
+			tests = append(tests, refused("a release below the oldest answered", probe.below))
+		}
+		for _, route := range routerSessionRoutes() {
+			if strings.HasPrefix(route.url, probe.prefix) {
+				tests = append(tests, versionCase{name: where + "a session route at any release " + route.method + strings.ReplaceAll(route.suffix, "/", "-"), server: probe.server, app: probe.above, method: route.method, url: route.url, handler: route.handler})
+			}
+		}
+		for _, file := range probe.files {
+			tests = append(tests, versionCase{name: where + "a stored-file route at any release " + file.handler, server: probe.server, app: probe.above, method: http.MethodGet, url: file.url, handler: file.handler})
+		}
+	}
+	for _, route := range generatedRouterTests() {
+		if strings.HasPrefix(route.url, "/droids/") {
+			tests = append(tests, versionCase{name: "droids outlet is not checked", server: "2.0.0", app: "99.0.0", method: route.method, url: route.url, handler: route.handlerFunc})
+
+			break
+		}
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			body := &routerUnreadBody{}
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, body)
+			if tt.app != "" {
+				req.Header.Set(resource.APIVersionHeader, tt.app)
+			}
+			rr := serveGeneratedRouterRequest(t, rec, tt.server, Hooks{}, req)
+
+			if tt.refused {
+				if got := rr.Code; got != http.StatusPreconditionFailed {
+					t.Fatalf("response.Code = %v, want %v", got, http.StatusPreconditionFailed)
+				}
+				if got := rr.Header().Get(resource.APIVersionHeader); got != tt.server {
+					t.Errorf("%s = %q, want the server's %q", resource.APIVersionHeader, got, tt.server)
+				}
+				if cnt := len(rec.handlers); cnt != 0 {
+					t.Errorf("expected no handler called, got: %v", rec.handlers)
+				}
+				if body.read {
+					t.Error("the refused request's body was read")
+				}
+
+				return
+			}
+			if got := rr.Code; got != http.StatusOK {
+				t.Fatalf("response.Code = %v, want %v", got, http.StatusOK)
+			}
+			if cnt := rec.handlers[tt.handler]; cnt != 1 || len(rec.handlers) != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %v", tt.handler, rec.handlers)
+			}
+			if got := slices.Contains(rr.Header().Values("Vary"), resource.APIVersionHeader); got != tt.varied {
+				t.Errorf("Vary carries %s = %v, want %v", resource.APIVersionHeader, got, tt.varied)
+			}
+		})
+	}
+
+	// The check sits behind the outlet's guards and ahead of its hook: a refused request
+	// passes the group and the guards and never reaches the hook's middleware.
+	t.Run("a refused request never reaches the hook", func(t *testing.T) {
+		t.Parallel()
+
+		probe := routerVersionProbes()[0]
+		rec := newRouterCallRecorder()
+		hooks := Hooks{
+			Default: func(r chi.Router, generated func(chi.Router)) {
+				r.Use(rec.Middleware("DefaultHook"))
+				generated(r)
+			},
+		}
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, probe.prefix+"permission-digest", http.NoBody)
+		req.Header.Set(resource.APIVersionHeader, probe.above)
+		rr := serveGeneratedRouterRequest(t, rec, probe.server, hooks, req)
+
+		if got := rr.Code; got != http.StatusPreconditionFailed {
+			t.Fatalf("response.Code = %v, want %v", got, http.StatusPreconditionFailed)
+		}
+		chain := routerChainFor(t, probe.prefix+"permission-digest")
+		if want := slices.Concat(routerRootChain, chain.group, chain.guards); !slices.Equal(rec.chain, want) {
+			t.Errorf("middleware chain = %v, want %v", rec.chain, want)
+		}
+	})
+}
+
 // routerCallRecorder records the order middleware ran in, beside the handler and
 // route-parameter recording the routes test's recorder provides.
 type routerCallRecorder struct {
@@ -804,6 +989,13 @@ type routerHandlersStub struct {
 	*routerPasswordStub
 	rec    *routerCallRecorder
 	portal *routerOIDCGoogleStub
+	// serverVersion is the release the stub reports; empty, no release, so a case that
+	// sets none is never refused.
+	serverVersion string
+}
+
+func (s *routerHandlersStub) ServerVersion() string {
+	return s.serverVersion
 }
 
 func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {

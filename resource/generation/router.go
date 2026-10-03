@@ -112,12 +112,29 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 
 	if r.genRouter {
-		if err := r.runServedRouterGeneration(outlets, negativeTests); err != nil {
+		if err := r.runServedRouterGeneration(outlets, negativeTests, fileRoutesByOutlet(outletRoutes)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// fileRoutesByOutlet collects each outlet's stored-file routes by outlet name: the
+// routes a session outlet's version check answers at any release.
+func fileRoutesByOutlet(outletRoutes []*outletRouteData) map[string][]*generatedRoute {
+	files := make(map[string][]*generatedRoute, len(outletRoutes))
+	for _, outlet := range outletRoutes {
+		for _, routes := range outlet.RoutesMap {
+			for _, route := range routes {
+				if route.HandlerType == fileHandler {
+					files[outlet.Name] = append(files[outlet.Name], route)
+				}
+			}
+		}
+	}
+
+	return files
 }
 
 // accumulateResourceRoutes builds every routed resource's routes into each member

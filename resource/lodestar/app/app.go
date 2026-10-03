@@ -81,6 +81,10 @@ type Configurer interface {
 	MembersAccess() access.Controller
 	Validator() *validator.Validate
 	LogExporter() logger.Exporter
+	// AppVersion is the release this build was made from (APP_VERSION, dev where no
+	// release built it): what the generated router checks a browser application's
+	// X-Api-Version against.
+	AppVersion() string
 	ConsoleDist() string
 	PortalDist() string
 	// DroidsAPIKey is the bearer key the droids outlet's clients present.
@@ -146,6 +150,7 @@ type App struct {
 	cursorKey      *resource.CursorKey
 	validate       *validator.Validate
 	logExporter    logger.Exporter
+	version        string
 	consoleDist    string
 	portalDist     string
 	droidsAPIKey   string
@@ -179,6 +184,7 @@ func New(cfg Configurer) *App {
 		cursorKey:      cfg.CursorKey(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
+		version:        cfg.AppVersion(),
 		consoleDist:    cfg.ConsoleDist(),
 		portalDist:     cfg.PortalDist(),
 		droidsAPIKey:   cfg.DroidsAPIKey(),
@@ -250,6 +256,14 @@ func (a *App) Portal() session.OIDCGoogleHandlers {
 // LoggerMiddleware returns a middleware that logs requests.
 func (a *App) LoggerMiddleware() func(http.Handler) http.Handler {
 	return logger.NewRequestLogger(a.logExporter)
+}
+
+// ServerVersion is the release this server was built from, the configuration's
+// APP_VERSION: what the generated router's session outlets check a browser
+// application's X-Api-Version against. A development build reports dev, which checks
+// nothing.
+func (a *App) ServerVersion() string {
+	return a.version
 }
 
 // SecurityHeaders is a middleware that sets security-related headers on the response,

@@ -62,15 +62,20 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 		copyFile(t, filepath.Join(moduleDir, name), filepath.Join(scratch, name))
 	}
 
+	// The default outlet answers releases from 1.5.0, the portal only the server's own,
+	// and the default outlet serves one stored file, answered at any release.
 	outlets := []routerOutlet{
-		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", flavor: Password}, webApp: "/console"},
+		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", flavor: Password}, webApp: "/console", oldestAnswered: "1.5.0", declaredOldest: true},
 		{name: "droids", prefix: "droids", apiKey: true},
-		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", flavor: OIDCGoogle}, webApp: "/portal"},
+		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", flavor: OIDCGoogle}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true},
+	}
+	fileRoutes := map[string][]*generatedRoute{
+		"default": {{Path: "/api/widgets/{widgetId}/content", TestURL: "/api/widgets/7/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler}},
 	}
 	r := &resourceGenerator{client: &client{}}
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
-	data := r.servedRouterData(outlets, nil)
+	data := r.servedRouterData(outlets, nil, fileRoutes)
 	if data.RootRedirect != "/console/" || !data.MultiAuth {
 		t.Fatalf("RootRedirect = %q, MultiAuth = %v; want /console/ and two auths", data.RootRedirect, data.MultiAuth)
 	}
@@ -113,6 +118,17 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 		"--- PASS: TestGeneratedRouterSessionRoutes/GET-url-portal-api-user-callback",
 		"--- PASS: TestGeneratedRouterNotFound/POST-url-droids-user-login",
 		"--- PASS: TestGeneratedRouterHooks",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-the_oldest_answered_release",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_release_below_the_oldest_answered",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_release_above_the_server's",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-no_header",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_server_that_is_not_a_release",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_session_route_at_any_release_POST-user-login",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_stored-file_route_at_any_release_WidgetContent",
+		"--- PASS: TestGeneratedRouterAPIVersion/-portal-api-a_release_below_the_oldest_answered",
+		"--- PASS: TestGeneratedRouterAPIVersion/-portal-api-a_session_route_at_any_release_GET-user-callback",
+		"--- PASS: TestGeneratedRouterAPIVersion/droids_outlet_is_not_checked",
+		"--- PASS: TestGeneratedRouterAPIVersion/a_refused_request_never_reaches_the_hook",
 	} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("go test output missing %q:\n%s", want, out)
@@ -156,12 +172,14 @@ type GeneratedHandlers interface {
 	PermissionDigest() http.HandlerFunc
 	UserDomains() http.HandlerFunc
 	Widgets() http.HandlerFunc
+	WidgetContent() http.HandlerFunc
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/permission-digest", h.PermissionDigest())
 	r.Get("/api/user-domains", h.UserDomains())
 	r.Get("/api/widgets/{widgetId}", h.Widgets())
+	r.Get("/api/widgets/{widgetId}/content", h.WidgetContent())
 }
 
 type GeneratedDroidsHandlers interface {
@@ -233,6 +251,7 @@ func generatedRouterTests() []*generatedRouterTest {
 		{url: "/api/permission-digest", method: http.MethodGet, handlerFunc: "PermissionDigest"},
 		{url: "/api/user-domains", method: http.MethodGet, handlerFunc: "UserDomains"},
 		{url: "/api/widgets/7", method: http.MethodGet, handlerFunc: "Widgets", parameters: map[string]string{"widgetId": "7"}},
+		{url: "/api/widgets/7/content", method: http.MethodGet, handlerFunc: "WidgetContent", parameters: map[string]string{"widgetId": "7"}},
 		{url: "/droids/beacons", method: http.MethodGet, handlerFunc: "Beacons"},
 		{url: "/portal/api/permission-digest", method: http.MethodGet, handlerFunc: "PermissionDigest"},
 		{url: "/portal/api/user-domains", method: http.MethodGet, handlerFunc: "UserDomains"},
@@ -258,6 +277,10 @@ func (s *generatedHandlersStub) UserDomains() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Widgets() http.HandlerFunc {
 	return s.record("Widgets")
+}
+
+func (s *generatedHandlersStub) WidgetContent() http.HandlerFunc {
+	return s.record("WidgetContent")
 }
 
 func (s *generatedHandlersStub) Beacons() http.HandlerFunc {

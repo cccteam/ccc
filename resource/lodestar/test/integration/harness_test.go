@@ -310,6 +310,10 @@ func (c *testConfigurer) Validator() *validator.Validate { return validator.New(
 
 func (c *testConfigurer) LogExporter() logger.Exporter { return logger.NewConsoleExporter() }
 
+// AppVersion is dev: the served stack's version check answers every release, so no
+// suite's request is refused for the release it carries.
+func (c *testConfigurer) AppVersion() string { return "dev" }
+
 func (c *testConfigurer) ConsoleDist() string { return "" }
 
 func (c *testConfigurer) PortalDist() string { return "" }
