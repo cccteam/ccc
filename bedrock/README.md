@@ -479,7 +479,12 @@ thing one step hands the next. In order:
   them migrates with its own) and the release in the version variable the pipeline names
   (`--version-variable`); with the seed (`schema/devseed` as data migrations after the
   schema) where `_SEED` is true: every pull request, and a release build only in the
-  environments the placement's seed list names. The command's lines are the build log's,
+  environments the placement's seed list names. Before the command runs, the step reads
+  each database the stack names (`_MIGRATE_DATABASES`, read back with the settings) as
+  the deploy identity until it may, for up to three minutes: the stack's apply in the
+  same build may have just created the identity's grants (an application's first
+  release, or the first after its grants change), and IAM makes a new grant effective
+  seconds to minutes after the policy holds it. The command's lines are the build log's,
   so a failed migration's message is where the run is read, and the deployment record
   lists the migrations applied. A release build may carry a migration operation
   (`_MIGRATE_ACTION`, from the operations workflow: `version`, `rerun` or `force`, with

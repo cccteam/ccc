@@ -390,9 +390,13 @@ func (s *stack) migrateSettings(ctx context.Context, w Workspace) error {
 	if settings == "" {
 		return errors.Newf("the stack's substitutions output names no %s, the migrate command's settings: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateEnvSub)
 	}
-	fmt.Fprintf(s.out, "The migrate command's settings are read from the stack as applied (%s).\n", migrateEnvSub)
+	databases := facts[migrateDatabasesFact]
+	if databases == "" {
+		return errors.Newf("the stack's substitutions output names no %s, the databases the migrate command reaches: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateDatabasesSub)
+	}
+	fmt.Fprintf(s.out, "The migrate command's settings and databases are read from the stack as applied (%s, %s).\n", migrateEnvSub, migrateDatabasesSub)
 
-	return w.Append(map[string]string{migrateEnvFact: settings})
+	return w.Append(map[string]string{migrateEnvFact: settings, migrateDatabasesFact: databases})
 }
 
 // clearFirestore deletes every document of the environment's Firestore database in a

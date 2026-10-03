@@ -255,6 +255,15 @@ locals {
     APP_SERVICE_NAME = "${local.app}-migrate"
   })
 
+  # The databases the migrate command reaches, by resource name (cloud-build.tf,
+  # _MIGRATE_DATABASES): deploy migrate reads each as the deploy identity until its
+  # grants above are in effect, since IAM makes a grant this build's apply created
+  # effective seconds to minutes later.
+  migrate_databases = concat(
+    ["projects/${local.instance.project}/instances/${local.instance.name}/databases/${local.database_name}"],
+    ["projects/${local.project_id}/databases/${google_firestore_database.firestore.name}"],
+  )
+
   # cmd/jobs reads core and data and nothing above them: the job process, the
   # application's own code as a Cloud Run job.
   jobs_env = merge(local.core_env, local.data_env, local.files_env, local.tasks_env, local.firestore_env, {

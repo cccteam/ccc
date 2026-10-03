@@ -126,6 +126,9 @@ type Clients struct {
 	// SecretsAs opens Secret Manager as an impersonated identity, for the tests of a
 	// stack's plan.
 	SecretsAs SecretsAsFunc
+	// Grants reads the application's databases as the worker, for the migrate step's wait
+	// on the deploy identity's grants.
+	Grants GrantsFunc
 	// Exec runs the programs a step drives: tofu, docker, the migrate command, a hook's
 	// script.
 	Exec Runner
@@ -135,7 +138,7 @@ type Clients struct {
 func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, StorageAs: NewStorageAs, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
-		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
+		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants,
 		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs,
 	}
 }

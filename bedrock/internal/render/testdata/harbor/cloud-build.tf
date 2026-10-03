@@ -40,6 +40,7 @@ locals {
     _PROJECT                 = local.project_id
     _SERVICES                = join(",", [for code, service in google_cloud_run_v2_service.app : "${service.location}=${service.name}"]) # region=service per region; the pipeline updates each
     _MIGRATE_ENV             = jsonencode(local.migrate_env)                                                                             # the variables the migrate command runs with on the build worker (locals.tf), as a JSON object; the pipeline reads them back from this output after it applies the stack, so a release that changes them migrates with its own
+    _MIGRATE_DATABASES       = jsonencode(local.migrate_databases)                                                                       # the databases the migrate command reaches, by resource name, as a JSON list; deploy migrate reads each as the deploy identity until its grants are in effect
     _JOBS_JOB                = "${google_cloud_run_v2_job.jobs.location}=${google_cloud_run_v2_job.jobs.name}"                           # region=job; the pipeline updates it to the image, the application runs it
     _REGISTRY                = coalesce(local.registry, "REGISTRY_NOT_REGISTERED_IN_2-SHR")
     _RECORDS_BUCKET          = local.env.records_bucket

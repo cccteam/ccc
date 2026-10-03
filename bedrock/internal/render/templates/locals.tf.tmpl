@@ -293,6 +293,19 @@ locals {
   migrate_env = merge(local.core_env, local.data_env{{if .MigrateReadsFirestore}}, local.firestore_env{{end}}, {
     {{.ServiceName.Name}} = "${local.app}-migrate"
   })
+
+  # The databases the migrate command reaches, by resource name (cloud-build.tf,
+  # _MIGRATE_DATABASES): deploy migrate reads each as the deploy identity until its
+  # grants above are in effect, since IAM makes a grant this build's apply created
+  # effective seconds to minutes later.
+  migrate_databases = concat(
+    ["projects/${local.instance.project}/instances/${local.instance.name}/databases/${local.database_name}"],
+{{- if .MigrateReadsFirestore}}
+    ["projects/${local.project_id}/databases/${google_firestore_database.firestore.name}"],
+{{- else}}
+    [],
+{{- end}}
+  )
 {{- if .Jobs}}
 
   # {{.Jobs.Dir}} reads {{.JobsLevels}} and nothing above them: the job process, the

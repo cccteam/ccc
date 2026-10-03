@@ -161,6 +161,15 @@ locals {
     APP_SERVICE_NAME = "${local.app}-migrate"
   })
 
+  # The databases the migrate command reaches, by resource name (cloud-build.tf,
+  # _MIGRATE_DATABASES): deploy migrate reads each as the deploy identity until its
+  # grants above are in effect, since IAM makes a grant this build's apply created
+  # effective seconds to minutes later.
+  migrate_databases = concat(
+    ["projects/${local.instance.project}/instances/${local.instance.name}/databases/${local.database_name}"],
+    [],
+  )
+
   # Every resource carries these. terraform_source_path is the stack's state slot
   # in the organization's bucket (3-app/beacon) written as a label value, which
   # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the

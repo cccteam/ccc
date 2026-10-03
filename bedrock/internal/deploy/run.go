@@ -107,6 +107,13 @@ func NewCloudRun(ctx context.Context) (Run, error) {
 	return &cloudRun{http: client, base: cloudRunAPI, poll: 5 * time.Second}, nil
 }
 
+// The other services that share the Cloud Run client's calling, as their messages name
+// them.
+const (
+	serviceSpanner   = "Spanner"
+	serviceFirestore = "Firestore"
+)
+
 // cloudRun is Run over the v2 API. Every change is a long-running operation, polled
 // until done.
 type cloudRun struct {

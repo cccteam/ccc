@@ -220,8 +220,9 @@ func (s *stack) facts(ctx context.Context) (map[string]string, error) {
 // stackFacts reads the stack's substitutions output (a map of the trigger's
 // substitutions as the stack now stands) into the facts the deploy steps read: the
 // services, the job process's job when the application has one, the hostname, and the
-// variables the migrate command runs with (MIGRATE_ENV, from _MIGRATE_ENV), which the
-// migrate step requires and a stack applied by an older bedrock lacks.
+// variables the migrate command runs with (MIGRATE_ENV, from _MIGRATE_ENV) and the
+// databases it reaches (MIGRATE_DATABASES, from _MIGRATE_DATABASES), which the migrate
+// step requires and a stack applied by an older bedrock lacks.
 func stackFacts(data []byte) (map[string]string, error) {
 	var subs map[string]string
 	if err := json.Unmarshal(data, &subs); err != nil {
@@ -239,6 +240,9 @@ func stackFacts(data []byte) (map[string]string, error) {
 	}
 	if settings := subs[migrateEnvSub]; settings != "" {
 		facts[migrateEnvFact] = settings
+	}
+	if databases := subs[migrateDatabasesSub]; databases != "" {
+		facts[migrateDatabasesFact] = databases
 	}
 
 	return facts, nil

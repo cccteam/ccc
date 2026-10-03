@@ -874,8 +874,8 @@ func TestMigrationGrants(t *testing.T) {
 			present := map[string][]string{
 				"spanner.tf":                            {`resource "google_spanner_database_iam_member" "deploy_admin" {`, "  role     = \"roles/spanner.databaseAdmin\"\n  member   = local.identities.deploy_identity_member"},
 				"service-accounts.tf":                   {`resource "google_project_iam_member" "deploy_metrics" {`, "  role    = \"roles/monitoring.metricWriter\"\n  member  = local.identities.deploy_identity_member"},
-				"cloud-build.tf":                        {"_MIGRATE_ENV             = jsonencode(local.migrate_env)"},
-				"locals.tf":                             {"migrate_env = merge(local.core_env, local.data_env"},
+				"cloud-build.tf":                        {"_MIGRATE_ENV             = jsonencode(local.migrate_env)", "_MIGRATE_DATABASES       = jsonencode(local.migrate_databases)"},
+				"locals.tf":                             {"migrate_env = merge(local.core_env, local.data_env", "migrate_databases = concat(\n    [\"projects/${local.instance.project}/instances/${local.instance.name}/databases/${local.database_name}\"],"},
 				"logging.tf":                            {`resource.labels.build_trigger_id`, `"operations_reads_migrate_logs"`},
 				"README.md":                             {"`roles/spanner.databaseAdmin` on the database only, for DDL", "`roles/monitoring.metricWriter` on the project for the Spanner\n  client's metrics", "The first apply after a render with this bedrock removes them"},
 				"root/cloudbuild.yaml":                  {"args: [deploy, migrate, --preflight, --version-variable, APP_VERSION]", "args: [deploy, migrate, --version-variable, APP_VERSION]"},
@@ -893,10 +893,13 @@ func TestMigrationGrants(t *testing.T) {
 				"root/.github/workflows/operations.yml": {"MIGRATE_JOB", "inputs.environment }} to", "cloud_run_job", "migrate job"},
 			}
 			firestore := []string{`resource "google_project_iam_member" "firestore_deploy" {`, "  member  = local.identities.deploy_identity_member"}
+			firestoreDatabase := `["projects/${local.project_id}/databases/${google_firestore_database.firestore.name}"],`
 			if tt.wantFirestore {
 				present["firestore.tf"] = firestore
+				present["locals.tf"] = append(present["locals.tf"], firestoreDatabase)
 			} else {
 				absent["firestore.tf"] = firestore
+				absent["locals.tf"] = []string{firestoreDatabase}
 			}
 			absent["firestore.tf"] = append(absent["firestore.tf"], "firestore_migrate", "local.migrate_member")
 			for name, wants := range present {

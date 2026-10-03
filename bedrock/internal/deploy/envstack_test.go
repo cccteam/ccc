@@ -518,11 +518,11 @@ func TestApplyEnvironmentStack(t *testing.T) {
 	// The stack's substitutions output, which the step reads for the migrate command's
 	// settings, and the two reads by their command lines.
 	const (
-		substitutionsOutput = `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}"}`
+		substitutionsOutput = `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}", "_MIGRATE_DATABASES": "[\"projects/p-stg/instances/i/databases/quill-db\"]"}`
 		readSubstitutions   = "tofu output -json substitutions"
 		readFirestore       = "tofu output -raw firestore_database"
 	)
-	settingsRead := "The migrate command's settings are read from the stack as applied (_MIGRATE_ENV)."
+	settingsRead := "The migrate command's settings and databases are read from the stack as applied (_MIGRATE_ENV, _MIGRATE_DATABASES)."
 	tests := []struct {
 		name     string
 		subs     map[string]string
@@ -588,6 +588,13 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			wantErr:  "the stack's substitutions output names no _MIGRATE_ENV, the migrate command's settings",
 		},
 		{
+			name:     "a stack whose output names no databases for the migrate command is refused",
+			subs:     tagSubs(),
+			planJSON: `{"resource_changes": []}`,
+			outputs:  map[string]string{readSubstitutions: `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}"}`},
+			wantErr:  "the stack's substitutions output names no _MIGRATE_DATABASES, the databases the migrate command reaches",
+		},
+		{
 			name:    "a build whose plan step did not run is refused",
 			subs:    tagSubs(),
 			wantErr: "stack-plan.json (deploy stack plan writes it)",
@@ -638,6 +645,9 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			}
 			if env[migrateEnvFact] != tt.wantSettings {
 				t.Errorf("%s = %q, want %q", migrateEnvFact, env[migrateEnvFact], tt.wantSettings)
+			}
+			if want := `["projects/p-stg/instances/i/databases/quill-db"]`; tt.wantSettings != "" && env[migrateDatabasesFact] != want {
+				t.Errorf("%s = %q, want %q", migrateDatabasesFact, env[migrateDatabasesFact], want)
 			}
 			if store.database != tt.wantCleared {
 				t.Errorf("cleared %q, want %q", store.database, tt.wantCleared)

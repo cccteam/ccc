@@ -206,8 +206,11 @@ const (
 )
 
 var (
-	migrateEnvironment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport VERSION=\"v1.2.3\"\nexport MIGRATE_ENV=" + doubleQuote(migrateSettingsJSON) + "\n"
-	migrateVars        = []string{"APP_SERVICE_NAME=harbor-migrate", "APP_VERSION=v1.2.3", "GOOGLE_CLOUD_SPANNER_DATABASE_NAME=imp-tst-gbl-harbor-db", "GOOGLE_CLOUD_SPANNER_PROJECT=tst-project"}
+	migrateEnvironment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport VERSION=\"v1.2.3\"\nexport MIGRATE_ENV=" + doubleQuote(migrateSettingsJSON) + "\nexport MIGRATE_DATABASES=" + doubleQuote(migrateDatabasesJSON) + "\n"
+	// The databases the stack names for the command: its Spanner database and its
+	// Firestore one.
+	migrateDatabasesJSON = `["projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db","projects/tst-project/databases/imp-tst-gbl-harbor-fs"]`
+	migrateVars          = []string{"APP_SERVICE_NAME=harbor-migrate", "APP_VERSION=v1.2.3", "GOOGLE_CLOUD_SPANNER_DATABASE_NAME=imp-tst-gbl-harbor-db", "GOOGLE_CLOUD_SPANNER_PROJECT=tst-project"}
 )
 
 // migrateProgramFile is a migrate command the image build left: a file at the path, so
@@ -268,6 +271,8 @@ func TestMigrate(t *testing.T) {
 		// without one. noProgram leaves the worker without the migrate command.
 		versionVariable string
 		noProgram       bool
+		// grants is the reader of the databases as the deploy identity; none skips the wait.
+		grants *fakeGrants
 		// wantOut are lines the output carries, in this order, whether or not the step failed.
 		wantOut []string
 		// wantRuns are the command's runs, each its arguments, in order; wantVars the
@@ -278,6 +283,46 @@ func TestMigrate(t *testing.T) {
 		wantFacts map[string]string
 		wantErr   string
 	}{
+		{
+			name:     "the command runs once the deploy identity reads the databases the stack names",
+			env:      migrateEnvironment,
+			build:    build("false", "", nil),
+			grants:   &fakeGrants{},
+			wantOut:  []string{"The deploy identity reads projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db, projects/tst-project/databases/imp-tst-gbl-harbor-fs."},
+			wantRuns: [][]string{{}},
+		},
+		{
+			name:   "a grant the apply just made is waited for, and said",
+			env:    migrateEnvironment,
+			build:  build("false", "", nil),
+			grants: &fakeGrants{denied: map[string]int{"projects/tst-project/databases/imp-tst-gbl-harbor-fs": 2}},
+			wantOut: []string{
+				"Waiting for the deploy identity's grant on projects/tst-project/databases/imp-tst-gbl-harbor-fs to take effect (the stack applied it; IAM makes a grant effective within minutes).",
+				"The grants are in effect after 10s: the deploy identity reads projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db, projects/tst-project/databases/imp-tst-gbl-harbor-fs.",
+			},
+			wantRuns: [][]string{{}},
+		},
+		{
+			name:    "a grant not in effect after the wait stops the run before the command",
+			env:     migrateEnvironment,
+			build:   build("false", "", nil),
+			grants:  &fakeGrants{denied: map[string]int{"projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db": 1000}},
+			wantOut: []string{"Waiting for the deploy identity's grant on projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db to take effect"},
+			wantErr: "the deploy identity's grant on projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db is not in effect after 3m0s: Spanner answered HTTP 403 to GET /v1/projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db: The caller does not have permission; the stack applied it in this build",
+		},
+		{
+			name:    "a read that fails otherwise stops the run with the API's answer",
+			env:     migrateEnvironment,
+			build:   build("false", "", nil),
+			grants:  &fakeGrants{fail: map[string]error{"projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db": &apiError{service: "Spanner", status: 404, method: "GET", path: "/v1/projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db", message: "Database not found"}}},
+			wantErr: "Spanner answered HTTP 404 to GET /v1/projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db: Database not found",
+		},
+		{
+			name:    "an environment naming no databases for the command is refused",
+			env:     strings.Replace(migrateEnvironment, "export MIGRATE_DATABASES="+doubleQuote(migrateDatabasesJSON)+"\n", "", 1),
+			build:   build("false", "", nil),
+			wantErr: "environment.sh names no databases for the migrate command (MIGRATE_DATABASES): the stack steps write them from the stack's substitutions output (_MIGRATE_DATABASES)",
+		},
 		{
 			name:    "a torn-down environment does nothing",
 			env:     "export SKIP_DEPLOY=\"true\"\n",
@@ -477,7 +522,11 @@ func TestMigrate(t *testing.T) {
 
 				return tt.fail[first]
 			}}
-			err := Migrate(t.Context(), &Clients{Exec: run}, w, program, tt.versionVariable, false, &out)
+			clients := &Clients{Exec: run, Sleep: func(context.Context, time.Duration) error { return nil }}
+			if tt.grants != nil {
+				clients.Grants = func(context.Context) (Grants, error) { return tt.grants, nil }
+			}
+			err := Migrate(t.Context(), clients, w, program, tt.versionVariable, false, &out)
 			at := 0
 			for _, want := range tt.wantOut {
 				i := strings.Index(out.String()[at:], want)
@@ -681,4 +730,33 @@ func TestRunHelpers(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fakeGrants reads the databases as the deploy identity: a read is refused (403) the
+// number of times denied says, fails as fail says, or is allowed.
+type fakeGrants struct {
+	mu     sync.Mutex
+	denied map[string]int
+	fail   map[string]error
+	reads  []string
+}
+
+func (g *fakeGrants) Read(_ context.Context, database string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.reads = append(g.reads, database)
+	if err := g.fail[database]; err != nil {
+		return err
+	}
+	if g.denied[database] > 0 {
+		g.denied[database]--
+		service := "Firestore"
+		if strings.Contains(database, "/instances/") {
+			service = "Spanner"
+		}
+
+		return &apiError{service: service, status: http.StatusForbidden, method: http.MethodGet, path: "/v1/" + database, message: "The caller does not have permission"}
+	}
+
+	return nil
 }

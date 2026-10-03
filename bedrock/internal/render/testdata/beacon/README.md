@@ -221,7 +221,11 @@ substitutions and this stack's outputs:
   with on the build worker, as a JSON object (`locals.tf`, `migrate_env`;
   the pipeline reads it back from the `substitutions` output after it
   applies the stack, so a release that changes them migrates with its
-  own); `_REGISTRY` as
+  own); `_MIGRATE_DATABASES`, the databases the migrate command reaches,
+  by resource name, as a JSON list (`locals.tf`, `migrate_databases`; read
+  back the same way, and `deploy migrate` reads each as the deploy identity
+  until its grants are in effect, since this very build's apply may have
+  created them); `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
   `_REPO_CONNECTION_NAME` and `_REPO_NAME` (empty until 2-env holds the
   connection and the repository's link, when the triggers exist; the
@@ -265,7 +269,9 @@ substitutions and this stack's outputs:
   `deploy migrate` runs the release's migrate command, which `deploy
   build-image` took out of the image, on the build worker as the deploy
   identity, with `_MIGRATE_ENV`'s variables and the release in
-  `APP_VERSION`; its lines are the build log's.
+  `APP_VERSION`, once the identity reads each of `_MIGRATE_DATABASES`
+  (a grant this build's apply created takes IAM seconds to minutes to put in
+  effect; the step waits up to three minutes); its lines are the build log's.
 - `logging.tf` routes the log entries of this application's builds (a sink
   on the version trigger's id and, in tst, the pull-request trigger's;
   the entries stay in the project's `_Default` bucket too) into a log bucket

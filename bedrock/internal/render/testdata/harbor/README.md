@@ -314,7 +314,11 @@ substitutions and this stack's outputs:
   with on the build worker, as a JSON object (`locals.tf`, `migrate_env`;
   the pipeline reads it back from the `substitutions` output after it
   applies the stack, so a release that changes them migrates with its
-  own); `_JOBS_JOB` as `<region>=<job>` for the job process; `_FILE_STORES`, the file stores' buckets as
+  own); `_MIGRATE_DATABASES`, the databases the migrate command reaches,
+  by resource name, as a JSON list (`locals.tf`, `migrate_databases`; read
+  back the same way, and `deploy migrate` reads each as the deploy identity
+  until its grants are in effect, since this very build's apply may have
+  created them); `_JOBS_JOB` as `<region>=<job>` for the job process; `_FILE_STORES`, the file stores' buckets as
   this stack addresses them, comma-separated, which a restore run in tst
   replaces with the database; `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
@@ -360,7 +364,9 @@ substitutions and this stack's outputs:
   `deploy migrate` runs the release's migrate command, which `deploy
   build-image` took out of the image, on the build worker as the deploy
   identity, with `_MIGRATE_ENV`'s variables and the release in
-  `APP_VERSION`; its lines are the build log's. `deploy jobs` makes each
+  `APP_VERSION`, once the identity reads each of `_MIGRATE_DATABASES`
+  (a grant this build's apply created takes IAM seconds to minutes to put in
+  effect; the step waits up to three minutes); its lines are the build log's. `deploy jobs` makes each
   build's job for the job process as a copy of the template job on the
   build's image, with the template's IAM policy; `deploy sweep-jobs` deletes
   the builds' jobs nothing runs any more.

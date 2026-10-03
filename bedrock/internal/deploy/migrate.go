@@ -38,20 +38,25 @@ const (
 // (schema, or data) and _MIGRATE_VERSION the version it sets (-1 for no version);
 // _REQUESTER says who asked. The migrate command's flags are what it runs with.
 const (
-	migrateEnvSub     = "_MIGRATE_ENV"
-	migrateEnvFact    = "MIGRATE_ENV"
-	migrateActionSub  = "_MIGRATE_ACTION"
-	migrateTableSub   = "_MIGRATE_TABLE"
-	migrateVersionSub = "_MIGRATE_VERSION"
-	actionVersion     = "version"
-	actionRerun       = "rerun"
-	actionForce       = "force"
-	tableSchema       = "schema"
-	tableData         = "data"
-	seedArg           = "-seed"
-	versionArg        = "-version"
-	forceArg          = "-force"
-	forceDataArg      = "-force-data"
+	migrateEnvSub  = "_MIGRATE_ENV"
+	migrateEnvFact = "MIGRATE_ENV"
+	// _MIGRATE_DATABASES is the stack's too: the databases the migrate command reaches,
+	// by resource name, as a JSON list, read back into MIGRATE_DATABASES the same way;
+	// the step reads each as the deploy identity until its grant is in effect (grants.go).
+	migrateDatabasesSub  = "_MIGRATE_DATABASES"
+	migrateDatabasesFact = "MIGRATE_DATABASES"
+	migrateActionSub     = "_MIGRATE_ACTION"
+	migrateTableSub      = "_MIGRATE_TABLE"
+	migrateVersionSub    = "_MIGRATE_VERSION"
+	actionVersion        = "version"
+	actionRerun          = "rerun"
+	actionForce          = "force"
+	tableSchema          = "schema"
+	tableData            = "data"
+	seedArg              = "-seed"
+	versionArg           = "-version"
+	forceArg             = "-force"
+	forceDataArg         = "-force-data"
 	// The facts the step leaves: the force it applied, for the record, and why the steps
 	// after a version run do nothing, beside SKIP_DEPLOY.
 	forcedTableFact   = "MIGRATE_FORCED_TABLE"
@@ -238,8 +243,15 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, program, versio
 	if _, err := os.Stat(program); err != nil {
 		return errors.Newf("no migrate command at %s: the image build takes %s out of the image (deploy build-image), and the Dockerfile builds it (go build -o /build/migrate ./cmd/deployment/migrate)", program, migrateInImage)
 	}
+	databases, err := migrateDatabases(env)
+	if err != nil {
+		return err
+	}
 	m := &migrateRun{exec: clients.Exec, command: Command{Dir: string(w), Env: vars, Name: program}, out: out}
 	fmt.Fprintf(out, "The migrate command %s runs on this worker as the deploy identity with %d variables from the stack.\n", program, len(vars))
+	if err := awaitGrants(ctx, clients, databases, out); err != nil {
+		return err
+	}
 	if preflight {
 		return m.preflight(ctx)
 	}
@@ -270,6 +282,21 @@ func migrateSettings(env map[string]string, versionVariable string) ([]string, e
 	}
 
 	return vars, nil
+}
+
+// migrateDatabases are the databases the migrate command reaches, by resource name: the
+// stack's (MIGRATE_DATABASES, from _MIGRATE_DATABASES, read back like the settings).
+func migrateDatabases(env map[string]string) ([]string, error) {
+	raw := env[migrateDatabasesFact]
+	if raw == "" {
+		return nil, errors.Newf("%s names no databases for the migrate command (%s): the stack steps write them from the stack's substitutions output (%s)", EnvironmentFile, migrateDatabasesFact, migrateDatabasesSub)
+	}
+	var databases []string
+	if err := json.Unmarshal([]byte(raw), &databases); err != nil {
+		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", migrateDatabasesFact)
+	}
+
+	return databases, nil
 }
 
 // preflightDue reports whether the pre-flight has anything to do: a run that waits for
