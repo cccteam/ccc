@@ -1,6 +1,10 @@
 package firestore
 
-import "github.com/cccteam/ccc/resource/live"
+import (
+	"time"
+
+	"github.com/cccteam/ccc/resource/live"
+)
 
 // DropListener ends the service's current signals listener as Firestore would end it on
 // its own, so a test can watch the subscriber reopen it.
@@ -17,4 +21,10 @@ func SignalsIdle(s *Service) bool {
 // so a test can count writes and hold one in flight.
 func ObserveWrites(s *Service, onWrite func(kind live.Kind)) {
 	s.observeWrites(onWrite)
+}
+
+// ObserveSnapshots sets the function every snapshot's times are reported to before the
+// kinds it advances fire, so a test can explain the wakes it counted.
+func ObserveSnapshots(s *Service, onSnapshot func(times map[live.Kind]time.Time)) {
+	s.observeSnapshots(onSnapshot)
 }

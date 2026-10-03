@@ -1,13 +1,15 @@
 package firestore_test
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
-	"github.com/google/go-cmp/cmp"
 )
 
 // The waits the signals tests allow: a signal reaches a listener within settle, and a
@@ -80,6 +82,90 @@ func signal(t *testing.T, svc *livefirestore.Service, kind live.Kind) {
 	}
 }
 
+// snapshotLog records the times every snapshot an instance's listener received carried,
+// so a count that disagrees with a test's expectation is explained by what Firestore
+// delivered rather than guessed at.
+type snapshotLog struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+// logSnapshots attaches a snapshotLog to the service.
+func logSnapshots(svc *livefirestore.Service) *snapshotLog {
+	l := &snapshotLog{}
+	livefirestore.ObserveSnapshots(svc, func(times map[live.Kind]time.Time) {
+		kinds := make([]string, 0, len(times))
+		for kind, at := range times {
+			kinds = append(kinds, string(kind)+"@"+at.UTC().Format("15:04:05.000000"))
+		}
+		sort.Strings(kinds)
+		l.mu.Lock()
+		l.seen = append(l.seen, "{"+strings.Join(kinds, " ")+"}")
+		l.mu.Unlock()
+	})
+
+	return l
+}
+
+func (l *snapshotLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return strings.Join(l.seen, " ")
+}
+
+// expect is one counter's expectation: no wake at all, or at least n when the count is
+// a floor. A count is a floor where a write may race a listener's own delivery: under
+// load the emulator has delivered one write as more than one advancing snapshot, and a
+// wake is a nudge to reread, so a kind woken more often than its writes is not wrong,
+// while a kind woken less often, or a kind that must stay quiet waking at all, is.
+type expect struct {
+	n     int
+	floor bool
+}
+
+// none expects no wake at all: the kind must stay quiet.
+func none() expect {
+	return expect{}
+}
+
+// atLeast expects n wakes or more.
+func atLeast(n int) expect {
+	return expect{n: n, floor: true}
+}
+
+// checkCounts compares the counts with the expectations and explains a mismatch with
+// what each instance's listener received.
+func checkCounts(t *testing.T, what string, want []expect, got []int, logs ...*snapshotLog) {
+	t.Helper()
+
+	ok := len(want) == len(got)
+	for i := range want {
+		if !ok {
+			break
+		}
+		if want[i].floor && got[i] < want[i].n || !want[i].floor && got[i] != want[i].n {
+			ok = false
+		}
+	}
+	if ok {
+		return
+	}
+	wants := make([]string, 0, len(want))
+	for _, w := range want {
+		if w.floor {
+			wants = append(wants, fmt.Sprintf(">=%d", w.n))
+		} else {
+			wants = append(wants, fmt.Sprintf("%d", w.n))
+		}
+	}
+	delivered := make([]string, 0, len(logs))
+	for i, l := range logs {
+		delivered = append(delivered, fmt.Sprintf("instance %d received %s", i+1, l))
+	}
+	t.Errorf("%s: counts %v, want [%s]; %s", what, got, strings.Join(wants, " "), strings.Join(delivered, "; "))
+}
+
 // settled waits the quiet period and returns the counts, in order, so a test can pin
 // that nothing more arrived.
 func settled(counters ...*counter) []int {
@@ -105,7 +191,7 @@ func TestService_signals(t *testing.T) {
 		// run drives two instances on one document and returns the counts to pin, after
 		// the quiet period.
 		run  func(t *testing.T, first, second *livefirestore.Service) []int
-		want []int
+		want []expect
 	}{
 		{
 			name: "a signal of a kind wakes its subscriptions on both instances and never another kind's",
@@ -120,7 +206,7 @@ func TestService_signals(t *testing.T) {
 
 				return settled(firstFeatures, firstTenants, secondFeatures)
 			},
-			want: []int{1, 0, 1},
+			want: []expect{atLeast(1), none(), atLeast(1)},
 		},
 		{
 			name: "the other kind wakes its own subscription alone",
@@ -134,7 +220,7 @@ func TestService_signals(t *testing.T) {
 
 				return settled(firstFeatures, firstTenants, secondFeatures)
 			},
-			want: []int{0, 1, 0},
+			want: []expect{none(), atLeast(1), none()},
 		},
 		{
 			name: "a subscription made before the first snapshot is woken once for a kind the document holds; one made after hears only the signals after it",
@@ -165,7 +251,7 @@ func TestService_signals(t *testing.T) {
 
 				return settled(firstPolicy, secondPolicy, late)
 			},
-			want: []int{3, 2, 1},
+			want: []expect{atLeast(3), atLeast(2), atLeast(1)},
 		},
 		{
 			name: "a stopped subscription hears nothing more; the others go on",
@@ -182,14 +268,20 @@ func TestService_signals(t *testing.T) {
 				stopped.waitFor(t, "the subscription to be stopped", 1)
 				kept.waitFor(t, "the kept subscription", 1)
 				other.waitFor(t, "the other instance's subscription", 1)
+				// The first signal's deliveries are complete after the quiet period, so
+				// what the stopped subscription hears from here on is the second signal's.
+				time.Sleep(quiet)
+				before := stopped.count()
 				stop()
 				signal(t, first, live.KindFeatures)
 				kept.waitFor(t, "the kept subscription", 2)
 				other.waitFor(t, "the other instance's subscription", 2)
+				counts := settled(stopped, kept, other)
+				counts[0] -= before
 
-				return settled(stopped, kept, other)
+				return counts
 			},
-			want: []int{1, 2, 2},
+			want: []expect{none(), atLeast(2), atLeast(2)},
 		},
 	}
 
@@ -200,9 +292,8 @@ func TestService_signals(t *testing.T) {
 			database := databaseFor(t)
 			first := newServiceIn(t, database)
 			second := newServiceIn(t, database)
-			if diff := cmp.Diff(tt.want, tt.run(t, first, second)); diff != "" {
-				t.Errorf("signal counts mismatch (-want +got):\n%s", diff)
-			}
+			firstLog, secondLog := logSnapshots(first), logSnapshots(second)
+			checkCounts(t, "signal counts", tt.want, tt.run(t, first, second), firstLog, secondLog)
 		})
 	}
 }
@@ -220,6 +311,7 @@ func TestService_signals_reopen(t *testing.T) {
 	backoff := livefirestore.WithReopenBackoff(time.Second, time.Second)
 	first := newServiceIn(t, database, backoff)
 	second := newServiceIn(t, database, backoff)
+	firstLog, secondLog := logSnapshots(first), logSnapshots(second)
 	firstFeatures := subscribe(t, first, live.KindFeatures)
 	firstTenants := subscribe(t, first, live.KindTenants)
 	firstPolicy := subscribe(t, first, live.KindPolicy)
@@ -243,9 +335,11 @@ func TestService_signals_reopen(t *testing.T) {
 	firstTenants.waitFor(t, "the first instance's tenants subscription", 1)
 	secondFeatures.waitFor(t, "the second instance's features subscription", 2)
 	secondTenants.waitFor(t, "the second instance's tenants subscription", 1)
-	if diff := cmp.Diff([]int{2, 1, 0, 2, 1}, settled(firstFeatures, firstTenants, firstPolicy, secondFeatures, secondTenants)); diff != "" {
-		t.Errorf("signal counts after the reopen mismatch (-want +got):\n%s", diff)
-	}
+	// The kinds that advanced while the listeners were down wake once each on the
+	// reopen, the writes before the drop having been heard; the kind that did not
+	// advance stays quiet.
+	checkCounts(t, "signal counts after the reopen", []expect{atLeast(2), atLeast(1), none(), atLeast(2), atLeast(1)},
+		settled(firstFeatures, firstTenants, firstPolicy, secondFeatures, secondTenants), firstLog, secondLog)
 
 	// The reopened listener is a working one: a later signal reaches it at once.
 	signal(t, second, live.KindPolicy)

@@ -34,6 +34,9 @@ type signalsState struct {
 	// onWrite, when set, observes every write of the document before it is sent; the
 	// package's tests count and hold writes through it.
 	onWrite func(kind live.Kind)
+	// onSnapshot, when set, observes the times each snapshot of the document carries
+	// before the kinds it advances fire; the package's tests explain a count through it.
+	onSnapshot func(times map[live.Kind]time.Time)
 
 	// consumers are the subscriptions per kind, by id, run in id order.
 	consumers map[live.Kind]map[int]func()
@@ -272,6 +275,9 @@ func (s *Service) deliver(snapshots *cloudfirestore.DocumentSnapshotIterator) (b
 func (s *Service) fire(snapshot *cloudfirestore.DocumentSnapshot) {
 	times := signalTimes(snapshot)
 	s.signals.mu.Lock()
+	if s.signals.onSnapshot != nil {
+		s.signals.onSnapshot(times)
+	}
 	kinds := make([]live.Kind, 0, len(times))
 	for kind := range times {
 		kinds = append(kinds, kind)
@@ -353,4 +359,12 @@ func (s *Service) observeWrites(onWrite func(kind live.Kind)) {
 	s.signals.mu.Lock()
 	defer s.signals.mu.Unlock()
 	s.signals.onWrite = onWrite
+}
+
+// observeSnapshots sets the function every snapshot's times are reported to before the
+// kinds it advances fire.
+func (s *Service) observeSnapshots(onSnapshot func(times map[live.Kind]time.Time)) {
+	s.signals.mu.Lock()
+	defer s.signals.mu.Unlock()
+	s.signals.onSnapshot = onSnapshot
 }
