@@ -18,8 +18,8 @@ import (
 // GuardPlan lets through only what belongs to the pull request. A pull request may have
 // edited the stack any way at all, so every resource the saved plan creates, changes or
 // destroys must carry the pull request's name (<app>-pr<N>) in what names it (name,
-// account_id, service, job, database, parent, secret_id, service_account_id, or the
-// source of a ruleset), or be an IAM membership of one of the pull request's own
+// account_id, service, job, database, parent, secret_id, service_account_id, bucket, or
+// the source of a ruleset), or be an IAM membership of one of the pull request's own
 // accounts. Resources outside the google
 // provider (time_sleep) shape nothing and pass. Anything else stops the build and is
 // listed on the pull request. Shared mode (/gcbrun shared-db) is refused too when the
@@ -107,8 +107,9 @@ type planChange struct {
 
 // identifying are the attributes that name a resource, where the pull request's name
 // must appear. A Firestore ruleset is named by the service, so its source is read: the
-// stack names the ruleset's file for the database the rules are released to.
-var identifying = []string{keyName, "account_id", "service", "job", "database", "parent", "secret_id", "service_account_id", "source"}
+// stack names the ruleset's file for the database the rules are released to. A bucket's
+// policy is named by its bucket, the pull request's own.
+var identifying = []string{keyName, "account_id", "service", "job", "database", "parent", "secret_id", "service_account_id", "bucket", "source"}
 
 // planDocument is a plan as tofu show -json gives it: its resource changes.
 type planDocument struct {

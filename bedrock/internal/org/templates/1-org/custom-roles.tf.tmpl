@@ -130,6 +130,33 @@ resource "google_organization_iam_custom_role" "spanner_database_creator" {
   ]
 }
 
+# Creating a bucket is checked on the project (storage.buckets.create: the
+# request names the project, and the bucket does not exist yet), as is
+# listing the project's buckets (storage.buckets.list), so no condition on a
+# bucket's name can admit them; every other permission of roles/storage.admin
+# that a stack uses is checked on a bucket or an object, whose resource name
+# a condition reads. Each environment layer identity (the app role set) and
+# each application's apply identity (2-env) holds this role on the
+# environment project without condition, and roles/storage.admin under a
+# condition naming its own buckets (the records bucket for the layer
+# identity; the application's file stores and its pull-request stacks' for an
+# application), so an identity makes its own buckets and sees what else
+# exists, and changes nothing it did not make. The rest of storage admin
+# that is checked on the project (the project's own reads, the organization
+# policy read, Storage Intelligence and storage batch operations) is not
+# granted: no stack asks for it, and the project reads come with the
+# identities' other roles.
+resource "google_organization_iam_custom_role" "storage_bucket_creator" {
+  org_id      = local.org_id
+  role_id     = "storageBucketCreator"
+  title       = "Storage Bucket Creator"
+  description = "Creates a bucket in a project and lists the project's buckets; changes nothing that exists."
+  permissions = [
+    "storage.buckets.create",
+    "storage.buckets.list",
+  ]
+}
+
 # A restore of an environment to a release, and a release run again, are
 # started from GitHub: the application's operations workflow exchanges its
 # token for the environment's operations identity and runs the environment's
@@ -207,8 +234,10 @@ resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
 # A pull-request build plans each environment's application stack as that
 # environment's plan identity, a reader. roles/viewer, the cloud's bundle for a
 # reader, reads data as well as resources: Spanner rows where the database is
-# in the environment project (tst), and the application's uploaded files through
-# the bucket's default grants to project viewers. A plan refreshes what the stack
+# in the environment project (tst), and, on a bucket that still carries Cloud
+# Storage's default grants to the project's basic roles, its objects (the
+# buckets the stacks declare carry none: their policies are set whole). A plan
+# refreshes what the stack
 # manages and reads no data, so the plan identity holds this role instead: the
 # read of every resource type the application stack declares, found in
 # the lab from the plans' refusals, and nothing of what those resources hold.
@@ -269,8 +298,10 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
 # cloud's bundle for a reader, reads data as well as resources: the rows of
 # every Spanner database in the project (tst's own instance, and stg's and prd's
 # databases on the shared instance in spn's project), every container image in
-# shr's registry, and the deployment records and the applications' uploaded
-# files through the buckets' default grants to project viewers. A plan
+# shr's registry, and the objects of any bucket that still carries Cloud
+# Storage's default grants to the project's basic roles (the records bucket
+# and the applications' file stores carry none: their policies are set
+# whole). A plan
 # refreshes what the layer manages and reads no data, so each plan identity
 # holds, in place of roles/viewer, the role of its project's kind below: the
 # read of every resource type the layer declares, found in the lab from the

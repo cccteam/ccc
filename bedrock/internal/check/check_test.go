@@ -61,7 +61,7 @@ func TestRun(t *testing.T) {
 		wantOutput   []string
 	}{
 		{
-			name:      "the committed stack matches, with the maintenance warnings the fixture earns",
+			name:      "the committed stack matches, its file store's bucket policy admitted, with the maintenance warnings the fixture earns",
 			mutate:    func(*testing.T, string) {},
 			wantClean: true,
 			wantOutput: []string{
@@ -136,7 +136,33 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantRefused: []Authoritative{{Path: "custom.tf", Line: 2, Address: "google_project_iam_binding.owners"}},
-			wantOutput:  []string{"22 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners"},
+			wantOutput:  []string{"22 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners", "(a file store's bucket policy, storage.tf's, is the one admitted)"},
+		},
+		{
+			name: "a binding on the file store's bucket is refused; the policy alone is admitted",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				custom := "resource \"google_storage_bucket_iam_binding\" \"files\" {\n  bucket  = google_storage_bucket.files.name\n  role    = \"roles/storage.objectViewer\"\n  members = []\n}\n"
+				if err := os.WriteFile(filepath.Join(dir, "custom.tf"), []byte(custom), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRefused: []Authoritative{{Path: "custom.tf", Line: 1, Address: "google_storage_bucket_iam_binding.files"}},
+			wantOutput:  []string{"refused  custom.tf:1 google_storage_bucket_iam_binding.files"},
+		},
+		{
+			name: "a policy on a bucket that is not a file store's is refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				custom := "resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = \"records\"\n  policy_data = \"{}\"\n}\n"
+				if err := os.WriteFile(filepath.Join(dir, "custom.tf"), []byte(custom), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRefused: []Authoritative{{Path: "custom.tf", Line: 1, Address: "google_storage_bucket_iam_policy.records"}},
+			wantOutput:  []string{"refused  custom.tf:1 google_storage_bucket_iam_policy.records"},
 		},
 		{
 			name: "an edited seeded file is a person's",

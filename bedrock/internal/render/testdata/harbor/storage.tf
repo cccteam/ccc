@@ -30,30 +30,31 @@ resource "google_storage_bucket" "files" {
   labels = local.labels
 }
 
-# Objects, as the site reads and writes them: create, read, list and delete,
-# and nothing of the bucket itself.
-resource "google_storage_bucket_iam_member" "files_app" {
-  bucket = google_storage_bucket.files.name
-  role   = "roles/storage.objectUser"
-  member = local.app_member
-
-  depends_on = [google_service_account.app]
-
-  # A recreated bucket (a restore of the first environment replaces it)
-  # starts with no members; the membership is recreated with it rather than
-  # believed to exist.
-  lifecycle {
-    replace_triggered_by = [google_storage_bucket.files]
+# The bucket's permission list, set whole: the site and the job process on its
+# objects (create, read, list and delete, and nothing of the bucket itself)
+# and nobody else, the project's basic roles included. Cloud Storage's default
+# grants to those roles are not listed, so they are removed, and a grant added
+# on the bucket by hand is removed by the next release's apply; a grant added
+# on the project is not. This is the one authoritative IAM resource the stack
+# declares (bedrock check and the pipeline's test admit it by this address):
+# a pull-request stack makes a bucket of its own, so its policy removes
+# nobody else's members.
+data "google_iam_policy" "files" {
+  binding {
+    role    = "roles/storage.objectUser"
+    members = [local.app_member, local.jobs_member]
   }
 }
 
-resource "google_storage_bucket_iam_member" "files_jobs" {
-  bucket = google_storage_bucket.files.name
-  role   = "roles/storage.objectUser"
-  member = local.jobs_member
+resource "google_storage_bucket_iam_policy" "files" {
+  bucket      = google_storage_bucket.files.name
+  policy_data = data.google_iam_policy.files.policy_data
 
-  depends_on = [google_service_account.jobs]
+  depends_on = [google_service_account.app, google_service_account.jobs]
 
+  # A recreated bucket (a restore of the first environment replaces it)
+  # starts with Cloud Storage's default grants; the policy is set again with
+  # it rather than believed to hold.
   lifecycle {
     replace_triggered_by = [google_storage_bucket.files]
   }

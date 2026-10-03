@@ -287,6 +287,34 @@ func fileStoreLine(s *FileStore) string {
 	return fmt.Sprintf("%s %s %s: %s, %s, %s, %s", s.Variable.Name, s.Variable.Level, s.Variable.Declaration(), name, s.Resource, s.Suffix, s.Address())
 }
 
+// TestBucketPolicyAddress reads a bucket policy's address from its bucket's, the way the
+// pipeline names the file stores' policies from the buckets its trigger carries.
+func TestBucketPolicyAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		bucket string
+		want   string
+	}{
+		{name: "the default store's bucket", bucket: "google_storage_bucket.files", want: "google_storage_bucket_iam_policy.files"},
+		{name: "a named store's bucket", bucket: "google_storage_bucket.files_client_files", want: "google_storage_bucket_iam_policy.files_client_files"},
+		{name: "an address that is not a bucket's", bucket: "google_spanner_database.app", want: ""},
+		{name: "a bucket type with no resource name", bucket: "google_storage_bucket.", want: ""},
+		{name: "a policy's own address", bucket: "google_storage_bucket_iam_policy.files", want: ""},
+		{name: "nothing", bucket: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := BucketPolicyAddress(tt.bucket); got != tt.want {
+				t.Errorf("BucketPolicyAddress(%q) = %q, want %q", tt.bucket, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFileStoreName(t *testing.T) {
 	t.Parallel()
 
@@ -332,6 +360,9 @@ func TestFileStoreName(t *testing.T) {
 			s := newFileStore(&Variable{Name: tt.variable, Level: LevelData}, name)
 			if s.Resource != tt.wantResource || s.Suffix != tt.wantSuffix || s.Address() != tt.wantAddress {
 				t.Errorf("newFileStore(%s) = resource %q, suffix %q, address %q, want %q, %q, %q", tt.variable, s.Resource, s.Suffix, s.Address(), tt.wantResource, tt.wantSuffix, tt.wantAddress)
+			}
+			if want := "google_storage_bucket_iam_policy." + tt.wantResource; s.PolicyAddress() != want {
+				t.Errorf("PolicyAddress() = %q, want %q", s.PolicyAddress(), want)
 			}
 			if s.Default() != (tt.wantName == "") {
 				t.Errorf("Default() = %t, want %t", s.Default(), tt.wantName == "")

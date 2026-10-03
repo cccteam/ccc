@@ -101,7 +101,10 @@ locals {
   # stack makes in this project for its own application: loadBalancerAdmin,
   # which a tag build's plan of the environment's stack needs to read them)
   # for its own application. Its database admin grant is on the Spanner
-  # instance (identities.tf), not here. serviceUsageConsumer is what lets it
+  # instance (identities.tf), not here, and so are its Cloud Storage grants:
+  # storage admin under a condition naming the application's own buckets, and
+  # the organization's storageBucketCreator role for what Cloud Storage checks
+  # on the project. serviceUsageConsumer is what lets it
   # use the environment project as its quota project (user_project_override
   # in the stack), since nothing in this layer can grant it that on the boot
   # project. With a Firestore database the stack also releases the database's
@@ -114,7 +117,6 @@ locals {
     "roles/compute.loadBalancerAdmin",
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountUser",
-    "roles/storage.admin",
     "roles/cloudscheduler.admin",
     "roles/cloudtasks.queueAdmin",
     "roles/datastore.owner",
@@ -141,8 +143,9 @@ locals {
   # with it, the deployment records and the applications' file stores among
   # them. In tst, Cloud Scheduler runs each application's sweep trigger as its
   # deploy identity, so there it also holds cloudBuildTriggerRunner. Its
-  # bounded grants (records bucket creator and viewer, build-time secrets,
-  # tst database admin) are separate resources in identities.tf; writer on its
+  # bounded grants are elsewhere: creator and viewer in the records bucket's
+  # policy (records.tf), accessor on the build-time secrets (identities.tf);
+  # writer on its
   # image repository is 2-shr's grant (var.pushers there), and Service Account
   # User on the runtime identities is granted where they are created, in the
   # application stack.
@@ -159,8 +162,9 @@ locals {
   # environment on a pull request and writes nothing: applicationPlanReader,
   # 1-org's custom role, reads the resources the stack declares and nothing of
   # their data (roles/viewer, the cloud's bundle for a reader, would read the
-  # rows of a database in this project and the application's uploaded files
-  # through the bucket's default grants to project viewers); securityReviewer
+  # rows of a database in this project; the records bucket and the file stores
+  # carry no default grant to the project's basic roles, their policies being
+  # set whole, so no project role reads a record or an uploaded file); securityReviewer
   # reads the IAM policies the stack's grants are refreshed from (a bucket's,
   # a queue's); and serviceUsageConsumer uses the project as its quota project,
   # the same as the apply identity.

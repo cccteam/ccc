@@ -180,7 +180,7 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 		return err
 	}
 	p.print(out)
-	if err := testStack(ctx, clients, s.dir, identity, subs[projectSub], shown, out); err != nil {
+	if err := testStack(ctx, clients, s.dir, identity, subs, shown, out); err != nil {
 		return err
 	}
 
@@ -449,7 +449,7 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 		}
 		fmt.Fprintf(out, "%s: ", e)
 		p.print(out)
-		if err := testStack(ctx, clients, s.dir, identity, subs[projectSub], shown, out); err != nil {
+		if err := testStack(ctx, clients, s.dir, identity, subs, shown, out); err != nil {
 			return refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed a test (build %s): %v", e, build.ID, errors.Cause(err)), err, out)
 		}
 		summaries = append(summaries, fmt.Sprintf("**%s**: %s%s", e, p.Summary(), changeList(p)))
@@ -566,13 +566,16 @@ func (s *stack) initEnvironment(ctx context.Context, app, env, identity string) 
 
 // testStack runs the tests a plan of the environment's stack passes before it is applied,
 // the same on a pull request and in the tag build: no authoritative IAM resource in the
-// stack (a *_iam_binding or *_iam_policy replaces every member of its role on each apply),
-// and every secret version a planned revision template pins exists and is enabled, read
-// from Secret Manager as the identity the plan ran as, so a revision never fails to start
-// on a mount the plan could not see. The migrations' sequence rule is GuardMigrations',
-// earlier in the same build.
-func testStack(ctx context.Context, clients *Clients, dir, identity, project string, plan []byte, out io.Writer) error {
-	found, err := check.ScanAuthoritative(dir)
+// stack (a *_iam_binding or *_iam_policy replaces every member of its role on each apply)
+// other than the file stores' bucket policies, named from the buckets' addresses the
+// trigger carries (_FILE_STORES; the stack sets each of those buckets' whole permission
+// list on purpose, and a pull-request stack makes buckets of its own), and every secret
+// version a planned revision template pins exists and is enabled, read from Secret
+// Manager as the identity the plan ran as, so a revision never fails to start on a mount
+// the plan could not see. The migrations' sequence rule is GuardMigrations', earlier in
+// the same build.
+func testStack(ctx context.Context, clients *Clients, dir, identity string, subs map[string]string, plan []byte, out io.Writer) error {
+	found, err := check.ScanAuthoritative(dir, fileStorePolicies(subs))
 	if err != nil {
 		return err
 	}
@@ -582,14 +585,14 @@ func testStack(ctx context.Context, clients *Clients, dir, identity, project str
 			lines = append(lines, fmt.Sprintf("%s:%d %s", a.Path, a.Line, a.Address))
 		}
 
-		return errors.Newf("%sthe stack declares an authoritative IAM resource, which replaces every member of its role on each apply: %s", rejected, strings.Join(lines, ", "))
+		return errors.Newf("%sthe stack declares an authoritative IAM resource, which replaces every member of its role on each apply (a file store's bucket policy, storage.tf's, is the one admitted): %s", rejected, strings.Join(lines, ", "))
 	}
-	mounts, err := plannedMounts(plan, project)
+	mounts, err := plannedMounts(plan, subs[projectSub])
 	if err != nil {
 		return err
 	}
 	if len(mounts) == 0 {
-		fmt.Fprintln(out, "Tests passed: no authoritative IAM resource; no secret version pinned.")
+		fmt.Fprintln(out, "Tests passed: no authoritative IAM resource other than a file store's bucket policy; no secret version pinned.")
 
 		return nil
 	}
@@ -607,9 +610,23 @@ func testStack(ctx context.Context, clients *Clients, dir, identity, project str
 			return errors.Newf("%sa planned revision template pins secret version %s, which is %s; a revision would fail to start on it", rejected, m, state)
 		}
 	}
-	fmt.Fprintf(out, "Tests passed: no authoritative IAM resource; %d pinned secret version(s) exist and are enabled.\n", len(mounts))
+	fmt.Fprintf(out, "Tests passed: no authoritative IAM resource other than a file store's bucket policy; %d pinned secret version(s) exist and are enabled.\n", len(mounts))
 
 	return nil
+}
+
+// fileStorePolicies are the file stores' bucket policies as the stack addresses them,
+// from the buckets' addresses in _FILE_STORES: the one authoritative IAM resource per
+// store the test admits.
+func fileStorePolicies(subs map[string]string) []string {
+	var policies []string
+	for _, address := range fileStoreAddresses(subs) {
+		if policy := derive.BucketPolicyAddress(address); policy != "" {
+			policies = append(policies, policy)
+		}
+	}
+
+	return policies
 }
 
 // plannedMounts are the secret versions the planned Cloud Run services and jobs pin

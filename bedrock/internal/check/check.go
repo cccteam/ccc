@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,10 +38,17 @@ type Finding struct {
 }
 
 // Authoritative is an authoritative IAM resource (a *_iam_binding or *_iam_policy)
-// declared in one of the stack's files. The stack refuses them: such a resource
-// replaces every member of its role or policy on each apply, so a pull-request stack
-// applying one would remove the environment's members, and two pull requests each
-// other's. A *_iam_member adds one member and removes only that one.
+// declared in one of the stack's files, other than a file store's bucket policy. The
+// stack refuses them: such a resource replaces every member of its role or policy on
+// each apply, so a pull-request stack applying one would remove the environment's
+// members, and two pull requests each other's. A *_iam_member adds one member and
+// removes only that one. The file stores' bucket policies
+// (google_storage_bucket_iam_policy.<store>, as storage.tf declares them) are admitted
+// by address: the stack sets each bucket's whole permission list on purpose, so that
+// Cloud Storage's default grants to the project's basic roles are gone from it, and a
+// pull-request stack makes buckets of its own, so its policies remove nobody else's
+// members. A policy on any other bucket, and a binding on a file store's bucket, stay
+// refused.
 type Authoritative struct {
 	// Path is the file's path relative to the stack directory.
 	Path string
@@ -64,7 +72,8 @@ type Report struct {
 	// writes them once and a person keeps them, but worth a line.
 	Unseeded []string
 	// Authoritative lists the authoritative IAM resources declared anywhere in the
-	// stack, owned files and a person's alike, in path then line order.
+	// stack, owned files and a person's alike, in path then line order, the file
+	// stores' bucket policies excepted.
 	Authoritative []Authoritative
 	// Migrations are the problems with the schema migrations directory: a file that
 	// is not a migration, an index with two up files, a gap in the sequence.
@@ -137,7 +146,7 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 			r.Findings = append(r.Findings, Finding{Path: f.Path, Root: f.Root, Line: line, Want: want, Got: got})
 		}
 	}
-	authoritative, err := scanAuthoritative(dir)
+	authoritative, err := scanAuthoritative(dir, fileStorePolicies(m))
 	if err != nil {
 		return nil, err
 	}
@@ -222,16 +231,28 @@ func migrationDirs(m *derive.Model) []string {
 // block: resource "<type>_iam_binding" "<name>" or resource "<type>_iam_policy" "<name>".
 var authoritativeResource = regexp.MustCompile(`^\s*resource\s+"([A-Za-z0-9_]+_iam_(?:binding|policy))"\s+"([^"]+)"`)
 
+// fileStorePolicies are the file stores' bucket policies by address: the authoritative
+// IAM resources the stack declares on purpose, which the scan admits.
+func fileStorePolicies(m *derive.Model) []string {
+	policies := make([]string, 0, len(m.FileStores))
+	for i := range m.FileStores {
+		policies = append(policies, m.FileStores[i].PolicyAddress())
+	}
+
+	return policies
+}
+
 // ScanAuthoritative finds the authoritative IAM resources in every .tf file of the
-// directory, a person's files included: what check refuses, and what the pipeline's test
+// directory, a person's files included, other than the ones at the admitted addresses
+// (the file stores' bucket policies): what check refuses, and what the pipeline's test
 // of a stack's plan refuses before the apply.
-func ScanAuthoritative(dir string) ([]Authoritative, error) {
-	return scanAuthoritative(dir)
+func ScanAuthoritative(dir string, admitted []string) ([]Authoritative, error) {
+	return scanAuthoritative(dir, admitted)
 }
 
 // scanAuthoritative finds the authoritative IAM resources in every .tf file of the
-// directory, a person's files included.
-func scanAuthoritative(dir string) ([]Authoritative, error) {
+// directory, a person's files included, other than the ones at the admitted addresses.
+func scanAuthoritative(dir string, admitted []string) ([]Authoritative, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.tf"))
 	if err != nil {
 		return nil, errors.Wrap(err, "filepath.Glob()")
@@ -247,7 +268,11 @@ func scanAuthoritative(dir string) ([]Authoritative, error) {
 			if m == nil {
 				continue
 			}
-			found = append(found, Authoritative{Path: filepath.Base(path), Line: i + 1, Address: m[1] + "." + m[2]})
+			address := m[1] + "." + m[2]
+			if slices.Contains(admitted, address) {
+				continue
+			}
+			found = append(found, Authoritative{Path: filepath.Base(path), Line: i + 1, Address: address})
 		}
 	}
 
@@ -304,7 +329,7 @@ func (r *Report) Write(w io.Writer) {
 		fmt.Fprintf(w, "  unseeded %s (bedrock render creates it once)\n", path)
 	}
 	for _, a := range r.Authoritative {
-		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead\n", a.Path, a.Line, a.Address)
+		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead (a file store's bucket policy, storage.tf's, is the one admitted)\n", a.Path, a.Line, a.Address)
 	}
 	for _, mf := range r.Migrations {
 		fmt.Fprintf(w, "  refused  %s: %s\n", mf.Path, mf.Problem)

@@ -12,8 +12,8 @@
 # the layer's grants are refreshed through. roles/viewer is not among them:
 # the cloud's bundle for a reader reads data as well as resources (the rows
 # of every Spanner database in the project, every container image, and the
-# deployment records and uploaded files through the buckets' default grants
-# to project viewers), none of which a plan reads. Both run from the
+# objects of any bucket that still carries Cloud Storage's default grants to
+# the project's basic roles), none of which a plan reads. Both run from the
 # infrastructure repository's layers workflow, signed in through the boot
 # project's identity pool (workflow.tf); neither has keys, and org policy
 # forbids creating any.
@@ -62,6 +62,31 @@ resource "google_project_iam_member" "tofu" {
   # before the custom role exists.
   role   = lookup(local.custom_roles, each.value.role, each.value.role)
   member = google_service_account.tofu[each.value.proj].member
+}
+
+# Cloud Storage on an environment project, for its layer identity: 2-env
+# declares one bucket there, the deployment records
+# ({prefix}-{env}-gbl-records-<hex>), and nothing else in Cloud Storage, so
+# its storage admin is held under a condition naming that bucket, with its
+# objects, and not the applications' file stores in the same project, which
+# are each application's apply identity's (2-env bounds those the same way).
+# Creating a bucket is checked on the project, which no bucket's name can
+# admit: that is storageBucketCreator in the app role set (above), beside
+# this. A grant added on the records bucket by hand is removed by 2-env's
+# next apply, which sets the bucket's policy whole; a grant on the project
+# is not.
+resource "google_project_iam_member" "tofu_storage_admin" {
+  for_each = local.environment_layers
+
+  project = module.project[each.key].project_id
+  role    = "roles/storage.admin"
+  member  = google_service_account.tofu[each.key].member
+
+  condition {
+    title       = "${each.key} records bucket"
+    description = "The environment's deployment-records bucket, the one bucket 2-env declares, with its objects."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${local.layer_names[each.key]}-records-\")"
+  }
 }
 
 resource "google_project_iam_member" "plan" {

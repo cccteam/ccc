@@ -128,6 +128,9 @@ func TestGuardPlan(t *testing.T) {
 	// names its source file for the database the rules are released to.
 	ownRuleset := `{"address": "google_firebaserules_ruleset.firestore", "type": "google_firebaserules_ruleset", "change": {"actions": ["create"], "after": {"name": null, "project": "p", "source": [{"files": [{"content": "rules_version = '2';", "name": "quill-pr7-fs.rules"}], "language": null}]}}}`
 	foreignRuleset := `{"address": "google_firebaserules_ruleset.firestore", "type": "google_firebaserules_ruleset", "change": {"actions": ["delete"], "before": {"name": "projects/p/rulesets/5c2a", "project": "p", "source": [{"files": [{"content": "rules_version = '2';", "name": "imp-tst-gbl-quill-fs.rules"}], "language": "FIREBASE_RULES"}]}, "after": null}}`
+	// A bucket's policy is named by its bucket: the pull request's own, or the environment's.
+	ownPolicy := `{"address": "google_storage_bucket_iam_policy.files", "type": "google_storage_bucket_iam_policy", "change": {"actions": ["create"], "after": {"bucket": "imp-tst-gbl-quill-pr7-files-123", "policy_data": "{}"}}}`
+	foreignPolicy := `{"address": "google_storage_bucket_iam_policy.files", "type": "google_storage_bucket_iam_policy", "change": {"actions": ["update"], "before": {"bucket": "imp-tst-gbl-quill-files-123", "policy_data": "{}"}, "after": {"bucket": "imp-tst-gbl-quill-files-123", "policy_data": "{}"}}}`
 	plan := func(changes ...string) string {
 		return `{"resource_changes": [` + strings.Join(changes, ",") + `]}`
 	}
@@ -154,6 +157,18 @@ func TestGuardPlan(t *testing.T) {
 			name:        "a ruleset named for the environment's database is refused",
 			plan:        plan(own, foreignRuleset),
 			wantOut:     []string{"google_firebaserules_ruleset.firestore (delete)"},
+			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
+			wantComment: "A pull-request stack applies only resources named quill-pr7",
+		},
+		{
+			name:    "the policy of the pull request's own file store passes: its bucket names it",
+			plan:    plan(own, ownPolicy),
+			wantOut: []string{"Guard passed: 2 planned change(s), all pull request 7's."},
+		},
+		{
+			name:        "the policy of the environment's file store is refused",
+			plan:        plan(own, foreignPolicy),
+			wantOut:     []string{"google_storage_bucket_iam_policy.files (update)"},
 			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
 			wantComment: "A pull-request stack applies only resources named quill-pr7",
 		},

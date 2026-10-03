@@ -96,8 +96,8 @@ variable "layer_roles" {
     Keys map to the role_set field of each entry in var.projects.
 
     An entry is either a predefined role ("roles/...") or the bare ID of a
-    custom organization role created in custom-roles.tf (currently only
-    secretContainerAdmin). Custom roles are named by bare ID because a
+    custom organization role created in custom-roles.tf (secretContainerAdmin,
+    storageBucketCreator). Custom roles are named by bare ID because a
     variable default cannot reference a resource; locals.tf resolves them.
   EOT
   type        = map(list(string))
@@ -128,8 +128,12 @@ variable "layer_roles" {
       "roles/run.admin",
       "roles/serviceusage.serviceUsageAdmin",
       "roles/spanner.admin",
-      "roles/storage.admin",
       "secretContainerAdmin",
+      # 2-env declares one bucket, the deployment records: its storage admin
+      # is granted under a condition naming that bucket (service-accounts.tf),
+      # and this role holds what Cloud Storage checks on the project, creating
+      # a bucket and listing the project's buckets.
+      "storageBucketCreator",
     ]
     net = [
       "roles/certificatemanager.editor",
@@ -270,9 +274,10 @@ variable "plan_roles" {
     the layer declares and nothing of their data, beside
     roles/iam.securityReviewer for the IAM policies the layer's grants are
     refreshed through. roles/viewer is in no set: it reads the rows of every
-    Spanner database in the project, every container image, and the
-    deployment records and uploaded files through the buckets' default grants
-    to project viewers, none of which a plan reads.
+    Spanner database in the project and every container image, none of which
+    a plan reads, and the objects of any bucket that still carries Cloud
+    Storage's default grants to the project's basic roles (the records bucket
+    and the applications' file stores carry none).
   EOT
   type        = map(list(string))
   default = {

@@ -27,7 +27,8 @@ pipeline").
 The first apply of an environment is by hand, before any release exists there;
 every later apply is the pipeline's. A release's tag build plans the stack for
 its environment as the apply identity after the image build and before the
-migrations, runs the tests (no authoritative IAM resource; every secret version
+migrations, runs the tests (no authoritative IAM resource other than the file
+stores' bucket policies; every secret version
 a revision template pins exists and is enabled), applies on a pass, and writes
 the plan's summary to the build log and the deployment record, under the
 release's own approval. A pull-request build plans the stack for every
@@ -324,7 +325,11 @@ name, account, service, database or parent), except an IAM membership whose
 member is one of the pull request's own accounts. Anything else stops the run
 and is posted on the pull request. Before that, `bedrock check` refuses an
 authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the
-stack: one apply would remove another's members.
+stack: one apply would remove another's members. The file stores' bucket
+policies (`storage.tf`) are the one exception, admitted by their addresses: a
+pull-request stack makes buckets of its own, so their policies remove nobody
+else's members, and the policy is what keeps the project's basic roles off
+the bucket.
 
 The migration guard. The schema migrations under `schema/migrations` and the seed
 migrations beside them (`devseed`) are applied once each in the order of their

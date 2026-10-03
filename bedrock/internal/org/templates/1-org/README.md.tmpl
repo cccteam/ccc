@@ -41,10 +41,16 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   IAM policies the layer's grants are refreshed through. `roles/viewer` is not
   among them: the cloud's bundle for a reader reads data as well as resources
   (the rows of every Spanner database in the project, every container image,
-  and the deployment records and uploaded files through the buckets' default
-  grants to project viewers), none of which a plan reads. Both get
+  and the objects of any bucket that still carries Cloud Storage's default
+  grants to the project's basic roles; the records bucket and the
+  applications' file stores carry none, their policies being set whole), none
+  of which a plan reads. Both get
   `roles/serviceusage.serviceUsageConsumer` on the boot project, which is
-  their quota project.
+  their quota project. The environment layer identities' `roles/storage.admin`
+  is held under a condition naming the environment's records bucket, the one
+  bucket `2-env` declares (`service-accounts.tf`); what Cloud Storage checks
+  on the project, creating a bucket and listing the project's buckets, is the
+  custom role `storageBucketCreator` in the `app` role set (below).
 - The plan identities of the two boot layers, `{{.Prefix}}-boot-gbl-plan` and
   `{{.Prefix}}-org-gbl-plan`, in the boot project (`workflow.tf`), with the
   organization-level reads of `var.boot_plan_roles`: `0-bootstrap` cannot
@@ -131,8 +137,9 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   resources hold. `2-env`
   grants it on each environment project to each application's plan identity
   in place of `roles/viewer`, which reads data as well: the rows of a Spanner
-  database in the project, and the application's uploaded files through the
-  bucket's default grants to project viewers. The IAM policies the stack's
+  database in the project, and the objects of any bucket that still carries
+  Cloud Storage's default grants to the project's basic roles (the
+  applications' file stores carry none). The IAM policies the stack's
   grants are refreshed through come from `roles/iam.securityReviewer`, granted
   beside it.
 - The four custom organization roles of the layer plan identities, one per
@@ -173,6 +180,21 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   the queue while the database is replaced or migrated and resumes it after traffic
   moves; a restore purges it too. The cloud's own `roles/cloudtasks.queueAdmin`
   would also create, change and delete queues.
+- The custom organization role `storageBucketCreator`: creates a bucket in a
+  project and lists the project's buckets (`storage.buckets.create`,
+  `storage.buckets.list`), the two of `roles/storage.admin`'s permissions that
+  Cloud Storage checks on the project (the request names the project; a
+  bucket being created does not exist yet), where no condition on a bucket's
+  name reaches. Every other permission of storage admin that a stack uses is
+  checked on a bucket or an object, which a condition on `resource.name`
+  bounds, so each environment layer identity (this layer, `service-accounts.tf`)
+  and each application's apply identity (`2-env`) holds storage admin under a
+  condition naming its own buckets and this role without condition, as the
+  Spanner admin roles are held beside `spannerDatabaseCreator`. The rest of
+  storage admin that is checked on the project (the project's own reads, the
+  organization policy read, Storage Intelligence and storage batch
+  operations) is not granted: no stack asks for it, and the project reads
+  come with the identities' other roles.
 - The custom organization role `runJobPolicyAdmin`: reads and sets the IAM
   policy of Cloud Run jobs (`run.jobs.getIamPolicy`, `run.jobs.setIamPolicy`)
   and nothing else. `2-env` grants it to each application's deploy identity
@@ -351,7 +373,7 @@ required checks, the rulesets' names.
 
 | Set | Roles |
 |---|---|
-| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the team group's entitlements), resourcemanager.projectIamAdmin, run.admin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin, `secretContainerAdmin` |
+| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the team group's entitlements), resourcemanager.projectIamAdmin, run.admin, serviceusage.serviceUsageAdmin, spanner.admin, `secretContainerAdmin`, `storageBucketCreator` (storage.admin itself is granted beside the set, under a condition naming the environment's records bucket; `service-accounts.tf`) |
 | `shr` | artifactregistry.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin, `secretContainerAdmin` |
 | `net` | certificatemanager.editor, compute.loadBalancerAdmin, compute.networkAdmin, compute.securityAdmin, dns.admin, domains.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin |
 | `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the environments' Spanner entitlements), resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |
@@ -482,3 +504,4 @@ bucket, prefix `1-org`.
 | `cloud_build_build_reader_role` | Full name of the `cloudBuildBuildReader` role. |
 | `application_plan_reader_role` | Full name of the `applicationPlanReader` role. |
 | `cloud_tasks_queue_operator_role` | Full name of the `cloudTasksQueueOperator` role. |
+| `storage_bucket_creator_role` | Full name of the `storageBucketCreator` role. |

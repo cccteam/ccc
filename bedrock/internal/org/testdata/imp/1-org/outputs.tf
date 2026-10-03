@@ -136,3 +136,8 @@ output "spanner_database_creator_role" {
   description = "Full name of the spannerDatabaseCreator custom organization role: creates a database on an instance and lists what the instance holds, and changes nothing that exists. 2-spn grants it on the shared instance and 2-env on an environment's own instance to each application's apply identity, beside the admin roles bounded to that application's own database and backups."
   value       = google_organization_iam_custom_role.spanner_database_creator.id
 }
+
+output "storage_bucket_creator_role" {
+  description = "Full name of the storageBucketCreator custom organization role: creates a bucket in a project and lists the project's buckets, the two of storage admin's permissions Cloud Storage checks on the project, and changes nothing that exists. 2-env grants it on the environment project to each application's apply identity, beside storage admin bounded to that application's own buckets; the app role set holds it for the environment layer identity, whose storage admin this layer bounds to the records bucket."
+  value       = google_organization_iam_custom_role.storage_bucket_creator.id
+}

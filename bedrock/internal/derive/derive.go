@@ -372,10 +372,13 @@ func fileStoreName(variable string) (string, bool) {
 
 // fileStoreResource is the stack's resource name for the default store's bucket, and the
 // stem of a named store's (files_documents); bucketResourceType is the bucket's resource
-// type in the stack, which with the resource name addresses the bucket.
+// type in the stack, which with the resource name addresses the bucket, and
+// bucketPolicyResourceType the type of the bucket's IAM policy, declared under the same
+// resource name.
 const (
-	fileStoreResource  = "files"
-	bucketResourceType = "google_storage_bucket"
+	fileStoreResource        = "files"
+	bucketResourceType       = "google_storage_bucket"
+	bucketPolicyResourceType = "google_storage_bucket_iam_policy"
 )
 
 // FileStore is one Cloud Storage bucket the application declares by a file-store
@@ -411,6 +414,28 @@ func newFileStore(v *Variable, name string) FileStore {
 // Address is the bucket's address in the stack: google_storage_bucket.<resource>.
 func (s *FileStore) Address() string {
 	return bucketResourceType + "." + s.Resource
+}
+
+// PolicyAddress is the address of the bucket's IAM policy in the stack,
+// google_storage_bucket_iam_policy.<resource>. The stack sets the bucket's whole
+// permission list through it, and check and the pipeline's test admit that one
+// authoritative IAM resource per store by this address.
+func (s *FileStore) PolicyAddress() string {
+	return BucketPolicyAddress(s.Address())
+}
+
+// BucketPolicyAddress is the address of a bucket's IAM policy in the stack from the
+// bucket's own: google_storage_bucket.<resource> becomes
+// google_storage_bucket_iam_policy.<resource>. The pipeline names the file stores'
+// policies this way from the buckets' addresses its trigger carries; an address that is
+// not a bucket's answers "".
+func BucketPolicyAddress(bucket string) string {
+	resource, ok := strings.CutPrefix(bucket, bucketResourceType+".")
+	if !ok || resource == "" {
+		return ""
+	}
+
+	return bucketPolicyResourceType + "." + resource
 }
 
 // Default reports the application's default store, the one APP_FILE_STORE declares.

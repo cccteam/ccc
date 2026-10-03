@@ -201,32 +201,164 @@ func TestRenderTiers(t *testing.T) {
 // records bucket: it creates records and reads them (the stale-database check of a
 // pull-request build today; the environment's live version once a step needs it), each
 // for every application; neither role overwrites or deletes a record.
-func TestDeployRecordsGrants(t *testing.T) {
+// TestRecordsBucketPolicy reads the records bucket's policy, which 2-env sets whole: one
+// binding per role, the deploy identities' create and read, the plan identities' read (the
+// hotfix preview), the next environment's deploy identities' read (the record gate) and
+// the team group's read, no binding for a role nobody holds, and no member resource left
+// on the bucket beside the policy.
+func TestRecordsBucketPolicy(t *testing.T) {
 	t.Parallel()
 
-	identities := renderedFile(t, "2-env/identities.tf")
 	tests := []struct {
-		name     string
-		resource string
-		role     string
-		// identity is the service account resource granted: deploy, or plan.
-		identity string
+		name   string
+		path   string
+		want   []string
+		absent []string
 	}{
-		{name: "creates records", resource: "deploy_records", role: "roles/storage.objectCreator", identity: "deploy"},
-		{name: "reads records", resource: "deploy_records_viewer", role: "roles/storage.objectViewer", identity: "deploy"},
-		{name: "the plan identity reads records, for the hotfix preview", resource: "plan_records", role: "roles/storage.objectViewer", identity: "plan"},
+		{
+			name: "the bindings, from the identities and the team group, and the policy",
+			path: "2-env/records.tf",
+			want: []string{
+				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
+				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members },\n",
+				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, values(local.next_deploy_members), [local.team_group]) },\n",
+				"    ] : b if length(b.members) > 0\n",
+				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n    }\n  }\n}\n",
+				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
+				"default grants to the project's basic roles (projectOwner, projectEditor",
+			},
+			absent: []string{"google_storage_bucket_iam_member", "builder role"},
+		},
+		{
+			name:   "no member resource on the bucket beside the policy",
+			path:   "2-env/identities.tf",
+			want:   []string{"bindings of the records\n# bucket's policy (records.tf)"},
+			absent: []string{"\"deploy_records\"", "\"deploy_records_viewer\"", "\"plan_records\"", "\"next_deploy_records_viewer\"", "bucket = google_storage_bucket.records.name"},
+		},
+		{
+			name: "the README says who reads a record and what a hand grant's fate is",
+			path: "2-env/README.md",
+			want: []string{
+				"the environment's team group (a person reads a record through\n  the group)",
+				"A grant added on the\n  bucket by hand, for a day's debugging, is removed by this layer's next\n  apply; a grant added on the project is not",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			want := "resource \"google_storage_bucket_iam_member\" \"" + tt.resource + "\" {\n" +
-				"  for_each = local.apps\n\n" +
-				"  bucket = google_storage_bucket.records.name\n" +
-				"  role   = \"" + tt.role + "\"\n" +
-				"  member = google_service_account." + tt.identity + "[each.key].member\n}\n"
-			if !strings.Contains(identities, want) {
-				t.Errorf("2-env/identities.tf lacks the grant:\n%s", want)
+			content := renderedFile(t, tt.path)
+			for _, w := range tt.want {
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks:\n%s", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(content, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
+			}
+		})
+	}
+}
+
+// TestStorageAdminBounds pins each apply identity's Cloud Storage grants: an application's
+// storage admin from 2-env under a condition naming its own buckets (its file stores and
+// its pull-request stacks') and storageBucketCreator without condition, with no
+// unconditioned storage admin left in its role set; and the environment layer identity's
+// storage admin from 1-org under a condition naming the records bucket, the app role set
+// carrying storageBucketCreator in its place while the other sets keep storage admin.
+func TestStorageAdminBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path string
+		// section narrows the file to the text between its two markers, when set.
+		section [2]string
+		want    []string
+		absent  []string
+	}{
+		{
+			name: "an application's apply identity: its own buckets by name, the creator role beside",
+			path: "2-env/identities.tf",
+			want: []string{
+				"resource \"google_project_iam_member\" \"apply_bucket_creator\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = local.org.storage_bucket_creator_role\n  member  = google_service_account.apply[each.key].member\n}\n",
+				"resource \"google_project_iam_member\" \"apply_storage_admin\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = \"roles/storage.admin\"\n  member  = google_service_account.apply[each.key].member\n\n  condition {\n    title       = \"${each.key} ${var.environment} buckets\"\n",
+				`expression  = "resource.name.startsWith(\"projects/_/buckets/${local.name}-gbl-${each.key}-\")"`,
+			},
+		},
+		{
+			name:    "no unconditioned storage admin in the application apply identity's role set",
+			path:    "2-env/locals.tf",
+			section: [2]string{"  apply_project_roles = [\n", "  ]\n"},
+			want:    []string{"\"roles/run.admin\",\n"},
+			absent:  []string{"roles/storage.admin"},
+		},
+		{
+			name: "the environment layer identity: the records bucket by name",
+			path: "1-org/service-accounts.tf",
+			want: []string{
+				"resource \"google_project_iam_member\" \"tofu_storage_admin\" {\n  for_each = local.environment_layers\n\n  project = module.project[each.key].project_id\n  role    = \"roles/storage.admin\"\n  member  = google_service_account.tofu[each.key].member\n\n  condition {\n    title       = \"${each.key} records bucket\"\n",
+				`expression  = "resource.name.startsWith(\"projects/_/buckets/${local.layer_names[each.key]}-records-\")"`,
+			},
+		},
+		{
+			name:    "the app role set carries the creator role and no storage admin",
+			path:    "1-org/variables.tf",
+			section: [2]string{"    app = [\n", "    ]\n"},
+			want:    []string{"      \"secretContainerAdmin\",\n", "      \"storageBucketCreator\",\n"},
+			absent:  []string{"roles/storage.admin"},
+		},
+		{
+			name:    "the shared sets keep storage admin",
+			path:    "1-org/variables.tf",
+			section: [2]string{"    shr = [\n", "    ]\n"},
+			want:    []string{"      \"roles/storage.admin\",\n"},
+		},
+		{
+			name: "1-org resolves the creator role by bare id and publishes it",
+			path: "1-org/locals.tf",
+			want: []string{"    storageBucketCreator       = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
+		},
+		{
+			name: "the output",
+			path: "1-org/outputs.tf",
+			want: []string{"output \"storage_bucket_creator_role\" {", "  value       = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
+		},
+		{
+			name: "the READMEs name what a bucket's name cannot bound",
+			path: "1-org/README.md",
+			want: []string{"`storage.buckets.create`,\n  `storage.buckets.list`), the two of `roles/storage.admin`'s permissions that\n  Cloud Storage checks on the project"},
+		},
+		{
+			name: "the 2-env README says which buckets the condition admits",
+			path: "2-env/README.md",
+			want: []string{"`imp-<env>-gbl-<app>-`, which is the application's file stores", "Without the condition, any application's\napply identity, and so its pipeline and its pull-request builds, would read\nand delete every other application's files and every record."},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content := renderedFile(t, tt.path)
+			if tt.section[0] != "" {
+				_, rest, found := strings.Cut(content, tt.section[0])
+				if !found {
+					t.Fatalf("%s lacks %q", tt.path, tt.section[0])
+				}
+				content, _, _ = strings.Cut(rest, tt.section[1])
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks:\n%s", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(content, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
 			}
 		})
 	}
@@ -367,6 +499,12 @@ func TestCustomRolePermissions(t *testing.T) {
 			},
 		},
 		{
+			name:        "creates a bucket in a project: what Cloud Storage checks on the project, and nothing of a bucket",
+			resource:    "storage_bucket_creator",
+			roleID:      "storageBucketCreator",
+			permissions: []string{"storage.buckets.create", "storage.buckets.list"},
+		},
+		{
 			name:     "plans an application stack",
 			resource: "application_plan_reader",
 			roleID:   "applicationPlanReader",
@@ -467,8 +605,8 @@ func TestCustomRolePermissions(t *testing.T) {
 // custom role of the project's kind and securityReviewer, granted by the same flatten over
 // the role sets as the layer identities' roles with the bare ID resolved through
 // local.custom_roles, and no roles/viewer anywhere in 1-org (the bundle reads the rows of
-// every database in the project, every container image, and the records and uploaded
-// files through the buckets' default grants to project viewers).
+// every database in the project, every container image, and the objects of any bucket
+// that still carries Cloud Storage's default grants to the project's basic roles).
 func TestLayerPlanRoles(t *testing.T) {
 	t.Parallel()
 

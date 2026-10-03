@@ -27,7 +27,8 @@ pipeline").
 The first apply of an environment is by hand, before any release exists there;
 every later apply is the pipeline's. A release's tag build plans the stack for
 its environment as the apply identity after the image build and before the
-migrations, runs the tests (no authoritative IAM resource; every secret version
+migrations, runs the tests (no authoritative IAM resource other than the file
+stores' bucket policies; every secret version
 a revision template pins exists and is enabled), applies on a pass, and writes
 the plan's summary to the build log and the deployment record, under the
 release's own approval. A pull-request build plans the stack for every
@@ -87,7 +88,13 @@ from `2-env`'s state.
   (`dataConfig.FileStore` names it to the processes that construct the
   data level, as a `gs://` URL), in the primary region, uniform access, no public
   access, unversioned; prd's survives a destroy. The site and the job
-  process hold `roles/storage.objectUser` on it; the migrate command gets
+  process hold `roles/storage.objectUser` on it, and nobody else: the stack
+  sets the bucket's whole permission list (`google_storage_bucket_iam_policy.files`),
+  so Cloud Storage's default grants to the project's basic roles are gone
+  from it and no Owner, Editor or Viewer of the project reads an uploaded
+  file through them. A grant added on the bucket by hand, for a day's
+  debugging, is removed by the next release's apply; a grant added on the
+  project is not. The migrate command gets
   neither the URL nor a grant.
 - **The task queue** `imp-<env>-uc1-harbor-tasks`
   (`dataConfig.TasksQueue` names it to the processes that construct the
@@ -410,7 +417,11 @@ name, account, service, database or parent), except an IAM membership whose
 member is one of the pull request's own accounts. Anything else stops the run
 and is posted on the pull request. Before that, `bedrock check` refuses an
 authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the
-stack: one apply would remove another's members.
+stack: one apply would remove another's members. The file stores' bucket
+policies (`storage.tf`) are the one exception, admitted by their addresses: a
+pull-request stack makes buckets of its own, so their policies remove nobody
+else's members, and the policy is what keeps the project's basic roles off
+the bucket.
 
 The migration guard. The schema migrations under `schema/migrations` and the seed
 migrations beside them (`devseed`) are applied once each in the order of their

@@ -571,6 +571,78 @@ func TestFileStores(t *testing.T) {
 	}
 }
 
+// TestFileStorePolicy reads a file store's bucket policy as the stack declares it: the
+// bucket's whole permission list, objectUser for the site and, when the job process
+// constructs the store's level, the job, nobody else, set again with a replaced bucket,
+// and no member resource on the bucket beside it.
+func TestFileStorePolicy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// level is the store's level: the data level, which harbor's job process
+		// constructs, or the site level, which it does not.
+		level  string
+		want   []string
+		absent []string
+	}{
+		{
+			name:  "a store the job process reads: the site and the job",
+			level: derive.LevelData,
+			want: []string{
+				"data \"google_iam_policy\" \"files\" {\n  binding {\n    role    = \"roles/storage.objectUser\"\n    members = [local.app_member, local.jobs_member]\n  }\n}\n",
+				"resource \"google_storage_bucket_iam_policy\" \"files\" {\n  bucket      = google_storage_bucket.files.name\n  policy_data = data.google_iam_policy.files.policy_data\n\n  depends_on = [google_service_account.app, google_service_account.jobs]\n",
+				"  lifecycle {\n    replace_triggered_by = [google_storage_bucket.files]\n  }\n",
+				"the one authoritative IAM resource the stack\n# declares",
+			},
+			absent: []string{"google_storage_bucket_iam_member"},
+		},
+		{
+			name:  "a store at a level the job process does not construct: the site alone",
+			level: derive.LevelSite,
+			want: []string{
+				"    members = [local.app_member]\n",
+				"  depends_on = [google_service_account.app]\n",
+			},
+			absent: []string{"google_storage_bucket_iam_member", "local.jobs_member"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			if len(m.FileStores) != 1 {
+				t.Fatalf("harbor declares %d file stores, want 1", len(m.FileStores))
+			}
+			m.FileStores[0].Variable.Level = tt.level
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var storage string
+			for _, f := range files {
+				if f.Path == "storage.tf" {
+					storage = string(f.Content)
+				}
+			}
+			if storage == "" {
+				t.Fatal("storage.tf is not rendered")
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(storage, w) {
+					t.Errorf("storage.tf lacks:\n%s", w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(storage, a) {
+					t.Errorf("storage.tf still carries %q", a)
+				}
+			}
+		})
+	}
+}
+
 func TestAligned(t *testing.T) {
 	t.Parallel()
 

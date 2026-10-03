@@ -117,6 +117,20 @@ func TestPlannedMounts(t *testing.T) {
 }
 
 // tagSubs are a tag build's substitutions for stg, for a stack with one file store.
+// writeStackFile puts one .tf file, iam.tf, into the workspace's stack directory: what
+// the test of the stack scans for authoritative IAM resources.
+func writeStackFile(t *testing.T, w Workspace, content string) {
+	t.Helper()
+
+	dir := filepath.Join(string(w), stackDir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "iam.tf"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func tagSubs() map[string]string {
 	return map[string]string{appSub: "quill", envSub: stgEnvironment, projectSub: "p-stg", applyIdentitySub: "quill-apply@p-stg.iam.gserviceaccount.com", commitSub: "c9", repoFullNameSub: "acme/quill", fileStoresSub: "google_storage_bucket.files"}
 }
@@ -175,10 +189,10 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		stateList  = "google_spanner_database.quill[0]\ngoogle_firestore_database.firestore\ngoogle_storage_bucket.files\ngoogle_cloud_run_v2_service.app[\"uc1\"]\n"
 	)
 	tests := []struct {
-		name          string
-		subs          map[string]string
-		pins          map[string]string
-		authoritative bool
+		name      string
+		subs      map[string]string
+		pins      map[string]string
+		stackFile string
 		// env is the environment file; state what tofu state list (or state show) answers.
 		env   string
 		state string
@@ -313,7 +327,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			name:     "a tag build plans, tests and appends the summary",
 			subs:     tagSubs(),
 			pins:     enabledPins(),
-			wantOut:  []string{"=== stg's stack at 3-app/quill/stg as quill-apply@p-stg.iam.gserviceaccount.com ===", "Plan: 2 to add, 1 to change, 1 to destroy.", `  update google_cloud_run_v2_service.app["uc1"]`, "  delete+create google_secret_manager_secret.old", "Tests passed: no authoritative IAM resource; 2 pinned secret version(s) exist and are enabled."},
+			wantOut:  []string{"=== stg's stack at 3-app/quill/stg as quill-apply@p-stg.iam.gserviceaccount.com ===", "Plan: 2 to add, 1 to change, 1 to destroy.", `  update google_cloud_run_v2_service.app["uc1"]`, "  delete+create google_secret_manager_secret.old", "Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
 			wantTofu: []string{initLine, planLine, showLine},
 			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
 		},
@@ -332,12 +346,29 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantErr:  "pins secret version projects/p-stg/secrets/quill-cookie-key/versions/3, which could not be read",
 		},
 		{
-			name:          "an authoritative IAM resource in the stack is refused",
-			subs:          tagSubs(),
-			pins:          enabledPins(),
-			authoritative: true,
-			wantTofu:      []string{initLine, planLine, showLine},
-			wantErr:       "Build REJECTED: the stack declares an authoritative IAM resource, which replaces every member of its role on each apply: iam.tf:1 google_project_iam_binding.all",
+			name:      "an authoritative IAM resource in the stack is refused",
+			subs:      tagSubs(),
+			pins:      enabledPins(),
+			stackFile: "resource \"google_project_iam_binding\" \"all\" {}\n",
+			wantTofu:  []string{initLine, planLine, showLine},
+			wantErr:   "Build REJECTED: the stack declares an authoritative IAM resource, which replaces every member of its role on each apply (a file store's bucket policy, storage.tf's, is the one admitted): iam.tf:1 google_project_iam_binding.all",
+		},
+		{
+			name:      "the file store's bucket policy, named from the trigger's buckets, passes the test",
+			subs:      tagSubs(),
+			pins:      enabledPins(),
+			stackFile: "resource \"google_storage_bucket_iam_policy\" \"files\" {}\n",
+			wantOut:   []string{"Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
+			wantTofu:  []string{initLine, planLine, showLine},
+			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
+		{
+			name:      "a policy on a bucket that is not a file store's is refused",
+			subs:      tagSubs(),
+			pins:      enabledPins(),
+			stackFile: "resource \"google_storage_bucket_iam_policy\" \"records\" {}\n",
+			wantTofu:  []string{initLine, planLine, showLine},
+			wantErr:   "is the one admitted): iam.tf:1 google_storage_bucket_iam_policy.records",
 		},
 		{
 			name:    "a build without an apply identity is refused",
@@ -367,14 +398,8 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				subs["_SERVICES"] = "us-central1=quill-app"
 			}
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs)})
-			if tt.authoritative {
-				dir := filepath.Join(string(w), stackDir)
-				if err := os.MkdirAll(dir, 0o750); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, "iam.tf"), []byte(`resource "google_project_iam_binding" "all" {}`+"\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
+			if tt.stackFile != "" {
+				writeStackFile(t, w, tt.stackFile)
 			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON, "tofu state": tt.state}}
 			secrets := &fakeSecrets{states: tt.pins}
@@ -618,6 +643,7 @@ func TestPlanEnvironments(t *testing.T) {
 	tests := []struct {
 		name        string
 		env         string
+		stackFile   string
 		subs        map[string]string
 		pins        map[string]string
 		deployer    bool
@@ -627,6 +653,34 @@ func TestPlanEnvironments(t *testing.T) {
 		wantComment []string
 		wantErr     string
 	}{
+		{
+			name:      "the file stores' bucket policies, named from the triggers' buckets, pass each environment's test",
+			stackFile: "resource \"google_storage_bucket_iam_policy\" \"files\" {}\nresource \"google_storage_bucket_iam_policy\" \"files_documents\" {}\n",
+			subs: func() map[string]string {
+				subs := prSubs()
+				subs[fileStoresSub] = "google_storage_bucket.files,google_storage_bucket.files_documents"
+
+				return subs
+			}(),
+			pins:     enabledPins(),
+			wantOut:  []string{"prd: Plan: 2 to add, 1 to change, 1 to destroy.", "Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
+			wantTofu: every,
+		},
+		{
+			name:      "a policy on a bucket that is not a file store's fails the first environment's test, said on the pull request",
+			env:       "export GITHUB_TOKEN=\"test-token\"\n",
+			stackFile: "resource \"google_storage_bucket_iam_policy\" \"records\" {}\n",
+			subs: func() map[string]string {
+				subs := prSubs()
+				subs[fileStoresSub] = "google_storage_bucket.files"
+
+				return subs
+			}(),
+			pins:        enabledPins(),
+			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst")},
+			wantComment: []string{"The plan of tst's stack failed a test (build b-1): Build REJECTED: the stack declares an authoritative IAM resource, which replaces every member of its role on each apply (a file store's bucket policy, storage.tf's, is the one admitted): iam.tf:1 google_storage_bucket_iam_policy.records"},
+			wantErr:     "iam.tf:1 google_storage_bucket_iam_policy.records",
+		},
 		{
 			name:        "every environment is planned as its plan identity, the summaries said on the pull request",
 			subs:        prSubs(),
@@ -699,6 +753,9 @@ func TestPlanEnvironments(t *testing.T) {
 				secrets.states = tt.pins
 			}
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n" + tt.env, BuildFile: buildFor(t, subs)})
+			if tt.stackFile != "" {
+				writeStackFile(t, w, tt.stackFile)
+			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON}, fail: map[string]error{"tofu plan": tt.planErr}}
 			repo := &githubtest.Repo{}
 			_, gh := githubStandIn(t, repo)

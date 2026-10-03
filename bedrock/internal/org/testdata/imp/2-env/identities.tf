@@ -112,6 +112,40 @@ resource "google_spanner_instance_iam_member" "apply_backup_admin" {
   }
 }
 
+# Cloud Storage: the application's own buckets. Its stack names its file
+# stores "<prefix>-<env>-gbl-<app>-files-<project number>" (files-<name> for
+# a named store) and a pull-request stack's
+# "<prefix>-<env>-gbl-<app>-pr<N>-files-<project number>" (the stack's
+# locals.tf), so storage admin is held under a condition admitting every
+# bucket whose name starts with the application's segment, with the objects
+# in it: nothing of another application's buckets, and nothing of the
+# records bucket, whose policy (records.tf) names no apply identity.
+# Creating a bucket is checked on the project (storage.buckets.create: the
+# bucket does not exist yet), as is listing the project's buckets, so no
+# bucket's name can admit them: the organization's storageBucketCreator role
+# is held without condition, as spannerDatabaseCreator is on the instance.
+resource "google_project_iam_member" "apply_bucket_creator" {
+  for_each = local.apps
+
+  project = local.project_id
+  role    = local.org.storage_bucket_creator_role
+  member  = google_service_account.apply[each.key].member
+}
+
+resource "google_project_iam_member" "apply_storage_admin" {
+  for_each = local.apps
+
+  project = local.project_id
+  role    = "roles/storage.admin"
+  member  = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} buckets"
+    description = "The application's own buckets in this environment: its file stores and its pull-request stacks' file stores, with their objects."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${local.name}-gbl-${each.key}-\")"
+  }
+}
+
 # Only when 2-net publishes a shared VPC: a stack that attaches a Cloud Run
 # service to it needs the apply identity to use the network. This organization runs
 # without one (no connector, no NAT), so this is normally empty.
@@ -198,44 +232,20 @@ resource "google_storage_bucket_iam_member" "apply_state_upstream" {
   }
 }
 
-# Create and read on the deployment records. The deploy writes its record once
-# and reads its own environment's records: today the newest record of a pull
-# request, for the stale-database check of a pull-request build that migrates;
-# the environment's newest live record, where its live version is, once a step
-# needs it. The bucket's own
-# grants are these two, neither of which overwrites or deletes a record, and the
-# bucket's versioning keeps the history. None of the deploy identity's project
-# roles (locals.tf) reaches a bucket since roles/cloudbuild.builds.builder gave
-# way to cloudBuildBuildReader; what still reaches the records is the apply
-# identity, which the deploy identity may act as and whose roles/storage.admin
-# on the project reaches every bucket in it.
-resource "google_storage_bucket_iam_member" "deploy_records" {
-  for_each = local.apps
-
-  bucket = google_storage_bucket.records.name
-  role   = "roles/storage.objectCreator"
-  member = google_service_account.deploy[each.key].member
-}
-
-resource "google_storage_bucket_iam_member" "deploy_records_viewer" {
-  for_each = local.apps
-
-  bucket = google_storage_bucket.records.name
-  role   = "roles/storage.objectViewer"
-  member = google_service_account.deploy[each.key].member
-}
-
-# Read on the deployment records for the application plan identity: a pull-request
-# build against a hotfix line previews what each environment's release check will say
-# to the line's next release, reading the environment's live record as that
-# environment's plan identity, the identity the build already plans the environment as.
-resource "google_storage_bucket_iam_member" "plan_records" {
-  for_each = local.apps
-
-  bucket = google_storage_bucket.records.name
-  role   = "roles/storage.objectViewer"
-  member = google_service_account.plan[each.key].member
-}
+# Create and read on the deployment records are bindings of the records
+# bucket's policy (records.tf), which this layer sets whole. The deploy writes
+# its record once and reads its own environment's records: the newest record
+# of a pull request, for the stale-database check of a pull-request build that
+# migrates; the environment's newest live record, where its live version is.
+# Neither role overwrites or deletes a record, and the bucket's versioning
+# keeps the history. None of the deploy identity's project roles (locals.tf)
+# reaches a bucket since roles/cloudbuild.builds.builder gave way to
+# cloudBuildBuildReader, and the apply identity it may act as holds storage
+# admin under a condition naming the application's own buckets (above), so a
+# record is written once. The plan identity's read of the records (a
+# pull-request build against a hotfix line previews what each environment's
+# release check will say to the line's next release, as that environment's
+# plan identity) is a binding of the same policy.
 
 # The deploy identity may act as the apply identity: a release's tag build
 # applies the environment's application stack (plan, tests, apply, as the
@@ -266,16 +276,10 @@ resource "google_service_account_iam_member" "deploy_runs_sweep" {
   member             = google_service_account.deploy[each.key].member
 }
 
-# Reader on this environment's deployment records for the next environment's
-# deploy identities: that environment's pipeline admits a release only after a
-# live record of it exists here (the record gate).
-resource "google_storage_bucket_iam_member" "next_deploy_records_viewer" {
-  for_each = local.next_deploy_members
-
-  bucket = google_storage_bucket.records.name
-  role   = "roles/storage.objectViewer"
-  member = each.value
-}
+# The next environment's deploy identities read this environment's deployment
+# records (that environment's pipeline admits a release only after a live
+# record of it exists here: the record gate) through a binding of the records
+# bucket's policy (records.tf), from local.next_deploy_members.
 
 # ---------------------------------------------------------------------------
 # Application plan identity

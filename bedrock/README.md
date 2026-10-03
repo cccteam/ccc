@@ -170,7 +170,10 @@ named store, `APP_FILE_STORE_DOCUMENTS`) becomes a Cloud Storage bucket in the p
 region, one per variable, named `<app>-files-<project number>` or
 `<app>-files-<name>-<project number>` with the name in lower case and hyphens, the
 variable set to the bucket's `gs://` URL for the processes that construct its level, with
-`objectUser` for the site and, when it constructs that level, the job process, and
+`objectUser` for the site and, when it constructs that level, the job process, as the
+bucket's whole permission list (set on every apply, so Cloud Storage's default grants to
+the project's basic roles are gone from it and a grant added on the bucket by hand does
+not outlive the next release), and
 neither the URL nor a grant for the migrate command; a config variable `APP_TASKS_QUEUE` becomes a
 Cloud Tasks queue in the primary region (a pull-request stack enqueues on the
 integration environment's), the variable set to its resource name, with `enqueuer` on
@@ -234,6 +237,12 @@ It also refuses:
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
+  The file stores' bucket policies (`google_storage_bucket_iam_policy.files`, one per
+  store, as `storage.tf` declares them) are the one exception, admitted by address: the
+  stack sets each bucket's whole permission list on purpose, so that Cloud Storage's
+  default grants to the project's basic roles are gone from it, and a pull-request stack
+  makes buckets of its own. The pipeline's test before every apply admits the same
+  addresses, named from the buckets its trigger carries (`_FILE_STORES`).
 - a Dockerfile whose browser build stage (the stage that runs `bun run build`) does not
   declare `ARG VERSION`: a build argument is visible inside a stage only after the stage
   declares it again, and the release is stamped into each bundle in that stage, so without
@@ -423,7 +432,8 @@ thing one step hands the next. In order:
   applied as the apply identity, after the image build (a failed build changes no
   infrastructure) and before the jobs and the migrations (what they need exists first).
   `plan` saves the plan with its JSON, prints and appends the summary (`STACK_PLAN`), and
-  runs the tests: no authoritative IAM resource in the stack, and every secret version a
+  runs the tests: no authoritative IAM resource in the stack other than the file stores'
+  bucket policies, and every secret version a
   planned revision template pins exists and is enabled. `apply` applies exactly that plan.
   The plan is the build's own: a saved plan is bound to the state it was made from, and a
   release bundles several pull requests. An infrastructure change must be safe on the

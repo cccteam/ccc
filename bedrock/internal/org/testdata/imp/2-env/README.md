@@ -83,8 +83,19 @@ and a `shared_vpc_id` that is null.
   and the design brief puts the repository registration with the environment
   layer.
 - The deployment-record bucket `imp-<env>-gbl-records-<hex4>`, US
-  multi-region, versioned, uniform access, public access prevented. Deploy
-  identities may only create objects in it.
+  multi-region, versioned, uniform access, public access prevented. Its
+  permission list is set whole by this layer (`records.tf`), one binding per
+  role: `roles/storage.objectCreator` for the environment's deploy
+  identities, and `roles/storage.objectViewer` for those deploy identities,
+  the environment's application plan identities (the hotfix preview reads
+  the live record), the next environment's deploy identities (the record
+  gate) and the environment's team group (a person reads a record through
+  the group). Nobody else: Cloud Storage's default grants to the project's
+  basic roles are gone from it, so an Owner, Editor or Viewer of the project
+  or the organization reads no record through them. A grant added on the
+  bucket by hand, for a day's debugging, is removed by this layer's next
+  apply; a grant added on the project is not, so an Owner of the project can
+  still give itself a storage role there.
 - The team group's grants (`team-group.tf`): `roles/cloudbuild.builds.approver`
   on the environment project for the environment's team group in
   `stg` and `prd`, and the Privileged Access Manager
@@ -115,7 +126,7 @@ as its quota project), `roles/run.admin`, `roles/compute.loadBalancerAdmin`
 (the application's serverless network endpoint groups and backend services,
 which the stack makes in this project and a tag build's plan reads),
 `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`,
-`roles/storage.admin`, `roles/cloudscheduler.admin`,
+`roles/cloudscheduler.admin`,
 `roles/cloudtasks.queueAdmin`, `roles/datastore.owner` (its Firestore
 database, with the indexes and time-to-live policies on it),
 `roles/firebaserules.admin` (the database's security rules),
@@ -123,7 +134,19 @@ database, with the indexes and time-to-live policies on it),
 `roles/cloudbuild.builds.editor`,
 `roles/logging.admin`, `roles/monitoring.admin`,
 `roles/resourcemanager.projectIamAdmin`, and the custom organization role
-`secretContainerAdmin` from `1-org` (secrets as containers, never payloads). `roles/compute.networkUser` on the environment
+`secretContainerAdmin` from `1-org` (secrets as containers, never payloads). Cloud Storage
+is two bounded grants on the environment project: `roles/storage.admin` under
+a condition admitting every bucket whose name starts with
+`imp-<env>-gbl-<app>-`, which is the application's file stores
+(`imp-<env>-gbl-<app>-files-<project number>`, `files-<name>` for a
+named store) and its pull-request stacks' (`imp-<env>-gbl-<app>-pr<N>-files-<project number>`)
+with their objects, and nothing of another application's buckets or of the
+records bucket; and the organization's `storageBucketCreator` role without
+condition, since creating a bucket (`storage.buckets.create`) and listing the
+project's buckets (`storage.buckets.list`) are checked on the project, where
+no bucket's name can admit them. Without the condition, any application's
+apply identity, and so its pipeline and its pull-request builds, would read
+and delete every other application's files and every record. `roles/compute.networkUser` on the environment
 project only when `2-net` publishes a shared VPC (it publishes null). In tst,
 on the tst instance: the organization's `spannerDatabaseCreator` role
 (creating a database and listing what the instance holds are checked on the
@@ -153,8 +176,9 @@ plan of every environment, each made as that environment's plan identity. On
 the environment project: `applicationPlanReader` (`1-org`'s custom role: the
 read of every resource type the stack declares, found in the lab from
 the plans' refusals, and nothing of what those resources hold; `roles/viewer`
-would read the rows of a database in this project and the application's
-uploaded files through the bucket's default grants to project viewers),
+would read the rows of a database in this project, and reads no record and
+no uploaded file either way, since the records bucket and the file stores
+carry no default grant to the project's basic roles),
 `roles/iam.securityReviewer` (reading the IAM policies the stack's grants are
 refreshed from, a bucket's and a queue's among them) and
 `roles/serviceusage.serviceUsageConsumer`. On the state bucket:
@@ -162,6 +186,7 @@ refreshed from, a bucket's and a queue's among them) and
 `roles/storage.objectViewer` on `3-app/<app>/<env>/` and on the upstream
 states the apply identity reads; no write, so the plan runs without the state
 lock. On its own environment's records bucket: `roles/storage.objectViewer`,
+a binding of the bucket's policy (`records.tf`),
 since a pull-request build against a hotfix line reads the environment's live
 record as this identity to say where the line's next release will be refused.
 On the Spanner instance the application's database lives on, the
@@ -188,13 +213,14 @@ build's service account, would carry every object of every bucket in the
 project with it); in tst also `cloudBuildTriggerRunner`, since Cloud Scheduler
 runs the application's sweep trigger as this identity. Bounded grants:
 `roles/storage.objectCreator` and `roles/storage.objectViewer` on its own
-environment's records bucket (a record is written once and read back: the
+environment's records bucket, as bindings of the bucket's policy (`records.tf`;
+a record is written once and read back: the
 stale-database check of a pull-request build reads the pull request's newest
 record, and the environment's live version is in its newest live record;
-neither role overwrites or deletes a record, and none of the deploy identity's
-project roles reaches the bucket, so it writes a record once; the apply
-identity it may act as still reaches the bucket through its storage admin on
-the project);
+neither role overwrites or deletes a record, none of the deploy identity's
+project roles reaches the bucket, and the apply identity it may act as holds
+storage admin only under a condition naming the application's own buckets,
+so it writes a record once);
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
 `var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container (`github-apps.tf`), and on no runtime secret; nothing on
 a Spanner instance (pull-request databases are the pull-request stack's, which
