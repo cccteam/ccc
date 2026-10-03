@@ -1588,8 +1588,10 @@ permission checks. Every row carries both keys, `headline` and `title`, each mas
 the field is. On a method, the router registers the former route on the same handler, so
 `POST /console/api/release` and `POST /console/api/publish` run the one method, and the
 generated router test drives both. The generated collection carries the former names
-(`TagData.Formerly` on a field, `CollectionResource.Formerly` on a method), so the role
-migration can write grant rows under both. The TypeScript knows only the new name: an
+(`TagData.Formerly` on a field, `CollectionResource.Formerly` on a method), and the
+permission digest mirrors a renamed field's or method's entry under its former name, so an
+application built before the rename keeps its column or its action. The TypeScript knows
+only the new name: an
 application built from it sends and reads `headline`, and only an application built before
 the rename still sends `title`.
 
