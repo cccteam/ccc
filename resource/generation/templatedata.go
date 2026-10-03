@@ -295,6 +295,9 @@ type permissionsData struct {
 	// generated FeatureGates() in the resources package.
 	LocalPackageImports string
 	ResourcePackage     string
+	// RouterPackage is the package whose Collection() carries the former names the
+	// digest mirrors.
+	RouterPackage string
 }
 
 // featureDeclarationsData feeds the resources package's zz_gen_features.go.

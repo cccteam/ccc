@@ -571,11 +571,11 @@ func Test_permissionsTemplate_sessionOutlets(t *testing.T) {
 	}{
 		{
 			name: "default outlet only keeps today's wording",
-			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", ResourcePackage: "resources"},
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", ResourcePackage: "resources", RouterPackage: "router"},
 			wantContains: []string{
 				"registers it at GET /api/permission-digest.",
 				"GET /api/user-domains.",
-				"resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet())",
+				"resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet()), resource.WithFormerNames(router.Collection())",
 			},
 			wantNotContains: []string{"additional session-serving"},
 		},

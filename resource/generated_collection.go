@@ -157,9 +157,8 @@ type CollectionResource struct {
 
 	// Formerly is an RPC method resource's former name (@formerly on the method): the
 	// name older browser applications still execute it under, which the generated
-	// router answers at the former route and deploy-time role migration
-	// (access.MigrateRoles) writes an Execute grant row for beside the current name.
-	// Empty for a method never renamed and for every other resource.
+	// router answers at the former route and the permission digest mirrors beside the
+	// current name. Empty for a method never renamed and for every other resource.
 	Formerly accesstypes.Resource
 
 	// The resource's binding vocabulary (ABAC design plan §04), compiled from
@@ -219,9 +218,9 @@ type TagData struct {
 	// is MaskingConcealing, the default.
 	Masking Masking
 	// Formerly is the field's former wire name (@formerly on the field): the name
-	// older browser applications still send and read, which deploy-time role
-	// migration (access.MigrateRoles) writes grant rows for beside Name, copying its
-	// masks and conditions. Empty for a field never renamed.
+	// older browser applications still send and read, which the decoders accept, every
+	// row carries beside Name and the permission digest mirrors with Name's states.
+	// Empty for a field never renamed.
 	Formerly accesstypes.Tag
 }
 
@@ -566,8 +565,9 @@ func (g *GeneratedCollection) setFormerName(scope accesstypes.PermissionScope, r
 }
 
 // FormerTagName reports the former wire name of a renamed field within scope (the
-// field's @formerly), and whether the field was renamed. Deploy-time role migration
-// writes grant rows for both names from a grant that names the current one.
+// field's @formerly), and whether the field was renamed. The permission digest mirrors
+// the field's entry under the former name (WithFormerNames), so an application built
+// before the rename keeps its column.
 func (g *GeneratedCollection) FormerTagName(scope accesstypes.PermissionScope, res accesstypes.Resource, tag accesstypes.Tag) (accesstypes.Tag, bool) {
 	former, ok := g.formerTags[scope][res][tag]
 
@@ -575,8 +575,9 @@ func (g *GeneratedCollection) FormerTagName(scope accesstypes.PermissionScope, r
 }
 
 // FormerName reports the former name of a renamed RPC method within scope (the
-// method's @formerly), and whether the method was renamed. Deploy-time role migration
-// writes an Execute grant row for both names from a grant that names the current one.
+// method's @formerly), and whether the method was renamed. The permission digest
+// mirrors the method's entry under the former name (WithFormerNames), so an application
+// built before the rename keeps its action.
 func (g *GeneratedCollection) FormerName(scope accesstypes.PermissionScope, res accesstypes.Resource) (accesstypes.Resource, bool) {
 	former, ok := g.formerNames[scope][res]
 

@@ -712,10 +712,11 @@ import (
 // The scope is the request's input (?domain= names a tenant partition, absent
 // means global) and the payload is advisory and fail-closed: denied targets are
 // absent, and so is every resource, field and method gated behind a feature flag
-// that is off ({{ .ResourcePackage }}.FeatureGates). The generated router registers it at GET /{{ .RoutePrefix }}/permission-digest{{ if .HasExtraSessionOutlets }} and,
+// that is off ({{ .ResourcePackage }}.FeatureGates); a renamed field or method
+// (@formerly) appears under its former name too, with the same states. The generated router registers it at GET /{{ .RoutePrefix }}/permission-digest{{ if .HasExtraSessionOutlets }} and,
 // for each additional session-serving outlet (ServesSessions), under that outlet's prefix{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.HandlerFunc {
-	return resource.PermissionDigestHandler({{ .ReceiverName }}.UserPermissions, resource.WithFeatureGates({{ .ResourcePackage }}.FeatureGates(), {{ .ReceiverName }}.FeatureSet()))
+	return resource.PermissionDigestHandler({{ .ReceiverName }}.UserPermissions, resource.WithFeatureGates({{ .ResourcePackage }}.FeatureGates(), {{ .ReceiverName }}.FeatureSet()), resource.WithFormerNames({{ .RouterPackage }}.Collection()))
 }
 
 // UserDomains serves the session user's domain membership — the sorted list of

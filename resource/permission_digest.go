@@ -1,7 +1,10 @@
 package resource
 
 import (
+	"maps"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/tracer"
@@ -15,6 +18,25 @@ type DigestOption func(*digestOptions)
 type digestOptions struct {
 	gates    FeatureGates
 	features *FeatureSet
+	former   FormerNames
+}
+
+// FormerNames answers the former wire names of renamed fields and methods (their
+// @formerly annotations) within a permission scope, as the generated collection does.
+type FormerNames interface {
+	FormerTagName(scope accesstypes.PermissionScope, res accesstypes.Resource, tag accesstypes.Tag) (accesstypes.Tag, bool)
+	FormerName(scope accesstypes.PermissionScope, res accesstypes.Resource) (accesstypes.Resource, bool)
+}
+
+// WithFormerNames mirrors the entry of every renamed field or method under its former
+// name too, with the same states: an application built before the rename asks the
+// digest for the name it knows, and keeps its column or its action while the server
+// still answers it. The names are the generated collection's (Collection()). A former
+// name already present in the digest is left as the engine answered it.
+func WithFormerNames(names FormerNames) DigestOption {
+	return func(o *digestOptions) {
+		o.former = names
+	}
 }
 
 // WithFeatureGates filters the digest by the feature flags: an entry for a gated
@@ -63,7 +85,45 @@ func PermissionDigestHandler(userPermissions func(r *http.Request) UserPermissio
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		o.gates.filter(o.features, digest)
+		o.mirrorFormerNames(scope, digest)
 
 		return httpio.NewEncoder(w).Ok(digest)
 	})
+}
+
+// mirrorFormerNames adds the former-name entries of the digest's renamed fields and
+// methods, in key order so the result is the same for the same digest.
+func (o *digestOptions) mirrorFormerNames(scope accesstypes.Scope, digest accesstypes.PermissionDigest) {
+	if o.former == nil {
+		return
+	}
+	permScope := accesstypes.DomainPermissionScope
+	if scope.IsGlobal() {
+		permScope = accesstypes.GlobalPermissionScope
+	}
+	for _, key := range slices.Sorted(maps.Keys(digest)) {
+		former, ok := o.formerKey(permScope, key)
+		if !ok {
+			continue
+		}
+		if _, present := digest[former]; present {
+			continue
+		}
+		digest[former] = maps.Clone(digest[key])
+	}
+}
+
+// formerKey answers the former digest key of a field ("resource.tag") or a method
+// ("resource") entry, and whether it has one.
+func (o *digestOptions) formerKey(scope accesstypes.PermissionScope, key accesstypes.Resource) (accesstypes.Resource, bool) {
+	res, tag, isField := strings.Cut(string(key), ".")
+	if !isField {
+		return o.former.FormerName(scope, key)
+	}
+	formerTag, ok := o.former.FormerTagName(scope, accesstypes.Resource(res), accesstypes.Tag(tag))
+	if !ok {
+		return "", false
+	}
+
+	return accesstypes.Resource(res).ResourceWithTag(formerTag), true
 }

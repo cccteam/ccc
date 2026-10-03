@@ -309,6 +309,7 @@ func (r *resourceGenerator) generatePermissions() error {
 		HasExtraSessionOutlets: slices.ContainsFunc(r.extraOutlets, func(outlet routerOutlet) bool { return outlet.servesSessions }),
 		LocalPackageImports:    r.localPackageImports(),
 		ResourcePackage:        r.resource.Package(),
+		RouterPackage:          r.router.Package(),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

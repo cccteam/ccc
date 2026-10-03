@@ -8,6 +8,7 @@ import (
 
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 )
 
 // PermissionDigest serves the session user's per-scope permission digest — the
@@ -15,10 +16,11 @@ import (
 // The scope is the request's input (?domain= names a tenant partition, absent
 // means global) and the payload is advisory and fail-closed: denied targets are
 // absent, and so is every resource, field and method gated behind a feature flag
-// that is off (resources.FeatureGates). The generated router registers it at GET /console/api/permission-digest and,
+// that is off (resources.FeatureGates); a renamed field or method
+// (@formerly) appears under its former name too, with the same states. The generated router registers it at GET /console/api/permission-digest and,
 // for each additional session-serving outlet (ServesSessions), under that outlet's prefix.
 func (a *App) PermissionDigest() http.HandlerFunc {
-	return resource.PermissionDigestHandler(a.UserPermissions, resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet()))
+	return resource.PermissionDigestHandler(a.UserPermissions, resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet()), resource.WithFormerNames(router.Collection()))
 }
 
 // UserDomains serves the session user's domain membership — the sorted list of
