@@ -64,6 +64,10 @@ FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d
 
 COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
 
+# VERSION reaches this stage as an environment variable of the build, so the workspace's
+# build script can stamp the release into each bundle and the browser can send it with
+# its requests; a local build without the argument stamps dev.
+ARG VERSION
 ENV CI=true
 
 WORKDIR /src/web

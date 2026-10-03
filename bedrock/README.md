@@ -221,6 +221,11 @@ It also refuses:
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
+- a Dockerfile whose browser build stage (the stage that runs `bun run build`) does not
+  declare `ARG VERSION`: a build argument is visible inside a stage only after the stage
+  declares it again, and the release is stamped into each bundle in that stage, so without
+  the declaration every bundle is built as `dev` and never sends its release. The seeded
+  Dockerfile declares it; an older one adds the line before its build.
 - a build secret the Dockerfile mounts as required (`--mount=type=secret,id=NAME,required=true`)
   that some environment's `build_secrets` in `terraform.tfvars` does not declare, naming
   the environments: a release that passed the earlier environments would fail in the

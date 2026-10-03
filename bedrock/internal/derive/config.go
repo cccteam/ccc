@@ -98,6 +98,9 @@ func readConfig(a *app.App) (*config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := dockerfileBrowserStages(a); err != nil {
+		return nil, err
+	}
 	if image == nil {
 		image = cfg.seededImage()
 	}
