@@ -124,6 +124,24 @@ resource "google_project_iam_member" "release_approver" {
   member  = local.team_group
 }
 
+# Privileged Access Manager is set up on the project before an entitlement is
+# declared on it: its service agent exists and holds the service agent role,
+# which is what the console's "Set up PAM" does. Enabling the API alone
+# answers the first entitlement with "PAM has not been enabled for this
+# resource", which the lab found on the first apply of these.
+resource "google_project_service_identity" "pam" {
+  provider = google-beta
+
+  project = local.project_id
+  service = "privilegedaccessmanager.googleapis.com"
+}
+
+resource "google_project_iam_member" "pam_service_agent" {
+  project = local.project_id
+  role    = "roles/privilegedaccessmanager.serviceAgent"
+  member  = "serviceAccount:${google_project_service_identity.pam.email}"
+}
+
 resource "google_privileged_access_manager_entitlement" "team" {
   for_each = local.entitlements
 
@@ -175,4 +193,5 @@ resource "google_privileged_access_manager_entitlement" "team" {
       }
     }
   }
+  depends_on = [google_project_iam_member.pam_service_agent]
 }

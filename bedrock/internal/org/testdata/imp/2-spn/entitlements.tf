@@ -73,6 +73,24 @@ locals {
   spanner_entitlements = merge(local.spanner_admin, local.spanner_viewer)
 }
 
+# Privileged Access Manager is set up on the project before an entitlement is
+# declared on it: its service agent exists and holds the service agent role,
+# which is what the console's "Set up PAM" does. Enabling the API alone
+# answers the first entitlement with "PAM has not been enabled for this
+# resource", which the lab found on the first apply of these.
+resource "google_project_service_identity" "pam" {
+  provider = google-beta
+
+  project = local.project_id
+  service = "privilegedaccessmanager.googleapis.com"
+}
+
+resource "google_project_iam_member" "pam_service_agent" {
+  project = local.project_id
+  role    = "roles/privilegedaccessmanager.serviceAgent"
+  member  = "serviceAccount:${google_project_service_identity.pam.email}"
+}
+
 resource "google_privileged_access_manager_entitlement" "spanner" {
   for_each = local.spanner_entitlements
 
@@ -124,4 +142,5 @@ resource "google_privileged_access_manager_entitlement" "spanner" {
       }
     }
   }
+  depends_on = [google_project_iam_member.pam_service_agent]
 }

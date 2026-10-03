@@ -35,7 +35,9 @@ stg and prd databases live on. Applied by the layers workflow as
   the plan identity and refreshes the database, its grants and its backup
   schedules here, writing nothing.
 - The Spanner entitlements of {{.SharedInstanceEnvironmentsProse}}
-  (`entitlements.tf`), in Privileged Access Manager: per environment,
+  (`entitlements.tf`, which first sets the service up on this project: its
+  service agent and the service agent role), in Privileged Access Manager:
+  per environment,
   `{{.Prefix}}-<env>-spanner-admin` (`roles/spanner.databaseAdmin` and
   `roles/spanner.backupAdmin`) and `{{.Prefix}}-<env>-spanner-viewer`
   (`roles/spanner.databaseReader`), each database role bounded by a condition

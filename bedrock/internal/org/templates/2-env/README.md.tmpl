@@ -291,7 +291,9 @@ approved. In `{{.FirstEnvironment}}` nothing waits for an approval and the group
 holds nothing standing.
 
 Everything else is an entitlement in Privileged Access Manager
-(`team-group.tf`): a right a member of the group asks for, in the console or
+(`team-group.tf`, which first sets the service up on the project: its service
+agent and the service agent role, as the console's "Set up PAM" would): a right
+a member of the group asks for, in the console or
 with `gcloud pam grants create`, for up to the entitlement's longest grant,
 with a justification. In {{.ApprovalEnvironmentsProse}} the request waits
 for one approval by another member of the same group, who writes a

@@ -791,6 +791,24 @@ func TestTeamGroup(t *testing.T) {
 			},
 		},
 		{
+			name: "the service set up on the project before its first entitlement: the service agent and its role, the entitlements after them",
+			path: "2-env/team-group.tf",
+			want: []string{
+				"resource \"google_project_service_identity\" \"pam\" {\n  provider = google-beta\n\n  project = local.project_id\n  service = \"privilegedaccessmanager.googleapis.com\"\n}\n",
+				"resource \"google_project_iam_member\" \"pam_service_agent\" {\n  project = local.project_id\n  role    = \"roles/privilegedaccessmanager.serviceAgent\"\n  member  = \"serviceAccount:${google_project_service_identity.pam.email}\"\n}\n",
+				"  depends_on = [google_project_iam_member.pam_service_agent]\n}\n",
+			},
+		},
+		{
+			name: "the shared instance's project set up the same way before its entitlements",
+			path: "2-spn/entitlements.tf",
+			want: []string{
+				"resource \"google_project_service_identity\" \"pam\" {\n  provider = google-beta\n\n  project = local.project_id\n  service = \"privilegedaccessmanager.googleapis.com\"\n}\n",
+				"  role    = \"roles/privilegedaccessmanager.serviceAgent\"\n",
+				"  depends_on = [google_project_iam_member.pam_service_agent]\n}\n",
+			},
+		},
+		{
 			name: "the longest grants: the placement's eight hours for the viewer, the defaults for the rest",
 			path: "2-env/team-group.tf",
 			want: []string{
