@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"slices"
+	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
@@ -12,26 +13,49 @@ import (
 )
 
 // Deleting a row that carries a @file key, or pointing it at a new key, releases the
-// old object: the patch machinery records the key the transaction lets go of, and the
-// transaction's executor deletes it from the application's store once the commit
-// lands. The store is handed to the database client at construction (WithFileStore),
-// so every transaction the application runs gets the behavior: a generated frame, a
-// patch applied on its own, application code calling ExecuteFunc. A body never writes
-// the store inside a transaction, since a store delete cannot roll back; a transaction
-// that does not commit releases nothing.
+// old object: the patch machinery records the key the transaction lets go of, with the
+// store it belongs to, and the transaction's executor deletes it from that store once
+// the commit lands. The stores are handed to the database client at construction
+// (WithFileStore, WithNamedFileStore), so every transaction the application runs gets
+// the behavior: a generated frame, a patch applied on its own, application code calling
+// ExecuteFunc. A body never writes the store inside a transaction, since a store delete
+// cannot roll back; a transaction that does not commit releases nothing.
+//
+// Before the commit, the executor refuses a transaction that would release a key of a
+// store the client holds no store for: the rows would go and the object would stay with
+// nothing to delete it, so the function's error ends the transaction naming the store.
+// The guard covers every process that runs transactions, the job process too, which
+// builds no router.
+//
+// The deletes after the commit run detached from the request's cancellation
+// (context.WithoutCancel) under a timeout of their own, and still synchronously before
+// the response: a request a client abandoned must not leave objects behind, and the
+// platform gives CPU only while a request is in flight.
 //
 // One row owns one object: the keys the upload frame mints are UUIDs, so a key is never
 // shared by construction, and no claim check runs before the delete. Rows the database
 // deletes by cascade never pass through the patch machinery, so their objects are the
-// application's sweep's, as is an object left by a crash between the commit and the
-// delete.
+// orphaned-file cleanup's (resource/filestore), as is an object left by a crash between
+// the commit and the delete.
+
+// fileDeleteTimeout bounds the deletes that run after a request's outcome is known: the
+// release after a commit and the discard after a failure, each detached from the
+// request's own deadline.
+const fileDeleteTimeout = 30 * time.Second
+
+// ReleasedKey is one object a transaction's patches let go of: the key, and the store
+// it belongs to.
+type ReleasedKey struct {
+	Store StoreName
+	Key   string
+}
 
 // releasedKeys is the record a write transaction keeps of the store objects its patches
 // let go of, in recording order; ExecuteFunc holds the same record when the commit comes
 // back and deletes what it names. Like the buffered-patches record, it belongs to one
 // attempt: a retried transaction runs its function again over a fresh record.
 type releasedKeys struct {
-	keys []string
+	keys []ReleasedKey
 }
 
 // newReleasedKeys returns an empty record.
@@ -39,19 +63,23 @@ func newReleasedKeys() *releasedKeys {
 	return &releasedKeys{}
 }
 
-// record notes released keys, skipping empty ones (a NULL or blank key column names no
-// object) and ones already noted.
-func (r *releasedKeys) record(keys ...string) {
+// record notes released keys of one store, skipping empty ones (a NULL or blank key
+// column names no object) and ones already noted.
+func (r *releasedKeys) record(store StoreName, keys ...string) {
 	for _, key := range keys {
-		if key == "" || slices.Contains(r.keys, key) {
+		if key == "" {
 			continue
 		}
-		r.keys = append(r.keys, key)
+		entry := ReleasedKey{Store: store, Key: key}
+		if slices.Contains(r.keys, entry) {
+			continue
+		}
+		r.keys = append(r.keys, entry)
 	}
 }
 
 // list returns the recorded keys, in recording order.
-func (r *releasedKeys) list() []string {
+func (r *releasedKeys) list() []ReleasedKey {
 	return slices.Clone(r.keys)
 }
 
@@ -59,75 +87,96 @@ func (r *releasedKeys) list() []string {
 // Spanner and Mock wrappers satisfy it; a transaction that does not (Postgres) records
 // nothing and no key columns are read for it.
 type releaseRecorder interface {
-	recordReleased(keys ...string)
+	recordReleased(store StoreName, keys ...string)
 }
 
-// releaseFiles deletes the objects a committed transaction released. It runs after the
-// commit, synchronously, so the request answers once the objects are gone. A store that
-// fails to delete, or a client constructed with no store, is logged naming the keys and
-// nothing more: the rows are gone and the answer is unchanged, and the objects are the
-// application's sweep's.
-func releaseFiles(ctx context.Context, store FileStore, released []string) {
+// refuseUnwiredRelease is the executor's check before the commit: every released key
+// belongs to a store the client holds, or the transaction is refused naming the first
+// store that is not wired, so no row goes while its object stays with nothing to delete
+// it.
+func refuseUnwiredRelease(stores *fileStores, released []ReleasedKey) error {
+	for _, r := range released {
+		if stores.get(r.Store) == nil {
+			return errors.Newf("the transaction releases file object %s of %s, and no file store is wired for it; the commit is refused so the object is not left behind, wire the store on the resource client with %s", r.Key, r.Store, wiringOption(r.Store))
+		}
+	}
+
+	return nil
+}
+
+// releaseFiles deletes the objects a committed transaction released, store by store. It
+// runs after the commit, synchronously, so the request answers once the objects are
+// gone, and detached from the request's cancellation under its own timeout, since the
+// rows are gone whatever the client did. A store that fails to delete is logged naming
+// the keys and nothing more: the answer is unchanged, and the objects are the
+// orphaned-file cleanup's. A store the client does not hold is unreachable here, since
+// the executor refused the commit; it is logged all the same.
+func releaseFiles(ctx context.Context, stores *fileStores, released []ReleasedKey) {
 	if len(released) == 0 {
 		return
 	}
-	if store == nil {
-		logger.FromCtx(ctx).Errorf("resource: a committed transaction released file objects %v, and the client holds no FileStore to delete them from (resource.WithFileStore); they are left to the application's sweep", released)
+	ctx, cancel := detachedContext(ctx)
+	defer cancel()
+	for store, keys := range keysByStore(released) {
+		fs := stores.get(store)
+		if fs == nil {
+			logger.FromCtx(ctx).Errorf("resource: a committed transaction released file objects %v of %s, and the client holds no store to delete them from; they are left to the orphaned-file cleanup", keys, store)
 
-		return
-	}
-	if err := store.Delete(ctx, released); err != nil {
-		logger.FromCtx(ctx).Errorf("resource: FileStore.Delete(%v) failed after the transaction committed; the objects are left to the application's sweep: %v", released, err)
-	}
-}
-
-// ClientOption configures a database client at construction.
-type ClientOption func(*clientOptions)
-
-// clientOptions is what the options set.
-type clientOptions struct {
-	store FileStore
-}
-
-// WithFileStore hands the client the application's object store, so a transaction that
-// deletes a row carrying a @file key, or points it at another object, has the old
-// object deleted from the store once the commit lands. A client with no store logs the
-// released keys instead and leaves the objects to the application's sweep.
-func WithFileStore(store FileStore) ClientOption {
-	return func(o *clientOptions) {
-		o.store = store
+			continue
+		}
+		if err := fs.Delete(ctx, keys); err != nil {
+			logger.FromCtx(ctx).Errorf("resource: FileStore.Delete(%v) on %s failed after the transaction committed; the objects are left to the orphaned-file cleanup: %v", keys, store, err)
+		}
 	}
 }
 
-// applyClientOptions folds the options into their zero value.
-func applyClientOptions(opts []ClientOption) clientOptions {
-	var o clientOptions
-	for _, opt := range opts {
-		opt(&o)
+// keysByStore groups released keys by store, the stores in first-seen order.
+func keysByStore(released []ReleasedKey) func(yield func(StoreName, []string) bool) {
+	return func(yield func(StoreName, []string) bool) {
+		var order []StoreName
+		grouped := make(map[StoreName][]string)
+		for _, r := range released {
+			if _, seen := grouped[r.Store]; !seen {
+				order = append(order, r.Store)
+			}
+			grouped[r.Store] = append(grouped[r.Store], r.Key)
+		}
+		for _, store := range order {
+			if !yield(store, grouped[store]) {
+				return
+			}
+		}
 	}
+}
 
-	return o
+// detachedContext is the context the deletes after a request's outcome run under: the
+// request's values kept (the logger among them), its cancellation dropped, and a timeout
+// of its own.
+func detachedContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), fileDeleteTimeout)
 }
 
 // recordReleasedOnDelete records the row's file keys as released before a delete is
 // buffered: one point read on the primary key selecting the key columns alone, each
-// non-NULL key noted. A row that does not exist records nothing; the commit refuses the
-// delete as it does today. A resource with no file keys, and a transaction with no
-// record, read nothing.
+// non-NULL key noted with its store. A row that does not exist records nothing; the
+// commit refuses the delete as it does today. A resource with no file keys, and a
+// transaction with no record, read nothing.
 func (p *PatchSet[Resource]) recordReleasedOnDelete(ctx context.Context, txn ReadWriteTransaction) error {
 	recorder, ok := txn.(releaseRecorder)
-	fields := p.querySet.rMeta.fileKeys
-	if !ok || len(fields) == 0 {
+	keys := p.querySet.rMeta.fileKeys
+	if !ok || len(keys) == 0 {
 		return nil
 	}
-	old, found, err := p.readFileKeys(ctx, txn, fields)
+	old, found, err := p.readFileKeys(ctx, txn, keys)
 	if err != nil {
 		return err
 	}
 	if !found {
 		return nil
 	}
-	recorder.recordReleased(old...)
+	for i, key := range keys {
+		recorder.recordReleased(key.Store, old[i])
+	}
 
 	return nil
 }
@@ -141,29 +190,29 @@ func (p *PatchSet[Resource]) recordReleasedOnWrite(ctx context.Context, txn Read
 	if !ok {
 		return nil
 	}
-	var fields []accesstypes.Field
-	for _, field := range p.querySet.rMeta.fileKeys {
-		if p.IsSet(field) {
-			fields = append(fields, field)
+	var keys []FileKey
+	for _, key := range p.querySet.rMeta.fileKeys {
+		if p.IsSet(key.Field) {
+			keys = append(keys, key)
 		}
 	}
-	if len(fields) == 0 {
+	if len(keys) == 0 {
 		return nil
 	}
-	old, found, err := p.readFileKeys(ctx, txn, fields)
+	old, found, err := p.readFileKeys(ctx, txn, keys)
 	if err != nil {
 		return err
 	}
 	if !found {
 		return nil
 	}
-	for i, field := range fields {
-		newKey, err := fileKeyString(p.Get(field))
+	for i, key := range keys {
+		newKey, err := fileKeyString(p.Get(key.Field))
 		if err != nil {
-			return errors.Wrapf(err, "field %s", field)
+			return errors.Wrapf(err, "field %s", key.Field)
 		}
 		if old[i] != "" && old[i] != newKey {
-			recorder.recordReleased(old[i])
+			recorder.recordReleased(key.Store, old[i])
 		}
 	}
 
@@ -173,13 +222,15 @@ func (p *PatchSet[Resource]) recordReleasedOnWrite(ctx context.Context, txn Read
 // readFileKeys reads the current values of the given file key fields for the patch's
 // row, one point read on the primary key, on the transaction. A NULL key reads as the
 // empty string. found is false when the row does not exist.
-func (p *PatchSet[Resource]) readFileKeys(ctx context.Context, txn ReadWriteTransaction, fields []accesstypes.Field) (keys []string, found bool, err error) {
+func (p *PatchSet[Resource]) readFileKeys(ctx context.Context, txn ReadWriteTransaction, keys []FileKey) (values []string, found bool, err error) {
 	qSet := NewQuerySet(p.querySet.rMeta)
 	for field, value := range p.querySet.KeySet().KeyMap() {
 		qSet.SetKey(field, value)
 	}
-	for _, field := range fields {
-		qSet.AddField(field)
+	fields := make([]accesstypes.Field, 0, len(keys))
+	for _, key := range keys {
+		fields = append(fields, key.Field)
+		qSet.AddField(key.Field)
 	}
 	stmt, err := qSet.stmt(txn.DBType())
 	if err != nil {
@@ -194,7 +245,7 @@ func (p *PatchSet[Resource]) readFileKeys(ctx context.Context, txn ReadWriteTran
 		return nil, false, errors.Wrap(err, "Reader.Read()")
 	}
 	data := reflect.Indirect(reflect.ValueOf(row.Data))
-	keys = make([]string, 0, len(fields))
+	values = make([]string, 0, len(fields))
 	for _, field := range fields {
 		value := fieldValue(data, string(field))
 		if !value.IsValid() {
@@ -204,14 +255,15 @@ func (p *PatchSet[Resource]) readFileKeys(ctx context.Context, txn ReadWriteTran
 		if err != nil {
 			return nil, false, errors.Wrapf(err, "field %s", field)
 		}
-		keys = append(keys, key)
+		values = append(values, key)
 	}
 
-	return keys, true, nil
+	return values, true, nil
 }
 
-// fileKeyString reads a file key column's value: a string, or a nullable string whose
-// NULL is the empty string. The generator admits no other type for a key column.
+// fileKeyString reads a file key column's value: a string, a Key[S], or a nullable
+// one, whose NULL is the empty string. The generator admits no other type for a key
+// column.
 func fileKeyString(value any) (string, error) {
 	switch v := value.(type) {
 	case nil:
@@ -236,6 +288,6 @@ func fileKeyString(value any) (string, error) {
 			return rv.String(), nil
 		}
 
-		return "", errors.Newf("a file key is a string or a nullable string, not %T", value)
+		return "", errors.Newf("a file key is a string, a resource.Key, or a nullable one, not %T", value)
 	}
 }

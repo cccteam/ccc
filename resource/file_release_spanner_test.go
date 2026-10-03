@@ -2,6 +2,8 @@ package resource
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 
 	"cloud.google.com/go/spanner"
@@ -169,6 +171,129 @@ func TestSpannerClient_ExecuteFunc_releasesFiles(t *testing.T) {
 				if !rowExists(t, db.Client, id) {
 					t.Errorf("row %s is gone, want it kept", id)
 				}
+			}
+		})
+	}
+}
+
+// TestSpannerClient_typedKeys pins the typed key over the emulator: a resource.Key[S]
+// column is written and read back through the client as a STRING, its release names
+// the store, a client with no store for it refuses the commit before the rows go, and
+// the holders the cleanup reads through list the keys each store's columns hold.
+func TestSpannerClient_typedKeys(t *testing.T) {
+	t.Parallel()
+
+	container := spannerEmulator(t)
+	ctx := context.Background()
+	db, err := container.CreateDatabase(ctx, "typed-keys")
+	if err != nil {
+		t.Fatalf("initiator.SpannerContainer.CreateDatabase() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.DropDatabase(context.Background()); err != nil {
+			t.Error(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := db.MigrateUp("file://testdata/filerelease/schema"); err != nil {
+		t.Fatalf("initiator.SpannerDB.MigrateUp() error = %v", err)
+	}
+	if _, err := db.Apply(ctx, []*spanner.Mutation{
+		spanner.InsertMap("FileRows", map[string]any{"Id": "row-1", "Title": "one", "StoreKey": "key-1", "ThumbKey": "thumb-1"}),
+		spanner.InsertMap("FileRows", map[string]any{"Id": "row-2", "Title": "two", "StoreKey": "key-2"}),
+	}); err != nil {
+		t.Fatalf("spanner.Client.Apply() error = %v", err)
+	}
+
+	docs := &fakeStore{}
+	wired := NewSpannerClient(db.Client, WithFileStore(&fakeStore{}), WithNamedFileStore[docStore](docs))
+	unwired := NewSpannerClient(db.Client, WithFileStore(&fakeStore{}))
+	docKey := Key[docStore]("doc-1")
+
+	// The typed key is written through the patch machinery as the generated setter
+	// writes it, and read back into the typed field.
+	createTyped := func(id string, key Key[docStore]) func(ctx context.Context, txn ReadWriteTransaction) error {
+		return func(ctx context.Context, txn ReadWriteTransaction) error {
+			p := NewPatchSet(NewMetadata[typedFileRow]()).SetPatchType(CreatePatchType)
+			p.SetKey("ID", id)
+			p.Set("DocKey", key)
+
+			return p.Buffer(ctx, txn)
+		}
+	}
+	if err := wired.ExecuteFunc(ctx, createTyped("typed-1", docKey)); err != nil {
+		t.Fatalf("ExecuteFunc(create typed-1) error = %v", err)
+	}
+	if err := wired.ExecuteFunc(ctx, createTyped("typed-2", "doc-2")); err != nil {
+		t.Fatalf("ExecuteFunc(create typed-2) error = %v", err)
+	}
+	qSet := NewQuerySet(NewMetadata[typedFileRow]())
+	qSet.SetKey("ID", "typed-1")
+	qSet.AddField("DocKey")
+	stmt, err := qSet.stmt(SpannerDBType)
+	if err != nil {
+		t.Fatalf("QuerySet.stmt() error = %v", err)
+	}
+	txn := wired.ReadOnlyTransaction()
+	row, err := newReader[typedFileRow](txn).Read(ctx, stmt)
+	txn.Close()
+	if err != nil {
+		t.Fatalf("Reader.Read() error = %v", err)
+	}
+	if row.Data.DocKey != docKey {
+		t.Errorf("DocKey read back = %q, want %q", row.Data.DocKey, docKey)
+	}
+
+	// A client with no docs store refuses the delete before the commit, and the row stays.
+	deleteTyped := func(ctx context.Context, txn ReadWriteTransaction) error {
+		p := NewPatchSet(NewMetadata[typedFileRow]()).SetPatchType(DeletePatchType)
+		p.SetKey("ID", "typed-2")
+
+		return p.Buffer(ctx, txn)
+	}
+	err = unwired.ExecuteFunc(ctx, deleteTyped)
+	if err == nil || !strings.Contains(err.Error(), "releases file object doc-2 of store doc_store, and no file store is wired for it") {
+		t.Fatalf("ExecuteFunc(delete, unwired) error = %v, want the refusal naming the store", err)
+	}
+	if _, err := db.Client.Single().ReadRow(ctx, "TypedFileRows", spanner.Key{"typed-2"}, []string{"Id"}); err != nil {
+		t.Errorf("the refused delete removed the row: %v", err)
+	}
+
+	// The wired client deletes the row and the docs store's object, and nothing else's.
+	if err := wired.ExecuteFunc(ctx, deleteTyped); err != nil {
+		t.Fatalf("ExecuteFunc(delete, wired) error = %v", err)
+	}
+	if diff := cmp.Diff([][]string{{"doc-2"}}, docs.deleted); diff != "" {
+		t.Errorf("docs store deletes mismatch (-want +got):\n%s", diff)
+	}
+	if _, err := db.Client.Single().ReadRow(ctx, "TypedFileRows", spanner.Key{"typed-2"}, []string{"Id"}); spanner.ErrCode(err) != codes.NotFound {
+		t.Errorf("the committed delete left the row: %v", err)
+	}
+
+	// The holders list what each store's columns hold once the rows have settled.
+	tests := []struct {
+		name   string
+		holder FileHolder
+		store  StoreName
+		want   []string
+	}{
+		{name: "the default store's keys of FileRows, NULLs left out", holder: FileHolderOf[fileRow](), store: DefaultStore, want: []string{"key-1", "key-2", "thumb-1"}},
+		{name: "FileRows holds no key of the docs store", holder: FileHolderOf[fileRow](), store: StoreNameFor[docStore](), want: nil},
+		{name: "the docs store's keys of TypedFileRows, the deleted row's gone", holder: FileHolderOf[typedFileRow](), store: StoreNameFor[docStore](), want: []string{"doc-1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := tt.holder.HeldKeys(ctx, wired, tt.store)
+			if err != nil {
+				t.Fatalf("HeldKeys() error = %v", err)
+			}
+			slices.Sort(got)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("HeldKeys() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

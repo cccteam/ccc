@@ -301,10 +301,12 @@ func TestServeStoredFile(t *testing.T) {
 	const key = "0193e2a7-522c-708f-bfd0-4adf33486bb1"
 
 	tests := []struct {
-		name        string
-		file        StoredFile
-		headers     map[string]string
-		openErr     error
+		name    string
+		file    StoredFile
+		headers map[string]string
+		openErr error
+		// noStore serves with no store wired for the column.
+		noStore     bool
 		wantStatus  int
 		wantHeaders map[string]string
 		wantBody    string
@@ -361,6 +363,29 @@ func TestServeStoredFile(t *testing.T) {
 			wantOpened:  true,
 		},
 		{
+			name:       "a few ranges are honored as one multipart answer",
+			file:       StoredFile{Key: key, ContentType: "text/plain"},
+			headers:    map[string]string{"Range": "bytes=0-2,4-6"},
+			wantStatus: http.StatusPartialContent,
+			wantOpened: true,
+		},
+		{
+			name:        "more ranges than the cap get the whole file, since each costs the store a read",
+			file:        StoredFile{Key: key, ContentType: "text/plain"},
+			headers:     map[string]string{"Range": "bytes=0-0,1-1,2-2,3-3,4-4,5-5,6-6,7-7,8-8"},
+			wantStatus:  http.StatusOK,
+			wantHeaders: map[string]string{"Content-Length": "17", "Content-Type": "text/plain"},
+			wantBody:    "Halvard hauler ok",
+			wantOpened:  true,
+		},
+		{
+			name:        "no store wired for the column is an error naming the wiring, never a 404",
+			file:        StoredFile{Key: key, ContentType: "text/plain"},
+			noStore:     true,
+			wantStatus:  http.StatusInternalServerError,
+			wantMessage: "",
+		},
+		{
 			name:        "a NULL key is 404 in the row's words",
 			file:        StoredFile{},
 			wantStatus:  http.StatusNotFound,
@@ -383,13 +408,23 @@ func TestServeStoredFile(t *testing.T) {
 			store.objects[key] = []byte("Halvard hauler ok")
 			store.types[key] = "application/x-brief"
 			store.openErr = tt.openErr
+			var served FileStore = store
+			if tt.noStore {
+				served = nil
+			}
 
+			var servedErr error
 			rr := fileRequest(t, tt.headers, func(w http.ResponseWriter, r *http.Request) error {
-				return ServeStoredFile(r.Context(), w, r, store, tt.file, "content", "MissionDocument", mustUUIDFromString("0193e2a7-522c-708f-bfd0-4adf33486bb9"))
+				servedErr = ServeStoredFile(r.Context(), w, r, served, tt.file, "content", "MissionDocument", mustUUIDFromString("0193e2a7-522c-708f-bfd0-4adf33486bb9"))
+
+				return servedErr
 			})
 
 			if rr.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d; body: %s", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			if tt.noStore && (servedErr == nil || !strings.Contains(servedErr.Error(), "no file store is wired for the store the content of MissionDocument is kept in")) {
+				t.Errorf("ServeStoredFile() error = %v, want it to name the wiring", servedErr)
 			}
 			for name, want := range tt.wantHeaders {
 				if got := rr.Header().Get(name); got != want {
@@ -413,7 +448,7 @@ func TestServeStoredFile(t *testing.T) {
 			if rr.Code == http.StatusNotModified && rr.Body.Len() != 0 {
 				t.Errorf("a 304 carries a body: %q", rr.Body.String())
 			}
-			if rr.Code != http.StatusNotFound {
+			if rr.Code != http.StatusNotFound && rr.Code != http.StatusInternalServerError {
 				assertFileHeaders(t, rr.Header())
 			}
 		})

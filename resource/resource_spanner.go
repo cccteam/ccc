@@ -21,25 +21,30 @@ var _ Client = (*SpannerClient)(nil)
 // SpannerClient is a wrapper around the database.
 type SpannerClient struct {
 	spanner *spanner.Client
-	// store is the application's object store, where a committed transaction's
-	// released file objects are deleted from; nil when the client was given none.
-	store FileStore
+	// stores are the application's file stores by name, where the upload frames
+	// stream, the file routes open, and a committed transaction's released objects are
+	// deleted from.
+	stores *fileStores
 }
 
-// NewSpannerClient creates a new Client. WithFileStore hands it the store a committed
-// transaction's released file objects are deleted from.
+// NewSpannerClient creates a new Client. WithFileStore and WithNamedFileStore hand it
+// the stores the frames drive and a committed transaction's released file objects are
+// deleted from; a store wired twice, or two stores on one location, panics here.
 func NewSpannerClient(db *spanner.Client, opts ...ClientOption) *SpannerClient {
-	options := applyClientOptions(opts)
-
 	return &SpannerClient{
 		spanner: db,
-		store:   options.store,
+		stores:  applyClientOptions(opts),
 	}
 }
 
 // DBType returns the database type.
 func (c *SpannerClient) DBType() DBType {
 	return SpannerDBType
+}
+
+// FileStore returns the store wired under name, nil when none is.
+func (c *SpannerClient) FileStore(name StoreName) FileStore {
+	return c.stores.get(name)
 }
 
 // SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
@@ -54,12 +59,14 @@ func (c *SpannerClient) SpannerReadOnlyTransaction() spxapi.Querier {
 // (see translateCommitError); an error the function itself returns, and a commit refused
 // with any other code, pass through unchanged.
 //
-// Once the commit lands, the file objects the transaction's patches released (a deleted
-// row's @file keys, the old key of a row pointed at another object) are deleted from the
-// client's FileStore, synchronously, before ExecuteFunc returns; a failed delete, or a
-// client with no store, is logged naming the keys and the call still returns nil, since
-// the rows are gone. A transaction that does not commit, for any reason, releases
-// nothing.
+// Before the commit, a transaction whose patches release a file object of a store the
+// client holds no store for is refused naming the store: the rows would go and the
+// object would stay with nothing to delete it. Once the commit lands, the file objects
+// the transaction's patches released (a deleted row's @file keys, the old key of a row
+// pointed at another object) are deleted from their stores, synchronously, before
+// ExecuteFunc returns, detached from the request's cancellation; a failed delete is
+// logged naming the keys and the call still returns nil, since the rows are gone. A
+// transaction that does not commit, for any reason, releases nothing.
 func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
 	var (
 		buffered   = newBufferedPatches()
@@ -78,6 +85,11 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 
 			return errors.Wrap(err, "f()")
 		}
+		if err := refuseUnwiredRelease(c.stores, released.list()); err != nil {
+			funcFailed = true
+
+			return err
+		}
 
 		return nil
 	})
@@ -90,7 +102,7 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 		return translateCommitError(err, buffered)
 	}
 
-	releaseFiles(ctx, c.store, released.list())
+	releaseFiles(ctx, c.stores, released.list())
 	collectTouched(ctx, touched.list())
 
 	return nil
@@ -401,16 +413,16 @@ func (c *SpannerReadWriteTransaction) DBType() DBType {
 	return SpannerDBType
 }
 
-// recordReleased notes file keys the transaction's patches let go of.
-func (c *SpannerReadWriteTransaction) recordReleased(keys ...string) {
-	c.released.record(keys...)
+// recordReleased notes file keys of one store the transaction's patches let go of.
+func (c *SpannerReadWriteTransaction) recordReleased(store StoreName, keys ...string) {
+	c.released.record(store, keys...)
 }
 
-// Released returns the file object keys the transaction's patches released so far: a
-// deleted row's @file keys, and the old key of a row pointed at another object. Under
-// ExecuteFunc the executor deletes them from the client's FileStore after the commit;
-// a transaction committed outside it leaves that to its caller.
-func (c *SpannerReadWriteTransaction) Released() []string {
+// Released returns the file objects the transaction's patches released so far, each
+// with its store: a deleted row's @file keys, and the old key of a row pointed at
+// another object. Under ExecuteFunc the executor deletes them from the client's stores
+// after the commit; a transaction committed outside it leaves that to its caller.
+func (c *SpannerReadWriteTransaction) Released() []ReleasedKey {
 	return c.released.list()
 }
 

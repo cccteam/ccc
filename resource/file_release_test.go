@@ -27,8 +27,26 @@ func (fileRow) Resource() accesstypes.Resource {
 	return "FileRows"
 }
 
-func (fileRow) FileKeys() []accesstypes.Field {
-	return []accesstypes.Field{"StoreKey", "ThumbKey"}
+func (fileRow) FileKeys() []FileKey {
+	return []FileKey{{Field: "StoreKey", Store: DefaultStore}, {Field: "ThumbKey", Store: DefaultStore}}
+}
+
+// docStore is a named store as an application declares one.
+type docStore struct{ Store }
+
+// typedFileRow is a resource with a typed @file key, as the generator declares one for
+// a column typed resource.Key[docStore]: the key names the store docs.
+type typedFileRow struct {
+	ID     string        `spanner:"Id"`
+	DocKey Key[docStore] `spanner:"DocKey"`
+}
+
+func (typedFileRow) Resource() accesstypes.Resource {
+	return "TypedFileRows"
+}
+
+func (typedFileRow) FileKeys() []FileKey {
+	return []FileKey{{Field: "DocKey", Store: StoreNameFor[docStore]()}}
 }
 
 // trackedFileRow overrides Config, as an application turning change tracking on does;
@@ -50,8 +68,8 @@ func (trackedFileRow) DefaultConfig() Config {
 	return Config{}
 }
 
-func (trackedFileRow) FileKeys() []accesstypes.Field {
-	return []accesstypes.Field{"StoreKey"}
+func (trackedFileRow) FileKeys() []FileKey {
+	return []FileKey{{Field: "StoreKey", Store: DefaultStore}}
 }
 
 // plainRow carries no file keys.
@@ -316,7 +334,12 @@ func TestPatchSet_recordsReleasedFileKeys(t *testing.T) {
 				if !ok {
 					t.Fatalf("txn is %T, want *MockReadWriteTransaction", txn)
 				}
-				released = mockTxn.Released()
+				for _, r := range mockTxn.Released() {
+					if r.Store != DefaultStore {
+						t.Errorf("Released() names %s for %s, want the default store", r.Store, r.Key)
+					}
+					released = append(released, r.Key)
+				}
 
 				return nil
 			}); err != nil {
@@ -361,17 +384,25 @@ func TestMockClient_ExecuteFunc_releases(t *testing.T) {
 		name string
 		// fnErr is what the function returns after recording a key.
 		fnErr error
-		// withStore hands the client a store; deleteErr is the store's answer.
-		withStore   bool
-		deleteErr   error
+		// withStore hands the client the default store; withDocs the docs store;
+		// deleteErr is the stores' answer.
+		withStore bool
+		withDocs  bool
+		deleteErr error
+		// release is what the function records: a key per store.
+		release     []ReleasedKey
 		wantErr     bool
+		wantErrText string
 		wantDeleted [][]string
+		wantDocs    [][]string
 	}{
-		{name: "a committed function's released keys are deleted from the store", withStore: true, wantDeleted: [][]string{{"key-1"}}},
-		{name: "a function that errors releases nothing", fnErr: errors.New("body failed"), withStore: true, wantErr: true},
-		{name: "a dry run releases nothing", fnErr: ErrDryRun, withStore: true, wantErr: true},
-		{name: "a store that fails to delete is logged and the call still succeeds", withStore: true, deleteErr: errors.New("store down"), wantDeleted: [][]string{{"key-1"}}},
-		{name: "a client with no store logs the keys and the call still succeeds"},
+		{name: "a committed function's released keys are deleted from the store", withStore: true, release: []ReleasedKey{{DefaultStore, "key-1"}}, wantDeleted: [][]string{{"key-1"}}},
+		{name: "a function that errors releases nothing", fnErr: errors.New("body failed"), withStore: true, release: []ReleasedKey{{DefaultStore, "key-1"}}, wantErr: true},
+		{name: "a dry run releases nothing", fnErr: ErrDryRun, withStore: true, release: []ReleasedKey{{DefaultStore, "key-1"}}, wantErr: true},
+		{name: "a store that fails to delete is logged and the call still succeeds", withStore: true, deleteErr: errors.New("store down"), release: []ReleasedKey{{DefaultStore, "key-1"}}, wantDeleted: [][]string{{"key-1"}}},
+		{name: "a client with no store for the released key refuses the commit naming the store", release: []ReleasedKey{{DefaultStore, "key-1"}}, wantErr: true, wantErrText: "releases file object key-1 of the default store, and no file store is wired for it"},
+		{name: "a named store's key is refused when only the default is wired", withStore: true, release: []ReleasedKey{{StoreNameFor[docStore](), "doc-1"}}, wantErr: true, wantErrText: "of store doc_store, and no file store is wired for it; the commit is refused so the object is not left behind, wire the store on the resource client with resource.WithNamedFileStore[DocStore]"},
+		{name: "keys of two stores are deleted from each", withStore: true, withDocs: true, release: []ReleasedKey{{DefaultStore, "key-1"}, {StoreNameFor[docStore](), "doc-1"}, {DefaultStore, "key-2"}}, wantDeleted: [][]string{{"key-1", "key-2"}}, wantDocs: [][]string{{"doc-1"}}},
 	}
 
 	for _, tt := range tests {
@@ -379,9 +410,13 @@ func TestMockClient_ExecuteFunc_releases(t *testing.T) {
 			t.Parallel()
 
 			store := &fakeStore{deleteErr: tt.deleteErr}
+			docs := &fakeStore{deleteErr: tt.deleteErr}
 			var opts []ClientOption
 			if tt.withStore {
 				opts = append(opts, WithFileStore(store))
+			}
+			if tt.withDocs {
+				opts = append(opts, WithNamedFileStore[docStore](docs))
 			}
 			client := NewMockClient(&bufferingTxn{}, nil, nil, opts...)
 
@@ -390,18 +425,26 @@ func TestMockClient_ExecuteFunc_releases(t *testing.T) {
 				if !ok {
 					t.Fatalf("txn is %T, want a release recorder", txn)
 				}
-				recorder.recordReleased("key-1")
+				for _, r := range tt.release {
+					recorder.recordReleased(r.Store, r.Key)
+				}
 
 				return tt.fnErr
 			})
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("ExecuteFunc() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if tt.wantErr && !errors.Is(err, tt.fnErr) {
+			if tt.fnErr != nil && !errors.Is(err, tt.fnErr) {
 				t.Errorf("ExecuteFunc() error = %v, want it to wrap %v", err, tt.fnErr)
+			}
+			if tt.wantErrText != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrText)) {
+				t.Errorf("ExecuteFunc() error = %v, want it to contain %q", err, tt.wantErrText)
 			}
 			if diff := cmp.Diff(tt.wantDeleted, store.deleted); diff != "" {
 				t.Errorf("store deletes mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantDocs, docs.deleted); diff != "" {
+				t.Errorf("docs store deletes mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -420,12 +463,12 @@ func TestReadWriteTransaction_Released_outsideExecutor(t *testing.T) {
 	if err := p.Buffer(t.Context(), txn); err != nil {
 		t.Fatalf("Buffer() error = %v", err)
 	}
-	if diff := cmp.Diff([]string{"key-1", "thumb-1"}, txn.Released()); diff != "" {
+	if diff := cmp.Diff([]ReleasedKey{{DefaultStore, "key-1"}, {DefaultStore, "thumb-1"}}, txn.Released()); diff != "" {
 		t.Errorf("Released() mismatch (-want +got):\n%s", diff)
 	}
 	// The record is a copy: the caller cannot alter what the wrapper holds.
-	txn.Released()[0] = "changed"
-	if got := txn.Released()[0]; got != "key-1" {
+	txn.Released()[0].Key = "changed"
+	if got := txn.Released()[0].Key; got != "key-1" {
 		t.Errorf("Released()[0] = %q after altering a returned slice, want key-1", got)
 	}
 }
@@ -433,15 +476,18 @@ func TestReadWriteTransaction_Released_outsideExecutor(t *testing.T) {
 func TestReleasedKeys_record(t *testing.T) {
 	t.Parallel()
 
+	docs := StoreNameFor[docStore]()
+
 	tests := []struct {
 		name string
-		keys [][]string
-		want []string
+		keys []ReleasedKey
+		want []ReleasedKey
 	}{
-		{name: "an empty record lists nothing", want: []string{}},
-		{name: "keys in recording order", keys: [][]string{{"b"}, {"a", "c"}}, want: []string{"b", "a", "c"}},
-		{name: "blank keys are skipped", keys: [][]string{{"", "a", ""}}, want: []string{"a"}},
-		{name: "a key recorded twice is listed once", keys: [][]string{{"a"}, {"a", "b"}, {"b"}}, want: []string{"a", "b"}},
+		{name: "an empty record lists nothing", want: []ReleasedKey{}},
+		{name: "keys in recording order", keys: []ReleasedKey{{DefaultStore, "b"}, {DefaultStore, "a"}, {DefaultStore, "c"}}, want: []ReleasedKey{{DefaultStore, "b"}, {DefaultStore, "a"}, {DefaultStore, "c"}}},
+		{name: "blank keys are skipped", keys: []ReleasedKey{{DefaultStore, ""}, {DefaultStore, "a"}, {docs, ""}}, want: []ReleasedKey{{DefaultStore, "a"}}},
+		{name: "a key recorded twice is listed once", keys: []ReleasedKey{{DefaultStore, "a"}, {DefaultStore, "a"}, {DefaultStore, "b"}, {DefaultStore, "b"}}, want: []ReleasedKey{{DefaultStore, "a"}, {DefaultStore, "b"}}},
+		{name: "the same key in two stores is two objects", keys: []ReleasedKey{{DefaultStore, "a"}, {docs, "a"}}, want: []ReleasedKey{{DefaultStore, "a"}, {docs, "a"}}},
 	}
 
 	for _, tt := range tests {
@@ -449,12 +495,12 @@ func TestReleasedKeys_record(t *testing.T) {
 			t.Parallel()
 
 			r := newReleasedKeys()
-			for _, keys := range tt.keys {
-				r.record(keys...)
+			for _, key := range tt.keys {
+				r.record(key.Store, key.Key)
 			}
 			got := r.list()
 			if got == nil {
-				got = []string{}
+				got = []ReleasedKey{}
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("list() mismatch (-want +got):\n%s", diff)
@@ -468,11 +514,12 @@ func TestMetadata_fileKeys(t *testing.T) {
 
 	tests := []struct {
 		name string
-		got  []accesstypes.Field
-		want []accesstypes.Field
+		got  []FileKey
+		want []FileKey
 	}{
-		{name: "the generated FileKeys names the keys", got: NewMetadata[fileRow]().fileKeys, want: []accesstypes.Field{"StoreKey", "ThumbKey"}},
-		{name: "a Config override leaves the generated keys untouched", got: NewMetadata[trackedFileRow]().fileKeys, want: []accesstypes.Field{"StoreKey"}},
+		{name: "the generated FileKeys names the keys", got: NewMetadata[fileRow]().fileKeys, want: []FileKey{{Field: "StoreKey", Store: DefaultStore}, {Field: "ThumbKey", Store: DefaultStore}}},
+		{name: "a typed key carries its store", got: NewMetadata[typedFileRow]().fileKeys, want: []FileKey{{Field: "DocKey", Store: "doc_store"}}},
+		{name: "a Config override leaves the generated keys untouched", got: NewMetadata[trackedFileRow]().fileKeys, want: []FileKey{{Field: "StoreKey", Store: DefaultStore}}},
 		{name: "a resource declaring no keys has none", got: NewMetadata[plainRow]().fileKeys},
 	}
 

@@ -11,25 +11,35 @@ import (
 	"strconv"
 	"strings"
 
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/logger"
 	perrors "github.com/go-playground/errors/v5"
 )
 
 // Uploads (decided 2026-09-08, the store contract narrowed 2026-09-18) are their own
-// endpoint form: an @rpc struct whose Execute takes resource.Files, declared with
-// @upload(max: 5MB). The request travels as multipart/form-data — one part named
-// request carrying the JSON the RPC decoder already understands, first, then one or
-// more parts named file. The generated frame bounds the body before a byte is read,
-// decodes and checks the request part exactly as a JSON RPC, streams each file to the
-// application's FileStore under a key it minted, and runs the body inside the
-// transaction with the Files. The body records the keys wherever its schema wants
-// them, and the transaction is what claims them: on any failure before commit the
+// endpoint form: an @rpc struct whose Execute takes resource.Files, or FilesIn[S] for
+// a named store, declared with @upload(max: 5MB) or @upload(max: 5MB, store: S). The
+// request travels as multipart/form-data: one part named request carrying the JSON the
+// RPC decoder already understands, first, then one or more parts named file. The
+// generated frame bounds the body before a byte is read, decodes and checks the request
+// part exactly as a JSON RPC, streams each file to the store the declaration names,
+// read off the resource client, under a key it minted, and runs the body inside the
+// transaction with the Files. The body records each key in a @file column of that
+// store, and the transaction is what claims them: on any failure before commit the
 // frame deletes the objects it streamed and answers with the failure, and after a
-// commit nothing more happens. An object no row claims is left only by a crash
-// between the two, and the application's sweep, outside the frame, removes such
-// objects once they are older than its own window. The store is the application's:
-// resource never imports a cloud SDK. Reading a file back is the @file route (file.go).
+// commit nothing more happens. A key recorded anywhere but a @file column is invisible
+// to the release and is deleted by the orphaned-file cleanup once it is older than the
+// window. The frame deletes what it streamed when a later part fails, and a key whose
+// write failed; the deletes after a failed transaction run detached from the request's
+// cancellation, and only when nothing committed: a commit whose outcome Spanner cannot
+// report keeps its objects, since the rows may hold them, and logs the keys for the
+// orphaned-file cleanup. An object no row claims is otherwise left only by a crash
+// between the stream and the commit, and the orphaned-file cleanup (resource/filestore)
+// removes such objects once they are older than the application's window. The root
+// package imports no object-store SDK; the framework's stores are resource/filestore.
+// Reading a file back is the @file route (file.go).
 
 // The multipart part names an upload request carries.
 const (
@@ -39,11 +49,11 @@ const (
 	UploadFilePart = "file"
 )
 
-// File describes one uploaded part as the body receives it.
+// File describes one uploaded part as the body receives it, in the default store.
 type File struct {
-	// Key is the store key the frame minted; the body records it wherever its
-	// schema wants it, and the transaction's commit is what claims it. Empty on
-	// a dry run, which streams nothing.
+	// Key is the store key the frame minted; the body records it in a @file column of
+	// the default store, and the transaction's commit is what claims it. Empty on a
+	// dry run, which streams nothing.
 	Key string
 	// Name is the part's filename as the client sent it.
 	Name string
@@ -56,7 +66,7 @@ type File struct {
 	Size int64
 }
 
-// Files is the uploaded parts, in the order they were sent.
+// Files is the uploaded parts, in the order they were sent, in the default store.
 type Files []File
 
 // Keys returns the keys the frame minted, skipping the empty keys of a dry run.
@@ -69,6 +79,53 @@ func (f Files) Keys() []string {
 	}
 
 	return keys
+}
+
+// FileIn describes one uploaded part as the body receives it, in the named store S:
+// File with its Key typed Key[S], so the body records it in a column of that store and
+// nowhere else, since the generated setter of any other column refuses the type.
+type FileIn[S NamedStore] struct {
+	// Key is the store key the frame minted, typed by the store. Empty on a dry run.
+	Key Key[S]
+	// Name is the part's filename as the client sent it.
+	Name string
+	// ContentType is the part's declared media type, application/octet-stream when
+	// the client declared none; the uploader's word, as File.ContentType is.
+	ContentType string
+	// Size is the part's length in bytes.
+	Size int64
+}
+
+// FilesIn is the uploaded parts, in the order they were sent, in the named store S: what
+// an @upload(store: S) method's Execute takes third.
+type FilesIn[S NamedStore] []FileIn[S]
+
+// Keys returns the keys the frame minted, skipping the empty keys of a dry run.
+func (f FilesIn[S]) Keys() []string {
+	keys := make([]string, 0, len(f))
+	for _, file := range f {
+		if file.Key != "" {
+			keys = append(keys, string(file.Key))
+		}
+	}
+
+	return keys
+}
+
+// StreamInto is Upload.Stream for an @upload(store: S) method: the parts stream to the
+// named store's FileStore, read off the resource client under StoreNameFor[S], and the
+// body receives them typed by the store.
+func StreamInto[S NamedStore](ctx context.Context, u *Upload, store FileStore, dryRun bool) (FilesIn[S], error) {
+	files, err := u.Stream(ctx, store, dryRun)
+	if err != nil {
+		return nil, err
+	}
+	typed := make(FilesIn[S], 0, len(files))
+	for _, file := range files {
+		typed = append(typed, FileIn[S]{Key: Key[S](file.Key), Name: file.Name, ContentType: file.ContentType, Size: file.Size})
+	}
+
+	return typed, nil
 }
 
 // Upload is one multipart upload request the frame opened: the request part,
@@ -127,8 +184,15 @@ func (u *Upload) Request() *http.Request {
 // store under a fresh key, returning the Files the body receives. A dry run
 // streams nothing: the parts are measured and described with empty keys. A form
 // with no file part, or with a part under another name, is a 400; a body over the
-// declared maximum is a 413.
+// declared maximum is a 413. A failure after a part was stored (a later part
+// malformed, over the limit, or refused by the store) deletes the parts already
+// stored before the failure is returned, so no object is left behind by a request
+// that never reaches its transaction. A nil store, the store the declaration names
+// not wired on the resource client, is an error naming the wiring.
 func (u *Upload) Stream(ctx context.Context, store FileStore, dryRun bool) (Files, error) {
+	if store == nil && !dryRun {
+		return nil, perrors.New("no file store is wired for the store this upload streams to; wire it on the resource client with resource.WithFileStore or resource.WithNamedFileStore")
+	}
 	var files Files
 	for {
 		part, err := u.reader.NextPart()
@@ -136,15 +200,15 @@ func (u *Upload) Stream(ctx context.Context, store FileStore, dryRun bool) (File
 			break
 		}
 		if err != nil {
-			return nil, u.readError(err, "reading a file part")
+			return nil, u.discardStreamed(ctx, store, files, u.readError(err, "reading a file part"))
 		}
 		if part.FormName() != UploadFilePart {
-			return nil, httpio.NewBadRequestMessagef("an upload carries %s parts after the request; got a part named %q", UploadFilePart, part.FormName())
+			return nil, u.discardStreamed(ctx, store, files, httpio.NewBadRequestMessagef("an upload carries %s parts after the request; got a part named %q", UploadFilePart, part.FormName()))
 		}
 
 		file, err := u.streamPart(ctx, store, part, dryRun)
 		if err != nil {
-			return nil, err
+			return nil, u.discardStreamed(ctx, store, files, err)
 		}
 		files = append(files, file)
 	}
@@ -155,7 +219,21 @@ func (u *Upload) Stream(ctx context.Context, store FileStore, dryRun bool) (File
 	return files, nil
 }
 
-// streamPart stores one part, or measures it on a dry run.
+// discardStreamed deletes the parts stored before a later one failed and returns the
+// failure, with a delete failure noted on it.
+func (u *Upload) discardStreamed(ctx context.Context, store FileStore, streamed Files, cause error) error {
+	keys := streamed.Keys()
+	if len(keys) == 0 {
+		return cause
+	}
+
+	return deleteDetached(ctx, store, keys, cause)
+}
+
+// streamPart stores one part, or measures it on a dry run. A write the store refuses
+// leaves no object: the key is deleted before the failure is returned, which covers a
+// retried create-only write that answered precondition failed and any partial object
+// a provider keeps.
 func (u *Upload) streamPart(ctx context.Context, store FileStore, part *multipart.Part, dryRun bool) (File, error) {
 	contentType := part.Header.Get("Content-Type")
 	if contentType == "" {
@@ -180,14 +258,29 @@ func (u *Upload) streamPart(ctx context.Context, store FileStore, part *multipar
 	file.Key = key.String()
 	if err := store.Put(ctx, file.Key, contentType, counter); err != nil {
 		if readErr := counter.err; readErr != nil {
-			return File{}, u.readError(readErr, "streaming a file part")
+			err = u.readError(readErr, "streaming a file part")
+		} else {
+			err = perrors.Wrap(err, "resource.FileStore.Put()")
 		}
 
-		return File{}, perrors.Wrap(err, "resource.FileStore.Put()")
+		return File{}, deleteDetached(ctx, store, []string{file.Key}, err)
 	}
 	file.Size = counter.n
 
 	return file, nil
+}
+
+// deleteDetached deletes keys from the store after a failure, detached from the
+// request's cancellation (the client may have gone; the objects must still go) under a
+// timeout of its own, and returns cause with a delete failure noted on it.
+func deleteDetached(ctx context.Context, store FileStore, keys []string, cause error) error {
+	ctx, cancel := detachedContext(ctx)
+	defer cancel()
+	if err := store.Delete(ctx, keys); err != nil {
+		return perrors.Wrapf(cause, "resource.FileStore.Delete(%v) failed too, the objects are left to the orphaned-file cleanup: %v", keys, err)
+	}
+
+	return cause
 }
 
 // readError classifies a body read failure: the size limit is the 413 the
@@ -201,20 +294,34 @@ func (u *Upload) readError(err error, during string) error {
 	return httpio.NewBadRequestMessageWithError(err, "malformed multipart upload while "+during)
 }
 
-// DiscardUpload deletes the streamed objects of an upload whose transaction did not
-// commit and returns cause, the failure that ended it, so the frame answers with the
-// original refusal. A delete failure is noted on the cause: the objects it left are
-// the sweep's.
-func DiscardUpload(ctx context.Context, store FileStore, files Files, cause error) error {
-	keys := files.Keys()
-	if len(keys) == 0 {
+// DiscardUpload deletes the streamed objects (keys, the Files' or the FilesIn's Keys)
+// of an upload whose transaction did not commit and returns cause, the failure that
+// ended it, so the frame answers with the original refusal. The delete runs detached
+// from the request's cancellation under its own timeout, and only when nothing
+// committed: when the Spanner client reports the commit's outcome as unknown
+// (*spanner.TransactionOutcomeUnknownError, a deadline or a cancel after the commit was
+// sent), the rows may hold the keys, so the objects are kept and the keys logged for
+// the orphaned-file cleanup, which removes them if no row claims them. A delete
+// failure is noted on the cause: the objects it left are the cleanup's too.
+func DiscardUpload(ctx context.Context, store FileStore, keys []string, cause error) error {
+	if len(keys) == 0 || store == nil {
 		return cause
 	}
-	if err := store.Delete(ctx, keys); err != nil {
-		return perrors.Wrapf(cause, "resource.FileStore.Delete() failed too: %v", err)
+	if commitOutcomeUnknown(cause) {
+		logger.FromCtx(ctx).Errorf("resource: an upload's commit ended with its outcome unknown; its objects %v are kept, since committed rows may hold them, and are the orphaned-file cleanup's if none does: %v", keys, cause)
+
+		return cause
 	}
 
-	return cause
+	return deleteDetached(ctx, store, keys, cause)
+}
+
+// commitOutcomeUnknown reports a failure after which the transaction may have
+// committed: the Spanner client's outcome-unknown error, wrapped at any depth.
+func commitOutcomeUnknown(err error) bool {
+	var unknown *spanner.TransactionOutcomeUnknownError
+
+	return errors.As(err, &unknown)
 }
 
 // FormatByteSize renders a byte count the way @upload declares it: whole

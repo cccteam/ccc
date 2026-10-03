@@ -14,3 +14,10 @@ CREATE TABLE FileRefs (
   FileRowId STRING(36) NOT NULL,
   CONSTRAINT FK_FileRefs_FileRows FOREIGN KEY (FileRowId) REFERENCES FileRows (Id),
 ) PRIMARY KEY (Id);
+
+-- A table whose key column is typed by a named store (resource.Key[S]): the typed
+-- key round-trips through the client and its release names the store.
+CREATE TABLE TypedFileRows (
+  Id STRING(36) NOT NULL,
+  DocKey STRING(36) NOT NULL,
+) PRIMARY KEY (Id);

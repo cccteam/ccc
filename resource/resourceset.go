@@ -45,13 +45,14 @@ type defaultConfigurer interface {
 }
 
 // fileKeyer is the generated declaration of which fields hold a stored file's key, one
-// per field-scope @file: the columns whose old values the patch machinery records as
-// released when a row is deleted or pointed at another object, so the transaction's
-// executor deletes the objects after the commit. The generator writes it from the
-// struct's annotations; it is a fact of the schema, so no configuration carries it and
-// nothing an application writes changes it.
+// per field-scope @file, each with the store its keys name: the columns whose old
+// values the patch machinery records as released when a row is deleted or pointed at
+// another object, so the transaction's executor deletes the objects from that store
+// after the commit. The generator writes it from the struct's annotations and the key
+// column's type; it is a fact of the schema, so no configuration carries it and nothing
+// an application writes changes it.
 type fileKeyer interface {
-	FileKeys() []accesstypes.Field
+	FileKeys() []FileKey
 }
 
 // virtualQuerier is an interface for types that can provide a subquery with params.
@@ -435,7 +436,7 @@ type Metadata[Resource Resourcer] struct {
 	// fileKeys are the fields holding a stored file's key (the generated FileKeys):
 	// the patch machinery reads their old values on a delete and on a write that sets
 	// one, and records the released objects on the transaction.
-	fileKeys []accesstypes.Field
+	fileKeys []FileKey
 }
 
 // NewMetadata creates or retrieves cached metadata for a resource.
@@ -478,7 +479,7 @@ type resourceMetadataCacheEntry struct {
 	dbMap    map[DBType]map[accesstypes.Field]dbFieldMetadata
 	dbFields map[DBType][]accesstypes.Field
 	cfg      Config
-	fileKeys []accesstypes.Field
+	fileKeys []FileKey
 }
 
 type resourceMetadataCache struct {
@@ -520,7 +521,7 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 		cfg = t.DefaultConfig()
 	}
 
-	var fileKeys []accesstypes.Field
+	var fileKeys []FileKey
 	if f, ok := res.(fileKeyer); ok {
 		fileKeys = f.FileKeys()
 	}

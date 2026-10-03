@@ -108,6 +108,12 @@ type Client interface {
 	// DBType is the application database's type: the placement its lists sort NULL
 	// in, which a computed resource's handler follows (NewComputedQueryDecoder).
 	DBType() DBType
+	// FileStore returns the file store wired under name (WithFileStore for
+	// DefaultStore, WithNamedFileStore for a named store's StoreNameFor), or nil when
+	// none is: the generated upload frames and file routes read their store here, the
+	// one wiring point, and the generated router refuses to start when a store the
+	// package uses is not wired (RequireFileStores). The Postgres client holds none.
+	FileStore(name StoreName) FileStore
 	ReadOnlyTransaction() ReadOnlyTransactionCloser
 	ReadOnlyTransaction
 	Executor

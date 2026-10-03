@@ -25,9 +25,10 @@ import (
 // with the caller's Read conditions and tenancy, so an absent, cross-tenant, or hidden
 // row is 404 exactly as on the read route; the columns that deliver the file (the store
 // key, the name, the type) are read for the frame itself, without field grants. A
-// stored file is opened through the application's FileStore; a rendered file is a
-// computed resource's content function. Bytes go through the application: the store
-// is never exposed.
+// stored file is opened through the store its column names, read off the resource
+// client (the default store for a string key, the named store of a Key[S] column); a
+// rendered file is a computed resource's content function. Bytes go through the
+// application: the store is never exposed.
 //
 // A file's type is the uploader's word, so the frame serves every file as a document
 // that can do nothing: every response that serves a file (the bytes, a range of them,
@@ -89,20 +90,36 @@ var inlineMediaTypes = map[string]bool{
 // it. The frame answers 404 with the row's identity and never the key.
 var ErrFileNotFound = errors.New("file not found")
 
-// FileStore is the application's object store as the frame drives it. Put writes one
-// object under a key the frame minted, permanently: an @upload method's frame Puts each
-// part before the body runs, and the transaction claims the keys by recording them; on
-// any failure before commit the frame Deletes the keys it streamed and answers with the
-// failure, so an object with no claiming row is left only by a crash between the two,
-// and that one is the application's sweep's (an object no row claims, older than the
-// application's window). Open reads one object back for a @file route, ErrFileNotFound
-// when nothing is stored under the key. The store is the application's: resource never
-// imports a cloud SDK.
+// FileStore is a file store as the frame drives it: the framework's stores
+// (resource/filestore: a Cloud Storage bucket, a directory, memory) or one an
+// application writes. Put writes one object under a key the frame minted, permanently:
+// an @upload method's frame Puts each part before the body runs, and the transaction
+// claims the keys by recording them in @file columns; on any failure before commit the
+// frame Deletes the keys it streamed and answers with the failure, so an object with
+// no claiming row is left only by a crash between the two, and that one is the
+// orphaned-file cleanup's (an object no row claims, older than the application's
+// window). Open reads one object back for a @file route, ErrFileNotFound when nothing
+// is stored under the key.
+//
+// The rules every store follows. A failed Put leaves no object: a write the store could
+// not finish is removed before the error returns, and the frame deletes the key besides.
+// Deleting a key that holds no object succeeds. A key is any safe relative object name:
+// non-empty, at most 1024 bytes, no leading slash, no empty, dot or dot-dot segment, and
+// no backslash or control character; the upload frame mints UUIDs, which is a fact
+// about the frame and not a check in the store, so an adopter with existing files may
+// pass its rows' names as keys. A missing object on Open is ErrFileNotFound; a refused
+// permission is any other error, answered 500 and never 404. The root package imports
+// no object-store SDK; the stores do.
 type FileStore interface {
 	Put(ctx context.Context, key string, contentType string, r io.Reader) error
 	Delete(ctx context.Context, keys []string) error
 	Open(ctx context.Context, key string) (*Content, error)
 }
+
+// maxRanges bounds the ranges one request may ask for: each range costs the store one
+// read, since a stored file's body seeks by reopening the object at the offset, so a
+// request asking for more is answered with the whole file (200) instead.
+const maxRanges = 8
 
 // Content is a file as the frame serves it: a stored object as the FileStore opened it,
 // or the document a computed resource's content function rendered. Every field but the
@@ -287,17 +304,22 @@ func (d *FileDecoder[Resource, Request]) Decode(request *http.Request, userPermi
 	return qSet, nil
 }
 
-// ServeStoredFile answers a @file route from the application's store: 304 when the
-// request's validator matches the key, before the store is opened, and the bytes
-// otherwise, typed by the row's type column, then the object's, then the name's
-// extension, under the file headers (nosniff, the frame's sandbox policy, and the
-// disposition the type decides). A row carrying no key, or a key the store holds
-// nothing under, is a 404 returned for the handler to encode, in the row's words (label
-// and key, "MissionDocument 0193…") and never the store key's; so is any other failure.
+// ServeStoredFile answers a @file route from the store the column names, read off the
+// resource client by the generated handler: 304 when the request's validator matches
+// the key, before the store is opened, and the bytes otherwise, typed by the row's type
+// column, then the object's, then the name's extension, under the file headers
+// (nosniff, the frame's sandbox policy, and the disposition the type decides). A row
+// carrying no key, or a key the store holds nothing under, is a 404 returned for the
+// handler to encode, in the row's words (label and key, "MissionDocument 0193…") and
+// never the store key's; so is any other failure. A nil store, the column's store not
+// wired on the client, is an error naming the wiring, answered 500.
 func ServeStoredFile(ctx context.Context, w http.ResponseWriter, r *http.Request, store FileStore, file StoredFile, segment, label string, key ...any) error {
 	identity := rowIdentity(label, key)
 	if file.Key == "" {
 		return httpio.NewNotFoundMessagef("%s has no %s", identity, segment)
+	}
+	if store == nil {
+		return errors.Newf("no file store is wired for the store the %s of %s is kept in; wire it on the resource client with resource.WithFileStore or resource.WithNamedFileStore", segment, label)
 	}
 
 	tag := strconv.Quote(file.Key)
@@ -349,7 +371,8 @@ func ServeRenderedFile(w http.ResponseWriter, r *http.Request, content *Content,
 // serveContent writes the content with its headers and closes the body. The file
 // headers go on first, so a range answer and any 304 http.ServeContent writes carry
 // them too. A seekable body goes through http.ServeContent, which brings range
-// requests; any other body is copied whole.
+// requests, capped at maxRanges: a request asking for more gets the whole file; any
+// other body is copied whole.
 func serveContent(w http.ResponseWriter, r *http.Request, content *Content) error {
 	if content.Body == nil {
 		return errors.New("resource.Content: a served file carries a body")
@@ -368,7 +391,7 @@ func serveContent(w http.ResponseWriter, r *http.Request, content *Content) erro
 	}
 
 	if seeker, ok := content.Body.(io.ReadSeeker); ok {
-		http.ServeContent(w, r, content.Name, content.ModTime, seeker)
+		http.ServeContent(w, withRangeCap(r), content.Name, content.ModTime, seeker)
 
 		return nil
 	}
@@ -385,6 +408,20 @@ func serveContent(w http.ResponseWriter, r *http.Request, content *Content) erro
 	}
 
 	return nil
+}
+
+// withRangeCap returns the request http.ServeContent reads the Range header from: the
+// request itself, or a copy without the header when it asks for more than maxRanges
+// ranges, so the answer is the whole file (200) and the store is read once.
+func withRangeCap(r *http.Request) *http.Request {
+	header := r.Header.Get("Range")
+	if header == "" || strings.Count(header, ",")+1 <= maxRanges {
+		return r
+	}
+	capped := r.Clone(r.Context())
+	capped.Header.Del("Range")
+
+	return capped
 }
 
 // setFileHeaders sets the headers every served file carries: nosniff, and the frame's

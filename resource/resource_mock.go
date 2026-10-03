@@ -17,9 +17,9 @@ type MockClient struct {
 	readOnlyMocks []any
 	txnReadMocks  []any
 	txnMock       ReadWriteTransaction
-	// store is the FileStore a committed transaction's released file objects are
-	// deleted from, as on the Spanner client; nil when none was given.
-	store FileStore
+	// stores are the file stores by name a committed transaction's released file
+	// objects are deleted from, as on the Spanner client.
+	stores *fileStores
 }
 
 // NewMockClient creates a new MockClient for testing resource database interactions.
@@ -33,23 +33,27 @@ type MockClient struct {
 // resource type (e.g., Read[MyResource]). Multiple calls for the same Resource
 // must be configured on that single mock.
 //
-// WithFileStore hands it the store ExecuteFunc deletes released file objects from after
-// the function returns, so a test can assert what a patch released.
+// WithFileStore and WithNamedFileStore hand it the stores ExecuteFunc deletes released
+// file objects from after the function returns, so a test can assert what a patch
+// released.
 func NewMockClient(txnMock ReadWriteTransaction, readOnlyMocks, txnReadMocks []any, opts ...ClientOption) *MockClient {
-	options := applyClientOptions(opts)
-
 	return &MockClient{
 		dbType:        SpannerDBType,
 		readOnlyMocks: readOnlyMocks,
 		txnReadMocks:  txnReadMocks,
 		txnMock:       txnMock,
-		store:         options.store,
+		stores:        applyClientOptions(opts),
 	}
 }
 
 // DBType returns the database type the mock stands in for.
 func (c *MockClient) DBType() DBType {
 	return c.dbType
+}
+
+// FileStore returns the store wired under name, nil when none is.
+func (c *MockClient) FileStore(name StoreName) FileStore {
+	return c.stores.get(name)
 }
 
 // Close closes the database connection.
@@ -67,16 +71,20 @@ func (c *MockClient) SpannerReadOnlyTransaction() spxapi.Querier {
 }
 
 // ExecuteFunc executes a function within a read-write transaction. As the Spanner
-// client's does, it deletes the file objects the function's patches released from the
-// client's FileStore once the function returns nil, hands the rows the patches wrote to
-// the collector ctx carries (CollectTouchedRows), and does neither when it errors.
+// client's does, it refuses a function that released an object of a store the client
+// holds none for, deletes the file objects the function's patches released from their
+// stores once the function returns nil, hands the rows the patches wrote to the
+// collector ctx carries (CollectTouchedRows), and does neither when it errors.
 func (c *MockClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
 	txn := newMockReadWriteTransaction(c.txnMock, newReleasedKeys(), c.txnReadMocks...)
 	if err := f(ctx, txn); err != nil {
 		return errors.Wrap(err, "f()")
 	}
+	if err := refuseUnwiredRelease(c.stores, txn.Released()); err != nil {
+		return err
+	}
 
-	releaseFiles(ctx, c.store, txn.Released())
+	releaseFiles(ctx, c.stores, txn.Released())
 	collectTouched(ctx, txn.touched())
 
 	return nil
@@ -124,14 +132,14 @@ func (c *MockReadWriteTransaction) DBType() DBType {
 	return c.txnMock.DBType()
 }
 
-// recordReleased notes file keys the transaction's patches let go of.
-func (c *MockReadWriteTransaction) recordReleased(keys ...string) {
-	c.released.record(keys...)
+// recordReleased notes file keys of one store the transaction's patches let go of.
+func (c *MockReadWriteTransaction) recordReleased(store StoreName, keys ...string) {
+	c.released.record(store, keys...)
 }
 
-// Released returns the file object keys the transaction's patches released so far, as
-// SpannerReadWriteTransaction.Released does.
-func (c *MockReadWriteTransaction) Released() []string {
+// Released returns the file objects the transaction's patches released so far, each
+// with its store, as SpannerReadWriteTransaction.Released does.
+func (c *MockReadWriteTransaction) Released() []ReleasedKey {
 	return c.released.list()
 }
 

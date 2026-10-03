@@ -29,6 +29,11 @@ func (c *PostgresClient) DBType() DBType {
 	return PostgresDBType
 }
 
+// FileStore returns nil: the Postgres client holds no file stores.
+func (c *PostgresClient) FileStore(StoreName) FileStore {
+	return nil
+}
+
 // Close closes the database connection.
 func (c *PostgresClient) Close() {
 	c.postgres.Close()

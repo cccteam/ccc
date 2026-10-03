@@ -79,8 +79,8 @@ type Ship struct { ... }
 | `@transition` | `@rpc` struct | `RootStructName, from: a[, b…], to: c` | Declares the RPC method as a workflow state transition (ABAC design plan §09): the method moves rows of the named root resource along one edge. The root must carry `@state`, every `from`/`to` value must be a value of its state enum table, method and root permission scopes must match, and the struct's `Execute` must be the transaction form, carrying exactly one `@target` field. The generated handler owns the mechanical frame inside the transaction it already runs: before the body it locates the target row within the tenancy predicate (absent or cross-tenant is NotFound) and verifies the pre-image state is in the `from` set, then evaluates any row-referencing condition the caller's Execute grant carries against the same located row — either refusal is one uniform Forbidden naming the method and the row, so the wire never says whether the state or the condition said no (§12); after the body returns without error it stamps the `to` state as the last mutation. The body never reads or writes the state field — it carries only the edge's business effect. Who may run the method stays its Execute grant (grants-only, §09). The declared edge travels in the generated Collection, draws labeled edges in the workflow DOT file, rides the TypeScript method metadata, and answers `capabilities=Execute` per row. Example: [LaunchMission](lodestar/pkg/rpc/launch_mission.go). |
 | `@target` | field of an `@rpc` struct | none, or `RootStructName` | Marks the field carrying the target row's key — exactly one per method, its type matching the target's single-column primary key. With `@transition` it is bare (the declared root is the target); without one, `@target(Root)` names the row resource directly and the method gets the plain located-row form (ABAC design plan §12): the generated handler locates the row inside its transaction (absent or cross-tenant is NotFound) and evaluates any row-referencing condition on the caller's Execute grant against it, with no state check and no stamp. Either way, a targeted method's Execute grants may carry row conditions — `access.MigrateRoles` validates them against the target resource's binding vocabulary — and the method joins the target resource's per-row `capabilities=Execute` answer. Requires the transaction form of `Execute`; method and target permission scopes must match. A domain-scoped target resolves tenancy through its `@domain` binding, either form: a bare tenant column is read off the located row, a join-path binding is verified with one query in the same transaction — absent and cross-tenant rows answer the same NotFound either way. Example: [HailShip](lodestar/pkg/rpc/hail_ship.go). |
 | `@answers` | `@rpc` struct | `200, 409` | Declares the statuses the method may answer with; the result type carries `HTTPStatus() int` and chooses one per response. Allowed: `200`, `201`, `202`, `204`, and any 4xx except `401`, `403`, and `404`, which stay the frame's own refusals; at least one must be a 2xx. A 4xx answer is the method's refusal with its typed body: in the transaction form the transaction rolls back first, so nothing the body armed commits. `204` writes no body and requires a pointer result returned nil, or an answerless method, whose only permitted declaration is `@answers(204)`. A result declaring `HTTPStatus()` without `@answers`, or the reverse, is a generation error; an undeclared status at runtime answers 500. The TypeScript client resolves `{ status, result }` for a method with declared statuses and still throws on every undeclared 4xx. Example: [CompleteMission](lodestar/pkg/rpc/complete_mission.go). |
-| `@upload` | `@rpc` struct | `max: 5MB` | Declares the method as a multipart upload. Its `Execute` takes `resource.Files` third — `Execute(ctx, txn resource.ReadWriteTransaction, files resource.Files, client *Client)`, the transaction form only, since the transaction is what claims the files — and the declaration and the signature go together (either alone is a generation error). The request is `multipart/form-data`: one part named `request` first, carrying the JSON the method's decoder reads exactly as for a JSON RPC, then one or more parts named `file`. `max` (a byte count or `KB`/`MB`/`GB`, 1024-based) bounds the whole body; over it is a 413 naming the maximum, no `file` part a 400, a body that is not multipart a 415. The frame streams each file to the application's `FileStore` (asserted on the application as `FileStore() resource.FileStore` while any method uploads or any struct declares `@file`) under a key it minted, runs the body with the `Files`, and on any failure before commit deletes the objects it streamed and answers with the failure; after a commit nothing more happens, since the rows the body wrote claim the keys. The body records the keys wherever its schema wants them; reading a file back is the `@file` route (section 13). A dry run streams nothing: the `Files` describe the parts with empty keys. The TypeScript handle gains `upload(body, files)`, which refuses locally over the maximum. Example: [AttachMissionDocument](lodestar/pkg/rpc/attach_mission_document.go). |
-| `@file` | field of a `@resource`, `@virtual`, or keyed `@computed` struct (the column holding the store key); or a keyed `@computed` struct | none, `segment`, and on a field `name: Field`, `type: Field` | A row says which stored object is its file, and the generator serves that file under the row's read route: `GET <read route>/content` answers the bytes with their type, name, size, time, and validator, gated by `Read` on the resource and a `Read` grant on `content`, the route's own field, which the Collection registers with no column behind it (`columns=content` on a read stays a 400; a grant naming it is accepted by `access.MigrateRoles`). On a field, the annotation marks the column holding the store key: `@file` bare serves under `content`, `@file(thumbnail)` under its own segment, and `name:` and `type:` name sibling columns carrying the file's name and media type (a struct may carry several, one per segment). The key column goes off the wire in both directions: never returned on read or list, never accepted on create or update, absent from the TypeScript interface and metadata; a `NOT NULL` key means a row is added by the `@upload` method that stores its file, so `Create` is not registered and the patch handlers refuse a create op naming that way in, while a nullable key leaves `Create` ordinary. On a keyed `@computed` struct, `@file` or `@file(segment)` declares a rendered file: the computed package declares `<Name><Segment>(ctx, key…, qSet *resource.QuerySet[Name], client resource.Client, computedClient *Client) (*resource.Content, error)` beside `Read<Name>`, checked at generation as `Read<Name>`'s callers are, and a nil content is 404. Deleting a row that carries a key, or pointing it at another object, releases the old object: the patch machinery records the key on the transaction and the executor deletes it from the client's store (`resource.WithFileStore`) once the commit lands, from every transaction the application runs; one row owns one object, and a row the database deletes by cascade releases nothing (section 13). Refused at generation, naming the struct: a key-less struct, an unknown sibling, two declarations on one segment, a key, name, or type field that is not a `string` or `*string`, the struct-scope form on a table or view, a declaration under a suppressed read route, and a content function that is missing or has another signature. Examples: [MissionDocument.StoreKey](lodestar/pkg/resources/mission_documents.go), a stored file; [ExpenseManifest](lodestar/pkg/computedresources/expense_manifests.go), a rendered one. |
+| `@upload` | `@rpc` struct | `max: 5MB`, and `store: S` for a named store | Declares the method as a multipart upload. Its `Execute` takes `resource.Files` third, `Execute(ctx, txn resource.ReadWriteTransaction, files resource.Files, client *Client)`, the transaction form only, since the transaction is what claims the files, and the declaration and the signature go together (either alone is a generation error). With `store: S`, the files go to the named store `S` (section 13) and `Execute` takes `resource.FilesIn[S]`, whose keys are `resource.Key[S]`; the declaration and the signature name one store or neither, and a mismatch is a generation error. The request is `multipart/form-data`: one part named `request` first, carrying the JSON the method's decoder reads exactly as for a JSON RPC, then one or more parts named `file`. `max` (a byte count or `KB`/`MB`/`GB`, 1024-based) bounds the whole body; over it is a 413 naming the maximum, no `file` part a 400, a body that is not multipart a 415. The frame streams each file to the method's store, read off the resource client, under a key it minted, runs the body with the files, and on any failure before commit deletes the objects it streamed and answers with the failure; after a commit nothing more happens, since the rows the body wrote claim the keys. The body records each key in a `@file` column of the same store, a `string` column for the default store and a `resource.Key[S]` column for `S`, whose generated setter takes the typed key, so a key of another store does not compile into it; a key recorded anywhere else is invisible to the release and is the orphaned-file cleanup's. An upload naming a store no `@file` column holds is refused at generation. Reading a file back is the `@file` route (section 13). A dry run streams nothing: the files describe the parts with empty keys. The TypeScript handle gains `upload(body, files)`, which refuses locally over the maximum. Examples: [AttachRefitPhoto](lodestar/pkg/rpc/attach_refit_photo.go) on the default store, [AttachMissionDocument](lodestar/pkg/rpc/attach_mission_document.go) on a named one. |
+| `@file` | field of a `@resource`, `@virtual`, or keyed `@computed` struct (the column holding the store key); or a keyed `@computed` struct | none, `segment`, and on a field `name: Field`, `type: Field` | A row says which stored object is its file, and the generator serves that file under the row's read route: `GET <read route>/content` answers the bytes with their type, name, size, time, and validator, gated by `Read` on the resource and a `Read` grant on `content`, the route's own field, which the Collection registers with no column behind it (`columns=content` on a read stays a 400; a grant naming it is accepted by `access.MigrateRoles`). On a field, the annotation marks the column holding the store key: `@file` bare serves under `content`, `@file(thumbnail)` under its own segment, and `name:` and `type:` name sibling columns carrying the file's name and media type (a struct may carry several, one per segment). The column's type says which store holds the file: `string` or `*string` is the default store, `resource.Key[S]` or `*resource.Key[S]` the named store `S`, a type the application declares by embedding `resource.Store` (section 13); both are `STRING` columns, and the generated `FileKeys()` names each column with its store. The key column goes off the wire in both directions: never returned on read or list, never accepted on create or update, absent from the TypeScript interface and metadata; a `NOT NULL` key means a row is added by the `@upload` method that stores its file, so `Create` is not registered and the patch handlers refuse a create op naming that way in, while a nullable key leaves `Create` ordinary. On a keyed `@computed` struct, `@file` or `@file(segment)` declares a rendered file: the computed package declares `<Name><Segment>(ctx, key…, qSet *resource.QuerySet[Name], client resource.Client, computedClient *Client) (*resource.Content, error)` beside `Read<Name>`, checked at generation as `Read<Name>`'s callers are, and a nil content is 404. Deleting a row that carries a key, or pointing it at another object, releases the old object: the patch machinery records the key on the transaction and the executor deletes it from the column's store, wired on the resource client (`resource.WithFileStore`, `resource.WithNamedFileStore[S]`), once the commit lands, from every transaction the application runs; one row owns one object, and a row the database deletes by cascade releases nothing (section 13). Under a suppressed read route the declaration serves nothing and still names the key column, so the release and the orphaned-file cleanup see its keys. Refused at generation, naming the struct: a key-less struct, an unknown sibling, two declarations on one segment, a name or type field that is not a `string` or `*string`, a key field that is none of `string`, `*string`, `resource.Key[S]` and `*resource.Key[S]`, a `resource.Key[S]` column without the declaration, the struct-scope form on a table or view, a rendered file under a suppressed read route, and a content function that is missing or has another signature. Examples: [MissionDocument.StoreKey](lodestar/pkg/resources/mission_documents.go), a stored file; [ExpenseManifest](lodestar/pkg/computedresources/expense_manifests.go), a rendered one. |
 | `@subjectSet` | user-id field of a `@resource` struct | `name, value: Field` | Declares subject-side set vocabulary: `subject.<name>` in grant conditions is the set of `value:` values on this table's rows whose annotated column matches the requesting user (`crew IN subject.crews`). The annotation designates the user-id column — no separate marker — and is repeatable per anchor; `value:` names the sibling Go field the set yields, dotted to continue through foreign-key hops with the same many-to-one validation as `via:`; every set is drawn in the package's `zz_gen_bindings.dot`: the requester enters the anchor once naming its sets, a bare set is listed in the anchor's box and points at its table when the column is a foreign key, and a dotted value continues as edges (see `@domain`). **Tenancy:** the rendered subject subquery is tenant-filtered by the anchor resource's own `@domain` binding, so a domain-scoped anchor must declare one — generation rejects it otherwise, because without it `subject.<name>` matches the user's rows from every tenant (a membership held at tenant B would satisfy conditions evaluated at tenant A). A global-scoped anchor is the deliberately shared pattern — a certification earned once applies everywhere — and stays unfiltered. Note the anchor's own binding is what counts: tenancy never arrives transitively from a domain-scoped parent table (see `@domain`). **Type:** the set's comparison type is derived from the `value:` column (the terminal of a dotted value) exactly as `@attribute`'s is, and a grant may test only an attribute of the same type for membership in it; `MigrateRoles` refuses the mismatch at deploy. Example: [SquadronMembership](lodestar/pkg/resources/squadron_memberships.go). |
 | `@subjectValue` | user-id field of a `@resource` struct | `name, value: Field` | Declares subject-side scalar vocabulary for threshold comparisons (`amount <= subject.approvalLimit`). Same grammar — and the same tenancy rule, and the same place in `zz_gen_bindings.dot` — as `@subjectSet`, valid only where the annotated user-id column is the whole key of a unique index, the single-column primary key included, so the database enforces exactly one row per user; a column of a composite key or composite unique index does not qualify. **Type:** the value's comparison type is derived from the `value:` column as `@attribute`'s is, and a grant may compare it only against an attribute of the same type (`now` only against a timestamp-typed value); `MigrateRoles` refuses the mismatch at deploy. |
 | `@manualAddResource` | `accesstypes.Resource` constant | `permission[, scope]` | Registers the permission on the resource in the generated Collection for a hand-written route with no generated handler. Repeatable. Scope is `global` or `domain`; omitted means the global default. An `@outlet` annotation on the same constant names the outlets the hand-written route is mounted under, so an outlet-filtered TypeScript target (`ForOutlet`) carries the registration only when it names that outlet; omitted means the default outlet. The constant's value is the resource name and must not contain `:` (reserved for access-defined markers like `accesstypes.GlobalResource`); generation rejects it. The registration reaches the TypeScript constants like a generated one: an `Execute` registration joins `Methods`, any other permission joins `Resources`. |
@@ -364,15 +364,16 @@ across every application on this stack:
   the transaction commits and let a worker deliver it; if an effect truly cannot wait,
   the method is the client form, which the dry run refuses for exactly this reason.
   A file a request carries is the one exception, and it has its own form: an
-  `@upload` method's frame streams the files to the application's store before the
-  body runs, the body records the minted keys, and the transaction's commit is what
-  claims them; on any failure before commit the frame deletes the objects it streamed.
-  The body never writes the store. The other direction is the executor's: a row deleted
-  or pointed at another object releases the old object, which the executor deletes from
-  the client's store once the commit lands (section 13). What neither covers is a crash
-  between the stream and the commit, or between the commit and the delete, which leaves
-  an object no row claims; the application's sweep removes such objects once they are
-  older than its own window, and the window is the application's decision. The sweep is
+  `@upload` method's frame streams the files to the store the method names before the
+  body runs, the body records the minted keys in `@file` columns of that store, and the
+  transaction's commit is what claims them; on any failure before commit the frame
+  deletes the objects it streamed. The body never writes the store. The other direction
+  is the executor's: a row deleted or pointed at another object releases the old object,
+  which the executor deletes from the store once the commit lands (section 13). What
+  neither covers is a crash between the stream and the commit, or between the commit and
+  the delete, which leaves an object no row claims; the orphaned-file cleanup the
+  framework ships (`resource/filestore`, section 13) removes such objects once they are
+  older than the window, and the window is the application's decision. The cleanup is
   the safety net, never the mechanism.
 
 Two things a method deliberately cannot do. It cannot reach the response writer: no
@@ -1067,7 +1068,9 @@ headers that keep an uploaded file from running script.
 **The gate.** Read on the resource and a Read grant on the segment, a field of the
 resource with no column behind it. A role that lists documents and reads their rows but
 holds no grant on `content` sees the listing and cannot download; the store key is never
-the gate, and never on the wire.
+the gate. It leaves the server in one place only, as the file's validator (the `ETag`
+below), which no route accepts back as a key: nothing answers a link, and no bucket is
+public.
 
 **The row.** Located through the resource's own read path with the caller's Read
 conditions and tenancy: an absent, cross-tenant, or hidden row is 404, as on the read
@@ -1114,39 +1117,95 @@ the image whatever the disposition: an SVG logo in an `<img>` keeps showing whil
 direct visit to it downloads. A rendered file follows the same rule, so a `text/csv`
 manifest downloads.
 
-**The store.** `resource.FileStore` is the application's object store as the frames
-drive it: `Put(ctx, key, contentType, r)` writes an object permanently, `Delete(ctx,
-keys)` removes objects, `Open(ctx, key)` reads one back as a `*resource.Content`
-(`ErrFileNotFound` when nothing is stored under the key). The application asserts
-`FileStore() resource.FileStore` while any struct declares `@upload` or `@file`.
-`resource.Content` carries `Name`, `ContentType`, `Size` (-1 unknown), `ModTime` (zero
-unknown), `Tag`, and the `Body` the frame closes. Lodestar's store is a directory
-confined by `os.Root` ([DirStore](lodestar/pkg/store/dirstore.go)); a bucket store
-implements the same three methods.
+**The store.** `resource.FileStore` is a file store as the frames drive it: `Put(ctx,
+key, contentType, r)` writes an object once, `Delete(ctx, keys)` removes objects, `Open(ctx,
+key)` reads one back as a `*resource.Content` (`ErrFileNotFound` when nothing is stored
+under the key). `resource.Content` carries `Name`, `ContentType`, `Size` (-1 unknown),
+`ModTime` (zero unknown), `Tag`, and the `Body` the frame closes. The framework's stores
+are `resource/filestore`, opened from one URL each: `gs://<bucket>` is a Cloud Storage
+bucket, `file://<dir>` a directory confined by `os.Root`, and `mem://` memory, for tests.
+The URL is configuration, `APP_FILE_STORE` for the default store and
+`APP_FILE_STORE_<NAME>` for a named one, so development keeps files in a directory and
+Cloud Run keeps them in a bucket on the same code path; `filestore.Open` refuses a bad
+URL and a missing bucket at start, and on Cloud Run (`K_SERVICE` or `CLOUD_RUN_JOB` set)
+refuses `file://`, `mem://`, `STORAGE_EMULATOR_HOST` and `GOOGLE_APPLICATION_CREDENTIALS`,
+each of which would send the service's files somewhere other than its bucket under its
+own identity. A bucket whose permission is refused at start does not stop the process,
+since a new grant takes minutes to take effect: the store logs loudly, answers 503 on
+every file operation, and probes again on the next one. Every store follows the rules
+the frames rely on: a failed write leaves no object, deleting a missing key succeeds, a
+key is any safe relative object name (the upload frame mints UUIDs, which is a fact
+about the frame, so an adopter with existing files may pass its rows' names as keys),
+and a refused permission is an error of its own, answered 500 and never 404. The root
+package imports no object-store SDK; the stores do.
+
+**Named stores.** An application keeps kinds of files apart by declaring a store as a
+Go type embedding `resource.Store`, in one line of its own code, in the resources
+package or any package the generator run reads:
+
+```go
+// Documents holds mission documents in their own bucket.
+type Documents struct{ resource.Store }
+```
+
+The store's name derives from the type's: `Documents` is the store `documents`, read
+from `APP_FILE_STORE_DOCUMENTS`, and `ClientFiles` is `client_files`, read from
+`APP_FILE_STORE_CLIENT_FILES`; renaming the store is renaming the type. A column says
+its store by its field type, `StoreKey resource.Key[Documents]`, and an upload by the
+same type, `@upload(max: 5MB, store: resources.Documents)`, whose `Execute` takes
+`resource.FilesIn[resources.Documents]`; the generated setter for the column takes
+`resource.Key[Documents]`, so a key minted for another store, or for the default, does
+not compile into it, and copying a key the application made takes a conversion visible
+in review. Application code that opens an object itself converts with `string(key)` at
+the store boundary; the store interface stays untyped. The default store has no type:
+a `string` column and an `@upload` with no `store:` are its, as before. One bucket per
+store: two stores on one location would have the orphaned-file cleanup delete each
+other's files, and where the framework can see it (the stores it opens know their
+location) two stores on one location are refused where the client is built.
+
+**Wiring.** The resource client is the one wiring point: `resource.NewSpannerClient(db,
+resource.WithFileStore(files), resource.WithNamedFileStore[resources.Documents](docs))`,
+each store at most once, a second wiring of one store refused with a panic naming it, as
+a duplicate route is. The generated handlers read a store off the client
+(`Client.FileStore(name)`, nil when none is wired; the Postgres client holds none), and
+the generated router refuses to start when a store the package uses is not wired: every
+`@file` column's store, routed or not, and every `@upload`'s. An unwired store would
+otherwise surface on the first upload, file request or releasing delete; the message
+names the store and the option that wires it, never an environment variable. The
+executor refuses, before the commit, a transaction that would release a key of a store
+that is not wired, so the object is not left behind; this guard covers a job process,
+which builds no router. Lodestar opens its two stores from `APP_FILE_STORE` and
+`APP_FILE_STORE_DOCUMENTS` ([data.go](lodestar/pkg/config/data.go)); its suites open
+`mem://`.
 
 **Release.** Deleting a row that carries a `@file` key, or pointing it at a new key,
 removes the old object from the store once the transaction commits, from every
 transaction the application runs: a generated frame, a patch applied on its own,
 application code calling `ExecuteFunc`. Nothing is generated into the frames and a body
 has nothing to remember. The generator declares the key fields on the resource
-(`FileKeys() []accesstypes.Field`, beside `DefaultConfig`), a fact of the schema that no
-configuration carries and nothing an application writes changes, and the patch
-machinery reads them on the transaction: a delete makes one point read of the row's key columns and records each non-NULL key as
+(`FileKeys() []resource.FileKey`, beside `DefaultConfig`, each field with its store), a
+fact of the schema that no configuration carries and nothing an application writes
+changes, and the patch machinery reads them on the transaction: a delete makes one point read of the row's key columns and records each non-NULL key as
 released; an update or insert-or-update that sets a key field reads that field's current
 value and records it when the row exists, the value is non-NULL, and it differs from the
 new one (a new value of NULL included); an update that leaves the key fields alone reads
 nothing, and an insert records nothing. The record lives on the transaction wrapper and
 belongs to one attempt, so a retried transaction releases what its committing attempt
-recorded. When the commit lands, `ExecuteFunc` calls the store's `Delete` with the
-released keys, synchronously, and the request answers after it; a failed delete is
-logged naming the keys and the call still succeeds, since the rows are gone. The store
-is handed to the database client at construction, `resource.NewSpannerClient(db,
-resource.WithFileStore(store))` (the Mock client takes the same option, so a unit test
-can assert what a patch released); a client that sees released keys and holds no store
-logs them. Any error from the body (`ErrDryRun` included), a commit refusal, or an abort
-that ends the transaction releases nothing, because nothing committed. A transaction an
-application wraps itself through `NewSpannerReadWriteTransaction` and commits outside
-the executor reads what it released with `Released()` and deletes it itself.
+recorded. When the commit lands, `ExecuteFunc` calls each store's `Delete` with the keys
+released from it, synchronously, and the request answers after it; the delete runs
+detached from the request's cancellation under its own timeout, since Cloud Run gives a
+process CPU only while a request is in flight, and a failed delete is logged naming the
+keys and the call still succeeds, since the rows are gone. The stores are the client's
+(the Mock client takes the same options, so a unit test can assert what a patch
+released); a transaction that would release a key of a store the client does not hold is
+refused before it commits, naming the store and the option that wires it. Any error from
+the body (`ErrDryRun` included), a commit refusal, or an abort that ends the transaction
+releases nothing, because nothing committed. A transaction an application wraps itself
+through `NewSpannerReadWriteTransaction` and commits outside the executor reads what it
+released with `Released()`, each key with its store, and deletes it itself. The upload
+frame's discard, the deletes after a failed transaction, runs detached the same way and
+only when nothing committed: a commit whose outcome the Spanner client cannot report
+keeps its objects, since the rows may hold them, and logs the keys for the cleanup.
 
 **Limitations.**
 
@@ -1156,10 +1215,12 @@ the executor reads what it released with `Released()` and deletes it itself.
   is a row of its own, a table with `@file`, that the other rows reference by foreign
   key; the foreign-key refusal protects it while anything references it, and its own
   delete releases the object.
-- Rows the database deletes by cascade (`ON DELETE CASCADE`, an interleaved child) never
-  pass through the patch machinery; their objects are the sweep's. An application that
-  cares deletes the children by patch first. The audit pass names such tables.
-- A crash between the commit and the delete leaves an object no row claims; the sweep's.
+- Rows the database deletes by cascade (`ON DELETE CASCADE`, an interleaved child) or
+  by a row deletion policy never pass through the patch machinery; their objects are the
+  orphaned-file cleanup's. An application that cares deletes the children by patch
+  first. The audit pass names the cascade tables.
+- A crash between the commit and the delete leaves an object no row claims; the
+  cleanup's.
 - A reader that located the row before the delete committed may find the object gone;
   the `@file` route answers 404 as for any absent object.
 
@@ -1178,12 +1239,37 @@ names a resource that stores files on a table whose rows the database deletes by
 because the table is an interleaved child declared `ON DELETE CASCADE` (the finding
 names the parent) or a foreign key on it carries the `CASCADE` delete rule (the finding
 names the column), one finding per cause, in resource order: a cascade releases none of
-their objects and the sweep removes them. The facts ride the table map the schema read
+their objects and the orphaned-file cleanup removes them. The facts ride the table map the schema read
 records, `INFORMATION_SCHEMA.TABLES.ON_DELETE_ACTION` and
 `REFERENTIAL_CONSTRAINTS.DELETE_RULE`, so a cached schema audits like a fresh one.
 Further findings of this class arrive with their own register items. Example:
 [RefitTask.PhotoKey](lodestar/pkg/resources/refit_tasks.go), interleaved in Refits on
 cascade.
+
+**The orphaned-file cleanup.** An object no row holds is left behind only by a crash
+between the stream and the commit, a cascade, or a row deletion policy, and the
+framework ships the command that removes it: `filestore.Cleanup`, run as a command of
+the application's job process, one store per run. It lists the store's objects older
+than the window whose names are UUIDs, the keys the frame mints, keeps every key the
+store's `@file` columns hold, and deletes the rest. The keys come from the holders the
+generator writes into each resources package, `FileHolders()` in `zz_gen_file_holders.go`:
+one `resource.FileHolderOf[T]()` per table resource with a stored file, read with strong
+reads, every key column once per run, and one `resource.ComputedFileHolder` per computed
+resource with a stored file, whose rows come from application code, so the cleanup takes
+its keys from the application's `ComputedKeys` or refuses. A view's keys are its tables',
+so views are left out. The job process hands the cleanup every resources package's list;
+the framework cannot verify the list is complete, so the window and the rules below
+stand between a forgotten package and a deleted file. The window is at least a day
+(`filestore.MinimumWindow`), two by default (`filestore.DefaultWindow`), and never
+shorter than the longest request or job. The cleanup refuses to run when no row holds
+any key in the store, since the holders it was handed would then be the wrong ones, and
+when the unclaimed share of the aged objects is above half (`filestore.UnclaimedShare`)
+with at least a hundred unclaimed (`filestore.UnclaimedFloor`), since the live keys were
+then most likely not all read; it touches only UUID-shaped names, so an object named by
+its row (an adopter's existing files) is never the cleanup's; and a dry run lists what it
+would delete. It never runs in a pull-request stack, and in production a bucket's soft
+delete is the recovery. Lodestar's `cmd/jobs cleanup-files` runs it over both stores and
+the walkthrough proves it with one orphan and one live file.
 
 **Rendered files.** A document produced at request time is a computed resource's
 content: struct-scope `@file` on a keyed `@computed` struct, and the computed package
