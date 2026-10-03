@@ -211,7 +211,7 @@ export interface SortieExpenses {
   sortieId?: string;
   category?: string;
   amount?: number;
-  note?: string;
+  memo?: string;
 }
 
 export interface Squadrons {
@@ -582,7 +582,7 @@ const resourceMap = defineResourceMap({
       { fieldName: 'sortieId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sorties },
       { fieldName: 'category', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'amount', displayType: 'number', required: true, isIndex: false },
-      { fieldName: 'note', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'memo', displayType: 'string', required: false, isIndex: false },
     ],
   },
   [Resources.Squadrons]: {

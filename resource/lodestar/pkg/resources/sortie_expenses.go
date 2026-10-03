@@ -12,7 +12,16 @@ type (
 	// 'underway' grant evaluates two hops deep, through Sortie to Mission. Tenancy runs
 	// the same two hops (Sortie, Mission.SectorId).
 	//
-	// Demonstrates: @stateRoot.two-hop, @domain.join-path, create-under-parent.
+	// Memo is the purser's line note, renamed from Note: the Go field and the wire name
+	// moved, the column stayed, and @formerly keeps the old name answered beside the new
+	// one for consoles built before the rename (a body, columns, sort or filter naming
+	// note is read as memo, a body naming both is refused, and every row carries both
+	// keys), while the role file and the console's code name memo alone and the permission
+	// digest mirrors memo's entry under note. The annotation leaves, and the old name with
+	// it, once the console outlet's oldest answered release (cmd/generate) passes the
+	// release that renamed it.
+	//
+	// Demonstrates: @stateRoot.two-hop, @domain.join-path, create-under-parent, api.formerly.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -26,6 +35,7 @@ type (
 		Category string   `spanner:"Category"`
 		// @attribute(amount)
 		Amount decimal.Decimal `spanner:"Amount"`
-		Note   *string         `spanner:"Note"`
+		// @formerly(Note)
+		Memo *string `spanner:"Note"`
 	}
 )

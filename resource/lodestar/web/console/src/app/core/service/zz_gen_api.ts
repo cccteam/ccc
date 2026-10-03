@@ -356,14 +356,14 @@ export interface SortieExpensesCreate {
   sortieId: string;
   category: string;
   amount: number;
-  note?: string;
+  memo?: string;
 }
 /** The fields a client may change on SortieExpenses. Keys, server-owned, and immutable fields are absent. */
 export interface SortieExpensesPatch {
   sortieId?: string;
   category?: string;
   amount?: number;
-  note?: string;
+  memo?: string;
 }
 /** The primary key of SortieExpenses, in route order. */
 export type SortieExpensesKey = [id: string];
@@ -715,7 +715,7 @@ export const apiDescriptor = defineApiDescriptor({
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
       order: [{ field: 'amount', direction: 'desc' }],
-      patchable: ['sortieId', 'category', 'amount', 'note'],
+      patchable: ['sortieId', 'category', 'amount', 'memo'],
     },
     [Resources.Squadrons]: {
       resource: Resources.Squadrons,

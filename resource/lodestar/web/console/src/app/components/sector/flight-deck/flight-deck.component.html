@@ -268,7 +268,7 @@
           <ul class="expenses">
             @for (expense of expensesOf(sortie); track expense.id) {
               <li>
-                {{ expense.category }} — {{ expense.amount }} cr {{ expense.note ? '(' + expense.note + ')' : '' }}
+                {{ expense.category }} — {{ expense.amount }} cr {{ expense.memo ? '(' + expense.memo + ')' : '' }}
               </li>
             }
           </ul>

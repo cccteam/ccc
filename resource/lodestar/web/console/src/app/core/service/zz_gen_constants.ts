@@ -599,14 +599,14 @@ export namespace SortieExpenses {
     amount: 'amount' as FieldName,
     category: 'category' as FieldName,
     id: 'id' as FieldName,
-    note: 'note' as FieldName,
+    memo: 'memo' as FieldName,
     sortieId: 'sortieId' as FieldName,
   };
   export const resourceName = {
     amount: 'SortieExpenses.amount' as Resource,
     category: 'SortieExpenses.category' as Resource,
     id: 'SortieExpenses.id' as Resource,
-    note: 'SortieExpenses.note' as Resource,
+    memo: 'SortieExpenses.memo' as Resource,
     sortieId: 'SortieExpenses.sortieId' as Resource,
   };
 }

@@ -1,4 +1,4 @@
-import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
+import { provideHttpClient, withInterceptors, withXsrfConfiguration } from '@angular/common/http';
 import { ApplicationConfig, computed, inject, Injector, isDevMode, Signal } from '@angular/core';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -9,9 +9,10 @@ import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
 import { Domain } from '@cccteam/resource';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
-import { provideResourceClient } from '@cccteam/resource-angular/resource-client';
+import { apiVersionInterceptor, provideResourceClient } from '@cccteam/resource-angular/resource-client';
 import {
   API_URL,
+  API_VERSION,
   BASE_URL,
   CHANGE_FEED,
   FRONTEND_LOGIN_PATH,
@@ -92,6 +93,15 @@ export const appConfig: ApplicationConfig = {
     },
     { provide: BASE_URL, useValue: environment.baseUrl },
     { provide: API_URL, useValue: environment.apiUrl },
+    // The release this build was made from, as the build stamped it (APP_VERSION, from the
+    // VERSION the image's browser stage carries; 'dev' for a local build). The client sends
+    // it in X-Api-Version on every request, and apiVersionInterceptor below adds it to the
+    // console's own HttpClient calls; the server answers releases from the console outlet's
+    // oldest answered up to its own and refuses the rest with 412, which the update
+    // service turns into a reload onto the current build. A dev build sends no header.
+    //
+    // Demonstrates: api.version-refusal.
+    { provide: API_VERSION, useValue: APP_VERSION },
     // The generated API client: one typed surface over every route, one permission
     // cache for the app's pages and the library's guard, directive, and forms. The
     // library hands the factory the options it owns and the application spreads them
@@ -129,7 +139,9 @@ export const appConfig: ApplicationConfig = {
     provideAnimationsAsync(),
     // The XSRF cookie is the crew auth's (pkg/auth/crew, XSRFCookie): HttpClient echoes it in
     // the X-XSRF-TOKEN header on every mutating request, and the server verifies the echo.
-    provideHttpClient(withXsrfConfiguration({ cookieName: 'crew-xsrf' })),
+    // The one interceptor adds the release header to the console's own same-origin
+    // HttpClient calls (the login POST, the ship's log, the watch desk); it judges nothing.
+    provideHttpClient(withInterceptors([apiVersionInterceptor]), withXsrfConfiguration({ cookieName: 'crew-xsrf' })),
     // The console installs as a progressive web app. The service worker (ngsw-worker.js,
     // which the production build emits beside ngsw.json from the workspace's
     // ngsw-config.json) keeps this build's files, so an open tab that loads a lazy chunk

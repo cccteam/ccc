@@ -534,7 +534,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             },
             {
@@ -742,7 +742,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             },
             {
@@ -865,7 +865,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             },
             {
@@ -967,7 +967,7 @@
               "fields": [
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             },
             {
@@ -1434,7 +1434,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             }
           ],
@@ -1493,7 +1493,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             }
           ],
@@ -2187,7 +2187,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             }
           ],
@@ -2219,7 +2219,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ]
             }
           ],
@@ -2230,7 +2230,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ],
               "condition": "state = 'underway'"
             }
@@ -2241,7 +2241,7 @@
               "fields": [
                 "category",
                 "amount",
-                "note"
+                "memo"
               ],
               "condition": "state = 'underway'"
             }
@@ -2369,7 +2369,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ],
               "condition": "state IN ('completed', 'failed', 'stood_down')"
             },
@@ -2438,7 +2438,7 @@
                 "sortieId",
                 "category",
                 "amount",
-                "note"
+                "memo"
               ],
               "condition": "state IN ('completed', 'failed', 'stood_down')"
             },

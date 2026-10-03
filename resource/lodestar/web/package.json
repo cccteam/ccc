@@ -5,7 +5,7 @@
     "ng": "ng",
     "start:console": "ng serve console --no-hmr",
     "start:portal": "ng serve portal --no-hmr",
-    "build": "ng build console && ng build portal",
+    "build": "ng build console --define \"APP_VERSION='${VERSION:-dev}'\" && ng build portal --define \"APP_VERSION='${VERSION:-dev}'\"",
     "lint": "ng lint console && ng lint portal",
     "test": "ng test console --watch=false && ng test portal --watch=false",
     "ccclib:local": "./ccclib.sh local",

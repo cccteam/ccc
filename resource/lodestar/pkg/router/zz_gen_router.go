@@ -7,7 +7,7 @@
 //	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
 //	default (/console/api), password sessions of the crew auth:
 //	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /console/api/user/login, GET /console/api/user/session, DELETE /console/api/user/session
-//	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes
+//	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), API key:
 //	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
 //	portal (/portal/api), Google directory sessions of the members auth:
@@ -134,12 +134,13 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			r.Use(h.ValidateSession)
 			r.Use(h.ValidateXSRFToken)
 			// The version check: a browser application sends its release in X-Api-Version,
-			// and every release up to the server's own is answered. An application outside that
+			// and releases from 0.1.0 up to the server's own are answered. An application outside that
 			// range is refused with 412 naming the server's release, before its body is read;
 			// a request without the header, the session routes above and the stored-file
 			// routes are answered at any release.
 			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
-				ServerVersion: serverVersion,
+				ServerVersion:  serverVersion,
+				OldestAnswered: "0.1.0",
 				Exempt: []string{
 					"/console/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}/content",
 					"/console/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content",

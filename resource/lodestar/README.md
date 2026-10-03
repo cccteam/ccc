@@ -114,6 +114,55 @@ unregister itself and drop its caches on its next check, after which the page is
 the network alone. Removing `"serviceWorker": "ngsw-config.json"` from a project's
 production configuration in `web/angular.json` is how a build is made without it.
 
+## The release each request carries
+
+Every request from a console or portal build names the release the build was made from,
+and the server refuses a release it no longer answers. The build stamps the release into
+the bundle: `web/angular.json` defines the global `APP_VERSION` as `dev`, and the
+workspace's `build` script redefines it from the `VERSION` environment variable
+(`ng build console --define "APP_VERSION='${VERSION:-dev}'"`), which the image's browser
+stage carries, so `VERSION=1.2.3 bun run build` names `1.2.3` and `bun run build` alone
+names `dev`. Each app config provides it as `API_VERSION`, the generated client sends it as
+`X-Api-Version` on every request, and `apiVersionInterceptor`, registered with
+`provideHttpClient(withInterceptors([apiVersionInterceptor]), ...)`, adds it to the app's own
+`HttpClient` calls, the login POST among them. A `dev` build sends no header.
+
+The server's release is the configuration's `APP_VERSION` (`dev` in `.envrc`), which
+`App.ServerVersion()` hands the generated router. The router checks every console and
+portal API route: a request whose release lies between the outlet's oldest answered
+release and the server's, inclusive, is answered; any other is refused with 412 and
+`X-Api-Version: <server release>` before any handler runs or a body is read. A request with
+no header is answered, a `dev` build or a `dev` server is never refused, and the session
+routes (login, callback, `/user/session`) and the stored-file routes (the mission
+document, the refit task photo, the expense manifest) are answered at any release, so a
+login always works and a file link never fails on a version. Every checked response
+carries `Vary: X-Api-Version`. A refused console reloads onto the current build by itself
+while it is still starting, and once a page is on screen it shows the update notice with
+Reload (the library's `AppUpdateService`, provided by `provideAppUpdate()` above). The
+development stack runs `dev` on both sides, so the walkthrough cannot show the refusal;
+`test/integration/apiversion_test.go` proves it over a served router built from a release.
+
+The console outlet's oldest answered release is declared in `cmd/generate/generator.go`,
+`generation.OldestAnswered("0.1.0")`: the first release, which is what an outlet without
+the option answers from, written out so the place to raise it is on record. The portal
+outlet declares none. A developer raises it when a release stops answering something an
+older console sent: the release that removed a field, or that dropped a `@formerly`
+annotation, becomes the oldest answered, and consoles built before it are told to
+reload. `generation.OldestAnswered(generation.ThisRelease)` is for a release that
+changes the API inside a maintenance window, when only the server's own release is
+answered.
+
+The renamed field is the purser's line note on a sortie expense: `SortieExpense.Memo`,
+formerly `Note` (`pkg/resources/sortie_expenses.go`, `@formerly(Note)`). The column is
+still `Note`; the wire name moved. A console built before the rename keeps sending and
+reading `note`: a body, `columns=`, `sort=` or `filter=` naming it is read as `memo`, a
+body naming both is refused with 400, and every row carries both `memo` and `note`. The
+role file names `memo` alone, and the permission digest carries the quartermaster's entry
+under `SortieExpenses.note` beside `SortieExpenses.memo`, so a console built before the
+rename keeps its column. The generated TypeScript knows only `memo`, so the flight deck and the
+expense manifest moved to it. The next release that raises oldest answered past this one drops the annotation,
+and `note` leaves the wire.
+
 ## Live pages
 
 The console's Ships page is live. Sign in as `harbormaster` (Harbormaster Hollis), open

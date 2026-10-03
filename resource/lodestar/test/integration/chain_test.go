@@ -29,7 +29,7 @@ func TestTwoHopStateChain(t *testing.T) {
 
 	// Underway: the quartermaster books an expense two hops below the root...
 	status, body := doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"sortieId":%q,"category":"fuel","amount":250,"note":"top-up"}}]`, opPath(anvil, "sortie-expenses"), sortieConvoyID))
+		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"sortieId":%q,"category":"fuel","amount":250,"memo":"top-up"}}]`, opPath(anvil, "sortie-expenses"), sortieConvoyID))
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["sortieExpenses"].([]any)
 	if len(ids) != 1 {
@@ -48,7 +48,7 @@ func TestTwoHopStateChain(t *testing.T) {
 		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"amount":999}}]`, opPath(anvil, "sortie-expenses/"+expenseCourierFuelID)))
 	assertStatus(t, status, http.StatusForbidden, body)
 	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/console/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"sortieId":%q,"category":"fuel","amount":1,"note":"while held"}}]`, opPath(anvil, "sortie-expenses"), sortieCourierID))
+		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"sortieId":%q,"category":"fuel","amount":1,"memo":"while held"}}]`, opPath(anvil, "sortie-expenses"), sortieCourierID))
 	assertStatus(t, status, http.StatusForbidden, body)
 
 	// Hold the convoy: the marshal may (the hold records its reason as the caller,

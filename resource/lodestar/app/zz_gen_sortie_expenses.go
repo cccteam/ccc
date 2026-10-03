@@ -20,11 +20,11 @@ import (
 
 func (a *App) SortieExpenses() http.HandlerFunc {
 	type sortieExpense struct {
-		ID       ccc.UUID        `json:"id"       index:"true" perm:"-"`
+		ID       ccc.UUID        `json:"id"       index:"true"    perm:"-"`
 		SortieID ccc.UUID        `json:"sortieId" index:"true"`
 		Category string          `json:"category"`
 		Amount   decimal.Decimal `json:"amount"`
-		Note     *string         `json:"note"`
+		Memo     *string         `json:"memo"     formerly:"note"`
 	}
 
 	type response []map[string]any
@@ -83,9 +83,10 @@ func (a *App) SortieExpenses() http.HandlerFunc {
 					if !row.Masked("amount") {
 						rmap["amount"] = rec.Amount
 					}
-				case "Note":
-					if !row.Masked("note") {
-						rmap["note"] = rec.Note
+				case "Memo":
+					if !row.Masked("memo") {
+						rmap["memo"] = rec.Memo
+						rmap["note"] = rec.Memo
 					}
 				}
 			}
@@ -110,11 +111,11 @@ func (a *App) SortieExpenses() http.HandlerFunc {
 
 func (a *App) SortieExpense() http.HandlerFunc {
 	type response struct {
-		ID       ccc.UUID        `json:"id"       index:"true" perm:"-"`
+		ID       ccc.UUID        `json:"id"       index:"true"    perm:"-"`
 		SortieID ccc.UUID        `json:"sortieId"`
 		Category string          `json:"category"`
 		Amount   decimal.Decimal `json:"amount"`
-		Note     *string         `json:"note"`
+		Memo     *string         `json:"memo"     formerly:"note"`
 	}
 
 	decoder := NewQueryDecoder[resources.SortieExpense, response](a, accesstypes.Read)
@@ -161,9 +162,10 @@ func (a *App) SortieExpense() http.HandlerFunc {
 				if !row.Masked("amount") {
 					rmap["amount"] = rec.Amount
 				}
-			case "Note":
-				if !row.Masked("note") {
-					rmap["note"] = rec.Note
+			case "Memo":
+				if !row.Masked("memo") {
+					rmap["memo"] = rec.Memo
+					rmap["note"] = rec.Memo
 				}
 			}
 		}

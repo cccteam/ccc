@@ -115,12 +115,14 @@ func TestConsoleCarriesLibrarySurface(t *testing.T) {
 // app.config.ts spreads the options provideResourceClient hands its factory (the
 // transport that counts activity, the error hook that returns the browser to the login
 // page on a 401) into the generated createApi and registers no interceptor, HttpClient
-// keeps the XSRF echo alone, no provider after it re-provides ErrorHandler (the
-// BrowserAnimationsModule import that did is the standalone provideAnimationsAsync), each
-// login page reads AuthService.redirectUrl once and clears it, and the flight deck reports its refusals in place (the declared 409 answer,
-// the 403 on an edit) so they reach no notice. Lodestar has no browser specs, so the
-// committed sources are the proof the wiring is present; the redirect and the notice are
-// driven in the browser (README, "Running it"). Needs no emulator.
+// keeps the XSRF echo and the release header alone (apiVersionInterceptor, the library's
+// one functional interceptor, which judges nothing), no provider after it re-provides
+// ErrorHandler (the BrowserAnimationsModule import that did is the standalone
+// provideAnimationsAsync), each login page reads AuthService.redirectUrl once and clears
+// it, and the flight deck reports its refusals in place (the declared 409 answer, the 403
+// on an edit) so they reach no notice. Lodestar has no browser specs, so the committed
+// sources are the proof the wiring is present; the redirect and the notice are driven in
+// the browser (README, "Running it"). Needs no emulator.
 //
 // Demonstrates: client.login-redirect, client.uncaught-notice.
 func TestConsoleHandsTheClientItsHooks(t *testing.T) {
@@ -143,11 +145,12 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 		absent []string
 	}{
 		{
-			name: "the console spreads the adapter's options into createApi and registers no interceptor",
+			name: "the console spreads the adapter's options into createApi and registers the release-header interceptor alone",
 			file: "console/src/app/app.config.ts",
 			want: []string{
 				"provideResourceClient((options) => createApi({ baseUrl: environment.apiUrl, ...options }))",
-				"provideHttpClient(withXsrfConfiguration({ cookieName: 'crew-xsrf' }))",
+				"provideHttpClient(withInterceptors([apiVersionInterceptor]), withXsrfConfiguration({ cookieName: 'crew-xsrf' }))",
+				"{ provide: API_VERSION, useValue: APP_VERSION }",
 				"provideAnimationsAsync(),",
 				"{ provide: FRONTEND_LOGIN_PATH, useValue: '/login' }",
 				"{ provide: BASE_URL, useValue: environment.baseUrl }",
@@ -159,7 +162,8 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			file: "portal/src/app/app.config.ts",
 			want: []string{
 				"provideResourceClient((options) => createApi({ baseUrl: environment.apiUrl, ...options }))",
-				"provideHttpClient(withXsrfConfiguration({ cookieName: 'members-xsrf' }))",
+				"provideHttpClient(withInterceptors([apiVersionInterceptor]), withXsrfConfiguration({ cookieName: 'members-xsrf' }))",
+				"{ provide: API_VERSION, useValue: APP_VERSION }",
 				"provideAnimationsAsync(),",
 			},
 			absent: noInterceptor,

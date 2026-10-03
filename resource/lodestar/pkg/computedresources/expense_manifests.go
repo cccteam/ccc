@@ -114,7 +114,7 @@ func ExpenseManifestContent(ctx context.Context, missionID ccc.UUID, qSet *resou
 
 	var sheet bytes.Buffer
 	w := csv.NewWriter(&sheet)
-	if err := w.Write([]string{"sortie", "pilot", "launchedAt", "category", "amount", "note"}); err != nil {
+	if err := w.Write([]string{"sortie", "pilot", "launchedAt", "category", "amount", "memo"}); err != nil {
 		return nil, errors.Wrap(err, "csv.Writer.Write()")
 	}
 	sorties := resources.NewSortieQuery().
@@ -125,17 +125,17 @@ func ExpenseManifestContent(ctx context.Context, missionID ccc.UUID, qSet *resou
 			return nil, errors.Wrap(err, "resources.SortieQuery.List()")
 		}
 		expenses := resources.NewSortieExpenseQuery().
-			AddColumns(resources.NewSortieExpenseColumns().Category().Amount().Note()).
+			AddColumns(resources.NewSortieExpenseColumns().Category().Amount().Memo()).
 			Where(resources.NewSortieExpenseQueryClause().SortieID().Equal(sortie.Data.ID))
 		for expense, err := range expenses.List(ctx, client) {
 			if err != nil {
 				return nil, errors.Wrap(err, "resources.SortieExpenseQuery.List()")
 			}
-			note := ""
-			if expense.Data.Note != nil {
-				note = *expense.Data.Note
+			memo := ""
+			if expense.Data.Memo != nil {
+				memo = *expense.Data.Memo
 			}
-			line := []string{sortie.Data.ID.String(), sortie.Data.PilotUserID, sortie.Data.LaunchedAt.UTC().Format("2006-01-02T15:04:05Z"), expense.Data.Category, expense.Data.Amount.String(), note}
+			line := []string{sortie.Data.ID.String(), sortie.Data.PilotUserID, sortie.Data.LaunchedAt.UTC().Format("2006-01-02T15:04:05Z"), expense.Data.Category, expense.Data.Amount.String(), memo}
 			if err := w.Write(line); err != nil {
 				return nil, errors.Wrap(err, "csv.Writer.Write()")
 			}

@@ -181,7 +181,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		SortieID ccc.UUID        `json:"sortieId"`
 		Category string          `json:"category"`
 		Amount   decimal.Decimal `json:"amount"   sqltype:"NUMERIC"`
-		Note     *string         `json:"note"`
+		Memo     *string         `json:"memo"     formerly:"note"`
 	}
 	sortieExpenseDecoder := NewDecoder[resources.SortieExpense, sortieExpenseRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

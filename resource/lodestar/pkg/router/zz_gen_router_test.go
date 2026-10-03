@@ -730,7 +730,7 @@ type routerFileRoute struct {
 func routerVersionProbes() []routerVersionProbe {
 	return []routerVersionProbe{
 		{
-			prefix: "/console/api/", server: "2.0.0", inRange: "0.0.1", below: "", above: "2.0.1",
+			prefix: "/console/api/", server: "0.2.0", inRange: "0.1.0", below: "0.0.0", above: "0.2.1",
 			files: []routerFileRoute{
 				{url: "/console/api/sectors/testDomain/expense-manifests/testExpenseManifestMissionID/content", handler: "ExpenseManifestContent"},
 				{url: "/console/api/sectors/testDomain/mission-documents/testMissionDocumentID/content", handler: "MissionDocumentContent"},

@@ -30,6 +30,18 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.GenerateRoutes("pkg/router", "console/api",
 			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.Password),
 			generation.WebApp("/console"),
+			// The oldest release of the console the server still answers. A console build
+			// sends the release it was built from in X-Api-Version, and the generated router
+			// answers releases from this one up to the server's own (APP_VERSION through
+			// ServerVersion), refusing the rest with 412 before any handler runs; a build
+			// with no header, and a dev build or a dev server, is never refused. This is the
+			// first release, which is also what an outlet without the option answers from,
+			// written out so the place to raise it is on record: a developer removes a
+			// @formerly annotation or a field and raises this to the release that stopped
+			// sending the old name, and consoles built before it are told to reload.
+			//
+			// Demonstrates: api.version-refusal.
+			generation.OldestAnswered("0.1.0"),
 		),
 		// The droids outlet is the machine channel: structs annotated with @outlet
 		// naming droids are served under /droids, which the router composes behind

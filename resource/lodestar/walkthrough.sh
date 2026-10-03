@@ -302,12 +302,21 @@ r=$(req yeoman GET "$API/standing-orders?cursor=v4.local.anything"); check "a cu
 r=$(req yeoman GET "$API/standing-orders/General"); check "a key-less list has no read route" 404 "$r"
 r=$(req cadet GET "$API/standing-orders"); check "the cadet holds no orders desk" 403 "$r"
 
+# ---- the release header ----
+# A console build sends the release it was built from in X-Api-Version, and a server built
+# from a release refuses a release outside what its console outlet answers (oldest answered
+# 0.1.0, cmd/generate) with 412 naming its own. This stack runs APP_VERSION=dev on the
+# server, and a server whose version is not a release checks nothing, so a request here with
+# -H 'X-Api-Version: 0.0.1' is answered rather than refused: there is no walkthrough check for
+# the 412. test/integration/apiversion_test.go proves it over a served router built from
+# release 1.4.0.
+
 # ---- expense manifests: the rendered file ----
 # ExpenseManifests is a keyed @computed struct with a struct-scope @file: the purser's Read grant on content opens GET .../{missionId}/content, whose bytes ExpenseManifestContent renders as a text/csv sheet at request time, its digest the validator.
 r=$(req purser GET "$ANVIL/expense-manifests?limit=200"); check "the purser lists the sector's expense manifests" 200 "$r"
 assert_py "the convoy's manifest counts its sorties and sums its booked expenses" "$r" "next(m for m in rows if m['missionId']=='$CONVOY')['sorties']==1 and next(m for m in rows if m['missionId']=='$CONVOY')['expenses']=='1600'"
 r=$(req purser GET "$ANVIL/expense-manifests/$CONVOY/content" "" -D "$S/manifest.hdr"); check "the purser downloads the convoy's manifest, a CSV sheet rendered on request" 200 "$r"
-if grep -qi '^content-type: text/csv' "$S/manifest.hdr" && [ "$(body "$r" | head -1)" = "sortie,pilot,launchedAt,category,amount,note" ] && [ "$(body "$r" | grep -c .)" -eq 4 ]; then echo "PASS  the sheet is text/csv, a header and one line per booked expense (the convoy's three, the quartermaster's among them)"; else echo "FAIL  the sheet: $(body "$r" | head -c 200)"; fails=$((fails + 1)); fi
+if grep -qi '^content-type: text/csv' "$S/manifest.hdr" && [ "$(body "$r" | head -1)" = "sortie,pilot,launchedAt,category,amount,memo" ] && [ "$(body "$r" | grep -c .)" -eq 4 ]; then echo "PASS  the sheet is text/csv, a header and one line per booked expense (the convoy's three, the quartermaster's among them)"; else echo "FAIL  the sheet: $(body "$r" | head -c 200)"; fails=$((fails + 1)); fi
 MANIFEST_ETAG=$(awk 'tolower($1)=="etag:" {print $2}' "$S/manifest.hdr" | tr -d '\r')
 r=$(req purser GET "$ANVIL/expense-manifests/$CONVOY/content" "" -H "If-None-Match: $MANIFEST_ETAG"); check "the sheet's digest is its validator: a kept copy hears 304" 304 "$r"
 r=$(req marshal GET "$ANVIL/expense-manifests/$CONVOY/content"); check "the marshal holds no Read on the manifests: the file route refuses" 403 "$r"

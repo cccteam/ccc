@@ -126,7 +126,7 @@ func TestExpenseManifest_renderedFile(t *testing.T) {
 			if len(records) != tt.wantLines {
 				t.Errorf("sheet has %d lines, want %d:\n%s", len(records), tt.wantLines, rr.Body.String())
 			}
-			if got := strings.Join(records[0], ","); got != "sortie,pilot,launchedAt,category,amount,note" {
+			if got := strings.Join(records[0], ","); got != "sortie,pilot,launchedAt,category,amount,memo" {
 				t.Errorf("header = %q", got)
 			}
 			lines := map[string][]string{}

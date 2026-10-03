@@ -31,7 +31,7 @@ type sortieExpenseRead struct {
 	SortieID ccc.UUID        `json:"sortieId"`
 	Category string          `json:"category"`
 	Amount   decimal.Decimal `json:"amount"`
-	Note     *string         `json:"note"`
+	Memo     *string         `json:"memo"`
 }
 
 var sortieExpenseReadSets resource.SetCache[SortieExpense, sortieExpenseRead]
@@ -44,7 +44,7 @@ type sortieExpenseWrite struct {
 	SortieID ccc.UUID        `json:"sortieId"`
 	Category string          `json:"category"`
 	Amount   decimal.Decimal `json:"amount"   sqltype:"NUMERIC"`
-	Note     *string         `json:"note"`
+	Memo     *string         `json:"memo"`
 }
 
 var sortieExpenseWriteSets resource.SetCache[SortieExpense, sortieExpenseWrite]
@@ -157,7 +157,7 @@ func (c *SortieExpenseColumns) All() *SortieExpenseColumns {
 		"SortieID",
 		"Category",
 		"Amount",
-		"Note",
+		"Memo",
 	}
 
 	return c
@@ -187,8 +187,8 @@ func (c *SortieExpenseColumns) Amount() *SortieExpenseColumns {
 	return c
 }
 
-func (c *SortieExpenseColumns) Note() *SortieExpenseColumns {
-	c.fields = append(c.fields, "Note")
+func (c *SortieExpenseColumns) Memo() *SortieExpenseColumns {
+	c.fields = append(c.fields, "Memo")
 
 	return c
 }
@@ -295,8 +295,8 @@ func (c *sortieExpenseSort) Amount() *SortieExpenseSort {
 	return c.addField("Amount")
 }
 
-func (c *sortieExpenseSort) Note() *SortieExpenseSort {
-	return c.addField("Note")
+func (c *sortieExpenseSort) Memo() *SortieExpenseSort {
+	return c.addField("Memo")
 }
 
 type SortieExpenseSort struct {
@@ -434,24 +434,24 @@ func (p *SortieExpenseCreatePatch) AmountIsSet() bool {
 	return p.patchSet.IsSet("Amount")
 }
 
-func (p *SortieExpenseCreatePatch) SetNote(v *string) *SortieExpenseCreatePatch {
+func (p *SortieExpenseCreatePatch) SetMemo(v *string) *SortieExpenseCreatePatch {
 	if v != nil {
-		p.patchSet.Set("Note", v)
+		p.patchSet.Set("Memo", v)
 	} else {
-		p.patchSet.Set("Note", nil)
+		p.patchSet.Set("Memo", nil)
 	}
 
 	return p
 }
 
-func (p *SortieExpenseCreatePatch) Note() *string {
-	v, _ := p.patchSet.Get("Note").(*string)
+func (p *SortieExpenseCreatePatch) Memo() *string {
+	v, _ := p.patchSet.Get("Memo").(*string)
 
 	return v
 }
 
-func (p *SortieExpenseCreatePatch) NoteIsSet() bool {
-	return p.patchSet.IsSet("Note")
+func (p *SortieExpenseCreatePatch) MemoIsSet() bool {
+	return p.patchSet.IsSet("Memo")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
@@ -570,24 +570,24 @@ func (p *SortieExpenseUpdatePatch) AmountIsSet() bool {
 	return p.patchSet.IsSet("Amount")
 }
 
-func (p *SortieExpenseUpdatePatch) SetNote(v *string) *SortieExpenseUpdatePatch {
+func (p *SortieExpenseUpdatePatch) SetMemo(v *string) *SortieExpenseUpdatePatch {
 	if v != nil {
-		p.patchSet.Set("Note", v)
+		p.patchSet.Set("Memo", v)
 	} else {
-		p.patchSet.Set("Note", nil)
+		p.patchSet.Set("Memo", nil)
 	}
 
 	return p
 }
 
-func (p *SortieExpenseUpdatePatch) Note() *string {
-	v, _ := p.patchSet.Get("Note").(*string)
+func (p *SortieExpenseUpdatePatch) Memo() *string {
+	v, _ := p.patchSet.Get("Memo").(*string)
 
 	return v
 }
 
-func (p *SortieExpenseUpdatePatch) NoteIsSet() bool {
-	return p.patchSet.IsSet("Note")
+func (p *SortieExpenseUpdatePatch) MemoIsSet() bool {
+	return p.patchSet.IsSet("Memo")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

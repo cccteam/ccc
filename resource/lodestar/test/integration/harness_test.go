@@ -226,6 +226,9 @@ type testConfigurer struct {
 	live          live.Service
 	management    access.Handlers
 	tenants       *resource.TenantRoster
+	// version is the release the served stack reports as its own (AppVersion); empty
+	// is dev, under which the version check answers every release.
+	version string
 }
 
 // TenantRoster is the application's tenant roster as production's DataConfiguration
@@ -310,9 +313,16 @@ func (c *testConfigurer) Validator() *validator.Validate { return validator.New(
 
 func (c *testConfigurer) LogExporter() logger.Exporter { return logger.NewConsoleExporter() }
 
-// AppVersion is dev: the served stack's version check answers every release, so no
-// suite's request is refused for the release it carries.
-func (c *testConfigurer) AppVersion() string { return "dev" }
+// AppVersion is the release the suite gave the stack (newServedAt), else dev, under
+// which the served stack's version check answers every release, so no suite's request
+// is refused for the release it carries.
+func (c *testConfigurer) AppVersion() string {
+	if c.version == "" {
+		return "dev"
+	}
+
+	return c.version
+}
 
 func (c *testConfigurer) ConsoleDist() string { return "" }
 
@@ -647,6 +657,16 @@ type served struct {
 // to the callback; without the tag the suite skips.
 func newServed(ctx context.Context, t *testing.T) *served {
 	t.Helper()
+
+	return newServedAt(ctx, t, "")
+}
+
+// newServedAt is the served stack reporting version as the release it was built from
+// (the configuration's APP_VERSION): a release such as 1.4.0 arms the session outlets'
+// version check against the oldest answered release the generator program declares,
+// and "" is dev, which checks nothing.
+func newServedAt(ctx context.Context, t *testing.T, version string) *served {
+	t.Helper()
 	if !simulatedDirectory() {
 		t.Skip("the portal signs in through a directory: run this suite with -tags skipAuth to simulate it")
 	}
@@ -731,6 +751,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		documents:     documents,
 		live:          fake,
 		management:    crewAuth.Access().Handlers(httpio.Log),
+		version:       version,
 	})
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
@@ -860,6 +881,14 @@ func (b *browser) do(ctx context.Context, method, path string, body []byte) (sta
 func (b *browser) doResponse(ctx context.Context, method, path string, body []byte) *http.Response {
 	b.t.Helper()
 
+	return b.doWith(ctx, method, path, body, nil)
+}
+
+// doWith is doResponse with extra request headers, for a suite that speaks as a browser
+// application built from a release (X-Api-Version); the caller closes the body.
+func (b *browser) doWith(ctx context.Context, method, path string, body []byte, headers map[string]string) *http.Response {
+	b.t.Helper()
+
 	req, err := http.NewRequestWithContext(ctx, method, b.base+path, bytes.NewReader(body))
 	if err != nil {
 		b.t.Fatal(err)
@@ -867,6 +896,9 @@ func (b *browser) doResponse(ctx context.Context, method, path string, body []by
 	req.Header.Set("Content-Type", "application/json")
 	if token := b.xsrfToken(); token != "" {
 		req.Header.Set("X-XSRF-TOKEN", token)
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 
 	resp, err := b.client.Do(req)

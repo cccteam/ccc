@@ -1,7 +1,7 @@
 {
   "outlets": {
     "default": {
-      "oldestAnswered": ""
+      "oldestAnswered": "0.1.0"
     },
     "droids": {
       "kind": "api-key"
