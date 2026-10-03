@@ -26,7 +26,6 @@ require (
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/go-cmp v0.7.0
 	github.com/jtwatson/server v0.2.2
-	github.com/jtwatson/spaassets v0.0.0-20160917192555-583a733b0a63
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.4.1-0.20260819210736-ca4740823783
 	google.golang.org/api v0.297.0
@@ -123,7 +122,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.7 // indirect
 	github.com/sirupsen/logrus v1.10.0 // indirect
-	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
 	github.com/stretchr/testify v1.12.0 // indirect
 	github.com/testcontainers/testcontainers-go v0.44.0 // indirect

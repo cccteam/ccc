@@ -67,7 +67,6 @@ linters:
             - github.com/go-playground/errors/v5
             - github.com/go-playground/validator/v10
             - github.com/jtwatson/server
-            - github.com/jtwatson/spaassets
             - github.com/sethvargo/go-envconfig
             - github.com/shopspring/decimal
             - google.golang.org/api/iterator

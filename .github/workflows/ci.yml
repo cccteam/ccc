@@ -40,6 +40,33 @@ jobs:
       - name: Build
         working-directory: resource/lodestar/web
         run: bun run build
+      - name: Check the worker manifests
+        # Each app's production build emits ngsw.json, its service worker's manifest, from the
+        # workspace's ngsw-config.json joined with the app's base href. A build whose worker
+        # would serve the wrong entry document, answer an API navigation from the cache,
+        # leave the entry document or the web manifest out of its hash table, or cache data
+        # fails here, naming the file. The worker matches navigation URLs relative to its
+        # registration scope, so the API exclusion is the same pattern under every mount.
+        working-directory: resource/lodestar/web
+        run: |
+          for app in console portal; do
+            f="dist/$app/ngsw.json"
+            if [ ! -f "$f" ]; then
+              echo "::error::$f was not emitted; the $app production configuration must name ngsw-config.json"
+              exit 1
+            fi
+            if ! jq -e --arg mount "/$app" '
+                (.index == $mount + "/index.html")
+                and any(.navigationUrls[]; .positive == false and .regex == "^\\/api\\/.*$")
+                and (.hashTable | has($mount + "/index.html") and has($mount + "/manifest.webmanifest"))
+                and ((.dataGroups // []) | length == 0)
+              ' "$f" > /dev/null; then
+              echo "::error::$f is not the worker manifest the $app is built for: wanted index /$app/index.html, the API exclusion ^\\/api\\/.*$ among the navigation patterns, index.html and manifest.webmanifest in the hash table, and no data groups"
+              jq '{index, navigationUrls, dataGroups, hashTable: (.hashTable | keys)}' "$f"
+              exit 1
+            fi
+            echo "$f: index $(jq -r .index "$f"), $(jq '.hashTable | length' "$f") hashed files, the API excluded from navigation, no data groups"
+          done
       - name: Lint
         working-directory: resource/lodestar/web
         run: bun run lint

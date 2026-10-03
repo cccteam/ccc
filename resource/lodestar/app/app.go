@@ -30,7 +30,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
-	"github.com/jtwatson/spaassets"
 )
 
 const (
@@ -151,8 +150,13 @@ type App struct {
 	validate       *validator.Validate
 	logExporter    logger.Exporter
 	version        string
-	consoleDist    string
-	portalDist     string
+	// consoleApp and portalApp serve the two built browser applications
+	// (resource.BrowserApp): the console under /console and the portal under /portal, each
+	// from the directory the configuration names, with the resource package's cache rule
+	// and deep-link rewrite. The generated router's asset and deep-link handlers below
+	// delegate to them.
+	consoleApp     *resource.BrowserApp
+	portalApp      *resource.BrowserApp
 	droidsAPIKey   string
 	tenants        *resource.TenantRoster
 	rpcClient      *rpc.Client
@@ -185,8 +189,8 @@ func New(cfg Configurer) *App {
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
 		version:        cfg.AppVersion(),
-		consoleDist:    cfg.ConsoleDist(),
-		portalDist:     cfg.PortalDist(),
+		consoleApp:     resource.NewBrowserApp(cfg.ConsoleDist(), "/console"),
+		portalApp:      resource.NewBrowserApp(cfg.PortalDist(), "/portal"),
 		droidsAPIKey:   cfg.DroidsAPIKey(),
 		tenants:        cfg.TenantRoster(),
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, documents),
@@ -297,25 +301,39 @@ func (a *App) CompressionMiddleware() func(http.Handler) http.Handler {
 	return middleware.Compress(5)
 }
 
-// DeepLink rewrites the console's Angular routes to its entry point under /console/ so
-// bookmarked frontend routes load the single-page application.
+// DeepLink rewrites the console's Angular routes to its entry document under /console/, so
+// a bookmarked or reloaded route loads the single-page application: a request whose last
+// segment has no extension, matrix parameters removed, is served /console/index.html, and
+// a path with an extension is a file or a 404 (resource.BrowserApp).
 func (a *App) DeepLink(next http.Handler) http.Handler {
-	return spaassets.DeepLink(next, "/console/")
+	return a.consoleApp.DeepLink(next)
 }
 
-// Assets serves the console's built Angular application from /console/.
+// Assets serves the console's built Angular application under /console/ with the resource
+// package's cache rule: a file whose name carries the build hash answers public,
+// max-age=31536000, immutable, and every other file (the entry document, ngsw.json, the
+// worker script, the web manifest, the favicon, the icons) answers no-cache with a strong
+// ETag, so the service worker and any cache between keep a build's hashed files for good
+// and revalidate the rest, an unchanged file answering 304; the web manifest answers its
+// own media type, and a missing file, a path outside the mount or a directory is 404.
+//
+// Demonstrates: webapp.cache-rule.
 func (a *App) Assets() http.HandlerFunc {
-	return serveSPA(http.StripPrefix("/console", http.FileServer(http.Dir(a.consoleDist))))
+	return a.consoleApp.Assets()
 }
 
-// PortalDeepLink rewrites the portal's Angular routes to its entry point under /portal/.
+// PortalDeepLink rewrites the portal's Angular routes to its entry document under /portal/,
+// as DeepLink does for the console.
 func (a *App) PortalDeepLink(next http.Handler) http.Handler {
-	return spaassets.DeepLink(next, "/portal/")
+	return a.portalApp.DeepLink(next)
 }
 
-// PortalAssets serves the portal's built Angular application from /portal/.
+// PortalAssets serves the portal's built Angular application under /portal/ with the same
+// cache rule as Assets.
+//
+// Demonstrates: webapp.cache-rule.
 func (a *App) PortalAssets() http.HandlerFunc {
-	return serveSPA(http.StripPrefix("/portal", http.FileServer(http.Dir(a.portalDist))))
+	return a.portalApp.Assets()
 }
 
 // DroidsAuth authenticates the droids outlet's machine clients: the request must carry
@@ -340,22 +358,6 @@ func (a *App) DroidsAuth(next http.Handler) http.Handler {
 
 		return nil
 	})
-}
-
-// serveSPA wraps a file server with the caching posture a single-page application
-// wants: the entry document is never cached, hashed assets are cached forever.
-func serveSPA(assets http.Handler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/") || strings.HasSuffix(r.URL.Path, "/index.html") {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache") // For HTTP/1.0 backward compatibility
-			w.Header().Set("Expires", "0")       // For proxies
-		} else {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		}
-
-		assets.ServeHTTP(w, r)
-	}
 }
 
 // UserPermissions returns the permission checker for a request, composed from the

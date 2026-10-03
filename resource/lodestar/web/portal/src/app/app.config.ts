@@ -1,8 +1,9 @@
 import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
-import { ApplicationConfig } from '@angular/core';
+import { ApplicationConfig, isDevMode } from '@angular/core';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 import { createApi } from '@app/service/zz_gen_api';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
@@ -15,6 +16,7 @@ import {
   RESOURCE_META,
   SESSION_PATH,
 } from '@cccteam/resource-angular/types';
+import { provideAppUpdate } from '@cccteam/resource-angular/ui-app-update';
 import { environment } from '@env';
 import { routes } from './app.routes';
 
@@ -49,5 +51,14 @@ export const appConfig: ApplicationConfig = {
     // The XSRF cookie is the members auth's (pkg/auth/members, XSRFCookie): HttpClient echoes it in
     // the X-XSRF-TOKEN header on every mutating request, and the server verifies the echo.
     provideHttpClient(withXsrfConfiguration({ cookieName: 'members-xsrf' })),
+    // The portal installs as a progressive web app, as the console does: the service
+    // worker from the workspace's one ngsw-config.json, whose patterns the build joins with
+    // this app's base href, so the worker's scope is /portal/ and its API exclusion is
+    // /portal/api, which keeps the directory login and its callback reaching the server;
+    // off in dev mode and in specs; and the library's update notice beside it.
+    //
+    // Demonstrates: webapp.installable, webapp.update-notice.
+    provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' }),
+    provideAppUpdate(),
   ],
 };

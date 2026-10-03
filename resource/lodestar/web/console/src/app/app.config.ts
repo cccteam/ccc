@@ -1,8 +1,9 @@
 import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
-import { ApplicationConfig, computed, inject, Injector, Signal } from '@angular/core';
+import { ApplicationConfig, computed, inject, Injector, isDevMode, Signal } from '@angular/core';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 import { createApi } from '@app/service/zz_gen_api';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
@@ -25,6 +26,7 @@ import {
   RESOURCE_META,
   SESSION_PATH,
 } from '@cccteam/resource-angular/types';
+import { provideAppUpdate } from '@cccteam/resource-angular/ui-app-update';
 import { firestoreChangeFeed } from '@cccteam/resource-firestore';
 import { SectorService } from '@components/sector/sector.service';
 import { environment } from '@env';
@@ -128,5 +130,20 @@ export const appConfig: ApplicationConfig = {
     // The XSRF cookie is the crew auth's (pkg/auth/crew, XSRFCookie): HttpClient echoes it in
     // the X-XSRF-TOKEN header on every mutating request, and the server verifies the echo.
     provideHttpClient(withXsrfConfiguration({ cookieName: 'crew-xsrf' })),
+    // The console installs as a progressive web app. The service worker (ngsw-worker.js,
+    // which the production build emits beside ngsw.json from the workspace's
+    // ngsw-config.json) keeps this build's files, so an open tab that loads a lazy chunk
+    // after a release still finds it, and serves the next page load from the newest build
+    // it holds before checking for a newer one. It is off in dev mode, where the dev server
+    // emits no worker manifest, and in specs, which never load this config. It registers as
+    // soon as the app is stable (nothing pending) or thirty seconds after start, whichever
+    // comes first. provideAppUpdate() starts the library's update service beside it: when
+    // the worker has a new build ready it raises one persistent notice with Reload in the
+    // alert area the shell renders, and reloads only when the person chooses; no component
+    // references it.
+    //
+    // Demonstrates: webapp.installable, webapp.update-notice.
+    provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' }),
+    provideAppUpdate(),
   ],
 };

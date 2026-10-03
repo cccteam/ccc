@@ -72,6 +72,48 @@ file there under a minted key, the transaction's commit claims it, a failure bef
 commit deletes it, and the generated file route reads it back; `store.DirStore.Sweep` is
 the application's safety net for an object no row claims, never the mechanism.
 
+## The installed apps
+
+Both browser apps install as progressive web apps. A production build of the console and
+of the portal carries a service worker (`ngsw-worker.js` and its manifest `ngsw.json`,
+built from the one worker configuration at `web/ngsw-config.json`) and a web app manifest
+(`web/console/public/manifest.webmanifest` and `web/portal/public/manifest.webmanifest`,
+with the icons beside each under `public/icons/`), so a browser offers to install either
+app as a window of its own: the console under `/console/` and the portal under `/portal/`,
+each worker's scope its own mount, on one origin. The console's manifest names it
+Lodestar and the portal's Lodestar Portal; each carries the app's header color as its
+theme color and its page background as its background color. The dev server registers no
+worker: the worker is on in a production build alone, and the component specs never load
+the app config.
+
+An open tab survives a release. The worker keeps the files of the build the tab loaded, so
+a lazy chunk the tab asks for after a deploy is still found although the server no longer
+has it, and the next page load is served from the newest build the worker holds, after
+which the worker checks the server for a newer one. The server's cache headers come from
+the resource package's `BrowserApp`, which `app/app.go`'s asset handlers delegate to: a
+file whose name carries the build hash is immutable for a year, and every other file (the
+entry document, `ngsw.json`, the worker script, the web manifest, the icons) is `no-cache`
+with a strong ETag, revalidated on each use, so no cache between the browser and the
+server can hand the worker a stale build.
+
+When a new build is ready, the app says so. `provideAppUpdate()` from
+`@cccteam/resource-angular/ui-app-update`, provided in each app config beside
+`provideServiceWorker`, raises one persistent notice, "A new version of this application
+is ready.", with a Reload action in the alert area the shell renders; the app reloads only
+when the person chooses. It checks for a new build hourly while the tab is visible and
+once when the tab becomes visible again, and the worker itself checks after every page
+load.
+
+The worker's navigation patterns exclude `/api/**` relative to each mount, so a navigation
+to `/console/api/...` or `/portal/api/...` always reaches the server: the portal's directory
+login and its callback, and a stored-file link, are never answered with the cached entry
+document. The worker caches no API response and no third-party file.
+
+The kill switch: a build deployed without `ngsw.json` makes every installed worker
+unregister itself and drop its caches on its next check, after which the page is served by
+the network alone. Removing `"serviceWorker": "ngsw-config.json"` from a project's
+production configuration in `web/angular.json` is how a build is made without it.
+
 ## Live pages
 
 The console's Ships page is live. Sign in as `harbormaster` (Harbormaster Hollis), open
