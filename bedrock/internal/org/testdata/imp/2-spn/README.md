@@ -1,0 +1,138 @@
+# 2-spn
+
+The shared Spanner project: one multi-region instance that every application's
+stg and prd databases live on. Applied by the layers workflow as
+`imp-spn-gbl-tofu`, planned on a pull request as `imp-spn-gbl-plan`.
+
+## What it creates
+
+- The Spanner instance `imp-spn-gbl-spanner` in the `spn` project:
+  configuration `nam10` (read-write replicas in us-central1 and us-west3,
+  witness in us-central2), 100 processing units, STANDARD edition, labelled
+  `bedrock-lab`. No autoscaler. `force_destroy` is off and the resource
+  carries `prevent_destroy`, so neither a plan nor a stray destroy can take
+  the databases with it.
+- For each member of `database_admins` (an application's apply identity in
+  stg or prd, with the environment and application its grants are bounded
+  to), rendered into `applications.auto.tfvars` from `placement.json` and bound
+  only after the environment layers have created the identities: the
+  organization's `spannerDatabaseCreator` role on the instance without
+  condition (creating a database and listing what the instance holds are
+  checked on the instance); `roles/spanner.databaseAdmin` under a condition
+  naming the application's own database in that environment
+  (`<prefix>-<env>-gbl-<app>-`, with the schedules and operations under it);
+  `roles/spanner.backupAdmin` under the same condition widened to the backups
+  taken from that database (for the backup schedules a production stack makes
+  on its database, which `databaseAdmin` does not read); and, for every
+  environment but production, `roles/spanner.restoreAdmin` on production's
+  backups of the same application (the restore of the environment's database
+  from production's backup, which adds `spanner.backups.restoreDatabase`
+  alone). stg's identity can neither drop production's database nor restore
+  over it, and neither application's identity reaches the other's.
+- The organization's `spannerPlanReader` role (`1-org`) on the instance for
+  each member of `database_planners`, the application plan identities of the
+  same environments: a pull-request build plans the environment's stack as
+  the plan identity and refreshes the database, its grants and its backup
+  schedules here, writing nothing.
+- The Spanner entitlements of `stg` and `prd`
+  (`entitlements.tf`, which first sets the service up on this project: its
+  service agent and the service agent role), in Privileged Access Manager:
+  per environment,
+  `imp-<env>-spanner-admin` (`roles/spanner.databaseAdmin` and
+  `roles/spanner.backupAdmin`) and `imp-<env>-spanner-viewer`
+  (`roles/spanner.databaseReader`), each database role bounded by a condition
+  to the environment's own databases (`imp-<env>-gbl-`) and the backups
+  taken from them, with the organization's `spannerPlanReader` role
+  unconditioned so a member sees the instance and the names of its databases.
+  The environment's team group (`placement.json`, `teamGroups`) is eligible; a
+  request takes a justification and, in the approval environments, one
+  approval by another member of the group with a justification of their own
+  (a requester cannot approve their own request); the longest grants are
+  `placement.json`'s (`entitlementDurations`; unset,
+  the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours). The first environment's instance is its
+  own, and `2-env` declares its two on its project (`2-env/README.md`, "The
+  team group"). Creating them is `roles/privilegedaccessmanager.admin` in
+  `1-org`'s `spn` role set, with the API in its `spn` API set.
+
+Not created here: databases. Each application's layer creates its own
+databases on this instance, one for stg and one for prd, named within the 30
+character database ID limit, and decides per database whether it gets an
+automatic backup schedule (`default_backup_schedule_type` is left at the
+instance default here for that reason). tst does not use this instance; its
+own instance lives in the tst project with the pull-request databases.
+
+## IAM
+
+Two levels, two owners.
+
+Instance level, this layer: creating a database is `spanner.databases.create`
+checked on the instance, so the identity that creates databases, the
+application apply identity in stg and prd, is listed in `database_admins` and
+bound here as database admin, as backup admin for the backup schedules, and
+as restore admin for the restore from production's backup.
+Database admin at instance level reaches every database on the instance;
+bounding it to an application's own databases is an open question, and until
+it is answered the list stays short. The application plan identity of the
+same environments is listed in `database_planners` and bound as
+`spannerPlanReader`, the organization's role of the reads a plan needs.
+
+Database level, the application layer: `roles/spanner.databaseUser` for each
+runtime identity on its database and `roles/spanner.databaseAdmin` for the
+migrate identity on its own database for DDL. Those grants name a database
+that only the application layer knows, so they are made there, with
+`google_spanner_database_iam_member`. A person's time-limited access to an
+environment's databases is this layer's (the entitlements above): bounded by
+the databases' names, which this layer knows, not by a database.
+
+## Capacity
+
+100 processing units is the smallest a multi-region instance can be. The
+decision of 2026-09-25 is never more than 200 without explicit agreement, and
+`variables.tf` enforces it: `processing_units` must be 100 or 200. Raising the
+cap is a change to the validation, visible in review, not a number in
+`terraform.tfvars`.
+
+## Applying
+
+By the layers workflow (`.github/workflows/layers.yml`), after `1-org` has been applied:
+a pull request that changes this directory plans it as the plan identity and
+posts the plan, and the merge applies it as the layer identity. Both hold
+their state-bucket grants from `1-org`. The first `init` writes
+`.terraform.lock.hcl`; commit it.
+
+By hand, for recovery, the bootstrap administrator applies it with their own
+sign-in and the organization-level roles the seed names (no entitlement
+covers a shared layer; `0-bootstrap/README.md`, "Recovery, by hand"):
+
+```bash
+cd 2-spn
+tofu init
+tofu plan
+tofu apply
+```
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|---|---|---|---|:---:|
+| `database_admins` | Members granted database admin on the instance. | `list(string)` | `[]` | no |
+| `database_planners` | Members granted the organization's `spannerPlanReader` role on the instance. | `list(string)` | `[]` | no |
+| `edition` | Spanner edition. | `string` | `"STANDARD"` | no |
+| `processing_units` | Compute capacity; 100 or 200. | `number` | `100` | no |
+| `spanner_config` | Instance configuration. | `string` | `"nam10"` | no |
+
+Project ID, the boot project, and the prefix are read from `1-org`'s state
+rather than declared.
+
+## Outputs
+
+Read by the application layers through `data "terraform_remote_state"` on the
+state bucket, prefix `2-spn`.
+
+| Name | Description |
+|---|---|
+| `instance_id` | `projects/{project}/instances/imp-spn-gbl-spanner`. |
+| `instance_name` | `imp-spn-gbl-spanner`, for `google_spanner_database.instance`. |
+| `processing_units` | Compute capacity. |
+| `project_id` | The `spn` project; a database resource names this project. |
+| `spanner_config` | `nam10`. |

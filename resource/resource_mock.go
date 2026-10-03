@@ -17,6 +17,9 @@ type MockClient struct {
 	readOnlyMocks []any
 	txnReadMocks  []any
 	txnMock       ReadWriteTransaction
+	// stores are the file stores by name a committed transaction's released file
+	// objects are deleted from, as on the Spanner client.
+	stores *fileStores
 }
 
 // NewMockClient creates a new MockClient for testing resource database interactions.
@@ -29,13 +32,28 @@ type MockClient struct {
 // IMPORTANT: For readOnlyMocks and txnReadMocks, provide only one mock per
 // resource type (e.g., Read[MyResource]). Multiple calls for the same Resource
 // must be configured on that single mock.
-func NewMockClient(txnMock ReadWriteTransaction, readOnlyMocks, txnReadMocks []any) *MockClient {
+//
+// WithFileStore and WithNamedFileStore hand it the stores ExecuteFunc deletes released
+// file objects from after the function returns, so a test can assert what a patch
+// released.
+func NewMockClient(txnMock ReadWriteTransaction, readOnlyMocks, txnReadMocks []any, opts ...ClientOption) *MockClient {
 	return &MockClient{
 		dbType:        SpannerDBType,
 		readOnlyMocks: readOnlyMocks,
 		txnReadMocks:  txnReadMocks,
 		txnMock:       txnMock,
+		stores:        applyClientOptions(opts),
 	}
+}
+
+// DBType returns the database type the mock stands in for.
+func (c *MockClient) DBType() DBType {
+	return c.dbType
+}
+
+// FileStore returns the store wired under name, nil when none is.
+func (c *MockClient) FileStore(name StoreName) FileStore {
+	return c.stores.get(name)
 }
 
 // Close closes the database connection.
@@ -52,11 +70,22 @@ func (c *MockClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	return nil
 }
 
-// ExecuteFunc executes a function within a read-write transaction.
+// ExecuteFunc executes a function within a read-write transaction. As the Spanner
+// client's does, it refuses a function that released an object of a store the client
+// holds none for, deletes the file objects the function's patches released from their
+// stores once the function returns nil, hands the rows the patches wrote to the
+// collector ctx carries (CollectTouchedRows), and does neither when it errors.
 func (c *MockClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
-	if err := f(ctx, NewMockReadWriteTransaction(c.txnMock, c.txnReadMocks...)); err != nil {
+	txn := newMockReadWriteTransaction(c.txnMock, newReleasedKeys(), c.txnReadMocks...)
+	if err := f(ctx, txn); err != nil {
 		return errors.Wrap(err, "f()")
 	}
+	if err := refuseUnwiredRelease(c.stores, txn.Released()); err != nil {
+		return err
+	}
+
+	releaseFiles(ctx, c.stores, txn.Released())
+	collectTouched(ctx, txn.touched())
 
 	return nil
 }
@@ -78,19 +107,45 @@ var _ ReadWriteTransaction = (*MockReadWriteTransaction)(nil)
 type MockReadWriteTransaction struct {
 	txnReaderMocks []any
 	txnMock        ReadWriteTransaction
+	released       *releasedKeys
+	touchedRows    *touchedRows
 }
 
 // NewMockReadWriteTransaction creates a new MockReadWriteTransaction.
-func NewMockReadWriteTransaction(mock ReadWriteTransaction, txnReaderMocks ...any) ReadWriteTransaction {
+func NewMockReadWriteTransaction(mock ReadWriteTransaction, txnReaderMocks ...any) *MockReadWriteTransaction {
+	return newMockReadWriteTransaction(mock, newReleasedKeys(), txnReaderMocks...)
+}
+
+// newMockReadWriteTransaction wraps the mocks over the record the released file keys
+// are noted in; the Mock client's ExecuteFunc reads it back when the function returns.
+func newMockReadWriteTransaction(mock ReadWriteTransaction, released *releasedKeys, txnReaderMocks ...any) *MockReadWriteTransaction {
 	return &MockReadWriteTransaction{
 		txnReaderMocks: txnReaderMocks,
 		txnMock:        mock,
+		released:       released,
+		touchedRows:    newTouchedRows(),
 	}
 }
 
 // DBType returns the database type.
 func (c *MockReadWriteTransaction) DBType() DBType {
 	return c.txnMock.DBType()
+}
+
+// recordReleased notes file keys of one store the transaction's patches let go of.
+func (c *MockReadWriteTransaction) recordReleased(store StoreName, keys ...string) {
+	c.released.record(store, keys...)
+}
+
+// Released returns the file objects the transaction's patches released so far, each
+// with its store, as SpannerReadWriteTransaction.Released does.
+func (c *MockReadWriteTransaction) Released() []ReleasedKey {
+	return c.released.list()
+}
+
+// touched returns the rows the transaction's patches wrote so far.
+func (c *MockReadWriteTransaction) touched() []touchedRow {
+	return c.touchedRows.list()
 }
 
 // DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction.
@@ -113,6 +168,7 @@ func (c *MockReadWriteTransaction) BufferMap(r PatchSetMetadata, p map[string]an
 	if err := c.txnMock.BufferMap(r, p); err != nil {
 		return errors.Wrap(err, "c.txnMock.BufferMap()")
 	}
+	c.touchedRows.record(r)
 
 	return nil
 }
@@ -122,6 +178,7 @@ func (c *MockReadWriteTransaction) BufferStruct(p PatchSetMetadata) error {
 	if err := c.txnMock.BufferStruct(p); err != nil {
 		return errors.Wrap(err, "c.txnMock.BufferStruct()")
 	}
+	c.touchedRows.record(p)
 
 	return nil
 }
@@ -131,12 +188,13 @@ func (c *MockReadWriteTransaction) PostgresReadOnlyTransaction() any {
 	panic("MockReadWriteTransaction.PostgresReadOnlyTransaction() should never be called.")
 }
 
-// MockIterSeq2 is used for mocking iter.Seq2[Resourcer, error] type. If both err and resource are
-// provided, it will yield all elements in resource first and then err
-func MockIterSeq2[Resource Resourcer](err error, resource ...*Resource) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+// MockIterSeq2 is used for mocking the iter.Seq2[*Row[Resource], error] type returned by List.
+// Each resource is wrapped in the Row envelope. If both err and resource are provided, it will
+// yield all elements in resource first and then err
+func MockIterSeq2[Resource Resourcer](err error, resource ...*Resource) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
 		for _, r := range resource {
-			if !yield(r, nil) {
+			if !yield(&Row[Resource]{Data: *r}, nil) {
 				return
 			}
 		}

@@ -1,0 +1,326 @@
+package integration
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/app"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
+	initiator "github.com/cccteam/db-initiator"
+	"github.com/cccteam/logger"
+	"github.com/cccteam/session"
+	"github.com/go-playground/errors/v5"
+	"github.com/go-playground/validator/v10"
+)
+
+const (
+	migrationsSource = "file://../../schema/migrations"
+	devSeedSource    = "file://../../schema/devseed"
+
+	// The development tenants, matching schema/devseed.
+	north = "north"
+	south = "south"
+
+	// The development logins the served suites sign in as: admin holds
+	// Administrator_Global and Administrator_Domain in every tenant, member holds
+	// Administrator_Domain in north only.
+	adminUser     = "admin"
+	memberUser    = "member"
+	adminPassword = "password"
+)
+
+// servedConfigurer implements app.Configurer over the real dependencies: the test
+// database, the real permission engine, and a real session manager, so the suites
+// exercise the same served stack main composes.
+type servedConfigurer struct {
+	db      *initiator.SpannerDB
+	auth    *staff.Auth
+	live    *live.Fake
+	tenants *resource.TenantRoster
+}
+
+// TenantRoster is the tenant roster over the test database, read from the Tenants table
+// the development seed filled and kept current as production's data level keeps it: a
+// tenant written through the API reaches it after the commit, and the served stack
+// filters it by the engine's foothold answer.
+func (c *servedConfigurer) TenantRoster() *resource.TenantRoster {
+	return c.tenants
+}
+
+func (c *servedConfigurer) ResourceClient() resource.Client {
+	return resource.NewSpannerClient(c.db.Client)
+}
+
+// CursorKey seals the cursors the suites' paged lists issue; any key serves a test process.
+func (c *servedConfigurer) CursorKey() *resource.CursorKey {
+	key, err := resource.NewCursorKey(base64.StdEncoding.EncodeToString([]byte("skeleton-test-cursor-key-material!!")))
+	if err != nil {
+		panic(err)
+	}
+
+	return key
+}
+
+func (c *servedConfigurer) Access() access.Controller { return c.auth.Access() }
+
+func (c *servedConfigurer) Staff() *staff.Auth { return c.auth }
+
+func (c *servedConfigurer) Validator() *validator.Validate { return validator.New() }
+
+func (c *servedConfigurer) LogExporter() logger.Exporter { return logger.NewConsoleExporter() }
+
+// AppVersion is dev: the served stack's version check answers every release, so no
+// suite's request is refused for the release it carries.
+func (c *servedConfigurer) AppVersion() string {
+	return "dev"
+}
+
+func (c *servedConfigurer) ConsoleDist() string { return "" }
+
+// Live is the in-memory live service the auths' permission engines signal policy
+// changes through: the live service is required in every application.
+func (c *servedConfigurer) Live() live.Service {
+	return c.live
+}
+
+// LiveOrigins names no change feed origin: the suites serve no live pages.
+func (c *servedConfigurer) LiveOrigins() []string {
+	return nil
+}
+
+// served is one running instance of the application under test.
+type served struct {
+	server *httptest.Server
+	access *access.Client
+}
+
+// newServed provisions the database the way the deployment does (the schema and the
+// development tenants, then the auth opened over it with its embedded role file validated
+// against the collection), creates the development logins, and serves the full router.
+func newServed(ctx context.Context, t *testing.T) *served {
+	t.Helper()
+
+	db, err := prepareDatabase(ctx, t, migrationsSource, devSeedSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The live service the engine signals policy changes through, the App follows its
+	// feature flags from, and the tenant roster reloads on: in-memory in the suites.
+	svc := live.NewFake()
+	// The tenant roster, started over the seeded tenants as production's data level
+	// starts it; a tenant the suites create through the API reaches it after the commit.
+	roster := app.NewTenantRoster(resource.NewSpannerClient(db.Client), resource.WithTenantSignals(svc))
+	if err := roster.Start(ctx); err != nil {
+		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
+	}
+	auth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	if err != nil {
+		t.Fatalf("staff.New() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := auth.Close(); err != nil {
+			t.Errorf("staff.Auth.Close() error = %v", err)
+		}
+	})
+	accessClient := auth.Access()
+
+	passwordAuth := auth.Session()
+	password := adminPassword
+	for _, user := range []string{adminUser, memberUser} {
+		if _, err := passwordAuth.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: user, Password: &password}); err != nil {
+			t.Fatalf("CreateSessionUser(%s) error = %v", user, err)
+		}
+	}
+	// The memberships as the bootstrap identities hold them: the administrator's domain
+	// role in every tenant domain, one membership, and the member's in north alone.
+	assignments := []struct {
+		user  accesstypes.User
+		scope accesstypes.PolicyScope
+		role  accesstypes.Role
+	}{
+		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator_Global"},
+		{adminUser, accesstypes.EveryDomainPolicyScope(), "Administrator_Domain"},
+		{memberUser, accesstypes.DomainPolicyScope(north), "Administrator_Domain"},
+	}
+	for _, a := range assignments {
+		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {
+			t.Fatalf("AddUserRoles(%s, %v) error = %v", a.user, a.scope, err)
+		}
+	}
+
+	// The snapshot swap is asynchronous: wait until the last-provisioned assignment is
+	// visible to the engine before serving.
+	waitForDomains(ctx, t, accessClient, memberUser, []accesstypes.Domain{north})
+
+	a := app.New(&servedConfigurer{db: db, auth: auth, live: svc, tenants: roster})
+	// The App reads its feature flags as it is built; Start reports a copy that could
+	// not be read and follows the table until the test ends.
+	if err := a.Start(ctx); err != nil {
+		t.Fatalf("app.Start() error = %v", err)
+	}
+	handler := router.New(a, router.Hooks{})
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	return &served{server: server, access: accessClient}
+}
+
+// waitForDomains blocks until the engine's snapshot reports the user's footholds in
+// exactly the expected tenants, asked the way the served stack asks (the development
+// roster filtered by UserHasGrants): the store writes signal a reload, but the swap is
+// asynchronous.
+func waitForDomains(ctx context.Context, t *testing.T, client *access.Client, user accesstypes.User, want []accesstypes.Domain) {
+	t.Helper()
+
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		domains, err := footholds(ctx, client, user)
+		if err == nil && slices.Equal(domains, want) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("policy snapshot never became visible; last domains for %s: %v (err %v)", user, domains, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// footholds lists the development tenants where the user holds at least one grant.
+func footholds(ctx context.Context, client *access.Client, user accesstypes.User) ([]accesstypes.Domain, error) {
+	var domains []accesstypes.Domain
+	for _, domain := range []accesstypes.Domain{north, south} {
+		has, err := client.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+		if err != nil {
+			return nil, errors.Wrap(err, "access.Client.UserHasGrants()")
+		}
+		if has {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains, nil
+}
+
+// testCookieKey signs session cookies in the suites; any 32 bytes will do.
+const testCookieKey = "dGVzdC1jb29raWUta2V5LXRlc3QtY29va2llLWtleS0xMjM0NTY="
+
+// browser is one browser's view of the served application: a cookie jar and the XSRF
+// token the session middleware issued into it.
+type browser struct {
+	t      *testing.T
+	base   string
+	client *http.Client
+}
+
+func newBrowser(t *testing.T, s *served) *browser {
+	t.Helper()
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &browser{t: t, base: s.server.URL, client: &http.Client{Jar: jar}}
+}
+
+// login posts the credentials to the login route and returns the status.
+func (b *browser) login(ctx context.Context, user, password string) (status int, body []byte) {
+	b.t.Helper()
+
+	credentials, err := json.Marshal(map[string]string{"username": user, "password": password})
+	if err != nil {
+		b.t.Fatal(err)
+	}
+
+	return b.do(ctx, http.MethodPost, "/api/user/login", credentials)
+}
+
+// do issues one request as this browser, carrying its cookies and XSRF token.
+func (b *browser) do(ctx context.Context, method, path string, body []byte) (status int, respBody []byte) {
+	b.t.Helper()
+
+	req, err := http.NewRequestWithContext(ctx, method, b.base+path, bytes.NewReader(body))
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token := b.xsrfToken(); token != "" {
+		req.Header.Set("X-XSRF-TOKEN", token)
+	}
+
+	resp, err := b.client.Do(req)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+
+	return resp.StatusCode, respBody
+}
+
+// xsrfToken returns the XSRF cookie the session middleware issued, or empty before the
+// first response.
+func (b *browser) xsrfToken() string {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, b.base+"/api/user/session", http.NoBody)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	for _, cookie := range b.client.Jar.Cookies(req.URL) {
+		if cookie.Name == staff.XSRFCookie {
+			return cookie.Value
+		}
+	}
+
+	return ""
+}
+
+// provesGrant names the conditional grant a test case proves. It parses the auth's role
+// file (<auth>.Roles(), the file embedded in the auth package) and fails unless a grant for
+// the role, permission, and resource carries exactly that condition text, so a case whose
+// grant is gone or reworded fails here even when nobody ran impulse check, whose
+// conditions-proven check reads these calls to find the conditional grants no case names.
+// Write the file as the auth package's Roles() call and the coordinates as literals: the
+// check reads them from the source.
+func provesGrant(t *testing.T, roles access.RoleFile, role accesstypes.Role, permission accesstypes.Permission, res accesstypes.Resource, condition string) {
+	t.Helper()
+
+	parsed, err := roles.Parse()
+	if err != nil {
+		t.Fatalf("parsing the role file: %v", err)
+	}
+	var conditions []string
+	for _, r := range slices.Concat(parsed.Roles.Global, parsed.Roles.Domain) {
+		if r.Name != role {
+			continue
+		}
+		for _, g := range r.Permissions[permission] {
+			if g.Resource != res {
+				continue
+			}
+			if g.Condition == condition {
+				return
+			}
+			conditions = append(conditions, g.Condition)
+		}
+	}
+	t.Fatalf("no %s grant of the %s role on %s carries the condition %q (the file's conditions there: %q); the case proves a grant the file no longer carries", permission, role, res, condition, conditions)
+}

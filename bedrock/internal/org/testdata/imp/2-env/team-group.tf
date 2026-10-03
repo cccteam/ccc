@@ -1,0 +1,197 @@
+# ---------------------------------------------------------------------------
+# The environment's team group
+#
+# Each person's access to this environment comes from one group that
+# placement.json names for the environment (teamGroups; var.team_groups),
+# made in the Workspace Admin console: the group holds the release approval
+# where a release waits for one, and its members ask for a time-limited
+# grant of everything else that changes the environment through the
+# entitlements below, in Privileged Access Manager. No person holds a
+# standing role that changes an environment, and nothing here names a
+# person.
+#
+# An entitlement is a right a member of the group asks for, for up to the
+# entitlement's longest grant (placement.json, entitlementDurations; the
+# defaults are the README's), with a justification. In `stg` and `prd` the
+# request waits for one approval by another member of the group, who writes
+# a justification of their own (a requester cannot approve their own
+# request); in tst no approval is needed. Every request, approval and
+# grant is in the audit log, and the grant is an IAM binding on the project
+# that the service makes for the time asked and removes after it. Creating
+# an entitlement is roles/privilegedaccessmanager.admin on the project, in
+# the app role set (1-org), with the API in the app API set.
+# ---------------------------------------------------------------------------
+
+locals {
+  # The group as the address placement.json names (where the approvals are
+  # mailed) and as an IAM member.
+  team_group_address = var.team_groups[var.environment]
+  team_group         = "group:${local.team_group_address}"
+
+  # The environments whose version triggers wait for a release's approval:
+  # every environment but the first, the rule the application stacks declare
+  # their triggers from. The group approves there, and an entitlement there
+  # takes an approval.
+  approval_environments = ["stg", "prd"]
+  approval_required     = contains(local.approval_environments, var.environment)
+
+  # The environment's apply identity (1-org), which the layer administrator
+  # acts as for a recovery, named for the condition by its email and its
+  # unique id: IAM names a service account in a condition's resource.name by
+  # one of the two (the unique id is read from 1-org's state once that layer
+  # has published it), so the condition admits both forms, and no other
+  # identity.
+  layer_identity_names = compact([
+    local.org.layer_service_accounts[var.environment],
+    try(local.org.layer_service_account_unique_ids[var.environment], ""),
+  ])
+  layer_identity_condition = join(" || ", [for n in local.layer_identity_names : "resource.name.endsWith(\"/serviceAccounts/${n}\")"])
+
+  # The longest grant of each entitlement, from placement.json.
+  entitlement_durations = {
+    secret_operator     = "3600s"
+    spanner_admin       = "7200s"
+    spanner_viewer      = "28800s"
+    layer_administrator = "14400s"
+  }
+
+  # The entitlements, by the name their id ends with: the roles each grants on
+  # the environment project, with a condition where one bounds the grant
+  # (empty for none).
+  #
+  #   secret-operator      bedrock secret add and pin: a container created
+  #                        ahead of the release that first reads it, and the
+  #                        versions added to it (1-org's secretOperator role:
+  #                        creating and adding, never a payload).
+  #   spanner-admin        the environment's databases: their schema, rows and
+  #                        backups, for a migration that stopped and the rows
+  #                        it validated. On an environment's own instance every
+  #                        database in the project is the environment's; for
+  #                        an environment on the shared instance 2-spn declares
+  #                        it on the spn project, bounded to the environment's
+  #                        databases, so it is declared here for an own
+  #                        instance alone.
+  #   spanner-viewer       the same databases, read only, with the
+  #                        organization's spannerPlanReader role for the
+  #                        instance and the names of its databases.
+  #   layer-administrator  a recovery of this layer: acting as the
+  #                        environment's apply identity for a short time
+  #                        (roles/iam.serviceAccountTokenCreator on that
+  #                        identity alone), so a person plans and applies this
+  #                        layer with exactly the identity's roles, on the same
+  #                        code the layers workflow runs
+  #                        (GOOGLE_IMPERSONATE_SERVICE_ACCOUNT, README).
+  entitlements = {
+    for name, e in {
+      secret-operator = {
+        declared = true
+        duration = local.entitlement_durations.secret_operator
+        bindings = [{ role = local.org.secret_operator_role, condition = "" }]
+      }
+      spanner-admin = {
+        declared = local.own_instance
+        duration = local.entitlement_durations.spanner_admin
+        bindings = [
+          { role = "roles/spanner.databaseAdmin", condition = "" },
+          { role = "roles/spanner.backupAdmin", condition = "" },
+        ]
+      }
+      spanner-viewer = {
+        declared = local.own_instance
+        duration = local.entitlement_durations.spanner_viewer
+        bindings = [
+          { role = "roles/spanner.databaseReader", condition = "" },
+          { role = local.org.spanner_plan_reader_role, condition = "" },
+        ]
+      }
+      layer-administrator = {
+        declared = true
+        duration = local.entitlement_durations.layer_administrator
+        bindings = [{ role = "roles/iam.serviceAccountTokenCreator", condition = local.layer_identity_condition }]
+      }
+    } : name => e if e.declared
+  }
+}
+
+# Release approval: approving in Cloud Build is the gate itself, and the audit
+# log records who approved, so it is a standing grant, in the environments
+# whose version triggers wait for one.
+resource "google_project_iam_member" "release_approver" {
+  count = local.approval_required ? 1 : 0
+
+  project = local.project_id
+  role    = "roles/cloudbuild.builds.approver"
+  member  = local.team_group
+}
+
+# Privileged Access Manager is set up on the project before an entitlement is
+# declared on it: its service agent exists and holds the service agent role,
+# which is what the console's "Set up PAM" does. Enabling the API alone
+# answers the first entitlement with "PAM has not been enabled for this
+# resource", which the lab found on the first apply of these.
+resource "google_project_service_identity" "pam" {
+  provider = google-beta
+
+  project = local.project_id
+  service = "privilegedaccessmanager.googleapis.com"
+}
+
+resource "google_project_iam_member" "pam_service_agent" {
+  project = local.project_id
+  role    = "roles/privilegedaccessmanager.serviceAgent"
+  member  = "serviceAccount:${google_project_service_identity.pam.email}"
+}
+
+resource "google_privileged_access_manager_entitlement" "team" {
+  for_each = local.entitlements
+
+  entitlement_id       = "${local.name}-${each.key}"
+  location             = "global"
+  parent               = "projects/${local.project_id}"
+  max_request_duration = each.value.duration
+
+  eligible_users {
+    principals = [local.team_group]
+  }
+
+  privileged_access {
+    gcp_iam_access {
+      resource_type = "cloudresourcemanager.googleapis.com/Project"
+      resource      = "//cloudresourcemanager.googleapis.com/projects/${local.project_id}"
+
+      dynamic "role_bindings" {
+        for_each = each.value.bindings
+        content {
+          role                 = role_bindings.value.role
+          condition_expression = role_bindings.value.condition == "" ? null : role_bindings.value.condition
+        }
+      }
+    }
+  }
+
+  # The requester says why, every time.
+  requester_justification_config {
+    unstructured {}
+  }
+
+  # In the approval environments, one approval by another member of the group,
+  # with a justification; the group is mailed the request.
+  dynamic "approval_workflow" {
+    for_each = local.approval_required ? [1] : []
+    content {
+      manual_approvals {
+        require_approver_justification = true
+
+        steps {
+          approvals_needed          = 1
+          approver_email_recipients = [local.team_group_address]
+
+          approvers {
+            principals = [local.team_group]
+          }
+        }
+      }
+    }
+  }
+  depends_on = [google_project_iam_member.pam_service_agent]
+}

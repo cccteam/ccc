@@ -1,0 +1,96 @@
+<h1>Welcome aboard, {{ auth.sessionInfo().username }}</h1>
+<p>
+  Lodestar is the operations console of a frontier rescue and salvage service. Below is your service card: per
+  resource, what your posting in the selected sector grants you — <b>granted</b>, <b>terms apply</b> (a conditional
+  grant the server narrows row by row), or nothing at all. Every deck consults this same digest before it asks the
+  server for anything.
+</p>
+
+<app-star-chart></app-star-chart>
+
+@if (ledger.value().length) {
+  <mat-card appearance="outlined" class="table-card">
+    <mat-card-header>
+      <mat-card-title>Service Ledger</mat-card-title>
+      <mat-card-subtitle>A computed resource, one row per sector: open missions, fees outstanding, settlements made.</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <table mat-table [dataSource]="ledger.value()">
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef>Sector</th>
+          <td mat-cell *matCellDef="let row">{{ row.name }}</td>
+        </ng-container>
+        <ng-container matColumnDef="openMissions">
+          <th mat-header-cell *matHeaderCellDef>Open Missions</th>
+          <td mat-cell *matCellDef="let row">{{ row.openMissions }}</td>
+        </ng-container>
+        <ng-container matColumnDef="feesOutstanding">
+          <th mat-header-cell *matHeaderCellDef>Fees Outstanding</th>
+          <td mat-cell *matCellDef="let row">{{ row.feesOutstanding }}</td>
+        </ng-container>
+        <ng-container matColumnDef="settlements">
+          <th mat-header-cell *matHeaderCellDef>Settlements</th>
+          <td mat-cell *matCellDef="let row">{{ row.settlements }}</td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="ledgerColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: ledgerColumns"></tr>
+      </table>
+    </mat-card-content>
+  </mat-card>
+}
+
+<mat-card appearance="outlined" class="card-badge">
+  <mat-card-header>
+    <mat-card-title>Service card — {{ sector() || 'no sector' }}</mat-card-title>
+    <mat-card-subtitle>
+      The permission digest as a badge. A striped column is a permission your session mask has removed.
+    </mat-card-subtitle>
+  </mat-card-header>
+  <mat-card-content>
+    <table class="badge">
+      <thead>
+        <tr>
+          <th>Resource</th>
+          @for (p of permissions; track p) {
+            <th [class.masked]="masked(p)">{{ p }}</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.target) {
+          <tr>
+            <td class="label">
+              {{ row.label }}
+              <span class="scope">{{ row.scope }}</span>
+            </td>
+            @for (p of permissions; track p) {
+              <td [class.masked]="masked(p)">
+                @switch (row.states[p]) {
+                  @case ('granted') {
+                    <span class="pill granted">granted</span>
+                  }
+                  @case ('conditional') {
+                    <span class="pill conditional">terms apply</span>
+                  }
+                  @default {
+                    <span class="pill absent">—</span>
+                  }
+                }
+              </td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+    <h3>Methods you may fire</h3>
+    <div class="methods">
+      @for (m of methods(); track m.method) {
+        <span class="pill" [class.granted]="m.state === 'granted'" [class.conditional]="m.state === 'conditional'">
+          {{ m.method }}{{ m.state === 'conditional' ? ' · terms apply' : '' }}
+        </span>
+      } @empty {
+        <span class="empty">{{ emptyMessage() }}</span>
+      }
+    </div>
+  </mat-card-content>
+</mat-card>

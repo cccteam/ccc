@@ -1,0 +1,57 @@
+# Semgrep path exclusions for the mono-repo scan (semgrep ci runs from the repository root
+# and from each module directory; each module keeps its own copy of what applies to it).
+#
+# impulse is a build tool: running go, git, and the agent's command line with arguments
+# read from the application under construction is its purpose, so the two places that
+# spawn processes are excluded from the dangerous-exec-command audit rather than marked
+# inline. Everything else in the module stays scanned.
+impulse/internal/check/check.go
+impulse/internal/handoff/agent.go
+
+# Property-based tests, and the conditiontest generator they draw their cases from, use a
+# seeded math/rand, which is what a reproducible property test needs; the crypto-randomness
+# audit does not apply to them.
+accesstypes/condition/property_test.go
+accesstypes/condition/conditiontest/generator.go
+accesstypes/condition/conditiontest/generator_test.go
+accesstypes/condition/conditiontest/evaluate_test.go
+resource/lowering_property_test.go
+resource/differential_property_test.go
+resource/semantic_differential_test.go
+
+# bedrock renders Terraform, YAML and Markdown from text/template: html/template's contextual
+# escaping would corrupt that output, so both renderers (the application's stack and the
+# organization's foundation) are excluded from the text-template audit rather than marked
+# inline. The GitHub test fake answers JSON to the client under
+# test, so the direct-write audit (an HTML page writing user data) does not apply to it.
+bedrock/internal/render/render.go
+bedrock/internal/org/render.go
+bedrock/internal/github/githubtest/server.go
+# The maintenance handler writes the maintenance page, embedded at compile time, to every
+# navigation; no request data reaches it, so the direct-write audit (an HTML page writing
+# user data) does not apply.
+resource/maintenance/maintenance.go
+# The migration renumber runs git with the repository's own paths (the default branch's
+# tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
+# not apply to it.
+bedrock/internal/migration/git.go
+# upgrade runs go install for a commit pin (the Go checksum database verifies the module),
+# then runs the bedrock it installed, or the release it fetched and verified against the
+# release's checksums file, with the render's own paths: running a program whose path it
+# computed is the command's purpose; the dangerous-exec audit does not apply to it.
+bedrock/internal/cli/upgrade.go
+# The test servers standing in for GitHub in the release package's and the upgrade
+# command's tests answer JSON and a script to the client under test, as the GitHub test
+# fake does; the direct-write audit (an HTML page writing user data) does not apply.
+bedrock/internal/release/release_test.go
+bedrock/internal/cli/upgrade_test.go
+# The deploy steps' runner runs the programs a step drives (tofu, docker, an
+# application's hook script through bash) with arguments the step builds: that is its
+# purpose, so it is excluded from the dangerous-exec audit. git names a blob by the SHA-1
+# of its content, and the migration guard computes that name to compare a file with the
+# committed one: naming, not cryptography, so the weak-hash audit does not apply.
+bedrock/internal/deploy/exec.go
+bedrock/internal/migration/sequence.go
+# impulse/ci renders an application's CI workflow (YAML) from an embedded text template; the
+# XSS audit on text/template is about HTML output and does not apply, as for bedrock's renderers.
+impulse/ci/ci.go

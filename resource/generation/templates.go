@@ -44,9 +44,49 @@ func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
 	return resource.Config{}
 	{{- end }}
 }
+{{- if .Resource.FileKeyFields }}
+
+// FileKeys names the fields holding a stored file's key (@file), each with the store
+// its keys name: the objects a delete, or a write that points the row at another
+// object, releases from that store once the transaction commits, and the columns the
+// orphaned-file cleanup reads a store's live keys from.
+func ({{ .Resource.Name }}) FileKeys() []resource.FileKey {
+	return []resource.FileKey{
+	{{- range $field := .Resource.FileKeyFields }}
+		{Field: "{{ $field.Name }}", Store: {{ $field.StoreNameExprLocal }}},
+	{{- end }}
+	}
+}
+{{- end }}
+
+// {{ PrivateType .Resource.Name }}Read mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; {{ PrivateType .Resource.Name }}ReadSets holds one Set per read operation.
+type {{ PrivateType .Resource.Name }}Read struct {
+	{{- range $field := .Resource.Fields }}
+	{{ $field.Name }} {{ $field.ResolvedType }} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+	{{- end }}
+}
+
+var {{ PrivateType .Resource.Name }}ReadSets resource.SetCache[{{ .Resource.Name }}, {{ PrivateType .Resource.Name }}Read]
+{{- if not .Resource.IsVirtual }}
+
+// {{ PrivateType .Resource.Name }}Write mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; {{ PrivateType .Resource.Name }}WriteSets holds one Set per mutation.
+type {{ PrivateType .Resource.Name }}Write struct {
+	{{- range $field := .Resource.Fields }}
+	{{ $field.Name }} {{ $field.ResolvedType }} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }}`" + `
+	{{- end }}
+}
+
+var {{ PrivateType .Resource.Name }}WriteSets resource.SetCache[{{ .Resource.Name }}, {{ PrivateType .Resource.Name }}Write]
+{{- end }}
 
 type {{ .Resource.Name }}Query struct {
 	qSet *resource.QuerySet[{{ .Resource.Name }}]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func New{{ .Resource.Name }}Query() *{{ .Resource.Name }}Query {
@@ -58,7 +98,7 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsUniqueIndex }}
+{{ if $field.AddressesRow }}
 func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ $field.ResolvedType }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
@@ -73,15 +113,37 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ end }}
 {{ end }}
 
-func (q *{{ .Resource.Name }}Query) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*{{ .Resource.Name }}, error) {
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *{{ .Resource.Name }}Query) Enforce(caller *resource.Caller) *{{ .Resource.Name }}Query {
+	q.caller = caller
+
+	return q
+}
+
+func (q *{{ .Resource.Name }}Query) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[{{ .Resource.Name }}], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, {{ PrivateType .Resource.Name }}ReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*{{ .Resource.Name }}, error] {
+func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[{{ .Resource.Name }}], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, {{ PrivateType .Resource.Name }}ReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*{{ .Resource.Name }}, error]] {
+func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[{{ .Resource.Name }}], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, {{ PrivateType .Resource.Name }}ReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -111,12 +173,6 @@ func (q *{{ .Resource.Name }}Query) Sort(sort *{{ .Resource.Name }}Sort) *{{ .Re
 
 func (q *{{ .Resource.Name }}Query) Limit(n uint64) *{{ .Resource.Name }}Query {
 	q.qSet.SetLimit(&n)
-
-	return q
-}
-
-func (q *{{ .Resource.Name }}Query) Offset(n uint64) *{{ .Resource.Name }}Query {
-	q.qSet.SetOffset(&n)
 
 	return q
 }
@@ -357,10 +413,27 @@ func (p *{{ .Resource.Name }}CreatePatch) Buffer(ctx context.Context, txn resour
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *{{ .Resource.Name }}CreatePatch) Enforce(caller *resource.Caller) *{{ .Resource.Name }}CreatePatch {
+	p.patchSet.Enforce(caller, {{ PrivateType .Resource.Name }}WriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- range $field := .Resource.Fields }}
 {{- if $field.HasDefaultCreateFunc }}
 	p.patchSet.RegisterDefaultCreateFunc("{{ $field.Name }}", {{ $field.DefaultCreateFuncName }})
+{{- end }}
+{{- if $field.IsState }}
+	p.patchSet.RegisterDefaultCreateFunc("{{ $field.Name }}", func(context.Context, resource.ReadWriteTransaction) (any, error) {
+		return {{ $field.ResolvedType }}("{{ $field.StateDefault }}"), nil
+	})
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsCreateType }}
@@ -442,6 +515,18 @@ func (p *{{ .Resource.Name }}UpdatePatch) Buffer(ctx context.Context, txn resour
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *{{ .Resource.Name }}UpdatePatch) Enforce(caller *resource.Caller) *{{ .Resource.Name }}UpdatePatch {
+	p.patchSet.Enforce(caller, {{ PrivateType .Resource.Name }}WriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- range $field := .Resource.Fields }}
 {{- if $field.HasOutputOnlyUpdateFunc }}
@@ -466,7 +551,46 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 func (p *{{ .Resource.Name }}UpdatePatch) Diff(got *{{ .Resource.Name }}UpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
+{{ if .Resource.HasTouch }}
+// {{ .Resource.Name }}Touch is an update carried entirely by the resource's
+// update functions: it runs the full update pipeline — permission check,
+// update functions, write conditions, change events — with no caller-set
+// fields. It stamps:
+{{- range $field := .Resource.TouchFields }}
+//   - {{ $field.Name }} via {{ $field.OutputOnlyUpdateFuncName }}
+{{- end }}
+type {{ .Resource.Name }}Touch struct {
+	patchSet *resource.PatchSet[{{ .Resource.Name }}]
+}
 
+func New{{ .Resource.Name }}Touch(
+{{- range $i, $field := .Resource.PrimaryKeys -}}
+	{{- if gt $i 0 }}, {{ end -}}
+	{{- GoCamel $field.Name }} {{ $field.ResolvedType -}}
+{{- end -}}) *{{ .Resource.Name }}Touch {
+	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
+{{- range $field := .Resource.Fields }}
+	{{- if $field.IsPrimaryKey }}
+		SetKey("{{ $field.Name }}", {{ GoCamel $field.Name }}).
+	{{- end }}
+{{- end }}
+		SetPatchType(resource.UpdatePatchType).
+		AsTouch()
+{{- range $field := .Resource.TouchFields }}
+	patchSet.RegisterOutputOnlyUpdateFunc("{{ $field.Name }}", {{ $field.OutputOnlyUpdateFuncName }})
+{{- end }}
+
+	return &{{ .Resource.Name }}Touch{patchSet: patchSet}
+}
+
+func (p *{{ .Resource.Name }}Touch) Apply(ctx context.Context, client resource.Client, eventSource ...string) error {
+	return p.patchSet.Apply(ctx, client, eventSource...)
+}
+
+func (p *{{ .Resource.Name }}Touch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
+	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+{{ end }}
 type {{ .Resource.Name }}DeletePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
 }
@@ -513,6 +637,18 @@ func (p *{{ .Resource.Name }}DeletePatch) Buffer(ctx context.Context, txn resour
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *{{ .Resource.Name }}DeletePatch) Enforce(caller *resource.Caller) *{{ .Resource.Name }}DeletePatch {
+	p.patchSet.Enforce(caller, {{ PrivateType .Resource.Name }}WriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
+}
+
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsPrimaryKey }} 
 func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.ResolvedType }} {
@@ -541,13 +677,385 @@ const (
 	// closed with 403 instead of the guard's 404.
 	domainParamLine = `domain := httpio.Param[accesstypes.Domain](r, router.Domain)`
 
+	// tenantsCommitted is spliced into the tenant record's write paths (the standalone
+	// patch handler and the consolidated dispatcher) after the commit and before the
+	// answer: the tenants the transaction created and deleted reach this instance's
+	// roster at once, never inside the transaction, and the tenants signal goes out on
+	// the application's live service so every other instance reloads. A publish
+	// failure is logged and never fails the request: the other instances reload at
+	// their backstop. The live service is required in every application, so there is
+	// no nil check.
+	tenantsCommitted = `for _, domain := range tenantsAdded {
+			{{ .ReceiverName }}.TenantRoster().Add(domain)
+		}
+		for _, domain := range tenantsRemoved {
+			{{ .ReceiverName }}.TenantRoster().Remove(domain)
+		}
+		if len(tenantsAdded)+len(tenantsRemoved) > 0 {
+			if err := {{ .ReceiverName }}.LiveService().Signal(ctx, resource.KindTenants); err != nil {
+				logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
+			}
+		}`
+
+	// permissionsTemplate emits the application's permission endpoints — the
+	// PermissionDigest and UserDomains handlers — as one-line delegations to the
+	// library-owned handlers, so the endpoints' behavior lives in the resource
+	// package and applications wire nothing.
+	permissionsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"net/http"
+
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc/resource"
+)
+
+// PermissionDigest serves the session user's per-scope permission digest — the
+// structural grant enumeration the frontend renders navigation and forms from.
+// The scope is the request's input (?domain= names a tenant partition, absent
+// means global) and the payload is advisory and fail-closed: denied targets are
+// absent, and so is every resource, field and method gated behind a feature flag
+// that is off ({{ .ResourcePackage }}.FeatureGates); a renamed field or method
+// (@formerly) appears under its former name too, with the same states. The generated router registers it at GET /{{ .RoutePrefix }}/permission-digest{{ if .HasExtraSessionOutlets }} and,
+// for each additional session-serving outlet (ServesSessions), under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.HandlerFunc {
+	return resource.PermissionDigestHandler({{ .ReceiverName }}.UserPermissions, resource.WithFeatureGates({{ .ResourcePackage }}.FeatureGates(), {{ .ReceiverName }}.FeatureSet()), resource.WithFormerNames({{ .RouterPackage }}.Collection()))
+}
+
+// UserDomains serves the session user's domain membership — the sorted list of
+// domains where they hold at least one grant, the tenant picker's question. The
+// predicate is concealed tenancy's own foothold test, so the picker and the
+// domain guard can never disagree. The generated router registers it at
+// GET /{{ .RoutePrefix }}/user-domains{{ if .HasExtraSessionOutlets }} and, for each additional session-serving
+// outlet (ServesSessions), under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) UserDomains() http.HandlerFunc {
+	return resource.UserDomainsHandler({{ .ReceiverName }}.UserPermissions)
+}
+`
+
+	// featureDeclarationsTemplate emits the resources package's feature flag
+	// declarations: Features(), what the deploy step migrates the table to, and
+	// FeatureGates(), what the digest filters by. Both are written on every application.
+	featureDeclarationsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import "github.com/cccteam/ccc/resource"
+
+// Features lists the feature flags this package declares, one per resource.Feature
+// constant, in constant order: the flag's name is the constant's value and its
+// description the constant's doc comment. The deploy step migrates the FeatureFlags
+// table to this list (resource.MigrateFeatures). Nil when the package declares none.
+func Features() []resource.FeatureDeclaration {
+{{- if .Declarations }}
+	return []resource.FeatureDeclaration{
+	{{- range .Declarations }}
+		{Name: {{ .Constant }}, Description: {{ printf "%q" .Description }}, Constant: "{{ .Constant }}"},
+	{{- end }}
+	}
+{{- else }}
+	return nil
+{{- end }}
+}
+
+// FeatureGates maps every resource, field ("Resource.field") and method gated behind a
+// feature flag (@feature) to its flag: what the permission digest filters by, so a
+// gated-off target is absent from the digest exactly as a denied one is. Nil when
+// nothing is gated.
+func FeatureGates() resource.FeatureGates {
+{{- if .Gates }}
+	return resource.FeatureGates{
+	{{- range .Gates }}
+		"{{ .Key }}": {{ .Constant }},
+	{{- end }}
+	}
+{{- else }}
+	return nil
+{{- end }}
+}
+`
+
+	// fileHoldersTemplate emits the resources package's zz_gen_files.go: the holders
+	// the orphaned-file cleanup reads a store's live keys through.
+	fileHoldersTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"github.com/cccteam/ccc/resource"
+{{- range .Imports }}
+	"{{ . }}"
+{{- end }}
+)
+
+// FileHolders lists every resource whose rows record stored files' keys (@file), each
+// with its key columns and the store each column's keys name. The orphaned-file cleanup
+// (resource/filestore) reads a store's live keys through them, so an object no row
+// names can be told from one a row holds. A computed resource's rows come from
+// application code, so its holder names the columns and the application supplies the
+// keys. Nil when no resource records one.
+func FileHolders() []resource.FileHolder {
+{{- if or .Tables .Computed }}
+	return []resource.FileHolder{
+	{{- range .Tables }}
+		resource.FileHolderOf[{{ . }}](),
+	{{- end }}
+	{{- range .Computed }}
+		resource.ComputedFileHolder("{{ .Resource }}"{{ range .Keys }}, resource.FileKey{Field: "{{ .Field }}", Store: {{ .StoreExpr }}}{{ end }}),
+	{{- end }}
+	}
+{{- else }}
+	return nil
+{{- end }}
+}
+`
+
+	// featuresTemplate emits the application's feature flag handlers as delegations to
+	// the library-owned handlers over the application's FeatureSet: the features route
+	// on every outlet, the FeatureFlags routes and SetFeature where routes are
+	// generated, and the FeatureGuard the gated routes are wrapped in.
+	featuresTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"net/http"
+
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc/resource"
+)
+
+// Features serves the names of the enabled feature flags, {"enabled": [...]}, to
+// anyone signed in: what the browser reads at start and again after a flip. The
+// generated router registers it at GET /{{ .RoutePrefix }}/{{ FeaturesRoute }}{{ if .HasExtraSessionOutlets }} and, for each
+// additional outlet, under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) Features() http.HandlerFunc {
+	return resource.FeaturesHandler({{ .ReceiverName }}.FeatureSet())
+}
+{{ if .HasRoutes }}
+// FeatureFlags serves the FeatureFlags resource's list, every declared flag with its
+// description, state and last change, ordered by name, to a caller holding List on
+// FeatureFlags in the global scope. The generated router registers it at
+// GET /{{ .RoutePrefix }}/{{ FeatureFlagsRoute }}{{ if .HasExtraSessionOutlets }} and, for each additional session-serving outlet,
+// under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) FeatureFlags() http.HandlerFunc {
+	return resource.FeatureFlagsHandler({{ .ReceiverName }}, {{ .RouterPackage }}.Collection())
+}
+
+// FeatureFlag serves one flag by name to a caller holding Read on FeatureFlags in the
+// global scope. The generated router registers it at
+// GET /{{ .RoutePrefix }}/{{ FeatureFlagsRoute }}/{ {{- FeatureFlagNameParam -}} }{{ if .HasExtraSessionOutlets }} and, for each additional
+// session-serving outlet, under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) FeatureFlag() http.HandlerFunc {
+	return resource.FeatureFlagHandler({{ .ReceiverName }}, {{ .RouterPackage }}.Collection())
+}
+
+// SetFeature flips a flag for a caller holding Execute on SetFeature in the global
+// scope: the row and its change record are written in one transaction, the other
+// instances are signaled through the live service (the features kind of the signals
+// document), this instance's FeatureSet is reloaded, and the flag is answered as
+// written. A flag the
+// package does not declare is 404. The generated router registers it at
+// POST /{{ .RoutePrefix }}/{{ SetFeatureRoute }}{{ if .HasExtraSessionOutlets }} and, for each additional session-serving outlet,
+// under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) SetFeature() http.HandlerFunc {
+	return resource.SetFeatureHandler({{ .ReceiverName }}, {{ .RouterPackage }}.Collection(), {{ .ReceiverName }}.LiveService())
+}
+{{ end }}
+{{- if .HasGates }}
+// FeatureGuard is the middleware the generated route registration wraps around every
+// route gated behind a feature flag (@feature): while the flag is off the route
+// answers 404 exactly as an unregistered route does, and the handler never runs.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+	return func(feature resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+		return resource.FeatureGuard({{ .ReceiverName }}.FeatureSet(), feature)
+	}
+}
+{{ end }}`
+
+	// featureTestsTemplate emits the generated feature gate tests: every gated route and
+	// field driven in both states of its flag, the flag flipped in the test database
+	// between them.
+	featureTestsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
+	"testing"
+
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+)
+
+// TestGeneratedFeatureGates drives every route and field gated behind a feature flag
+// (@feature) through the generated test router in both states of its flag. Off, a
+// gated route answers 404 exactly as an unregistered route does, with no handler
+// reached, and a gated field asked for by name is refused as an unknown column (400).
+// On, the route and the field behave as the authorization matrix pins them: a query
+// route with its permission reaches data access (200, or 404 when the empty schema
+// has no row), a mutation route without a grant is refused at its own gate (403), and
+// a field asked for with List is served.
+//
+// The flags are flipped in the test database between the states through the
+// library's SetFeatureEnabled, after MigrateFeatures has written every declared flag;
+// the application under test reads its FeatureSet from that database when
+// newTestHandler constructs it, so each state constructs its own handler. The cases
+// run one after the other, since every one flips rows the others read.
+func TestGeneratedFeatureGates(t *testing.T) {
+	t.Parallel()
+
+	routes := []struct {
+		name    string
+		feature resource.Feature
+		method  string
+		target  string
+		body    string
+		grants  grants
+		wantOn  []int
+	}{
+		{{- range .Routes }}
+		{
+			name:    "{{ .Name }}",
+			feature: {{ $.ResourcePackage }}.{{ .Constant }},
+			method:  {{ .Method }},
+			target:  "{{ .URL }}",
+			{{- with .Body }}
+			body:    ` + "`{{ . }}`" + `,
+			{{- end }}
+			{{- if .Permission }}
+			grants:  grants{accesstypes.{{ .Permission }}: true},
+			wantOn:  []int{http.StatusOK, http.StatusNotFound},
+			{{- else }}
+			wantOn:  []int{http.StatusForbidden},
+			{{- end }}
+		},
+		{{- end }}
+	}
+	fields := []struct {
+		name    string
+		feature resource.Feature
+		target  string
+	}{
+		{{- range .Fields }}
+		{name: "{{ .Name }}", feature: {{ $.ResourcePackage }}.{{ .Constant }}, target: "{{ .URL }}"},
+		{{- end }}
+	}
+
+	ctx := t.Context()
+	db, err := prepareDatabase(ctx, t)
+	if err != nil {
+		t.Fatalf("prepareDatabase() error = %v", err)
+	}
+	client := resource.NewSpannerClient(db.Client)
+	if err := resource.MigrateFeatures(ctx, client, {{ .ResourcePackage }}.Features()); err != nil {
+		t.Fatalf("resource.MigrateFeatures() error = %v", err)
+	}
+
+	call := func(t *testing.T, feature resource.Feature, enabled bool, g grants, method, target, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		if err := resource.SetFeatureEnabled(ctx, client, feature, enabled, "TestGeneratedFeatureGates"); err != nil {
+			t.Fatalf("resource.SetFeatureEnabled() error = %v", err)
+		}
+		h := newTestHandler(t, db, g)
+		req := httptest.NewRequestWithContext(ctx, method, target, strings.NewReader(body))
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		return rr
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.name+" off", func(t *testing.T) {
+			rr := call(t, tt.feature, false, tt.grants, tt.method, tt.target, tt.body)
+			if rr.Code != http.StatusNotFound || rr.Body.String() != "Not Found\n" {
+				t.Errorf("status = %d, body = %q; want %d with the router's not-found body", rr.Code, rr.Body.String(), http.StatusNotFound)
+			}
+		})
+		t.Run(tt.name+" on", func(t *testing.T) {
+			rr := call(t, tt.feature, true, tt.grants, tt.method, tt.target, tt.body)
+			if !slices.Contains(tt.wantOn, rr.Code) {
+				t.Errorf("status = %d, want one of %v; body: %s", rr.Code, tt.wantOn, rr.Body.String())
+			}
+		})
+	}
+	for _, tt := range fields {
+		listing := grants{accesstypes.List: true}
+		t.Run(tt.name+" off", func(t *testing.T) {
+			rr := call(t, tt.feature, false, listing, http.MethodGet, tt.target, "")
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d (unknown column); body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+			}
+		})
+		t.Run(tt.name+" on", func(t *testing.T) {
+			rr := call(t, tt.feature, true, listing, http.MethodGet, tt.target, "")
+			if !slices.Contains([]int{http.StatusOK, http.StatusNotFound}, rr.Code) {
+				t.Errorf("status = %d, want 200 or 404; body: %s", rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
+`
+
+	// liveTemplate emits the application's live route handlers — LiveRenew,
+	// LiveUnsubscribe and LiveToken — as one-line delegations to the library-owned
+	// handlers over the application's LiveService, so the routes' behavior lives in the
+	// live package and applications wire only the service.
+	liveTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"net/http"
+
+	"github.com/cccteam/ccc/resource/live"
+)
+
+// LiveRenew serves a tab's live subscriptions renewed: each is re-checked against the
+// session user's grants (Read for a row, List for a list, in its domain), the kept ones
+// are written with a fresh expiry, and the answer says which were kept and which
+// dropped. The generated router registers it at POST /{{ .RoutePrefix }}/live/renew{{ if .HasExtraSessionOutlets }} and,
+// for each additional session-serving outlet, under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveRenew() http.HandlerFunc {
+	return live.RenewHandler({{ .ReceiverName }}.LiveService(), {{ .ReceiverName }}.UserPermissions)
+}
+
+// LiveUnsubscribe serves a tab leaving, or with all a logout: the subscriptions are
+// deleted and, on a logout, the browser's identity is revoked. The generated router
+// registers it at POST /{{ .RoutePrefix }}/live/unsubscribe{{ if .HasExtraSessionOutlets }} and, for each additional
+// session-serving outlet, under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveUnsubscribe() http.HandlerFunc {
+	return live.UnsubscribeHandler({{ .ReceiverName }}.LiveService())
+}
+
+// LiveToken serves how the browser connects to the session principal's change set: the
+// identity token and where the change set lives. The generated router registers it at
+// GET /{{ .RoutePrefix }}/live/token{{ if .HasExtraSessionOutlets }} and, for each additional session-serving outlet,
+// under that outlet's prefix{{ end }}.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveToken() http.HandlerFunc {
+	return live.TokenHandler({{ .ReceiverName }}.LiveService())
+}
+`
+
 	// domainGuardTemplate emits the application's DomainGuard middleware once; generated
-	// route registration wraps every domain-scoped route in it. The tenant universe is
-	// app-owned (access is deliberately Domains-free), so the application supplies
-	// DomainExists via its Config — one method, so the seam can pivot in one place. No
-	// marker check is needed: a URL domain is pure data, and accesstypes.DomainScope
-	// routes it to a tenant partition by construction — no value can address the global
-	// partition.
+	// route registration wraps every domain-scoped route in it. The guard reads the
+	// application's tenant roster first (TenantRoster().Has: no read, no wait) and, under
+	// WithConcealedDomains, the caller's foothold next, answering the same not-found
+	// either way. No marker check is needed: a URL domain is pure data, and
+	// accesstypes.DomainScope routes it to a tenant partition by construction — no value
+	// can address the global partition.
 	domainGuardTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 // Source: {{ .Source }}
 
@@ -562,9 +1070,19 @@ import (
 	"github.com/cccteam/httpio"
 )
 
+{{ if .ConcealedDomains -}}
 // DomainGuard is the middleware generated route registration wraps around every
-// domain-scoped route: it resolves the route's domain and responds 404 before the
-// handler runs when the application does not recognize it.
+// domain-scoped route: it resolves the route's domain and answers 404 before the
+// handler runs when the application's tenant roster (Tenants) does not hold it.
+// Domains are concealed (generation.WithConcealedDomains), so a domain the caller holds
+// no grant in answers exactly like a domain that does not exist, and tenant existence
+// cannot be probed from the rejection shape. A caller with any foothold in the domain
+// passes the guard and receives ordinary 403s for the permissions they lack.
+{{- else -}}
+// DomainGuard is the middleware generated route registration wraps around every
+// domain-scoped route: it resolves the route's domain and answers 404 before the
+// handler runs when the application's tenant roster (Tenants) does not hold it.
+{{- end }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -572,11 +1090,16 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) DomainGuard() func(http.Handl
 			defer span.End()
 
 			domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-			if ok, err := {{ .ReceiverName }}.DomainExists(ctx, domain); err != nil {
+			if !{{ .ReceiverName }}.TenantRoster().Has(domain) {
+				return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
+			}
+			{{- if .ConcealedDomains }}
+			if ok, err := {{ .ReceiverName }}.UserPermissions(r).HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			} else if !ok {
 				return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
 			}
+			{{- end }}
 
 			next.ServeHTTP(w, r)
 
@@ -584,6 +1107,30 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) DomainGuard() func(http.Handl
 		})
 	}
 }`
+
+	// tenantsTemplate emits the tenant record's roster constructor into the handler
+	// package: New<Record>Roster, carrying the record's table and key column, so the
+	// application builds its roster without naming either.
+	tenantsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"github.com/cccteam/ccc/resource"
+)
+
+// New{{ .Name }}Roster builds the application's tenant roster over the {{ .Name }} record
+// (@tenant): the {{ .KeyColumn }} column of {{ .Table }}, read once at Start and kept
+// current until the context ends. The generated DomainGuard and the consolidated
+// dispatcher ask the roster before a tenant-scoped request runs, and the generated
+// {{ .Name }} write paths add and remove tenants after their commit and publish the
+// tenants signal, so every instance reloads. The application exposes the roster as
+// TenantRoster(); resource.WithTenantSignals wires the live service the roster reloads on.
+func New{{ .Name }}Roster(client resource.Client, opts ...resource.TenantRosterOption) *resource.TenantRoster {
+	return resource.NewTenantRoster(client, {{ printf "%q" .Table }}, {{ printf "%q" .KeyColumn }}, opts...)
+}
+`
 
 	// decodersTemplate re-exposes the library's Must* decoder constructors under the
 	// application's generated closed unions (Resourcer, Method), so a decoder over a
@@ -601,29 +1148,34 @@ import (
 )
 
 {{ if .HasQueryDecoder -}}
-// NewQueryDecoder builds a query decoder for a generated resource and request pair.
-// The Resourcer union keeps construction inside the generated universe: a decoder
-// over any other struct is a compile error.
-func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
-	return resource.MustNewQueryDecoder[Resource, Request](permissions...)
+// NewQueryDecoder builds a query decoder for a generated resource and request pair,
+// wired to the generated collection so conditional grants render into the query, to
+// the application's cursor key so its lists page, and to its feature set so a field
+// gated behind a flag that is off is unknown to the request. The Resourcer union keeps
+// construction inside the generated universe: a decoder over any other struct is a
+// compile error.
+func NewQueryDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
+	return resource.MustNewQueryDecoder[Resource, Request]({{ .RouterPackage }}.Collection(), permissions...).WithCursorKey({{ .ReceiverName }}.CursorKey()).WithFeatures({{ .ReceiverName }}.FeatureSet())
 }
 {{ end }}
 {{ if .HasComputedQueryDecoder -}}
 // NewComputedQueryDecoder builds a query decoder for a generated computed resource
 // and request pair. Computed resources execute application code, so the decoder
-// enforces permissions at decode time rather than deferring to query execution. The
-// Resourcer union keeps construction inside the generated universe: a decoder over
-// any other struct is a compile error.
-func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
-	return resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)
+// enforces permissions at decode time rather than deferring to query execution, and
+// it carries the application database's type so a computed list sorts and pages NULL
+// where the tables beside it do. The Resourcer union keeps construction inside the
+// generated universe: a decoder over any other struct is a compile error.
+func NewComputedQueryDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
+	return resource.MustNewComputedQueryDecoder[Resource, Request]({{ .ReceiverName }}.ResourceClient().DBType(), permissions...).WithCursorKey({{ .ReceiverName }}.CursorKey()).WithFeatures({{ .ReceiverName }}.FeatureSet())
 }
 {{ end }}
 {{ if .HasPatchDecoder -}}
-// NewDecoder builds a patch decoder for a generated resource and request pair.
-// The Resourcer union keeps construction inside the generated universe: a decoder
-// over any other struct is a compile error.
+// NewDecoder builds a patch decoder for a generated resource and request pair,
+// wired to the generated collection so conditional grants render into the
+// mutations' live check. The Resourcer union keeps construction inside the
+// generated universe: a decoder over any other struct is a compile error.
 func NewDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {
-	return resource.MustNewDecoder[Resource, Request]({{ .ReceiverName }}, permissions...)
+	return resource.MustNewDecoder[Resource, Request]({{ .ReceiverName }}, {{ .RouterPackage }}.Collection(), permissions...).WithFeatures({{ .ReceiverName }}.FeatureSet())
 }
 {{ end }}
 {{ if .HasRPCDecoder -}}
@@ -633,7 +1185,38 @@ func NewDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .Applic
 func NewRPCDecoder[Method {{ .RPCPackage }}.Method, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, perm accesstypes.Permission) *resource.RPCDecoder[Request] {
 	var method Method
 
-	return resource.MustNewRPCDecoder[Request]({{ .ReceiverName }}, method.Method(), perm)
+	return resource.MustNewRPCDecoder[Request]({{ .ReceiverName }}, method.Method(), perm){{ if .HasCollection }}.WithCollection({{ .RouterPackage }}.Collection()){{ end }}
+}
+{{ end }}
+{{- if .HasFileDecoder }}
+// NewFileDecoder builds the decoder of a generated resource's @file route: Read on the
+// resource and on the route's own field checked as the read route checks them, wired to
+// the generated collection so a conditional Read grant renders into the row's
+// statement. The Resourcer union keeps construction inside the generated universe: a
+// decoder over any other struct is a compile error.
+func NewFileDecoder[Resource Resourcer, Request any](_ *{{ .ApplicationName }}, segment string) *resource.FileDecoder[Resource, Request] {
+	return resource.MustNewFileDecoder[Resource, Request]({{ .RouterPackage }}.Collection(), segment)
+}
+{{ end }}
+{{- if .HasComputedFileDecoder }}
+// NewComputedFileDecoder builds the decoder of a generated computed resource's @file
+// route: the gate checked at decode, as every computed resource's is, and the QuerySet
+// carrying the checked scope and identity to the application's function. The Resourcer
+// union keeps construction inside the generated universe.
+func NewComputedFileDecoder[Resource Resourcer, Request any](_ *{{ .ApplicationName }}, segment string) *resource.FileDecoder[Resource, Request] {
+	return resource.MustNewComputedFileDecoder[Resource, Request](segment)
+}
+{{ end }}
+{{- if .HasTargetedRPCDecoder }}
+// NewTargetedRPCDecoder builds a decoder for a @target-bearing RPC method
+// request, wired to the generated collection so a conditional Execute grant
+// rides to the handler's located-row check instead of being refused at decode.
+// The Method union keeps construction inside the generated universe: a decoder
+// for any other type is a compile error.
+func NewTargetedRPCDecoder[Method {{ .RPCPackage }}.Method, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, perm accesstypes.Permission) *resource.TargetedRPCDecoder[Request] {
+	var method Method
+
+	return resource.MustNewTargetedRPCDecoder[Request]({{ .ReceiverName }}, {{ .RouterPackage }}.Collection(), method.Method(), perm)
 }
 {{ end }}`
 
@@ -656,12 +1239,24 @@ import (
 	{{ .LocalPackageImports }}
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 )
 
 // resourceApp is the application surface every generated resource handler draws on.
+// CursorKey is the one key that seals list cursors (resource.NewCursorKey over the
+// application's cookie key); every generated query decoder is wired with it.
+// LiveService is the live service (resource/live) the list and read handlers register
+// a subscribing request in before the query, the mutations publish their committed
+// rows through, and the instances signal each other through; every application wires
+// one. FeatureSet is the application's copy of its feature flags
+// (resource.LoadFeatures): what the gated routes, the decoders and the digest answer
+// from; nil leaves every gated target off.
 type resourceApp interface {
 	UserPermissions(r *http.Request) resource.UserPermissions
 	ResourceClient() resource.Client
+	CursorKey() *resource.CursorKey
+	LiveService() live.Service
+	FeatureSet() *resource.FeatureSet
 }
 
 var _ resourceApp = (*{{ .ApplicationName }})(nil)
@@ -676,13 +1271,17 @@ type validatorApp interface {
 var _ validatorApp = (*{{ .ApplicationName }})(nil)
 {{ end }}
 {{ if .HasDomainScoped -}}
-// domainScopedApp is the application surface domain-scoped routes draw on.
-// DomainExists answers from the application's tenancy roster — whether the domain is
-// a known tenant, never whether any particular row exists. DomainGuard is generated
+// domainScopedApp is the application surface domain-scoped routes draw on. TenantRoster
+// is the application's tenant roster (resource.TenantRoster, built by the generated
+// New<Record>Roster constructor and started by the application): whether a domain is a
+// known tenant, never whether any particular row exists. The generated DomainGuard and
+// the consolidated dispatcher ask it first{{ if .ConcealedDomains }}, and, since domains are concealed
+// (generation.WithConcealedDomains), the caller's foothold next, so "unauthorized" is
+// indistinguishable from "nonexistent"{{ end }}. DomainGuard is generated
 // (zz_gen_domain_guard.go) and asserted here to complete the middleware surface the
 // generated route registration wires.
 type domainScopedApp interface {
-	DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error)
+	TenantRoster() *resource.TenantRoster
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 }
 
@@ -789,12 +1388,22 @@ import (
 	"slices"
 	"strings"
 	"testing"
+{{- if .HasGates }}
+
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+{{- else }}
 
 	"github.com/cccteam/ccc/accesstypes"
+{{- end }}
 )
 
 // grants scripts the permission table for one test: the permissions the test user
-// holds on every resource. Permissions not present are denied.
+// holds on every resource. Permissions not present are denied. Every scripted
+// permission is an unconditional grant: the type has no place for a condition, and the
+// engine newTestHandler wires must answer each check Granted or Denied, never
+// Conditional.
 type grants map[accesstypes.Permission]bool
 
 // TestGeneratedAuthorizationMatrix drives every generated route through the generated
@@ -808,10 +1417,24 @@ type grants map[accesstypes.Permission]bool
 // the operation's enforcement gate — buffer time for patch sets, decode time for RPC —
 // which runs before required-field validation, defaults, or row reads. Mutation
 // success paths need valid request bodies the generator does not synthesize yet and
-// are left to manual testing.
+// are left to manual testing. A transaction-form RPC method carries a second denied
+// case under X-Dry-Run: a dry run refuses exactly as the real call does. The features
+// route is open to anyone signed in and carries one case: 200 without a grant.
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
-// with the schema on every regeneration.
+// with the schema on every regeneration. When the application declares feature flags,
+// the suite puts every one of them on in its database first: a route or field gated
+// behind a flag (@feature) is absent while the flag is off, answering 404 before the
+// permission gate this suite pins, and the generated gate tests drive both states of
+// each flag on a database of their own.
+//
+// Conditional grants are outside this suite. The matrix pins the endpoint gate, which
+// rejects only a Denied decision: a granted case proves the request passed the gate
+// and reached data access, never that a row is visible, and a conditional grant would
+// pass the gate exactly as an unconditional one does. The schema is empty, so no
+// condition could be evaluated against a row anyway. What a condition admits or
+// refuses is proven by the application's integration suites over seeded rows and the
+// real permission engine, provisioned from its role files.
 //
 // The package must define
 //
@@ -819,7 +1442,10 @@ type grants map[accesstypes.Permission]bool
 //
 // constructing the application around the test database with the scripted grants and
 // composing it through the generated router.NewTestRouter. For domain-scoped routes,
-// the application's DomainExists must recognize the suite's domain value "testDomain".
+// newTestHandler adds the suite's domain value "testDomain" to the test application's
+// tenant roster with Add (resource.TenantRoster.Add), since the empty schema holds no
+// tenant row; with concealed domains a case with no grants has no foothold and is
+// answered as if the domain did not exist.
 func TestGeneratedAuthorizationMatrix(t *testing.T) {
 	t.Parallel()
 
@@ -829,9 +1455,18 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		method       string
 		target       string
 		body         string
+		headers      map[string]string
 		wantStatuses []int
 	}{
 		{{- range .Cases }}
+		{{- if .Open }}
+		{
+			name:         "{{ .Name }} open",
+			method:       {{ .Method }},
+			target:       "{{ .URL }}",
+			wantStatuses: []int{http.StatusOK},
+		},
+		{{- else }}
 		{
 			name:         "{{ .Name }} denied",
 			method:       {{ .Method }},
@@ -839,7 +1474,10 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			{{- with .Body }}
 			body:         ` + "`{{ . }}`" + `,
 			{{- end }}
-			wantStatuses: []int{http.StatusForbidden},
+			{{- with .Headers }}
+			headers:      map[string]string{ {{- range $i, $h := . }}{{ if $i }}, {{ end }}"{{ $h.Name }}": "{{ $h.Value }}"{{ end -}} },
+			{{- end }}
+			wantStatuses: []int{ {{- with .DeniedStatus }}{{ . }}{{ else }}http.StatusForbidden{{ end -}} },
 		},
 		{{- if not .DeniedOnly }}
 		{
@@ -851,12 +1489,24 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		},
 		{{- end }}
 		{{- end }}
+		{{- end }}
 	}
 
 	db, err := prepareDatabase(t.Context(), t)
 	if err != nil {
 		t.Fatalf("prepareDatabase() error = %v", err)
 	}
+{{- if .HasGates }}
+	client := resource.NewSpannerClient(db.Client)
+	if err := resource.MigrateFeatures(t.Context(), client, {{ .ResourcePackage }}.Features()); err != nil {
+		t.Fatalf("resource.MigrateFeatures() error = %v", err)
+	}
+	for _, declared := range {{ .ResourcePackage }}.Features() {
+		if err := resource.SetFeatureEnabled(t.Context(), client, declared.Name, true, "TestGeneratedAuthorizationMatrix"); err != nil {
+			t.Fatalf("resource.SetFeatureEnabled(%s) error = %v", declared.Name, err)
+		}
+	}
+{{- end }}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -865,6 +1515,9 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			h := newTestHandler(t, db, tt.grants)
 
 			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, strings.NewReader(tt.body))
+			for name, value := range tt.headers {
+				req.Header.Set(name, value)
+			}
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
 
@@ -888,9 +1541,12 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
+	"slices"
 )
 
 {{ .Handlers }}`
@@ -898,13 +1554,13 @@ import (
 	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }}`" + `
 		{{- end }}
 	}
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List)
+	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List){{ .Resource.PagingOption }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -918,27 +1574,58 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		// A live list registers before the query runs, so a commit that lands during
+		// the query is not missed; a refused request registers nothing.
+		live.Subscribe(ctx, r, {{ .ReceiverName }}.LiveService(), querySet, live.ListSubscription(querySet.Resource(), {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}))
+
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
+
+		// The page: a count first when asked, then the rows, one past the page size
+		// so the Link header knows whether a next page exists.
+		page := querySet.Page()
+		if err := page.Count(ctx, {{ .ReceiverName }}.ResourceClient()); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
 
 		resp := response{}
 		for row, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*{{ GoCamel .Resource.Name }})(row)
+			if !page.Add(row) {
+				break
+			}
+			rec := (*{{ GoCamel .Resource.Name }})(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				{{- range .Resource.Fields }}
 				{{- if not .IsInputOnly }}
 				case "{{ .Name }}":
-					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+					if !row.Masked("{{ Camel .Name }}") {
+						rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+						{{- if .Formerly }}
+						rmap["{{ .FormerWireName }}"] = rec.{{ .Name }}
+						{{- end }}
+					}
 				{{- end }}
 				{{- end }}
 				}
 			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
+			}
 			resp = append(resp, rmap)
 		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		// A request carrying the version parameter is a live refetch: the browser
+		// may cache the answer for the subscription's window.
+		live.SetCacheControl(w, r)
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
@@ -947,11 +1634,11 @@ import (
 	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }}`" + `
 		{{- end }}
 	}
 
-	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, response](accesstypes.Read)
+	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, response]({{ .ReceiverName }}, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -972,6 +1659,10 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		// A live row registers before the read runs, so a commit that lands during the
+		// read is not missed; a refused request registers nothing.
+		live.Subscribe(ctx, r, {{ .ReceiverName }}.LiveService(), querySet, live.RowSubscription(querySet.Resource(), resource.RowKey({{ .Resource.KeyParamList }})))
+
 	{{ if .Resource.HasCompoundPrimaryKey }}
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet){{ range $_, $field := .Resource.PrimaryKeys }}.Set{{ $field.Name }}({{ GoCamel $field.Name }}){{ end }}
 	{{- else }}
@@ -982,18 +1673,27 @@ import (
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		rec := (*response)(row)
+		rec := (*response)(&row.Data)
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			{{- range .Resource.Fields }}
 			{{- if not .IsInputOnly }}
 			case "{{ .Name }}":
-				rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+				if !row.Masked("{{ Camel .Name }}") {
+					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+					{{- if .Formerly }}
+					rmap["{{ .FormerWireName }}"] = rec.{{ .Name }}
+					{{- end }}
+				}
 			{{- end }}
 			{{- end }}
 			}
 		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
+		}
+		live.SetCacheControl(w, r)
 
 		return httpio.NewEncoder(w).Ok(rmap)
 	})
@@ -1002,7 +1702,7 @@ import (
 	patchTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTagForPatch }}`" + `
 		{{- end }}
 	}
 	
@@ -1014,7 +1714,7 @@ import (
 	}
 	{{- end }}
 
-	decoder := NewDecoder[{{ .ResourcePackage }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+	decoder := NewDecoder[{{ .ResourcePackage }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, {{ .Resource.PatchPermissionList }})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -1027,10 +1727,22 @@ import (
 		var resp response
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
+		{{- if .Resource.IsTenant }}
 
+		// The roster follows the commit: the tenants this transaction creates and
+		// deletes reach it once the commit lands, never inside the transaction.
+		var tenantsAdded, tenantsRemoved []accesstypes.Domain
+		{{- end }}
+
+		// The rows the transaction writes are collected for the live pages, published
+		// once the commit lands and before the answer.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			{{- if $PrimaryKeyIsGeneratedUUID }}
 			resp = response{}
+			{{- end }}
+			{{- if .Resource.IsTenant }}
+			tenantsAdded, tenantsRemoved = nil, nil
 			{{- end }}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -1041,6 +1753,13 @@ import (
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
 				}
+				{{- if .Resource.CreateDisabled }}
+				if op.Type == resource.OperationCreate {
+					// A NOT NULL @file key: a row is added by the @upload method that stores
+					// its file, since a create cannot supply the key.
+					return httpio.NewBadRequestMessage("a {{ .Resource.Name }} row is added by the @upload method that stores its file; a create cannot supply the file's key")
+				}
+				{{- end }}
 
 				patchSet, err := decoder.DecodeOperation(op, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 				if err != nil {
@@ -1070,6 +1789,9 @@ import (
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}CreatePatch.Buffer()")
 					}
+					{{- if .Resource.IsTenant }}
+					tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))
+					{{- end }}
 				{{- end }}
 				case resource.OperationUpdate:
 				{{- if .Resource.HasCompoundPrimaryKey }}
@@ -1098,6 +1820,9 @@ import (
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}DeletePatch.Buffer()")
 					}
+					{{- if .Resource.IsTenant }}
+					tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))
+					{{- end }}
 				{{- end }}
 				}
 			}
@@ -1106,6 +1831,10 @@ import (
 		}); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		live.Publish(ctx, {{ .ReceiverName }}.LiveService(), {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)
+		{{- if .Resource.IsTenant }}
+		` + tenantsCommitted + `
+		{{- end }}
 
 		{{ if $PrimaryKeyIsGeneratedUUID  }}
 		return httpio.NewEncoder(w).Ok(resp)
@@ -1128,8 +1857,10 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -1138,10 +1869,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTagForPatch }}`" + `
 		{{- end }}
 	}
-	{{ GoCamel $resource.Name}}Decoder := NewDecoder[{{ $resourcePackage }}.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+	{{ GoCamel $resource.Name}}Decoder := NewDecoder[{{ $resourcePackage }}.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, {{ $resource.PatchPermissionList }})
 	{{ end }}
 
 	type response map[string][]ccc.UUID
@@ -1155,9 +1886,22 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 			resp    response
 		)
 		userPermissions := {{ .ReceiverName }}.UserPermissions(r)
+		{{- if .HasTenant }}
 
+		// The roster follows the commit: the tenants this transaction creates and
+		// deletes reach it once the commit lands, never inside the transaction.
+		var tenantsAdded, tenantsRemoved []accesstypes.Domain
+		{{- end }}
+
+		// The rows the transaction writes are collected for the live pages, published
+		// once the commit lands and before the answer, each under the domain its
+		// operation was decoded in.
+		ctx, touched := resource.CollectTouchedRows(ctx)
 		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
+			{{- if .HasTenant }}
+			tenantsAdded, tenantsRemoved = nil, nil
+			{{- end }}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
 				return errors.Wrap(err, "resource.CloneRequest()")
@@ -1187,11 +1931,16 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 						}
 
 						domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
-						if ok, err := {{ .ReceiverName }}.DomainExists(ctx, domain); err != nil {
-							return errors.Wrap(err, "DomainExists()")
+						if !{{ .ReceiverName }}.TenantRoster().Has(domain) {
+							return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+						}
+						{{- if .ConcealedDomains }}
+						if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {
+							return errors.Wrap(err, "resource.UserPermissions.HasGrants()")
 						} else if !ok {
 							return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 						}
+						{{- end }}
 
 						switch httpio.Param[string](op.Req, "resource") {
 							{{- range $case := .DomainCases }}
@@ -1210,6 +1959,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 		}); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		live.Publish(ctx, {{ .ReceiverName }}.LiveService(), "", touched)
+		{{- if .HasTenant }}
+		` + tenantsCommitted + `
+		{{- end }}
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
@@ -1220,6 +1973,20 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 {{- end }}
 {{- define "consolidatedCaseBody" }}
 					{{- $primaryKeyType := .PrimaryKeyType }}
+					{{- if .Feature }}
+						// The resource is gated behind a feature flag: while it is off its arm
+						// answers as an unknown resource does, as its own routes answer 404.
+						if !{{ .ReceiverName }}.FeatureSet().Enabled({{ .ResourcePackage }}.{{ .Feature.Constant }}) {
+							return httpio.NewBadRequestMessagef("unknown resource %q", httpio.Param[string](op.Req, "resource"))
+						}
+					{{- end }}
+					{{- if .CreateDisabled }}
+						if op.Type == resource.OperationCreate {
+							// A NOT NULL @file key: a row is added by the @upload method that
+							// stores its file, since a create cannot supply the key.
+							return httpio.NewBadRequestMessage("a {{ .Name }} row is added by the @upload method that stores its file; a create cannot supply the file's key")
+						}
+					{{- end }}
 						patchSet, err := {{ GoCamel .Name}}Decoder.DecodeOperation(op, userPermissions, {{ if .DomainPatternPrefix }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 						if err != nil {
 							return errors.Wrap(err, "{{ GoCamel .Name}}Decoder.DecodeOperation()")
@@ -1253,6 +2020,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 							if err := {{ .ResourcePackage }}.New{{ .Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Name }}CreatePatch.Buffer()")
 							}
+							{{- if .IsTenant }}
+							tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))
+							{{- end }}
 						{{- end }}
 						case resource.OperationUpdate:
 							{{- if .HasCompoundPrimaryKey }}
@@ -1281,6 +2051,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 							if err := {{ .ResourcePackage }}.New{{ .Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Name }}DeletePatch.Buffer()")
 							}
+							{{- if .IsTenant }}
+							tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))
+							{{- end }}
 							{{- end }}
 						}
 {{- end }}`
@@ -1301,14 +2074,95 @@ const (
 {{- end }}
 `
 
+	// storageFileTemplate emits the Spanner storage methods of the types a package
+	// declares and a JSON column holds: EncodeSpanner on the value receiver, so a type's
+	// own MarshalJSON is honored, and DecodeSpanner on the pointer receiver reading the
+	// JSON text back. A NULL cell decodes to the zero value; a nullable column is a
+	// pointer field, which the Spanner client leaves nil.
+	storageFileTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"encoding/json"
+
+	"cloud.google.com/go/spanner"
+	"github.com/go-playground/errors/v5"
+)
+{{ range $type := .Types }}
+// EncodeSpanner stores {{ $type }} in its JSON column as the JSON it marshals to.
+func (v {{ $type }}) EncodeSpanner() (any, error) {
+	return spanner.NullJSON{Value: v, Valid: true}, nil
+}
+
+// DecodeSpanner reads {{ $type }} back from the JSON text of its column; a NULL cell is
+// the zero value.
+func (v *{{ $type }}) DecodeSpanner(val any) error {
+	var raw string
+	switch x := val.(type) {
+	case nil:
+		var zero {{ $type }}
+		*v = zero
+
+		return nil
+	case string:
+		raw = x
+	case *string:
+		if x == nil {
+			var zero {{ $type }}
+			*v = zero
+
+			return nil
+		}
+		raw = *x
+	default:
+		return errors.Newf("{{ $type }}.DecodeSpanner(): expected the column's JSON as a string, got %T", val)
+	}
+	if err := json.Unmarshal([]byte(raw), v); err != nil {
+		return errors.Wrap(err, "json.Unmarshal()")
+	}
+
+	return nil
+}
+{{ end }}`
+
+	// jsonFileTemplate emits the JSON pair of the defined types a package declares over
+	// a type with JSON methods: MarshalJSON on the value receiver and UnmarshalJSON on
+	// the pointer receiver, each converting to the type the defined type is declared
+	// over, so the defined type is that type's JSON on the wire (json.RawMessage's
+	// raw value, a declared type's own form). Any other import the right-hand sides
+	// need is resolved by the import fixer from the pairs' packages.
+	jsonFileTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"encoding/json"
+)
+{{ range $pair := .Types }}
+// MarshalJSON writes {{ $pair.Name }} as {{ $pair.Over }}, the type it is declared over,
+// writes itself.
+func (v {{ $pair.Name }}) MarshalJSON() ([]byte, error) {
+	return json.Marshal({{ $pair.Over }}(v))
+}
+
+// UnmarshalJSON reads {{ $pair.Name }} as {{ $pair.Over }} reads itself.
+func (v *{{ $pair.Name }}) UnmarshalJSON(b []byte) error {
+	return json.Unmarshal(b, (*{{ $pair.Over }})(v))
+}
+{{ end }}`
+
 	typescriptConstantsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
-import { {{ TypescriptConstImports .File .Data }} } from '@cccteam/ccc-lib/types';
+{{- $constImports := TypescriptConstImports .File .Data }}
+{{- if ne $constImports "" }}
+import { {{ $constImports }} } from '@cccteam/resource';
+{{- end }}
 
 {{- $permissions := .Data.Permissions }}
-{{- $resourcePermissions := .Data.ResourcePermissions }}
 {{- $resources := .Data.Resources }}
 {{- $resourcetags := .Data.ResourceTags }}
-{{- $resourcePermMap := .Data.ResourcePermissionMap }}
 {{- $permissionScopes := .Data.PermissionScopes }}
 {{- $rpcMethods := .RPCMethods }}
 
@@ -1335,6 +2189,9 @@ export const Resources = {
 export const Methods = {
 {{- range $rpcMethod := $rpcMethods }}
   {{ $rpcMethod.Name }}: '{{ $rpcMethod.Name }}' as Method,
+{{- end }}
+{{- range $method := .ManualMethods }}
+  {{ $method }}: '{{ $method }}' as Method,
 {{- end }}
 };
 {{ range $resource, $tags := $resourcetags }}
@@ -1381,72 +2238,66 @@ export namespace {{ $rpcMethod.Name }} {
   {{- end }}
 }
 {{ end }}
-type ResourcePermissions = Record<Permission, boolean>;
-type PermissionMappings = Record<Resource, ResourcePermissions>;
-
-const Mappings: PermissionMappings = {
-  {{- range $resource := $resources }}
-  [Resources.{{ $resource }}]: {
-    {{- range $perm := $resourcePermissions }}
-    [Permissions.{{ $perm }}]: {{ index $resourcePermMap $resource $perm }},
-    {{- end }}
-  },
-    {{- range $tag := index $resourcetags $resource }}
-  [{{ $resource }}.resourceName.{{ $tag }}]: {
-      {{- range $perm := $resourcePermissions }}
-    [Permissions.{{ $perm }}]: {{ index $resourcePermMap ($resource.ResourceWithTag $tag) $perm }},
-      {{- end }}
-  },
-    {{- end }}
-  {{- end }}
-};
-
-export function requiresPermission(resource: Resource, permission: Permission): boolean {
-  return Mappings[resource]?.[permission] ?? false;
-}
-
-{{ with $rpcMethods := .RPCMethods -}}
-type MethodPermissions = Record<Permission, boolean>;
-type MethodPermissionMappings = Record<Method, MethodPermissions>;
-
-const MethodMappings: MethodPermissionMappings = {
-  {{- range $rpcMethod := $rpcMethods }}
-  [Methods.{{ $rpcMethod.Name }}]: {
-    [Permissions.Execute]: true,
-  },
-  {{- end }}
-};
-
-export function requiresMethodPermission(resource: Method, permission: Permission): boolean {
-  return MethodMappings[resource]?.[permission] ?? false;
-}
-{{- end }}
 `
 
 	typescriptResourcesTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
-import { Resource, ResourceMap, ResourceMeta{{ if .File.HasNullBoolean }}, NullBoolean{{ end }}{{ if .File.HasCustomTypesInResources }}, CustomTypes{{ end }} } from '@cccteam/ccc-lib/types';
-import { PermissionScope, PermissionScopes, Resources } from './{{ .GenPrefix }}_constants';
+import { Resource, ResourceMap, ResourceMeta{{ if .File.HasNullBoolean }}, NullBoolean{{ end }} } from '@cccteam/resource';
+{{- range $import := .File.ResourceTypeImports }}
+import { {{ $import.NameList }} } from '{{ $import.From }}';
+{{- end }}
+import { PermissionScope{{ if or .Resources .ComputedResources .FeatureFlags }}, PermissionScopes, Resources{{ end }} } from './{{ .GenPrefix }}_constants';
 {{ range $resource := .Resources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
-  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
+{{- if not $field.IsInputOnly }}
+  {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
+{{- end }}
 {{- end }}
 }
-{{ end }}
+{{ TypescriptNamespaceOf (Pluralize $resource.Name) $resource.ColumnShapes }}{{ end }}
 {{- range $resource := .ComputedResources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
-  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
+{{- if not $field.IsInputOnly }}
+  {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
 {{- end }}
+{{- end }}
+}
+{{ TypescriptNamespace (Pluralize $resource.Name) $resource.Shape }}{{ end }}
+{{- if .FeatureFlags }}
+/** A feature flag: one declared flag's row, as the feature flags dialog lists it. */
+export interface FeatureFlags {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  updatedAt?: Date;
+  updatedBy?: string;
 }
 {{ end }}
 {{ $consolidatedRoute := .ConsolidatedRoute -}}
-const resourceMap: ResourceMap = {
+/**
+ * Keeps the literal types of the metadata while letting a client that predates a field
+ * ignore it: TypeScript checks the literal against the fields ResourceMap declares and no
+ * others, so this file compiles against a client package released before a field it
+ * carries, and the generator and the package release in either order. The intersection
+ * keeps the map indexable by a resource name when no resource is on the outlet.
+ */
+function defineResourceMap<T extends ResourceMap>(map: T): T & ResourceMap {
+  return map;
+}
+
+const resourceMap = defineResourceMap({
   {{- range $resource := $.Resources }}
   [Resources.{{ Pluralize $resource.Name }}]: {
     route: '{{ if $resource.IsDomainScoped }}{{ $.DomainRoutePrefix }}/{{ end }}{{ Kebab (Pluralize $resource.Name) }}',
+    {{- if $resource.Feature }}
+    feature: '{{ $resource.Feature.Name }}',
+    {{- end }}
     {{- if $resource.IsConsolidated }}
     consolidatedRoute: '{{ $consolidatedRoute }}',
+    {{- end }}
+    {{- if $resource.HasRowsOf }}
+    rowsOf: Resources.{{ $resource.RowsOf }},
     {{- end }}
 	{{- if $resource.ListHandlerDisabled }}
     listDisabled: true,
@@ -1465,10 +2316,13 @@ const resourceMap: ResourceMap = {
     {{- end }}
     fields: [
       {{- range $field := $resource.Fields }}
+      {{- if not $field.IsFileKey }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex -}}
-      {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
+       {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end }}{{ if $field.TypescriptMaxLength }}, maxLength: {{ $field.TypescriptMaxLength }}{{ end -}}
+      {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
+      {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }}{{ if $field.IsInputOnly }}, writeOnly: true{{ end }}{{ if $field.FeatureName }}, feature: '{{ $field.FeatureName }}'{{ end }} },
+      {{- end }}
       {{- end }}
     ],
   },
@@ -1477,10 +2331,16 @@ const resourceMap: ResourceMap = {
   {{- range $resource := $.ComputedResources }}
   [Resources.{{ Pluralize $resource.Name }}]: {
     route: '{{ if $resource.IsDomainScoped }}{{ $.DomainRoutePrefix }}/{{ end }}{{ Kebab (Pluralize $resource.Name) }}',
+    {{- if $resource.Feature }}
+    feature: '{{ $resource.Feature.Name }}',
+    {{- end }}
+    {{- if $resource.HasRowsOf }}
+    rowsOf: Resources.{{ $resource.RowsOf }},
+    {{- end }}
 	{{- if $resource.SuppressListHandler }}
     listDisabled: true,
     {{- end }}
-	{{- if $resource.SuppressReadHandler }}
+	{{- if $resource.ReadHandlerDisabled }}
     readDisabled: true,
     {{- end }}
     createDisabled: true,
@@ -1488,15 +2348,34 @@ const resourceMap: ResourceMap = {
     deleteDisabled: true,
     fields: [
       {{- range $field := $resource.Fields }}
+      {{- if not $field.IsFileKey }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ Lower $field.TypescriptDataType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false },
+       {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}
+      {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
+      {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if $field.FeatureName }}, feature: '{{ $field.FeatureName }}'{{ end }} },
+      {{- end }}
       {{- end }}
     ],
   },
 
   {{- end }}
-};
+  {{- if .FeatureFlags }}
+  [Resources.FeatureFlags]: {
+    route: '{{ FeatureFlagsRoute }}',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'enabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'updatedAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'updatedBy', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
+  {{- end }}
+});
 
 export function resourceMeta(resource: Resource): ResourceMeta {
   if (resourceMap[resource] !== undefined) {
@@ -1516,22 +2395,61 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   {{- range $resource := $.ComputedResources }}
   [Resources.{{ Pluralize $resource.Name }}]: PermissionScopes.{{ if $resource.IsDomainScoped }}domain{{ else }}global{{ end }},
   {{- end }}
+  {{- if .FeatureFlags }}
+  [Resources.FeatureFlags]: PermissionScopes.global,
+  {{- end }}
 };
-{{ if .HasConsolidated }}
-export type OperationType = 'add' | 'patch' | 'remove';
-{{ range $resource := .Resources }}{{ if $resource.IsConsolidated }}
-export interface {{ Pluralize $resource.Name }}Operation {
-  op: OperationType;
-  path: {{ if $resource.IsDomainScoped }}` + "`" + `/{{ $.DomainRoutePrefixTS }}/{{ Kebab (Pluralize $resource.Name) }}` + "`" + ` | ` + "`" + `/{{ $.DomainRoutePrefixTS }}/{{ Kebab (Pluralize $resource.Name) }}/${string}` + "`" + `{{ else }}'/{{ Kebab (Pluralize $resource.Name) }}' | ` + "`" + `/{{ Kebab (Pluralize $resource.Name) }}/${string}` + "`" + `{{ end }};
-  value?: Partial<{{ Pluralize $resource.Name }}>;
+{{ if .Workflows }}
+/** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */
+export interface WorkflowMember {
+  resource: Resource;
+  parent: Resource;
+  field: string;
 }
-{{ end }}{{ end -}}
-export type ConsolidatedOperation ={{ $first := true }}{{ range $resource := .Resources }}{{ if $resource.IsConsolidated }}{{ if $first }}{{ $first = false }} {{ else }} | {{ end }}{{ Pluralize $resource.Name }}Operation{{ end }}{{ end }};
+
+/** One declared transition (@transition): the RPC method name and the state edge it moves. */
+export interface WorkflowTransition {
+  method: string;
+  from: string[];
+  to: string;
+}
+
+/** One workflow: the stateful root, its members hop by hop, the closed state set with its default, and the declared transitions — the same facts the generated DOT file draws. */
+export interface Workflow {
+  root: Resource;
+  states: string[];
+  defaultState: string;
+  members: WorkflowMember[];
+  transitions: WorkflowTransition[];
+}
+
+export const Workflows: Workflow[] = [
+{{- range $wf := .Workflows }}
+  {
+    root: Resources.{{ Pluralize $wf.Root.Name }},
+    states: [{{ range $i, $s := $wf.States }}{{ if $i }}, {{ end }}'{{ $s.ID }}'{{ end }}],
+    defaultState: '{{ $wf.Default }}',
+    members: [
+{{- range $m := $wf.Members }}
+      { resource: Resources.{{ Pluralize $m.Res.Name }}, parent: Resources.{{ Pluralize $m.Parent }}, field: '{{ Camel $m.Field.Name }}' },
+{{- end }}
+    ],
+    transitions: [
+{{- range $t := $wf.Transitions }}
+      { method: '{{ $t.Name }}', from: [{{ range $i, $f := $t.Transition.From }}{{ if $i }}, {{ end }}'{{ $f }}'{{ end }}], to: '{{ $t.Transition.To }}' },
+{{- end }}
+    ],
+  },
+{{- end }}
+];
 {{ end -}}
 `
 
 	typescriptMethodsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
-import { FieldName, Method, Resource, Meta, ValidRPCTypes{{ if .File.HasCustomTypesInMethods }}, CustomTypes{{ end }} } from '@cccteam/ccc-lib/types';
+import { EnumerationOption, FieldName, Method, Resource, Meta, ValidRPCTypes } from '@cccteam/resource';
+{{- range $import := .File.MethodTypeImports }}
+import { {{ $import.NameList }} } from '{{ $import.From }}';
+{{- end }}
 {{- $imports := (TypescriptMethodImports .File) }}{{ if ne $imports "" }}
 import { {{ $imports }} } from './{{ .GenPrefix }}_constants';
 {{- end }}
@@ -1550,15 +2468,70 @@ export interface {{ $rpcMethod.Name }} {{ if $rpcMethod.Fields }}{
   {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
 {{- end }}
 }{{ else }}{}{{ end }}
+{{- if $rpcMethod.Answers }}
+/** The result {{ $rpcMethod.Name }} answers with. */
+export interface {{ $rpcMethod.Name }}Result {
+{{- range $field := $rpcMethod.ResultFields }}
+  {{ $field.JSONName }}: {{ $rpcMethod.ResultTypescriptType $field }};
+{{- end }}
+}
+{{- end }}
+{{- if $rpcMethod.Statuses }}
+/** The statuses {{ $rpcMethod.Name }} declares; the method chooses one per response. */
+export type {{ $rpcMethod.Name }}Status = {{ $rpcMethod.StatusUnion }};
+{{- if $rpcMethod.Answers }}
+/** The answer {{ $rpcMethod.Name }} resolves with: the status the method chose and its typed result. */
+export interface {{ $rpcMethod.Name }}Answer {
+  status: {{ $rpcMethod.Name }}Status;
+  result: {{ $rpcMethod.Name }}Result;
+}
+{{- end }}
+{{- end }}
+{{ $rpcMethod.TypescriptNamespace }}{{ end }}
+{{- if .FeatureFlags }}
+/** The body SetFeature takes: the flag by name and the state to set. */
+export interface SetFeatureConfig {
+  name: string | FieldPointer;
+  enabled: boolean | FieldPointer;
+}
+export interface SetFeature {
+  name: string;
+  enabled: boolean;
+}
+/** The result SetFeature answers with: the flag as written. */
+export interface SetFeatureResult {
+  name: string;
+  enabled: boolean;
+  updatedAt: Date;
+}
 {{ end }}
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
+  /** The resource whose rows a picker for this field lists; absent when the values are fixed (see enumeration). */
   enumeratedResource?: Resource;
+  /** The fixed values of an enumeration table the field names; the picker renders them without a request. */
+  enumeration?: EnumerationOption[];
+}
+
+/** A declared workflow transition: the resource the method moves, the states it runs from, and the state it stamps. */
+export interface MethodTransition {
+  target: Resource;
+  from: string[];
+  to: string;
 }
 
 export interface MethodMeta {
   route: string;
+  /** The feature flag the method is gated behind (@feature); absent when it is not gated. */
+  feature?: string;
+  transition?: MethodTransition;
+  /** Set when the method answers with a result body; absent methods resolve with nothing. */
+  answers?: true;
+  /** The statuses the method declares with @answers; a listed 4xx is the method's own answer, not a refusal by the frame. */
+  statuses?: number[];
+  /** Set on an @upload method: the request is multipart, and the whole body is bounded by maxBytes. */
+  upload?: { maxBytes: number };
   fields: RPCFieldMeta[];
 }
 
@@ -1568,10 +2541,27 @@ const methodMap: MethodMap = {
   {{- range $rpcMethod := .RPCMethods }}
   [Methods.{{ $rpcMethod.Name }}]: {
     route: '{{ Kebab ($rpcMethod.Name) }}',
+    {{- if $rpcMethod.Feature }}
+    feature: '{{ $rpcMethod.Feature.Name }}',
+    {{- end }}
+    {{- with $t := $rpcMethod.Transition }}
+    transition: { target: Resources.{{ $t.RootResource }}, from: [{{ range $i, $v := $t.From }}{{ if $i }}, {{ end }}'{{ $v }}'{{ end }}], to: '{{ $t.To }}' },
+    {{- end }}
+    {{- if $rpcMethod.Answers }}
+    answers: true,
+    {{- end }}
+    {{- if $rpcMethod.Statuses }}
+    statuses: [{{ $rpcMethod.StatusList }}],
+    {{- end }}
+    {{- with $rpcMethod.Upload }}
+    upload: { maxBytes: {{ .MaxBytes }} },
+    {{- end }}
     {{- if $rpcMethod.Fields }}
     fields: [
     {{- range $field := $rpcMethod.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', displayType: '{{ Lower $field.TypescriptDisplayType }}'{{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }} },
+      { fieldName: '{{ Camel $field.Name }}', displayType: '{{ DisplayType $field.TypescriptDisplayType }}'
+      {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
+      {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }} },
     {{- end }}
     ],
     {{- else }}
@@ -1579,6 +2569,16 @@ const methodMap: MethodMap = {
     {{- end }}
   },
 
+  {{- end }}
+  {{- if .FeatureFlags }}
+  [Methods.SetFeature]: {
+    route: '{{ SetFeatureRoute }}',
+    answers: true,
+    fields: [
+      { fieldName: 'name', displayType: 'string' },
+      { fieldName: 'enabled', displayType: 'boolean' },
+    ],
+  },
   {{- end }}
 };
 
@@ -1589,6 +2589,146 @@ export function methodMeta(method: Method): Meta {
     console.error('Method not found in methodMap:', method);
     return {} as Meta;
   }
+}
+`
+
+	typescriptAPITemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+import { ApiDescriptor, Client, ClientOptions, createClient{{ if .Methods }}, MethodHandle{{ end }}{{ if .HasNullBoolean }}, NullBoolean{{ end }}{{ if .Resources }}, ResourceHandle{{ end }}{{ if .HasUpload }}, UploadMethodHandle{{ end }} } from '@cccteam/resource';
+{{- range $import := .TypeImports }}
+import { {{ $import.NameList }} } from '{{ $import.From }}';
+{{- end }}
+{{- if or .Resources .Methods }}
+import { {{ if .Methods }}Methods{{ if .Resources }}, {{ end }}{{ end }}{{ if .Resources }}Resources{{ end }} } from './{{ .GenPrefix }}_constants';
+{{- end }}
+{{- if .Resources }}
+import { {{ .ResourceImports }} } from './{{ .GenPrefix }}_resources';
+{{- end }}
+{{- if .Methods }}
+import { {{ .MethodImports }} } from './{{ .GenPrefix }}_methods';
+{{- end }}
+{{- if .Features }}
+
+/** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
+export type Feature = {{ range $i, $f := .Features }}{{ if $i }} | {{ end }}'{{ $f.Name }}'{{ end }};
+export const Feature = {
+{{- range $f := .Features }}
+  {{ $f.Constant }}: '{{ $f.Name }}' as Feature,
+{{- end }}
+};
+{{- end }}
+{{ range $r := .Resources }}
+{{- if $r.HasCreate }}
+/**
+ * The fields a client may set when creating {{ $r.Name }}. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+{{- if $r.CreateFields }}
+export interface {{ $r.Name }}Create {
+{{- range $f := $r.CreateFields }}
+  {{ $f.Name }}{{ if not $f.Required }}?{{ end }}: {{ $f.Type }};
+{{- end }}
+}
+{{- else }}
+export type {{ $r.Name }}Create = Record<never, never>;
+{{- end }}
+{{- end }}
+{{- if $r.HasPatch }}
+/** The fields a client may change on {{ $r.Name }}. Keys, server-owned, and immutable fields are absent. */
+{{- if $r.PatchFields }}
+export interface {{ $r.Name }}Patch {
+{{- range $f := $r.PatchFields }}
+  {{ $f.Name }}?: {{ $f.Type }};
+{{- end }}
+}
+{{- else }}
+export type {{ $r.Name }}Patch = Record<never, never>;
+{{- end }}
+{{- end }}
+/** The primary key of {{ $r.Name }}, in route order. */
+export type {{ $r.Name }}Key = [{{ range $i, $k := $r.Keys }}{{ if $i }}, {{ end }}{{ $k.Name }}: {{ $k.Type }}{{ end }}];
+{{ end }}
+/**
+ * Keeps the literal types of the descriptor while letting a client that predates a field
+ * ignore it: TypeScript checks the literal against the fields ApiDescriptor declares and
+ * no others, so this file compiles against a client package released before a block it
+ * carries, and the generator and the package release in either order.
+ */
+function defineApiDescriptor<T extends ApiDescriptor>(descriptor: T): T {
+  return descriptor;
+}
+
+/** The generated API as the @cccteam/resource runtime addresses it. Routes carry no API prefix. */
+export const apiDescriptor = defineApiDescriptor({
+{{- if .HasDomainScoped }}
+  domainRoute: { segment: '{{ .DomainRouteSegment }}', param: '{{ .DomainRouteParam }}' },
+{{- end }}
+{{- if .ConsolidatedRoute }}
+  consolidatedRoute: '{{ .ConsolidatedRoute }}',
+{{- end }}
+  permissionDigestRoute: 'permission-digest',
+  userDomainsRoute: 'user-domains',
+  features: { route: '{{ FeaturesRoute }}' },
+{{- if .Live }}
+  live: { renewRoute: '{{ LiveRenewRoute }}', unsubscribeRoute: '{{ LiveUnsubscribeRoute }}', tokenRoute: '{{ LiveTokenRoute }}' },
+{{- end }}
+  resources: {
+{{- range $r := .Resources }}
+    [Resources.{{ $r.Name }}]: {
+      resource: Resources.{{ $r.Name }},
+      property: '{{ $r.Property }}',
+      route: '{{ $r.Route }}',
+      scope: '{{ $r.ScopeKind }}',
+      consolidated: {{ $r.Consolidated }},
+      keys: [{{ range $i, $k := $r.Keys }}{{ if $i }}, {{ end }}'{{ $k.Name }}'{{ end }}],
+      operations: [{{ range $i, $o := $r.Operations }}{{ if $i }}, {{ end }}'{{ $o }}'{{ end }}],
+      page: { default: {{ $r.PageDefault }}{{ if $r.PageMax }}, max: {{ $r.PageMax }}{{ end }} },
+      {{- if $r.Order }}
+      order: [{{ range $i, $o := $r.Order }}{{ if $i }}, {{ end }}{ field: '{{ $o.Field }}', direction: '{{ $o.Direction }}' }{{ end }}],
+      {{- end }}
+      {{- if $r.HasPatch }}
+      patchable: [{{ range $i, $f := $r.PatchFields }}{{ if $i }}, {{ end }}'{{ $f.Name }}'{{ end }}],
+      {{- end }}
+      {{- if $r.Files }}
+      files: [{{ range $i, $f := $r.Files }}{{ if $i }}, {{ end }}'{{ $f }}'{{ end }}],
+      {{- end }}
+      {{- if $r.Feature }}
+      feature: '{{ $r.Feature }}',
+      {{- end }}
+    },
+{{- end }}
+  },
+  methods: {
+{{- range $m := .Methods }}
+    [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}'{{ if $m.Answers }}, answers: true{{ end }}{{ if $m.Statuses }}, statuses: {{ $m.StatusArray }}{{ end }}{{ if $m.UploadMaxBytes }}, upload: { maxBytes: {{ $m.UploadMaxBytes }} }{{ end }}{{ if $m.Feature }}, feature: '{{ $m.Feature }}'{{ end }} },
+{{- end }}
+  },
+});
+
+/** Handles for the global scope, available on the client root. */
+export interface GlobalApi {
+{{- range $r := .Resources }}{{ if eq $r.ScopeKind "global" }}
+  {{ $r.Property }}: {{ $r.HandleType }};
+{{- end }}{{ end }}
+{{- range $m := .Methods }}{{ if eq $m.ScopeKind "global" }}
+  {{ $m.Property }}: {{ $m.HandleType }}<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResolvesWith }}{{ end }}>;
+{{- end }}{{ end }}
+}
+
+/** Handles for one tenant partition, available on client.domain(...). */
+export interface DomainApi {
+{{- range $r := .Resources }}{{ if eq $r.ScopeKind "domain" }}
+  {{ $r.Property }}: {{ $r.HandleType }};
+{{- end }}{{ end }}
+{{- range $m := .Methods }}{{ if eq $m.ScopeKind "domain" }}
+  {{ $m.Property }}: {{ $m.HandleType }}<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResolvesWith }}{{ end }}>;
+{{- end }}{{ end }}
+}
+
+export type Api = Client<GlobalApi, DomainApi>;
+
+/** Creates the typed client. baseUrl is the API prefix (for example '/api'). */
+export function createApi(options: ClientOptions): Api {
+  return createClient<GlobalApi, DomainApi>(apiDescriptor, options);
 }
 `
 
@@ -1623,18 +2763,63 @@ func Collection() *resource.GeneratedCollection {
 			{
 				Name:  "{{ .Name }}",
 				Scope: {{ ScopeConstant .Scope }},
+				{{- if .Computed }}
+				Computed: true,
+				{{- end }}
+				{{- with .Formerly }}
+				Formerly: "{{ . }}",
+				{{- end }}
 				{{- with .Permissions }}
 				Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} },
 				{{- end }}
 				{{- with .Tags }}
 				Tags: []resource.TagData{
 					{{- range . }}
-					{Name: "{{ .Name }}"{{ with .Permissions }}, Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} }{{ end }}},
+					{Name: "{{ .Name }}"{{ with .Permissions }}, Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} }{{ end }}{{ with .Masking }}, Masking: {{ MaskingConstant . }}{{ end }}{{ with .Formerly }}, Formerly: "{{ . }}"{{ end }}},
 					{{- end }}
 				},
 				{{- end }}
 				{{- with .ImmutableTags }}
 				ImmutableTags: []accesstypes.Tag{ {{- range $i, $t := . }}{{ if $i }}, {{ end }}"{{ $t }}"{{ end -}} },
+				{{- end }}
+				{{- with .Attributes }}
+				Attributes: []resource.AttributeData{
+					{{- range . }}
+					{Name: "{{ .Name }}", Column: "{{ .Column }}", Type: "{{ .Type }}"{{ BindingHops .Path }}},
+					{{- end }}
+				},
+				{{- end }}
+				{{- with .Domain }}
+				Domain: &resource.DomainBindingData{Column: "{{ .Column }}"{{ BindingHops .Path }}},
+				{{- end }}
+				{{- with .SubjectSets }}
+				SubjectSets: []resource.SubjectBindingData{
+					{{- range . }}
+					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}", Type: "{{ .Type }}"{{ BindingHops .Path }}},
+					{{- end }}
+				},
+				{{- end }}
+				{{- with .SubjectValues }}
+				SubjectValues: []resource.SubjectBindingData{
+					{{- range . }}
+					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}", Type: "{{ .Type }}"{{ BindingHops .Path }}},
+					{{- end }}
+				},
+				{{- end }}
+				{{- with .Transition }}
+				Transition: &resource.TransitionData{Target: "{{ .Target }}", From: []string{ {{- range $i, $v := .From }}{{ if $i }}, {{ end }}"{{ $v }}"{{ end -}} }, To: "{{ .To }}"},
+				{{- end }}
+				{{- with .Target }}
+				Target: "{{ . }}",
+				{{- end }}
+				{{- with .Parent }}
+				Parent: "{{ . }}",
+				{{- end }}
+				{{- with .Order }}
+				Order: []accesstypes.Tag{ {{- range $i, $t := . }}{{ if $i }}, {{ end }}"{{ $t }}"{{ end -}} },
+				{{- end }}
+				{{- with .QueryKeys }}
+				QueryKeys: []accesstypes.Tag{ {{- range $i, $t := . }}{{ if $i }}, {{ end }}"{{ $t }}"{{ end -}} },
 				{{- end }}
 			},
 			{{- end }}
@@ -1651,6 +2836,9 @@ package {{ .Package }}
 import (
 	"net/http"
 
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
 )
@@ -1684,7 +2872,27 @@ type GeneratedHandlers interface {
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 	{{ end }}
-	{{- range $Struct, $Routes := .RoutesMap }}
+	{{- if .HasGatedRoutes }}
+	// FeatureGuard wraps every route below gated behind a feature flag (@feature):
+	// while the flag is off the route answers 404 as an unregistered route does.
+	FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc
+	{{ end }}
+	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
+	// outlet's prefix: a tab's subscriptions renewed against the user's grants, a tab
+	// or a logout leaving, and how the browser connects to its change set.
+	LiveRenew() http.HandlerFunc
+	LiveUnsubscribe() http.HandlerFunc
+	LiveToken() http.HandlerFunc
+	// PermissionDigest serves the session user's per-scope permission digest:
+	// advisory grant structure for the UI (resource → permission → granted or
+	// conditional, denied targets absent), with the scope taken from the request
+	// (?domain= names a tenant partition, absent means global).
+	PermissionDigest() http.HandlerFunc
+	// UserDomains serves the session user's domain membership: the sorted domains
+	// where they hold at least one grant — the tenant picker's source, on the same
+	// foothold predicate as concealed tenancy.
+	UserDomains() http.HandlerFunc
+	{{ range $Struct, $Routes := .RoutesMap }}
 	{{- range $Routes }}
 	{{ .HandlerFunc }}() http.HandlerFunc
 	{{- end }}
@@ -1695,17 +2903,34 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
+	// Every route below runs under the subscribe middleware: a request carrying
+	// X-Subscribe is noted on its request log line and refused when its tab id is
+	// malformed.
+	r = r.With(live.Subscribing())
 {{- if .HasDomainScopedRoutes }}
 	domainGuard := h.DomainGuard()
-{{ end -}}
-{{- range $Struct, $Routes := .RoutesMap }}
+{{ end }}
+{{- if .HasGatedRoutes }}
+	featureGuard := h.FeatureGuard()
+{{ end }}
+	r.Get("/{{ .RoutePrefix }}/permission-digest", h.PermissionDigest())
+	r.Get("/{{ .RoutePrefix }}/user-domains", h.UserDomains())
+	r.Post("/{{ .RoutePrefix }}/{{ LiveRenewRoute }}", h.LiveRenew())
+	r.Post("/{{ .RoutePrefix }}/{{ LiveUnsubscribeRoute }}", h.LiveUnsubscribe())
+	r.Get("/{{ .RoutePrefix }}/{{ LiveTokenRoute }}", h.LiveToken())
+{{ range $Struct, $Routes := .RoutesMap }}
 	{{- range $route := $Routes }}
 	{{- if $route.SharedHandler }}
-	{{ Camel $route.HandlerFunc }}Handler := {{ if $route.DomainScoped }}domainGuard(h.{{ $route.HandlerFunc }}()){{ else }}h.{{ $route.HandlerFunc }}(){{ end }}
+	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
 	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
 	r.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{- else if $route.FormerPath }}
+	// The former route of {{ $route.HandlerFunc }} answers on the same handler.
+	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
+	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	r.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ if $route.DomainScoped }}domainGuard(h.{{ $route.HandlerFunc }}()){{ else }}h.{{ $route.HandlerFunc }}(){{ end }})
+	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
 	{{- end }}
 	{{ end -}}
 {{ end -}}
@@ -1723,6 +2948,27 @@ type Generated{{ $outlet.Suffix }}Handlers interface {
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 	{{ end }}
+	{{- if $outlet.HasGatedRoutes }}
+	// FeatureGuard wraps every route below gated behind a feature flag (@feature):
+	// while the flag is off the route answers 404 as an unregistered route does.
+	FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc
+	{{ end }}
+	{{- if $outlet.ServesSessions }}
+	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
+	// outlet's prefix.
+	LiveRenew() http.HandlerFunc
+	LiveUnsubscribe() http.HandlerFunc
+	LiveToken() http.HandlerFunc
+	// PermissionDigest serves the session user's per-scope permission digest:
+	// advisory grant structure for the UI (resource → permission → granted or
+	// conditional, denied targets absent), with the scope taken from the request
+	// (?domain= names a tenant partition, absent means global).
+	PermissionDigest() http.HandlerFunc
+	// UserDomains serves the session user's domain membership: the sorted domains
+	// where they hold at least one grant — the tenant picker's source, on the same
+	// foothold predicate as concealed tenancy.
+	UserDomains() http.HandlerFunc
+	{{ end }}
 	{{- range $Struct, $Routes := $outlet.RoutesMap }}
 	{{- range $Routes }}
 	{{ .HandlerFunc }}() http.HandlerFunc
@@ -1734,17 +2980,42 @@ type Generated{{ $outlet.Suffix }}Handlers interface {
 }
 
 func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suffix }}Handlers) {
+{{- if $outlet.ServesSessions }}
+	// Every route below runs under the subscribe middleware: a request carrying
+	// X-Subscribe is noted on its request log line and refused when its tab id is
+	// malformed.
+	r = r.With(live.Subscribing())
+{{- else }}
+	// The outlet serves no browser sessions, so it serves no live pages: a request
+	// carrying X-Subscribe is refused naming the header.
+	r = r.With(live.Refusing())
+{{- end }}
 {{- if $outlet.HasDomainScopedRoutes }}
 	domainGuard := h.DomainGuard()
+{{ end -}}
+{{- if $outlet.HasGatedRoutes }}
+	featureGuard := h.FeatureGuard()
+{{ end -}}
+{{- if $outlet.ServesSessions }}
+	r.Get("/{{ $outlet.Prefix }}/permission-digest", h.PermissionDigest())
+	r.Get("/{{ $outlet.Prefix }}/user-domains", h.UserDomains())
+	r.Post("/{{ $outlet.Prefix }}/{{ LiveRenewRoute }}", h.LiveRenew())
+	r.Post("/{{ $outlet.Prefix }}/{{ LiveUnsubscribeRoute }}", h.LiveUnsubscribe())
+	r.Get("/{{ $outlet.Prefix }}/{{ LiveTokenRoute }}", h.LiveToken())
 {{ end -}}
 {{- range $Struct, $Routes := $outlet.RoutesMap }}
 	{{- range $route := $Routes }}
 	{{- if $route.SharedHandler }}
-	{{ Camel $route.HandlerFunc }}Handler := {{ if $route.DomainScoped }}domainGuard(h.{{ $route.HandlerFunc }}()){{ else }}h.{{ $route.HandlerFunc }}(){{ end }}
+	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
 	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
 	r.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{- else if $route.FormerPath }}
+	// The former route of {{ $route.HandlerFunc }} answers on the same handler.
+	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
+	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	r.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ if $route.DomainScoped }}domainGuard(h.{{ $route.HandlerFunc }}()){{ else }}h.{{ $route.HandlerFunc }}(){{ end }})
+	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
 	{{- end }}
 	{{ end -}}
 {{ end -}}
@@ -1790,6 +3061,10 @@ func NewTestRouter(h GeneratedHandlers) *chi.Mux {
 
 	return r
 }
+{{- end }}
+{{- /* routeHandler renders one route's handler expression: the handler, under the domain guard when the route is domain-scoped, under the feature guard when it is gated. */ -}}
+{{- define "routeHandler" -}}
+{{ if .Route.Feature }}featureGuard({{ .ResourcePackage }}.{{ .Route.Feature.Constant }})({{ end }}{{ if .Route.DomainScoped }}domainGuard(h.{{ .Route.HandlerFunc }}()){{ else }}h.{{ .Route.HandlerFunc }}(){{ end }}{{ if .Route.Feature }}){{ end }}
 {{- end }}`
 
 	routerTestTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
@@ -1803,6 +3078,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -1952,6 +3228,7 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
+		"{{ FeatureFlagNameParam }}",
 	{{- if .HasDomainScoped }}
 		"{{ .DomainRouteParam }}",
 	{{- end }}
@@ -1980,10 +3257,37 @@ func generatedRouteParameters() []string {
 
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest {
+		{
+			url: "/{{ .RoutePrefix }}/permission-digest", method: http.MethodGet,
+			handlerFunc: "PermissionDigest",
+		},
+		{
+			url: "/{{ .RoutePrefix }}/user-domains", method: http.MethodGet,
+			handlerFunc: "UserDomains",
+		},
+		{
+			url: "/{{ .RoutePrefix }}/{{ LiveRenewRoute }}", method: http.MethodPost,
+			handlerFunc: "LiveRenew",
+		},
+		{
+			url: "/{{ .RoutePrefix }}/{{ LiveUnsubscribeRoute }}", method: http.MethodPost,
+			handlerFunc: "LiveUnsubscribe",
+		},
+		{
+			url: "/{{ .RoutePrefix }}/{{ LiveTokenRoute }}", method: http.MethodGet,
+			handlerFunc: "LiveToken",
+		},
 		{{- range $route := .RouterTestRoutes }}
 		{{- range $method := $route.TestMethods }}
 		{
 			url: "{{ $route.TestURL }}", method: {{ $method }},
+			handlerFunc: "{{ $route.HandlerFunc }}",
+			parameters: map[string]string{ {{- range $param := $route.TestParams }}"{{ $param.Key }}": "{{ $param.Value }}", {{ end -}} },
+		},
+		{{- end }}
+		{{- if $route.FormerTestURL }}
+		{
+			url: "{{ $route.FormerTestURL }}", method: {{ index $route.TestMethods 0 }},
 			handlerFunc: "{{ $route.HandlerFunc }}",
 			parameters: map[string]string{ {{- range $param := $route.TestParams }}"{{ $param.Key }}": "{{ $param.Value }}", {{ end -}} },
 		},
@@ -2001,6 +3305,28 @@ func generatedRouterTests() []*generatedRouterTest {
 			handlerFunc: "{{ $outlet.ConsolidatedHandlerFunc }}",
 		},
 		{{ end }}{{- end }}
+		{{- range $outlet := .ExtraOutlets }}{{ if $outlet.ServesSessions -}}
+		{
+			url: "/{{ $outlet.Prefix }}/permission-digest", method: http.MethodGet,
+			handlerFunc: "PermissionDigest",
+		},
+		{
+			url: "/{{ $outlet.Prefix }}/user-domains", method: http.MethodGet,
+			handlerFunc: "UserDomains",
+		},
+		{
+			url: "/{{ $outlet.Prefix }}/{{ LiveRenewRoute }}", method: http.MethodPost,
+			handlerFunc: "LiveRenew",
+		},
+		{
+			url: "/{{ $outlet.Prefix }}/{{ LiveUnsubscribeRoute }}", method: http.MethodPost,
+			handlerFunc: "LiveUnsubscribe",
+		},
+		{
+			url: "/{{ $outlet.Prefix }}/{{ LiveTokenRoute }}", method: http.MethodGet,
+			handlerFunc: "LiveToken",
+		},
+		{{ end }}{{- end }}
 	}
 
 	return routerTests
@@ -2016,11 +3342,40 @@ type generatedHandlersStub struct {
 func newGeneratedHandlersStub(record func(handlerName string) http.HandlerFunc) *generatedHandlersStub {
 	return &generatedHandlersStub{record: record}
 }
+
+func (s *generatedHandlersStub) PermissionDigest() http.HandlerFunc {
+	return s.record("PermissionDigest")
+}
+
+func (s *generatedHandlersStub) UserDomains() http.HandlerFunc {
+	return s.record("UserDomains")
+}
+
+func (s *generatedHandlersStub) LiveRenew() http.HandlerFunc {
+	return s.record("LiveRenew")
+}
+
+func (s *generatedHandlersStub) LiveUnsubscribe() http.HandlerFunc {
+	return s.record("LiveUnsubscribe")
+}
+
+func (s *generatedHandlersStub) LiveToken() http.HandlerFunc {
+	return s.record("LiveToken")
+}
 {{ if .StubDomainGuard }}
 // DomainGuard passes requests through unchecked: the routing tests exercise dispatch,
-// not the guard (guard behavior is covered where DomainExists is real).
+// not the guard (guard behavior is covered where the tenant roster is real).
 func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc { return next }
+}
+{{ end }}
+{{- if .StubFeatureGuard }}
+// FeatureGuard passes requests through unchecked: the routing tests exercise dispatch,
+// not the gate (the generated feature gate tests cover it over a real FeatureSet).
+func (s *generatedHandlersStub) FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+	return func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc {
+		return func(next http.HandlerFunc) http.HandlerFunc { return next }
+	}
 }
 {{ end }}
 {{- range $Struct, $Routes := .RoutesMap }}
@@ -2066,32 +3421,16 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 )
 
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
-	{{- range $field := .RPCMethod.Fields }}
-	{{- if $field.IsLocalType }}
-	type {{ Lower $field.UnqualifiedTypeName }} 
-	
-	{{- with $field.AsStruct }} struct {
-		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
-		{{- end }}
-	}
-	{{ else }} {{ $field.Type }}
-	{{ end }}
-	{{ end -}}
-	{{ end }}
-	type request struct {
-		{{- range $field := .RPCMethod.Fields }}
-		{{ $field.Name }} {{ if $field.IsLocalType }}{{ Lower $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} ` + "`{{ $field.JSONTag }}`" + `
-		{{- end }}
-	}
+	{{- template "rpcMirrors" $ }}
 
-	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
+	decoder := New{{ if .RPCMethod.Target }}Targeted{{ end }}RPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2100,49 +3439,418 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{ if .RPCMethod.IsDomainScoped -}}
 		` + domainParamLine + `
 		{{ end -}}
-		params, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		{{- if .RPCMethod.Target }}
+		params, gate, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-
-		{{- if .RPCMethod.HasLocalType }}
-		p := &{{ .RPCMethod.Type }}{
-			{{- range $field := .RPCMethod.Fields }}
-			{{- if not $field.IsIterable }}
-			{{ $field.Name }}: params.{{ $field.Name }},
-			{{- end -}}
-			{{- end }}
-		}
-		{{- range $field := .RPCMethod.Fields -}}
-		{{- if $field.IsIterable }}
-		for _, e := range params.{{ $field.Name }} {
-			p.{{ $field.Name }} = append(p.{{ $field.Name }}, {{ $field.TypeName }}(e))
-		}
-		{{- end }}
-		{{- end }}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, gate.Caller())
 		{{- else }}
+		params, caller, err := decoder.DecodeCaller(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, caller)
+		{{- end }}
+
+		{{- if .RPCMethod.Request.Flat }}
 
 		p := (*{{ .RPCMethod.Type }})(params)
+		{{- else }}
+
+		p := {{ .RPCMethod.RequestConverterName }}(*params)
 		{{- end }}
-		{{- if .RPCMethod.IsTxnRunner }}
+		{{- template "rpcCollectTouched" $ }}
+		{{- template "rpcResultVars" $ }}
+		{{- if .RPCMethod.IsTxnForm }}
+			// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
+			// rolls the transaction back: every refusal answers as the real call
+			// would, and a call that would have succeeded answers 200 with no body.
+			dryRun := resource.IsDryRun(r)
 			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+				{{- template "rpcTargetFrame" $ }}
+				{{- if .RPCMethod.Answers -}}
+				answer, err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient())
+				if err != nil {
+					return errors.Wrap(err, "Transaction.Execute()")
+				}
+				result = answer
+				{{- template "rpcRefuseInTxn" $ }}
+				{{- else -}}
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
 					return errors.Wrap(err, "Transaction.Execute()")
+				}
+				{{- end }}
+				{{- template "rpcStampTransition" $ }}
+				if dryRun {
+					return resource.ErrDryRun
 				}
 
 				return nil
 			}); err != nil {
-				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
+				{{- template "rpcTxnFailed" $ }}
 			}
-		{{- else if .RPCMethod.IsDBRunner }}
+		{{- else }}
+		if resource.IsDryRun(r) {
+			// Effects outside a transaction cannot be rolled back, so there is
+			// nothing a dry run could promise here.
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage("dry run is not supported: {{ .RPCMethod.Name }} runs outside a transaction"))
+		}
+		{{- if .RPCMethod.Answers }}
+		answer, err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		result = answer
+		{{- if .RPCMethod.Statuses }}
+		{{- template "rpcChooseStatus" $ }}
+		{{- end }}
+		{{- else }}
 		if err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		{{- end }}
-
-		return httpio.NewEncoder(w).Ok(nil)
+		{{- end }}
+		{{- template "rpcPublish" $ }}
+		{{- template "rpcWriteAnswer" $ }}
 	})
 }
+` + rpcHandlerDefines
+
+	// rpcUploadHandlerTemplate is the multipart intake frame of an @upload method:
+	// the body is bounded before a byte is read, the request part is decoded and
+	// checked exactly as a JSON RPC, the file parts are streamed to the store the
+	// method names, read off the resource client, under minted keys, the body runs
+	// inside the transaction with the files, and the transaction's commit claims the
+	// keys, which are deleted on any failure before it. The store is the framework's
+	// (resource/filestore) or one the application writes; the frame owns intake alone.
+	rpcUploadHandlerTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package {{ .Package }}
+
+import (
+	"context"
+	"net/http"
+
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/tracer"
+	"github.com/cccteam/httpio"
+	"github.com/go-playground/errors/v5"
+)
+
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
+	{{- template "rpcMirrors" $ }}
+
+	decoder := New{{ if .RPCMethod.Target }}Targeted{{ end }}RPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
+
+	// The declared maximum bounds the whole multipart body: {{ .RPCMethod.Upload.MaxBytesText }}.
+	const maxBytes = {{ .RPCMethod.Upload.MaxBytes }}
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		{{ if .RPCMethod.IsDomainScoped -}}
+		` + domainParamLine + `
+		{{ end -}}
+		// The intake: a body over the maximum answers 413 before a byte over it is
+		// read, and the request part comes first, decoded exactly as a JSON RPC.
+		upload, err := resource.OpenUpload(r, maxBytes)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		{{- if .RPCMethod.Target }}
+		params, gate, err := decoder.Decode(upload.Request(), {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, gate.Caller())
+		{{- else }}
+		params, caller, err := decoder.DecodeCaller(upload.Request(), {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, caller)
+		{{- end }}
+
+		{{- if .RPCMethod.Request.Flat }}
+
+		p := (*{{ .RPCMethod.Type }})(params)
+		{{- else }}
+
+		p := {{ .RPCMethod.RequestConverterName }}(*params)
+		{{- end }}
+
+		// The files stream to the store the method names, wired on the resource client,
+		// under keys the frame minted; the body records the keys, and the transaction's
+		// commit is what claims them. A dry run (X-Dry-Run: true) streams nothing: the
+		// files describe the parts with empty keys, the body runs, and the transaction
+		// rolls back.
+		dryRun := resource.IsDryRun(r)
+		store := {{ .ReceiverName }}.ResourceClient().FileStore({{ .RPCMethod.Upload.StoreNameExpr }})
+		{{- if .RPCMethod.Upload.Typed }}
+		files, err := resource.StreamInto[{{ .RPCMethod.Upload.StoreType }}](ctx, upload, store, dryRun)
+		{{- else }}
+		files, err := upload.Stream(ctx, store, dryRun)
+		{{- end }}
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		{{- template "rpcCollectTouched" $ }}
+		{{- template "rpcResultVars" $ }}
+		if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+			{{- template "rpcTargetFrame" $ }}
+			{{- if .RPCMethod.Answers -}}
+			answer, err := p.Execute(ctx, txn, files, {{ $.ReceiverName }}.RPCClient())
+			if err != nil {
+				return errors.Wrap(err, "Transaction.Execute()")
+			}
+			result = answer
+			{{- template "rpcRefuseInTxn" $ }}
+			{{- else -}}
+			if err := p.Execute(ctx, txn, files, {{ $.ReceiverName }}.RPCClient()); err != nil {
+				return errors.Wrap(err, "Transaction.Execute()")
+			}
+			{{- end }}
+			{{- template "rpcStampTransition" $ }}
+			if dryRun {
+				return resource.ErrDryRun
+			}
+
+			return nil
+		}); err != nil {
+			// Nothing committed, so nothing claims the streamed objects: they are
+			// deleted, and the answer is the failure's own.
+			err = resource.DiscardUpload(ctx, store, files.Keys(), err)
+			{{- template "rpcTxnFailed" $ }}
+		}
+
+		// The transaction committed with the keys recorded: the rows claim the
+		// objects, and nothing more happens to the store.
+		{{- template "rpcPublish" $ }}
+		{{- template "rpcWriteAnswer" $ }}
+	})
+}
+` + rpcHandlerDefines
+
+	// rpcHandlerDefines are the frame pieces the JSON and upload handler templates
+	// share.
+	rpcHandlerDefines = `
+{{- define "rpcMirrors" }}
+	{{- with .RPCMethod.MirrorDecls }}
+	// Mirrors of the structs the request and the result reach, leaves first: the
+	// wire shape lives here, in generated code.
+{{ . }}{{- end }}
+	type request struct {
+		{{- range $field := .RPCMethod.Fields }}
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }}{{ with $field.FormerlyTag }} {{ . }}{{ end }}`" + `
+		{{- end }}
+	}
+	{{- if .RPCMethod.Answers }}
+
+	// The answer as the wire carries it: Execute's result mirrored with generated
+	// wire names, encoded after the transaction commits.
+	type response struct {
+		{{- range $field := .RPCMethod.ResultFields }}
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`json:\"{{ $field.JSONName }}\"`" + `
+		{{- if $field.FormerName }}
+		{{ $field.FormerGoName }} {{ $field.MirrorType }} ` + "`json:\"{{ $field.FormerName }}\"`" + `
+		{{- end }}
+		{{- end }}
+	}
+	{{- end }}
+	{{- with .RPCMethod.RequestConverters }}
+
+	// The decoded mirror becomes the method's struct through a pinned view of each
+	// source struct: legal now, a compile error the moment a source changes.
+{{ . }}{{- end }}
+	{{- if .RPCMethod.Answers }}{{ with .RPCMethod.ResultConverters }}
+
+	// The result becomes its mirror the same way.
+{{ . }}{{- end }}{{ end }}
+{{- end }}
+
+{{- define "rpcCollectTouched" }}
+
+		// The rows the method writes are collected for the live pages, published once
+		// the commit lands and before the answer; a transaction that rolls back wrote
+		// nothing to publish.
+		ctx, touched := resource.CollectTouchedRows(ctx)
+{{- end }}
+
+{{- define "rpcPublish" }}
+
+		live.Publish(ctx, {{ $.ReceiverName }}.LiveService(), {{ if .RPCMethod.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)
+{{- end }}
+
+{{- define "rpcResultVars" }}
+		{{- if .RPCMethod.Answers }}
+		// Captured inside the transaction, encoded after it commits: under
+		// abort-and-retry the value is the committing attempt's.
+		var result {{ .RPCMethod.ResultType }}
+		{{- if .RPCMethod.Statuses }}
+		// The status the result chose, among the declared {{ .RPCMethod.StatusList }}.
+		var status int
+		{{- end }}
+		{{- end }}
+{{- end }}
+
+{{- define "rpcTargetFrame" }}
+				{{- with $t := .RPCMethod.Target }}
+				// Declared target: locate the row within the tenancy predicate
+				// before the body runs.
+				row, err := {{ $.ResourcesPackage }}.New{{ $t.RootStruct }}Query().
+					AddColumns({{ $.ResourcesPackage }}.New{{ $t.RootStruct }}Columns(){{ $t.LocateColumnCalls }}).
+					Set{{ $t.RootPKField }}(p.{{ $t.TargetField }}).
+					Read(ctx, txn)
+				if err != nil {
+					return errors.Wrap(err, "{{ $.ResourcesPackage }}.{{ $t.RootStruct }}Query.Read()")
+				}
+				if row == nil {
+					return httpio.NewNotFoundMessagef("{{ $t.RootStruct }} %s does not exist", p.{{ $t.TargetField }})
+				}
+				{{- if $t.TenantField }}
+				if ok, err := resource.TenantKeyEquals(row.Data.{{ $t.TenantField }}, domain); err != nil {
+					return errors.Wrap(err, "resource.TenantKeyEquals()")
+				} else if !ok {
+					return httpio.NewNotFoundMessagef("{{ $t.RootStruct }} %s does not exist", p.{{ $t.TargetField }})
+				}
+				{{- end }}
+				{{- if $t.TenantByPath }}
+				// The root's tenant key lives across its @domain join path: the
+				// gate verifies the located row resolves to the request's domain
+				// in this transaction — absent and cross-tenant are the same
+				// NotFound.
+				if err := gate.VerifyTenancy(ctx, txn, resource.ExecuteTarget{Resource: "{{ $t.RootResource }}", Label: "{{ $t.RootStruct }}", PKColumn: "{{ $t.RootPKColumn }}"}, p.{{ $t.TargetField }}); err != nil {
+					return err
+				}
+				{{- end }}
+				{{- end }}
+				{{- with $t := .RPCMethod.Transition }}
+				switch row.Data.{{ $t.StateField }} {
+				case {{ $t.FromCases }}:
+				default:
+					// One refusal for the state check and the grant condition
+					// alike: the wire never says which said no (§12).
+					return httpio.NewForbiddenMessagef("{{ $.RPCMethod.Name }} may not run against {{ $t.RootStruct }} %s", p.{{ $t.TargetField }})
+				}
+				{{- end }}
+				{{- with $t := .RPCMethod.Target }}
+
+				// A row-referencing condition on the caller's Execute grant
+				// evaluates against the located row, in this transaction.
+				if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "{{ $t.RootResource }}", Label: "{{ $t.RootStruct }}", PKColumn: "{{ $t.RootPKColumn }}"}, p.{{ $t.TargetField }}); err != nil {
+					return err
+				}
+				{{ end -}}
+{{- end }}
+
+{{- define "rpcRefuseInTxn" }}
+				{{- if .RPCMethod.Statuses }}
+				{{- template "rpcChooseStatus" $ }}
+				if status >= http.StatusBadRequest {
+					// The method refused: the transaction rolls back, and the
+					// frame writes the status with the typed answer.
+					return &resource.Answer{Status: status}
+				}
+				{{- end }}
+{{- end }}
+
+{{- define "rpcStampTransition" }}
+				{{- with $t := .RPCMethod.Transition }}
+
+				// The framework stamps the declared target state as the last mutation.
+				if err := {{ $.ResourcesPackage }}.New{{ $t.RootStruct }}UpdatePatch(p.{{ $t.TargetField }}).Set{{ $t.StateField }}("{{ $t.To }}").Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
+					return errors.Wrap(err, "{{ $.ResourcesPackage }}.{{ $t.RootStruct }}UpdatePatch.Buffer()")
+				}
+				{{- end }}
+{{- end }}
+
+{{- define "rpcTxnFailed" }}
+				{{- /* Only a method that answers can refuse with a typed answer; an
+				answerless method's one declarable status is 204, and it has no
+				result or response to write. */ -}}
+				{{- if and .RPCMethod.Answers .RPCMethod.Statuses }}
+				if refused, ok := resource.Refused(err); ok {
+					return httpio.NewEncoder(w).StatusCodeWithBody(refused, {{ .RPCMethod.ResponseExpr }})
+				}
+				{{- end }}
+				if dryRun && resource.DryRunRolledBack(err) {
+					return httpio.NewEncoder(w).Ok(nil)
+				}
+
+				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
+{{- end }}
+
+{{- define "rpcChooseStatus" }}
+		{{- if .RPCMethod.ResultPointer }}
+		if result == nil {
+			status = http.Status{{ if .RPCMethod.DeclaresNoContent }}NoContent{{ else }}OK{{ end }}
+		} else {
+			status, err = resource.ResponseStatus("{{ .RPCMethod.Name }}", result, {{ .RPCMethod.StatusList }})
+			if err != nil {
+				return {{ if .RPCMethod.IsTxnForm }}err{{ else }}httpio.NewEncoder(w).ClientMessage(ctx, err){{ end }}
+			}
+		}
+		{{- else }}
+		status, err = resource.ResponseStatus("{{ .RPCMethod.Name }}", &result, {{ .RPCMethod.StatusList }})
+		if err != nil {
+			return {{ if .RPCMethod.IsTxnForm }}err{{ else }}httpio.NewEncoder(w).ClientMessage(ctx, err){{ end }}
+		}
+		{{- end }}
+{{- end }}
+
+{{- define "rpcWriteAnswer" }}
+		{{- if not .RPCMethod.Answers }}
+		{{- if .RPCMethod.DeclaresNoContent }}
+
+		w.WriteHeader(http.StatusNoContent)
+
+		return nil
+		{{- else }}
+
+		return httpio.NewEncoder(w).Ok(nil)
+		{{- end }}
+		{{- else if .RPCMethod.Statuses }}
+		if status == http.StatusNoContent {
+			w.WriteHeader(http.StatusNoContent)
+
+			return nil
+		}
+		{{- if .RPCMethod.ResultPointer }}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
+		{{- end }}
+
+		return httpio.NewEncoder(w).StatusCodeWithBody(status, {{ .RPCMethod.ResponseExpr }})
+		{{- else }}
+		{{- if .RPCMethod.ResultPointer }}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
+		{{- end }}
+
+		return httpio.NewEncoder(w).Ok({{ .RPCMethod.ResponseExpr }})
+		{{- end }}
+{{- end }}
 `
 
 	rpcInterfacesTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
@@ -2157,6 +3865,99 @@ type Method interface {
 {{ FormatRPCInterfaceTypes .Types }}
 }`
 
+	// fileHandlerTemplate is one @file route's handler on a table or view resource: the
+	// gate through the FileDecoder (Read on the resource and on the segment, the route's
+	// own field), the row through the resource's own read path with the caller's Read
+	// conditions and tenancy, and the file through the application's FileStore, its key
+	// the validator.
+	fileHandlerTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}{{ .File.Suffix }}() http.HandlerFunc {
+	// The frame's projection: the key, and the columns that deliver the file, read for
+	// the frame itself without field grants. The gate is Read on the resource and on
+	// {{ .File.Segment }}, the route's own field.
+	type request struct {
+		{{- range $_, $field := .Resource.PrimaryKeys }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\" perm:\"-\"`" + `
+		{{- end }}
+		{{- range $field := .File.FrameFields }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"-\" perm:\"-\"`" + `
+		{{- end }}
+	}
+
+	decoder := NewFileDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, "{{ .File.Segment }}")
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+	{{ if .Resource.HasCompoundPrimaryKey }}
+	{{- range $_, $field := .Resource.PrimaryKeys }}
+		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
+	{{- end }}
+	{{ else }}
+		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}{{ .Resource.PrimaryKey.Name }})
+	{{ end }}
+		{{ if .Resource.IsDomainScoped -}}
+		` + domainParamLine + `
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		// The row through the resource's own read path: absent, cross-tenant, or hidden
+		// by the caller's Read condition is 404, as on the read route.
+	{{ if .Resource.HasCompoundPrimaryKey }}
+		row, err := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet){{ range $_, $field := .Resource.PrimaryKeys }}.Set{{ $field.Name }}({{ GoCamel $field.Name }}){{ end }}.Read(ctx, {{ .ReceiverName }}.ResourceClient())
+	{{- else }}
+		row, err := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id).Read(ctx, {{ .ReceiverName }}.ResourceClient())
+	{{- end }}
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		source := &row.Data
+		{{- template "storedFileOfRow" .File }}
+
+		if err := resource.ServeStoredFile(ctx, w, r, {{ .ReceiverName }}.ResourceClient().FileStore({{ .File.Key.StoreNameExpr }}), file, "{{ .File.Segment }}", "{{ .Resource.Name }}", {{ .Resource.KeyParamList }}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
+	})
+}` + fileHandlerDefines
+
+	// fileHandlerDefines is the frame piece the table and computed file handlers share:
+	// the StoredFile read off the located row, a nil pointer an empty value.
+	fileHandlerDefines = `
+{{- define "storedFileOfRow" }}
+		file := resource.StoredFile{}
+		{{- if .Key.Pointer }}
+		if source.{{ .Key.Name }} != nil {
+			file.Key = {{ if .Key.Typed }}string(*source.{{ .Key.Name }}){{ else }}*source.{{ .Key.Name }}{{ end }}
+		}
+		{{- else }}
+		file.Key = {{ if .Key.Typed }}string(source.{{ .Key.Name }}){{ else }}source.{{ .Key.Name }}{{ end }}
+		{{- end }}
+		{{- with .Name }}
+		{{- if .Pointer }}
+		if source.{{ .Name }} != nil {
+			file.Name = *source.{{ .Name }}
+		}
+		{{- else }}
+		file.Name = source.{{ .Name }}
+		{{- end }}
+		{{- end }}
+		{{- with .Type }}
+		{{- if .Pointer }}
+		if source.{{ .Name }} != nil {
+			file.ContentType = *source.{{ .Name }}
+		}
+		{{- else }}
+		file.ContentType = source.{{ .Name }}
+		{{- end }}
+		{{- end }}
+{{- end }}
+`
+
 	computedResourceHandlerTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 // Source: {{ .Source }}
 
@@ -2164,25 +3965,37 @@ package {{ .Package }}
 
 import (
 	"net/http"
+	"slices"
 
 	{{ .LocalPackageImports }}
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 )
 
 {{- if not .Resource.SuppressListHandler }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
+	{{- with .Resource.Shape.MirrorDecls }}
+	// Mirrors of the structs the row reaches, leaves first: a nested field is one
+	// opaque unit for permission, PII, and selection.
+{{ . }}{{- end }}
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.FeatureTag }}`" + `
 		{{- end }}
 	}
 
 	type response []map[string]any
+	{{- with .Resource.Converters (GoCamel .Resource.Name) }}
 
-	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List)
+	// A row becomes its mirror through a pinned view of each source struct: legal
+	// now, a compile error the moment a source changes.
+{{ . }}{{- end }}
+
+	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List){{ .Resource.PagingOption }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2196,12 +4009,24 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		// A live list registers before the query runs, so a commit that lands during
+		// the query is not missed; a refused request registers nothing.
+		live.Subscribe(ctx, r, {{ .ReceiverName }}.LiveService(), querySet, live.ListSubscription(querySet.Resource(), {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}))
+
+		// The handler applies whatever part of the query the List function did not
+		// take — the filter, the sort, the cursor, the page — over the rows it yields.
+		page, err := querySet.Collect({{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
 		resp := response{}
-		for row, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()) {
-			if err != nil {
-				return httpio.NewEncoder(w).ClientMessage(ctx, err)
-			}
+		for _, row := range page.Rows() {
+			{{- if .Resource.Shape.Flat }}
 			rec := (*{{ GoCamel .Resource.Name }})(row)
+			{{- else }}
+			rec := {{ .Resource.ConverterName (GoCamel .Resource.Name) }}(*row)
+			{{- end }}
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -2213,21 +4038,39 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 			}
 			resp = append(resp, rmap)
 		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		// A request carrying the version parameter is a live refetch: the browser
+		// may cache the answer for the subscription's window.
+		live.SetCacheControl(w, r)
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
 }
 {{- end }}
 
-{{- if not .Resource.SuppressReadHandler }}
+{{- if not .Resource.ReadHandlerDisabled }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
+	{{- with .Resource.Shape.MirrorDecls }}
+	// Mirrors of the structs the row reaches, leaves first: a nested field is one
+	// opaque unit for permission, PII, and selection.
+{{ . }}{{- end }}
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.FeatureTag }}`" + `
 		{{- end }}
 	}
+	{{- with .Resource.Converters "response" }}
 
-	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response](accesstypes.Read)
+	// A row becomes its mirror through a pinned view of each source struct: legal
+	// now, a compile error the moment a source changes.
+{{ . }}{{- end }}
+
+	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response]({{ .ReceiverName }}, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2249,6 +4092,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		// A live row registers before the read runs, so a commit that lands during the
+		// read is not missed; a refused request registers nothing.
+		live.Subscribe(ctx, r, {{ .ReceiverName }}.LiveService(), querySet, live.RowSubscription(querySet.Resource(), resource.RowKey({{ .Resource.KeyParamList }})))
+
 		{{ if .Resource.HasCompoundPrimaryKey }}
 		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, {{ range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}{{ GoCamel $field.Name }}{{ end }}, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient())
 		{{- else if .Resource.PrimaryKey }}
@@ -2260,7 +4107,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		if row == nil {
 			return httpio.NewEncoder(w).Ok(nil)
 		}
+		{{- if .Resource.Shape.Flat }}
 		rec := (*response)(row)
+		{{- else }}
+		rec := {{ .Resource.ConverterName "response" }}(*row)
+		{{- end }}
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {
@@ -2270,12 +4121,88 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 			{{- end }}
 			}
 		}
+		live.SetCacheControl(w, r)
 
 		return httpio.NewEncoder(w).Ok(rmap)
 	})
 }
 {{- end }}
-`
+{{- if not .Resource.ReadHandlerDisabled }}
+{{- range $file := .Resource.Files }}
+
+func ({{ $.ReceiverName }} *{{ $.ApplicationName }}) {{ $.Resource.Name }}{{ $file.Suffix }}() http.HandlerFunc {
+	{{- if $file.Rendered }}
+	// The frame's projection is the key alone; the content function renders the file.
+	{{- else }}
+	// The frame's projection: the key, and the columns that deliver the file, read for
+	// the frame itself without field grants.
+	{{- end }}
+	// The gate is Read on the resource and on {{ $file.Segment }}, the route's own field,
+	// checked at decode as every computed resource's gate is.
+	type request struct {
+		{{- range $field := $.Resource.PrimaryKeys }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\" perm:\"-\"`" + `
+		{{- end }}
+		{{- range $field := $file.FrameFields }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"-\" perm:\"-\"`" + `
+		{{- end }}
+	}
+
+	decoder := NewComputedFileDecoder[{{ $.ComputedPackage }}.{{ $.Resource.Name }}, request]({{ $.ReceiverName }}, "{{ $file.Segment }}")
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		{{ range $_, $field := $.Resource.PrimaryKeys }}
+		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
+		{{- end }}
+
+		{{ if $.Resource.IsDomainScoped -}}
+		` + domainParamLine + `
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ $.ReceiverName }}.UserPermissions(r), {{ if $.Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		{{- if $file.Rendered }}
+
+		// The content function is the read path: nil is 404, as an absent row is on the
+		// read route, and the frame writes the response.
+		content, err := {{ $.ComputedPackage }}.{{ $.Resource.Name }}{{ $file.Suffix }}(ctx, {{ $.Resource.KeyParamList }}, querySet, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.ComputedClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		if err := resource.ServeRenderedFile(w, r, content, "{{ $file.Segment }}", "{{ $.Resource.Name }}", {{ $.Resource.KeyParamList }}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
+		{{- else }}
+
+		// The row through the resource's own read function: nil is 404, as on the read
+		// route.
+		source, err := {{ $.ComputedPackage }}.Read{{ $.Resource.Name }}(ctx, {{ $.Resource.KeyParamList }}, querySet, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.ComputedClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		if source == nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("{{ $.Resource.Name }} {{ $.Resource.KeyFormat }} does not exist", {{ $.Resource.KeyParamList }}))
+		}
+		{{- template "storedFileOfRow" $file }}
+
+		if err := resource.ServeStoredFile(ctx, w, r, {{ $.ReceiverName }}.ResourceClient().FileStore({{ $file.Key.StoreNameExpr }}), file, "{{ $file.Segment }}", "{{ $.Resource.Name }}", {{ $.Resource.KeyParamList }}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
+		{{- end }}
+	})
+}
+{{- end }}
+{{- end }}
+` + fileHandlerDefines
 )
 
 func fieldAccessors(patchType patchType) string {

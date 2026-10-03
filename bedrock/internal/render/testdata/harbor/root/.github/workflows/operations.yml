@@ -1,0 +1,338 @@
+# harbor's operations, started from GitHub and run by the environment's pipeline: a restore of an
+# environment to a release, a release run again, and the operations on an environment's migrations
+# (the migration version, a rerun of the migrate job, a forced version). Rendered by bedrock and
+# owned by it (bedrock render rewrites this file, bedrock check compares it). Each job runs in the
+# GitHub Environment named after the target environment, which deploys from master
+# alone (declared by the organization's 1-org layer, one per environment), exchanges its GitHub
+# token for the environment's operations identity through Workload Identity Federation (no key
+# exists anywhere; the environment's provider trusts tokens of this repository, this workflow file
+# and that Environment alone), and runs the environment's version trigger for the release with the
+# instruction. Everything that changes the environment happens inside that run, as the deploy
+# identity, as for any release. The identity here starts the trigger, reads how the build went and,
+# below production, reads the lines the migrate job wrote (through the view over the job's own log
+# bucket, and no other log), and nothing else. Started by bedrock restore <env> <release>, bedrock
+# rerun <env> <release>, bedrock migration version|rerun|force, or the Run workflow button; a
+# release waits for its approval in Cloud Build as any release does, a rerun in production included.
+#
+# restore (tst or stg; production is never restored by a run): the application goes into
+# maintenance, the database is replaced (an empty one, which the migrations then fill, and the seed
+# where the placement's seed list names the environment, or production's most recent backup), the
+# release's jobs are created, the migrations run, the revision deploys, traffic moves, and the
+# record names the requester.
+#
+# run (tst, stg, or prd): the release's tag build runs again from the start with no
+# instruction, as its tag ran it: the image is built, the stack applied, the migrations run (a
+# migrate job that stopped at a statement continues from it once the cause is fixed), the revision
+# deploys, traffic moves, and the record names the requester. The one door to production, where
+# the migration job's rerun does not reach; nobody runs a trigger by hand.
+#
+# version (tst or stg): the migrate job prints what each migrations table says about the
+# database (no version, a version, or dirty at one with the progress recorded) and nothing else
+# deploys. rerun: the release runs again, so the migrate job continues a file that stopped from its
+# failed statement once the cause is fixed, and the job's lines print here. force: the migrate job
+# sets a migrations table to the version given (-1 for no version), prints the row before and
+# after, then the migrations run and the release continues; the record names the table, the
+# version and the requester. The job's lines print in the run's summary. Production's migrations
+# are the platform operator's: none of the three runs there.
+name: operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do: restore the environment to the release (not production); run the release again (its tag build, with no instruction; production included); or, on its migrations (not production), version (print the database's migration version), rerun (run the release again, continuing a stopped file, and print the migrate job's lines) or force (set the migration version and let the release continue)"
+        type: choice
+        required: true
+        default: restore
+        options:
+          - restore
+          - run
+          - version
+          - rerun
+          - force
+      environment:
+        description: The environment (tst, stg, or prd)
+        type: choice
+        required: true
+        options:
+          - tst
+          - stg
+          - prd
+      release:
+        description: The release (v<major>.<minor>.<patch>, one that exists)
+        type: string
+        required: true
+      table:
+        description: "For force: the migrations table to set"
+        type: choice
+        default: schema
+        options:
+          - schema
+          - data
+      version:
+        description: "For force: the version the database is at (an integer 0 or above, or -1 for no version)"
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  restore:
+    name: restore ${{ inputs.environment }} to ${{ inputs.release }}
+    if: ${{ inputs.action == 'restore' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      PRODUCTION: prd
+      PROJECT_tst: imp-tst-gbl-core-b241
+      PROVIDER_tst: projects/123456789012/locations/global/workloadIdentityPools/imp-tst-github/providers/github
+      IDENTITY_tst: imp-tst-gbl-harbor-ops@imp-tst-gbl-core-b241.iam.gserviceaccount.com
+      TRIGGER_tst: imp-tst-uc1-harbor-version
+      RESTORE_tst: empty
+      PROJECT_stg: imp-stg-gbl-core-0fa7
+      PROVIDER_stg: projects/234567890123/locations/global/workloadIdentityPools/imp-stg-github/providers/github
+      IDENTITY_stg: imp-stg-gbl-harbor-ops@imp-stg-gbl-core-0fa7.iam.gserviceaccount.com
+      TRIGGER_stg: imp-stg-uc1-harbor-version
+      RESTORE_stg: production-backup
+    steps:
+      # Production first, before anything else is looked at; then the environment's values,
+      # from the placement's projects: an environment the placement records no project for
+      # is not wired, and the run stops before touching anything.
+      - name: The environment's project, identity, trigger and restore
+        id: target
+        run: |
+          if [ "$ENVIRONMENT" = "$PRODUCTION" ]; then
+            echo "::error::$ENVIRONMENT is production, which is never restored by a run: a hotfix is based on the release production runs (bedrock hotfix start), and a release is run again there with the run action (bedrock rerun)"
+            exit 1
+          fi
+          case "$RELEASE" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger restore; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The version trigger's build with the restore instruction, waited for to its end: a
+      # release in an environment that waits for an approval in Cloud Build waits here too.
+      - name: Run the version trigger with the restore instruction
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          RESTORE: ${{ steps.target.outputs.restore }}
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "_RESTORE=$RESTORE,_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT restores it to $RELEASE ($RESTORE), asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $RELEASE on its restored database."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+
+  run:
+    name: run ${{ inputs.release }} in ${{ inputs.environment }} again
+    if: ${{ inputs.action == 'run' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      PROJECT_tst: imp-tst-gbl-core-b241
+      PROVIDER_tst: projects/123456789012/locations/global/workloadIdentityPools/imp-tst-github/providers/github
+      IDENTITY_tst: imp-tst-gbl-harbor-ops@imp-tst-gbl-core-b241.iam.gserviceaccount.com
+      TRIGGER_tst: imp-tst-uc1-harbor-version
+      PROJECT_stg: imp-stg-gbl-core-0fa7
+      PROVIDER_stg: projects/234567890123/locations/global/workloadIdentityPools/imp-stg-github/providers/github
+      IDENTITY_stg: imp-stg-gbl-harbor-ops@imp-stg-gbl-core-0fa7.iam.gserviceaccount.com
+      TRIGGER_stg: imp-stg-uc1-harbor-version
+      PROJECT_prd: imp-prd-gbl-core-abe8
+      PROVIDER_prd: projects/345678901234/locations/global/workloadIdentityPools/imp-prd-github/providers/github
+      IDENTITY_prd: imp-prd-gbl-harbor-ops@imp-prd-gbl-core-abe8.iam.gserviceaccount.com
+      TRIGGER_prd: imp-prd-uc1-harbor-version
+    steps:
+      # The environment's values, from the placement's projects, production's included: an
+      # environment the placement records no project for is not wired, and the run stops
+      # before touching anything.
+      - name: The environment's project, identity and trigger
+        id: target
+        run: |
+          case "$RELEASE" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The version trigger's build again, with nothing but who asked, waited for to its end:
+      # a release in an environment that waits for an approval in Cloud Build waits here too,
+      # production's every time.
+      - name: Run the version trigger again
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT runs $RELEASE again, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $RELEASE."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+
+  migration:
+    name: ${{ inputs.action }} on ${{ inputs.environment }}'s migrations at ${{ inputs.release }}
+    if: ${{ inputs.action != 'restore' && inputs.action != 'run' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      ACTION: ${{ inputs.action }}
+      TABLE: ${{ inputs.table }}
+      VERSION: ${{ inputs.version }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      PRODUCTION: prd
+      PROJECT_tst: imp-tst-gbl-core-b241
+      PROVIDER_tst: projects/123456789012/locations/global/workloadIdentityPools/imp-tst-github/providers/github
+      IDENTITY_tst: imp-tst-gbl-harbor-ops@imp-tst-gbl-core-b241.iam.gserviceaccount.com
+      TRIGGER_tst: imp-tst-uc1-harbor-version
+      MIGRATE_JOB_tst: imp-tst-uc1-harbor-migrate
+      LOGS_tst: imp-tst-gbl-harbor-migrate-logs
+      PROJECT_stg: imp-stg-gbl-core-0fa7
+      PROVIDER_stg: projects/234567890123/locations/global/workloadIdentityPools/imp-stg-github/providers/github
+      IDENTITY_stg: imp-stg-gbl-harbor-ops@imp-stg-gbl-core-0fa7.iam.gserviceaccount.com
+      TRIGGER_stg: imp-stg-uc1-harbor-version
+      MIGRATE_JOB_stg: imp-stg-uc1-harbor-migrate
+      LOGS_stg: imp-stg-gbl-harbor-migrate-logs
+    steps:
+      # Production first; then the environment's values, from the placement's projects, and
+      # the inputs checked before anything runs: a force names its version, and nothing else
+      # takes one.
+      - name: The environment's project, identity, trigger, migrate job and log bucket
+        id: target
+        run: |
+          if [ "$ENVIRONMENT" = "$PRODUCTION" ]; then
+            echo "::error::$ENVIRONMENT is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migrate job fails); a release is run again in production with the run action (bedrock rerun)"
+            exit 1
+          fi
+          case "$RELEASE" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          if [ "$ACTION" = force ]; then
+            if ! printf '%s' "$VERSION" | grep -Eq '^(-1|0|[1-9][0-9]*)$'; then
+              echo "::error::force needs the version the database is at: an integer 0 or above, or -1 for no version (got \"$VERSION\")"
+              exit 1
+            fi
+          elif [ -n "$VERSION" ]; then
+            echo "::error::a version goes with force alone: $ACTION takes none"
+            exit 1
+          fi
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger migrate_job logs; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The version trigger's build with the operation, waited for to its end (an approval in
+      # Cloud Build included); then the lines the build's migrate job wrote, read from the job's
+      # own log bucket (the identity reads that view and no other log) and printed here and in
+      # the run's summary, whether the build succeeded or failed. The build's job is the
+      # template job named with the release as a key (v1.2.3 gives v1-2-3).
+      - name: Run the version trigger with the migration operation
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          MIGRATE_JOB: ${{ steps.target.outputs.migrate_job }}
+          LOGS: ${{ steps.target.outputs.logs }}
+        run: |
+          substitutions="_MIGRATE_ACTION=$ACTION,_REQUESTER=$REQUESTER"
+          if [ "$ACTION" = force ]; then
+            substitutions="$substitutions,_MIGRATE_TABLE=$TABLE,_MIGRATE_VERSION=$VERSION"
+          fi
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "$substitutions" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT: $ACTION on the migrations at $RELEASE, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS|FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) break ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+          key=$(printf '%s' "$RELEASE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//')
+          lines=$(gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"$MIGRATE_JOB-$key\" AND timestamp>=\"$started\"" \
+            --bucket "$LOGS" --location global --view _AllLogs --project "$PROJECT" --order asc --format 'value(textPayload)')
+          {
+            echo "## $ACTION on $ENVIRONMENT's migrations at $RELEASE"
+            echo
+            echo "Build $build ended $status, asked for by $REQUESTER."
+            echo
+            echo '```'
+            printf '%s\n' "${lines:-no line of the migrate job reached Cloud Logging yet}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "--- the migrate job wrote ---"
+          printf '%s\n' "${lines:-no line of the migrate job reached Cloud Logging yet}"
+          echo "---"
+          case "$status" in
+            SUCCESS) echo "Build $build succeeded." ;;
+            *) echo "::error::Build $build ended $status; the migrate job's lines are above and in the summary."; exit 1 ;;
+          esac

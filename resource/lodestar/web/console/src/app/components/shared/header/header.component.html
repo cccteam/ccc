@@ -1,0 +1,49 @@
+@if (banner(); as banner) {
+  <div class="impersonation-banner" [class.role]="banner.kind === 'Role'">
+    <mat-icon>{{ banner.kind === 'Role' ? 'badge' : 'visibility' }}</mat-icon>
+    <span>{{ banner.text }}</span>
+    <span class="cap" title="Every minted session carries a two-hour hard cap (MaxDuration)">{{ banner.remaining }}</span>
+    <button mat-stroked-button (click)="endImpersonation()">Return to yourself</button>
+  </div>
+}
+<div class="header">
+  <a class="brand" [routerLink]="['']">✦ Lodestar</a>
+  <app-topbar></app-topbar>
+  <div class="session">
+    @if (card(); as card) {
+      <span class="card" [title]="'Certified: ' + (card.certifications?.join(', ') || 'none')">
+        {{ card.displayName }} · clearance {{ card.clearance }}
+        @if (card.squadrons?.length) {
+          · {{ card.squadrons?.join(', ') }}
+        }
+        <!--
+          The card's one gated field (@feature.field): how many citations the commendations
+          desk holds for the pilot. While the flag is off the server leaves the field out of
+          the row and the digest, and *cccFeature renders nothing; on, the count shows, zero
+          included. The flag is the generated Feature member, so a misspelled name fails to
+          compile.
+        -->
+        <ng-container *cccFeature="commendations">· Cited: {{ card.commendations }}</ng-container>
+      </span>
+    }
+    <span class="username">{{ auth.sessionInfo().username }}</span>
+    <!--
+      The idle warning holds until this action is taken (IDLE_TIMEOUT_REQUIRE_CONFIRMATION):
+      the library's alert counts down above the page, and this button is the stay-logged-in
+      action the idle service exposes.
+    -->
+    @if (idle.isWarning()) {
+      <button mat-flat-button class="stay" (click)="idle.stayLoggedIn()">Stay logged in · {{ idle.countdown() }}s</button>
+    }
+    <!--
+      The feature flags dialog is the library's; the console decides where its link lives.
+      The link shows under List on FeatureFlags, the dialog's read (the adjutant's
+      FeatureAdministrator role); with that grant and no Execute on SetFeature the dialog
+      lists the flags read-only, which the digest decides inside the dialog, not here.
+    -->
+    <button mat-stroked-button class="flags" *cccHasPermission="flagsScope" (click)="openFeatureFlags()">
+      Feature flags
+    </button>
+    <button mat-stroked-button (click)="logout()">Logout</button>
+  </div>
+</div>

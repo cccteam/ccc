@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -59,6 +60,19 @@ type IRequest struct {
 	ID   string `json:"-"`
 	Code string `json:"code" immutable:"true"`
 	Name string `json:"name"`
+}
+
+// PRequest declares a positional field beside a concealing one.
+type PRequest struct {
+	ID   string `json:"id"   perm:"-"`
+	Fee  int64  `json:"fee"  masking:"positional"`
+	Name string `json:"name"`
+}
+
+// StaleMaskingRequest carries a masking value the generator never writes.
+type StaleMaskingRequest struct {
+	ID  string `json:"id"  perm:"-"`
+	Fee int64  `json:"fee" masking:"concealing"`
 }
 
 type AResource struct {
@@ -137,6 +151,28 @@ func TestNewSet(t *testing.T) {
 				fieldToTag:      map[accesstypes.Field]accesstypes.Tag{"Code": "code", "Name": "name"},
 				immutableFields: map[accesstypes.Tag]struct{}{"code": {}},
 			},
+		},
+		{
+			name: "a positional field is recorded by its tag",
+			args: args{
+				permissions: []accesstypes.Permission{accesstypes.List},
+			},
+			testFn: testNewSetRun[AResource, PRequest],
+			wants: wantResourceSetRun{
+				wantPermissions:  []accesstypes.Permission{accesstypes.List},
+				requiredTagPerm:  accesstypes.TagPermissions{"fee": {accesstypes.List}, "name": {accesstypes.List}},
+				fieldToTag:       map[accesstypes.Field]accesstypes.Tag{"Fee": "fee", "Name": "name"},
+				immutableFields:  map[accesstypes.Tag]struct{}{},
+				positionalFields: map[accesstypes.Tag]struct{}{"fee": {}},
+			},
+		},
+		{
+			name: "a masking value the generator never writes is the stale-struct guard",
+			args: args{
+				permissions: []accesstypes.Permission{accesstypes.List},
+			},
+			testFn: testNewSetRun[AResource, StaleMaskingRequest],
+			wants:  wantResourceSetRun{wantErr: true},
 		},
 		{
 			name:   "zero permissions with enforced fields",
@@ -239,22 +275,28 @@ func TestNewSet(t *testing.T) {
 }
 
 type wantResourceSetRun struct {
-	wantPermissions []accesstypes.Permission
-	requiredTagPerm accesstypes.TagPermissions
-	fieldToTag      map[accesstypes.Field]accesstypes.Tag
-	immutableFields map[accesstypes.Tag]struct{}
-	wantErr         bool
+	wantPermissions  []accesstypes.Permission
+	requiredTagPerm  accesstypes.TagPermissions
+	fieldToTag       map[accesstypes.Field]accesstypes.Tag
+	immutableFields  map[accesstypes.Tag]struct{}
+	positionalFields map[accesstypes.Tag]struct{}
+	wantErr          bool
 }
 
 func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, permissions []accesstypes.Permission, w wantResourceSetRun) {
 	var want *Set[Resource]
 	if !w.wantErr {
+		positional := w.positionalFields
+		if positional == nil {
+			positional = map[accesstypes.Tag]struct{}{}
+		}
 		want = &Set[Resource]{
-			permissions:     w.wantPermissions,
-			requiredTagPerm: w.requiredTagPerm,
-			fieldToTag:      w.fieldToTag,
-			immutableFields: w.immutableFields,
-			rMeta:           NewMetadata[Resource](),
+			permissions:      w.wantPermissions,
+			requiredTagPerm:  w.requiredTagPerm,
+			fieldToTag:       w.fieldToTag,
+			immutableFields:  w.immutableFields,
+			positionalFields: positional,
+			rMeta:            NewMetadata[Resource](),
 		}
 	}
 
@@ -265,7 +307,8 @@ func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, p
 			t.Errorf("NewSet() error = %v, wantErr %v", err, w.wantErr)
 			return
 		}
-		if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, dbFieldMetadata{})); diff != "" {
+		reflectTypesByIdentity := cmp.Comparer(func(a, b reflect.Type) bool { return a == b })
+		if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, dbFieldMetadata{}), reflectTypesByIdentity); diff != "" {
 			t.Errorf("NewSet() mismatch (-want +got):\n%s", diff)
 		}
 	})

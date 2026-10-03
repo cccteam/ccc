@@ -1,0 +1,30 @@
+{
+  "prefix": "imp",
+  "environments": [
+    "tst",
+    "stg",
+    "prd"
+  ],
+  "regions": [
+    {
+      "name": "us-central1",
+      "code": "uc1"
+    },
+    {
+      "name": "us-west3",
+      "code": "uw3"
+    }
+  ],
+  "appsDomain": "impulseframework.dev",
+  "hostedDomain": "impulseframework.com",
+  "stateBucket": "imp-boot-gbl-state-REPLACEME",
+  "placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello",
+  "defaultBranch": "master",
+  "repository": "beacon",
+  "releaseApp": "impulseframework-release",
+  "bedrockVersion": "v0.0.0-20260928182105-6f6f7795969d",
+  "bedrockSha256": "",
+  "labels": {
+    "bedrock-lab": "true"
+  }
+}

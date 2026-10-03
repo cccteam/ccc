@@ -1,0 +1,68 @@
+.card-badge {
+  margin: 16px 0;
+}
+
+.badge {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  th {
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .label {
+    font-weight: 500;
+  }
+
+  .scope {
+    margin-left: 6px;
+    font-size: 11px;
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  .masked {
+    background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(31, 111, 139, 0.15) 6px, rgba(31, 111, 139, 0.15) 12px);
+  }
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.06);
+
+  &.granted {
+    background: rgba(47, 122, 62, 0.18);
+    color: #2f7a3e;
+  }
+
+  &.conditional {
+    background: rgba(165, 100, 10, 0.18);
+    color: #a5640a;
+  }
+
+  &.absent {
+    color: rgba(0, 0, 0, 0.35);
+  }
+}
+
+.methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+h3 {
+  margin: 16px 0 8px;
+  font-weight: 500;
+}

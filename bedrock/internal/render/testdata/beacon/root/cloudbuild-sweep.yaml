@@ -1,0 +1,46 @@
+# beacon's sweep, rendered by bedrock from its template and owned by it (bedrock render
+# rewrites this file, bedrock check compares it): the environments of closed pull requests
+# are destroyed. Cloud Scheduler runs the sweep trigger (infrastructure/cloud-build.tf) every
+# hour as the deploy identity with the pipeline's substitutions; nothing else runs this file.
+# Closing or merging a pull request starts no build, so this is how an environment nobody
+# took down with /gcbrun down goes away.
+steps:
+  # The pinned bedrock, built with go install, as the pipeline's first step does it.
+  - id: FetchBedrock
+    name: cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16
+    entrypoint: sh
+    timeout: 600s
+    env:
+      - GOBIN=/builder/home
+      - CGO_ENABLED=0
+      - GOTOOLCHAIN=local
+      - GOFLAGS=-trimpath
+      - GOPATH=/tmp/go
+      - GOCACHE=/tmp/go-build
+      - GOMODCACHE=/tmp/go-mod
+      - GOPROXY=https://proxy.golang.org
+      - GOSUMDB=sum.golang.org
+      - GONOSUMDB=
+      - GOPRIVATE=
+      - GOINSECURE=
+    args:
+      - -c
+      - |
+        set -eu
+        go install -ldflags="-s -w" github.com/cccteam/ccc/bedrock@v0.0.0-20260928182105-6f6f7795969d
+        /builder/home/bedrock --version
+
+  # The pull requests whose services stand, which of them GitHub says are closed, and each
+  # closed one's stack destroyed as the apply identity from its own prefix (deploy sweep).
+  - id: SweepClosedPullRequests
+    name: ghcr.io/opentofu/opentofu:1.12.6
+    entrypoint: /builder/home/bedrock
+    args: [deploy, sweep]
+    env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
+    timeout: 3600s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# The whole run: FetchBedrock's timeout, the sweep's, and time to pull the images.
+timeout: 4680s

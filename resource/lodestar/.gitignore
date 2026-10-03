@@ -1,0 +1,7 @@
+.ccc-cache/
+.overmind.sock
+.envrc
+uploads/
+go.work
+go.work.sum
+uploads-documents/

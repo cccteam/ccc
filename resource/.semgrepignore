@@ -1,0 +1,13 @@
+# Semgrep path exclusions for the resource module scan (the repository root's
+# .semgrepignore carries the same entry under its root-relative path).
+#
+# The property-based tests draw their cases from a seeded math/rand, which is what a
+# reproducible property test needs; the crypto-randomness audit does not apply to them.
+lowering_property_test.go
+differential_property_test.go
+semantic_differential_test.go
+
+# The maintenance handler writes the maintenance page, embedded at compile time, to every
+# navigation; no request data reaches it, so the direct-write audit (an HTML page writing
+# user data) does not apply.
+maintenance/maintenance.go

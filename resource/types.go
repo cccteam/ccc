@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"cloud.google.com/go/spanner"
@@ -61,16 +62,21 @@ type jsonFieldName string
 type dbFieldMetadata struct {
 	index      int
 	ColumnName string
+
+	// fieldType is the Go field's type, cached by the metadata reflect walk;
+	// cell masking binds its zero value as the CASE filler parameter.
+	fieldType reflect.Type
 }
 
 // TypescriptData holds all the collected resource and permission information needed for TypeScript code generation.
 type TypescriptData struct {
-	Permissions           []accesstypes.Permission
-	ResourcePermissions   []accesstypes.Permission
-	Resources             []accesstypes.Resource
-	ResourceTags          map[accesstypes.Resource][]accesstypes.Tag
-	ResourcePermissionMap permissionMap
-	PermissionScopes      []accesstypes.PermissionScope
+	Permissions []accesstypes.Permission
+	Resources   []accesstypes.Resource
+	// Methods are the Execute-gated registrations: generated RPC methods and
+	// manual declarations (@manualAddResource(Execute)) alike.
+	Methods          []accesstypes.Resource
+	ResourceTags     map[accesstypes.Resource][]accesstypes.Tag
+	PermissionScopes []accesstypes.PermissionScope
 }
 
 // SortDirection defines the sort direction for a field.

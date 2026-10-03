@@ -1,0 +1,44 @@
+{
+  "prefix": "imp",
+  "environments": [
+    "tst",
+    "stg",
+    "prd"
+  ],
+  "regions": [
+    {
+      "name": "us-central1",
+      "code": "uc1"
+    },
+    {
+      "name": "us-west3",
+      "code": "uw3"
+    }
+  ],
+  "appsDomain": "impulseframework.dev",
+  "hostedDomain": "impulseframework.com",
+  "stateBucket": "imp-boot-gbl-state-REPLACEME",
+  "placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello",
+  "defaultBranch": "master",
+  "repository": "harbor",
+  "releaseApp": "impulseframework-release",
+  "bedrockVersion": "v0.1.0",
+  "bedrockSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "labels": {
+    "bedrock-lab": "true"
+  },
+  "projects": {
+    "tst": {
+      "id": "imp-tst-gbl-core-b241",
+      "number": "123456789012"
+    },
+    "stg": {
+      "id": "imp-stg-gbl-core-0fa7",
+      "number": "234567890123"
+    },
+    "prd": {
+      "id": "imp-prd-gbl-core-abe8",
+      "number": "345678901234"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+# harbor's sweep, rendered by bedrock from its template and owned by it (bedrock render
+# rewrites this file, bedrock check compares it): the environments of closed pull requests
+# are destroyed. Cloud Scheduler runs the sweep trigger (infrastructure/cloud-build.tf) every
+# hour as the deploy identity with the pipeline's substitutions; nothing else runs this file.
+# Closing or merging a pull request starts no build, so this is how an environment nobody
+# took down with /gcbrun down goes away.
+steps:
+  # The pinned bedrock, downloaded and verified, as the pipeline's first step does it.
+  - id: FetchBedrock
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    timeout: 120s
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        curl -fsSL --retry 3 -o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/v0.1.0/bedrock-linux-amd64"
+        echo "0000000000000000000000000000000000000000000000000000000000000000  /builder/home/bedrock" | sha256sum --check -
+        chmod 0755 /builder/home/bedrock
+        /builder/home/bedrock --version
+
+  # The pull requests whose services stand, which of them GitHub says are closed, and each
+  # closed one's stack destroyed as the apply identity from its own prefix (deploy sweep).
+  - id: SweepClosedPullRequests
+    name: ghcr.io/opentofu/opentofu:1.12.6
+    entrypoint: /builder/home/bedrock
+    args: [deploy, sweep]
+    env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
+    timeout: 3600s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# The whole run: FetchBedrock's timeout, the sweep's, and time to pull the images.
+timeout: 4200s

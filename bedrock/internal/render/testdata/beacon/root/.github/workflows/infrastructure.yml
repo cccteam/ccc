@@ -1,0 +1,71 @@
+# beacon's infrastructure check on every pull request and on the default branch, rendered by
+# bedrock and owned by it (bedrock render rewrites this file, bedrock check compares it). The
+# stack under infrastructure/ and the pipeline files at the root are rendered from the code
+# by bedrock; this job takes the bedrock the placement pins (bedrockVersion: the same one the
+# pipeline runs), renders afresh and fails when a committed owned file differs from what the
+# code declares, then checks the stack's formatting and validity. A release's binary is
+# downloaded from bedrock's GitHub Release and verified against bedrockSha256; a commit is
+# built with go install in the Go image the pipeline builds it in, and verified by Go's
+# checksum database. bedrock runs on the runner, which has the Go toolchain the check reads
+# the code with; no cloud identity is involved.
+name: infrastructure
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [master]
+
+concurrency:
+  group: infrastructure-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  check:
+    name: bedrock check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BEDROCK_VERSION: v0.0.0-20260928182105-6f6f7795969d
+      GO_IMAGE: cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16
+      OPENTOFU_VERSION: 1.12.6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      # The runner's Go is the application's, from its go.mod, which may be older than
+      # bedrock's; the commit is built in the pipeline's Go image instead.
+      - name: The pinned bedrock, built from its commit
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/out" \
+            -e GOBIN=/out \
+            -e CGO_ENABLED=0 \
+            -e GOTOOLCHAIN=local \
+            -e GOFLAGS=-trimpath \
+            -e GOPATH=/tmp/go \
+            -e GOCACHE=/tmp/go-build \
+            -e GOMODCACHE=/tmp/go-mod \
+            -e GOPROXY=https://proxy.golang.org \
+            -e GOSUMDB=sum.golang.org \
+            -e GONOSUMDB= \
+            -e GOPRIVATE= \
+            -e GOINSECURE= \
+            "$GO_IMAGE" install -ldflags="-s -w" "github.com/cccteam/ccc/bedrock@$BEDROCK_VERSION"
+          "$RUNNER_TEMP/bedrock" --version
+      - name: bedrock check
+        run: |
+          "$RUNNER_TEMP/bedrock" check
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.OPENTOFU_VERSION }}
+      - name: tofu fmt
+        working-directory: infrastructure
+        run: tofu fmt -check -diff
+      - name: tofu validate
+        working-directory: infrastructure
+        run: tofu init -backend=false -input=false && tofu validate

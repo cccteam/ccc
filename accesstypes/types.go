@@ -1,8 +1,10 @@
 package accesstypes
 
 type (
-	// RoleCollection maps each scope to the roles defined in it.
-	RoleCollection map[Scope][]Role
+	// RoleCollection maps each place policy is held to the roles a user holds
+	// there, as stored: a membership held in every domain is one entry under
+	// EveryDomainPolicyScope, never one per domain.
+	RoleCollection map[PolicyScope][]Role
 
 	// PermissionGrants describes how a role holds one permission within a
 	// scope: scope-wide (attached to no resource), on specific resources, or

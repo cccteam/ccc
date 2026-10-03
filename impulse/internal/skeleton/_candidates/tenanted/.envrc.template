@@ -1,0 +1,48 @@
+# Development environment for tenanted. Copy to .envrc and run `direnv allow`.
+#
+# Variables are grouped by configuration level (pkg/config). A process reads the levels
+# it constructs and nothing above them: cmd/bootstrap and cmd/deployment/migrate read
+# core and data; the served site reads all three.
+
+# --- core: every process ---
+export APP_SERVICE_NAME=tenanted
+export APP_VERSION=dev
+# GOOGLE_CLOUD_LOGGING_PROJECT ships request logs to Cloud Logging; unset logs to the console.
+# export GOOGLE_CLOUD_LOGGING_PROJECT=
+
+# --- data: every process that opens the database ---
+export GOOGLE_CLOUD_SPANNER_PROJECT=tenanted-dev
+export GOOGLE_CLOUD_SPANNER_INSTANCE_ID=tenanted
+export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=tenanted
+# APP_DEFAULT_SESSION_TIMEOUT is the idle timeout of a browser session (default 10m).
+# export APP_DEFAULT_SESSION_TIMEOUT=10m
+# APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
+# generates an ephemeral key and sessions end when it restarts.
+# export APP_COOKIE_KEY=
+# The Firestore database the live service runs on, beside the Spanner database (pkg/config,
+# FirestoreSettings): the subscriptions the server registers, the change sets the browser
+# listens to, and the signals document the application's instances tell each other through.
+# A deployment supplies APP_FIRESTORE_DATABASE (the database id) and APP_FIREBASE_API_KEY
+# (the web API key the browser initializes the SDK with); in development the emulator below
+# stands in and both stay unset. GOOGLE_CLOUD_FIRESTORE_PROJECT names the database's project
+# when it is not the Spanner project. The live service is required: with none of these and
+# no emulator, the process refuses to start.
+# export APP_FIRESTORE_DATABASE=
+# export APP_FIREBASE_API_KEY=
+# export GOOGLE_CLOUD_FIRESTORE_PROJECT=
+
+# --- site: the served site ---
+export PORT=8092
+# export APP_CONSOLE_DIST=web/dist/console
+
+# --- local development only: the emulators the Procfile starts ---
+export SPANNER_EMULATOR_PORT=9015
+export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}
+# The Firestore emulator is the live service in development: the server registers
+# subscriptions, publishes changes and signals its other instances there, and the token
+# route hands the browser its host.
+export FIRESTORE_EMULATOR_PORT=9025
+export FIRESTORE_EMULATOR_HOST=127.0.0.1:${FIRESTORE_EMULATOR_PORT}
+# overmind otherwise takes PORT as its base and hands every process its own (base, base+100,
+# ...), so the server would listen on PORT+100 and the console proxy would miss it.
+export OVERMIND_NO_PORT=1

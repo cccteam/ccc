@@ -1,0 +1,32 @@
+# Semgrep path exclusions for the bedrock module scan (see the repository root's
+# .semgrepignore for the same entries under their root-relative paths).
+#
+# bedrock renders Terraform, YAML and Markdown from text/template: html/template's contextual
+# escaping would corrupt that output, so both renderers (the application's stack and the
+# organization's foundation) are excluded from the text-template audit rather than marked
+# inline. The GitHub test fake answers JSON to the client under
+# test, so the direct-write audit (an HTML page writing user data) does not apply to it.
+internal/render/render.go
+internal/org/render.go
+internal/github/githubtest/server.go
+# The migration renumber runs git with the repository's own paths (the default branch's
+# tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
+# not apply to it.
+internal/migration/git.go
+# upgrade runs go install for a commit pin (the Go checksum database verifies the module),
+# then runs the bedrock it installed, or the release it fetched and verified against the
+# release's checksums file, with the render's own paths: running a program whose path it
+# computed is the command's purpose; the dangerous-exec audit does not apply to it.
+internal/cli/upgrade.go
+# The test servers standing in for GitHub in the release package's and the upgrade
+# command's tests answer JSON and a script to the client under test, as the GitHub test
+# fake does; the direct-write audit (an HTML page writing user data) does not apply.
+internal/release/release_test.go
+internal/cli/upgrade_test.go
+# The deploy steps' runner runs the programs a step drives (tofu, docker, an
+# application's hook script through bash) with arguments the step builds: that is its
+# purpose, so it is excluded from the dangerous-exec audit. git names a blob by the SHA-1
+# of its content, and the migration guard computes that name to compare a file with the
+# committed one: naming, not cryptography, so the weak-hash audit does not apply.
+internal/deploy/exec.go
+internal/migration/sequence.go

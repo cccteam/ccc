@@ -1,0 +1,26 @@
+# Rendered by bedrock from placement.json (applications, projects) and owned by it: bedrock org
+# render rewrites this file and bedrock org check compares it, so an application is registered
+# in placement.json (bedrock org register <app>), never here. OpenTofu reads *.auto.tfvars after
+# terraform.tfvars, which keeps the values a person decides.
+
+# Each application's apply identity in the environments whose databases live on the
+# shared instance (every one but the first, whose instance is its own), with the
+# environment and application its grants are bounded to and, in every environment but
+# production, the environment whose backups it may restore from.
+database_admins = {
+  "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "harbor", restore_from = "prd" } # harbor's stg apply identity (2-env stg)
+  "serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com" = { environment = "prd", application = "harbor" }                       # harbor's prd apply identity (2-env prd)
+  "serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "beacon", restore_from = "prd" } # beacon's stg apply identity (2-env stg)
+  "serviceAccount:imp-prd-gbl-beacon-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com" = { environment = "prd", application = "beacon" }                       # beacon's prd apply identity (2-env prd)
+}
+
+# Each application's plan identity in the same environments: the organization's
+# spannerPlanReader role on the instance, since a pull-request build plans the
+# environment's stack as it and refreshes the database, its grants and its
+# backup schedules here.
+database_planners = [
+  "serviceAccount:imp-stg-gbl-harbor-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com", # harbor's stg plan identity (2-env stg)
+  "serviceAccount:imp-prd-gbl-harbor-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com", # harbor's prd plan identity (2-env prd)
+  "serviceAccount:imp-stg-gbl-beacon-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com", # beacon's stg plan identity (2-env stg)
+  "serviceAccount:imp-prd-gbl-beacon-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com", # beacon's prd plan identity (2-env prd)
+]

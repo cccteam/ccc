@@ -13,6 +13,11 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      bedrock-release-created: ${{ steps.release.outputs['bedrock--release_created'] }}
+      bedrock-tag: ${{ steps.release.outputs['bedrock--tag_name'] }}
+      bedrock-release-id: ${{ steps.release.outputs['bedrock--id'] }}
+      bedrock-commit: ${{ steps.release.outputs['bedrock--sha'] }}
     steps:
       - name: Generate GitHub App Token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -22,6 +27,23 @@ jobs:
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PEM }}
 
       - name: Run Release Please
+        id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app-token.outputs.token }}
+
+  # A bedrock release is cut as a draft on a tag release-please has already created (the
+  # bedrock block of release-please-config.json), and a draft raises no release event, so
+  # the binaries are built by this job of the same run, which then publishes the draft. It
+  # keys on bedrock's own outputs, not on releases_created: one run can release several
+  # packages.
+  bedrock-binaries:
+    needs: release-please
+    if: needs.release-please.outputs.bedrock-release-created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/bedrock-release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.bedrock-tag }}
+      release-id: ${{ needs.release-please.outputs.bedrock-release-id }}
+      commit: ${{ needs.release-please.outputs.bedrock-commit }}

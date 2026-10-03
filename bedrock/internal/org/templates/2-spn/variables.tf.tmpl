@@ -1,0 +1,95 @@
+variable "database_admins" {
+  description = <<-EOT
+    The apply identities that hold databases on the instance, each with the
+    environment and application its grants are bounded to: the application
+    apply identity of each application in stg and prd, which the environment
+    layers create. Every member holds the organization's spannerDatabaseCreator
+    role on the instance (creating a database and listing what the instance
+    holds are checked on the instance) and roles/spanner.databaseAdmin and
+    roles/spanner.backupAdmin under a condition naming its own database and
+    backups, "<prefix>-<environment>-gbl-<application>-"; a member with
+    restore_from set (every environment but production) also holds
+    roles/spanner.restoreAdmin on that environment's backups of the same
+    application, for the restore of its database from production's backup.
+    A member has to exist before it can be bound, so an application's
+    identities are added here after the environment layers have run for it.
+
+    Everything below the instance is the application layer's: the database
+    user grants for runtime identities and the migrate identity's admin grant
+    are made on each database by the layer that creates it.
+
+    Example:
+      {
+        "serviceAccount:{{.Prefix}}-stg-gbl-{{.ExampleApp}}-tofu@{{.Prefix}}-stg-gbl-core-a1b2.iam.gserviceaccount.com" = { environment = "stg", application = "{{.ExampleApp}}", restore_from = "prd" },
+        "serviceAccount:{{.Prefix}}-prd-gbl-{{.ExampleApp}}-tofu@{{.Prefix}}-prd-gbl-core-a1b2.iam.gserviceaccount.com" = { environment = "prd", application = "{{.ExampleApp}}" },
+      }
+  EOT
+  type = map(object({
+    environment  = string
+    application  = string
+    restore_from = optional(string, "")
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for m in keys(var.database_admins) : can(regex("^(serviceAccount|user|group|principal|principalSet):", m))])
+    error_message = "Every database admin must be a full IAM member, such as serviceAccount:name@project.iam.gserviceaccount.com."
+  }
+}
+
+variable "database_planners" {
+  description = <<-EOT
+    IAM members granted the organization's spannerPlanReader role on the
+    instance: a pull-request build plans each environment's application stack
+    as that environment's plan identity, which refreshes the stack's database,
+    its grants and its backup schedules here and may write nothing. The
+    application plan identity of each application in stg and prd, which the
+    environment layers create, added after they have run for it, like
+    database_admins.
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for m in var.database_planners : can(regex("^(serviceAccount|user|group|principal|principalSet):", m))])
+    error_message = "Every database planner must be a full IAM member, such as serviceAccount:name@project.iam.gserviceaccount.com."
+  }
+}
+
+variable "edition" {
+  description = <<-EOT
+    Spanner edition. Left unset, it follows the configuration: a regional
+    configuration (regional-*) gets STANDARD and a multi-region configuration
+    gets ENTERPRISE_PLUS, because Google admits multi-region instances to that
+    edition only (the first apply of this layer, 2026-09-25, was refused with
+    "Feature MULTI_REGION is not available ... in Edition STANDARD"). Set it
+    only to run a regional instance on a higher edition. Catalog prices on
+    2026-09-25 for 100 processing units: {{.Spanner.Config}} on ENTERPRISE_PLUS is about
+    $225 a month, regional-{{.Primary.Name}} on STANDARD about $66.
+  EOT
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.edition == null || contains(["STANDARD", "ENTERPRISE", "ENTERPRISE_PLUS"], var.edition)
+    error_message = "edition must be unset, STANDARD, ENTERPRISE, or ENTERPRISE_PLUS."
+  }
+}
+
+variable "processing_units" {
+  description = "Compute capacity of the instance in processing units (100 = a tenth of a node). 100 is the smallest a multi-region instance can be and is the organization's size. The cap of 200 is a decision (2026-09-25): never more without explicit agreement, and the validation is what enforces it, so raising the cap is a visible code change rather than a number in terraform.tfvars."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.processing_units >= 100 && var.processing_units <= 200 && var.processing_units % 100 == 0
+    error_message = "processing_units must be 100 or 200: at least 100, a multiple of 100 below 1000, and never above 200 without explicit agreement."
+  }
+}
+
+variable "spanner_config" {
+  description = "Instance configuration. {{.Spanner.Config}} is the multi-region configuration whose read-write replicas are in {{.Primary.Name}} and {{.Secondary.Name}}, the organization's two regions, with a witness in us-central2."
+  type        = string
+  default     = "{{.Spanner.Config}}"
+}

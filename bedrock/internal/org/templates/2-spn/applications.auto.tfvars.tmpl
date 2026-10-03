@@ -1,0 +1,32 @@
+# Rendered by bedrock from placement.json (applications, projects) and owned by it: bedrock org
+# render rewrites this file and bedrock org check compares it, so an application is registered
+# in placement.json (bedrock org register <app>), never here. OpenTofu reads *.auto.tfvars after
+# terraform.tfvars, which keeps the values a person decides.
+
+# Each application's apply identity in the environments whose databases live on the
+# shared instance (every one but the first, whose instance is its own), with the
+# environment and application its grants are bounded to and, in every environment but
+# production, the environment whose backups it may restore from.
+database_admins = {
+{{- range $app := .Applications}}
+{{- range $env := $.Environments}}
+{{- if ne $env (index $.Environments 0)}}
+  "{{$.ApplyIdentity $env $app}}" = { environment = "{{$env}}", application = "{{$app}}"{{if ne $env $.Production}}, restore_from = "{{$.Production}}"{{end}} } # {{$app}}'s {{$env}} apply identity (2-env {{$env}})
+{{- end}}
+{{- end}}
+{{- end}}
+}
+
+# Each application's plan identity in the same environments: the organization's
+# spannerPlanReader role on the instance, since a pull-request build plans the
+# environment's stack as it and refreshes the database, its grants and its
+# backup schedules here.
+database_planners = [
+{{- range $app := .Applications}}
+{{- range $env := $.Environments}}
+{{- if ne $env (index $.Environments 0)}}
+  "{{$.PlanIdentity $env $app}}", # {{$app}}'s {{$env}} plan identity (2-env {{$env}})
+{{- end}}
+{{- end}}
+{{- end}}
+]

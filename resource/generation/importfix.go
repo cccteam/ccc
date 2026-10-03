@@ -34,8 +34,9 @@ type importFixer struct {
 }
 
 // newImportFixer builds a fixer from authoritative imports (package names known
-// from type-checked parse data) and assumedPaths (import paths whose package
-// name can only be assumed from the path, e.g. the configured localPackages).
+// from type-checked parse data: the loaded packages, the output packages, the
+// payload's type imports) and assumedPaths (import paths whose package name can
+// only be assumed from the path: the ones WithImports names).
 func newImportFixer(imports []fixerImport, assumedPaths []string) *importFixer {
 	f := &importFixer{
 		known:      stdlibImports(),
@@ -169,19 +170,19 @@ type typeImporter interface {
 // must stay out of this list.
 func stdlibImports() map[string]string {
 	return map[string]string{
-		"bytes":   "bytes",
-		"context": "context",
-		"fmt":     "fmt",
-		"http":    "net/http",
-		"iter":    "iter",
-		"json":    "encoding/json",
-		"maps":    "maps",
-		"reflect": "reflect",
-		"slices":  "slices",
-		"strconv": "strconv",
-		"strings": "strings",
-		"time":    "time",
-		"url":     "net/url",
+		bytesQualifier:   bytesQualifier,
+		contextQualifier: contextQualifier,
+		"fmt":            "fmt",
+		httpQualifier:    "net/http",
+		"iter":           "iter",
+		"json":           "encoding/json",
+		"maps":           "maps",
+		"reflect":        "reflect",
+		"slices":         "slices",
+		"strconv":        "strconv",
+		"strings":        "strings",
+		"time":           "time",
+		"url":            "net/url",
 	}
 }
 

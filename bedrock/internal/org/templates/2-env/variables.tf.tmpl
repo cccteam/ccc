@@ -1,0 +1,209 @@
+variable "applications" {
+  description = <<-EOT
+    Application codes registered in this environment. Each one gets an apply
+    identity, a deploy identity, a Cloud Build repository link, and the grants
+    in identities.tf. Registering an application is an entry here plus a
+    re-run; its own stack lives in its repository (state slot 3-app/<code>/).
+
+    A code is at most 6 characters because it is embedded in service account
+    IDs, which are limited to 30: {{.Prefix}}-<env>-gbl-<code>-deploy is 25 with a
+    6-character code, and the runtime identities its stack creates
+    ({{.Prefix}}-<env>-gbl-<code>-migrate) are 26.
+  EOT
+  type        = list(string)
+  default     = {{.ApplicationsList}}
+
+  validation {
+    condition     = alltrue([for a in var.applications : can(regex("^[a-z][a-z0-9]{0,5}$", a))])
+    error_message = "Every application code must be 1-6 lowercase alphanumeric characters starting with a letter."
+  }
+
+  validation {
+    condition     = length(distinct(var.applications)) == length(var.applications)
+    error_message = "Application codes must be unique."
+  }
+}
+
+variable "boot_project_id" {
+  description = "(Required) Boot project from 0-bootstrap, used as the quota and billing project for API calls."
+  type        = string
+}
+
+variable "build_time_secrets" {
+  description = <<-EOT
+    Secret IDs in this environment's project that an application's deploy
+    identity may read during a build, keyed by application code. Empty by
+    default: the deploy identity holds accessor on nothing until a build needs
+    something, and never on a runtime secret (those are granted to the runtime
+    identities in the application stack). Example:
+
+      build_time_secrets = { {{.ExampleApp}} = ["{{.Prefix}}-tst-gbl-{{.ExampleApp}}-npm-token"] }
+  EOT
+  type        = map(list(string))
+  default     = {}
+}
+
+variable "next_environment" {
+  description = "(Required) The environment after each in the promotion order, empty after the last: the next environment's deploy identities may read this environment's deployment records, which gate a release into it."
+  type        = map(string)
+
+  validation {
+    condition     = alltrue([for env, next in var.next_environment : contains(["tst", "stg", "prd", ""], next)])
+    error_message = "next_environment values must be tst, stg, prd or empty."
+  }
+}
+
+variable "environment" {
+  description = "(Required) Environment this apply targets: tst, stg, or prd. Selects the project from 1-org and the state prefix 2-env/<environment>."
+  type        = string
+
+  validation {
+    condition     = contains(["tst", "stg", "prd"], var.environment)
+    error_message = "environment must be one of tst, stg, prd."
+  }
+}
+
+variable "github_app_installation_id" {
+  description = <<-EOT
+    Installation ID of the Google Cloud Build GitHub App on the
+    {{.GithubOrganization}} GitHub organization. One installation serves every
+    environment's connection. Read it from the installation's settings URL
+    (https://github.com/organizations/<org>/settings/installations/<id>).
+    This is not the ID of the organization's own deployer or release apps.
+    Unset until the App is installed: the environment then applies without its
+    Cloud Build connection and repository links, and the application layer's
+    triggers wait for them.
+  EOT
+  type        = number
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.github_app_installation_id == null || var.github_app_installation_id > 0
+    error_message = "github_app_installation_id must be the numeric installation ID of the Cloud Build GitHub App."
+  }
+}
+
+variable "github_oauth_token_secret_version" {
+  description = <<-EOT
+    Full resource name of the Secret Manager version holding the GitHub OAuth
+    token the Cloud Build connection authorizes with, a numbered version and
+    never latest: projects/<tst project>/locations/<region>/secrets/<name>/versions/<n>
+    as the console writes it (a regional secret in the connection's region), or
+    projects/<tst project>/secrets/<name>/versions/<n> for a global one. Created once by the
+    browser authorization in the tst project's Cloud Build console (or a
+    classic token of the machine account bedrockbot-ccc added by hand) and
+    reused by every environment's connection; see the README. The tst apply
+    grants each environment's Cloud Build service agent accessor on it. Unset
+    together with github_app_installation_id until the browser step has run.
+  EOT
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.github_oauth_token_secret_version == null || can(regex("^projects/[^/]+(/locations/[^/]+)?/secrets/[^/]+/versions/[1-9][0-9]*$", var.github_oauth_token_secret_version))
+    error_message = "github_oauth_token_secret_version must be projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a numbered version and never latest."
+  }
+}
+
+variable "github_deployer_app_id" {
+  description = <<-EOT
+    App ID of the organization's deployer GitHub App, the one the pipeline
+    talks back on a pull request as (a deployment carrying the environment's
+    URL, a comment, the guard's refusals). The App ID from the app's settings
+    page, not an installation ID; one value for the organization. Unset: the
+    pipeline talks back through nothing.
+  EOT
+  type        = number
+  default     = null
+}
+
+variable "github_deployer_key_secret_versions" {
+  description = <<-EOT
+    Per environment code, the full resource name of the Secret Manager version
+    holding the deployer GitHub App's private key, in the container this layer
+    creates in that environment's project
+    (projects/<project>/secrets/<prefix>-<env>-gbl-github-deployer-key/versions/<n>),
+    a numbered version and never latest. An operator adds the version once the
+    container exists (README); an environment without an entry talks back
+    through nothing.
+  EOT
+  type        = map(string)
+  default     = {}
+}
+
+variable "team_groups" {
+  description = <<-EOT
+    The environments' team groups by environment code, each a group's address
+    (team-tst@{{.OrganizationDomain}}; the layer writes group: in front), from
+    placement.json (teamGroups). Each person's access to an environment comes
+    from its group: the group holds roles/cloudbuild.builds.approver where a
+    release waits for an approval, and its members ask for the environment's
+    entitlements (team-group.tf). Rendered, never set in terraform.tfvars: a
+    change is a change to placement.json and a render.
+  EOT
+  type        = map(string)
+  default = {
+{{.TeamGroupLines}}
+  }
+
+  validation {
+    condition     = alltrue([for env, g in var.team_groups : can(regex("^[^@:/]+@[^@:/]+$", g))])
+    error_message = "Every team group is a group's address, name@domain, with no member prefix."
+  }
+}
+
+variable "github_organization" {
+  description = "GitHub organization the application repositories live in. A repository link is https://github.com/<organization>/<application code>.git."
+  type        = string
+  default     = "{{.GithubOrganization}}"
+}
+
+variable "spanner_instances" {
+  description = <<-EOT
+    Where each environment's databases live, keyed by environment code. placement
+    is "own" (this layer creates an instance in the environment project) or
+    "shared" (the instance 2-spn creates for the organization). For an own
+    instance: config is the instance configuration (unset: regional-<primary
+    region>; {{.Spanner.Config}} for the organization's multi-region), edition follows the
+    configuration unless set (STANDARD for regional, ENTERPRISE_PLUS for
+    multi-region, which Google requires), processing_units defaults to 100 and
+    is capped at 200 (JOURNAL.md, 2026-09-25: never more without explicit
+    agreement). The defaults are the ruling of 2026-09-26: tst on its own
+    regional Standard instance, stg and prd on the shared multi-region one;
+    an organization overrides an environment here, for instance tst on the
+    shared instance, or tst on a multi-region instance of its own.
+  EOT
+  type = map(object({
+    placement        = string
+    config           = optional(string)
+    edition          = optional(string)
+    processing_units = optional(number, 100)
+  }))
+  default = {
+    tst = { placement = "own" }
+    stg = { placement = "shared" }
+    prd = { placement = "shared" }
+  }
+
+  validation {
+    condition     = alltrue([for e, i in var.spanner_instances : contains(["own", "shared"], i.placement)])
+    error_message = "placement must be own or shared."
+  }
+
+  validation {
+    condition     = alltrue([for e, i in var.spanner_instances : i.edition == null || contains(["STANDARD", "ENTERPRISE", "ENTERPRISE_PLUS"], i.edition)])
+    error_message = "edition must be unset, STANDARD, ENTERPRISE, or ENTERPRISE_PLUS."
+  }
+
+  validation {
+    condition     = alltrue([for e, i in var.spanner_instances : i.processing_units >= 100 && i.processing_units <= 200 && i.processing_units % 100 == 0])
+    error_message = "processing_units must be 100 or 200: the cap is 200, and units below 1000 come in steps of 100."
+  }
+}
+
+variable "state_bucket" {
+  description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."
+  type        = string
+}

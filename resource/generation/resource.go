@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"path/filepath"
 	"slices"
@@ -19,6 +20,7 @@ type resourceGenerator struct {
 	*client
 	genHandlers     bool
 	genRoutes       bool
+	genRouter       bool
 	genHandlerTests bool
 	handler         packageDir
 	router          packageDir
@@ -28,21 +30,67 @@ type resourceGenerator struct {
 	receiverName    string
 	// domainRouteSegment/domainRouteParam form the route segment pair domain-scoped
 	// resources are served under: /{prefix}/{domainRouteSegment}/{domainRouteParam}/...
-	// Defaults: "domains"/"domain"; customized via WithDomainRoute.
+	// Both derive from the tenant record (resolveTenantRecord): the segment is its route
+	// name, the parameter its key's route parameter. The defaults ("domains"/"domain")
+	// stand only while nothing is domain-scoped, where no route reads them.
 	domainRouteSegment string
 	domainRouteParam   string
+	// concealedDomains collapses "unauthorized" into "nonexistent" on every
+	// domain-naming surface (WithConcealedDomains): after the roster, the DomainGuard
+	// and the consolidated dispatcher ask the caller's foothold in the domain
+	// (HasGrants) and answer a caller without one exactly as an unknown domain is
+	// answered, so a prober cannot confirm a tenant exists from the rejection shape.
+	concealedDomains bool
+	// defaultOutlet is the outlet GenerateRoutes declares, with the outlet options it
+	// carries for the generated router; every resource is on it unless @outlet says
+	// otherwise.
+	defaultOutlet routerOutlet
 	// extraOutlets are the router outlets declared by WithRouterOutlet, beyond the
 	// default outlet GenerateRoutes declares. Resources join them via @outlet.
 	extraOutlets        []routerOutlet
 	typescriptTargets   []typescriptTarget
 	manualRegistrations []ManualRegistration
+	// warnings are the schema findings the last Generate raised (Warnings).
+	warnings []Warning
+	// findings are the advisory findings the last Generate raised (Audit).
+	findings []Finding
+}
+
+// Warnings reports the schema findings the last Generate raised: informational, never
+// a refusal. Nil before Generate runs.
+func (r *resourceGenerator) Warnings() []Warning {
+	return r.warnings
+}
+
+// Audit reports the advisory findings the last Generate raised: shapes the framework
+// handles under a stated limitation, never printed by a normal generation. Nil before
+// Generate runs.
+func (r *resourceGenerator) Audit() []Finding {
+	return r.findings
+}
+
+// registerDeclarations reads what the resources package declares beside its structs,
+// before any struct is extracted: the enumerations its named types declare, and the
+// feature flags its resource.Feature constants declare, which every @feature names.
+func (r *resourceGenerator) registerDeclarations(resourcesPkg *parser.Package) error {
+	if err := r.registerEnumerations(resourcesPkg.NamedTypes); err != nil {
+		return err
+	}
+	if err := r.registerFeatures(resourcesPkg.Constants); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // allOutlets returns every declared router outlet: the default outlet first,
-// followed by the WithRouterOutlet declarations in option order.
+// followed by the WithRouterOutlet declarations in option order. The default
+// outlet always serves browser sessions; extra outlets opt in (ServesSessions).
 func (r *resourceGenerator) allOutlets() []routerOutlet {
 	outlets := make([]routerOutlet, 0, len(r.extraOutlets)+1)
-	outlets = append(outlets, routerOutlet{name: defaultOutletName, prefix: r.routePrefix})
+	defaultOutlet := r.defaultOutlet
+	defaultOutlet.name, defaultOutlet.prefix, defaultOutlet.servesSessions = defaultOutletName, r.routePrefix, true
+	outlets = append(outlets, defaultOutlet)
 
 	return append(outlets, r.extraOutlets...)
 }
@@ -119,6 +167,9 @@ func (r *resourceGenerator) validateAnnotatedOutlets() error {
 	for _, rpcStruct := range r.rpcMethods {
 		check(rpcStruct.Name(), &rpcStruct.outletMembership)
 	}
+	for _, reg := range r.manualRegistrations {
+		check(fmt.Sprintf("manual registration %s", reg.Resource), &outletMembership{OutletNames: reg.Outlets})
+	}
 
 	if len(errs) != 0 {
 		return errors.Wrap(errors.Join(errs...), "outlet annotation error")
@@ -129,12 +180,13 @@ func (r *resourceGenerator) validateAnnotatedOutlets() error {
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
 //
-// localPackages lists import paths that generated code may reference beyond what the
-// templates declare (project packages and third-party field-type packages goimports
-// cannot resolve on its own). Standard-library paths are ignored: goimports resolves
-// those natively and placing them in the local-package import group would produce
-// output that editor format-on-save reorders.
-func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL, localPackages []string, options ...ResourceOption) (Generator, error) {
+// Every import path the generated code references is derived from what the run loads
+// and writes: the packages the options name carry their path from the type checker,
+// and the output packages (handlers, routes) are the module path from go.mod plus their
+// directory. A qualifier the generator cannot resolve is a generation error naming the
+// file, the template and the qualifier; WithImports names a path beyond the derived set
+// until the gap it covers is fixed in the generator.
+func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{}
 
 	opts := make([]option, 0, len(options))
@@ -142,7 +194,7 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourcePackageDir, migrationSourceURL, localPackages, opts)
+	c, err := newClient(ctx, resourcePackageDir, migrationSourceURL, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -152,23 +204,72 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 	if err := resolveOptions(r, opts); err != nil {
 		return nil, err
 	}
+	for _, dir := range []packageDir{r.handler, r.router} {
+		if dir != "" {
+			c.outputs = append(c.outputs, dir)
+		}
+	}
 
 	if err := r.validateOutletConfig(); err != nil {
+		return nil, err
+	}
+
+	if err := r.validateRouterConfig(); err != nil {
+		return nil, err
+	}
+
+	if err := r.validateTypescriptOutletTargets(); err != nil {
 		return nil, err
 	}
 
 	return r, nil
 }
 
+// validateTypescriptOutletTargets checks every GenerateTypescript target's outlet
+// binding (ForOutlet) at construction: the outlet must be declared, and it must
+// serve browser sessions — the generated client reads its permission digest and
+// user-domains channels under the outlet's prefix, so a client for a session-less
+// outlet would have no permission channels and fail closed on every page.
+func (r *resourceGenerator) validateTypescriptOutletTargets() error {
+	outlets := r.allOutlets()
+	for _, target := range r.typescriptTargets {
+		t, err := target.resolve()
+		if err != nil {
+			return err
+		}
+
+		i := slices.IndexFunc(outlets, func(outlet routerOutlet) bool { return outlet.name == t.outletName })
+		if i < 0 {
+			declared := make([]string, 0, len(outlets))
+			for _, outlet := range outlets {
+				declared = append(declared, outlet.name)
+			}
+
+			return errors.Newf("GenerateTypescript(%q): ForOutlet(%q) references an undeclared outlet; declared outlets are %v (see WithRouterOutlet)", target.destination, t.outletName, declared)
+		}
+		if !outlets[i].servesSessions {
+			return errors.Newf("GenerateTypescript(%q): outlet %q does not serve browser sessions, so the generated client would have no permission-digest or user-domains channel and would fail closed on every page; declare the outlet with WithRouterOutlet(%q, %q, ServesSessions()), or target a session-serving outlet", target.destination, t.outletName, outlets[i].name, outlets[i].prefix)
+		}
+	}
+
+	return nil
+}
+
 func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
 
 	begin := time.Now()
+	r.warnings = nil
+	r.findings = nil
 
-	packageMap, err := parser.LoadPackages(r.loadPackages...)
+	// Resilient load: stale generated output from a previous run must not stop the
+	// run that would overwrite it. Anything tolerated here is re-checked strictly
+	// after generation below.
+	packageMap, toleratedStaleOutput, err := parser.LoadPackagesResilient(r.loadPackages...)
 	if err != nil {
-		return errors.Wrap(err, "parser.LoadPackages()")
+		return errors.Wrap(err, "parser.LoadPackagesResilient()")
 	}
+	r.notePackages(packageMap)
 
 	pkg := packageMap[r.resource.Package()]
 	if pkg == nil {
@@ -176,7 +277,10 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	resourcesPkg := parser.ParsePackage(pkg)
-	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+	if err := r.registerDeclarations(resourcesPkg); err != nil {
+		return err
+	}
+	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 	if err != nil {
 		return err
 	}
@@ -189,7 +293,7 @@ func (r *resourceGenerator) Generate() error {
 
 	if r.genVirtualResources {
 		virtualStructs := parser.ParsePackage(packageMap[r.virtual.Package()]).Structs
-		virtualResources, err := r.structsToVirtualResources(virtualStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		virtualResources, err := r.structsToVirtualResources(virtualStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 		if err != nil {
 			return err
 		}
@@ -207,21 +311,22 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
-	if r.genComputedResources {
-		compStructs := parser.ParsePackage(packageMap[r.computed.Package()]).Structs
-		computedResources, err := structsToCompResources(compStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
-		if err != nil {
-			return err
-		}
-
-		r.computedResources = computedResources
+	if err := r.extractComputedResources(packageMap, pkg); err != nil {
+		return err
 	}
 
-	// The domain route parameter is derived from the parsed resources (tenant-record
-	// pattern), so it must resolve before anything renders a domain route.
-	r.deriveDomainRouteParam()
+	if err := r.resolveCrossKindDeclarations(); err != nil {
+		return err
+	}
 
-	if err := r.runResourcesGeneration(); err != nil {
+	// The schema findings read the extracted resources against the table map, so they
+	// are known before anything renders and survive a failure further down; the audit
+	// pass reads the same resources for the shapes it reports.
+	r.warnings = r.schemaWarnings(r.resources)
+	r.findings = r.auditFindings(r.resources)
+
+	storage, err := r.runResourcesGeneration()
+	if err != nil {
 		return err
 	}
 
@@ -233,11 +338,134 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	// The feature declarations and gates render once every kind that can be gated is
+	// extracted, the RPC methods last.
+	if err := r.generateFeatureDeclarations(); err != nil {
+		return err
+	}
+
+	// The store checks and the file holders run once every kind that can name a store
+	// is extracted, the RPC methods last: an upload's store against the @file columns,
+	// each named store's type against the loaded packages, and the holders the
+	// orphaned-file cleanup reads.
+	if err := r.validateStores(); err != nil {
+		return err
+	}
+	if err := r.generateFileHolders(); err != nil {
+		return err
+	}
+
+	// The method pairs render once every path is extracted, the RPC methods last, so
+	// the JSON pair covers each defined type a field uses anywhere, and after every
+	// package sweep, so a pair written into the RPC package survives its own sweep.
+	if err := r.runMethodGeneration(storage); err != nil {
+		return err
+	}
+
+	// An @enumerate table above the line warns once every kind that can key into it
+	// is extracted, the RPC methods last, so the warning names every field that bakes
+	// it.
+	r.warnings = append(r.warnings, r.enumerationWarnings()...)
+
+	// The DOT graphs draw declared transitions and synthesized state paths, so
+	// they render only after RPC extraction and workflow resolution.
+	if err := r.generateGraphs(); err != nil {
+		return err
+	}
+
 	// Runs after every annotated struct kind is extracted (rpc methods last).
 	if err := r.validateAnnotatedOutlets(); err != nil {
 		return err
 	}
 
+	if err := r.runWiringGeneration(); err != nil {
+		return err
+	}
+
+	if err := r.populateCache(); err != nil {
+		return err
+	}
+
+	if err := r.runCollectionGeneration(); err != nil {
+		return err
+	}
+
+	if err := r.finishGeneration(toleratedStaleOutput); err != nil {
+		return err
+	}
+
+	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
+
+	return nil
+}
+
+// resolveCrossKindDeclarations resolves the declarations that read across the table,
+// view and computed kinds, so they run once every one of those is extracted and before
+// anything renders: a field-scope @enumerate may name a computed resource; a picker
+// over a bounded source reads the chosen row by key, so the source must serve a read,
+// checked once the declarations and every @page are known; a view's @rowsOf names a
+// table-backed resource and is refused a view of either kind; and the domain route
+// segment and parameter derive from the tenant record (@tenant), with a tenant-scoped
+// resource and no record refused, so the record resolves before any domain route
+// renders. (The RPC methods are extracted later and checked against the record then:
+// requireTenantRecordForMethods.)
+func (r *resourceGenerator) resolveCrossKindDeclarations() error {
+	if err := r.resolveFieldEnumerations(r.resources, r.computedResources); err != nil {
+		return err
+	}
+	if err := r.validatePickerSources(r.resources, r.computedResources); err != nil {
+		return err
+	}
+	if err := r.resolveRowsOf(r.resources, r.computedResources); err != nil {
+		return err
+	}
+
+	return r.resolveTenantRecord()
+}
+
+// finishGeneration closes the run once everything is written. The previous run's
+// generated files this run did not rewrite go now, never earlier, so a package
+// compiling against the tree during the run never misses a file. Then, when the
+// initial load tolerated stale output, the packages are type-checked strictly:
+// whatever still fails is real breakage the generator does not own (hand-written call
+// sites, bad struct definitions) and fails the run.
+func (r *resourceGenerator) finishGeneration(toleratedStaleOutput bool) error {
+	if err := r.output.removeStaleOutput(); err != nil {
+		return err
+	}
+
+	if !toleratedStaleOutput {
+		return nil
+	}
+	if _, err := parser.LoadPackages(r.loadPackages...); err != nil {
+		return errors.Wrap(err, "post-generation type check: generated files were written, remaining errors are outside generator-owned output")
+	}
+
+	return nil
+}
+
+// extractComputedResources parses the computed package into computedResources, when
+// enabled, and checks the content functions the struct-scope @file declarations name:
+// presence and signature against the package's types, so the refusal names the
+// function and its shape instead of a compile error in generated code.
+func (r *resourceGenerator) extractComputedResources(packageMap map[string]*packages.Package, pkg *packages.Package) error {
+	if !r.genComputedResources {
+		return nil
+	}
+
+	computedPkg := packageMap[r.computed.Package()]
+	computedResources, err := r.structsToCompResources(parser.ParsePackage(computedPkg).Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
+	if err != nil {
+		return err
+	}
+	r.computedResources = computedResources
+
+	return validateComputedContentFunctions(computedPkg.Types, r.computedResources)
+}
+
+// runWiringGeneration renders the enabled wiring outputs: routes, handlers,
+// and handler tests.
+func (r *resourceGenerator) runWiringGeneration() error {
 	if r.genRoutes {
 		if err := r.runRouteGeneration(); err != nil {
 			return err
@@ -253,16 +481,6 @@ func (r *resourceGenerator) Generate() error {
 			return err
 		}
 	}
-
-	if err := r.populateCache(); err != nil {
-		return err
-	}
-
-	if err := r.runCollectionGeneration(); err != nil {
-		return err
-	}
-
-	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
 }
@@ -280,8 +498,16 @@ func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*package
 	}
 
 	var err error
-	r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
+	r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 	if err != nil {
+		return err
+	}
+	if err := r.validateRPCPickerSources(r.rpcMethods); err != nil {
+		return err
+	}
+	// A tenant-scoped method is served under the tenant record's segment, so the
+	// record must exist; the methods are extracted after the record resolved.
+	if err := r.requireTenantRecordForMethods(); err != nil {
 		return err
 	}
 
@@ -364,6 +590,7 @@ func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.Generat
 	t.client = r.client
 	t.rc = gc
 	t.routerResources = routerResources
+	t.manualRegistrations = r.manualRegistrations
 	t.domainRouteSegment = r.domainRouteSegment
 	t.domainRouteParam = r.domainRouteParam
 
@@ -412,24 +639,29 @@ func (r *resourceGenerator) validateTypescriptTargets() error {
 	return nil
 }
 
-func (r *resourceGenerator) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(r.resource.Dir(), prefix); err != nil {
-		return err
+// runResourcesGeneration renders the resources package: the query builders and patch
+// types of every resource. The storage methods of the column types that need them
+// resolve first, refused where a column is not JSON or a type is declared where the
+// generator does not write, so nothing renders for a resource that cannot be stored;
+// they are returned for runMethodGeneration to write once every path is extracted.
+func (r *resourceGenerator) runResourcesGeneration() (map[packageDir][]string, error) {
+	storage, err := r.resolveColumnStorage()
+	if err != nil {
+		return nil, err
 	}
 
+	r.output.registerOutput(r.resource.Dir(), prefix)
 	if r.genVirtualResources {
-		if err := removeGeneratedFiles(r.virtual.Dir(), prefix); err != nil {
-			return err
-		}
+		r.output.registerOutput(r.virtual.Dir(), prefix)
 	}
 
 	for _, res := range r.resources {
 		if err := r.generateResources(res); err != nil {
-			return errors.Wrap(err, "c.generateResources()")
+			return nil, errors.Wrap(err, "c.generateResources()")
 		}
 	}
 
-	return nil
+	return storage, nil
 }
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
@@ -451,7 +683,7 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
+	fileName := generatedGoFileName(fileStem(r.pluralize(res.Name())))
 	var (
 		packageName         string
 		destinationFilePath string
@@ -478,7 +710,7 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 }
 
 func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error {
-	enumMap, err := r.retrieveDatabaseEnumValues(namedTypes)
+	enumMap, _, err := r.retrieveDatabaseEnumValues(namedTypes)
 	if err != nil {
 		return err
 	}

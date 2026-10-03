@@ -1,6 +1,9 @@
 package cache_test
 
 import (
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/cccteam/ccc/cache"
@@ -143,6 +146,73 @@ func Test_Cache(t *testing.T) {
 						t.Errorf("cache.Cache.DeleteAll() error = %v", err)
 						return
 					}
+				}
+			}
+		})
+	}
+}
+
+// Test_Cache_Store_concurrent pins that two caches over one directory (two processes
+// storing the same content-addressed key at once) both succeed and leave the key whole:
+// each writer renames its own temporary file over the key, so neither removes a file the
+// other is writing.
+func Test_Cache_Store_concurrent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		writers int
+		rounds  int
+	}{
+		{name: "two writers, many rounds", writers: 2, rounds: 200},
+		{name: "eight writers", writers: 8, rounds: 50},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			caches := make([]*cache.Cache, tt.writers)
+			for i := range caches {
+				c, err := cache.New(dir)
+				if err != nil {
+					t.Fatalf("cache.New() error = %v", err)
+				}
+				caches[i] = c
+			}
+			value := map[string]int{"a": 1, "b": 2}
+			var wg sync.WaitGroup
+			errs := make(chan error, tt.writers*tt.rounds)
+			for _, c := range caches {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for range tt.rounds {
+						if err := c.Store("sub", "key", value); err != nil {
+							errs <- err
+						}
+					}
+				}()
+			}
+			wg.Wait()
+			close(errs)
+			for err := range errs {
+				t.Errorf("Store() error = %v", err)
+			}
+			var got map[string]int
+			if found, err := caches[0].Load("sub", "key", &got); err != nil || !found {
+				t.Fatalf("Load() = %v, %v; want found", found, err)
+			}
+			if got["a"] != 1 || got["b"] != 2 {
+				t.Errorf("Load() = %v, want %v", got, value)
+			}
+			entries, err := os.ReadDir(filepath.Join(dir, ".ccc-cache", "sub"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				if e.Name() != "key" {
+					t.Errorf("stray file %q left in the key's directory", e.Name())
 				}
 			}
 		})

@@ -1,0 +1,3 @@
+spanner: podman run --rm -p 127.0.0.1:9012:9010 gcr.io/cloud-spanner-emulator/emulator:1.5.56
+firestore: podman run --rm -p 127.0.0.1:9022:8080 gcr.io/google.com/cloudsdktool/google-cloud-cli:562.0.0-emulators gcloud emulators firestore start --host-port=0.0.0.0:8080
+server: go run .

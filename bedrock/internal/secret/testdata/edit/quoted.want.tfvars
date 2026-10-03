@@ -1,0 +1,7 @@
+secret_versions = {
+  "tst" = {
+    "APP_COOKIE_KEY" = "3"
+  }
+  "stg" = {}
+  "prd" = {}
+}
