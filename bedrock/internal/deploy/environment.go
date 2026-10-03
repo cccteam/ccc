@@ -140,6 +140,11 @@ func unquote(raw string) (string, error) {
 type Build struct {
 	ID            string            `json:"id"`
 	Substitutions map[string]string `json:"substitutions"`
+	// StartTime is when the build started running (after its approval, where one is
+	// needed) and Timeout its whole-build timeout (86400s), from which the wait for a
+	// maintenance window knows how long the run may still take.
+	StartTime string `json:"startTime,omitempty"`
+	Timeout   string `json:"timeout,omitempty"`
 }
 
 // parseBuild reads a build as Cloud Build describes it.

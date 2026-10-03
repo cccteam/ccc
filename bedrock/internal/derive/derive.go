@@ -61,6 +61,10 @@ type Model struct {
 	Auths []Auth
 	// Schema is what the migration owns.
 	Schema Schema
+	// RouterDir is the root-relative directory of the generated router's package
+	// (GenerateRoutes), where the resource generator writes the release file the deploy
+	// reads for the maintenance window; empty when the site generator declares none.
+	RouterDir string
 	// Firestore is what the application's Firestore database carries beyond the
 	// database itself (the composite indexes, the time-to-live policies and the security
 	// rules the files beside the schema migrations declare), or nil when the code
@@ -532,6 +536,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.generateStep(a); err != nil {
 		return nil, err
 	}
+	m.router(a)
 	m.Environments = p.environments(code)
 
 	return m, nil

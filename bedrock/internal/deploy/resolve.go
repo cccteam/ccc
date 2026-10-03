@@ -119,8 +119,11 @@ type Clients struct {
 	Metrics MetricsFunc
 	// HTTP is the client a maintenance step probes the maintenance revision with.
 	HTTP *http.Client
-	// Sleep waits between a maintenance step's tries; nil waits for real.
+	// Sleep waits between a maintenance step's tries and through the wait for a
+	// maintenance window; nil waits for real.
 	Sleep SleepFunc
+	// Now is the clock the maintenance window is read against; nil is the real one.
+	Now func() time.Time
 	// FirestoreAs opens Firestore as the apply identity, for the documents a restore run
 	// deletes.
 	FirestoreAs FirestoreAsFunc

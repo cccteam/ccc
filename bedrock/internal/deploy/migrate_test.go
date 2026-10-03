@@ -544,7 +544,7 @@ func TestMigrate(t *testing.T) {
 				clients.Logs = tt.logs.open
 			}
 			var out strings.Builder
-			err := Migrate(t.Context(), clients, w, &out)
+			err := Migrate(t.Context(), clients, w, false, &out)
 			var wantDeleted []string
 			if tt.wantDeleted {
 				wantDeleted = []string{jobName}

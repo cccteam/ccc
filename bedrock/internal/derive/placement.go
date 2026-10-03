@@ -71,6 +71,14 @@ type Placement struct {
 	// approval in Cloud Build before a release runs there. Absent, every environment
 	// but the first.
 	Approvals []string `json:"approvals,omitempty"`
+	// Maintenance is each environment's maintenance window by environment name: the
+	// time the environment may take a release that interrupts service (a breaking
+	// release, whose oldest answered release is newer than the one the environment runs,
+	// deploys behind the maintenance page inside it; under releases all, every release
+	// waits for it). Written as "anytime" or as the client's windows (maintenance.go).
+	// Every environment but production is anytime unless written; production has no
+	// default, and a breaking release to it is refused until its setting is written.
+	Maintenance map[string]MaintenanceWindow `json:"maintenance,omitempty"`
 	// Projects are the environment projects by environment, as the organization's
 	// apply chose them: the id and the number (bedrock org register prints the block
 	// once the organization's placement records both). The operations workflow, which
@@ -178,6 +186,9 @@ func (p *Placement) Validate() error {
 		if !numberRE.MatchString(project.Number) {
 			return errors.Newf("projects.%s.number %q is not a project number (digits)", env, project.Number)
 		}
+	}
+	if err := p.validateMaintenance(); err != nil {
+		return err
 	}
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,

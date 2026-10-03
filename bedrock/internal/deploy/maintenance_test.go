@@ -224,7 +224,7 @@ func TestMaintenanceOn(t *testing.T) {
 			}
 			clients := &Clients{Run: run.open, Tasks: tasks.open, Metrics: metrics.open, Storage: store.open, HTTP: &http.Client{Transport: probe}, Sleep: noSleep}
 			var out strings.Builder
-			err := MaintenanceOn(t.Context(), clients, w, &out)
+			err := MaintenanceOn(t.Context(), clients, w, false, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("MaintenanceOn() error = %v, want %q", err, tt.wantErr)

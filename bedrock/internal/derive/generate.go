@@ -35,3 +35,11 @@ func (m *Model) generateStep(a *app.App) error {
 
 	return nil
 }
+
+// router settles the generated router's package directory: the one the site generator
+// writes its routes into, and the resource generator its release file beside them.
+func (m *Model) router(a *app.App) {
+	if sites := a.SiteGenerators(); len(sites) > 0 {
+		m.RouterDir = sites[0].RoutesDir()
+	}
+}

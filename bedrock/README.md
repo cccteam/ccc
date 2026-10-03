@@ -115,6 +115,11 @@ again does not, because its pull request is already labeled as tagged.
 - **Deployment record**: what a build deployed, written to the environment's records
   bucket as `<app>/<env>/<release>/<build id>.json`; the next environment's gate reads
   it, and the pipeline reads the newest one to tell a stale pull-request database.
+- **Breaking release** and **maintenance window**: a release is breaking for an
+  environment when the oldest release its outlets still answer (the release file beside
+  the generated router) is newer than the release the environment runs, and deploys
+  behind the maintenance page inside the environment's maintenance window, the time the
+  client allows for a release that interrupts service (`placement.json`, `maintenance`).
 - **Release**: a tag `v<major>.<minor>.<patch>` cut by release-please as the release app;
   the pipeline accepts a release from that author only. A **hotfix line** is the branch
   `hotfix/<major>.<minor>.x` on which release-please releases the line's next patch
@@ -238,6 +243,16 @@ It also refuses:
   them, so render and check both stop before the stack is written. `APP_FIREBASE_API_KEY`
   without the database, or at another level than it, is refused the same way.
 
+It also warns, without failing, about the maintenance windows (Maintenance windows,
+below): production with no maintenance setting in `placement.json`, so that the refusal
+of a breaking release at the start of its run is never the first sign; no release file
+(`zz_gen_release.json`) in the router package, so that no release of the checkout is
+breaking and the window never holds a run; a release file that does not read; and a
+dated slot that has passed. A malformed setting (a time zone that does not load, a slot
+that never opens, a from that is not before its to on a dated slot, an environment the
+placement does not list) is refused by `render` and `check` alike, since both read the
+placement.
+
 The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
 `bedrock check` on every pull request and on the default branch. It is rendered too: the
 job gets the bedrock the placement pins as the pipeline does (a release downloaded from
@@ -327,8 +342,15 @@ thing one step hands the next. In order:
   environment. A refusal starts with `Build REJECTED` and says why. A tag build's log first
   names the bedrock running it, and says when that is a commit pin; a release may deploy
   with a commit pin. A release whose notes carry release-please's breaking-changes section
-  (a commit with `!` after its type, or a `BREAKING CHANGE:` footer) is a window release,
-  recorded as `WINDOW_RELEASE` for the maintenance window. A hotfix passes one more check
+  (a commit with `!` after its type, or a `BREAKING CHANGE:` footer) is said and recorded
+  (`WINDOW_RELEASE`); whether the release waits for the maintenance window is decided
+  from the release file, not from the notes: last, the step reads the oldest release the
+  session outlets still answer from `zz_gen_release.json` in the router package
+  (`--router-dir`, which the pipeline passes) and the environment's newest live record,
+  decides whether the release is breaking and whether the run waits for the window
+  (`WINDOW_NEEDED`, `WINDOW_BREAKING`, `WINDOW_REASON`), and refuses here what can never
+  proceed (Maintenance windows, below). A pull-request build previews the window instead.
+  A hotfix passes one more check
   in every environment: the environment's newest live deployment record lists the
   migration and seed files its database holds, each with its hash, and the hotfix is
   refused when the database holds a file the hotfix does not carry, or one whose content
@@ -370,18 +392,23 @@ thing one step hands the next. In order:
   the work whose inputs are unchanged, and the environments after the first rebuild the
   same commit from the cache alone. Every environment still builds its own image from the
   commit; nothing is promoted between environments.
-- `deploy maintenance on`: in a run that replaces the database (a restore run), puts the
-  application into maintenance before the stack is applied: the release's own image starts
-  as a revision with `APP_MAINTENANCE=1` in every region, under the tag `next` and with no
-  traffic; the revision is probed through the load balancer's next hostname and must answer
-  503 with `X-Maintenance: 1`, else the run stops with nothing moved and names the
-  application's missing switch (`impulse check maintenance-switch`); then all traffic
-  moves to it, the task queue (`_TASKS_QUEUE`) is paused and, on a restore, purged, the
-  running executions of the serving build's job are canceled, and the old revision's
-  requests in flight are let finish (its active instances read from Cloud Monitoring
-  until none is, or the service's request timeout). Any other run keeps the application
-  serving. The facts (`MAINTENANCE`, `MAINTENANCE_REVISIONS`, `MAINTENANCE_QUEUE`,
-  `MAINTENANCE_PURGED`, `MAINTENANCE_CANCELED`, `MAINTENANCE_WAITED`) reach the record.
+- `deploy maintenance on`: puts the application into maintenance when the run needs it,
+  at one of two places. Before the stack is applied, a run that replaces the database (a
+  restore run); after the wait for the maintenance window (`--window`), a breaking
+  release that is not in maintenance already, after a second look at the window, which
+  must still be open, else the run stops with nothing changed and names the next opening.
+  The release's own image starts as a revision with `APP_MAINTENANCE=1` in every region,
+  under the tag `next` and with no traffic; the revision is probed through the load
+  balancer's next hostname and must answer 503 with `X-Maintenance: 1`, else the run
+  stops with nothing moved and names the application's missing switch (`impulse check
+  maintenance-switch`); then all traffic moves to it, the task queue (`_TASKS_QUEUE`) is
+  paused and, on a restore, purged, the running executions of the serving build's job are
+  canceled, and the old revision's requests in flight are let finish (its active instances
+  read from Cloud Monitoring until none is, or the service's request timeout). Any other
+  run keeps the application serving: an ordinary release inside a window deploys the
+  rolling way, with no maintenance revision, no probe, no pause and no cancel. The facts
+  (`MAINTENANCE`, `MAINTENANCE_REVISIONS`, `MAINTENANCE_QUEUE`, `MAINTENANCE_PURGED`,
+  `MAINTENANCE_CANCELED`, `MAINTENANCE_WAITED`) reach the record.
 - `deploy stack plan`, `apply`: in a tag build, the environment's stack planned and
   applied as the apply identity, after the image build (a failed build changes no
   infrastructure) and before the jobs and the migrations (what they need exists first).
@@ -436,6 +463,22 @@ thing one step hands the next. In order:
   build made names the job process's job to the site (`APP_JOBS_JOB`), so the revision
   starts the job of its own build and a traffic rollback starts the earlier one. Made
   before the migrations so that a failure here leaves the database untouched.
+- `deploy migrate --preflight`: in a run that waits for the maintenance window and
+  replaces no database, runs this build's migrate job once with `-version` before the
+  wait, and keeps it: the job starts on the release's image against the environment's
+  database and prints what the migrations tables say, so an image that does not start, a
+  configuration that does not load or a database that cannot be reached stops the run
+  with nothing changed and the window not entered. Nothing is applied. Any other run says
+  so and does nothing.
+- `deploy window`: in a run that waits for the maintenance window, holds the run at the
+  gate until the environment's window opens, with the image built and the jobs made, so
+  the window holds only maintenance, the migrations and the rollout. It reads the
+  setting from the checkout's `placement.json`, prints when the run will proceed and
+  waits, reading the clock again at most every ten minutes; when the window opens it
+  leaves when, how long it waited and which opening let it in (`WINDOW_OPENED`,
+  `WINDOW_WAITED`, `WINDOW_SLOT`) for the record. An opening further away than the build
+  can wait stops the run here. A run in maintenance already (a restore run, or a rerun
+  after a window release that failed) passes at once.
 - `deploy sweep-jobs`: after the traffic shift, deletes the builds' jobs nothing runs any
   more: a job of the job process whose version no revision in any region carries (a
   revision that exists can take a rollback, and then starts its own build's job), and a
@@ -463,9 +506,11 @@ thing one step hands the next. In order:
   traffic, as any old revision does.
 - `deploy record`: writes the deployment record once traffic has moved, with the plan of
   the stack the build applied (`stack`: counts and changes) and, in a restore run, what
-  replaced the database, who asked and what the stack replaced (`restore`), and the
+  replaced the database, who asked and what the stack replaced (`restore`), the
   maintenance the run went through (`maintenance`: the revisions, the queue, the
-  executions canceled, how the wait ended).
+  executions canceled, how the wait ended), and, for a release that needed the
+  maintenance window, whether it was breaking, why, which opening let the run in, when
+  and after how long a wait (`window`).
 - `deploy talk-back`: in a pull-request build, tells the pull request what the build did
   as the deployer app: a GitHub deployment carrying the environment's URL and a comment.
   The app's token is minted from its key when there is something to say, by this step or
@@ -487,6 +532,94 @@ takes the program out of the image for the hook steps (`deploy hook <stage> --pr
 The pipeline has a step for each stage the application implements. `deploy sweep`
 is the hourly sweep's one step: the pull requests whose services stand, which of them
 are closed, and each closed one's stack destroyed.
+
+## Maintenance windows
+
+A maintenance window is the time an environment may take a release that interrupts
+service. It is not a deploy freeze: an ordinary release rolls in at any time, because the
+old server keeps answering through the deploy, and only a breaking release waits for the
+window and deploys behind the maintenance page.
+
+A release is breaking for an environment when it turns away the release the environment
+runs: the oldest release of the browser application its session outlets still answer
+(`OldestAnswered` in the generator program, which the resource generator writes into
+`zz_gen_release.json` beside the generated router) is newer than the environment's live
+release (its newest live deployment record), or an outlet answers its own release alone
+(`OldestAnswered(generation.ThisRelease)`, for a release whose migration the old server
+cannot run on). The newest value over the session outlets counts; an API-key outlet
+never does. The pipeline reads the file from the checkout, never from a binary. With
+production on 1.4.0: 1.5.0 with oldest answered 1.5.0 is breaking; 1.6.0 with oldest
+answered 1.5.0 is not once production runs 1.5.0, and is while production is still on
+1.4.0, because a rolling step was skipped. A rerun of the release the environment runs
+turns nothing away. A checkout without the file declares nothing, so no release of it is
+breaking; `bedrock check` and the release check both say so.
+
+The window is written in `placement.json`, per environment:
+
+```json
+"maintenance": {
+  "tst": "anytime",
+  "prd": {
+    "timeZone": "America/Chicago",
+    "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}],
+    "dates": [{"on": "2026-11-15", "from": "22:00", "to": "23:30"}],
+    "releases": "breaking"
+  }
+}
+```
+
+`"anytime"` takes a window release at any time. An object names the client's time zone
+(an IANA name; the slots are the client's wall clock through its daylight-saving
+changes), weekly slots (a day, from a time of day to another; a slot whose `to` is not
+after its `from` crosses midnight and ends the next day) and dated slots (a one-off the
+client agreed to, on one date, `from` before `to`; a slot past midnight is the next
+date's own). `releases` says which releases wait for the window: `breaking` (the
+default when absent) or `all`, under which every release from master waits, hotfixes
+included, and an ordinary release then deploys the rolling way: the window says when a
+release may go in, maintenance mode says what a breaking release does when it goes.
+Every environment but production is `anytime` unless its setting is written. Production
+has no default: a breaking release to production is refused at the start of its run
+until its setting is written, and `"anytime"` is a setting to write, so a forgotten
+setting never takes production offline in the middle of the day; ordinary releases to
+production are unaffected. The release reads the placement of the commit it was tagged
+on, like everything else in the run: changing a window is a commit merged before the
+release is tagged, and a change after the tag needs a new release. A slot that never
+opens, a time zone that does not load, a dated slot whose `from` is not before its
+`to`, and an environment the placement does not list are refused by `render` and
+`check`; `check` warns while production's setting is missing and when a dated slot has
+passed.
+
+How a window release runs, in the pipeline's order: the release check at the start
+(`deploy validate-release`) decides whether the release is breaking and whether the run
+waits for the window, and refuses what can never proceed, production without a setting
+when the release is breaking, a window whose next opening is further away than the
+build can wait (the build's timeout of 24 hours less three hours for the steps after the
+window), a window with no opening ahead; the image is built, the stack applied and the
+build's jobs made, so nothing that can fail on its own is left for the window; the
+pre-flight runs the migrate job once with `-version` (`deploy migrate --preflight`);
+the run waits inside the build for the window to open (`deploy window`), printing when
+it will proceed, so the approver approves by day and the run proceeds at night on its
+own; then, for a breaking release, maintenance goes on (`deploy maintenance on
+--window`, after a second look at the window), the migrations run, the release's
+revision deploys, traffic moves to it and maintenance ends; the record says it was a
+window release. If the migration fails, the maintenance revision keeps answering and the
+rerun's gate is open: an environment whose traffic is on a maintenance revision passes
+the gate with the window closed, since the interruption has happened and waiting for the
+next window would hold the client on the maintenance page meanwhile; the rerun still
+needs its approval, as every production run does. A restore run passes the gate the
+same way. A pull-request build never waits and never goes into maintenance; its release
+check previews what the release will turn away in each environment and which
+environments will hold it, read as each environment's plan identity.
+
+What users see during a breaking release: the maintenance page (every request answered
+503 with `Retry-After` and `X-Maintenance: 1`, from the framework's `maintenance`
+package, with no database opened), the browser library's maintenance notice checking
+back, and, once the new release answers, a reload. The task queue is paused meanwhile
+and resumed against the new release; running executions of the old build's job are
+canceled, since a breaking release is the decision to interrupt everything the
+application is doing, and the window is when the client accepts that. The stack declares
+`APP_MAINTENANCE` on the service, so a deploy that sets it and a later apply do not
+fight.
 
 ## bedrock secret
 
@@ -860,7 +993,13 @@ the framework's `maintenance` package turns into a maintenance page and 503 answ
 with no database opened; the pipeline probes it for the marker before any traffic moves,
 then the task queue is paused, the serving build's job executions are canceled, the old
 revision's requests finish, and only then is the database replaced. The queue resumes
-once the release's revision serves.
+once the release's revision serves. A breaking release (one whose outlets no longer
+answer the release the environment runs, read from the release file beside the
+generated router) does the same inside the environment's maintenance window: the run
+builds its image and makes its jobs, waits inside the build for the window
+(`placement.json`, `maintenance`), then goes into maintenance, migrates, deploys and
+moves traffic; the whole-build timeout is Cloud Build's 24-hour ceiling for that wait,
+and every step keeps its own timeout (Maintenance windows, above).
 
 ## Development
 

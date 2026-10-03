@@ -38,6 +38,13 @@ terraform.tfvars, or a release that passed the earlier environments fails in the
 build of the one that lacks it; the check refuses a required mount naming the
 environments without it. An optional mount passes with nothing said.
 
+The maintenance windows: it warns, without failing, while production has no maintenance
+setting in placement.json (a breaking release to production is refused at the start of its
+run until one is written; "anytime" is a setting), when the router package holds no release
+file (zz_gen_release.json, which the resource generator writes: without it no release is
+breaking and the window never holds a run), when that file does not read, and when a dated
+slot has passed. A malformed setting is refused, as render refuses it.
+
 Run from anywhere inside the repository, it finds both directories: the stack is the
 application repository's infrastructure directory, or the one application layer under
 3-app of an infrastructure root (the repository root, or its infrastructure directory);

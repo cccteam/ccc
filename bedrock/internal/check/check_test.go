@@ -61,10 +61,14 @@ func TestRun(t *testing.T) {
 		wantOutput   []string
 	}{
 		{
-			name:       "the committed stack matches",
-			mutate:     func(*testing.T, string) {},
-			wantClean:  true,
-			wantOutput: []string{"22 owned file(s) match the code"},
+			name:      "the committed stack matches, with the maintenance warnings the fixture earns",
+			mutate:    func(*testing.T, string) {},
+			wantClean: true,
+			wantOutput: []string{
+				"22 owned file(s) match the code",
+				"warning  prd has no maintenance setting (placement.json \"maintenance\": {\"prd\": ...}): a breaking release to prd is refused at the start of its run until one is written; \"anytime\" is a setting, and so are the client's windows",
+				"warning  no release file at pkg/router/zz_gen_release.json: no outlet declares an oldest answered release, so no release is breaking and the maintenance window never holds a run; the resource generator writes it beside the generated router (go generate ./...)",
+			},
 		},
 		{
 			name: "an edited pipeline file at the application root differs",

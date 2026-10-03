@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -192,43 +191,13 @@ func liveMaintenance(ctx context.Context, clients *Clients, build *Build, env ma
 	if env[maintenanceFact] == trueValue {
 		return maintenanceOn, nil
 	}
-	entries := build.Substitutions[servicesSub]
-	if entries == "" || clients.Run == nil {
-		return "", nil
-	}
-	region, service, err := target(servicesSub, strings.Split(entries, ",")[0])
-	if err != nil {
+	service, on, err := serviceInMaintenance(ctx, clients, build)
+	if err != nil || !on {
 		return "", err
 	}
-	run, err := clients.Run(ctx)
-	if err != nil {
-		return "", err
-	}
-	doc, err := run.Get(ctx, serviceName(build.Substitutions[projectSub], region, service))
-	if err != nil {
-		var apiErr *apiError
-		if errors.As(err, &apiErr) && apiErr.status == http.StatusNotFound {
-			return "", nil
-		}
+	fmt.Fprintf(out, "%s is in maintenance from an earlier run (%s=%s on the service): the plan keeps it so, and the release's revision clears it after the migrations.\n", service, derive.MaintenanceVariable, maintenanceOn)
 
-		return "", errors.Wrapf(err, "reading the service %s for its maintenance variable", service)
-	}
-	template, _ := doc[keyTemplate].(map[string]any)
-	containers, _ := template["containers"].([]any)
-	if len(containers) == 0 {
-		return "", nil
-	}
-	container, _ := containers[0].(map[string]any)
-	vars, _ := container["env"].([]any)
-	for _, entry := range vars {
-		if v, _ := entry.(map[string]any); text(v, keyName) == derive.MaintenanceVariable && text(v, keyValue) == maintenanceOn {
-			fmt.Fprintf(out, "%s is in maintenance from an earlier run (%s=%s on the service): the plan keeps it so, and the release's revision clears it after the migrations.\n", service, derive.MaintenanceVariable, maintenanceOn)
-
-			return maintenanceOn, nil
-		}
-	}
-
-	return "", nil
+	return maintenanceOn, nil
 }
 
 // restoredFact lists what a restore run's plan replaces, comma-separated, for the record.

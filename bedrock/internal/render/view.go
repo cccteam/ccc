@@ -370,16 +370,17 @@ var goInstallEnv = []string{
 }
 
 // The FetchBedrock step's timeout in seconds: a release pin's download, or a commit pin's
-// go install, which pulls the Go image and builds bedrock. The pipeline's and the sweep's
-// whole-build timeouts are what each spends after that step plus the step's own timeout,
-// so the longer build of a commit pin never eats the time the later steps had.
+// go install, which pulls the Go image and builds bedrock. The sweep's whole-build timeout
+// is what it spends after that step plus the step's own timeout, so the longer build of a
+// commit pin never eats the time the later steps had. The pipeline's whole-build timeout
+// is Cloud Build's ceiling: a release that waits for its maintenance window waits inside
+// the run, and every step keeps its own timeout, so a hung step still fails on time and
+// only the wait uses the headroom.
 const (
 	releaseFetchSeconds = 120
 	commitFetchSeconds  = 600
-	// pipelineAfterFetchSeconds is the pipeline's time after FetchBedrock: the image
-	// build, the environment stack's plan and apply, and the migrate job are the long
-	// steps.
-	pipelineAfterFetchSeconds = 7980
+	// pipelineCeilingSeconds is Cloud Build's longest build, 24 hours.
+	pipelineCeilingSeconds = 86400
 	// sweepAfterFetchSeconds is the sweep's time after FetchBedrock: the sweep step's
 	// own timeout and 480 seconds for pulling the images and starting the steps.
 	sweepAfterFetchSeconds = sweepStepSeconds + 480
@@ -435,9 +436,10 @@ func (v *view) fetchBedrockSeconds() int {
 	return releaseFetchSeconds
 }
 
-// PipelineTimeout is the pipeline's whole-build timeout.
+// PipelineTimeout is the pipeline's whole-build timeout: Cloud Build's ceiling, so that a
+// release may wait for its maintenance window inside the run.
 func (v *view) PipelineTimeout() string {
-	return strconv.Itoa(v.fetchBedrockSeconds()+pipelineAfterFetchSeconds) + "s"
+	return strconv.Itoa(pipelineCeilingSeconds) + "s"
 }
 
 // SweepStepTimeout is the timeout of the sweep's SweepClosedPullRequests step.

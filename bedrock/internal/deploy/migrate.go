@@ -190,8 +190,9 @@ func (a *MigrateAction) versionWord() string {
 // or failed: its logs stay in Cloud Logging, and the deployment record lists the migrations
 // applied. A build that runs no migrations (shared-db) has no job to run; a failed
 // execution stops the build and names itself; an operation that cannot run is refused
-// before any job starts.
-func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
+// before any job starts. With preflight, in a run that waits for the maintenance window,
+// the job is run once with -version instead, before the wait, and kept (preflight below).
+func Migrate(ctx context.Context, clients *Clients, w Workspace, preflight bool, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -199,6 +200,9 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 	if env[skipDeploy] == trueValue {
 		fmt.Fprintln(out, skipped(env))
 
+		return nil
+	}
+	if preflight && !preflightDue(env, out) {
 		return nil
 	}
 	if env[runMigrationsFact] != trueValue {
@@ -230,6 +234,9 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 
 		return err
 	}
+	if preflight {
+		return m.preflight(ctx)
+	}
 	outcome := m.perform(ctx, w, build, action)
 	if err := run.Delete(ctx, name); err != nil {
 		fmt.Fprintf(out, "Job %s was not deleted (%v): deploy sweep-jobs deletes it.\n", m.job, err)
@@ -240,6 +247,23 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, out io.Writer) 
 	return outcome
 }
 
+// preflightDue reports whether the pre-flight has anything to do: a run that waits for
+// the maintenance window and does not replace its database; the others are said on out.
+func preflightDue(env map[string]string, out io.Writer) bool {
+	switch {
+	case env[windowNeededFact] != trueValue:
+		fmt.Fprintln(out, "No pre-flight: this run waits for no maintenance window.")
+
+		return false
+	case env[restoreFact] != "":
+		fmt.Fprintln(out, "No pre-flight: a restore run replaced the database, which the migrations fill from the start.")
+
+		return false
+	default:
+		return true
+	}
+}
+
 // migrateRun is one step's runs of the build's migrate job.
 type migrateRun struct {
 	clients *Clients
@@ -248,6 +272,24 @@ type migrateRun struct {
 	// lines are read through (empty: not read here).
 	name, job, view string
 	out             io.Writer
+}
+
+// preflight runs the job once with -version before the run waits for the window: the job
+// starts on the release's image against the environment's database and prints what the
+// migrations tables say, so an image that does not start, a configuration that does not
+// load or a database that cannot be reached stops the run here, with nothing changed and
+// the window not entered. Nothing is applied, and the job stays for the migrations after
+// the window.
+func (m *migrateRun) preflight(ctx context.Context) error {
+	fmt.Fprintf(m.out, "=== Pre-flight: running job [%s] once with %s before the window ===\n", m.job, versionArg)
+	if err := m.once(ctx, []string{versionArg}); err != nil {
+		fmt.Fprintln(m.out, "Pre-flight failed before the window: nothing changed, and the run stops here.")
+
+		return err
+	}
+	fmt.Fprintln(m.out, "Pre-flight passed: the migrate job runs on this image against the environment's database; the job stays for the migrations after the window.")
+
+	return nil
 }
 
 // perform does what the operation asks: the version report alone, a force and then the

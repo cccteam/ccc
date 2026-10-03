@@ -37,8 +37,11 @@ this directory or to `terraform.tfvars` (a secret pin, a value for one
 environment) is a commit with a releasable type, and promotes as a release.
 An infrastructure change must be safe on the running service: add first,
 remove later; a change that is not is declared breaking in release-please's
-own way (`!` after the commit type, or a `BREAKING CHANGE:` footer), which the
-tag build reads as a window release.
+own way (`!` after the commit type, or a `BREAKING CHANGE:` footer) for the
+notes, and deploys behind the maintenance page inside the environment's
+maintenance window when the release declares its outlet answers its own
+release alone (`OldestAnswered(generation.ThisRelease)` in the generator
+program, which the pipeline reads from the release file beside the router).
 
 By hand, the same shape as `2-env`: no workspaces, one state prefix per
 environment (`3-app/{{.App}}/<env>`, the stack's slot in the organization's
@@ -193,7 +196,17 @@ from `2-env`'s state.
   hourly by the Cloud Scheduler job of the same name.
   The environments chain by deployment records: a release runs in an
   environment only after the previous one in the order ({{.EnvsComma}}) holds
-  a live record of it, which the pipeline checks before it builds.
+  a live record of it, which the pipeline checks before it builds. A release
+  that turns away the release an environment runs (the oldest release its
+  outlets still answer, read from the release file beside the generated
+  router, is newer than the live one) is a breaking release: it deploys behind
+  the maintenance page inside the environment's maintenance window
+  (`placement.json`, `maintenance`: `"anytime"`, or the client's weekly and
+  dated slots in a time zone, every environment but {{.Production}} anytime
+  unless written, {{.Production}} refused until written), waiting inside the
+  run with its image built and its jobs made; under `"releases": "all"` every
+  release waits for the window and an ordinary one then deploys the rolling
+  way.
 
 ### Configuration the processes receive
 

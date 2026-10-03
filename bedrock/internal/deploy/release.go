@@ -96,12 +96,16 @@ func splitRepo(fullName string) (owner, repo string, err error) {
 // record gate: this environment follows the previous one in the promotion order
 // (_PREVIOUS_ENV, empty in the first), and a release runs here only after the previous
 // environment holds a live deployment record of it, which its record step writes once
-// traffic has shifted there. A pull-request build has no release to validate; a
-// hand-submitted build without a connection (no token) skips the GitHub checks. A tag
-// build first says which bedrock runs it (bedrock, the running version), and whether that
-// is a commit pin: a release may be deployed by a bedrock built from an unreleased commit,
-// and the log says so rather than refusing it.
-func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock string, out io.Writer) error {
+// traffic has shifted there. Last the maintenance window (windowCheck): whether the
+// release turns away the one this environment runs, read from the release file in the
+// checkout's router package (routerDir) and the environment's newest live record, and
+// whether the run can wait for the window; what can never proceed is refused here,
+// before anything is built. A pull-request build has no release to validate, and
+// previews the window instead; a hand-submitted build without a connection (no token)
+// skips the GitHub checks. A tag build first says which bedrock runs it (bedrock, the
+// running version), and whether that is a commit pin: a release may be deployed by a
+// bedrock built from an unreleased commit, and the log says so rather than refusing it.
+func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock, routerDir string, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -122,6 +126,11 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 				return err
 			}
 		}
+		if subs[prNumberSub] != "" {
+			if err := windowPreview(ctx, clients.StorageAs, w, subs, routerDir, out); err != nil {
+				return err
+			}
+		}
 		fmt.Fprintln(out, "Pull-request build: no release to validate.")
 
 		return nil
@@ -138,7 +147,7 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 			return err
 		}
 		if window {
-			fmt.Fprintf(out, "Window release: the release notes of %s carry a breaking-changes section (a commit with ! after its type, or a BREAKING CHANGE footer), the designation for a change that is not safe on the running service; it is recorded (%s) for the maintenance window.\n", subs[tagSub], windowReleaseFact)
+			fmt.Fprintf(out, "Breaking changes: the release notes of %s carry a breaking-changes section (a commit with ! after its type, or a BREAKING CHANGE footer), recorded (%s); whether the release deploys inside the maintenance window is decided below from the release file's oldest answered release, not from the notes.\n", subs[tagSub], windowReleaseFact)
 			if err := w.Append(map[string]string{windowReleaseFact: trueValue}); err != nil {
 				return err
 			}
@@ -148,16 +157,17 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	if err := gate(ctx, clients.Storage, subs, out); err != nil {
 		return err
 	}
-	if hotfix == nil {
-		return nil
-	}
-	if env[restoreFact] != "" {
+	switch {
+	case hotfix == nil:
+	case env[restoreFact] != "":
 		fmt.Fprintf(out, "Restore run: %s's database is replaced before %s deploys, so what it holds is not compared with the hotfix.\n", subs[envSub], subs[tagSub])
-
-		return nil
+	default:
+		if err := hotfixGate(ctx, clients.Storage, subs, w, hotfix, out); err != nil {
+			return err
+		}
 	}
 
-	return hotfixGate(ctx, clients.Storage, subs, w, hotfix, out)
+	return windowCheck(ctx, clients, w, build, env, routerDir, out)
 }
 
 // hotfixLine is what the tag check learned of a hotfix: its tag and its release line.
@@ -359,10 +369,11 @@ func upFirst(migrations []Migration) []Migration {
 	return ordered
 }
 
-// windowReleaseFact says the release is a window release: its notes carry release-please's
-// breaking-changes section, the one designation an application repository has for a
-// change that is not safe on the running service, so the release deploys only inside the
-// environment's maintenance window once that feature lands.
+// windowReleaseFact says the release's notes carry release-please's breaking-changes
+// section, the designation an application repository has for a change that is not safe
+// on the running service. It is recorded for a reader of the facts; whether the release
+// waits for the maintenance window and deploys behind the maintenance page is decided
+// from the release file's oldest answered release (windowCheck), never from the notes.
 const windowReleaseFact = "WINDOW_RELEASE"
 
 // windowRelease reads the release notes for release-please's breaking-changes heading.
@@ -380,7 +391,7 @@ func windowRelease(notes string) bool {
 
 // validateTag is the two GitHub checks: the release and its actor, then the commit's
 // place on the default branch or a hotfix line. It answers whether the release notes
-// designate a window release, and the hotfix's line when the tag is a hotfix.
+// carry a breaking-changes section, and the hotfix's line when the tag is a hotfix.
 func validateTag(ctx context.Context, gh *github.Client, subs map[string]string, out io.Writer) (window bool, line *hotfixLine, err error) {
 	owner, repo, err := splitRepo(subs[repoFullNameSub])
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
@@ -30,6 +31,29 @@ func releaseBuild(t *testing.T, overrides map[string]string) string {
 	}
 
 	return buildFor(t, subs)
+}
+
+// The release file's place in the release tests' checkout.
+const (
+	routerDir       = "pkg/router"
+	releaseFilePath = routerDir + "/zz_gen_release.json"
+)
+
+// liveIn is a live record of version in env.
+func liveIn(env, version string) string {
+	return `{"app": "quill", "env": "` + env + `", "version": "` + version + `", "status": "live", "timestamp": "2026-09-28T05:30:00Z", "build": "b-5"}`
+}
+
+// mergeObjects is the union of the records.
+func mergeObjects(sets ...map[string]string) map[string]string {
+	merged := map[string]string{}
+	for _, set := range sets {
+		for path, content := range set {
+			merged[path] = content
+		}
+	}
+
+	return merged
 }
 
 // migrationFile is a migration file as a record lists it and a checkout carries it.
@@ -107,11 +131,20 @@ func TestValidateRelease(t *testing.T) {
 		objects map[string]string
 		files   map[string]string
 		// bedrock is the running bedrock's version; empty, a release.
-		bedrock    string
+		bedrock string
+		// routerDir is the router package the release file is read from; placement the
+		// checkout's placement (the default has no maintenance setting); now the clock
+		// (the default is a Monday morning in October, Chicago time).
+		routerDir  string
+		placement  string
+		now        time.Time
 		wantOut    []string
 		wantAbsent []string
-		// wantFact is WINDOW_RELEASE after the step: true for a window release, else empty.
-		wantFact string
+		// wantFact is WINDOW_RELEASE after the step: true when the notes carry a
+		// breaking-changes section, else empty. wantWindow are the window facts the step
+		// leaves, by name, checked when set.
+		wantFact   string
+		wantWindow map[string]string
 		// wantIdentities are the identities the records were read as, in order.
 		wantIdentities []string
 		wantErr        string
@@ -137,7 +170,208 @@ func TestValidateRelease(t *testing.T) {
 				"prd: would take the hotfix; its database holds nothing this pull request does not carry (1 file(s) recorded by v1.2.3, build b-5).",
 				"Pull-request build: no release to validate.",
 			},
+			// The hotfix preview and the window preview each read every environment's record.
+			wantIdentities: []string{"plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam", "plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam"},
+		},
+		{
+			name: "a pull request previews the window in every environment, read as its plan identity",
+			env:  connected,
+			subs: map[string]string{
+				tagSub: "", prNumberSub: "7", baseBranchSub: "master", environmentsSub: "tst,stg,prd",
+				planIdentitiesSub: "tst=plan-tst@x.iam,stg=plan-stg@x.iam,prd=plan-prd@x.iam",
+				recordsBucketsSub: "tst=tst-records,stg=stg-records,prd=prd-records",
+			},
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			objects: map[string]string{
+				"gs://tst-records/quill/tst/v1.4.0/b-1.json": liveIn("tst", "v1.4.0"),
+				"gs://stg-records/quill/stg/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
+				"gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
+			},
+			files: map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}, "api": {"kind": "api-key"}}`)},
+			wantOut: []string{
+				"Window preview: whether the release this pull request becomes part of turns away the release each environment runs",
+				"tst: breaking (the default outlet answers 1.5.0 at the oldest, and tst runs v1.4.0, which it turns away); tst takes it at any time, behind the maintenance page.",
+				"stg: not breaking (the default outlet answers 1.5.0 at the oldest, which stg's v1.5.0 is not older than); the release deploys at any time.",
+				"prd: breaking (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); prd has no maintenance setting, so the release WILL BE REFUSED at the start of its run there until placement.json names one (\"anytime\" is a setting).",
+				"Pull-request build: no release to validate.",
+			},
 			wantIdentities: []string{"plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam"},
+		},
+		{
+			name: "a pull request's preview says where every release waits for the window and where it is held with the maintenance page",
+			env:  connected,
+			subs: map[string]string{
+				tagSub: "", prNumberSub: "7", baseBranchSub: "master", environmentsSub: "stg,prd",
+				planIdentitiesSub: "stg=plan-stg@x.iam,prd=plan-prd@x.iam", recordsBucketsSub: "stg=stg-records,prd=prd-records",
+			},
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}], "releases": "all"}, "prd": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			objects: map[string]string{
+				"gs://stg-records/quill/stg/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
+				"gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
+			},
+			files: map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
+			wantOut: []string{
+				"stg: not breaking (the default outlet answers 1.5.0 at the oldest, which stg's v1.5.0 is not older than; every release waits for stg's window (releases: all)); the run waits for stg's window (Sunday 02:00 to 04:00 America/Chicago, every release) and deploys the rolling way.",
+				"prd: breaking (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); the run waits for prd's window (Sunday 02:00 to 04:00 America/Chicago) and deploys behind the maintenance page.",
+			},
+		},
+		{
+			name:      "a breaking release into an environment that takes one at any time passes the gate open",
+			env:       connected,
+			routerDir: routerDir,
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
+			wantOut: []string{
+				"Gate passed: v1.2.3 is live in tst",
+				"Maintenance window: v1.2.3 is a breaking release for stg (the default outlet answers 1.2.3 at the oldest, and stg runs v1.2.2, which it turns away); the window is anytime.",
+				"stg's window is open now (anytime): the run proceeds once the image is built and the jobs are made.",
+			},
+			wantWindow: map[string]string{windowNeededFact: trueValue, windowBreakingFact: trueValue, windowReasonFact: "the default outlet answers 1.2.3 at the oldest, and stg runs v1.2.2, which it turns away"},
+		},
+		{
+			name:       "a release whose oldest answered release the environment runs already deploys at any time",
+			env:        connected,
+			routerDir:  routerDir,
+			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:      map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.2"}}`)},
+			wantOut:    []string{"No maintenance window: the default outlet answers 1.2.2 at the oldest, which stg's v1.2.2 is not older than; v1.2.3 deploys at any time."},
+			wantWindow: map[string]string{windowNeededFact: "", windowBreakingFact: ""},
+		},
+		{
+			name:       "an environment that runs nothing live has nothing to turn away",
+			env:        connected,
+			routerDir:  routerDir,
+			objects:    live,
+			files:      map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "this"}}`)},
+			wantOut:    []string{"No maintenance window: stg runs no release live, so there is nothing for the release to turn away; v1.2.3 deploys at any time."},
+			wantWindow: map[string]string{windowNeededFact: "", windowBreakingFact: ""},
+		},
+		{
+			name:       "an outlet that answers its own release alone makes the release breaking",
+			env:        connected,
+			routerDir:  routerDir,
+			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:      map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": ""}, "portal": {"oldestAnswered": "this"}}`)},
+			wantOut:    []string{"Maintenance window: v1.2.3 is a breaking release for stg (the portal outlet answers this release alone (oldest answered: this), and stg runs v1.2.2, which it turns away); the window is anytime."},
+			wantWindow: map[string]string{windowNeededFact: trueValue, windowBreakingFact: trueValue},
+		},
+		{
+			name:      "a skipped step is breaking: production on an older release than the oldest answered one",
+			env:       "export GITHUB_TOKEN=\"\"\nexport SKIP_DEPLOY=\"\"\n",
+			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
+			routerDir: routerDir,
+			placement: testPlacement(`{"prd": "anytime"}`),
+			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0")},
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
+			wantOut:   []string{"Maintenance window: v1.6.0 is a breaking release for prd (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); the window is anytime."},
+		},
+		{
+			name:      "the same release once production runs the oldest answered one deploys at any time",
+			env:       "export GITHUB_TOKEN=\"\"\nexport SKIP_DEPLOY=\"\"\n",
+			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
+			routerDir: routerDir,
+			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.5.0/b-8.json": liveIn("prd", "v1.5.0")},
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
+			wantOut:   []string{"No maintenance window: the default outlet answers 1.5.0 at the oldest, which prd's v1.5.0 is not older than; v1.6.0 deploys at any time."},
+		},
+		{
+			name:      "production without a maintenance setting refuses a breaking release at the start of the run",
+			env:       "export GITHUB_TOKEN=\"\"\nexport SKIP_DEPLOY=\"\"\n",
+			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
+			routerDir: routerDir,
+			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0")},
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
+			wantErr:   `Build REJECTED: prd has no maintenance setting in infrastructure/placement.json and v1.6.0 is a breaking release (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away). Write "maintenance": {"prd": "anytime"} for a release at any time, or the client's windows, and release again.`,
+		},
+		{
+			name:      "under releases all an ordinary release waits for the window too, without maintenance mode",
+			env:       connected,
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}], "releases": "all"}}`),
+			now:       chicago(10, 4, 2, 30),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.2"}}`)},
+			wantOut: []string{
+				"Maintenance window: v1.2.3 is a release for stg (the default outlet answers 1.2.2 at the oldest, which stg's v1.2.2 is not older than; every release waits for stg's window (releases: all)); the window is Sunday 02:00 to 04:00 America/Chicago, every release.",
+				"stg's window is open now (Sunday 02:00 to 04:00 America/Chicago, until Sunday 2026-10-04 04:00 CDT)",
+			},
+			wantWindow: map[string]string{windowNeededFact: trueValue, windowBreakingFact: ""},
+		},
+		{
+			name:      "a window that opens within the build's time makes the run build first and wait",
+			env:       connected,
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			now:       chicago(10, 3, 20, 0),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
+			wantOut:   []string{"stg's window next opens Sunday 2026-10-04 02:00 CDT (in 6h, Sunday 02:00 to 04:00 America/Chicago): the image is built and the jobs are made now, and the run waits for the window before maintenance begins."},
+		},
+		{
+			name:      "a window further away than the run can wait is refused at the start, naming the opening",
+			env:       connected,
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			now:       chicago(10, 5, 10, 0),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
+			wantErr:   "Build REJECTED: stg's maintenance window next opens Sunday 2026-10-11 02:00 CDT (in 136h, Sunday 02:00 to 04:00 America/Chicago), further away than this run can wait (until Tuesday 2026-10-06 07:00 CDT, the build's timeout less 3h0m0s for the steps after the window): start the release on the day of the window.",
+		},
+		{
+			name:      "a dated slot lets a release in on its date",
+			env:       connected,
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "dates": [{"on": "2026-11-15", "from": "22:00", "to": "23:30"}]}}`),
+			now:       chicago(11, 15, 22, 10),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
+			wantOut:   []string{"stg's window is open now (the dated slot 2026-11-15 22:00 to 23:30 America/Chicago, until Sunday 2026-11-15 23:30 CST)"},
+		},
+		{
+			name:      "a window with no opening ahead is refused",
+			env:       connected,
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "dates": [{"on": "2026-09-15", "from": "22:00", "to": "23:30"}]}}`),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
+			wantErr:   "Build REJECTED: stg's maintenance window has no opening ahead (its dated slots have passed and it has no weekly slot): write the next slot in infrastructure/placement.json and release again.",
+		},
+		{
+			name:      "a restore run passes the gate whatever the window says",
+			env:       connected + "export RESTORE=\"empty\"\n",
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
+			wantOut:   []string{"The gate is open to a restore run: stg's database is replaced behind the maintenance page whatever the window says."},
+		},
+		{
+			name:      "an environment in maintenance from an earlier run passes the gate with the window closed",
+			env:       connected,
+			subs:      map[string]string{servicesSub: "us-central1=quill-app", projectSub: "stg-project"},
+			routerDir: routerDir,
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
+			wantOut:   []string{"stg is in maintenance from an earlier run (APP_MAINTENANCE=1 on quill-app): the gate counts the window as open, so the rerun proceeds without waiting for the next one."},
+		},
+		{
+			name:       "without a release file no release is breaking, and the log says so",
+			env:        connected,
+			routerDir:  routerDir,
+			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			wantOut:    []string{"Warning: no release file at pkg/router/zz_gen_release.json in the checkout, so no outlet declares an oldest answered release and no release is breaking; the resource generator writes it beside the router.", "No maintenance window: no outlet declares an oldest answered release, so the release turns no running release away; v1.2.3 deploys at any time."},
+			wantWindow: map[string]string{windowNeededFact: "", windowBreakingFact: ""},
+		},
+		{
+			name:      "a release file that does not read stops the run",
+			env:       connected,
+			routerDir: routerDir,
+			objects:   live,
+			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "soon"}}`)},
+			wantErr:   `outlet default answers "soon" at the oldest, which is not a release (1.5.0), "this" or ""`,
 		},
 		{
 			name: "a pull request against a hotfix line of another release line is told production will refuse it at the door",
@@ -218,7 +452,7 @@ func TestValidateRelease(t *testing.T) {
 				r.Releases["v1.2.3"] = github.Release{TagName: "v1.2.3", Author: github.User{Login: "release-app[bot]"}, Body: "## [1.2.3](https://example.test) (2026-10-01)\n\n### ⚠ BREAKING CHANGES\n\n* **storage:** the uploads bucket is replaced\n\n### Features\n\n* **storage:** replace the uploads bucket\n"}
 			},
 			objects:  live,
-			wantOut:  []string{"Release v1.2.3 validated: cut by release-app[bot]", "Window release: the release notes of v1.2.3 carry a breaking-changes section", "Gate passed: v1.2.3 is live in tst"},
+			wantOut:  []string{"Release v1.2.3 validated: cut by release-app[bot]", "Breaking changes: the release notes of v1.2.3 carry a breaking-changes section", "whether the release deploys inside the maintenance window is decided below from the release file's oldest answered release, not from the notes.", "Gate passed: v1.2.3 is live in tst"},
 			wantFact: trueValue,
 		},
 		{
@@ -228,7 +462,7 @@ func TestValidateRelease(t *testing.T) {
 				r.Releases["v1.2.3"] = github.Release{TagName: "v1.2.3", Author: github.User{Login: "release-app[bot]"}, Body: "### Features\n\n* no breaking changes this time\n"}
 			},
 			objects:    live,
-			wantAbsent: []string{"Window release"},
+			wantAbsent: []string{"Breaking changes"},
 		},
 		{
 			name:    "a release on the default branch, live in the previous environment",
@@ -470,10 +704,22 @@ func TestValidateRelease(t *testing.T) {
 			for path, content := range tt.objects {
 				store.objects[path] = content
 			}
-			clients := &Clients{Storage: store.open, StorageAs: store.openAs, GitHub: func(string) *github.Client {
+			inMaintenance := serviceDoc("projects/stg-project/locations/us-central1/services/quill-app")
+			container, _ := inMaintenance["template"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+			container["env"] = []any{map[string]any{keyName: "APP_MAINTENANCE", keyValue: "1"}}
+			run := newFakeRun(map[string]map[string]any{"projects/stg-project/locations/us-central1/services/quill-app": inMaintenance})
+			clock := &fakeClock{now: tt.now}
+			if clock.now.IsZero() {
+				clock.now = chicago(10, 5, 9, 0)
+			}
+			clients := &Clients{Storage: store.open, StorageAs: store.openAs, Run: run.open, Now: clock.Now, Sleep: clock.Sleep, GitHub: func(string) *github.Client {
 				return srv.Client()
 			}}
-			files := map[string]string{EnvironmentFile: tt.env, BuildFile: releaseBuild(t, tt.subs)}
+			placement := tt.placement
+			if placement == "" {
+				placement = testPlacement("")
+			}
+			files := map[string]string{EnvironmentFile: tt.env, BuildFile: releaseBuild(t, tt.subs), stackDir + "/" + placementFile: placement}
 			for name, content := range tt.files {
 				files[name] = content
 			}
@@ -483,7 +729,7 @@ func TestValidateRelease(t *testing.T) {
 				bedrock = "v0.4.0"
 			}
 			var out strings.Builder
-			err := ValidateRelease(t.Context(), clients, w, bedrock, &out)
+			err := ValidateRelease(t.Context(), clients, w, bedrock, tt.routerDir, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("ValidateRelease() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out.String())
@@ -510,6 +756,11 @@ func TestValidateRelease(t *testing.T) {
 			}
 			if facts[windowReleaseFact] != tt.wantFact {
 				t.Errorf("%s = %q, want %q", windowReleaseFact, facts[windowReleaseFact], tt.wantFact)
+			}
+			for name, want := range tt.wantWindow {
+				if facts[name] != want {
+					t.Errorf("%s = %q, want %q", name, facts[name], want)
+				}
 			}
 			if tt.wantIdentities != nil && strings.Join(store.identities, ",") != strings.Join(tt.wantIdentities, ",") {
 				t.Errorf("records read as %v, want %v", store.identities, tt.wantIdentities)

@@ -14,17 +14,22 @@
 #
 #   FetchBedrock              the pinned bedrock: a release verified against its checksum, or a commit built with go install
 #   ResolveDeploymentTarget   what is deployed and where (deploy resolve)
-#   ValidateRelease           whether this release may deploy here (deploy validate-release)
+#   ValidateRelease           whether this release may deploy here, and whether it waits for the maintenance window (deploy validate-release)
 #   GuardMigrations           the migrations are one sequence, unchanged once committed (deploy guard-migrations)
 #   PlanEnvironments          a pull request's preview: the stack planned and tested for every environment, as each one's plan identity (deploy plan-environments)
 #   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
 #   BuildImage                one image per environment, built from the commit with the registry's layer cache and pushed (deploy build-image)
+#   MaintenanceOnRestore      a restore run's maintenance revision, before its database is replaced (deploy maintenance on)
 #   *EnvironmentStack         a tag build's apply of the environment's stack: planned, tested and applied as the apply identity (deploy stack)
 #   CreateJobs                this build's jobs from the stack's template jobs on this image: the migrate job{{if .Jobs}} and the job process's{{end}}; not run (deploy jobs)
+#   PreflightMigrations       a window release's migrate job run once with -version before the wait: the image, the configuration and the database answer with nothing changed (deploy migrate --preflight)
+#   WaitForWindow             a window release's wait, inside the run, until the environment's maintenance window opens (deploy window)
+#   MaintenanceOnWindow       a breaking release's maintenance revision, once the window is open (deploy maintenance on --window)
 #   RunMigrations             this build's migrate job, run once to completion and deleted (deploy migrate)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
 #   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
+#   MaintenanceOff            the task queue resumed against the release, when the run was in maintenance (deploy maintenance off)
 #   SweepJobs                 the builds' jobs nothing runs any more are deleted (deploy sweep-jobs)
 #   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
 #   TalkBack                  the pull request is told what the build did (deploy talk-back)
@@ -40,7 +45,11 @@
 #
 # The steps run in the order written, a step with no waitFor waiting for every step before it,
 # except for two lanes that run side by side: the pull request's stack (its plan, guard and
-# apply) and the image (the release check and the build), joined again at the maintenance step.
+# apply) and the image (the release check and the build), joined again at the restore run's
+# maintenance step. A window release (one that turns away the release the environment runs,
+# or any release where the environment's setting says all) builds its image and makes its jobs,
+# then waits inside the run for the environment's maintenance window; the window holds only
+# maintenance, the migrations and the rollout.
 
 steps:
 {{- if .CommitPin}}
@@ -67,12 +76,18 @@ steps:
 
   # A tag build: the tag is a release cut by the release app, its commit is on the
   # default branch (or tips its hotfix line), and the previous environment runs it live.
-  # A pull-request build against a hotfix line previews, from each environment's live
-  # record read as its plan identity, where the line's next release will be refused.
+  # Then the maintenance window: the release is breaking when the oldest release its
+  # outlets still answer (the release file beside the generated router) is newer than the
+  # one this environment runs, and a breaking release, or any release where the setting
+  # says all, waits for the environment's window; what can never proceed (production
+  # without a setting, an opening further away than the build can wait) is refused here.
+  # A pull-request build previews both: from each environment's live record read as its
+  # plan identity, where a hotfix line's next release will be refused, and which
+  # environments will hold the release for their window.
   - id: ValidateRelease
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
-    args: [deploy, validate-release]
+    args: [deploy, validate-release{{if .RouterDir}}, --router-dir, {{.RouterDir}}{{end}}]
     timeout: 300s
 
   # The schema migrations and the seed are each one contiguous sequence, and in a
@@ -169,8 +184,9 @@ steps:
   # every region, is probed for its 503 with the marker, and takes all traffic; the task queue
   # is paused (and purged, since its tasks refer to rows about to go), the serving build's
   # job executions are canceled, and the old revision's requests in flight finish. Any
-  # other run keeps the application serving, and the step does nothing.
-  - id: MaintenanceOn
+  # other run keeps the application serving, and the step does nothing; a breaking release
+  # goes into maintenance after the wait for its window (MaintenanceOnWindow).
+  - id: MaintenanceOnRestore
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, maintenance, "on"]
@@ -207,6 +223,39 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, jobs]
     timeout: 600s
+
+  # A window release only: this build's migrate job run once with -version before the
+  # wait, so the image starts, the configuration loads and the database answers before
+  # the window is entered; nothing is applied, and the job stays for the migrations. Any
+  # other run says so and does nothing.
+  - id: PreflightMigrations
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, migrate, --preflight]
+    timeout: 1200s
+
+  # A window release only: the wait, inside the run, until the environment's maintenance
+  # window opens (the checkout's placement, "maintenance"), with the image built and the
+  # jobs made, so the window holds only maintenance, the migrations and the rollout. The
+  # step prints when the run proceeds; an opening further away than the build can wait
+  # stops the run here with nothing changed. A run in maintenance already passes at once.
+  # Its timeout is the build's: the wait is bounded by the build's remaining time.
+  - id: WaitForWindow
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, window]
+    timeout: {{.PipelineTimeout}}
+
+  # A breaking release, once its window is open: the maintenance revision, as the restore
+  # run's above (probed, then all traffic, the queue paused, the executions canceled, the
+  # requests in flight finished), after a second look at the window, which must still be
+  # open. An ordinary release inside a window deploys the rolling way and the step does
+  # nothing; a run in maintenance already has nothing more to start.
+  - id: MaintenanceOnWindow
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, maintenance, "on", --window]
+    timeout: 900s
 {{- if .HasHook "before-migrate"}}
 
   # The application's hook before the migrations: {{.HookSource "before-migrate"}}.
@@ -316,8 +365,11 @@ options:
   # Build refuses a hand-submitted build for a key the file does not mention.
   substitutionOption: ALLOW_LOOSE
 
-# The whole run: the image build and the migrate job are the long steps, and a commit
-# pin's FetchBedrock builds bedrock where a release pin's downloads it.
+# The whole run: Cloud Build's ceiling, so that a window release may wait inside the run
+# for the environment's maintenance window (the approver approves by day, the run proceeds
+# at night on its own). Every step keeps its own timeout, so a hung step still fails on
+# time and only the wait uses the headroom; a build that waits for no window ends when its
+# steps do.
 timeout: {{.PipelineTimeout}}
 
 # Defaults a trigger may override. _PR_NUMBER is not one of them: the pull-request

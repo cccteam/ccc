@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 
@@ -80,6 +81,17 @@ type Report struct {
 	// ReleaseLines are the release-please settings under which a feature release would
 	// not open a new hotfix line (a feature on the patch below 1.0).
 	ReleaseLines []ReleaseLineFinding
+	// Maintenance are the warnings about the maintenance windows: production without a
+	// setting, a release file the checkout lacks, a dated slot that has passed. Warnings,
+	// not drift: the check stays clean, so the refusal at run start is never the first
+	// sign.
+	Maintenance []MaintenanceFinding
+}
+
+// MaintenanceFinding is one warning about the maintenance windows.
+type MaintenanceFinding struct {
+	// Problem says what is missing or over, and the fix.
+	Problem string
 }
 
 // Clean reports no drift, no refused resource, a sound migration sequence, every
@@ -158,8 +170,41 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 		return nil, err
 	}
 	r.ReleaseLines = releaseLines
+	r.Maintenance = scanMaintenance(m, appDir, time.Now())
 
 	return r, nil
+}
+
+// scanMaintenance warns about the maintenance windows at now: production without a
+// setting (a breaking release to it is refused at run start until one is written), no
+// release file in the router package (no outlet declares an oldest answered release, so
+// no release is breaking and the window never holds a run), a release file that does not
+// read, and a dated slot that has passed.
+func scanMaintenance(m *derive.Model, appDir string, now time.Time) []MaintenanceFinding {
+	var findings []MaintenanceFinding
+	p := m.Placement
+	if _, ok := p.MaintenanceSetting(p.Production()); !ok {
+		findings = append(findings, MaintenanceFinding{Problem: fmt.Sprintf("%s has no maintenance setting (placement.json \"maintenance\": {%q: ...}): a breaking release to %s is refused at the start of its run until one is written; %q is a setting, and so are the client's windows", p.Production(), p.Production(), p.Production(), derive.MaintenanceAnytime)})
+	}
+	for _, env := range p.Environments {
+		setting, ok := p.MaintenanceSetting(env)
+		if !ok {
+			continue
+		}
+		for _, s := range setting.PassedDates(now) {
+			findings = append(findings, MaintenanceFinding{Problem: fmt.Sprintf("maintenance.%s: the dated slot on %s (%s to %s) has passed; remove it", env, s.On, s.From, s.To)})
+		}
+	}
+	switch _, err := derive.ReadReleaseFile(filepath.Join(appDir, filepath.FromSlash(m.RouterDir))); {
+	case m.RouterDir == "":
+		findings = append(findings, MaintenanceFinding{Problem: "the site generator declares no routes directory (GenerateRoutes), so there is no release file to read and no outlet declares an oldest answered release: no release is breaking, and the maintenance window never holds a run"})
+	case errors.Is(err, os.ErrNotExist):
+		findings = append(findings, MaintenanceFinding{Problem: fmt.Sprintf("no release file at %s: no outlet declares an oldest answered release, so no release is breaking and the maintenance window never holds a run; the resource generator writes it beside the generated router (go generate ./...)", path.Join(m.RouterDir, derive.ReleaseFileName))})
+	case err != nil:
+		findings = append(findings, MaintenanceFinding{Problem: fmt.Sprintf("the release file does not read, and the release check will refuse the run: %v", errors.Cause(err))})
+	}
+
+	return findings
 }
 
 // migrationDirs is the schema migrations directory and the seed directory beside it
@@ -278,6 +323,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, rl := range r.ReleaseLines {
 		fmt.Fprintf(w, "  refused  %s: %s\n", rl.Path, rl.Problem)
+	}
+	for _, mf := range r.Maintenance {
+		fmt.Fprintf(w, "  warning  %s\n", mf.Problem)
 	}
 }
 

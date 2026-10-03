@@ -203,6 +203,65 @@ func TestPipelineFlowItems(t *testing.T) {
 	}
 }
 
+// TestPipelineOrder proves the rendered pipeline keeps the order a window release needs,
+// start check, image, jobs, pre-flight, wait, maintenance, migrate, revision, traffic,
+// record, carries the release file's directory to the release check, and keeps every
+// step's own timeout under the whole-build ceiling of 24 hours.
+func TestPipelineOrder(t *testing.T) {
+	t.Parallel()
+
+	order := []string{"ValidateRelease", "CheckRelease", "BuildImage", "MaintenanceOnRestore", "PlanEnvironmentStack", "ApplyEnvironmentStack", "CreateJobs", "PreflightMigrations", "WaitForWindow", "MaintenanceOnWindow", "RunMigrations", "DeployServiceNoTraffic", "ShiftTraffic", "MaintenanceOff", "SweepJobs", "WriteDeploymentRecord"}
+	timeouts := map[string]string{"ValidateRelease": "300s", "BuildImage": "1800s", "PlanEnvironmentStack": "7200s", "PreflightMigrations": "1200s", "WaitForWindow": "86400s", "MaintenanceOnWindow": "900s", "RunMigrations": "2400s", "DeployServiceNoTraffic": "1200s", "ShiftTraffic": "600s"}
+	tests := []struct {
+		name string
+		file string
+	}{
+		{name: "harbor's pipeline", file: "testdata/harbor/root/cloudbuild.yaml"},
+		{name: "beacon's pipeline", file: "testdata/beacon/root/cloudbuild.yaml"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content, err := os.ReadFile(tt.file)
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			var ids []string
+			seen := map[string]string{}
+			for _, line := range strings.Split(string(content), "\n") {
+				if id, ok := strings.CutPrefix(line, "  - id: "); ok {
+					ids = append(ids, id)
+				}
+				if timeout, ok := strings.CutPrefix(line, "    timeout: "); ok && len(ids) > 0 {
+					seen[ids[len(ids)-1]] = timeout
+				}
+			}
+			at := 0
+			for _, id := range order {
+				i := slices.Index(ids[at:], id)
+				if i < 0 {
+					t.Errorf("step %s is missing or out of order after %v", id, ids[:at])
+
+					continue
+				}
+				at += i + 1
+			}
+			for id, want := range timeouts {
+				if seen[id] != want {
+					t.Errorf("step %s has timeout %q, want %q", id, seen[id], want)
+				}
+			}
+			if !strings.Contains(string(content), "args: [deploy, validate-release, --router-dir, pkg/router]") {
+				t.Errorf("the release check is not told the router directory:\n%s", content)
+			}
+			if !strings.Contains(string(content), "\ntimeout: 86400s\n") {
+				t.Errorf("the whole-build timeout is not the 24-hour ceiling:\n%s", content)
+			}
+		})
+	}
+}
+
 // bareYAMLBool is the first unquoted item of a flow sequence on the line that YAML 1.1
 // reads as a boolean or null, or "".
 func bareYAMLBool(line string) string {

@@ -105,8 +105,26 @@ func TestNewRecordRequest(t *testing.T) {
 		wantRestore     *Restore
 		wantMaintenance *Maintenance
 		wantForce       *Force
-		wantErr         string
+		// wantWindow is the window a release that needed one records.
+		wantWindow *Window
+		wantErr    string
 	}{
+		{
+			name:        "a window release records whether it was breaking, why, the opening that let it in and the wait",
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export WINDOW_NEEDED=\"true\"\nexport WINDOW_BREAKING=\"true\"\nexport WINDOW_REASON=\"the default outlet answers 1.2.3 at the oldest, and tst runs v1.2.2, which it turns away\"\nexport WINDOW_SLOT=\"Sunday 02:00 to 04:00 America/Chicago\"\nexport WINDOW_OPENED=\"2026-10-04T07:00:00Z\"\nexport WINDOW_WAITED=\"6h0m0s\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:  Live,
+			wantRegions: "us-central1,us-west3",
+			wantWindow:  &Window{Breaking: true, Reason: "the default outlet answers 1.2.3 at the oldest, and tst runs v1.2.2, which it turns away", Slot: "Sunday 02:00 to 04:00 America/Chicago", Opened: "2026-10-04T07:00:00Z", Waited: "6h0m0s"},
+		},
+		{
+			name:        "an ordinary release inside a window under all records the window without maintenance",
+			files:       map[string]string{EnvironmentFile: liveEnvironment + "export WINDOW_NEEDED=\"true\"\nexport WINDOW_BREAKING=\"\"\nexport WINDOW_REASON=\"every release waits for tst's window (releases: all)\"\nexport WINDOW_SLOT=\"anytime\"\nexport WINDOW_OPENED=\"2026-10-04T07:00:00Z\"\nexport WINDOW_WAITED=\"\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantStatus:  Live,
+			wantRegions: "us-central1,us-west3",
+			wantWindow:  &Window{Reason: "every release waits for tst's window (releases: all)", Slot: "anytime", Opened: "2026-10-04T07:00:00Z"},
+		},
 		{
 			name:        "a run that forced a migration version records the table, the version and who asked",
 			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport MIGRATE_FORCED_TABLE=\"schema\"\nexport MIGRATE_FORCED_VERSION=\"40\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATE_ACTION": "force", "_MIGRATE_VERSION": "40", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
@@ -265,6 +283,9 @@ func TestNewRecordRequest(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantForce, r.Force); diff != "" {
 				t.Errorf("Force mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantWindow, r.Window); diff != "" {
+				t.Errorf("Window mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

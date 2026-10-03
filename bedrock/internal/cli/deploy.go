@@ -28,9 +28,10 @@ cloudbuild.yaml runs them with the bedrock its first step gets: for a release pi
 placement pins (bedrockVersion) downloaded and verified against its checksum (bedrockSha256); for
 a commit pin, that commit built with go install and verified by Go's checksum database. The steps,
 in order: resolve, validate-release, guard-migrations, plan-environments, pr-stack plan, pr-stack
-guard, pr-stack apply, check-release, build-image, stack plan, stack apply, jobs, migrate, service,
-shift-traffic, sweep-jobs, record and talk-back, with hook <stage> where the application commits a
-hook script. The hourly sweep runs sweep.`,
+guard, pr-stack apply, check-release, build-image, maintenance on (a restore run), stack plan, stack
+apply, jobs, migrate --preflight, window, maintenance on --window (a breaking release), migrate,
+service, shift-traffic, maintenance off, sweep-jobs, record and talk-back, with hook <stage> where
+the application commits a hook script. The hourly sweep runs sweep.`,
 	}
 	envStack := &cobra.Command{
 		Use:   "stack",
@@ -55,7 +56,7 @@ request's own resources through, apply applies exactly that plan. A tag build sk
 	stack.AddCommand(newDeployStackPlan(d), newDeployStackGuard(d), newDeployStackApply(d))
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), stack, newDeployHook(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
-		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployMaintenance(d))
+		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployMaintenance(d), newDeployWindow(d))
 
 	return cmd
 }
@@ -109,7 +110,7 @@ the workspace.`,
 
 // newDeployValidateRelease is deploy validate-release.
 func newDeployValidateRelease(d deps) *cobra.Command {
-	var workspace string
+	var workspace, routerDir string
 	cmd := &cobra.Command{
 		Use:   "validate-release",
 		Short: "Refuse a tag that may not deploy here",
@@ -125,13 +126,56 @@ record of it. A hotfix passes one more check: this environment's newest live rec
 migration and seed files its database holds, each with its hash, and the hotfix is refused when
 the database holds a file it does not carry, or one whose content differs, naming the file; the
 environment is restored to the hotfix first (a restore run replaces the database and skips the
-check); in prd the hotfix must also be on the line production runs. A refusal starts with "Build
-REJECTED" and says why. A tag build's log first names the bedrock running it, and says when that
-is a commit pin, which it does not refuse. It reads environment.sh and build.json from the
-workspace, and the migration files from the checkout.`,
+check); in prd the hotfix must also be on the line production runs. Last the maintenance window:
+the release is breaking when the oldest release its session outlets still answer, read from the
+release file the resource generator writes beside the generated router (--router-dir names the
+router package; zz_gen_release.json), is newer than the release this environment runs live (its
+newest live deployment record), or when an outlet answers its own release alone ("this"); a
+breaking release deploys behind the maintenance page inside the environment's maintenance window
+(placement.json, "maintenance"), and under "releases": "all" every release waits for the window.
+The step leaves the decision (WINDOW_NEEDED, WINDOW_BREAKING, WINDOW_REASON) and refuses here what
+can never proceed: prd without a setting when the release is breaking, a window whose next opening
+is further away than the build can wait (its timeout less three hours for the steps after the
+window), a window with no opening ahead. A restore run and an environment in maintenance from an
+earlier run pass the gate. Without a release file no outlet declares an oldest answered release,
+which it says, and no release is breaking. A pull-request build previews the window instead: what
+its release turns away in each environment, read as that environment's plan identity, and which
+environments hold it. A refusal starts with "Build REJECTED" and says why. A tag build's log first
+names the bedrock running it, and says when that is a commit pin, which it does not refuse. It
+reads environment.sh and build.json from the workspace, and the migration files, the placement
+(infrastructure/placement.json) and the release file from the checkout.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), d.running().version, cmd.OutOrStdout())
+			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), d.running().version, routerDir, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+	cmd.Flags().StringVar(&routerDir, "router-dir", "", "the generated router's package directory in the checkout, root-relative, where the resource generator writes the release file (zz_gen_release.json); empty when the application generates no router")
+
+	return cmd
+}
+
+// newDeployWindow is deploy window.
+func newDeployWindow(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "window",
+		Short: "Wait for the environment's maintenance window to open",
+		Long: `window is the gate of a window release: a run validate-release found to need the environment's
+maintenance window (WINDOW_NEEDED), a breaking release or any release where the setting says all.
+It runs after the image is built, the stack applied and the jobs made, and the pre-flight has run,
+so the window holds only maintenance, the migrations and the rollout. It reads the environment's
+setting from the checkout's placement, prints when the run will proceed and waits, reading the
+clock again at most every ten minutes; when the window opens it appends when (WINDOW_OPENED), how
+long it waited (WINDOW_WAITED) and which opening let it in (WINDOW_SLOT) for the record. An
+opening further away than the build can wait stops the run here, before anything changes, naming
+it. A run that waits for no window says so and ends; a run in maintenance already (a restore run,
+or a rerun after a window release that failed, whose service carries the maintenance variable)
+passes at once, since the interruption has happened and waiting would hold the client on the
+maintenance page until the next window.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.WaitForWindow(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
@@ -165,7 +209,10 @@ after it.`,
 
 // newDeployMigrate is deploy migrate.
 func newDeployMigrate(d deps) *cobra.Command {
-	var workspace string
+	var (
+		workspace string
+		preflight bool
+	)
 	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Run the migrate job with this build's image",
@@ -176,13 +223,20 @@ database being new, and a release build only in the environments the placement's
 seeded database takes nothing twice. The job is deleted at the end of the step whether the execution
 succeeded or failed: its logs stay in Cloud Logging, and the deployment record lists the migrations
 applied. A build that runs no migrations (shared-db) has no job to run; a failed execution stops the
-build and names itself.`,
+build and names itself. With --preflight, in a run that waits for the maintenance window
+(WINDOW_NEEDED) and replaces no database, the job is run once with -version instead, before the
+wait: it starts on the release's image against the environment's database and prints what the
+migrations tables say, so an image that does not start, a configuration that does not load or a
+database that cannot be reached stops the run with nothing changed and the window not entered;
+nothing is applied, and the job stays for the migrations after the window. Any other run says so
+and does nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), preflight, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+	cmd.Flags().BoolVar(&preflight, "preflight", false, "run the job once with -version before the wait for the maintenance window, and keep it")
 
 	return cmd
 }
@@ -627,16 +681,24 @@ func newDeployMaintenance(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "maintenance",
 		Short: "Put the application into maintenance before its database is replaced, and take it out after",
-		Long: `maintenance holds the two steps around a run that replaces or interrupts the application's database
-(a restore run): on, after the image build and before the environment's stack is applied, and off,
-after traffic moved to the release's revision. Any other run keeps the application serving, and
-both steps do nothing.`,
+		Long: `maintenance holds the steps around a run that replaces or interrupts the application's database:
+on, at two places, after the image build and before the environment's stack is applied (a restore
+run, whose database the plan replaces) and after the wait for the maintenance window (a breaking
+release, with --window); and off, after traffic moved to the release's revision. Any other run keeps
+the application serving, and the steps do nothing.`,
 	}
-	var onWorkspace, offWorkspace string
+	var (
+		onWorkspace, offWorkspace string
+		window                    bool
+	)
 	on := &cobra.Command{
 		Use:   "on",
 		Short: "Start the release's image as a maintenance revision and move all traffic to it",
-		Long: `on puts the application into maintenance when the run needs it (RESTORE is set): the release's own
+		Long: `on puts the application into maintenance when the run needs it: before the stack, a restore run
+(RESTORE is set); with --window, after the wait for the maintenance window, a breaking release
+(WINDOW_BREAKING is set, from validate-release) that is not in maintenance already, after a second
+look at the window, which must still be open, or the environment in maintenance from an earlier
+run, else the step stops the run with nothing changed and names the next opening. The release's own
 image starts as a revision with ` + derive.MaintenanceVariable + `=1 in every region, under the tag next and
 with no traffic; the revision is probed through the load balancer's next hostname and must answer
 503 with the marker header X-Maintenance: 1, else the step stops the run with nothing moved and
@@ -646,13 +708,15 @@ executions of the serving build's job are canceled, and the old revision's reque
 let finish: its active instances are read from Cloud Monitoring until none is, or until the
 service's request timeout has passed since traffic moved. The facts it appends (MAINTENANCE,
 MAINTENANCE_REVISIONS, MAINTENANCE_QUEUE, MAINTENANCE_PURGED, MAINTENANCE_CANCELED,
-MAINTENANCE_WAITED) reach the record. A pull-request build never goes into maintenance.`,
+MAINTENANCE_WAITED) reach the record. An ordinary release inside a window (releases all) takes no
+maintenance revision and deploys the rolling way; a pull-request build never goes into maintenance.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.MaintenanceOn(cmd.Context(), d.deploy, deploy.Workspace(onWorkspace), cmd.OutOrStdout())
+			return deploy.MaintenanceOn(cmd.Context(), d.deploy, deploy.Workspace(onWorkspace), window, cmd.OutOrStdout())
 		},
 	}
 	on.Flags().StringVar(&onWorkspace, "workspace", "/workspace", "the directory the build's steps share")
+	on.Flags().BoolVar(&window, "window", false, "the position after the wait for the maintenance window: a breaking release goes into maintenance here")
 	off := &cobra.Command{
 		Use:   "off",
 		Short: "Resume the task queue once the release's revision serves",

@@ -64,6 +64,10 @@ type Record struct {
 	// (the operations workflow's force): the table, the version and who asked. Absent
 	// otherwise.
 	Force *Force `json:"force,omitempty"`
+	// Window says the release needed the environment's maintenance window: whether it
+	// was breaking, why, which opening let the run in, when and after how long a wait.
+	// Absent for a release that deploys at any time.
+	Window *Window `json:"window,omitempty"`
 }
 
 // Force is a forced migration version as the record keeps it.
@@ -264,6 +268,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Restore:     restore,
 		Maintenance: maintenance,
 		Force:       forceOf(env, build),
+		Window:      windowOf(env),
 	}
 
 	return &RecordRequest{

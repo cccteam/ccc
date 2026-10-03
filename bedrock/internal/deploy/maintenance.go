@@ -1,5 +1,6 @@
 // maintenance.go puts the application into maintenance for a run that replaces or
-// interrupts its database (a restore run), and takes it out once the release serves.
+// interrupts its database (a restore run before its stack is planned, a breaking release
+// once its maintenance window is open), and takes it out once the release serves.
 
 package deploy
 
@@ -80,17 +81,22 @@ type maintenance struct {
 	timeout time.Duration
 }
 
-// MaintenanceOn puts the application into maintenance when the run needs it: a restore
-// run, whose database is replaced before the release deploys. The release's own image
-// starts as a revision with the maintenance variable set, in every region, under the tag
-// next, receiving no traffic; the revision is probed through the load balancer's next
-// hostname and must answer 503 with the marker, else the run stops here with nothing
-// moved, naming the application's missing switch; then all traffic moves to it, the
-// application's task queue is paused (and, on a restore, purged), the running executions
-// of the serving build's job are canceled, and the old revision's requests in flight are
-// let finish: its active instances are read until none is, or until the service's request
-// timeout has passed since traffic moved. Any other run keeps the application serving.
-func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
+// MaintenanceOn puts the application into maintenance when the run needs it. The step
+// stands at two places in the pipeline: before the stack is planned, where a restore run
+// (whose database is replaced by the plan) goes into maintenance; and after the gate
+// (window), where a breaking release does, once the window is open, with a second look
+// at the window first (windowStillOpen). The release's own image starts as a revision
+// with the maintenance variable set, in every region, under the tag next, receiving no
+// traffic; the revision is probed through the load balancer's next hostname and must
+// answer 503 with the marker, else the run stops here with nothing moved, naming the
+// application's missing switch; then all traffic moves to it, the application's task
+// queue is paused (and, on a restore, purged), the running executions of the serving
+// build's job are canceled, and the old revision's requests in flight are let finish:
+// its active instances are read until none is, or until the service's request timeout
+// has passed since traffic moved. Any other run keeps the application serving: an
+// ordinary release inside a window under releases all deploys the rolling way, with no
+// maintenance revision, no probe, no pause and no cancel.
+func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, window bool, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -105,14 +111,13 @@ func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, out io.Wr
 		return err
 	}
 	subs := build.Substitutions
-	switch {
-	case env[restoreFact] == "":
-		fmt.Fprintln(out, "No maintenance: this run keeps the application serving (a restore run starts a maintenance revision first).")
-
-		return nil
-	case subs[prNumberSub] != "":
+	if subs[prNumberSub] != "" {
 		fmt.Fprintln(out, "No maintenance: a pull-request build never goes into maintenance.")
 
+		return nil
+	}
+	heading, ok := maintenanceCause(env, window, subs[envSub], out)
+	if !ok {
 		return nil
 	}
 	if env[imageFact] == "" || env[digestFact] == "" {
@@ -121,11 +126,18 @@ func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, out io.Wr
 	if env[services] == "" {
 		return errors.Newf("%s names no services (SERVICES): the resolve step writes them", EnvironmentFile)
 	}
+	if window {
+		slot, err := windowStillOpen(ctx, clients, w, build, env)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Second look at the window: %s's window is open (%s); maintenance begins.\n", subs[envSub], slot)
+	}
 	m := &maintenance{clients: clients, build: build, env: env, out: out, project: subs[projectSub], sleep: clients.sleep()}
 	if err := m.open(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "=== Maintenance on: %s's database is replaced (%s) before %s deploys, so the application serves its maintenance page meanwhile ===\n", subs[envSub], env[restoreFact], env[versionFact])
+	fmt.Fprintf(out, "=== Maintenance on: %s ===\n", heading)
 	revisions, previous, err := m.deployRevisions(ctx, env[imageFact]+"@"+env[digestFact], pipelineLabels(build, env[versionFact]))
 	if err != nil {
 		return err
@@ -149,9 +161,39 @@ func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, out io.Wr
 	if err := w.Append(facts); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Maintenance is on: %d revision(s) serve the maintenance page; the database may be replaced.\n", len(revisions))
+	fmt.Fprintf(out, "Maintenance is on: %d revision(s) serve the maintenance page; the database may be replaced or migrated.\n", len(revisions))
 
 	return nil
+}
+
+// maintenanceCause says whether this step puts the application into maintenance and,
+// when it does, the heading that says why: at the restore position a restore run; at the
+// window position a breaking release, unless the run is in maintenance already (a restore
+// run that is also breaking). Every other case is said on out.
+func maintenanceCause(env map[string]string, window bool, environment string, out io.Writer) (string, bool) {
+	version := env[versionFact]
+	switch {
+	case !window && env[restoreFact] != "":
+		return fmt.Sprintf("%s's database is replaced (%s) before %s deploys, so the application serves its maintenance page meanwhile", environment, env[restoreFact], version), true
+	case !window:
+		fmt.Fprintln(out, "No maintenance: this run keeps the application serving (a restore run starts its maintenance revision here, and a breaking release starts its own once its window is open).")
+
+		return "", false
+	case env[maintenanceFact] == trueValue:
+		fmt.Fprintln(out, "Maintenance is on already: this run put the application into maintenance before its database was replaced; nothing more to start.")
+
+		return "", false
+	case env[windowBreakingFact] == trueValue:
+		return fmt.Sprintf("%s is a breaking release for %s (%s), so the application serves its maintenance page while the database migrates", version, environment, env[windowReasonFact]), true
+	case env[windowNeededFact] == trueValue:
+		fmt.Fprintf(out, "No maintenance: %s is not a breaking release and deploys the rolling way inside %s's window; no maintenance revision, no probe, no queue pause and no cancel.\n", version, environment)
+
+		return "", false
+	default:
+		fmt.Fprintln(out, "No maintenance: this run keeps the application serving.")
+
+		return "", false
+	}
 }
 
 // quiesce stops what the application does on its own once its traffic is on the
@@ -430,7 +472,7 @@ func (m *maintenance) cancelExecutions(ctx context.Context) (int, error) {
 		if err := m.run.CancelExecution(ctx, name); err != nil {
 			return canceled, errors.Wrapf(err, "canceling %s", shortName(name))
 		}
-		fmt.Fprintf(m.out, "Canceled the running execution %s of %s's job: a restore interrupts everything the application is doing.\n", shortName(name), live.Version)
+		fmt.Fprintf(m.out, "Canceled the running execution %s of %s's job: the run interrupts everything the application is doing.\n", shortName(name), live.Version)
 		canceled++
 	}
 	if canceled == 0 {

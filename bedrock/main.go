@@ -6,6 +6,10 @@ package main
 
 import (
 	"os"
+	// The time zone database travels with the binary: a maintenance window is read on
+	// the client's wall clock in the pipeline's images and on the check's runner alike,
+	// whatever zone files they carry.
+	_ "time/tzdata"
 
 	"github.com/cccteam/ccc/bedrock/internal/cli"
 )
