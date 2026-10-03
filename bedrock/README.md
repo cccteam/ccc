@@ -81,8 +81,10 @@ again does not, because its pull request is already labeled as tagged.
   containers, the backend service, the triggers and the sweep schedule, per environment.
   Rendered by `bedrock render` from the code and the application's placement.
 - **Placement**: `placement.json` beside the stack. For an application it records the
-  organization's facts the stack needs and the bedrock the pipeline runs
-  (`bedrockVersion`, and `bedrockSha256` for a release); for an organization it records
+  organization's facts the stack needs, the bedrock the pipeline runs
+  (`bedrockVersion`, and `bedrockSha256` for a release) and, when the organization
+  sets one, the Cloud Build machine the pipeline's builds run on (`buildMachine`, one
+  of Cloud Build's machine names; absent, Cloud Build's default); for an organization it records
   the prefix, the domains, the organization and billing ids, the regions, the Spanner
   configuration, the GitHub organization, the applications, the environment projects and
   each environment's team group (`teamGroups`: the group whose members approve the

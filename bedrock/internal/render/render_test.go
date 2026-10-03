@@ -643,6 +643,90 @@ func TestFileStorePolicy(t *testing.T) {
 	}
 }
 
+func TestBuildMachine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// buildMachine is the placement's value; empty leaves the machine to Cloud Build.
+		buildMachine string
+		wantPipeline []string
+		wantReadme   []string
+		// absentPipeline and absentReadme are what each file must not carry: the README
+		// names options.machineType either way, saying there is none when it is unset.
+		absentPipeline []string
+		absentReadme   []string
+	}{
+		{
+			name:         "no build machine: the options carry none and the README says so",
+			buildMachine: "",
+			wantPipeline: []string{"options:\n  logging: CLOUD_LOGGING_ONLY\n  # The bedrock deploy steps"},
+			wantReadme: []string{
+				"run on Cloud Build's default machine, the placement naming no\n  `buildMachine`",
+				"no `options.machineType`,\n  the placement naming no `buildMachine`",
+				"`E2_MEDIUM` (1 vCPU), `E2_STANDARD_2` (2 vCPUs), `E2_HIGHCPU_8` (8 vCPUs), and `E2_HIGHCPU_32` (32 vCPUs)",
+			},
+			absentPipeline: []string{"machineType"},
+			absentReadme:   []string{"`options.machineType: "},
+		},
+		{
+			name:         "a 32-vCPU machine: options.machineType and the README's arithmetic",
+			buildMachine: "E2_HIGHCPU_32",
+			wantPipeline: []string{"options:\n  logging: CLOUD_LOGGING_ONLY\n  # The placement's buildMachine.", "  machineType: E2_HIGHCPU_32\n  # The bedrock deploy steps"},
+			wantReadme: []string{
+				"run on `E2_HIGHCPU_32` (32 vCPUs), the placement's\n  `buildMachine`",
+				"`options.machineType: E2_HIGHCPU_32`,\n  the machine the placement's `buildMachine` names",
+				"sixteen builds of 8 vCPUs\n  at once, or four of 32",
+			},
+			absentReadme: []string{"Cloud Build's default machine"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			m.Placement.BuildMachine = tt.buildMachine
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var pipeline, readme string
+			for _, f := range files {
+				switch {
+				case f.Root && f.Path == "cloudbuild.yaml":
+					pipeline = string(f.Content)
+				case !f.Root && f.Path == "README.md":
+					readme = string(f.Content)
+				}
+			}
+			if pipeline == "" || readme == "" {
+				t.Fatal("cloudbuild.yaml or README.md is not rendered")
+			}
+			for _, w := range tt.wantPipeline {
+				if !strings.Contains(pipeline, w) {
+					t.Errorf("cloudbuild.yaml lacks:\n%s", w)
+				}
+			}
+			for _, w := range tt.wantReadme {
+				if !strings.Contains(readme, w) {
+					t.Errorf("README.md lacks:\n%s", w)
+				}
+			}
+			for _, a := range tt.absentPipeline {
+				if strings.Contains(pipeline, a) {
+					t.Errorf("cloudbuild.yaml still carries %q", a)
+				}
+			}
+			for _, a := range tt.absentReadme {
+				if strings.Contains(readme, a) {
+					t.Errorf("README.md still carries %q", a)
+				}
+			}
+		})
+	}
+}
+
 func TestAligned(t *testing.T) {
 	t.Parallel()
 

@@ -68,6 +68,13 @@ type view struct {
 	// SeedList is the HCL list of the environments whose migrate job applies the
 	// development seed.
 	SeedList string
+	// BuildMachine is the Cloud Build machine the placement puts the builds on, empty
+	// when it leaves them to Cloud Build's default, and BuildMachineCPUs its vCPUs, for
+	// the README's arithmetic; BuildMachineNames spells the machines a placement may
+	// name with their vCPUs, from the same table derive validates against.
+	BuildMachine      string
+	BuildMachineCPUs  int
+	BuildMachineNames string
 	// Operations are the environments the operations workflow acts on from GitHub, every
 	// one (a rerun of a release reaches production; a restore and the migration
 	// operations every environment but it), with what the workflow needs of each; an
@@ -999,6 +1006,23 @@ func joinOr(items []string) string {
 	return joinWith(items, "or")
 }
 
+// machineNames spells the machines a placement's buildMachine may name with their vCPUs
+// ("`E2_MEDIUM` (1 vCPU), ..., and `E2_HIGHCPU_32` (32 vCPUs)"), so the README lists what
+// derive accepts and the two never drift apart.
+func machineNames() string {
+	machines := derive.Machines()
+	names := make([]string, 0, len(machines))
+	for _, m := range machines {
+		unit := "vCPUs"
+		if m.CPUs == 1 {
+			unit = "vCPU"
+		}
+		names = append(names, fmt.Sprintf("`%s` (%d %s)", m.Name, m.CPUs, unit))
+	}
+
+	return joinAnd(names)
+}
+
 // joinAnd writes "a, b, and c" (or "a and b").
 func joinAnd(items []string) string {
 	return joinWith(items, "and")
@@ -1063,6 +1087,10 @@ func (v *view) order(envs []string) {
 	if v.ApprovalsProse == "" {
 		v.ApprovalsProse = "no environment"
 	}
+	if machine, ok := v.P.Machine(); ok {
+		v.BuildMachine, v.BuildMachineCPUs = machine.Name, machine.CPUs
+	}
+	v.BuildMachineNames = machineNames()
 	previous := make([]string, 0, len(envs))
 	for _, env := range envs {
 		previous = append(previous, env+" = "+strconv.Quote(v.P.Previous(env)))

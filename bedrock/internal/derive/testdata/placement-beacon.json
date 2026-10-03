@@ -26,5 +26,6 @@
   "bedrockSha256": "",
   "labels": {
     "bedrock-lab": "true"
-  }
+  },
+  "buildMachine": "E2_HIGHCPU_8"
 }

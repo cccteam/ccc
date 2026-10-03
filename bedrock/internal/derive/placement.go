@@ -71,6 +71,16 @@ type Placement struct {
 	// approval in Cloud Build before a release runs there. Absent, every environment
 	// but the first.
 	Approvals []string `json:"approvals,omitempty"`
+	// BuildMachine is the Cloud Build machine the pipeline's builds run on, by the name
+	// cloudbuild.yaml's options.machineType takes (E2_HIGHCPU_8); absent, Cloud Build's
+	// default. The machine is a build-level option: the whole run is on it, a window
+	// release's wait included, and no step has a machine of its own. The image step is
+	// what a larger machine shortens: its compile and its bundle build run fresh in every
+	// environment, the registry's layer cache holding the downloads alone. The number of
+	// builds a project runs at once on it is its CPU quota for Cloud Build's default pool
+	// divided by the machine's vCPUs (Machines), a quota Cloud Build sets per project and
+	// never raises, so nothing here reads it.
+	BuildMachine string `json:"buildMachine,omitempty"`
 	// Maintenance is each environment's maintenance window by environment name: the
 	// time the environment may take a release that interrupts service (a breaking
 	// release, whose oldest answered release is newer than the one the environment runs,
@@ -99,6 +109,35 @@ type Region struct {
 type Project struct {
 	ID     string `json:"id"`
 	Number string `json:"number"`
+}
+
+// Machine is one of the machines Cloud Build's default pool runs a build on, by the
+// name options.machineType takes, with its vCPUs: what a project's default-pool CPU
+// quota is divided by for the number of builds it runs at once.
+type Machine struct {
+	Name string
+	CPUs int
+}
+
+// The machines a placement's buildMachine may name, as options.machineType spells them.
+const (
+	MachineE2Medium    = "E2_MEDIUM"
+	MachineE2Standard2 = "E2_STANDARD_2"
+	MachineE2HighCPU8  = "E2_HIGHCPU_8"
+	MachineE2HighCPU32 = "E2_HIGHCPU_32"
+)
+
+// Machines are the machines a placement's buildMachine may name, in size order: the E2
+// machines of the Cloud Build API's MachineType enum. The enum's two N1 machines are
+// deprecated there and left out, so a placement never names a machine Cloud Build is
+// retiring; the enum's UNSPECIFIED, the default, is what an absent value means.
+func Machines() []Machine {
+	return []Machine{
+		{Name: MachineE2Medium, CPUs: 1},
+		{Name: MachineE2Standard2, CPUs: 2},
+		{Name: MachineE2HighCPU8, CPUs: 8},
+		{Name: MachineE2HighCPU32, CPUs: 32},
+	}
 }
 
 var (
@@ -191,6 +230,9 @@ func (p *Placement) Validate() error {
 	if err := p.validateMaintenance(); err != nil {
 		return err
 	}
+	if err := p.validateBuildMachine(); err != nil {
+		return err
+	}
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
 		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
@@ -202,6 +244,23 @@ func (p *Placement) Validate() error {
 	}
 
 	return p.validatePin()
+}
+
+// validateBuildMachine checks that buildMachine, when written, is one of Cloud Build's
+// machine names, so that a misspelling is refused here and not by the first build.
+func (p *Placement) validateBuildMachine() error {
+	if p.BuildMachine == "" {
+		return nil
+	}
+	if _, ok := p.Machine(); ok {
+		return nil
+	}
+	names := make([]string, 0, len(Machines()))
+	for _, m := range Machines() {
+		names = append(names, m.Name)
+	}
+
+	return errors.Newf("buildMachine %q is not one of Cloud Build's machines (%s); absent, the builds run on Cloud Build's default", p.BuildMachine, strings.Join(names, ", "))
 }
 
 // validatePin checks the bedrock pin: none (both fields empty), a release with the
@@ -279,6 +338,18 @@ func (p *Placement) RestoreKind(env string) string {
 	}
 
 	return RestoreEmpty
+}
+
+// Machine is the build machine the placement names and whether it names one; absent,
+// the pipeline leaves the machine to Cloud Build's default.
+func (p *Placement) Machine() (Machine, bool) {
+	for _, m := range Machines() {
+		if m.Name == p.BuildMachine {
+			return m, true
+		}
+	}
+
+	return Machine{}, false
 }
 
 // Project is the environment's project as the placement records it, and whether it

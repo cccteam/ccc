@@ -448,6 +448,15 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "seed in an unknown environment", mutate: func(p *Placement) { p.Seed = []string{"qa"} }, wantErr: `seed names "qa", which is not one of the environments (tst, prd)`},
 		{name: "seed in production", mutate: func(p *Placement) { p.Seed = []string{"prd"} }, wantErr: `seed names "prd", the production environment, which is never seeded`},
 		{name: "seed in the first environment", mutate: func(p *Placement) { p.Seed = []string{"tst"} }},
+		{name: "a build machine Cloud Build offers", mutate: func(p *Placement) { p.BuildMachine = "E2_HIGHCPU_8" }},
+		{name: "the smallest build machine", mutate: func(p *Placement) { p.BuildMachine = "E2_MEDIUM" }},
+		{
+			name:    "a build machine in Compute Engine's spelling",
+			mutate:  func(p *Placement) { p.BuildMachine = "e2-highcpu-8" },
+			wantErr: `buildMachine "e2-highcpu-8" is not one of Cloud Build's machines (E2_MEDIUM, E2_STANDARD_2, E2_HIGHCPU_8, E2_HIGHCPU_32); absent, the builds run on Cloud Build's default`,
+		},
+		{name: "a deprecated N1 build machine", mutate: func(p *Placement) { p.BuildMachine = "N1_HIGHCPU_8" }, wantErr: `buildMachine "N1_HIGHCPU_8" is not one of Cloud Build's machines`},
+		{name: "the enum's default spelled out", mutate: func(p *Placement) { p.BuildMachine = "UNSPECIFIED" }, wantErr: `buildMachine "UNSPECIFIED" is not one of Cloud Build's machines`},
 		{name: "projects for a known environment", mutate: func(p *Placement) {
 			p.Projects = map[string]Project{"tst": {ID: "imp-tst-gbl-core-b241", Number: "123456789012"}}
 		}},
@@ -471,6 +480,36 @@ func TestPlacementValidate(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("Validate() error = %v, wantErr %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestPlacementMachine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		buildMachine string
+		want         Machine
+		wantNamed    bool
+	}{
+		{name: "absent: Cloud Build's default", buildMachine: "", want: Machine{}, wantNamed: false},
+		{name: "an 8-vCPU machine", buildMachine: "E2_HIGHCPU_8", want: Machine{Name: "E2_HIGHCPU_8", CPUs: 8}, wantNamed: true},
+		{name: "a 32-vCPU machine", buildMachine: "E2_HIGHCPU_32", want: Machine{Name: "E2_HIGHCPU_32", CPUs: 32}, wantNamed: true},
+		{name: "a name the placement would have refused", buildMachine: "N1_HIGHCPU_32", want: Machine{}, wantNamed: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := &Placement{BuildMachine: tt.buildMachine}
+			got, named := p.Machine()
+			if named != tt.wantNamed {
+				t.Errorf("Machine() named = %v, want %v", named, tt.wantNamed)
+			}
+			if got != tt.want {
+				t.Errorf("Machine() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

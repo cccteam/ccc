@@ -198,7 +198,10 @@ from `2-env`'s state.
   `cloudbuild.yaml` as the deploy identity: `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-version` on a
   tag `^v\d+\.\d+\.\d+$` in every environment, with Cloud Build approval
   required in {{.ApprovalsProse}} (the placement's `approvals`); `{{.Prefix}}-{{.Integration}}-{{.PrimaryCode}}-{{.App}}-pr` in {{.Integration}} only, on a pull
-  request against `{{.P.DefaultBranch}}`, run only on a `/gcbrun` comment.
+  request against `{{.P.DefaultBranch}}`, run only on a `/gcbrun` comment. Their builds
+  run on {{if .BuildMachine}}`{{.BuildMachine}}` ({{.BuildMachineCPUs}} vCPUs), the placement's
+  `buildMachine`{{else}}Cloud Build's default machine, the placement naming no
+  `buildMachine`{{end}} ("The pipeline's contract" has what the machine bounds).
 - `{{.Prefix}}-{{.Integration}}-<primary region code>-{{.App}}-sweep`, {{.Integration}} only: the sweep, run
   hourly by the Cloud Scheduler job of the same name.
   The environments chain by deployment records: a release runs in an
@@ -374,7 +377,21 @@ substitutions and this stack's outputs:
   the migrate command and the job process{{else}} and
   the migrate command{{end}}, with `{{.Version.Name}}` baked in at build.
 - `options.logging: CLOUD_LOGGING_ONLY`, required when a build runs as a
-  user-specified service account.
+  user-specified service account{{if .BuildMachine}}, and `options.machineType: {{.BuildMachine}}`,
+  the machine the placement's `buildMachine` names{{else}}; no `options.machineType`,
+  the placement naming no `buildMachine`, so the builds run on Cloud Build's
+  default machine (`E2_STANDARD_2`, 2 vCPUs){{end}}. The machine is a build-level
+  option: the whole run is on it, a window release's wait included, and no step
+  has a machine of its own. A larger machine shortens the image step, whose
+  compile and bundle build run fresh in every environment (the registry's layer
+  cache holds the downloads alone), and costs more per build minute. How many
+  builds the environment project runs at once in a region is its CPU quota for
+  Cloud Build's default pool (`concurrent_public_pool_build_cpus`, per project
+  and region) divided by the machine's vCPUs, shared by every application in
+  the project: a project whose quota is 128 CPUs runs sixteen builds of 8 vCPUs
+  at once, or four of 32. Cloud Build sets that quota per project and never
+  raises it; only a private pool's CPU quota is adjustable. The machines a
+  placement may name, with their vCPUs: {{.BuildMachineNames}}.
 - The deploy identity writes one object per run into `_RECORDS_BUCKET`, at
   `<app>/<env>/<release>/<build>.json`, and can never overwrite one; a
   release that runs again in an environment adds a record, and the newest
@@ -513,8 +530,9 @@ but for two lanes side by side in a pull-request build: the pull request's
 stack (its plan, guard and apply) and the image (the release check and the
 build), joined again before the application deploys. `bedrock deploy
 <command> --help` says what each does in full. The version appears in that one
-place; `bedrock upgrade` moves the pin and re-renders. What an application adds
-is declared in files of its own:
+place; `bedrock upgrade` moves the pin and re-renders. The machine the run is
+on is the placement's too (`buildMachine`; "The pipeline's contract" has what it
+bounds). What an application adds is declared in files of its own:
 
 - **Hooks.** A script the application commits at
   `infrastructure/hooks/<stage>.sh` runs at that stage (`bedrock deploy hook

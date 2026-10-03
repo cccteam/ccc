@@ -360,6 +360,12 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+{{- if .BuildMachine}}
+  # The placement's buildMachine. The whole run is on it, a window release's wait
+  # included: Cloud Build has no per-step machine. Its vCPUs divide the project's CPU
+  # quota for the default pool into the builds the project runs at once.
+  machineType: {{.BuildMachine}}
+{{- end}}
   # The bedrock deploy steps read the build's substitutions through the API, so this file
   # names none of the ones the trigger passes; without this, Cloud Build refuses a build
   # for a substitution key the file does not mention (the operations workflow's
