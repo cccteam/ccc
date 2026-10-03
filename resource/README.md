@@ -1061,7 +1061,8 @@ A row says which stored object is its file, and the generator serves that file u
 the row's read route. Two halves make a file's life: an `@upload` method (section 7)
 stores it and a row records the key the frame minted, and a `@file` declaration serves
 it back at `GET <read route>/<segment>`, `content` by default. Nothing is hand-written:
-not the permission check, not the not-found answer, not the content type.
+not the permission check, not the not-found answer, not the content type, not the
+headers that keep an uploaded file from running script.
 
 **The gate.** Read on the resource and a Read grant on the segment, a field of the
 resource with no column behind it. A role that lists documents and reads their rows but
@@ -1076,18 +1077,42 @@ condition the statement renders. The columns that deliver the file — the key, 
 field grants. A NULL key is 404 in the row's words, and so is a key the store does not
 hold; the key itself is never written into a refusal.
 
-**The response.** `Content-Type` from the type column, then the stored object's type,
-then the name's extension, then `application/octet-stream`; `Content-Disposition:
-inline; filename="…"` from the name column or the content's name, so an `<img>` or a
-link shows the file and an anchor's `download` attribute forces a save;
-`Content-Length` and `Last-Modified` when known; `ETag` = the key, quoted, for a stored
-file, or the `Tag` a content function sets for a rendered one. When a validator is sent
-the frame sends `Cache-Control: private, no-cache` over the outlet's `no-store`, so the
-browser may keep the file and asks again with `If-None-Match`, which the frame answers
-304 after the gate and the row lookup, before the store is opened. A body that seeks
-(a file on disk) goes through `http.ServeContent`, range requests included; any other
-body is copied. Refusals are JSON bodies with their status, as on every generated
-route. Bytes go through the application: no store is exposed and no link is answered.
+**The response.** Every file is served as a document that can do nothing, because its
+type is the uploader's word. `Content-Type` comes from the type column, then the stored
+object's type, then the name's extension, then `application/octet-stream`. Every
+response that serves the file (the bytes, a range of them, or a 304) carries
+`X-Content-Type-Options: nosniff`, so the browser honors that type and a file lying
+about it renders as that type or not at all, and the frame's own
+`Content-Security-Policy: sandbox; default-src 'none'`, which gives the file document an
+opaque origin and lets no script run in it, whatever its type. The frame adds its policy
+beside the one an application's security-headers middleware set, never in its place:
+every policy on a response is enforced, so the application keeps its `frame-ancestors`
+and the file keeps its sandbox, and an application with no such middleware is protected
+the same, since the frame sets both headers itself. `Content-Length` and
+`Last-Modified` follow when known; `ETag` is the key, quoted, for a stored file, or the
+`Tag` a content function sets for a rendered one. When a validator is sent the frame
+sends `Cache-Control: private, no-cache` over the outlet's `no-store`, so the browser
+may keep the file and asks again with `If-None-Match`, which the frame answers 304 after
+the gate and the row lookup, before the store is opened. A body that seeks (a file on
+disk) goes through `http.ServeContent`, range requests included; any other body is
+copied. Refusals are JSON bodies with their status, as on every generated route. Bytes
+go through the application: no store is exposed and no link is answered.
+
+**What displays and what downloads.** A direct visit to a file route shows the file
+inline only when its type is on a short fixed list the browser only displays: PNG,
+JPEG, GIF, WebP, AVIF, PDF, and plain text get `Content-Disposition: inline;
+filename="…"`. Everything else downloads, with `Content-Disposition: attachment;
+filename="…"`: HTML, XHTML, SVG, XML and JavaScript, which can carry script,
+`application/octet-stream`, and any type the frame does not recognize. The name is the
+name column's or the content's. The rule exists because the type is declared by whoever
+uploaded the file: without it, a person who can upload could store an HTML page that
+runs script on the application's own origin, in the session of whoever opens its link.
+The list is the frame's, not the application's; an application that must show untrusted
+HTML to a person builds a sandboxed iframe of its own around the downloaded content. The
+disposition governs a navigation alone, so an `<img>` whose source is a file route shows
+the image whatever the disposition: an SVG logo in an `<img>` keeps showing while a
+direct visit to it downloads. A rendered file follows the same rule, so a `text/csv`
+manifest downloads.
 
 **The store.** `resource.FileStore` is the application's object store as the frames
 drive it: `Put(ctx, key, contentType, r)` writes an object permanently, `Delete(ctx,

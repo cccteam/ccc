@@ -48,7 +48,9 @@ type File struct {
 	// Name is the part's filename as the client sent it.
 	Name string
 	// ContentType is the part's declared media type, application/octet-stream
-	// (octetStream) when the client declared none.
+	// (octetStream) when the client declared none. It is recorded as declared, the
+	// uploader's word: the @file route sends it as the Content-Type under nosniff and
+	// decides from it whether the file displays inline or downloads (file.go).
 	ContentType string
 	// Size is the part's length in bytes.
 	Size int64

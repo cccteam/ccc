@@ -28,9 +28,62 @@ import (
 // stored file is opened through the application's FileStore; a rendered file is a
 // computed resource's content function. Bytes go through the application: the store
 // is never exposed.
+//
+// A file's type is the uploader's word, so the frame serves every file as a document
+// that can do nothing: every response that serves a file (the bytes, a range of them,
+// or a 304) carries X-Content-Type-Options: nosniff and the frame's own
+// Content-Security-Policy, sandbox; default-src 'none', added beside any policy the
+// application's middleware already set, since every policy on a response is enforced;
+// the file document gets an opaque origin and runs no script whatever its type, and an
+// application without a security-headers middleware is protected the same. A type
+// that can carry script (HTML, XHTML, SVG, XML, JavaScript) and any type the frame does
+// not recognize, application/octet-stream included, is served as an attachment; inline
+// is kept for a fixed list the browser only displays, the raster images, PDF, and plain
+// text. The disposition governs a navigation alone: an <img> whose source is a file
+// route shows the image whatever the disposition.
 
 // octetStream is the media type sent when nothing names one.
 const octetStream = "application/octet-stream"
+
+// The headers every served file carries, set by the frame before any write.
+const (
+	// fileContentTypeOptions makes the browser honor the Content-Type sent: a file
+	// lying about its type renders as that type or not at all, never as script.
+	fileContentTypeOptions = "nosniff"
+	// fileContentSecurityPolicy is the frame's own policy for the file document: an
+	// opaque origin, no script, no plugin, and no load of anything from it.
+	fileContentSecurityPolicy = "sandbox; default-src 'none'"
+)
+
+// The two dispositions a served file is sent under.
+const (
+	dispositionInline     = "inline"
+	dispositionAttachment = "attachment"
+)
+
+// The media types on the inline list.
+const (
+	mediaTypePNG       = "image/png"
+	mediaTypeJPEG      = "image/jpeg"
+	mediaTypeGIF       = "image/gif"
+	mediaTypeWebP      = "image/webp"
+	mediaTypeAVIF      = "image/avif"
+	mediaTypePDF       = "application/pdf"
+	mediaTypePlainText = "text/plain"
+)
+
+// inlineMediaTypes is the fixed list of media types served inline: types the browser
+// only displays. Everything else, the script-capable types and the unrecognized ones
+// alike, is served as an attachment. The list is the frame's, not the application's.
+var inlineMediaTypes = map[string]bool{
+	mediaTypePNG:       true,
+	mediaTypeJPEG:      true,
+	mediaTypeGIF:       true,
+	mediaTypeWebP:      true,
+	mediaTypeAVIF:      true,
+	mediaTypePDF:       true,
+	mediaTypePlainText: true,
+}
 
 // ErrFileNotFound is what a FileStore's Open returns for a key with no object behind
 // it. The frame answers 404 with the row's identity and never the key.
@@ -55,8 +108,8 @@ type FileStore interface {
 // or the document a computed resource's content function rendered. Every field but the
 // body is optional; the frame fills what it can from the row and the name.
 type Content struct {
-	// Name is the file's name, sent as the inline Content-Disposition's filename and,
-	// with no ContentType, the source of the type by extension.
+	// Name is the file's name, sent as the Content-Disposition's filename and, with
+	// no ContentType, the source of the type by extension.
 	Name string
 	// ContentType is the media type sent; empty defers to the name's extension, then
 	// to application/octet-stream.
@@ -237,9 +290,10 @@ func (d *FileDecoder[Resource, Request]) Decode(request *http.Request, userPermi
 // ServeStoredFile answers a @file route from the application's store: 304 when the
 // request's validator matches the key, before the store is opened, and the bytes
 // otherwise, typed by the row's type column, then the object's, then the name's
-// extension. A row carrying no key, or a key the store holds nothing under, is a 404
-// returned for the handler to encode, in the row's words (label and key, "MissionDocument
-// 0193…") and never the store key's; so is any other failure.
+// extension, under the file headers (nosniff, the frame's sandbox policy, and the
+// disposition the type decides). A row carrying no key, or a key the store holds
+// nothing under, is a 404 returned for the handler to encode, in the row's words (label
+// and key, "MissionDocument 0193…") and never the store key's; so is any other failure.
 func ServeStoredFile(ctx context.Context, w http.ResponseWriter, r *http.Request, store FileStore, file StoredFile, segment, label string, key ...any) error {
 	identity := rowIdentity(label, key)
 	if file.Key == "" {
@@ -292,19 +346,20 @@ func ServeRenderedFile(w http.ResponseWriter, r *http.Request, content *Content,
 	return serveContent(w, r, content)
 }
 
-// serveContent writes the content with its headers and closes the body. A seekable
-// body goes through http.ServeContent, which brings range requests; any other body is
-// copied whole.
+// serveContent writes the content with its headers and closes the body. The file
+// headers go on first, so a range answer and any 304 http.ServeContent writes carry
+// them too. A seekable body goes through http.ServeContent, which brings range
+// requests; any other body is copied whole.
 func serveContent(w http.ResponseWriter, r *http.Request, content *Content) error {
 	if content.Body == nil {
 		return errors.New("resource.Content: a served file carries a body")
 	}
 	defer content.Body.Close()
 
-	w.Header().Set("Content-Type", contentTypeOf(content))
-	if content.Name != "" {
-		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": path.Base(content.Name)}))
-	}
+	contentType := contentTypeOf(content)
+	setFileHeaders(w.Header())
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", dispositionOf(contentType, content.Name))
 	if content.Tag != "" {
 		w.Header().Set("ETag", content.Tag)
 		// The browser may keep the file and must ask again: the outlet's no-store
@@ -332,6 +387,36 @@ func serveContent(w http.ResponseWriter, r *http.Request, content *Content) erro
 	return nil
 }
 
+// setFileHeaders sets the headers every served file carries: nosniff, and the frame's
+// policy added beside any policy already on the response, never in its place, so the
+// application's own policy (its frame-ancestors among it) stays enforced with the
+// frame's.
+func setFileHeaders(header http.Header) {
+	header.Set("X-Content-Type-Options", fileContentTypeOptions)
+	header.Add("Content-Security-Policy", fileContentSecurityPolicy)
+}
+
+// dispositionOf renders the Content-Disposition for a file of the given type and name:
+// inline for a type on the frame's display-only list, attachment for every other,
+// which includes a type that does not parse; the name, when there is one, rides as the
+// filename parameter, so a save keeps the file's name. A name the header cannot carry
+// leaves the disposition bare rather than absent: the disposition is what keeps a
+// script-capable file from displaying, so it is never dropped for the name's sake.
+func dispositionOf(contentType, name string) string {
+	kind := dispositionAttachment
+	if mediaType, _, err := mime.ParseMediaType(contentType); err == nil && inlineMediaTypes[mediaType] {
+		kind = dispositionInline
+	}
+	if name == "" {
+		return kind
+	}
+	if named := mime.FormatMediaType(kind, map[string]string{"filename": path.Base(name)}); named != "" {
+		return named
+	}
+
+	return kind
+}
+
 // contentTypeOf resolves the media type sent: the content's, then the name's
 // extension, then application/octet-stream.
 func contentTypeOf(content *Content) string {
@@ -349,7 +434,9 @@ func contentTypeOf(content *Content) string {
 
 // writeNotModified answers 304 with the validator when the request's If-None-Match
 // names it (or anything, with *), and reports whether it did. The comparison is weak:
-// a W/ prefix on either side is ignored, which is what a GET's validator allows.
+// a W/ prefix on either side is ignored, which is what a GET's validator allows. The
+// 304 carries the file headers, set before it is written, so a kept copy is revalidated
+// under the same policy it was served with.
 func writeNotModified(w http.ResponseWriter, r *http.Request, tag string) bool {
 	header := r.Header.Get("If-None-Match")
 	if header == "" {
@@ -369,6 +456,7 @@ func writeNotModified(w http.ResponseWriter, r *http.Request, tag string) bool {
 		return false
 	}
 
+	setFileHeaders(w.Header())
 	w.Header().Set("ETag", tag)
 	w.Header().Set("Cache-Control", "private, no-cache")
 	w.WriteHeader(http.StatusNotModified)

@@ -60,7 +60,7 @@ func TestExpenseManifest_renderedFile(t *testing.T) {
 			wantStatus: http.StatusOK,
 			wantHeaders: map[string]string{
 				"Content-Type":        "text/csv",
-				"Content-Disposition": fmt.Sprintf(`inline; filename=manifest-%s.csv`, missionPodID),
+				"Content-Disposition": fmt.Sprintf(`attachment; filename=manifest-%s.csv`, missionPodID),
 				"Cache-Control":       "private, no-cache",
 				"ETag":                etag,
 			},
