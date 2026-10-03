@@ -31,10 +31,20 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   | `prd` | prd | Environment project: prd | app | app |
 
 - Per project, two service accounts in the project: the layer identity
-  `{{.Prefix}}-<key>-gbl-tofu`, holding the roles of its role set, and the read-only
-  plan identity `{{.Prefix}}-<key>-gbl-plan`, holding `roles/viewer` and
-  `roles/browser`. Both get `roles/serviceusage.serviceUsageConsumer` on the
-  boot project, which is their quota project.
+  `{{.Prefix}}-<key>-gbl-tofu`, holding the roles of its role set
+  (`var.layer_roles`), and the read-only plan identity `{{.Prefix}}-<key>-gbl-plan`,
+  holding the plan roles of the same set (`var.plan_roles`): the custom
+  organization role of its project's kind (`environmentLayerPlanReader`,
+  `servicesLayerPlanReader`, `networkLayerPlanReader` or
+  `spannerLayerPlanReader`, below), which reads the resource types the layer
+  declares and nothing of their data, and `roles/iam.securityReviewer` for the
+  IAM policies the layer's grants are refreshed through. `roles/viewer` is not
+  among them: the cloud's bundle for a reader reads data as well as resources
+  (the rows of every Spanner database in the project, every container image,
+  and the deployment records and uploaded files through the buckets' default
+  grants to project viewers), none of which a plan reads. Both get
+  `roles/serviceusage.serviceUsageConsumer` on the boot project, which is
+  their quota project.
 - The plan identities of the two boot layers, `{{.Prefix}}-boot-gbl-plan` and
   `{{.Prefix}}-org-gbl-plan`, in the boot project (`workflow.tf`), with the
   organization-level reads of `var.boot_plan_roles`: `0-bootstrap` cannot
@@ -46,7 +56,9 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   default branch alone) and the state bucket's grants (the list, the layer's
   own prefix, the upstream prefixes it reads). The environment layer
   identities also get the bucket's policy authority (`0-bootstrap`'s custom
-  role), for the application identities `2-env` creates. Each layer grants
+  role), for the application identities `2-env` creates, and the environment
+  layers' plan identities the read of that policy (`bucketPolicyReader`,
+  below), which a plan of `2-env` refreshes those grants through. Each layer grants
   for the identities it creates because IAM refuses a binding for a service
   account that does not exist.
 - `roles/resourcemanager.tagUser` on the public-invoker tag value for each
@@ -114,6 +126,35 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   bucket's default grants to project viewers. The IAM policies the stack's
   grants are refreshed through come from `roles/iam.securityReviewer`, granted
   beside it.
+- The four custom organization roles of the layer plan identities, one per
+  kind of project, each the reads a plan of that layer needs, found in the
+  lab from the plans' refusals (the layer planned as its plan identity, each
+  refused permission added, the list narrowed by taking permissions out
+  again), and nothing of what the resources hold; the exact lists are in
+  `custom-roles.tf`. `environmentLayerPlanReader` (`2-env`, planned once per
+  environment): the GitHub connection and the repository links, the
+  pull-request backend service and endpoint groups, the Identity Platform
+  configuration, the operations pool with its provider and attestation
+  rules, the deployer key's container, the environment's own Spanner
+  instance and the records bucket. `servicesLayerPlanReader` (`2-shr`): the
+  image repositories. `networkLayerPlanReader` (`2-net`): the certificate,
+  its authorization, the map and its entries, the load balancer's backend
+  service, address, forwarding rules, SSL policy, proxies and URL maps, and
+  the DNS zones. `spannerLayerPlanReader` (`2-spn`): the shared instance.
+  This layer grants each on the project to the project's plan identity in
+  place of `roles/viewer` (`var.plan_roles`, above); the IAM policies the
+  layers' grants are refreshed through come from `roles/iam.securityReviewer`
+  beside it, and `2-net`'s domain registrations from `roles/domains.viewer`,
+  since Cloud Domains permissions are not supported in custom roles.
+- The custom organization role `bucketPolicyReader`: reads a bucket's IAM
+  policy (`storage.buckets.getIamPolicy`) and nothing else about it. `2-env`
+  grants the application identities it creates their slots in the state
+  bucket, which lives in the boot project, where the environment project's
+  roles do not reach, and a plan of `2-env` refreshes those grants through the
+  bucket's policy; the bucket roles that read a policy also set it
+  (`legacyBucketOwner`) or carry every object (`admin`). This layer grants it
+  on the state bucket to each environment layer's plan identity
+  (`workflow.tf`).
 - The custom organization role `cloudTasksQueueOperator`: pauses, resumes and
   purges a Cloud Tasks queue, and reads it, nothing else. An application's stack
   grants it on the application's own queue to its deploy identity: a release that
@@ -264,6 +305,7 @@ required checks, the rulesets' names.
 | `layer_roles` | Project roles per role set; a bare ID names a custom role from `custom-roles.tf`. | `map(list(string))` | `app`, `net`, `shr`, `spn`; see below | no |
 | `org_policies` | Constraints applied to every folder. | `list(object)` | see below | no |
 | `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
+| `plan_roles` | Project roles per role set for the plan identities; a bare ID names a custom role from `custom-roles.tf`. | `map(list(string))` | `app`, `net`, `shr`, `spn`; see below | no |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `projects` | Every project, keyed by environment code. | `map(object)` | the six above | no |
 | `public_invokers` | Per application, its apply identities' members, granted tagUser on the public-invoker tag. Rendered into `public-invokers.auto.tfvars`. | `map(list(string))` | `{}` | no |
@@ -280,6 +322,16 @@ required checks, the rulesets' names.
 | `shr` | artifactregistry.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin, `secretContainerAdmin` |
 | `net` | certificatemanager.editor, compute.loadBalancerAdmin, compute.networkAdmin, compute.securityAdmin, dns.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin |
 | `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |
+
+The plan identities' sets (`var.plan_roles`), each the custom role of the
+kind beside `roles/iam.securityReviewer`:
+
+| Set | Plan roles |
+|---|---|
+| `app` | `environmentLayerPlanReader`, iam.securityReviewer |
+| `shr` | `servicesLayerPlanReader`, iam.securityReviewer |
+| `net` | `networkLayerPlanReader`, iam.securityReviewer, domains.viewer (Cloud Domains permissions are not supported in custom roles; the viewer bundle reads the registrations) |
+| `spn` | `spannerLayerPlanReader`, iam.securityReviewer |
 
 ### API sets
 

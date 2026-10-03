@@ -251,3 +251,132 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     "storage.buckets.get",
   ]
 }
+
+# ---------------------------------------------------------------------------
+# The layer plan identities' roles
+#
+# A pull request plans each project's layer as that project's plan identity
+# ({prefix}-{key}-gbl-plan, service-accounts.tf), a reader. roles/viewer, the
+# cloud's bundle for a reader, reads data as well as resources: the rows of
+# every Spanner database in the project (tst's own instance, and stg's and prd's
+# databases on the shared instance in spn's project), every container image in
+# shr's registry, and the deployment records and the applications' uploaded
+# files through the buckets' default grants to project viewers. A plan
+# refreshes what the layer manages and reads no data, so each plan identity
+# holds, in place of roles/viewer, the role of its project's kind below: the
+# read of every resource type the layer declares, found in the lab from the
+# plans' refusals (the layer planned as its plan identity, each refused
+# permission added, the list narrowed by taking permissions out again), and
+# nothing of what those resources hold. The IAM policies the layer's grants
+# are refreshed through are roles/iam.securityReviewer's, granted beside it
+# (var.plan_roles).
+# ---------------------------------------------------------------------------
+
+# The environment layer (2-env, planned once per environment: tst, stg, prd).
+resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
+  org_id      = local.org_id
+  role_id     = "environmentLayerPlanReader"
+  title       = "Environment Layer Plan Reader"
+  description = "Reads the resources an environment's layer declares, for a plan, and nothing of their data."
+  permissions = [
+    # Cloud Build: the GitHub connection and each application's repository link.
+    "cloudbuild.connections.get",
+    "cloudbuild.repositories.get",
+    # The pull-request load balancer's backend service and serverless network
+    # endpoint groups (tst alone holds them).
+    "compute.backendServices.get",
+    "compute.regionNetworkEndpointGroups.get",
+    # Identity Platform: the project's configuration. The admin API answers the
+    # read on this permission and names none when it refuses.
+    "firebaseauth.configs.get",
+    # The operations workflow's identity pool, its provider and the pool's
+    # attestation rules, which the provider reads beside the pool (the
+    # environments a run may restore; production has no pool).
+    "iam.workloadIdentityPoolProviders.get",
+    "iam.workloadIdentityPools.get",
+    "iam.workloadIdentityPools.getAttestationRules",
+    # Secret Manager: the GitHub deployer key's container; never a payload.
+    "secretmanager.secrets.get",
+    # Spanner: the environment's own instance (tst), and nothing it holds.
+    "spanner.instances.get",
+    # Cloud Storage: the deployment records bucket, and not its objects. The
+    # state bucket's policy, which the slots this layer grants there refresh
+    # through, is bucketPolicyReader's, granted on that bucket (workflow.tf).
+    "storage.buckets.get",
+  ]
+}
+
+# The shared services layer (2-shr: the container registry).
+resource "google_organization_iam_custom_role" "services_layer_plan_reader" {
+  org_id      = local.org_id
+  role_id     = "servicesLayerPlanReader"
+  title       = "Services Layer Plan Reader"
+  description = "Reads the resources the shared services layer declares, for a plan, and nothing of their data."
+  permissions = [
+    # Artifact Registry: each application's image repository. The repositories'
+    # IAM policies come from securityReviewer, and nothing here reads an image.
+    "artifactregistry.repositories.get",
+  ]
+}
+
+# The shared network layer (2-net: the load balancer, DNS and certificates).
+resource "google_organization_iam_custom_role" "network_layer_plan_reader" {
+  org_id      = local.org_id
+  role_id     = "networkLayerPlanReader"
+  title       = "Network Layer Plan Reader"
+  description = "Reads the resources the shared network layer declares, for a plan, and nothing of their data."
+  permissions = [
+    # Certificate Manager: the certificate, its DNS authorization, the
+    # certificate map and its entries.
+    "certificatemanager.certmapentries.get",
+    "certificatemanager.certmaps.get",
+    "certificatemanager.certs.get",
+    "certificatemanager.dnsauthorizations.get",
+    # The global load balancer: the sink backend service, the address, the
+    # forwarding rules, the SSL policy, the proxies and the URL maps.
+    "compute.backendServices.get",
+    "compute.globalAddresses.get",
+    "compute.globalForwardingRules.get",
+    "compute.sslPolicies.get",
+    "compute.targetHttpProxies.get",
+    "compute.targetHttpsProxies.get",
+    "compute.urlMaps.get",
+    # Cloud DNS: the zones (the API names no permission when it refuses). The
+    # record sets refresh through securityReviewer's list of them. The domain
+    # registrations are roles/domains.viewer's, granted beside this role
+    # (var.plan_roles): Cloud Domains permissions are not supported in custom roles.
+    "dns.managedZones.get",
+  ]
+}
+
+# The shared Spanner layer (2-spn: the instance stg and prd share).
+resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
+  org_id      = local.org_id
+  role_id     = "spannerLayerPlanReader"
+  title       = "Spanner Layer Plan Reader"
+  description = "Reads the resources the shared Spanner layer declares, for a plan, and nothing of their data."
+  permissions = [
+    # Spanner: the shared instance. Its IAM policy comes from securityReviewer,
+    # and nothing here reads a database.
+    "spanner.instances.get",
+  ]
+}
+
+# The state bucket's IAM policy, for the environment layers' plan identities.
+# 2-env grants the application identities it creates their slots in the state
+# bucket, which lives in the boot project, where the environment project's
+# roles do not reach, and a plan of 2-env refreshes those grants through the
+# bucket's policy. roles/iam.securityReviewer is granted on the project, and
+# the bucket roles that read a policy also set it (legacyBucketOwner) or carry
+# every object (admin). 1-org grants this role on the state bucket to each
+# environment layer's plan identity (workflow.tf), beside the list and the
+# conditioned reads of the state.
+resource "google_organization_iam_custom_role" "bucket_policy_reader" {
+  org_id      = local.org_id
+  role_id     = "bucketPolicyReader"
+  title       = "Bucket Policy Reader"
+  description = "Reads a bucket's IAM policy, and nothing else about it."
+  permissions = [
+    "storage.buckets.getIamPolicy",
+  ]
+}

@@ -352,6 +352,50 @@ func TestCustomRolePermissions(t *testing.T) {
 				"apikeys.keys.get", "apikeys.keys.getKeyString", "storage.buckets.get",
 			},
 		},
+		{
+			name:     "plans the environment layer",
+			resource: "environment_layer_plan_reader",
+			roleID:   "environmentLayerPlanReader",
+			permissions: []string{
+				"cloudbuild.connections.get", "cloudbuild.repositories.get",
+				"compute.backendServices.get", "compute.regionNetworkEndpointGroups.get",
+				"firebaseauth.configs.get",
+				"iam.workloadIdentityPoolProviders.get",
+				"iam.workloadIdentityPools.get", "iam.workloadIdentityPools.getAttestationRules",
+				"secretmanager.secrets.get", "spanner.instances.get", "storage.buckets.get",
+			},
+		},
+		{
+			name:        "plans the shared services layer",
+			resource:    "services_layer_plan_reader",
+			roleID:      "servicesLayerPlanReader",
+			permissions: []string{"artifactregistry.repositories.get"},
+		},
+		{
+			name:     "plans the shared network layer",
+			resource: "network_layer_plan_reader",
+			roleID:   "networkLayerPlanReader",
+			permissions: []string{
+				"certificatemanager.certmapentries.get", "certificatemanager.certmaps.get",
+				"certificatemanager.certs.get", "certificatemanager.dnsauthorizations.get",
+				"compute.backendServices.get", "compute.globalAddresses.get",
+				"compute.globalForwardingRules.get", "compute.sslPolicies.get",
+				"compute.targetHttpProxies.get", "compute.targetHttpsProxies.get",
+				"compute.urlMaps.get", "dns.managedZones.get",
+			},
+		},
+		{
+			name:        "plans the shared Spanner layer",
+			resource:    "spanner_layer_plan_reader",
+			roleID:      "spannerLayerPlanReader",
+			permissions: []string{"spanner.instances.get"},
+		},
+		{
+			name:        "reads a bucket's policy",
+			resource:    "bucket_policy_reader",
+			roleID:      "bucketPolicyReader",
+			permissions: []string{"storage.buckets.getIamPolicy"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -384,6 +428,91 @@ func TestCustomRolePermissions(t *testing.T) {
 			}
 			if strings.Join(got, " ") != strings.Join(tt.permissions, " ") {
 				t.Errorf("role %s carries the permissions\n%s\nwant\n%s", tt.roleID, strings.Join(got, "\n"), strings.Join(tt.permissions, "\n"))
+			}
+		})
+	}
+}
+
+// TestLayerPlanRoles pins each layer plan identity's roles on its project, by role set: the
+// custom role of the project's kind and securityReviewer, granted by the same flatten over
+// the role sets as the layer identities' roles with the bare ID resolved through
+// local.custom_roles, and no roles/viewer anywhere in 1-org (the bundle reads the rows of
+// every database in the project, every container image, and the records and uploaded
+// files through the buckets' default grants to project viewers).
+func TestLayerPlanRoles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the environment layer's plan roles",
+			path: "1-org/variables.tf",
+			want: []string{"    app = [\n      \"environmentLayerPlanReader\",\n      \"roles/iam.securityReviewer\",\n    ]\n"},
+		},
+		{
+			name: "the shared network layer's plan roles",
+			path: "1-org/variables.tf",
+			want: []string{"    net = [\n      \"networkLayerPlanReader\",\n      \"roles/iam.securityReviewer\",\n", "      \"roles/domains.viewer\",\n    ]\n"},
+		},
+		{
+			name: "the shared services layer's plan roles",
+			path: "1-org/variables.tf",
+			want: []string{"    shr = [\n      \"servicesLayerPlanReader\",\n      \"roles/iam.securityReviewer\",\n    ]\n"},
+		},
+		{
+			name: "the shared Spanner layer's plan roles",
+			path: "1-org/variables.tf",
+			want: []string{"    spn = [\n      \"spannerLayerPlanReader\",\n      \"roles/iam.securityReviewer\",\n    ]\n"},
+		},
+		{
+			name: "the grant runs over the plan role sets and resolves the custom roles",
+			path: "1-org/service-accounts.tf",
+			want: []string{
+				"resource \"google_project_iam_member\" \"plan\" {\n  for_each = {\n    for pair in flatten([\n      for key, cfg in local.layers : [\n        for role in var.plan_roles[cfg.role_set] : {\n",
+				"  role    = lookup(local.custom_roles, each.value.role, each.value.role)\n  member  = google_service_account.plan[each.value.proj].member\n",
+			},
+			absent: []string{"\"roles/viewer\"", "\"roles/browser\""},
+		},
+		{
+			name: "the custom roles resolve by bare ID",
+			path: "1-org/locals.tf",
+			want: []string{
+				"    environmentLayerPlanReader = google_organization_iam_custom_role.environment_layer_plan_reader.id\n",
+				"    servicesLayerPlanReader    = google_organization_iam_custom_role.services_layer_plan_reader.id\n",
+				"    networkLayerPlanReader     = google_organization_iam_custom_role.network_layer_plan_reader.id\n",
+				"    spannerLayerPlanReader     = google_organization_iam_custom_role.spanner_layer_plan_reader.id\n",
+			},
+		},
+		{
+			name:   "no plan role set carries the viewer bundle",
+			path:   "1-org/variables.tf",
+			absent: []string{"\"roles/viewer\""},
+		},
+		{
+			name:   "the README says what the plan identities hold and why not viewer",
+			path:   "1-org/README.md",
+			want:   []string{"`roles/viewer` is not\n  among them", "| `app` | `environmentLayerPlanReader`, iam.securityReviewer |"},
+			absent: []string{"holding `roles/viewer`"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content := renderedFile(t, tt.path)
+			for _, w := range tt.want {
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks:\n%s", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(content, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
 			}
 		})
 	}
@@ -1166,6 +1295,13 @@ func TestStateBucketGrants(t *testing.T) {
 				"resource \"google_storage_bucket_iam_member\" \"boot_plan_state_read\" {\n  for_each = local.boot_plans\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n",
 				`expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])`,
 				"resource \"google_storage_bucket_iam_member\" \"environment_tofu_policy_admin\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = local.boot.state_bucket_policy_admin_role\n  member = google_service_account.tofu[each.key].member\n}\n",
+			},
+		},
+		{
+			name: "the environment layers' plan identities read the bucket's policy, which the slots refresh through",
+			path: "1-org/workflow.tf",
+			want: []string{
+				"resource \"google_storage_bucket_iam_member\" \"environment_plan_policy_reader\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = google_organization_iam_custom_role.bucket_policy_reader.id\n  member = google_service_account.plan[each.key].member\n}\n",
 			},
 		},
 	}

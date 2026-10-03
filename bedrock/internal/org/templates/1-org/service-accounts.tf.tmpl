@@ -4,11 +4,19 @@
 # Two service accounts per project layer, both living in the project they act
 # on. The layer identity ({prefix}-{env}-gbl-tofu) applies the project's own
 # layer and holds the roles of its role set in var.layer_roles. The plan
-# identity ({prefix}-{env}-gbl-plan) is read-only: roles/viewer and
-# roles/browser, so a plan can run from a pull request without the power to
-# apply. Both run from the infrastructure repository's layers workflow,
-# signed in through the boot project's identity pool (workflow.tf); neither
-# has keys, and org policy forbids creating any.
+# identity ({prefix}-{env}-gbl-plan) is read-only and holds the roles of its
+# role set in var.plan_roles, so a plan can run from a pull request without
+# the power to apply: the custom organization role of its project's kind
+# (custom-roles.tf), which reads the resource types the layer declares and
+# nothing of their data, and roles/iam.securityReviewer for the IAM policies
+# the layer's grants are refreshed through. roles/viewer is not among them:
+# the cloud's bundle for a reader reads data as well as resources (the rows
+# of every Spanner database in the project, every container image, and the
+# deployment records and uploaded files through the buckets' default grants
+# to project viewers), none of which a plan reads. Both run from the
+# infrastructure repository's layers workflow, signed in through the boot
+# project's identity pool (workflow.tf); neither has keys, and org policy
+# forbids creating any.
 # ---------------------------------------------------------------------------
 
 resource "google_service_account" "tofu" {
@@ -58,12 +66,19 @@ resource "google_project_iam_member" "tofu" {
 
 resource "google_project_iam_member" "plan" {
   for_each = {
-    for pair in setproduct(keys(local.layers), ["roles/browser", "roles/viewer"]) :
-    "${pair[0]}__${pair[1]}" => { proj = pair[0], role = pair[1] }
+    for pair in flatten([
+      for key, cfg in local.layers : [
+        for role in var.plan_roles[cfg.role_set] : {
+          key  = "${key}__${role}"
+          proj = key
+          role = role
+        }
+      ]
+    ]) : pair.key => pair
   }
 
   project = module.project[each.value.proj].project_id
-  role    = each.value.role
+  role    = lookup(local.custom_roles, each.value.role, each.value.role)
   member  = google_service_account.plan[each.value.proj].member
 }
 

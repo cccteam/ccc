@@ -246,6 +246,46 @@ variable "organization_domain" {
   type        = string
 }
 
+variable "plan_roles" {
+  description = <<-EOT
+    Project-level roles granted to each plan identity on its own project: the
+    reads a plan of the project's layer needs, and no bundle. Keys map to the
+    role_set field of each entry in var.projects, as var.layer_roles' do.
+
+    Each set is the custom organization role of its kind from custom-roles.tf
+    (named by bare ID; locals.tf resolves it), which reads the resource types
+    the layer declares and nothing of their data, beside
+    roles/iam.securityReviewer for the IAM policies the layer's grants are
+    refreshed through. roles/viewer is in no set: it reads the rows of every
+    Spanner database in the project, every container image, and the
+    deployment records and uploaded files through the buckets' default grants
+    to project viewers, none of which a plan reads.
+  EOT
+  type        = map(list(string))
+  default = {
+    app = [
+      "environmentLayerPlanReader",
+      "roles/iam.securityReviewer",
+    ]
+    net = [
+      "networkLayerPlanReader",
+      "roles/iam.securityReviewer",
+      # The domain registrations. Cloud Domains permissions are not supported in
+      # custom roles, so the registration's read comes from the cloud's viewer
+      # bundle for the service: registrations, locations and operations, read only.
+      "roles/domains.viewer",
+    ]
+    shr = [
+      "servicesLayerPlanReader",
+      "roles/iam.securityReviewer",
+    ]
+    spn = [
+      "spannerLayerPlanReader",
+      "roles/iam.securityReviewer",
+    ]
+  }
+}
+
 variable "prefix" {
   description = "Short org-wide prefix used in resource names (e.g. \"imp\")."
   type        = string

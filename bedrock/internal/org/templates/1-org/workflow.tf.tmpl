@@ -213,3 +213,14 @@ resource "google_storage_bucket_iam_member" "environment_tofu_policy_admin" {
   role   = local.boot.state_bucket_policy_admin_role
   member = google_service_account.tofu[each.key].member
 }
+
+# The environment layers' plan identities refresh those slots on a pull
+# request, which reads the bucket's policy (custom-roles.tf): the bucket lives
+# in the boot project, where the plan identity's project roles do not reach.
+resource "google_storage_bucket_iam_member" "environment_plan_policy_reader" {
+  for_each = local.environment_layers
+
+  bucket = var.state_bucket
+  role   = google_organization_iam_custom_role.bucket_policy_reader.id
+  member = google_service_account.plan[each.key].member
+}
