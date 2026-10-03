@@ -145,9 +145,9 @@ func TestMissionDocument_release(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, _, dir := documentWorld(t)
+			h, stores := documentWorld(t)
 			id := attachHaulerBrief(t, h)
-			before := storedFiles(t, dir)
+			before := stores.documents.Keys()
 			if len(before) != 1 {
 				t.Fatalf("stored files before = %v, want the brief's one object", before)
 			}
@@ -159,7 +159,7 @@ func TestMissionDocument_release(t *testing.T) {
 				t.Errorf("body = %s, want it to contain %q", respBody, tt.wantBody)
 			}
 
-			after := storedFiles(t, dir)
+			after := stores.documents.Keys()
 			if len(after) != tt.wantObjects {
 				t.Errorf("stored files = %v, want %d", after, tt.wantObjects)
 			}

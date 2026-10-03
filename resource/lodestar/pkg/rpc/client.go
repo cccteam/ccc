@@ -29,7 +29,6 @@ package rpc
 import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 )
 
 // PaymasterRole is the service role a body borrows to post a settlement: nobody signs in
@@ -44,15 +43,16 @@ const PaymasterRole accesstypes.Role = "Paymaster"
 type RoleCheckerFunc func(role accesstypes.Role) resource.RolePermissions
 
 // Client carries application dependencies into RPC method implementations: the role
-// checker a body composes through caller.As, and the document store the upload frame
-// streams into, which AttachMissionDocument reads back to digest each file.
+// checker a body composes through caller.As, and the Documents store the upload frame
+// streams mission documents into, read off the resource client, which
+// AttachMissionDocument and ReplaceMissionDocument read back to digest each file.
 type Client struct {
 	forRole   RoleCheckerFunc
-	documents *store.DirStore
+	documents resource.FileStore
 }
 
-// NewClient constructs a Client over the engine's role checker and the document store.
-func NewClient(forRole RoleCheckerFunc, documents *store.DirStore) *Client {
+// NewClient constructs a Client over the engine's role checker and the Documents store.
+func NewClient(forRole RoleCheckerFunc, documents resource.FileStore) *Client {
 	return &Client{forRole: forRole, documents: documents}
 }
 

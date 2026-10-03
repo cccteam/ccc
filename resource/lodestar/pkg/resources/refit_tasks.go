@@ -17,17 +17,21 @@ type (
 	// where Spanner refuses the duplicate key; the library answers 409 naming RefitTasks.
 	//
 	// PhotoKey's @file(photo) stores a photograph of the finished work under the task's
-	// read route (.../refit-tasks/{id}/{taskNumber}/photo); nullable, it leaves Create
-	// ordinary, and no seeded task carries one. It is here for the audit pass: RefitTasks
-	// is interleaved in Refits ON DELETE CASCADE, so a refit deleted by patch takes its
+	// read route (.../refit-tasks/{id}/{taskNumber}/photo). Its key is a plain *string,
+	// so the photo lives in the default store (APP_FILE_STORE), where the mission
+	// documents' keys are typed resource.Key[Documents] and live in the Documents store:
+	// the photographer's AttachRefitPhoto, an @upload with no store argument, streams
+	// to the default store and sets this column. Nullable, it leaves Create ordinary,
+	// and no seeded task carries one. It is also here for the audit pass: RefitTasks is
+	// interleaved in Refits ON DELETE CASCADE, so a refit deleted by patch takes its
 	// tasks with it through the database, never through the patch machinery, and the
 	// release that deletes a stored object after the commit never runs for them; their
-	// photos are the sweep's. A normal generation says nothing about that, since it
-	// would say so on every run; `go run ./cmd/generate/resourcegenerator -audit`
-	// prints the one finding that names this table and its parent, and
-	// cmd/generate/audit_test.go pins it.
+	// photos are the orphaned-file cleanup's (cmd/jobs cleanup-files). A normal
+	// generation says nothing about that, since it would say so on every run;
+	// `go run ./cmd/generate/resourcegenerator -audit` prints the one finding that
+	// names this table and its parent, and cmd/generate/audit_test.go pins it.
 	//
-	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent, index.trailing-key, commit.constraint-refusal, audit.cascade-release.
+	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent, index.trailing-key, commit.constraint-refusal, audit.cascade-release, filestore.named.
 	//
 	// @resource
 	// @permissionScope(domain)

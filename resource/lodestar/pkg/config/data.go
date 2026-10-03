@@ -12,14 +12,15 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/filestore"
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
@@ -98,16 +99,19 @@ func (s FirestoreSettings) BrowserOrigins() []string {
 }
 
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the document store, the resource client over both, the live
+// owns the Spanner client, the file stores, the resource client over them, the live
 // service over the Firestore database, the tenant roster (the Sectors table's keys,
 // loaded here and kept current through the live service's tenants signal), and the two
 // auths (each its permission engine and session manager), whose engines announce and
 // watch policy changes through the live service.
 type DataConfiguration struct {
 	*coreConfiguration
-	env            *dataConfig
-	spannerClient  *cloudspanner.Client
-	documents      *store.DirStore
+	env           *dataConfig
+	spannerClient *cloudspanner.Client
+	// files is the default store, the refit photos'; documents the Documents store, the
+	// mission documents'. Either is nil when its variable is unset.
+	files          filestore.Store
+	documents      filestore.Store
 	resourceClient *resource.SpannerClient
 	cursorKey      *resource.CursorKey
 	crew           *crew.Auth
@@ -189,17 +193,24 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "crew.New()")
 	}
 
-	// The document store belongs beside the database: the resource client is
-	// constructed over both, so a transaction that deletes a document, or points one at
-	// another file, has the old object deleted from the store once the commit lands.
+	// The file stores belong beside the database: the resource client is constructed
+	// over them, the default store under resource.WithFileStore and the Documents store
+	// under resource.WithNamedFileStore, so the generated handlers read each store off
+	// the client and a transaction that deletes a document or a photo, or points a row
+	// at another file, has the old object deleted from its store once the commit lands.
+	// Each store opens from its own URL (APP_FILE_STORE, APP_FILE_STORE_DOCUMENTS): a
+	// directory in development, a bucket on Cloud Run. A store whose variable is unset
+	// is not opened: the migrate and bootstrap commands build this level without the
+	// stores and never touch files, and the server refuses to start without the stores
+	// its routes use (router.New).
 	//
-	// Demonstrates: @file.released.
-	documents, err := store.NewDirStore(env.UploadDir)
+	// Demonstrates: @file.released, filestore.named.
+	files, documents, err := openFileStores(ctx, env.FileStores)
 	if err != nil {
-		return nil, errors.Wrap(err, "store.NewDirStore()")
+		return nil, err
 	}
 
-	resourceClient := resource.NewSpannerClient(spannerClient, resource.WithFileStore(documents))
+	resourceClient := resource.NewSpannerClient(spannerClient, fileStoreOptions(files, documents)...)
 
 	// The tenant roster: every instance's copy of the Sectors table's keys, built by the
 	// generated constructor (Sector is the @tenant record) and started here beside the
@@ -220,6 +231,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		coreConfiguration: core,
 		env:               env,
 		spannerClient:     spannerClient,
+		files:             files,
 		documents:         documents,
 		resourceClient:    resourceClient,
 		cursorKey:         cursorKey,
@@ -268,11 +280,54 @@ func (c *DataConfiguration) Close() {
 	if err := c.live.Close(); err != nil {
 		log.Print(errors.Wrap(err, "firestore.Service.Close()"))
 	}
-	if err := c.documents.Close(); err != nil {
-		log.Print(errors.Wrap(err, "store.DirStore.Close()"))
+	for _, store := range []filestore.Store{c.documents, c.files} {
+		if store == nil {
+			continue
+		}
+		if err := store.Close(); err != nil {
+			log.Print(errors.Wrap(err, "filestore.Store.Close()"))
+		}
 	}
 	c.spannerClient.Close()
 	c.coreConfiguration.Close()
+}
+
+// openFileStores opens the stores whose URLs are set: the default store and the
+// Documents store, each through filestore.Open, which checks it and refuses a bad URL
+// or a missing bucket.
+func openFileStores(ctx context.Context, settings FileStoreSettings) (files, documents filestore.Store, err error) {
+	if settings.Default != "" {
+		files, err = filestore.Open(ctx, settings.Default)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "filestore.Open(APP_FILE_STORE)")
+		}
+	}
+	if settings.Documents != "" {
+		documents, err = filestore.Open(ctx, settings.Documents)
+		if err != nil {
+			if files != nil {
+				_ = files.Close()
+			}
+
+			return nil, nil, errors.Wrap(err, "filestore.Open(APP_FILE_STORE_DOCUMENTS)")
+		}
+	}
+
+	return files, documents, nil
+}
+
+// fileStoreOptions wires the opened stores on the resource client: the default store
+// as the default, the Documents store under the resources.Documents type.
+func fileStoreOptions(files, documents filestore.Store) []resource.ClientOption {
+	var opts []resource.ClientOption
+	if files != nil {
+		opts = append(opts, resource.WithFileStore(files))
+	}
+	if documents != nil {
+		opts = append(opts, resource.WithNamedFileStore[resources.Documents](documents))
+	}
+
+	return opts
 }
 
 // Spanner returns the database identity.
@@ -294,16 +349,11 @@ func (c *DataConfiguration) LiveOrigins() []string {
 	return c.env.Firestore.BrowserOrigins()
 }
 
-// ResourceClient returns the database client the resource layer uses, constructed over
-// the document store so a committed transaction's released objects are deleted from it.
+// ResourceClient returns the database client the resource layer uses, with the file
+// stores wired on it: the generated handlers read each store off it, and a committed
+// transaction's released objects are deleted from their store.
 func (c *DataConfiguration) ResourceClient() resource.Client {
 	return c.resourceClient
-}
-
-// Documents returns the store the upload frames stream mission documents into, the
-// document route reads them back from, and the resource client releases them from.
-func (c *DataConfiguration) Documents() *store.DirStore {
-	return c.documents
 }
 
 // CursorKey returns the key that seals list cursors.
@@ -387,8 +437,26 @@ type dataConfig struct {
 	MembersGroupPrefix  string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
 	MembersGroupLookup  string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
 
-	// UploadDir is the directory the document store keeps mission documents in: the
-	// upload frames stream into it, the file route reads from it, and the resource
-	// client deletes a released object from it after the commit that released it.
-	UploadDir string `env:"APP_UPLOAD_DIR,default=uploads"`
+	// FileStores are the file stores' URLs.
+	FileStores FileStoreSettings
+}
+
+// FileStoreSettings names the application's file stores, one URL each: the default
+// store, the refit photos', and the Documents store, the mission documents'. Each is a
+// directory in development (file://uploads, file://uploads-documents) and a bucket on
+// Cloud Run (gs://<bucket>). An unset variable leaves its store unopened.
+type FileStoreSettings struct {
+	Default   string `env:"APP_FILE_STORE"`
+	Documents string `env:"APP_FILE_STORE_DOCUMENTS"`
+}
+
+// LoadFileStoreSettings reads the stores' URLs from the environment without opening
+// anything, for the bootstrap, which empties the stores on a reset.
+func LoadFileStoreSettings(ctx context.Context) (FileStoreSettings, error) {
+	var settings FileStoreSettings
+	if err := envconfig.ProcessWith(ctx, &envconfig.Config{Target: &settings, Lookuper: envconfig.OsLookuper()}); err != nil {
+		return FileStoreSettings{}, errors.Wrap(err, "envconfig.ProcessWith()")
+	}
+
+	return settings, nil
 }

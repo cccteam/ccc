@@ -80,6 +80,8 @@ type GeneratedHandlers interface {
 
 	AttachMissionDocument() http.HandlerFunc
 
+	AttachRefitPhoto() http.HandlerFunc
+
 	BeginRefit() http.HandlerFunc
 
 	BriefingTemplates() http.HandlerFunc
@@ -239,6 +241,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/console/api/live/token", h.LiveToken())
 
 	r.Post("/console/api/sectors/{sectorID}/attach-mission-document", domainGuard(h.AttachMissionDocument()))
+
+	r.Post("/console/api/sectors/{sectorID}/attach-refit-photo", domainGuard(h.AttachRefitPhoto()))
 
 	r.Post("/console/api/sectors/{sectorID}/begin-refit", domainGuard(h.BeginRefit()))
 

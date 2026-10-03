@@ -63,17 +63,17 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 	missionDecoder := NewDecoder[resources.Mission, missionRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type missionDocumentRequest struct {
-		ID          ccc.UUID              `json:"-"`
-		MissionID   ccc.UUID              `json:"missionId"`
-		Title       string                `json:"title"`
-		FileName    string                `json:"fileName"`
-		ContentType string                `json:"contentType"`
-		Size        int64                 `json:"size"`
-		StoreKey    string                `json:"-"`
-		UploadedBy  string                `json:"uploadedBy"`
-		UploadedAt  time.Time             `json:"uploadedAt"`
-		Provenance  *resources.Provenance `json:"provenance"`
-		Digest      []byte                `json:"digest"      sqltype:"BYTES(32)"`
+		ID          ccc.UUID                          `json:"-"`
+		MissionID   ccc.UUID                          `json:"missionId"`
+		Title       string                            `json:"title"`
+		FileName    string                            `json:"fileName"`
+		ContentType string                            `json:"contentType"`
+		Size        int64                             `json:"size"`
+		StoreKey    resource.Key[resources.Documents] `json:"-"`
+		UploadedBy  string                            `json:"uploadedBy"`
+		UploadedAt  time.Time                         `json:"uploadedAt"`
+		Provenance  *resources.Provenance             `json:"provenance"`
+		Digest      []byte                            `json:"digest"      sqltype:"BYTES(32)"`
 	}
 	missionDocumentDecoder := NewDecoder[resources.MissionDocument, missionDocumentRequest](a, accesstypes.Update, accesstypes.Delete)
 

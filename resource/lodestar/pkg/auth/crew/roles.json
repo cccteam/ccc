@@ -2850,6 +2850,37 @@
             }
           ]
         }
+      },
+      {
+        "name": "Photographer",
+        "permissions": {
+          "List": [
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes",
+                "photo"
+              ]
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "AttachRefitPhoto"
+            }
+          ]
+        }
       }
     ]
   }

@@ -216,7 +216,7 @@ func (a *App) RefitTaskPhoto() http.HandlerFunc {
 			file.Key = *source.PhotoKey
 		}
 
-		if err := resource.ServeStoredFile(ctx, w, r, a.FileStore(), file, "photo", "RefitTask", refitID, taskNumber); err != nil {
+		if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.DefaultStore), file, "photo", "RefitTask", refitID, taskNumber); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 

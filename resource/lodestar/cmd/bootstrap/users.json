@@ -281,6 +281,21 @@
       }
     },
     {
+      "user": "photographer",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Photographer",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
       "user": "archivist",
       "password": "lodestar",
       "roles": {

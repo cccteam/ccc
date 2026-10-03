@@ -167,7 +167,7 @@ func TestBriefingTemplateLayout_rawJSON(t *testing.T) {
 func TestMissionDocumentProvenance_derivedObject(t *testing.T) {
 	t.Parallel()
 
-	h, _, _ := documentWorld(t)
+	h, _ := documentWorld(t)
 
 	// The marshal attaches a brief to Halvard's stranded hauler: the upload records the
 	// origin as one Provenance, stored by the generated Spanner methods.
@@ -222,7 +222,7 @@ func TestMissionDocumentProvenance_derivedObject(t *testing.T) {
 func TestMissionDocumentDigest_byteSlice(t *testing.T) {
 	t.Parallel()
 
-	h, _, _ := documentWorld(t)
+	h, _ := documentWorld(t)
 
 	// The marshal attaches a manifest to Halvard's stranded hauler: the body reads the
 	// pending object back and records its SHA-256 in the BYTES column.

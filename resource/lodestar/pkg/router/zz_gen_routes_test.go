@@ -195,6 +195,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/standing-orders", method: http.MethodGet},
 		{url: "/droids/standing-orders", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/attach-mission-document", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/attach-refit-photo", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/begin-refit", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/claim-mission", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/compile-briefing", method: http.MethodPost},
@@ -317,6 +318,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/standing-orders", method: http.MethodGet},
 		{url: "/portal/api/standing-orders", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/attach-mission-document", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/attach-refit-photo", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/begin-refit", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/claim-mission", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/compile-briefing", method: http.MethodPost},
@@ -1414,6 +1416,10 @@ func (s *generatedHandlersStub) FeatureGuard() func(resource.Feature) func(http.
 
 func (s *generatedHandlersStub) AttachMissionDocument() http.HandlerFunc {
 	return s.record("AttachMissionDocument")
+}
+
+func (s *generatedHandlersStub) AttachRefitPhoto() http.HandlerFunc {
+	return s.record("AttachRefitPhoto")
 }
 
 func (s *generatedHandlersStub) BeginRefit() http.HandlerFunc {

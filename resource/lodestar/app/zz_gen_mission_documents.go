@@ -20,17 +20,17 @@ import (
 
 func (a *App) MissionDocuments() http.HandlerFunc {
 	type missionDocument struct {
-		ID          ccc.UUID              `json:"id"          index:"true" perm:"-"`
-		MissionID   ccc.UUID              `json:"missionId"   index:"true"`
-		Title       string                `json:"title"`
-		FileName    string                `json:"fileName"`
-		ContentType string                `json:"contentType"`
-		Size        int64                 `json:"size"`
-		StoreKey    string                `json:"-"`
-		UploadedBy  string                `json:"uploadedBy"`
-		UploadedAt  time.Time             `json:"uploadedAt"`
-		Provenance  *resources.Provenance `json:"provenance"`
-		Digest      []byte                `json:"digest"`
+		ID          ccc.UUID                          `json:"id"          index:"true" perm:"-"`
+		MissionID   ccc.UUID                          `json:"missionId"   index:"true"`
+		Title       string                            `json:"title"`
+		FileName    string                            `json:"fileName"`
+		ContentType string                            `json:"contentType"`
+		Size        int64                             `json:"size"`
+		StoreKey    resource.Key[resources.Documents] `json:"-"`
+		UploadedBy  string                            `json:"uploadedBy"`
+		UploadedAt  time.Time                         `json:"uploadedAt"`
+		Provenance  *resources.Provenance             `json:"provenance"`
+		Digest      []byte                            `json:"digest"`
 	}
 
 	type response []map[string]any
@@ -136,17 +136,17 @@ func (a *App) MissionDocuments() http.HandlerFunc {
 
 func (a *App) MissionDocument() http.HandlerFunc {
 	type response struct {
-		ID          ccc.UUID              `json:"id"          index:"true" perm:"-"`
-		MissionID   ccc.UUID              `json:"missionId"`
-		Title       string                `json:"title"`
-		FileName    string                `json:"fileName"`
-		ContentType string                `json:"contentType"`
-		Size        int64                 `json:"size"`
-		StoreKey    string                `json:"-"`
-		UploadedBy  string                `json:"uploadedBy"`
-		UploadedAt  time.Time             `json:"uploadedAt"`
-		Provenance  *resources.Provenance `json:"provenance"`
-		Digest      []byte                `json:"digest"`
+		ID          ccc.UUID                          `json:"id"          index:"true" perm:"-"`
+		MissionID   ccc.UUID                          `json:"missionId"`
+		Title       string                            `json:"title"`
+		FileName    string                            `json:"fileName"`
+		ContentType string                            `json:"contentType"`
+		Size        int64                             `json:"size"`
+		StoreKey    resource.Key[resources.Documents] `json:"-"`
+		UploadedBy  string                            `json:"uploadedBy"`
+		UploadedAt  time.Time                         `json:"uploadedAt"`
+		Provenance  *resources.Provenance             `json:"provenance"`
+		Digest      []byte                            `json:"digest"`
 	}
 
 	decoder := NewQueryDecoder[resources.MissionDocument, response](a, accesstypes.Read)
@@ -233,10 +233,10 @@ func (a *App) MissionDocumentContent() http.HandlerFunc {
 	// the frame itself without field grants. The gate is Read on the resource and on
 	// content, the route's own field.
 	type request struct {
-		ID          ccc.UUID `json:"id" perm:"-"`
-		StoreKey    string   `json:"-"  perm:"-"`
-		FileName    string   `json:"-"  perm:"-"`
-		ContentType string   `json:"-"  perm:"-"`
+		ID          ccc.UUID                          `json:"id" perm:"-"`
+		StoreKey    resource.Key[resources.Documents] `json:"-"  perm:"-"`
+		FileName    string                            `json:"-"  perm:"-"`
+		ContentType string                            `json:"-"  perm:"-"`
 	}
 
 	decoder := NewFileDecoder[resources.MissionDocument, request](a, "content")
@@ -262,11 +262,11 @@ func (a *App) MissionDocumentContent() http.HandlerFunc {
 		}
 		source := &row.Data
 		file := resource.StoredFile{}
-		file.Key = source.StoreKey
+		file.Key = string(source.StoreKey)
 		file.Name = source.FileName
 		file.ContentType = source.ContentType
 
-		if err := resource.ServeStoredFile(ctx, w, r, a.FileStore(), file, "content", "MissionDocument", id); err != nil {
+		if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.StoreNameFor[resources.Documents]()), file, "content", "MissionDocument", id); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 

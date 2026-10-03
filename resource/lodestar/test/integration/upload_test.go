@@ -1,4 +1,4 @@
-// Demonstrates: @upload, rpc.upload-store, @file.stored, execute-condition.
+// Demonstrates: @upload, @upload.store, rpc.upload-store, @file.stored, @file.typed, execute-condition.
 package integration
 
 // This suite covers the upload form and the stored file route against the demo world:
@@ -15,18 +15,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
@@ -35,7 +30,6 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/cccteam/session/sessioninfo"
 )
 
@@ -102,42 +96,18 @@ func doUploadAs(t *testing.T, h http.Handler, user accesstypes.User, target stri
 	return rr.Code, rr.Body.Bytes()
 }
 
-// documentWorld is a fresh demo world whose App writes documents into a directory the
-// test owns, served through the generated routes alone.
-func documentWorld(t *testing.T) (h http.Handler, documents *store.DirStore, dir string) {
+// documentWorld is a fresh demo world whose App writes into memory stores the test
+// owns, served through the generated routes alone.
+func documentWorld(t *testing.T) (http.Handler, *testStores) {
 	t.Helper()
 
 	db, err := prepareDatabase(t.Context(), t, migrationsSource, demoSeedSource)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir = t.TempDir()
-	documents, err = store.NewDirStore(dir)
-	if err != nil {
-		t.Fatalf("store.NewDirStore() error = %v", err)
-	}
-	t.Cleanup(func() { _ = documents.Close() })
+	stores := newTestStores()
 
-	return router.NewTestRouter(newAppWithDocuments(db, demoAccessClient(t), documents)), documents, dir
-}
-
-// storedFiles lists the objects in the store directory.
-func storedFiles(t *testing.T, dir string) []string {
-	t.Helper()
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("os.ReadDir() error = %v", err)
-	}
-	var names []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			names = append(names, entry.Name())
-		}
-	}
-	slices.Sort(names)
-
-	return names
+	return router.NewTestRouter(newAppWithStores(db, demoAccessClient(t), stores)), stores
 }
 
 func TestAttachMissionDocument(t *testing.T) {
@@ -177,7 +147,7 @@ func TestAttachMissionDocument(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, documents, dir := documentWorld(t)
+			h, stores := documentWorld(t)
 
 			body, contentType := multipartBody(t, request(tt.missionID), tt.files...)
 			status, respBody := doUploadAs(t, h, tt.user, sectorPath(anvil, "attach-mission-document"), body, contentType, tt.dryRun)
@@ -186,17 +156,14 @@ func TestAttachMissionDocument(t *testing.T) {
 				t.Errorf("body = %s, want it to contain %q", respBody, tt.wantBody)
 			}
 
-			stored := storedFiles(t, dir)
+			// The documents land in the Documents store alone: the default store, the
+			// refit photos', holds nothing.
+			stored := stores.documents.Keys()
 			if len(stored) != tt.wantRows {
 				t.Errorf("stored files = %v, want %d", stored, tt.wantRows)
 			}
-			keys, err := documents.Keys()
-			if err != nil {
-				t.Fatalf("store.DirStore.Keys() error = %v", err)
-			}
-			slices.Sort(keys)
-			if !slices.Equal(keys, stored) {
-				t.Errorf("Keys() = %v, store directory holds %v", keys, stored)
+			if files := stores.files.Keys(); len(files) != 0 {
+				t.Errorf("the default store holds %v; documents go to the Documents store alone", files)
 			}
 
 			iter := readRows(t, h, tt.user, sectorPath(anvil, "mission-documents"))
@@ -291,7 +258,7 @@ func fileRequestAs(t *testing.T, h http.Handler, user accesstypes.User, target s
 func TestMissionDocument_portalListing(t *testing.T) {
 	t.Parallel()
 
-	h, _, _ := documentWorld(t)
+	h, _ := documentWorld(t)
 	id := attachHaulerBrief(t, h)
 
 	// The portal grants this suite proves, each pinned to the roles file (conditions-proven).
@@ -321,7 +288,7 @@ func TestMissionDocument_portalListing(t *testing.T) {
 func TestMissionDocument_fileRoute(t *testing.T) {
 	t.Parallel()
 
-	h, _, _ := documentWorld(t)
+	h, _ := documentWorld(t)
 	id := attachHaulerBrief(t, h)
 	target := sectorPath(anvil, "mission-documents/"+id+"/content")
 
@@ -410,60 +377,5 @@ func TestMissionDocument_fileRoute(t *testing.T) {
 				t.Errorf("body = %s, want the message %q", rr.Body.String(), tt.wantMessage)
 			}
 		})
-	}
-}
-
-// TestDirStore_sweep pins the application's safety net: an object no row claims, older
-// than the window, is deleted; a claimed one and a young one are left alone; and a key
-// that is not a UUID never reaches the directory.
-func TestDirStore_sweep(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	documents, err := store.NewDirStore(dir)
-	if err != nil {
-		t.Fatalf("store.NewDirStore() error = %v", err)
-	}
-	t.Cleanup(func() { _ = documents.Close() })
-
-	ctx := t.Context()
-	put := func(key string, old bool) {
-		t.Helper()
-		if err := documents.Put(ctx, key, "text/plain", strings.NewReader(key)); err != nil {
-			t.Fatalf("Put(%s) error = %v", key, err)
-		}
-		if old {
-			stale := time.Now().Add(-2 * time.Hour)
-			if err := os.Chtimes(filepath.Join(dir, key), stale, stale); err != nil {
-				t.Fatalf("os.Chtimes() error = %v", err)
-			}
-		}
-	}
-	const (
-		claimed   = "0193e2a7-522c-708f-bfd0-4adf33486bb1"
-		unclaimed = "0193e2a7-522c-708f-bfd0-4adf33486bb2"
-		young     = "0193e2a7-522c-708f-bfd0-4adf33486bb3"
-	)
-	put(claimed, true)
-	put(unclaimed, true)
-	put(young, false)
-
-	deleted, err := documents.Sweep(ctx, time.Hour, func(_ context.Context, key string) (bool, error) {
-		return key == claimed, nil
-	})
-	if err != nil {
-		t.Fatalf("Sweep() error = %v", err)
-	}
-	if deleted != 1 {
-		t.Errorf("Sweep() deleted %d, want 1", deleted)
-	}
-	if got := storedFiles(t, dir); !slices.Equal(got, []string{claimed, young}) {
-		t.Errorf("stored = %v, want the claimed and the young key", got)
-	}
-	if err := documents.Put(ctx, "../escape", "text/plain", strings.NewReader("x")); err == nil {
-		t.Error("Put() with a non-UUID key succeeded, want a refusal")
-	}
-	if _, err := documents.Open(ctx, "0193e2a7-522c-708f-bfd0-4adf33486bb4"); !errors.Is(err, resource.ErrFileNotFound) {
-		t.Errorf("Open() of an absent key error = %v, want resource.ErrFileNotFound", err)
 	}
 }

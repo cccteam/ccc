@@ -1622,6 +1622,21 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "AttachRefitPhoto denied",
+			method:       http.MethodPost,
+			target:       "/console/api/sectors/testDomain/attach-refit-photo",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "AttachRefitPhoto dry run denied",
+			method:       http.MethodPost,
+			target:       "/console/api/sectors/testDomain/attach-refit-photo",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "BeginRefit denied",
 			method:       http.MethodPost,
 			target:       "/console/api/sectors/testDomain/begin-refit",

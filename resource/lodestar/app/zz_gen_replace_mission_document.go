@@ -51,13 +51,14 @@ func (a *App) ReplaceMissionDocument() http.HandlerFunc {
 
 		p := (*rpc.ReplaceMissionDocument)(params)
 
-		// The files stream to the application's store under keys the frame minted;
-		// the body records the keys, and the transaction's commit is what claims them.
-		// A dry run (X-Dry-Run: true) streams nothing: the Files describe the parts
-		// with empty keys, the body runs, and the transaction rolls back.
+		// The files stream to the store the method names, wired on the resource client,
+		// under keys the frame minted; the body records the keys, and the transaction's
+		// commit is what claims them. A dry run (X-Dry-Run: true) streams nothing: the
+		// files describe the parts with empty keys, the body runs, and the transaction
+		// rolls back.
 		dryRun := resource.IsDryRun(r)
-		store := a.FileStore()
-		files, err := upload.Stream(ctx, store, dryRun)
+		store := a.ResourceClient().FileStore(resource.StoreNameFor[resources.Documents]())
+		files, err := resource.StreamInto[resources.Documents](ctx, upload, store, dryRun)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -103,7 +104,7 @@ func (a *App) ReplaceMissionDocument() http.HandlerFunc {
 		}); err != nil {
 			// Nothing committed, so nothing claims the streamed objects: they are
 			// deleted, and the answer is the failure's own.
-			err = resource.DiscardUpload(ctx, store, files, err)
+			err = resource.DiscardUpload(ctx, store, files.Keys(), err)
 			if dryRun && resource.DryRunRolledBack(err) {
 				return httpio.NewEncoder(w).Ok(nil)
 			}

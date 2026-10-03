@@ -19,19 +19,13 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (a *App) AttachMissionDocument() http.HandlerFunc {
+func (a *App) AttachRefitPhoto() http.HandlerFunc {
 	type request struct {
-		MissionID ccc.UUID `json:"missionId"`
-		Title     string   `json:"title"`
+		RefitID    ccc.UUID `json:"refitId"`
+		TaskNumber int64    `json:"taskNumber"`
 	}
 
-	// The answer as the wire carries it: Execute's result mirrored with generated
-	// wire names, encoded after the transaction commits.
-	type response struct {
-		DocumentIDs []ccc.UUID `json:"documentIDs"`
-	}
-
-	decoder := NewTargetedRPCDecoder[rpc.AttachMissionDocument, request](a, accesstypes.Execute)
+	decoder := NewTargetedRPCDecoder[rpc.AttachRefitPhoto, request](a, accesstypes.Execute)
 
 	// The declared maximum bounds the whole multipart body: 5MB.
 	const maxBytes = 5242880
@@ -56,7 +50,7 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 		// scope, and decision instant.
 		ctx = resource.WithCaller(ctx, gate.Caller())
 
-		p := (*rpc.AttachMissionDocument)(params)
+		p := (*rpc.AttachRefitPhoto)(params)
 
 		// The files stream to the store the method names, wired on the resource client,
 		// under keys the frame minted; the body records the keys, and the transaction's
@@ -64,8 +58,8 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 		// files describe the parts with empty keys, the body runs, and the transaction
 		// rolls back.
 		dryRun := resource.IsDryRun(r)
-		store := a.ResourceClient().FileStore(resource.StoreNameFor[resources.Documents]())
-		files, err := resource.StreamInto[resources.Documents](ctx, upload, store, dryRun)
+		store := a.ResourceClient().FileStore(resource.DefaultStore)
+		files, err := upload.Stream(ctx, store, dryRun)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -74,38 +68,35 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 		// the commit lands and before the answer; a transaction that rolls back wrote
 		// nothing to publish.
 		ctx, touched := resource.CollectTouchedRows(ctx)
-		// Captured inside the transaction, encoded after it commits: under
-		// abort-and-retry the value is the committing attempt's.
-		var result *rpc.Attached
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			// Declared target: locate the row within the tenancy predicate
 			// before the body runs.
-			row, err := resources.NewMissionQuery().
-				AddColumns(resources.NewMissionColumns().SectorID()).
-				SetID(p.MissionID).
+			row, err := resources.NewRefitQuery().
+				AddColumns(resources.NewRefitColumns().ID()).
+				SetID(p.RefitID).
 				Read(ctx, txn)
 			if err != nil {
-				return errors.Wrap(err, "resources.MissionQuery.Read()")
+				return errors.Wrap(err, "resources.RefitQuery.Read()")
 			}
 			if row == nil {
-				return httpio.NewNotFoundMessagef("Mission %s does not exist", p.MissionID)
+				return httpio.NewNotFoundMessagef("Refit %s does not exist", p.RefitID)
 			}
-			if ok, err := resource.TenantKeyEquals(row.Data.SectorID, domain); err != nil {
-				return errors.Wrap(err, "resource.TenantKeyEquals()")
-			} else if !ok {
-				return httpio.NewNotFoundMessagef("Mission %s does not exist", p.MissionID)
+			// The root's tenant key lives across its @domain join path: the
+			// gate verifies the located row resolves to the request's domain
+			// in this transaction — absent and cross-tenant are the same
+			// NotFound.
+			if err := gate.VerifyTenancy(ctx, txn, resource.ExecuteTarget{Resource: "Refits", Label: "Refit", PKColumn: "Id"}, p.RefitID); err != nil {
+				return err
 			}
 
 			// A row-referencing condition on the caller's Execute grant
 			// evaluates against the located row, in this transaction.
-			if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "Missions", Label: "Mission", PKColumn: "Id"}, p.MissionID); err != nil {
+			if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "Refits", Label: "Refit", PKColumn: "Id"}, p.RefitID); err != nil {
 				return err
 			}
-			answer, err := p.Execute(ctx, txn, files, a.RPCClient())
-			if err != nil {
+			if err := p.Execute(ctx, txn, files, a.RPCClient()); err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")
 			}
-			result = answer
 			if dryRun {
 				return resource.ErrDryRun
 			}
@@ -126,10 +117,7 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 		// objects, and nothing more happens to the store.
 
 		live.Publish(ctx, a.LiveService(), domain, touched)
-		if result == nil {
-			return httpio.NewEncoder(w).Ok(nil)
-		}
 
-		return httpio.NewEncoder(w).Ok((*response)(result))
+		return httpio.NewEncoder(w).Ok(nil)
 	})
 }

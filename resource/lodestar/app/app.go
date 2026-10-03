@@ -21,8 +21,8 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -88,9 +88,6 @@ type Configurer interface {
 	PortalDist() string
 	// DroidsAPIKey is the bearer key the droids outlet's clients present.
 	DroidsAPIKey() string
-	// Documents is the store the generated frames drive (FileStore): the upload frame
-	// streams files into it and the generated file route reads them back from it.
-	Documents() *store.DirStore
 	// Live is the live service the generated handlers subscribe through and publish to
 	// (LiveService), the feature flags follow and the permission engines signal
 	// through: the Firestore service, or the in-memory fake in a test harness; every
@@ -161,7 +158,6 @@ type App struct {
 	tenants        *resource.TenantRoster
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
-	documents      *store.DirStore
 	live           live.Service
 	management     access.Handlers
 	// features is the application's copy of its feature flags, read through the
@@ -180,11 +176,14 @@ func New(cfg Configurer) *App {
 	resource.SetLocalZone(operationsClock)
 
 	engine := cfg.Access()
-	documents := cfg.Documents()
+	// The file stores are the resource client's: the generated frames read each off it,
+	// and the RPC client takes the Documents store, which its document methods read
+	// back from.
+	resourceClient := cfg.ResourceClient()
 	a := &App{
 		access:         engine,
 		engines:        map[string]access.Controller{},
-		resourceClient: cfg.ResourceClient(),
+		resourceClient: resourceClient,
 		cursorKey:      cfg.CursorKey(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
@@ -193,9 +192,8 @@ func New(cfg Configurer) *App {
 		portalApp:      resource.NewBrowserApp(cfg.PortalDist(), "/portal"),
 		droidsAPIKey:   cfg.DroidsAPIKey(),
 		tenants:        cfg.TenantRoster(),
-		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, documents),
+		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, resourceClient.FileStore(resource.StoreNameFor[resources.Documents]())),
 		computedClient: computedresources.NewClient(),
-		documents:      documents,
 		live:           cfg.Live(),
 		management:     cfg.UserManagement(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
@@ -450,14 +448,4 @@ func (a *App) Start(ctx context.Context) error {
 // built and kept current by Start.
 func (a *App) FeatureSet() *resource.FeatureSet {
 	return a.features
-}
-
-// FileStore is the store the generated frames drive: the upload frame streams each file
-// part to it before an @upload method's body runs and deletes the parts when the
-// transaction does not commit, and the generated file route on MissionDocuments opens a
-// document from it.
-//
-// Demonstrates: rpc.upload-store, @file.stored.
-func (a *App) FileStore() resource.FileStore {
-	return a.documents
 }

@@ -21,6 +21,12 @@ func Collection() *resource.GeneratedCollection {
 				Target:      "Missions",
 			},
 			{
+				Name:        "AttachRefitPhoto",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "Refits",
+			},
+			{
 				Name:        "BeginRefit",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},

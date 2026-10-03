@@ -66,11 +66,28 @@ through `APP_CONSOLE_DIST` and `APP_PORTAL_DIST`. Neither application is mounted
 an installed browser application owns every URL under its start, so two applications on
 one origin each sit under their own path, each with its API beneath it (`/console/api`,
 `/portal/api`), and the generated router answers the root alone with a temporary redirect
-to `/console/`; every other unmatched path is 404. Mission documents land in the directory
-`APP_UPLOAD_DIR` names (default `uploads/`, gitignored): the upload frame streams each
-file there under a minted key, the transaction's commit claims it, a failure before
-commit deletes it, and the generated file route reads it back; `store.DirStore.Sweep` is
-the application's safety net for an object no row claims, never the mechanism.
+to `/console/`; every other unmatched path is 404. Uploaded files land in two file
+stores, each opened from one URL by `resource/filestore`: the default store, `APP_FILE_STORE`
+(`file://uploads` in development, gitignored), holds the refit photos, and the Documents
+store, `APP_FILE_STORE_DOCUMENTS` (`file://uploads-documents`), holds the mission
+documents, declared by the `Documents` type in `pkg/resources` and wired on the resource
+client in `pkg/config/data.go`. The upload frame streams each file to the store its
+method names under a minted key, the transaction's commit claims it, a failure before
+commit deletes it, the generated file route reads it back, and a deleted or replaced row
+releases its object from the store its column names. `go run -tags skipAuth ./cmd/bootstrap
+-reset` empties both stores with the database, and `go run -tags skipAuth ./cmd/jobs
+cleanup-files` is the orphaned-file cleanup: the job process lists a store, reads every
+key the rows hold through the generated `resources.FileHolders()`, and deletes the
+UUID-named objects older than the window (two days by default, a day at least) that no
+row holds, refusing a store no row holds any key in; `-dry-run` lists what would go. On
+Cloud Run both variables are buckets (`gs://<bucket>`), which bedrock builds and names.
+To run the stores against a fake Cloud Storage in development instead, add to the
+Procfile `gcs: podman run --rm -p 127.0.0.1:4443:4443 docker.io/fsouza/fake-gcs-server:1.52.2
+-scheme http -port 4443 -public-host 127.0.0.1:4443 -external-url http://127.0.0.1:4443`,
+export `STORAGE_EMULATOR_HOST=127.0.0.1:4443` beside `APP_FILE_STORE=gs://lodestar-files`
+and `APP_FILE_STORE_DOCUMENTS=gs://lodestar-files-documents`, and create each bucket once
+(`curl -X POST 'http://127.0.0.1:4443/storage/v1/b?project=lodestar' -d '{"name":"lodestar-files"}'`),
+since the fake starts empty and the store refuses to start on a missing bucket.
 
 ## The installed apps
 
@@ -442,7 +459,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `salvor` | Salvor Sable | `insured IS NULL OR insured = true` on Clients, the salvage desk's one grant: the seed leaves Halvard covered, Meridian and Bastion Relay undecided, and Vellum refused, so she lists the first three and never Vellum, disagreeing with the trusted view in both directions; `= true` alone, or `!= false`, would drop the undecided outfits (the semantic differential proves that half on the same shape). Demonstrates: @attribute.nullable-bool. |
 | `yeoman` | Yeoman Yael | The standing orders, a `@computed` struct with no `@primarykey`: a whole read-only list, served in the book's own order on a bare GET, sorted by section on request, never paged (a `limit` or a `cursor` is refused with a 400 naming the key as the way to page), with no read route and no row identity. Her first screen is the console's Standing Orders page, the library's list over that resource: the whole book as one page with virtual scroll, every line identified by its position, Previous and Next disabled with the count, no View column, no create, and no row route; a `pageSize` or `enableRowExpansion` on its config fails at startup naming the resource. Demonstrates: computed.keyless, list.keyless. |
 | `purser` | Purser Priya | The expense manifests, a keyed `@computed` struct whose struct-scope `@file` renders each mission's booked expenses as a `text/csv` sheet on request: `GET .../expense-manifests/{missionId}/content` under her Read grant on `content`, with the sheet's digest as its validator, so a kept copy asks again and hears 304 until an expense is booked; the marshal reads no manifest and the cadet none of it. Demonstrates: @file.rendered. |
-| `registrar` | Registrar Rhea | The document register at Anvil: Update on the documents' `title`, Delete on the documents, and Execute on `ReplaceMissionDocument`. A replaced file points the row at the new object and the old one leaves the store once the transaction commits; a deleted document's object goes with the row; a dry run of the replacement, a refusal, and a retitle release nothing. No frame and no body does this: the patch machinery records the released keys on the transaction, and the resource client, constructed over the `DirStore` with `resource.WithFileStore`, deletes them after each commit. Demonstrates: @file.released, @file.replaced. |
+| `registrar` | Registrar Rhea | The document register at Anvil: Update on the documents' `title`, Delete on the documents, and Execute on `ReplaceMissionDocument`. A replaced file points the row at the new object and the old one leaves the Documents store once the transaction commits; a deleted document's object goes with the row; a dry run of the replacement, a refusal, and a retitle release nothing. No frame and no body does this: the patch machinery records the released keys with their store on the transaction, and the resource client, on which the Documents store is wired with `resource.WithNamedFileStore[resources.Documents]`, deletes them from it after each commit. Demonstrates: @file.released, @file.replaced. |
+| `photographer` | Photographer Petra | The hangar's camera at Anvil: Execute on `AttachRefitPhoto`, an `@upload` with no `store:`, and Read on the refit tasks with `photo`. Her photo streams to the default store (`APP_FILE_STORE`) and its key is a plain string in `RefitTask.PhotoKey`, where the marshal's briefs stream to the Documents store (`APP_FILE_STORE_DOCUMENTS`) under keys typed `resource.Key[Documents]`: one application, two stores, each key column typed for its own, so a key of one does not compile into a column of the other. The walkthrough shows the two directories holding what each row names, and `cmd/jobs cleanup-files` removing one planted orphan from each while the brief and the photo stay. Demonstrates: @upload, filestore.named, filestore.cleanup. |
 | `archivist` | Archivist Ada, all sectors | Terminal-state rows; fee and settlement redacted until completed (two read grants on one resource) and sorted over the visible projection, while the deadline, declared `masking:"positional"`, orders every page on the real column; a fee sort her grid does not display pages on the cursor's copy of the fee; the deploy warns that her fee filter sorts the partition; PII withheld; the domain-scoped ship's log; a briefing that counts her redactions. Demonstrates: cell-masking, paging.masked-sort, paging.unselected-sort-key, masking.positional, warning.concealing-key, pii, @manualAddResource.scope, rpc.armed-read. |
 | `assessor` | Assessor Asa | Prices cover before launch: one List grant on Missions, the title unconditionally and the hazard level under `state = 'open'`. Hazard is a named variant of INT64 (`type HazardLevel int64`), concealing and unindexed, so a grid that sorts by hazard without displaying it pages on the cursor's copy of the visible hazard, decoded into the field's own type where the Spanner client refuses a pointer to a pointer to it, and the missions no longer open walk through the NULL region in Spanner's placement. Demonstrates: paging.named-variant-key. |
 | `hazards` | Hazard Analyst Hale | A conditional (row-free `now`) grant on a computed resource, the whole board through `limit=all`. Demonstrates: computed.conditional-grant, paging.limit-all, computed.fold. |
@@ -473,9 +491,14 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   manifest is a computed resource whose struct-scope `@file` renders a CSV sheet on
   request ([`@file.rendered`](pkg/computedresources/expense_manifests.go)). The
   registrar's `ReplaceMissionDocument` points a document at a new file, and the
-  resource client, constructed over the `DirStore` in `pkg/config/data.go`
-  (`resource.WithFileStore`), deletes the object a committed transaction released,
-  the replaced file's and the deleted document's alike
+  resource client, on which the two stores are wired in `pkg/config/data.go`
+  (`resource.WithFileStore` for the default store, `resource.WithNamedFileStore` for
+  the `Documents` store declared in `pkg/resources`), deletes the object a committed
+  transaction released from its store, the replaced file's and the deleted document's
+  alike; the photographer's `AttachRefitPhoto` streams to the default store, the
+  generated `resources.FileHolders()` names every key column with its store, and
+  `pkg/jobs` with `cmd/jobs` runs the orphaned-file cleanup over both
+  ([`filestore.cleanup`](pkg/jobs/cleanup.go))
   ([`@file.released`](pkg/resources/mission_documents.go),
   [`@file.replaced`](pkg/rpc/replace_mission_document.go)). A `@file` table whose rows
   the database deletes by cascade releases nothing, since its rows never pass through

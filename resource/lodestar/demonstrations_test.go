@@ -32,7 +32,7 @@ import (
 var declarationFiles = []string{".go", ".ts", ".html", ".md", ".sh", ".json"}
 
 // skippedDirs are never walked.
-var skippedDirs = map[string]bool{"node_modules": true, "dist": true, ".angular": true, ".ccc-cache": true, ".yalc": true, "uploads": true}
+var skippedDirs = map[string]bool{"node_modules": true, "dist": true, ".angular": true, ".ccc-cache": true, ".yalc": true, "uploads": true, "uploads-documents": true}
 
 // A declaration is "Demonstrates:" followed by keys, not the word quoted in prose (a
 // backtick before it), and a markdown table cell may close the line.

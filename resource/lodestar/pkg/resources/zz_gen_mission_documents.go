@@ -23,27 +23,31 @@ func (MissionDocument) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
-// FileKeys names the fields holding a stored file's key (@file): the objects a delete,
-// or a write that points the row at another object, releases once the transaction commits.
-func (MissionDocument) FileKeys() []accesstypes.Field {
-	return []accesstypes.Field{"StoreKey"}
+// FileKeys names the fields holding a stored file's key (@file), each with the store
+// its keys name: the objects a delete, or a write that points the row at another
+// object, releases from that store once the transaction commits, and the columns the
+// orphaned-file cleanup reads a store's live keys from.
+func (MissionDocument) FileKeys() []resource.FileKey {
+	return []resource.FileKey{
+		{Field: "StoreKey", Store: resource.StoreNameFor[Documents]()},
+	}
 }
 
 // missionDocumentRead mirrors the wire shape the resource routes list
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; missionDocumentReadSets holds one Set per read operation.
 type missionDocumentRead struct {
-	ID          ccc.UUID    `json:"id"          perm:"-"`
-	MissionID   ccc.UUID    `json:"missionId"`
-	Title       string      `json:"title"`
-	FileName    string      `json:"fileName"`
-	ContentType string      `json:"contentType"`
-	Size        int64       `json:"size"`
-	StoreKey    string      `json:"-"`
-	UploadedBy  string      `json:"uploadedBy"`
-	UploadedAt  time.Time   `json:"uploadedAt"`
-	Provenance  *Provenance `json:"provenance"`
-	Digest      []byte      `json:"digest"`
+	ID          ccc.UUID                `json:"id"          perm:"-"`
+	MissionID   ccc.UUID                `json:"missionId"`
+	Title       string                  `json:"title"`
+	FileName    string                  `json:"fileName"`
+	ContentType string                  `json:"contentType"`
+	Size        int64                   `json:"size"`
+	StoreKey    resource.Key[Documents] `json:"-"`
+	UploadedBy  string                  `json:"uploadedBy"`
+	UploadedAt  time.Time               `json:"uploadedAt"`
+	Provenance  *Provenance             `json:"provenance"`
+	Digest      []byte                  `json:"digest"`
 }
 
 var missionDocumentReadSets resource.SetCache[MissionDocument, missionDocumentRead]
@@ -52,17 +56,17 @@ var missionDocumentReadSets resource.SetCache[MissionDocument, missionDocumentRe
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; missionDocumentWriteSets holds one Set per mutation.
 type missionDocumentWrite struct {
-	ID          ccc.UUID    `json:"-"`
-	MissionID   ccc.UUID    `json:"missionId"`
-	Title       string      `json:"title"`
-	FileName    string      `json:"fileName"`
-	ContentType string      `json:"contentType"`
-	Size        int64       `json:"size"`
-	StoreKey    string      `json:"-"`
-	UploadedBy  string      `json:"uploadedBy"`
-	UploadedAt  time.Time   `json:"uploadedAt"`
-	Provenance  *Provenance `json:"provenance"`
-	Digest      []byte      `json:"digest"      sqltype:"BYTES(32)"`
+	ID          ccc.UUID                `json:"-"`
+	MissionID   ccc.UUID                `json:"missionId"`
+	Title       string                  `json:"title"`
+	FileName    string                  `json:"fileName"`
+	ContentType string                  `json:"contentType"`
+	Size        int64                   `json:"size"`
+	StoreKey    resource.Key[Documents] `json:"-"`
+	UploadedBy  string                  `json:"uploadedBy"`
+	UploadedAt  time.Time               `json:"uploadedAt"`
+	Provenance  *Provenance             `json:"provenance"`
+	Digest      []byte                  `json:"digest"      sqltype:"BYTES(32)"`
 }
 
 var missionDocumentWriteSets resource.SetCache[MissionDocument, missionDocumentWrite]
@@ -550,14 +554,14 @@ func (p *MissionDocumentCreatePatch) SizeIsSet() bool {
 	return p.patchSet.IsSet("Size")
 }
 
-func (p *MissionDocumentCreatePatch) SetStoreKey(v string) *MissionDocumentCreatePatch {
+func (p *MissionDocumentCreatePatch) SetStoreKey(v resource.Key[Documents]) *MissionDocumentCreatePatch {
 	p.patchSet.Set("StoreKey", v)
 
 	return p
 }
 
-func (p *MissionDocumentCreatePatch) StoreKey() string {
-	v, _ := p.patchSet.Get("StoreKey").(string)
+func (p *MissionDocumentCreatePatch) StoreKey() resource.Key[Documents] {
+	v, _ := p.patchSet.Get("StoreKey").(resource.Key[Documents])
 
 	return v
 }
@@ -782,14 +786,14 @@ func (p *MissionDocumentUpdatePatch) SizeIsSet() bool {
 	return p.patchSet.IsSet("Size")
 }
 
-func (p *MissionDocumentUpdatePatch) SetStoreKey(v string) *MissionDocumentUpdatePatch {
+func (p *MissionDocumentUpdatePatch) SetStoreKey(v resource.Key[Documents]) *MissionDocumentUpdatePatch {
 	p.patchSet.Set("StoreKey", v)
 
 	return p
 }
 
-func (p *MissionDocumentUpdatePatch) StoreKey() string {
-	v, _ := p.patchSet.Get("StoreKey").(string)
+func (p *MissionDocumentUpdatePatch) StoreKey() resource.Key[Documents] {
+	v, _ := p.patchSet.Get("StoreKey").(resource.Key[Documents])
 
 	return v
 }

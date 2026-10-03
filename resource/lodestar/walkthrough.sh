@@ -138,7 +138,7 @@ if [ "$r" = "307 $B/console/" ]; then echo "PASS  the root alone redirects to th
 r=$(curl -s -o /dev/null -w '%{http_code}' "$B/nowhere")
 if [ "$r" = 404 ]; then echo "PASS  an unmatched path at the root is not found (404)"; else echo "FAIL  an unmatched path at the root: status $r, want 404"; fails=$((fails + 1)); fi
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar archivist assessor hazards dock watch harbormaster adjutant surveyor; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser registrar photographer archivist assessor hazards dock watch harbormaster adjutant surveyor; do
   login "$p"
 done
 login_portal client
@@ -241,9 +241,29 @@ if grep -qi '^content-type: text/plain' "$S/doc.hdr" && grep -qi '^content-dispo
 r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "a kept copy asks again with the validator and hears 304" 304 "$r"
 r=$(req cadet GET "$ANVIL/mission-documents/$DOC/content"); check "the cadet holds no Read on the documents: the file route refuses" 403 "$r"
 r=$(req governor GET "$API/sectors/bastion/mission-documents/$DOC/content"); check "another sector's document is indistinguishable from none" 404 "$r"
+# ---- photographer: the default store beside the Documents store ----
+# The two stores' directories (file:// URLs in .envrc): the default store holds the refit photos, the Documents store the mission documents.
+FILES_DIR=${APP_FILE_STORE:-file://uploads}; FILES_DIR=${FILES_DIR#file://}
+DOCS_DIR=${APP_FILE_STORE_DOCUMENTS:-file://uploads-documents}; DOCS_DIR=${DOCS_DIR#file://}
+# AttachRefitPhoto is an @upload with no store: argument (resource.Files, a *string key column on RefitTasks), where the documents went to the Documents store (store: resources.Documents, resource.FilesIn, a resource.Key[Documents] column): one application, two stores, each key column typed for its own.
+printf 'PNG hull seals' > "$S/hull.png"
+r=$(upload photographer "$ANVIL/attach-refit-photo" "{\"refitId\":\"$SAMARITAN_REFIT\",\"taskNumber\":2}" "$S/hull.png"); check "the photographer attaches a task photo (an @upload on the default store)" 200 "$r"
+r=$(req photographer GET "$ANVIL/refit-tasks/$SAMARITAN_REFIT/2/photo" "" -D "$S/photo.hdr"); check "the photo downloads through the task's generated file route" 200 "$r"
+PHOTO_ETAG=$(awk 'tolower($1)=="etag:" {print $2}' "$S/photo.hdr" | tr -d '\r')
+r=$(req cadet GET "$ANVIL/refit-tasks/$SAMARITAN_REFIT/2/photo"); check "the cadet holds no Read on the tasks: the photo route refuses" 403 "$r"
+if [ -d "$FILES_DIR" ] && [ -d "$DOCS_DIR" ]; then if [ -e "$FILES_DIR/$(echo "$PHOTO_ETAG" | tr -d '"')" ] && [ ! -e "$DOCS_DIR/$(echo "$PHOTO_ETAG" | tr -d '"')" ] && [ -e "$DOCS_DIR/$(echo "$DOC_ETAG" | tr -d '"')" ] && [ ! -e "$FILES_DIR/$(echo "$DOC_ETAG" | tr -d '"')" ]; then echo "PASS  two stores: the photo is in the default store's directory and the brief in the documents', neither in the other"; else echo "FAIL  two stores: files $(ls "$FILES_DIR" | tr '\n' ' ') documents $(ls "$DOCS_DIR" | tr '\n' ' ')"; fails=$((fails + 1)); fi; fi
+# ---- the orphaned-file cleanup: the job process removes what no row holds ----
+# One UUID-named object older than the window is planted in each directory; cmd/jobs cleanup-files reads the live keys through the generated holders and deletes the two orphans, while the brief and the photo, which rows hold, stay.
+if [ -d "$FILES_DIR" ] && [ -d "$DOCS_DIR" ]; then
+  ORPHAN_DOC=$(python3 -c 'import uuid; print(uuid.uuid4())'); ORPHAN_PHOTO=$(python3 -c 'import uuid; print(uuid.uuid4())')
+  printf 'left behind' > "$DOCS_DIR/$ORPHAN_DOC"; touch -d '3 days ago' "$DOCS_DIR/$ORPHAN_DOC"
+  printf 'left behind' > "$FILES_DIR/$ORPHAN_PHOTO"; touch -d '3 days ago' "$FILES_DIR/$ORPHAN_PHOTO"
+  out=$(go run -tags skipAuth ./cmd/jobs cleanup-files 2>&1)
+  if echo "$out" | grep -q "store documents: .* deleted 1 orphaned objects" && echo "$out" | grep -q "the default store: .* deleted 1 orphaned objects"; then echo "PASS  cmd/jobs cleanup-files deletes one orphan per store and reports it"; else echo "FAIL  cmd/jobs cleanup-files: $(echo "$out" | tail -c 600)"; fails=$((fails + 1)); fi
+  if [ ! -e "$DOCS_DIR/$ORPHAN_DOC" ] && [ ! -e "$FILES_DIR/$ORPHAN_PHOTO" ] && [ -e "$DOCS_DIR/$(echo "$DOC_ETAG" | tr -d '"')" ] && [ -e "$FILES_DIR/$(echo "$PHOTO_ETAG" | tr -d '"')" ]; then echo "PASS  the orphans are gone and the brief and the photo, which rows hold, remain"; else echo "FAIL  after the cleanup: files $(ls "$FILES_DIR" | tr '\n' ' ') documents $(ls "$DOCS_DIR" | tr '\n' ' ')"; fails=$((fails + 1)); fi
+fi
 # ---- registrar: the document register; a replaced or deleted file leaves the store with the commit ----
-# The release is nobody's code: the patch machinery records the key a transaction lets go of, and the resource client, constructed over the DirStore (resource.WithFileStore), deletes it once the commit lands. Demonstrates: @file.released, @file.replaced.
-UPLOAD_DIR=${APP_UPLOAD_DIR:-uploads}
+# The release is nobody's code: the patch machinery records the key a transaction lets go of, with the store its column names, and the resource client, on which the Documents store is wired (resource.WithNamedFileStore[resources.Documents]), deletes it from that store once the commit lands. Demonstrates: @file.released, @file.replaced.
 r=$(req registrar PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/mission-documents/$DOC\",\"value\":{\"title\":\"Escort brief, revised\"}}]"); check "the registrar retitles the brief: an update that leaves the key alone releases nothing" 200 "$r"
 r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "the retitled brief still answers its validator with 304: the object is untouched" 304 "$r"
 printf 'Three survey barges through the debris belt; hold formation at the belt edge. Amended: two barges.' > "$S/brief2.txt"
@@ -257,11 +277,11 @@ DOC_ETAG2=$(awk 'tolower($1)=="etag:" {print $2}' "$S/doc2.hdr" | tr -d '\r')
 if [ -n "$DOC_ETAG2" ] && [ "$DOC_ETAG2" != "$DOC_ETAG" ]; then echo "PASS  the validator changed with the object"; else echo "FAIL  the validator changed with the object: $DOC_ETAG -> $DOC_ETAG2"; fails=$((fails + 1)); fi
 r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "a copy kept under the old validator is stale: 200, not 304" 200 "$r"
 r=$(req marshal GET "$ANVIL/mission-documents?filter=missionId:eq:$CONVOY"); assert_py "the row carries the replacement's name and digest" "$r" "rows[0]['fileName']=='brief2.txt' and __import__('base64').b64decode(rows[0]['digest'])==__import__('hashlib').sha256(open('$S/brief2.txt','rb').read()).digest()"
-if [ -d "$UPLOAD_DIR" ]; then if [ ! -e "$UPLOAD_DIR/$(echo "$DOC_ETAG" | tr -d '"')" ] && [ -e "$UPLOAD_DIR/$(echo "$DOC_ETAG2" | tr -d '"')" ]; then echo "PASS  the store holds the new object and no longer the old one"; else echo "FAIL  the store holds the new object and no longer the old one: $(ls "$UPLOAD_DIR" | tr '\n' ' ')"; fails=$((fails + 1)); fi; fi
+if [ -d "$DOCS_DIR" ]; then if [ ! -e "$DOCS_DIR/$(echo "$DOC_ETAG" | tr -d '"')" ] && [ -e "$DOCS_DIR/$(echo "$DOC_ETAG2" | tr -d '"')" ]; then echo "PASS  the Documents store holds the new object and no longer the old one"; else echo "FAIL  the Documents store holds the new object and no longer the old one: $(ls "$DOCS_DIR" | tr '\n' ' ')"; fails=$((fails + 1)); fi; fi
 r=$(req cadet PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/mission-documents/$DOC\"}]"); check "the cadet holds no Delete on the documents" 403 "$r"
 r=$(req registrar PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/mission-documents/$DOC\"}]"); check "the registrar deletes the brief: the row goes with the commit and the object with the row" 200 "$r"
 r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content"); check "the deleted document's file route answers 404" 404 "$r"
-if [ -d "$UPLOAD_DIR" ]; then if [ ! -e "$UPLOAD_DIR/$(echo "$DOC_ETAG2" | tr -d '"')" ]; then echo "PASS  no object of the deleted document remains in the store"; else echo "FAIL  no object of the deleted document remains in the store"; fails=$((fails + 1)); fi; fi
+if [ -d "$DOCS_DIR" ]; then if [ ! -e "$DOCS_DIR/$(echo "$DOC_ETAG2" | tr -d '"')" ]; then echo "PASS  no object of the deleted document remains in the Documents store"; else echo "FAIL  no object of the deleted document remains in the Documents store"; fails=$((fails + 1)); fi; fi
 r=$(dryrun lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead's dry run of Complete would commit (the Paymaster's checker posts the settlement)" 200 "$r"
 r=$(req lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead completes Hammer's convoy (the method answers with the settlement)" 200 "$r"
 assert_py "the settlement is the fee less the booked expenses" "$r" "rows['fee']=='15000' and rows['expenses']=='1600' and rows['net']=='13400'"

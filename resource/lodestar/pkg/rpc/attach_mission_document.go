@@ -14,12 +14,13 @@ import (
 
 type (
 	// AttachMissionDocument attaches one or more files to a mission. It is the
-	// method that UPLOADS: @upload(max: 5MB) makes the request multipart — the JSON
-	// part first, then the files — and Execute takes resource.Files. The frame has
-	// already bounded the body, decoded and checked the request exactly as a JSON
-	// RPC, located the target mission within the sector, and streamed each file to
-	// the sector's document store under a key it minted. The body's job is to claim
-	// the keys: one MissionDocuments row per file, inside the transaction, whose commit
+	// method that UPLOADS: @upload(max: 5MB, store: resources.Documents) makes the
+	// request multipart (the JSON part first, then the files), names the Documents
+	// store, and Execute takes resource.FilesIn[resources.Documents], whose keys are
+	// typed for that store. The frame has already bounded the body, decoded and checked
+	// the request exactly as a JSON RPC, located the target mission within the sector,
+	// and streamed each file to the Documents store under a key it minted. The body's
+	// job is to claim the keys: one MissionDocuments row per file, inside the transaction, whose commit
 	// is what makes the objects the rows'; if anything before commit fails, the frame
 	// deletes them. The Dispatcher's Execute grant carries the mission's state
 	// (`state NOT IN ('completed', 'failed', 'stood_down')`): documents go on live
@@ -29,11 +30,11 @@ type (
 	// no digest). Reading a document back is the generated file route on
 	// MissionDocuments.StoreKey's @file.
 	//
-	// Demonstrates: @upload, rpc.upload-store, execute-condition, typescript.derived-object, typescript.byte-slice.
+	// Demonstrates: @upload, @upload.store, rpc.upload-store, execute-condition, typescript.derived-object, typescript.byte-slice.
 	//
 	// @rpc
 	// @permissionScope(domain)
-	// @upload(max: 5MB)
+	// @upload(max: 5MB, store: resources.Documents)
 	AttachMissionDocument struct {
 		// @target(Mission)
 		MissionID ccc.UUID
@@ -48,7 +49,7 @@ type (
 )
 
 // Execute runs inside the handler's transaction with the streamed files.
-func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.Files, client *Client) (*Attached, error) {
+func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.FilesIn[resources.Documents], client *Client) (*Attached, error) {
 	uploadedBy := string(resource.CallerFrom(ctx).Permissions.User())
 	now := time.Now().UTC()
 
@@ -61,7 +62,7 @@ func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWr
 		// The digest is read off the stored object; a dry run minted no key and
 		// streamed nothing, and writes no row, so there is nothing to digest.
 		if file.Key != "" {
-			digest, err := client.digest(ctx, file.Key)
+			digest, err := client.digest(ctx, string(file.Key))
 			if err != nil {
 				return nil, err
 			}
@@ -88,11 +89,12 @@ func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWr
 }
 
 // digest is the SHA-256 of the object the frame streamed under key, read back from the
-// store.
+// Documents store; the caller converts the typed key with string(key) at the store
+// boundary, since the store interface is untyped.
 func (c *Client) digest(ctx context.Context, key string) ([]byte, error) {
 	content, err := c.documents.Open(ctx, key)
 	if err != nil {
-		return nil, errors.Wrap(err, "store.DirStore.Open()")
+		return nil, errors.Wrap(err, "resource.FileStore.Open()")
 	}
 	defer content.Body.Close()
 

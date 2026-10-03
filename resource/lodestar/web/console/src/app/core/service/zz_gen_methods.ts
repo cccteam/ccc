@@ -19,6 +19,15 @@ export interface AttachMissionDocumentResult {
   documentIDs: string[];
 }
 
+export interface AttachRefitPhotoConfig {
+  refitId: string | FieldPointer;
+  taskNumber: number | FieldPointer;
+}
+export interface AttachRefitPhoto {
+  refitId: string;
+  taskNumber: number;
+}
+
 export interface BeginRefitConfig {
   refitId: string | FieldPointer;
 }
@@ -280,6 +289,14 @@ const methodMap: MethodMap = {
     fields: [
       { fieldName: 'missionId', displayType: 'uuid' },
       { fieldName: 'title', displayType: 'string' },
+    ],
+  },
+  [Methods.AttachRefitPhoto]: {
+    route: 'attach-refit-photo',
+    upload: { maxBytes: 5242880 },
+    fields: [
+      { fieldName: 'refitId', displayType: 'uuid' },
+      { fieldName: 'taskNumber', displayType: 'number' },
     ],
   },
   [Methods.BeginRefit]: {

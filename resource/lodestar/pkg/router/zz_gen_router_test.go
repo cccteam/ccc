@@ -4,6 +4,7 @@
 package router
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
@@ -344,6 +346,7 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/droids/standing-orders", method: http.MethodGet},
 		foreign{url: "/droids/standing-orders", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/attach-mission-document", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/attach-refit-photo", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/begin-refit", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/claim-mission", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/compile-briefing", method: http.MethodPost},
@@ -466,6 +469,7 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/portal/api/standing-orders", method: http.MethodGet},
 		foreign{url: "/portal/api/standing-orders", method: http.MethodPost},
 		foreign{url: "/portal/api/sectors/testDomain/attach-mission-document", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/attach-refit-photo", method: http.MethodPost},
 		foreign{url: "/portal/api/sectors/testDomain/begin-refit", method: http.MethodPost},
 		foreign{url: "/portal/api/sectors/testDomain/claim-mission", method: http.MethodPost},
 		foreign{url: "/portal/api/sectors/testDomain/compile-briefing", method: http.MethodPost},
@@ -996,6 +1000,27 @@ type routerHandlersStub struct {
 
 func (s *routerHandlersStub) ServerVersion() string {
 	return s.serverVersion
+}
+
+// ResourceClient answers with a mock client carrying every file store New requires,
+// each a stub: the router test never reaches a store.
+func (s *routerHandlersStub) ResourceClient() resource.Client {
+	return resource.NewMockClient(nil, nil, nil, resource.WithFileStore(stubFileStore{}), resource.WithNamedFileStore[resources.Documents](stubFileStore{}))
+}
+
+// stubFileStore satisfies resource.FileStore for the router test.
+type stubFileStore struct{}
+
+func (stubFileStore) Put(context.Context, string, string, io.Reader) error {
+	return nil
+}
+
+func (stubFileStore) Delete(context.Context, []string) error {
+	return nil
+}
+
+func (stubFileStore) Open(context.Context, string) (*resource.Content, error) {
+	return nil, nil
 }
 
 func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {

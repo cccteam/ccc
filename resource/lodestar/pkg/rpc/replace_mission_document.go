@@ -12,27 +12,28 @@ import (
 )
 
 // ReplaceMissionDocument points a mission document at a new file: an @upload method
-// whose one file part the frame has streamed to the store under a minted key, and whose
-// @target locates the document within the sector before the body runs. The body sets the
-// row's key, file name, content type, size, digest, and provenance, and nothing else:
-// the object the row held is released by the patch machinery, which records the old key
-// on the transaction when the update sets the key column, and the resource client's
-// executor deletes it from the store once the commit lands (resource.WithFileStore). A
+// naming the Documents store, whose one file part the frame has streamed there under a
+// minted key, and whose @target locates the document within the sector before the body
+// runs. The body sets the row's key, file name, content type, size, digest, and
+// provenance, and nothing else: the object the row held is released by the patch
+// machinery, which records the old key with its store on the transaction when the
+// update sets the key column, and the resource client's executor deletes it from the
+// Documents store once the commit lands (resource.WithNamedFileStore[Documents]). A
 // dry run streams nothing, sets no real key, and releases nothing, since nothing commits.
 // The Registrar's Execute grant is unconditional: the register is hers in her sector.
 //
-// Demonstrates: @file.replaced, @upload.
+// Demonstrates: @file.replaced, @upload, @upload.store.
 //
 // @rpc
 // @permissionScope(domain)
-// @upload(max: 5MB)
+// @upload(max: 5MB, store: resources.Documents)
 type ReplaceMissionDocument struct {
 	// @target(MissionDocument)
 	DocumentID ccc.UUID
 }
 
 // Execute runs inside the handler's transaction with the streamed file.
-func (m *ReplaceMissionDocument) Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.Files, client *Client) error {
+func (m *ReplaceMissionDocument) Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.FilesIn[resources.Documents], client *Client) error {
 	if len(files) != 1 {
 		return httpio.NewBadRequestMessagef("a replacement is one file; got %d", len(files))
 	}
@@ -43,7 +44,7 @@ func (m *ReplaceMissionDocument) Execute(ctx context.Context, txn resource.ReadW
 	// The digest is read off the stored object; a dry run minted no key and streamed
 	// nothing, so there is nothing to digest.
 	if file.Key != "" {
-		digest, err := client.digest(ctx, file.Key)
+		digest, err := client.digest(ctx, string(file.Key))
 		if err != nil {
 			return err
 		}

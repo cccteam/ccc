@@ -21,10 +21,14 @@ func (RefitTask) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
-// FileKeys names the fields holding a stored file's key (@file): the objects a delete,
-// or a write that points the row at another object, releases once the transaction commits.
-func (RefitTask) FileKeys() []accesstypes.Field {
-	return []accesstypes.Field{"PhotoKey"}
+// FileKeys names the fields holding a stored file's key (@file), each with the store
+// its keys name: the objects a delete, or a write that points the row at another
+// object, releases from that store once the transaction commits, and the columns the
+// orphaned-file cleanup reads a store's live keys from.
+func (RefitTask) FileKeys() []resource.FileKey {
+	return []resource.FileKey{
+		{Field: "PhotoKey", Store: resource.DefaultStore},
+	}
 }
 
 // refitTaskRead mirrors the wire shape the resource routes list

@@ -27,6 +27,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
@@ -37,6 +38,10 @@ type Handlers interface {
 	GeneratedHandlers
 	GeneratedDroidsHandlers
 	GeneratedPortalHandlers
+	// ResourceClient is the client the generated handlers run against. The file
+	// stores the generated code reads and writes are wired on it, and New refuses to
+	// start without them (resource.RequireFileStores).
+	ResourceClient() resource.Client
 	// The default outlet's session handlers: the crew auth's.
 	session.PasswordAuthHandlers
 	// Portal returns the portal outlet's session handlers: the members auth's.
@@ -100,6 +105,12 @@ type Hooks struct {
 // per outlet with its authentication around its generated routes and the outlet's hook,
 // a not-found handler per outlet prefix, and the browser applications.
 func New(h Handlers, hooks Hooks) *chi.Mux {
+	// Every file store the generated code reads or writes is wired on the resource
+	// client, or the server does not start: an unwired store would otherwise surface
+	// on the first upload, file request or releasing delete.
+	if err := resource.RequireFileStores(h.ResourceClient(), resource.DefaultStore, resource.StoreNameFor[resources.Documents]()); err != nil {
+		panic(fmt.Sprintf("router.New: %v", err))
+	}
 	r := chi.NewRouter()
 	// The release this server was built from, which every session outlet's version
 	// check compares a browser application's X-Api-Version against.

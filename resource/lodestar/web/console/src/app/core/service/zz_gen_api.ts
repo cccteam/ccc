@@ -3,7 +3,7 @@ import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullB
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
 import { Clients, ClientContacts, ClientRosters, Commendations, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags } from './zz_gen_resources';
-import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult } from './zz_gen_methods';
+import { AttachMissionDocument, AttachMissionDocumentResult, AttachRefitPhoto, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult } from './zz_gen_methods';
 
 /** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
 export type Feature = 'commendations';
@@ -843,6 +843,7 @@ export const apiDescriptor = defineApiDescriptor({
   },
   methods: {
     [Methods.AttachMissionDocument]: { method: Methods.AttachMissionDocument, property: 'attachMissionDocument', route: 'attach-mission-document', scope: 'domain', answers: true, upload: { maxBytes: 5242880 } },
+    [Methods.AttachRefitPhoto]: { method: Methods.AttachRefitPhoto, property: 'attachRefitPhoto', route: 'attach-refit-photo', scope: 'domain', upload: { maxBytes: 5242880 } },
     [Methods.BeginRefit]: { method: Methods.BeginRefit, property: 'beginRefit', route: 'begin-refit', scope: 'domain' },
     [Methods.ClaimMission]: { method: Methods.ClaimMission, property: 'claimMission', route: 'claim-mission', scope: 'domain' },
     [Methods.CompileBriefing]: { method: Methods.CompileBriefing, property: 'compileBriefing', route: 'compile-briefing', scope: 'domain', answers: true },
@@ -907,6 +908,7 @@ export interface DomainApi {
   expenseManifests: ResourceHandle<ExpenseManifests, ExpenseManifestsKey, 'list' | 'read'>;
   sectorHazardBoards: ResourceHandle<SectorHazardBoards, SectorHazardBoardsKey, 'list' | 'read'>;
   attachMissionDocument: UploadMethodHandle<AttachMissionDocument, AttachMissionDocumentResult>;
+  attachRefitPhoto: UploadMethodHandle<AttachRefitPhoto>;
   beginRefit: MethodHandle<BeginRefit>;
   claimMission: MethodHandle<ClaimMission>;
   compileBriefing: MethodHandle<CompileBriefing, CompileBriefingResult>;

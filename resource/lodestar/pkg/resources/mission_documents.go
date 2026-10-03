@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/resource"
 )
 
 type (
@@ -21,10 +22,23 @@ type (
 		ReceivedAt time.Time `json:"receivedAt"`
 	}
 
+	// Documents is the named store the mission documents live in: a second store beside
+	// the default (the refit photos'), declared by this one type embedding
+	// resource.Store. The type's name gives the store its name (documents), its variable
+	// (APP_FILE_STORE_DOCUMENTS, file://uploads-documents in development, a bucket of
+	// its own on Cloud Run) and nothing else spells it. A column typed
+	// resource.Key[Documents] keeps a file in it, an @upload naming store: Documents
+	// streams to it, and the generated setter of such a column takes the typed key, so
+	// a key minted for the default store does not compile into a document row.
+	//
+	// Demonstrates: filestore.named, @file.typed.
+	Documents struct{ resource.Store }
+
 	// MissionDocument is a file attached to a mission: a brief, a chart, a manifest. The
 	// row is what the transaction claims when AttachMissionDocument runs: the frame streams
-	// each file to the store under a minted key, the body records the key here, and the
-	// commit claims it. The row says which stored object is its file, and the generator
+	// each file to the Documents store under a minted key, the body records the key here,
+	// typed resource.Key[Documents] so a key of another store does not compile into the
+	// column, and the commit claims it. The row says which stored object is its file, and the generator
 	// serves that file under the row's read route: StoreKey's @file makes
 	// GET .../mission-documents/{id}/content answer the bytes, typed by ContentType and
 	// named by FileName, gated by Read on MissionDocuments and a Read grant on content,
@@ -33,10 +47,11 @@ type (
 	// it; NOT NULL, it leaves the resource no Create, since a row is added by the upload
 	// method that stores its file, while Update and Delete are ordinary. A row deleted
 	// through the patch handler, or pointed at another object by ReplaceMissionDocument,
-	// releases the object it held: the patch machinery records the key on the
-	// transaction, and the resource client, constructed over the DirStore
-	// (pkg/config/data.go, resource.WithFileStore), deletes it once the commit lands;
-	// nothing here or in the frames does that, and a transaction that does not commit
+	// releases the object it held: the patch machinery records the key with its store on
+	// the transaction, and the resource client, on which the Documents store is wired
+	// (pkg/config/data.go, resource.WithNamedFileStore[Documents]), deletes it from that
+	// store once the commit lands; nothing here or in the frames does that, and a
+	// transaction that does not commit
 	// releases nothing. The resource serves the listing on the console and on the client
 	// portal, whose grant holds no content, so the client lists documents and cannot
 	// download them. Provenance is the document's origin as one JSON column typed by a
@@ -45,7 +60,7 @@ type (
 	// generator, a string in both clients' interfaces (encoding/json carries it as base64)
 	// with display type bytes, never a number[].
 	//
-	// Demonstrates: @upload, @file.stored, @file.released, outlet.shared, typescript.derived-object, typescript.byte-slice.
+	// Demonstrates: @upload, @upload.store, @file.stored, @file.typed, @file.released, outlet.shared, typescript.derived-object, typescript.byte-slice.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -62,9 +77,9 @@ type (
 		ContentType string   `spanner:"ContentType"`
 		Size        int64    `spanner:"Size"`
 		// @file(name: FileName, type: ContentType)
-		StoreKey   string    `spanner:"StoreKey"`
-		UploadedBy string    `spanner:"UploadedBy"`
-		UploadedAt time.Time `spanner:"UploadedAt"`
+		StoreKey   resource.Key[Documents] `spanner:"StoreKey"`
+		UploadedBy string                  `spanner:"UploadedBy"`
+		UploadedAt time.Time               `spanner:"UploadedAt"`
 		// Provenance is nullable: a document filed before the origin was recorded has none.
 		Provenance *Provenance `spanner:"Provenance"`
 		Digest     []byte      `spanner:"Digest"`

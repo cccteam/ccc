@@ -57,6 +57,7 @@ export const Resources = {
 
 export const Methods = {
   AttachMissionDocument: 'AttachMissionDocument' as Method,
+  AttachRefitPhoto: 'AttachRefitPhoto' as Method,
   BeginRefit: 'BeginRefit' as Method,
   ClaimMission: 'ClaimMission' as Method,
   CompileBriefing: 'CompileBriefing' as Method,
@@ -705,6 +706,13 @@ export namespace AttachMissionDocument {
   export const fieldName = {
     missionId: 'missionId' as FieldName,
     title: 'title' as FieldName,
+  };
+}
+
+export namespace AttachRefitPhoto {
+  export const fieldName = {
+    refitId: 'refitId' as FieldName,
+    taskNumber: 'taskNumber' as FieldName,
   };
 }
 

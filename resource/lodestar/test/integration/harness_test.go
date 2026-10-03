@@ -11,10 +11,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -23,13 +21,14 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/filestore"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
@@ -189,17 +188,17 @@ func (s *staticAccess) UserHasGrants(_ context.Context, _ accesstypes.User, _ ac
 	return len(s.g) > 0, nil
 }
 
-func (s *staticAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
-	return s.decide(perm, resources), nil
+func (s *staticAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, names ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	return s.decide(perm, names), nil
 }
 
-func (s *staticAccess) CheckRoleResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.Role, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
-	return s.decide(perm, resources), nil
+func (s *staticAccess) CheckRoleResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.Role, _ accesstypes.Scope, perm accesstypes.Permission, names ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	return s.decide(perm, names), nil
 }
 
-func (s *staticAccess) decide(perm accesstypes.Permission, resources []accesstypes.Resource) accesstypes.Decisions {
-	decisions := make(accesstypes.Decisions, len(resources))
-	for _, res := range resources {
+func (s *staticAccess) decide(perm accesstypes.Permission, names []accesstypes.Resource) accesstypes.Decisions {
+	decisions := make(accesstypes.Decisions, len(names))
+	for _, res := range names {
 		if slices.Contains(s.g[perm], res) {
 			decisions[res] = accesstypes.Granted()
 		} else {
@@ -222,7 +221,7 @@ type testConfigurer struct {
 	membersAccess access.Controller
 	crewAuth      *crew.Auth
 	membersAuth   *members.Auth
-	documents     *store.DirStore
+	stores        *testStores
 	live          live.Service
 	management    access.Handlers
 	tenants       *resource.TenantRoster
@@ -248,57 +247,43 @@ func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
-// Documents is the document store the upload frame streams into; a suite that asserts on
-// the files passes its own directory through newAppWithDocuments, every other suite
-// shares one temporary directory for the process.
-func (c *testConfigurer) Documents() *store.DirStore {
-	if c.documents == nil {
-		c.documents = sharedDocuments()
+// Stores are the two memory stores the App is wired over, the default store (the refit
+// photos') and the Documents store (the mission documents'); a suite that asserts on the
+// objects passes its own through newAppWithStores, every other suite gets a fresh pair.
+func (c *testConfigurer) Stores() *testStores {
+	if c.stores == nil {
+		c.stores = newTestStores()
 	}
 
-	return c.documents
+	return c.stores
 }
 
-var (
-	sharedDocumentsOnce sync.Once
-	sharedDocumentStore *store.DirStore
-	sharedDocumentsDir  string
-)
-
-// sharedDocuments opens one document store for the suites that never look at the files;
-// TestMain removes its directory after the run.
-func sharedDocuments() *store.DirStore {
-	sharedDocumentsOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "lodestar-documents-*")
-		if err != nil {
-			panic(err)
-		}
-		sharedDocumentsDir = dir
-		sharedDocumentStore, err = store.NewDirStore(dir)
-		if err != nil {
-			panic(err)
-		}
-	})
-
-	return sharedDocumentStore
+// testStores are the memory stores (mem://) an App under test is wired over, standing
+// where production's data level opens APP_FILE_STORE and APP_FILE_STORE_DOCUMENTS.
+type testStores struct {
+	files     *filestore.Mem
+	documents *filestore.Mem
 }
 
-// closeSharedDocuments tears the shared document store down after the run.
-func closeSharedDocuments() {
-	if sharedDocumentStore != nil {
-		_ = sharedDocumentStore.Close()
-		_ = os.RemoveAll(sharedDocumentsDir)
-	}
+func newTestStores() *testStores {
+	return &testStores{files: filestore.NewMem(), documents: filestore.NewMem()}
+}
+
+// options wires the stores on a resource client as production's data level does: the
+// default under resource.WithFileStore, the Documents store under its type.
+func (s *testStores) options() []resource.ClientOption {
+	return []resource.ClientOption{resource.WithFileStore(s.files), resource.WithNamedFileStore[resources.Documents](s.documents)}
 }
 
 // CursorKey seals the cursors the suites walk; one key per process is enough, since
 // every suite's requests go through the same App.
 func (c *testConfigurer) CursorKey() *resource.CursorKey { return testCursorKey }
 
-// ResourceClient is the client over the test database and the document store, as
-// production's is: a committed transaction's released objects are deleted from the store.
+// ResourceClient is the client over the test database and the two stores, as
+// production's is: the generated frames read each store off it, and a committed
+// transaction's released objects are deleted from their store.
 func (c *testConfigurer) ResourceClient() resource.Client {
-	return resource.NewSpannerClient(c.db.Client, resource.WithFileStore(c.Documents()))
+	return resource.NewSpannerClient(c.db.Client, c.Stores().options()...)
 }
 
 func (c *testConfigurer) Access() access.Controller { return c.access }
@@ -390,10 +375,10 @@ func withHandWrittenRoutes(a *app.App) http.Handler {
 	return r
 }
 
-// newApp assembles the App over the test database, a permission engine, and a document
-// store (nil for the shared one).
-func newApp(db *initiator.SpannerDB, controller access.Controller, documents *store.DirStore) *app.App {
-	return app.New(&testConfigurer{db: db, access: controller, membersAccess: membersEngineFor(controller), documents: documents})
+// newApp assembles the App over the test database, a permission engine, and the file
+// stores (nil for a fresh pair).
+func newApp(db *initiator.SpannerDB, controller access.Controller, stores *testStores) *app.App {
+	return app.New(&testConfigurer{db: db, access: controller, membersAccess: membersEngineFor(controller), stores: stores})
 }
 
 // membersEngineFor pairs the shared crew engine with the shared members engine, so a
@@ -422,10 +407,10 @@ func deadline(days int) string {
 	return time.Now().UTC().AddDate(0, 0, days).Format(time.RFC3339)
 }
 
-// newAppWithDocuments assembles the App over the given document store, for the suites
-// that assert on the files the upload frame writes.
-func newAppWithDocuments(db *initiator.SpannerDB, controller access.Controller, documents *store.DirStore) *app.App {
-	return newApp(db, controller, documents)
+// newAppWithStores assembles the App over the given stores, for the suites that assert
+// on the objects the upload frame writes.
+func newAppWithStores(db *initiator.SpannerDB, controller access.Controller, stores *testStores) *app.App {
+	return newApp(db, controller, stores)
 }
 
 // portalUsers are the identities that reach the application through the portal's session
@@ -644,10 +629,10 @@ func opPath(sector, rest string) string {
 type served struct {
 	server *httptest.Server
 	// access is the crew auth's engine, members the members auth's.
-	access    *access.Client
-	members   *access.Client
-	documents *store.DirStore
-	db        *initiator.SpannerDB
+	access  *access.Client
+	members *access.Client
+	stores  *testStores
+	db      *initiator.SpannerDB
 }
 
 // newServed provisions the database the way the bootstrap does (schema, the demo world,
@@ -732,23 +717,14 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		}
 	}
 
-	documents, err := store.NewDirStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("store.NewDirStore() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := documents.Close(); err != nil {
-			t.Errorf("store.DirStore.Close() error = %v", err)
-		}
-	})
-
+	stores := newTestStores()
 	a := app.New(&testConfigurer{
 		db:            db,
 		access:        crewAuth.Access(),
 		membersAccess: membersAuth.Access(),
 		crewAuth:      crewAuth,
 		membersAuth:   membersAuth,
-		documents:     documents,
+		stores:        stores,
 		live:          fake,
 		management:    crewAuth.Access().Handlers(httpio.Log),
 		version:       version,
@@ -756,7 +732,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
 
-	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), documents: documents, db: db}
+	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db}
 }
 
 // outletXSRF names the XSRF cookie each session-serving outlet's auth issues: the browser

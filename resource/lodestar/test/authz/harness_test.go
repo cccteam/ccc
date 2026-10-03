@@ -10,12 +10,13 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/filestore"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session/sessioninfo"
@@ -55,17 +56,17 @@ func (f *fakeAccess) UserHasGrants(_ context.Context, _ accesstypes.User, _ acce
 	return len(f.g) > 0, nil
 }
 
-func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
-	return f.decide(perm, resources), nil
+func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, names ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	return f.decide(perm, names), nil
 }
 
-func (f *fakeAccess) CheckRoleResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.Role, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
-	return f.decide(perm, resources), nil
+func (f *fakeAccess) CheckRoleResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.Role, _ accesstypes.Scope, perm accesstypes.Permission, names ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	return f.decide(perm, names), nil
 }
 
-func (f *fakeAccess) decide(perm accesstypes.Permission, resources []accesstypes.Resource) accesstypes.Decisions {
-	decisions := make(accesstypes.Decisions, len(resources))
-	for _, res := range resources {
+func (f *fakeAccess) decide(perm accesstypes.Permission, names []accesstypes.Resource) accesstypes.Decisions {
+	decisions := make(accesstypes.Decisions, len(names))
+	for _, res := range names {
 		if f.g[perm] {
 			decisions[res] = accesstypes.Granted()
 		} else {
@@ -81,15 +82,15 @@ func (f *fakeAccess) decide(perm accesstypes.Permission, resources []accesstypes
 // owns no router, these suites compose the API surface through router.NewTestRouter,
 // and nothing on that path touches the session.
 type testConfigurer struct {
-	db        *initiator.SpannerDB
-	g         grants
-	documents *store.DirStore
-	live      *live.Fake
-	tenants   *resource.TenantRoster
+	db      *initiator.SpannerDB
+	g       grants
+	stores  []resource.ClientOption
+	live    *live.Fake
+	tenants *resource.TenantRoster
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
-	return resource.NewSpannerClient(c.db.Client, resource.WithFileStore(c.documents))
+	return resource.NewSpannerClient(c.db.Client, c.stores...)
 }
 
 // CursorKey seals the cursors the suites' paged lists issue; any key serves a test process.
@@ -126,9 +127,6 @@ func (c *testConfigurer) AppVersion() string { return "dev" }
 func (c *testConfigurer) ConsoleDist() string { return "" }
 
 func (c *testConfigurer) PortalDist() string { return "" }
-
-// Documents is a store under the test's temporary directory.
-func (c *testConfigurer) Documents() *store.DirStore { return c.documents }
 
 // DroidsAPIKey is unused by these suites: the matrix drives the bare test router, which
 // carries no outlet middleware.
@@ -167,22 +165,17 @@ func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
 func newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handler {
 	t.Helper()
 
-	documents, err := store.NewDirStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("store.NewDirStore() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := documents.Close(); err != nil {
-			t.Errorf("store.DirStore.Close() error = %v", err)
-		}
-	})
+	// The two memory stores production opens from APP_FILE_STORE and
+	// APP_FILE_STORE_DOCUMENTS, wired as the data level wires them; the matrix never
+	// stores a file, and the generated router requires both at start.
+	stores := []resource.ClientOption{resource.WithFileStore(filestore.NewMem()), resource.WithNamedFileStore[resources.Documents](filestore.NewMem())}
 
 	// The suite's domain value is added to the roster with Add, the generated matrix's
 	// contract: the empty schema holds no tenant row for Start to read.
-	tenants := app.NewSectorRoster(resource.NewSpannerClient(db.Client, resource.WithFileStore(documents)))
+	tenants := app.NewSectorRoster(resource.NewSpannerClient(db.Client, stores...))
 	tenants.Add(testDomain)
 
-	a := app.New(&testConfigurer{db: db, g: g, documents: documents, tenants: tenants})
+	a := app.New(&testConfigurer{db: db, g: g, stores: stores, tenants: tenants})
 	// The App reads its feature flags as it is built, so a suite that flips a flag
 	// before newTestHandler drives the App in that state; Start reports a copy that
 	// could not be read and follows the table until the test ends.

@@ -15,14 +15,13 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 )
 
 // frameSandboxPolicy is the policy the frame adds to every served file.
 const frameSandboxPolicy = "sandbox; default-src 'none'"
 
-// securedDocumentWorld is a fresh demo world whose App writes documents into a directory
-// the test owns, served through the generated routes behind the application's
+// securedDocumentWorld is a fresh demo world whose App writes documents into memory
+// stores the test owns, served through the generated routes behind the application's
 // SecurityHeaders middleware, where production's router mounts them: the response
 // carries the application's policy for the frame to add its own beside.
 func securedDocumentWorld(t *testing.T) http.Handler {
@@ -32,12 +31,7 @@ func securedDocumentWorld(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	documents, err := store.NewDirStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("store.NewDirStore() error = %v", err)
-	}
-	t.Cleanup(func() { _ = documents.Close() })
-	a := newAppWithDocuments(db, demoAccessClient(t), documents)
+	a := newAppWithStores(db, demoAccessClient(t), newTestStores())
 
 	return a.SecurityHeaders(router.NewTestRouter(a))
 }

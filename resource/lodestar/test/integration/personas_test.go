@@ -72,6 +72,8 @@ func TestDemoPersonaViews(t *testing.T) {
 		{name: "the marshal holds no purse", user: "marshal", target: sectorPath(anvil, "expense-manifests"), wantStatus: http.StatusForbidden},
 		{name: "the registrar's document register, empty until a document is attached", user: "registrar", target: sectorPath(anvil, "mission-documents"), wantStatus: http.StatusOK, wantRows: 0},
 		{name: "the registrar's register is Anvil's alone", user: "registrar", target: sectorPath(bastion, "mission-documents"), wantStatus: http.StatusNotFound},
+		{name: "the photographer lists the hangar's tasks", user: "photographer", target: sectorPath(anvil, "refit-tasks?limit=100"), wantStatus: http.StatusOK},
+		{name: "the photographer's hangar is Anvil's alone", user: "photographer", target: sectorPath(bastion, "refit-tasks"), wantStatus: http.StatusNotFound},
 		{name: "the cadet has no hangar deck", user: "cadet", target: sectorPath(anvil, "refits"), wantStatus: http.StatusForbidden},
 		{name: "the client's grants answer by company wherever her session group binds them", user: "client", target: sectorPath(anvil, "missions?limit=200"), wantStatus: http.StatusOK, wantRows: 10},
 		{name: "the bulletin officer issues a bulletin while the authorization holds", user: "marshal", target: "/console/api/issue-bulletin", wantStatus: http.StatusOK},
