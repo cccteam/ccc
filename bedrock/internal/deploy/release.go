@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 )
@@ -271,16 +272,62 @@ func productionLine(live *Record) (line, problem string) {
 	return m[1] + "." + m[2], ""
 }
 
+// seedDirBeside is the seed directory beside the schema migrations directory,
+// root-relative: where a release's build applies the development seed from, and what
+// tells a seed file in a record from a schema file.
+func seedDirBeside(migrationsDir string) string {
+	return path.Join(path.Dir(migrationsDir), derive.SeedDir)
+}
+
+// seedGone lists the seed files the environment's live record holds that the tree under
+// root no longer carries as applied: edited, renumbered or removed since. A release's
+// build restores the environment itself on this list (seedChanged), and the hotfix
+// preview reads it first in a seeded environment, since that restore makes what the
+// database holds nothing to the hotfix. Only the files in seedDir count; a schema file
+// is the hotfix check's concern.
+func seedGone(live *Record, seedDir, root string) ([]string, error) {
+	var gone []string
+	for _, m := range live.Migrations {
+		if m.Dir != seedDir {
+			continue
+		}
+		hash, err := hashFile(filepath.Join(root, filepath.FromSlash(m.Dir), m.Name))
+		if err != nil {
+			return nil, err
+		}
+		if hash != m.Hash {
+			gone = append(gone, path.Join(m.Dir, m.Name))
+		}
+	}
+
+	return gone, nil
+}
+
+// seedRestoreReason is why a release's build restores the environment when the seed
+// changed, in the words the record carries (RESTORE_REASON) and the hotfix preview
+// promises.
+func seedRestoreReason(live *Record, gone []string) string {
+	return fmt.Sprintf("the seed changed since %s applied it (build %s): %s, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start", live.Version, live.Build, strings.Join(gone, ", "))
+}
+
 // hotfixPreview is a pull-request build's look ahead for a fix on a hotfix line: what
 // each environment's release check will say to the line's next release, read from the
 // environment's live deployment record as that environment's plan identity (the
 // identity the build already plans the environment as; _RECORDS_BUCKETS and
-// _PLAN_IDENTITIES name the buckets and identities). It warns and never refuses: the
-// developer learns before the merge that a restore comes first, and where.
+// _PLAN_IDENTITIES name the buckets and identities). In an environment the placement's
+// seed list names, the placement read from the pull request's tree, the seed rule is
+// read first: a seed the tree no longer carries as applied makes the release's build
+// restore the environment itself, and the hotfix is taken. It warns and never refuses:
+// the developer learns before the merge that a restore comes first, and where, or that
+// the release's build makes it.
 func hotfixPreview(ctx context.Context, open StoreAsFunc, subs map[string]string, w Workspace, out io.Writer) error {
-	line := subs[baseBranchSub]
+	placement, err := checkoutPlacement(w, "the seed list is written")
+	if err != nil {
+		return err
+	}
+	p := &hotfixPreviewer{open: open, w: w, app: subs[appSub], line: subs[baseBranchSub], seedDir: seedDirBeside(subs[migrationsSub]), seeded: placement.SeedEnvironments()}
 	buckets, identities := pairs(subs[recordsBucketsSub]), pairs(subs[planIdentitiesSub])
-	fmt.Fprintf(out, "Hotfix preview: this pull request is against %s, and each environment's release check will say this to the line's next release, read from the environment's live deployment record:\n", line)
+	fmt.Fprintf(out, "Hotfix preview: this pull request is against %s, and each environment's release check will say this to the line's next release, read from the environment's live deployment record:\n", p.line)
 	for _, env := range strings.Split(subs[environmentsSub], ",") {
 		if env == "" {
 			continue
@@ -291,7 +338,7 @@ func hotfixPreview(ctx context.Context, open StoreAsFunc, subs map[string]string
 
 			continue
 		}
-		answer, err := previewEnvironment(ctx, open, w, subs[appSub], env, bucket, identity, line)
+		answer, err := p.environment(ctx, env, bucket, identity)
 		if err != nil {
 			fmt.Fprintf(out, "  %s: its records could not be read as %s: %v\n", env, identity, err)
 
@@ -303,14 +350,25 @@ func hotfixPreview(ctx context.Context, open StoreAsFunc, subs map[string]string
 	return nil
 }
 
-// previewEnvironment is one environment's answer in the hotfix preview.
-func previewEnvironment(ctx context.Context, open StoreAsFunc, w Workspace, app, env, bucket, identity, line string) (string, error) {
-	store, err := open(ctx, identity)
-	if err != nil {
-		return "", err
-	}
-	defer store.Close()
-	live, err := newestLiveRelease(ctx, store, bucket, app, env)
+// hotfixPreviewer is what every environment's answer in the hotfix preview reads: the
+// records as each environment's plan identity, the pull request's tree, the line the
+// pull request is against, the seed directory beside the schema migrations and the
+// environments the tree's placement seeds.
+type hotfixPreviewer struct {
+	open      StoreAsFunc
+	w         Workspace
+	app, line string
+	seedDir   string
+	seeded    []string
+}
+
+// environment is one environment's answer. Production's door comes first: the line it
+// runs. Then, in a seeded environment whose record holds a seed file the tree no longer
+// carries as applied, the answer is the seed rule's: the release's build restores the
+// environment itself and takes the hotfix, whatever else the database holds. Last, the
+// files the database holds against the tree, as the release check compares them.
+func (p *hotfixPreviewer) environment(ctx context.Context, env, bucket, identity string) (string, error) {
+	live, err := previewLive(ctx, p.open, p.app, env, bucket, identity)
 	if err != nil {
 		return "", err
 	}
@@ -322,11 +380,20 @@ func previewEnvironment(ctx context.Context, open StoreAsFunc, w Workspace, app,
 		if problem != "" {
 			return fmt.Sprintf("%s: %s, so the line cannot be checked against it.", env, problem), nil
 		}
-		if "hotfix/"+l+".x" != line {
-			return fmt.Sprintf("%s: WILL REFUSE the hotfix at production's door: production runs %s, line %s; this hotfix is on %s. A hotfix is based on the release production runs.", env, live.Version, l, line), nil
+		if "hotfix/"+l+".x" != p.line {
+			return fmt.Sprintf("%s: WILL REFUSE the hotfix at production's door: production runs %s, line %s; this hotfix is on %s. A hotfix is based on the release production runs.", env, live.Version, l, p.line), nil
 		}
 	}
-	behind, err := behindRecord(w, live, env, "this pull request", "the hotfix")
+	if slices.Contains(p.seeded, env) {
+		gone, err := seedGone(live, p.seedDir, string(p.w))
+		if err != nil {
+			return "", err
+		}
+		if len(gone) > 0 {
+			return fmt.Sprintf("%s: would take the hotfix, after the restore the release's build decides itself: %s, and what the database holds is not compared with the hotfix.", env, seedRestoreReason(live, gone)), nil
+		}
+	}
+	behind, err := behindRecord(p.w, live, env, "this pull request", "the hotfix")
 	if err != nil {
 		return "", err
 	}

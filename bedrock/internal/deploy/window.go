@@ -107,11 +107,12 @@ func (d windowDecision) facts() map[string]string {
 }
 
 // checkoutPlacement reads the placement of the checkout: the stack's, beside the
-// infrastructure files, at the commit the build runs.
-func checkoutPlacement(w Workspace) (*derive.Placement, error) {
+// infrastructure files, at the commit the build runs. written says what the caller
+// reads from it, for the error when it does not read ("the seed list is written").
+func checkoutPlacement(w Workspace, written string) (*derive.Placement, error) {
 	p, err := derive.ReadPlacement(filepath.Join(string(w), stackDir, placementFile))
 	if err != nil {
-		return nil, errors.Wrapf(err, "the checkout's placement (%s), where the maintenance windows are written", filepath.Join(stackDir, placementFile))
+		return nil, errors.Wrapf(err, "the checkout's placement (%s), where %s", filepath.Join(stackDir, placementFile), written)
 	}
 
 	return p, nil
@@ -157,7 +158,7 @@ func readOldest(w Workspace, routerDir string, out io.Writer) (*derive.OldestAns
 func windowCheck(ctx context.Context, clients *Clients, w Workspace, build *Build, env map[string]string, routerDir string, out io.Writer) error {
 	subs := build.Substitutions
 	tag, environment := subs[tagSub], subs[envSub]
-	placement, err := checkoutPlacement(w)
+	placement, err := checkoutPlacement(w, "the maintenance windows are written")
 	if err != nil {
 		return err
 	}
@@ -369,7 +370,7 @@ func noWindow(env map[string]string, build *Build) string {
 // writtenSetting is the environment's window as the checkout's placement writes it; the
 // release check refused a run that needs the window without one.
 func writtenSetting(w Workspace, environment string) (*derive.MaintenanceWindow, error) {
-	placement, err := checkoutPlacement(w)
+	placement, err := checkoutPlacement(w, "the maintenance windows are written")
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +465,7 @@ func windowPreview(ctx context.Context, open StoreAsFunc, w Workspace, subs map[
 	if err != nil {
 		return err
 	}
-	placement, err := checkoutPlacement(w)
+	placement, err := checkoutPlacement(w, "the maintenance windows are written")
 	if err != nil {
 		return err
 	}

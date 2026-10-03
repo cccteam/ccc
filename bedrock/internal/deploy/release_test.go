@@ -39,6 +39,12 @@ const (
 	releaseFilePath = routerDir + "/zz_gen_release.json"
 )
 
+// seededPlacement is the test placement with the seed list given (a JSON list of
+// environments).
+func seededPlacement(seed string) string {
+	return strings.TrimSuffix(testPlacement(""), "}\n") + `, "seed": ` + seed + "}\n"
+}
+
 // liveIn is a live record of version in env.
 func liveIn(env, version string) string {
 	return `{"app": "quill", "env": "` + env + `", "version": "` + version + `", "status": "live", "timestamp": "2026-09-28T05:30:00Z", "build": "b-5"}`
@@ -111,7 +117,10 @@ func TestValidateRelease(t *testing.T) {
 	first := migrationFile{dir: "schema/migrations", name: "000001_Init.up.sql", content: "create table t"}
 	refits := migrationFile{dir: "schema/migrations", name: "000002_Refits.up.sql", content: "alter table t"}
 	refitsDown := migrationFile{dir: "schema/migrations", name: "000002_Refits.down.sql", content: "alter table t drop"}
-	// stgLive is stg's live record of a release, listing the files its build applied.
+	// seed is a seed file a seeded environment's record lists beside the schema files.
+	seed := migrationFile{dir: "schema/devseed", name: "000001_Seed.up.sql", content: "insert a"}
+	// stgLive is stg's live record of a release, listing the files its build applied;
+	// tstLive is the same record in tst.
 	stgLive := func(version string, applied ...migrationFile) string {
 		var list []string
 		for _, m := range applied {
@@ -119,6 +128,14 @@ func TestValidateRelease(t *testing.T) {
 		}
 
 		return `{"app": "quill", "env": "stg", "version": "` + version + `", "status": "live", "timestamp": "2026-09-28T05:30:00Z", "build": "b-5", "migrations": [` + strings.Join(list, ", ") + `]}`
+	}
+	tstLive := func(version string, applied ...migrationFile) string {
+		return strings.Replace(stgLive(version, applied...), `"env": "stg"`, `"env": "tst"`, 1)
+	}
+	// seededPR is a pull request against hotfix/1.2.x previewed in tst alone.
+	seededPR := map[string]string{
+		tagSub: "", prNumberSub: "7", baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst",
+		planIdentitiesSub: "tst=plan-tst@x.iam", recordsBucketsSub: "tst=tst-records",
 	}
 	tests := []struct {
 		name string
@@ -405,6 +422,46 @@ func TestValidateRelease(t *testing.T) {
 			objects: map[string]string{"gs://prd-records/quill/prd/v1.2.5/b-7.json": strings.Replace(stgLive("v1.2.5", first, refits), `"env": "stg"`, `"env": "prd"`, 1)},
 			files:   map[string]string{first.path(): first.content},
 			wantOut: []string{"prd: WILL REFUSE the hotfix: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which this pull request does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5."},
+		},
+		{
+			name:      "a seeded environment whose seed is not in the tree as applied is told the release's build restores it itself and takes the hotfix, before any schema file is compared",
+			env:       connected,
+			subs:      seededPR,
+			placement: seededPlacement(`["tst"]`),
+			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": tstLive("v1.3.0", first, refits, seed)},
+			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
+			wantOut: []string{
+				"tst: would take the hotfix, after the restore the release's build decides itself: the seed changed since v1.3.0 applied it (build b-5): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start, and what the database holds is not compared with the hotfix.",
+			},
+			wantAbsent: []string{"WILL REFUSE", "000002_Refits"},
+		},
+		{
+			name:       "a seeded environment whose seed matches the tree is answered on its schema files: refused on one the pull request does not carry",
+			env:        connected,
+			subs:       seededPR,
+			placement:  seededPlacement(`["tst"]`),
+			objects:    map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": tstLive("v1.3.0", first, refits, seed)},
+			files:      map[string]string{first.path(): first.content, seed.path(): seed.content},
+			wantOut:    []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore tst to the hotfix first: a restore run replaces the database and skips this check."},
+			wantAbsent: []string{"the restore the release's build decides itself"},
+		},
+		{
+			name:      "a seeded environment whose seed matches the tree and whose schema files are all in it would take the hotfix",
+			env:       connected,
+			subs:      seededPR,
+			placement: seededPlacement(`["tst"]`),
+			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": tstLive("v1.3.0", first, seed)},
+			files:     map[string]string{first.path(): first.content, seed.path(): seed.content},
+			wantOut:   []string{"tst: would take the hotfix; its database holds nothing this pull request does not carry (2 file(s) recorded by v1.3.0, build b-5)."},
+		},
+		{
+			name:      "an environment off the seed list holding a changed seed file is answered as before: refused on the file",
+			env:       connected,
+			subs:      seededPR,
+			placement: seededPlacement(`["stg"]`),
+			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": tstLive("v1.3.0", first, seed)},
+			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
+			wantOut:   []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/devseed/000001_Seed.up.sql with other content than this pull request carries (by v1.3.0's record); restore tst to the hotfix first: a restore run replaces the database and skips this check."},
 		},
 		{
 			name: "a pull request against a hotfix line whose environment's records cannot be read is told so and goes on",

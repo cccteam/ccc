@@ -795,7 +795,12 @@ plan identity (the identity the build already plans the environment as; `2-env` 
 the read of its own environment's records) and says, environment by environment, whether
 the hotfix would be taken or refused there, naming the file the database holds that the
 pull request does not carry, or the line production runs, so the developer learns before
-the merge that a restore comes first, and where. The preview warns and never refuses.
+the merge that a restore comes first, and where. In an environment the placement's seed
+list names (the placement in the pull request's tree), the preview reads the seed rule
+first: when the environment's record holds a seed file that is not in the tree as
+applied, the release's build will restore the environment itself and take the hotfix,
+and the preview says so, naming the file; the schema migrations are compared only when
+the seed matches. The preview warns and never refuses.
 
 The restore is a run of the environment's version trigger for the release, carrying the
 instruction `_RESTORE` (`empty`, or `production-backup` for the environment on

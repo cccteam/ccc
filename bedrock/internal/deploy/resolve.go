@@ -18,7 +18,6 @@ import (
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/oauth2/google"
 
-	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 )
 
@@ -608,7 +607,8 @@ func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string
 // the seed list never applied the seed, so a changed seed is nothing to it; production is
 // never on the list, and is never restored by a run. Only a live record of a release
 // counts: a preview is a build whose traffic never shifted, and a pull request's record is
-// its own environment's.
+// its own environment's. The hotfix preview reads the same list against a pull request's
+// tree (hotfixPreviewer), so what it promises is what this decides.
 func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
 	if f.Tag == "" || f.Restore != "" || !f.RunMigrations || f.Environment == prdEnvironment || f.Substitutions[seedSub] != trueValue {
 		return nil
@@ -617,7 +617,7 @@ func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, 
 	if bucket == "" || app == "" || dir == "" {
 		return nil
 	}
-	seedDir := path.Join(path.Dir(dir), derive.SeedDir)
+	seedDir := seedDirBeside(dir)
 	store, err := open(ctx)
 	if err != nil {
 		return err
@@ -630,24 +630,15 @@ func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, 
 	if live == nil {
 		return nil
 	}
-	var gone []string
-	for _, m := range live.Migrations {
-		if m.Dir != seedDir {
-			continue
-		}
-		hash, err := hashFile(filepath.Join(source, filepath.FromSlash(m.Dir), m.Name))
-		if err != nil {
-			return err
-		}
-		if hash != m.Hash {
-			gone = append(gone, path.Join(m.Dir, m.Name))
-		}
+	gone, err := seedGone(live, seedDir, source)
+	if err != nil {
+		return err
 	}
 	if len(gone) == 0 {
 		return nil
 	}
 	f.Restore, f.Requester = restoreEmpty, "release "+f.Tag
-	f.RestoreReason = fmt.Sprintf("the seed changed since %s applied it (build %s): %s, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start", live.Version, live.Build, strings.Join(gone, ", "))
+	f.RestoreReason = seedRestoreReason(live, gone)
 	fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, %s.\n", f.Environment, f.Restore, f.Tag, f.RestoreReason)
 
 	return nil
