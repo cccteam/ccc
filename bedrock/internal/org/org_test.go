@@ -791,22 +791,23 @@ func TestTeamGroup(t *testing.T) {
 			},
 		},
 		{
-			name: "the service set up on the project before its first entitlement: the service agent and its role, the entitlements after them",
+			name: "the service set up on the project before its first entitlement: the organization's service agent holds its role, the entitlements after it",
 			path: "2-env/team-group.tf",
 			want: []string{
-				"resource \"google_project_service_identity\" \"pam\" {\n  provider = google-beta\n\n  project = local.project_id\n  service = \"privilegedaccessmanager.googleapis.com\"\n}\n",
-				"resource \"google_project_iam_member\" \"pam_service_agent\" {\n  project = local.project_id\n  role    = \"roles/privilegedaccessmanager.serviceAgent\"\n  member  = \"serviceAccount:${google_project_service_identity.pam.email}\"\n}\n",
+				"resource \"google_project_iam_member\" \"pam_service_agent\" {\n  project = local.project_id\n  role    = \"roles/privilegedaccessmanager.serviceAgent\"\n  member  = \"serviceAccount:service-org-${local.org.org_id}@gcp-sa-pam.iam.gserviceaccount.com\"\n}\n",
 				"  depends_on = [google_project_iam_member.pam_service_agent]\n}\n",
 			},
+			absent: []string{"google_project_service_identity\" \"pam\""},
 		},
 		{
 			name: "the shared instance's project set up the same way before its entitlements",
 			path: "2-spn/entitlements.tf",
 			want: []string{
-				"resource \"google_project_service_identity\" \"pam\" {\n  provider = google-beta\n\n  project = local.project_id\n  service = \"privilegedaccessmanager.googleapis.com\"\n}\n",
+				"  member  = \"serviceAccount:service-org-${local.org.org_id}@gcp-sa-pam.iam.gserviceaccount.com\"\n",
 				"  role    = \"roles/privilegedaccessmanager.serviceAgent\"\n",
 				"  depends_on = [google_project_iam_member.pam_service_agent]\n}\n",
 			},
+			absent: []string{"google_project_service_identity\" \"pam\""},
 		},
 		{
 			name: "the longest grants: the placement's eight hours for the viewer, the defaults for the rest",

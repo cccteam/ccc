@@ -73,21 +73,18 @@ locals {
 }
 
 # Privileged Access Manager is set up on the project before an entitlement is
-# declared on it: its service agent exists and holds the service agent role,
-# which is what the console's "Set up PAM" does. Enabling the API alone
-# answers the first entitlement with "PAM has not been enabled for this
-# resource", which the lab found on the first apply of these.
-resource "google_project_service_identity" "pam" {
-  provider = google-beta
-
-  project = local.project_id
-  service = "privilegedaccessmanager.googleapis.com"
-}
-
+# declared on it: the organization's service agent for it,
+# service-org-<organization id>@gcp-sa-pam.iam.gserviceaccount.com, holds the
+# service agent role on the project, which is what the console's "Set up PAM"
+# does. Enabling the API alone answers the first entitlement with "PAM has
+# not been enabled for this resource", which the lab found on the first apply
+# of these; the service's checkOnboardingStatus names the agent and the
+# permissions it lacks. The agent is the organization's, not a per-project
+# identity, so no service identity is created here.
 resource "google_project_iam_member" "pam_service_agent" {
   project = local.project_id
   role    = "roles/privilegedaccessmanager.serviceAgent"
-  member  = "serviceAccount:${google_project_service_identity.pam.email}"
+  member  = "serviceAccount:service-org-${local.org.org_id}@gcp-sa-pam.iam.gserviceaccount.com"
 }
 
 resource "google_privileged_access_manager_entitlement" "spanner" {
