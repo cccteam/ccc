@@ -77,13 +77,30 @@ func subscribe(t *testing.T, svc *livefirestore.Service, kind live.Kind) *counte
 	return c
 }
 
-// signal signals the kind through the service.
+// signal writes a signal of the kind through the service, failing the test on an error.
+// One answer is retried: the emulator answers a write as already canceled when it
+// rides the connection whose listener streams were cancelled a moment before (the drop
+// in the reopen test), although the document is written and the listeners go on to see
+// it; a real Firestore never cancels a call whose context is alive, so the retry is the
+// test's allowance for the emulator and nothing the service does.
 func signal(t *testing.T, svc *livefirestore.Service, kind live.Kind) {
 	t.Helper()
 
-	if err := svc.Signal(t.Context(), kind); err != nil {
-		t.Fatalf("Signal(%s) error = %v", kind, err)
+	var err error
+	for attempt := range 5 {
+		if attempt > 0 {
+			time.Sleep(200 * time.Millisecond)
+		}
+		err = svc.Signal(t.Context(), kind)
+		if err == nil {
+			return
+		}
+		if !strings.Contains(err.Error(), "already cancel") || t.Context().Err() != nil {
+			break
+		}
+		t.Logf("Signal(%s) attempt %d answered the emulator's cancellation; retrying", kind, attempt+1)
 	}
+	t.Fatalf("Signal(%s) error = %v", kind, err)
 }
 
 // snapshotLog records the times every snapshot an instance's listener received carried,
