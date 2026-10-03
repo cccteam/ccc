@@ -134,6 +134,9 @@ variable "layer_roles" {
       "roles/compute.networkAdmin",
       "roles/compute.securityAdmin",
       "roles/dns.admin",
+      # 2-net owns the organization's domain registrations, which no other
+      # role in the set reads or writes.
+      "roles/domains.admin",
       "roles/iam.serviceAccountAdmin",
       "roles/iam.serviceAccountUser",
       "roles/logging.admin",
