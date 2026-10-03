@@ -2,10 +2,11 @@
 
 What every application in an environment shares: the environment's Spanner
 instance (tst only), the Cloud Build connection to GitHub, the
-deployment-record bucket, and, per application, the apply and deploy
-identities with their grants and the repository link. One directory, applied
-once per environment, as that environment's layer identity
-(`imp-<env>-gbl-tofu` from `1-org`).
+deployment-record bucket, the team group's release approval and
+entitlements, and, per application, the apply and deploy identities with
+their grants and the repository link. One directory, applied once per
+environment, as that environment's layer identity (`imp-<env>-gbl-tofu`
+from `1-org`).
 
 ## Applying
 
@@ -84,6 +85,12 @@ and a `shared_vpc_id` that is null.
 - The deployment-record bucket `imp-<env>-gbl-records-<hex4>`, US
   multi-region, versioned, uniform access, public access prevented. Deploy
   identities may only create objects in it.
+- The team group's grants (`team-group.tf`): `roles/cloudbuild.builds.approver`
+  on the environment project for the environment's team group in
+  `stg` and `prd`, and the Privileged Access Manager
+  entitlements its members ask for: the secret operator, the layer
+  administrator and, for an environment on its own instance, the Spanner
+  admin and viewer ("The team group" below).
 - Firebase Authentication on the environment project (`identity-platform.tf`):
   Identity Platform initialized once, with no sign-in provider and no sign-up
   a browser could make on its own. An application that serves live pages
@@ -227,17 +234,67 @@ with the provider's name (`github_identity_provider`) and the identity's email
 from them. None of this exists in `prd`: production is never restored by a
 run.
 
-### Secret operators
+### The team group
 
-The people who own the secret values, `var.secret_operators` (an operator
-group, normally; empty by default): each holds the custom organization role
-`secretOperator` from `1-org` on the environment project, which creates
-secrets and adds versions to them and can neither read a version nor touch a
-secret's IAM or lifecycle. An operator creates a container ahead of the
-release that first reads it (`bedrock secret add <env> <VARIABLE>`, which
-names and labels it as the application stack does) and adds the value; the
-application stack adopts the container at its next apply and the pull
-request that pins the version (`bedrock secret pin`) rolls it out.
+Each person's access to this environment comes from one group, the
+environment's team group, which `placement.json` names (`teamGroups`,
+rendered into `var.team_groups`) and the Workspace Admin console holds. The
+group approves the environment's releases where a release waits for an
+approval, and its members ask for a time-limited grant of everything else
+that changes the environment. No person holds a standing role that changes
+an environment, nothing in this layer names a person, and the three
+environments' groups may be the same people or not: production's is named
+on its own.
+
+Release approval is the one standing grant: `roles/cloudbuild.builds.approver`
+on the environment project in `stg` and `prd`, the
+environments whose version triggers wait for a release's approval (every
+environment but the first, the rule the application stacks declare their
+triggers from); approving is the gate itself, and the audit log records who
+approved. In `tst` nothing waits for an approval and the group
+holds nothing standing.
+
+Everything else is an entitlement in Privileged Access Manager
+(`team-group.tf`): a right a member of the group asks for, in the console or
+with `gcloud pam grants create`, for up to the entitlement's longest grant,
+with a justification. In `stg` and `prd` the request waits
+for one approval by another member of the same group, who writes a
+justification of their own (a requester cannot approve their own request);
+in `tst` it is granted at once. The grant is an IAM binding on
+the project that the service makes for the time asked and removes after it,
+and every request, approval and grant is in the audit log. The longest
+grants come from `placement.json` (`entitlementDurations`, by the keys
+below); unset, the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours.
+
+| Entitlement | Key | What it grants on the environment project |
+|---|---|---|
+| `imp-<env>-secret-operator` | `secretOperator` | `1-org`'s `secretOperator` role: `bedrock secret add` creates a container ahead of the release that first reads it (named and labeled as the application stack names it, which adopts it at its next apply) and adds the value, and `bedrock secret pin` moves the pin; the role also finds the project by its labels and bills Secret Manager to it, and never reads a payload. |
+| `imp-<env>-spanner-admin` | `spannerAdmin` | `roles/spanner.databaseAdmin` and `roles/spanner.backupAdmin`: the environment's databases, their schema, rows and backups, for a migration that stopped and the rows it validated. |
+| `imp-<env>-spanner-viewer` | `spannerViewer` | `roles/spanner.databaseReader` and `1-org`'s `spannerPlanReader`: the rows, read only, and the instance with the names of its databases. |
+| `imp-<env>-layer-administrator` | `layerAdministrator` | `roles/iam.serviceAccountTokenCreator` under a condition naming this environment's apply identity (`imp-<env>-gbl-tofu`, by its email and by its unique id, the two forms a condition's `resource.name` can name a service account by) and nothing else: a recovery of this layer by hand, acting as the identity ("Applying" above). |
+
+The Spanner entitlements are declared where the environment's instance is.
+For an environment on its own instance (`tst` by default) every
+database in the project is the environment's, so this layer declares them on
+the environment project with no condition. For an environment on the shared
+instance (`stg` and `prd` by default) the databases live
+in the `spn` project, where this layer's identity holds nothing, so `2-spn`
+declares them on that project (`entitlements.tf` there), each database role
+bounded by a condition to the environment's own databases and backups and
+the organization's `spannerPlanReader` role unconditioned, for the instance
+and the names of its databases; the ids are the same.
+
+The layer administrator covers this layer alone. The apply identities of
+`0-bootstrap` and `1-org` (in the boot project) and of `2-shr`, `2-spn` and
+`2-net` (in the shared projects) sit outside the environment projects, and
+the groups are per environment, so no entitlement covers them: their
+recovery is the bootstrap administrator's, with the organization-level roles
+first-time setup uses, since those layers change rarely and a broken apply
+there is a setup-grade event (`0-bootstrap/README.md`, "Recovery, by hand").
+
+Creating the entitlements needs `roles/privilegedaccessmanager.admin` on the
+project, in `1-org`'s `app` role set, with the Privileged Access Manager API
+in its `app` API set; the set is completed by refusal.
 
 ## The GitHub token, once
 
@@ -281,6 +338,12 @@ of a container created here, with the same variable pointing at it.
 - Nothing grants the application apply identity anything on the boot
   project, so the application stacks use their environment project as quota
   project; this layer grants `serviceUsageConsumer` there for that.
+- `roles/privilegedaccessmanager.admin` on the environment project for the
+  environment layer identity and the Privileged Access Manager API on the
+  project, both from `1-org` (its `app` role set and API set), for the team
+  group's entitlements; and the team groups themselves, made in the Workspace
+  Admin console and named in `placement.json` (`teamGroups`), since IAM
+  refuses a grant to a group that does not exist.
 
 ## Inputs
 
@@ -295,7 +358,7 @@ of a container created here, with the same variable pointing at it.
 | `github_deployer_app_id` | App ID of the deployer GitHub App the pipeline talks back as. | `number` | `null` | no |
 | `github_deployer_key_secret_versions` | Per environment, the pinned Secret Manager version of the deployer app's private key, in the container this layer creates. | `map(string)` | `{}` | no |
 | `github_organization` | GitHub organization of the application repositories. | `string` | `"impulseframework"` | no |
-| `secret_operators` | IAM members who create secret containers and add versions on the environment project (the `secretOperator` role). | `list(string)` | `[]` | no |
+| `team_groups` | The environments' team groups by code, a group's address each, from `placement.json` (`teamGroups`). | `map(string)` | rendered | no |
 | `spanner_config` | tst instance configuration. | `string` | `"nam10"` | no |
 | `spanner_processing_units` | tst instance size; 100 or 200. | `number` | `100` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
@@ -323,7 +386,7 @@ the layers that publish them:
 
 | Layer | Output | Used for |
 |---|---|---|
-| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role`, `run_job_policy_admin_role`, `spanner_plan_reader_role` | everything |
+| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `layer_service_account_unique_ids`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role`, `secret_operator_role`, `run_job_policy_admin_role`, `spanner_plan_reader_role` | everything |
 | `2-shr` | `repository_names` | map of application code to repository ID; the `repositories_registered` warning |
 | `2-spn` | `project_id`, `instance_name` | the shared instance for stg and prd (project falls back to `1-org`'s) |
 | `2-net` | `shared_vpc_id` | null today; gates `compute.networkUser` |

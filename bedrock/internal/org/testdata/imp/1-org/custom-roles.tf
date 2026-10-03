@@ -35,27 +35,32 @@ resource "google_organization_iam_custom_role" "secret_container_admin" {
   ]
 }
 
-# Secret Manager for the operator who owns the values. The operator group
-# creates a container ahead of the release that first reads it (bedrock
-# secret add) and adds versions to it; the application stack adopts the
-# container at its next apply. Creating and adding only: no payload access,
-# no IAM, and no lifecycle of versions beyond adding (those stay with the
-# stack's identity, secretContainerAdmin). roles/secretmanager.
-# secretVersionAdder adds versions to a container that exists and creates
-# none, which would put the container back with the pipeline and its
-# creation a release behind the value.
+# Secret Manager for the person who owns the values. A member of the
+# environment's team group holds this role for a short time through the secret
+# operator entitlement (2-env/team-group.tf): they create a container ahead of
+# the release that first reads it (bedrock secret add) and add versions to it,
+# and the application stack adopts the container at its next apply. Creating
+# and adding only: no payload access, no IAM, and no lifecycle of versions
+# beyond adding (those stay with the stack's identity, secretContainerAdmin).
+# roles/secretmanager.secretVersionAdder adds versions to a container that
+# exists and creates none, which would put the container back with the
+# pipeline and its creation a release behind the value.
 resource "google_organization_iam_custom_role" "secret_operator" {
   org_id      = local.org_id
   role_id     = "secretOperator"
   title       = "Secret Operator"
   description = "Creates Secret Manager secrets and adds versions to them, without access to any version payload."
   permissions = [
+    # bedrock secret add and pin find the environment project by its labels and
+    # bill Secret Manager to it: the project's read, and the use of its services.
+    "resourcemanager.projects.get",
     "secretmanager.secrets.create",
     "secretmanager.secrets.get",
     "secretmanager.secrets.list",
     "secretmanager.versions.add",
     "secretmanager.versions.get",
     "secretmanager.versions.list",
+    "serviceusage.services.use",
   ]
 }
 
@@ -295,6 +300,8 @@ resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
     "iam.workloadIdentityPoolProviders.get",
     "iam.workloadIdentityPools.get",
     "iam.workloadIdentityPools.getAttestationRules",
+    # Privileged Access Manager: the team group's entitlements (team-group.tf).
+    "privilegedaccessmanager.entitlements.get",
     # Secret Manager: the GitHub deployer key's container; never a payload.
     "secretmanager.secrets.get",
     # Spanner: the environment's own instance (tst), and nothing it holds.
@@ -356,6 +363,9 @@ resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
   title       = "Spanner Layer Plan Reader"
   description = "Reads the resources the shared Spanner layer declares, for a plan, and nothing of their data."
   permissions = [
+    # Privileged Access Manager: the environments' Spanner entitlements on this
+    # project (entitlements.tf).
+    "privilegedaccessmanager.entitlements.get",
     # Spanner: the shared instance. Its IAM policy comes from securityReviewer,
     # and nothing here reads a database.
     "spanner.instances.get",

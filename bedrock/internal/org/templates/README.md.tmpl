@@ -23,9 +23,9 @@ gets a line there first.
 | 0 | [`0-bootstrap/`](0-bootstrap/) | the bootstrap administrator the first time (local state, then migrated); then the workflow as `{{.Prefix}}-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its org-level grants; the project-updater and state-bucket-policy custom roles; the workflow's identity pool and provider; the state bucket's grants for its two identities |
 | 1 | [`1-org/`](1-org/) | the bootstrap administrator the first time; then the workflow as `{{.Prefix}}-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each with its federation binding and state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
 | 2 | [`2-shr/`](2-shr/) | the workflow as `{{.Prefix}}-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
-| 2 | [`2-spn/`](2-spn/) | the workflow as `{{.Prefix}}-spn-gbl-tofu` | the shared Spanner instance `{{.Prefix}}-spn-gbl-spanner` ({{.Spanner.Config}}, 100 processing units, capped at 200); instance-level database admin grants |
+| 2 | [`2-spn/`](2-spn/) | the workflow as `{{.Prefix}}-spn-gbl-tofu` | the shared Spanner instance `{{.Prefix}}-spn-gbl-spanner` ({{.Spanner.Config}}, 100 processing units, capped at 200); instance-level database admin grants; the Spanner entitlements of the environments on it |
 | 2 | [`2-net/`](2-net/) | the workflow as `{{.Prefix}}-net-gbl-tofu` | the global external Application Load Balancer, its address, SSL policy, managed certificate and map, the apps domain zone, and a URL map routed from `hosts`; no VPC |
-| 2 | [`2-env/`](2-env/) | the workflow as `{{.Prefix}}-<env>-gbl-tofu`, once per environment (`-var environment=`) | what every application in an environment shares: the tst Spanner instance, the Cloud Build GitHub connection and repository links, the deployment-record bucket, the per-application apply and deploy identities with their grants |
+| 2 | [`2-env/`](2-env/) | the workflow as `{{.Prefix}}-<env>-gbl-tofu`, once per environment (`-var environment=`) | what every application in an environment shares: the tst Spanner instance, the Cloud Build GitHub connection and repository links, the deployment-record bucket, the team group's release approval and entitlements, the per-application apply and deploy identities with their grants |
 | 3 | the application's own repository, `infrastructure/` (state slot `3-app/<app>/<env>` in this organization's bucket) | `{{.Prefix}}-<env>-gbl-<app>-tofu`, once per environment | the application's stack, derived from its code by bedrock: runtime identities, database, secret containers, Cloud Run services and job, load balancer backend, Cloud Build triggers; {{.ExampleApp}}'s is at {{.GithubOrganization}}/{{.ExampleApp}} |
 
 The three shared layers read `1-org`'s state and are independent of one
@@ -81,28 +81,36 @@ for the other layers as the bootstrap administrator.
 
 First-time setup, by hand, before any identity can run:
 
-1. **Seed**, by hand with gcloud, as the bootstrap administrator: the `terraform` folder, the
+1. **The team groups**, in the Workspace Admin console: one group per
+   environment, named in `placement.json` (`teamGroups`, a group's address
+   each; the same group may serve several environments, but production's is
+   not the first environment's). Each person's access to an environment comes
+   from its group: the group approves the environment's releases where a
+   release waits for an approval, and its members ask for its entitlements
+   (`2-env/README.md`, "The team group"). Every render names them, and `2-env`
+   grants to them, so they exist before anything else.
+2. **Seed**, by hand with gcloud, as the bootstrap administrator: the `terraform` folder, the
    boot project, the boot layer identity and its org-level roles, and the state
    bucket. The commands are in [`0-bootstrap/README.md`](0-bootstrap/README.md).
    A billing administrator separately grants `roles/billing.user` on the
    billing account to the two layer identities.
-2. **`0-bootstrap`**, by the bootstrap administrator. The first apply runs on local state,
+3. **`0-bootstrap`**, by the bootstrap administrator. The first apply runs on local state,
    with the backend block commented out, and adopts the seeded resources
    through `import` blocks. The seed's values go into `placement.json`
    (`stateBucket`, `projects.boot`, `projectNumbers.boot`) and `bedrock org
    render` names the bucket in every backend block; the state is then moved
    in with `tofu init -migrate-state`.
-3. **`1-org`**, by the same person, against the bucket directly, with their
+4. **`1-org`**, by the same person, against the bucket directly, with their
    own GitHub token. Its `project_ids` and `project_numbers` outputs go into
    `placement.json` (`projects`, `projectNumbers`), and `bedrock org render`
    names every layer's identities in the workflow. From here on the workflow
    applies every layer, these two included.
-4. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
+5. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
    infrastructure GitHub App"): created on GitHub, its key added to the boot
    project's container, its App ID and the key's version recorded in
    `placement.json`. Until then a run of `1-org` through the workflow says so
    and stops.
-5. **The Cloud Build GitHub App's browser authorization**, in the tst
+6. **The Cloud Build GitHub App's browser authorization**, in the tst
    project's console, before the first application is registered
    (`2-env/README.md`, "The GitHub token, once").
 

@@ -371,19 +371,7 @@ resource "google_secret_manager_secret_iam_member" "deploy_build_secrets" {
 # grant, where the tag is owned (its public-invokers.auto.tfvars names this
 # identity), since setting the value's policy is the tag owner's right.
 
-# ---------------------------------------------------------------------------
-# Secret operators
-#
-# The people (a group, normally) who own the secret values: they create a
-# container ahead of the release that first reads it (bedrock secret add)
-# and add versions to it, on this environment's project, and never read one.
-# The application stack adopts a container that exists at its next apply.
-# ---------------------------------------------------------------------------
-
-resource "google_project_iam_member" "secret_operator" {
-  for_each = toset(var.secret_operators)
-
-  project = local.project_id
-  role    = local.org.secret_operator_role
-  member  = each.value
-}
+# The people who own the secret values hold no standing grant: a member of the
+# environment's team group asks for the secret operator entitlement
+# (team-group.tf) for the time it takes to create a container ahead of the
+# release that first reads it (bedrock secret add) and to add a version.

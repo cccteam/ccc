@@ -386,8 +386,10 @@ It is refused when an argument has the wrong shape (<env> is tst, stg or prd; <V
 upper snake case under APP_), when the code declares no such secret variable, when the
 project cannot be told apart, when the container's name cannot be found, and when the
 value is empty. Creating a container needs secretmanager.secrets.create in the environment
-project and adding a version secretmanager.versions.add: the secretOperator role 1-org
-defines, granted on the environment project to 2-env's secret_operators.`,
+project and adding a version secretmanager.versions.add, beside the project's read and the
+use of its services: the secretOperator role 1-org defines, which nobody holds standing. A
+member of the environment's team group asks for the secret operator entitlement (2-env's
+team-group.tf) and holds the role for the time asked.`,
 		Args: cobra.MaximumNArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if len(args) >= 2 {

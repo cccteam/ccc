@@ -30,7 +30,6 @@ next_environment = {
   prd = ""
 }
 
-# The operators who create secret containers and add versions (the
-# secretOperator role in every environment project): the bootstrap
-# administrator until an operator group exists.
-secret_operators = ["user:bedrock@impulseframework.com"]
+# Nothing here names a person. Each environment's team group (placement.json,
+# teamGroups) approves its releases and asks for its entitlements; a secret
+# value is added under the secret operator entitlement (team-group.tf).

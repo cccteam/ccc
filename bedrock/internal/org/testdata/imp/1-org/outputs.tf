@@ -37,6 +37,11 @@ output "layer_service_accounts" {
   value       = { for k, sa in google_service_account.tofu : k => sa.email }
 }
 
+output "layer_service_account_unique_ids" {
+  description = "Layer identity (apply) service account unique id by environment code: the form beside the email that a condition's resource.name names a service account by, for the layer administrator entitlement 2-env declares on the environment's own apply identity."
+  value       = { for k, sa in google_service_account.tofu : k => sa.unique_id }
+}
+
 output "log_project_id" {
   description = "Project holding the central audit log bucket; null while central_logging is off."
   value       = local.log_project_id
@@ -113,7 +118,7 @@ output "secret_container_admin_role" {
 }
 
 output "secret_operator_role" {
-  description = "Full name of the secretOperator custom organization role: creates secrets and adds versions, never reads one. 2-env grants it on the environment project to its secret_operators."
+  description = "Full name of the secretOperator custom organization role: creates secrets and adds versions, never reads one. 2-env's secret operator entitlement grants it on the environment project to a member of the team group for a short time."
   value       = google_organization_iam_custom_role.secret_operator.id
 }
 

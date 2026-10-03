@@ -9,9 +9,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 
@@ -335,7 +338,92 @@ func (*view) Restorable() []string {
 
 // RestorableEnvironmentsList is the restorable environments as an HCL list.
 func (v *view) RestorableEnvironmentsList() string {
-	return `["` + strings.Join(v.Restorable(), `", "`) + `"]`
+	return hclList(v.Restorable())
+}
+
+// ApprovalEnvironmentsList is the approval environments as an HCL list, and
+// ApprovalEnvironmentsProse the same as prose, backticked: `stg` and `prd`.
+func (v *view) ApprovalEnvironmentsList() string {
+	return hclList(v.ApprovalEnvironments())
+}
+
+func (v *view) ApprovalEnvironmentsProse() string {
+	return prose(backticked(v.ApprovalEnvironments()))
+}
+
+// TeamGroupLines are the environments' team groups as the lines of an HCL map's body,
+// one per environment in promotion order, indented for a variable's default.
+func (v *view) TeamGroupLines() string {
+	lines := make([]string, 0, len(Environments))
+	for _, env := range Environments {
+		lines = append(lines, fmt.Sprintf("    %s = %q", env, v.TeamGroupAddress(env)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// SharedInstanceEntitlementLines are the environments on the shared instance as the
+// lines of an HCL map's body, each with its team group's address and whether a grant
+// there waits for an approval, for 2-spn's Spanner entitlements.
+func (v *view) SharedInstanceEntitlementLines() string {
+	envs := v.SharedInstanceEnvironments()
+	lines := make([]string, 0, len(envs))
+	for _, env := range envs {
+		lines = append(lines, fmt.Sprintf("    %s = { group = %q, approval = %t }", env, v.TeamGroupAddress(env), slices.Contains(v.ApprovalEnvironments(), env)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// SharedInstanceEnvironmentsProse is the environments on the shared instance as prose,
+// backticked: `stg` and `prd`.
+func (v *view) SharedInstanceEnvironmentsProse() string {
+	return prose(backticked(v.SharedInstanceEnvironments()))
+}
+
+// EntitlementDefaultsProse spells the entitlements' default longest grants, for the
+// READMEs: the secret operator an hour, ...
+func (*view) EntitlementDefaultsProse() string {
+	parts := make([]string, 0, len(Entitlements))
+	for _, name := range Entitlements {
+		parts = append(parts, entitlementWords[name]+" "+durationWords(entitlementDefaults[name]))
+	}
+
+	return prose(parts)
+}
+
+// entitlementWords names each entitlement the way the READMEs do.
+var entitlementWords = map[string]string{
+	EntitlementSecretOperator:     "the secret operator",
+	EntitlementSpannerAdmin:       "the Spanner admin",
+	EntitlementSpannerViewer:      "the Spanner viewer",
+	EntitlementLayerAdministrator: "the layer administrator",
+}
+
+// durationWords spells a whole number of hours or minutes: an hour, two hours, 90
+// minutes.
+func durationWords(d time.Duration) string {
+	if d%time.Hour == 0 {
+		hours := int(d / time.Hour)
+		if hours == 1 {
+			return "an hour"
+		}
+		if word, ok := numberWords[hours]; ok {
+			return word + " hours"
+		}
+
+		return strconv.Itoa(hours) + " hours"
+	}
+
+	return strconv.Itoa(int(d/time.Minute)) + " minutes"
+}
+
+// numberWords spell the small counts the prose uses.
+var numberWords = map[int]string{2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight"}
+
+// hclList is the items as an HCL list of strings.
+func hclList(items []string) string {
+	return `["` + strings.Join(items, `", "`) + `"]`
 }
 
 // RestorableEnvironmentsProse is the restorable environments as prose, backticked:

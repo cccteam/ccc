@@ -121,6 +121,9 @@ variable "layer_roles" {
       "roles/identityplatform.admin",
       "roles/logging.admin",
       "roles/monitoring.admin",
+      # 2-env declares the team group's entitlements on the environment project
+      # (Privileged Access Manager); a starting set, completed by refusal.
+      "roles/privilegedaccessmanager.admin",
       "roles/resourcemanager.projectIamAdmin",
       "roles/run.admin",
       "roles/serviceusage.serviceUsageAdmin",
@@ -162,6 +165,9 @@ variable "layer_roles" {
       "roles/iam.serviceAccountUser",
       "roles/logging.admin",
       "roles/monitoring.admin",
+      # 2-spn declares the environments' Spanner entitlements on the spn project
+      # (Privileged Access Manager); a starting set, completed by refusal.
+      "roles/privilegedaccessmanager.admin",
       "roles/resourcemanager.projectIamAdmin",
       "roles/serviceusage.serviceUsageAdmin",
       "roles/spanner.admin",
@@ -413,6 +419,9 @@ variable "required_apis" {
       "identitytoolkit.googleapis.com",
       "logging.googleapis.com",
       "monitoring.googleapis.com",
+      # The team group's entitlements (2-env/team-group.tf): a member asks for a
+      # time-limited grant through Privileged Access Manager.
+      "privilegedaccessmanager.googleapis.com",
       "run.googleapis.com",
       "secretmanager.googleapis.com",
       "securetoken.googleapis.com",
@@ -449,6 +458,9 @@ variable "required_apis" {
       "iam.googleapis.com",
       "logging.googleapis.com",
       "monitoring.googleapis.com",
+      # The environments' Spanner entitlements on the shared instance
+      # (2-spn/entitlements.tf), through Privileged Access Manager.
+      "privilegedaccessmanager.googleapis.com",
       "spanner.googleapis.com",
     ]
   }

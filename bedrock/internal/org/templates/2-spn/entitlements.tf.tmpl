@@ -1,0 +1,126 @@
+# ---------------------------------------------------------------------------
+# The Spanner entitlements of the environments on the shared instance
+#
+# A member of an environment's team group (placement.json, teamGroups) asks
+# for a time-limited grant on the environment's databases through Privileged
+# Access Manager: Spanner admin (the databases' schema, rows and backups, for
+# a migration that stopped and the rows it validated) or Spanner viewer (the
+# rows, read only). The databases of {{.SharedInstanceEnvironmentsProse}} live on this
+# instance in this project, where the environment layers' identities hold
+# nothing, so this layer declares their entitlements the way it makes the
+# apply identities' grants: each database role is bounded by a condition to
+# the environment's own databases ("<prefix>-<env>-gbl-", with the schedules
+# and operations under them) and the backups taken from them, and the
+# organization's spannerPlanReader role, which reads the instance and names
+# its databases and nothing of their data, is held without condition, since a
+# list is a request on the instance. The first environment, on its own
+# instance, gets the same two entitlements from 2-env, on its own project.
+# The request takes a justification and, in the approval environments, one
+# approval by another member of the group with a justification of their own
+# (a requester cannot approve their own request); the longest grant is
+# placement.json's (entitlementDurations; the defaults are the README's).
+# Creating an entitlement is roles/privilegedaccessmanager.admin on the
+# project, in the spn role set (1-org), with the API in the spn API set.
+# ---------------------------------------------------------------------------
+
+locals {
+  # The environments whose databases live on this instance (every one but the
+  # first, whose instance is its own), each with its team group's address and
+  # whether a grant there waits for an approval (every environment but the
+  # first, as a release does), from placement.json.
+  entitled_environments = {
+{{.SharedInstanceEntitlementLines}}
+  }
+
+  # The longest grant of each entitlement, from placement.json.
+  entitlement_durations = {
+    spanner_admin  = "{{.EntitlementDuration "spannerAdmin"}}"
+    spanner_viewer = "{{.EntitlementDuration "spannerViewer"}}"
+  }
+
+  # The names each environment's grants are bounded to.
+  environment_databases = { for env in keys(local.entitled_environments) : env => "${local.instance_path}/databases/${local.prefix}-${env}-gbl-" }
+  environment_backups   = { for env in keys(local.entitled_environments) : env => "${local.instance_path}/backups/${local.prefix}-${env}-gbl-" }
+
+  spanner_admin = {
+    for env, e in local.entitled_environments : "${env}-spanner-admin" => {
+      environment = env
+      group       = e.group
+      approval    = e.approval
+      duration    = local.entitlement_durations.spanner_admin
+      bindings = [
+        { role = "roles/spanner.databaseAdmin", condition = "resource.name.startsWith(\"${local.environment_databases[env]}\")" },
+        { role = "roles/spanner.backupAdmin", condition = "resource.name.startsWith(\"${local.environment_databases[env]}\") || resource.name.startsWith(\"${local.environment_backups[env]}\")" },
+        { role = local.org.spanner_plan_reader_role, condition = "" },
+      ]
+    }
+  }
+
+  spanner_viewer = {
+    for env, e in local.entitled_environments : "${env}-spanner-viewer" => {
+      environment = env
+      group       = e.group
+      approval    = e.approval
+      duration    = local.entitlement_durations.spanner_viewer
+      bindings = [
+        { role = "roles/spanner.databaseReader", condition = "resource.name.startsWith(\"${local.environment_databases[env]}\")" },
+        { role = local.org.spanner_plan_reader_role, condition = "" },
+      ]
+    }
+  }
+
+  spanner_entitlements = merge(local.spanner_admin, local.spanner_viewer)
+}
+
+resource "google_privileged_access_manager_entitlement" "spanner" {
+  for_each = local.spanner_entitlements
+
+  entitlement_id       = "${local.prefix}-${each.key}"
+  location             = "global"
+  parent               = "projects/${local.project_id}"
+  max_request_duration = each.value.duration
+
+  eligible_users {
+    principals = ["group:${each.value.group}"]
+  }
+
+  privileged_access {
+    gcp_iam_access {
+      resource_type = "cloudresourcemanager.googleapis.com/Project"
+      resource      = "//cloudresourcemanager.googleapis.com/projects/${local.project_id}"
+
+      dynamic "role_bindings" {
+        for_each = each.value.bindings
+        content {
+          role                 = role_bindings.value.role
+          condition_expression = role_bindings.value.condition == "" ? null : role_bindings.value.condition
+        }
+      }
+    }
+  }
+
+  # The requester says why, every time.
+  requester_justification_config {
+    unstructured {}
+  }
+
+  # In the approval environments, one approval by another member of the
+  # environment's group, with a justification; the group is mailed the request.
+  dynamic "approval_workflow" {
+    for_each = each.value.approval ? [1] : []
+    content {
+      manual_approvals {
+        require_approver_justification = true
+
+        steps {
+          approvals_needed          = 1
+          approver_email_recipients = [each.value.group]
+
+          approvers {
+            principals = ["group:${each.value.group}"]
+          }
+        }
+      }
+    }
+  }
+}

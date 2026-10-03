@@ -74,11 +74,15 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   seeing their values.
 - The custom organization role `secretOperator`: creates secrets and adds
   versions to them (`secrets.create`, `secrets.get`, `secrets.list`,
-  `versions.add`, `versions.get`, `versions.list`), and can neither read a
-  version nor touch a secret's IAM or lifecycle. It is the operator group's
-  role, granted on each environment project by `2-env` (`secret_operators`):
-  an operator creates a container ahead of the release that first reads it
-  (`bedrock secret add`) and the application stack adopts it.
+  `versions.add`, `versions.get`, `versions.list`), finds the environment
+  project by its labels and bills Secret Manager to it
+  (`resourcemanager.projects.get`, `serviceusage.services.use`, which
+  `bedrock secret add` and `pin` need), and can neither read a version nor
+  touch a secret's IAM or lifecycle. Nobody holds it standing: a member of the
+  environment's team group holds it for a short time through `2-env`'s secret
+  operator entitlement, creates a container ahead of the release that first
+  reads it (`bedrock secret add`) and adds the value, and the application
+  stack adopts the container.
 - The custom organization role `spannerPlanReader`: reads an instance's
   databases, their IAM policies and their backup schedules
   (`spanner.instances.get`, `spanner.databases.get`, `spanner.databases.list`,
@@ -135,12 +139,14 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   environment): the GitHub connection and the repository links, the
   pull-request backend service and endpoint groups, the Identity Platform
   configuration, the operations pool with its provider and attestation
-  rules, the deployer key's container, the environment's own Spanner
-  instance and the records bucket. `servicesLayerPlanReader` (`2-shr`): the
-  image repositories. `networkLayerPlanReader` (`2-net`): the certificate,
-  its authorization, the map and its entries, the load balancer's backend
-  service, address, forwarding rules, SSL policy, proxies and URL maps, and
-  the DNS zones. `spannerLayerPlanReader` (`2-spn`): the shared instance.
+  rules, the team group's entitlements, the deployer key's container, the
+  environment's own Spanner instance and the records bucket.
+  `servicesLayerPlanReader` (`2-shr`): the image repositories.
+  `networkLayerPlanReader` (`2-net`): the certificate, its authorization, the
+  map and its entries, the load balancer's backend service, address,
+  forwarding rules, SSL policy, proxies and URL maps, and the DNS zones.
+  `spannerLayerPlanReader` (`2-spn`): the shared instance and the
+  environments' Spanner entitlements on its project.
   This layer grants each on the project to the project's plan identity in
   place of `roles/viewer` (`var.plan_roles`, above); the IAM policies the
   layers' grants are refreshed through come from `roles/iam.securityReviewer`
@@ -318,10 +324,10 @@ required checks, the rulesets' names.
 
 | Set | Roles |
 |---|---|
-| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, run.admin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin, `secretContainerAdmin` |
+| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the team group's entitlements), resourcemanager.projectIamAdmin, run.admin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin, `secretContainerAdmin` |
 | `shr` | artifactregistry.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin, `secretContainerAdmin` |
 | `net` | certificatemanager.editor, compute.loadBalancerAdmin, compute.networkAdmin, compute.securityAdmin, dns.admin, domains.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin |
-| `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |
+| `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the environments' Spanner entitlements), resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |
 
 The plan identities' sets (`var.plan_roles`), each the custom role of the
 kind beside `roles/iam.securityReviewer`:
@@ -337,10 +343,10 @@ kind beside `roles/iam.securityReviewer`:
 
 | Set | APIs |
 |---|---|
-| `app` | apikeys, artifactregistry, cloudbuild, cloudidentity, cloudresourcemanager, cloudscheduler, cloudtasks, cloudtrace, compute, firebaserules, firestore, iam, iamcredentials, identitytoolkit, logging, monitoring, run, secretmanager, securetoken, serviceusage, spanner, storage, sts |
+| `app` | apikeys, artifactregistry, cloudbuild, cloudidentity, cloudresourcemanager, cloudscheduler, cloudtasks, cloudtrace, compute, firebaserules, firestore, iam, iamcredentials, identitytoolkit, logging, monitoring, privilegedaccessmanager, run, secretmanager, securetoken, serviceusage, spanner, storage, sts |
 | `shr` | artifactregistry, iam, iamcredentials, logging, monitoring, secretmanager, sts |
 | `net` | certificatemanager, compute, dns, iam, logging, monitoring |
-| `spn` | iam, logging, monitoring, spanner |
+| `spn` | iam, logging, monitoring, privilegedaccessmanager, spanner |
 | `log` | iam, logging, monitoring, storage (only with `central_logging`) |
 
 ### Org policies
@@ -434,6 +440,7 @@ bucket, prefix `1-org`.
 | `gcp_region`, `region_code` | Primary region and its short code. |
 | `gcp_secondary_region`, `secondary_region_code` | Secondary region and its short code. |
 | `layer_service_accounts` | Layer identity email by environment code. |
+| `layer_service_account_unique_ids` | Layer identity unique id by environment code, for the layer administrator entitlement's condition in `2-env`. |
 | `boot_plan_service_accounts` | Plan identity email of the two boot layers (boot, org). |
 | `log_project_id` | Log project; `null` while `central_logging` is off. |
 | `org_id` | Numeric organization ID. |

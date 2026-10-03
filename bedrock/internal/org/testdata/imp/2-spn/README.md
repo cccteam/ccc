@@ -34,6 +34,23 @@ stg and prd databases live on. Applied by the layers workflow as
   same environments: a pull-request build plans the environment's stack as
   the plan identity and refreshes the database, its grants and its backup
   schedules here, writing nothing.
+- The Spanner entitlements of `stg` and `prd`
+  (`entitlements.tf`), in Privileged Access Manager: per environment,
+  `imp-<env>-spanner-admin` (`roles/spanner.databaseAdmin` and
+  `roles/spanner.backupAdmin`) and `imp-<env>-spanner-viewer`
+  (`roles/spanner.databaseReader`), each database role bounded by a condition
+  to the environment's own databases (`imp-<env>-gbl-`) and the backups
+  taken from them, with the organization's `spannerPlanReader` role
+  unconditioned so a member sees the instance and the names of its databases.
+  The environment's team group (`placement.json`, `teamGroups`) is eligible; a
+  request takes a justification and, in the approval environments, one
+  approval by another member of the group with a justification of their own
+  (a requester cannot approve their own request); the longest grants are
+  `placement.json`'s (`entitlementDurations`; unset,
+  the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours). The first environment's instance is its
+  own, and `2-env` declares its two on its project (`2-env/README.md`, "The
+  team group"). Creating them is `roles/privilegedaccessmanager.admin` in
+  `1-org`'s `spn` role set, with the API in its `spn` API set.
 
 Not created here: databases. Each application's layer creates its own
 databases on this instance, one for stg and one for prd, named within the 30
@@ -58,10 +75,12 @@ same environments is listed in `database_planners` and bound as
 `spannerPlanReader`, the organization's role of the reads a plan needs.
 
 Database level, the application layer: `roles/spanner.databaseUser` for each
-runtime identity on its database, `roles/spanner.databaseAdmin` for the
-migrate identity on its own database for DDL, and any reader entitlements.
-Those grants name a database that only the application layer knows, so they
-are made there, with `google_spanner_database_iam_member`.
+runtime identity on its database and `roles/spanner.databaseAdmin` for the
+migrate identity on its own database for DDL. Those grants name a database
+that only the application layer knows, so they are made there, with
+`google_spanner_database_iam_member`. A person's time-limited access to an
+environment's databases is this layer's (the entitlements above): bounded by
+the databases' names, which this layer knows, not by a database.
 
 ## Capacity
 

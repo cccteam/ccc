@@ -87,7 +87,11 @@ folder) is REPLACEME in the seeded values until the seed has run.`,
 func handSteps(p *org.Placement) string {
 	return fmt.Sprintf(`
 By hand, before the layers workflow can run (the commands are in 0-bootstrap/README.md):
-  0. On GitHub, in a browser: the organization, this infrastructure repository (never
+  0. In the Workspace Admin console: one team group per environment, named in
+     placement.json (teamGroups: a group's address each; production's is not the first
+     environment's), whose members approve the environment's releases and ask for its
+     entitlements; nothing else names a person. On GitHub, in a browser: the
+     organization, this infrastructure repository (never
      managed by the layers; default branch %s), the release, deployer and infrastructure
      apps with their keys, installed on the organization (the release app's App ID goes
      into placement.json, githubReleaseAppId; the infrastructure app's App ID and the

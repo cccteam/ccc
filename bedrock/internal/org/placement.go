@@ -13,7 +13,9 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -31,7 +33,37 @@ var (
 	applicationRE   = regexp.MustCompile(`^[a-z][a-z0-9]{0,5}$`)
 	labelRE         = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
 	projectNumberRE = regexp.MustCompile(`^\d+$`)
+	// groupAddressRE is a group's address as the Workspace Admin console names it: a
+	// mailbox at a domain, with no member prefix in front.
+	groupAddressRE = regexp.MustCompile(`^[^@\s:/]+@[^@\s:/]+\.[^@\s:/]+$`)
 )
+
+// The environments' entitlements, by the key placement.json names each under
+// (entitlementDurations): the secret operator (bedrock secret add and pin), the Spanner
+// admin and viewer of the environment's databases, and the layer administrator, who acts
+// as 2-env's apply identity for a recovery. Each has a default longest grant, and
+// Privileged Access Manager admits a longest grant between 30 minutes and 7 days.
+const (
+	EntitlementSecretOperator     = "secretOperator"
+	EntitlementSpannerAdmin       = "spannerAdmin"
+	EntitlementSpannerViewer      = "spannerViewer"
+	EntitlementLayerAdministrator = "layerAdministrator"
+
+	shortestGrant = 30 * time.Minute
+	longestGrant  = 7 * 24 * time.Hour
+)
+
+// Entitlements are the environments' entitlements in the order the layers declare them.
+var Entitlements = []string{EntitlementSecretOperator, EntitlementSpannerAdmin, EntitlementSpannerViewer, EntitlementLayerAdministrator}
+
+// entitlementDefaults are the longest grants when the placement sets none: an hour to
+// add a secret, two to administer a database, four to read one or to recover a layer.
+var entitlementDefaults = map[string]time.Duration{
+	EntitlementSecretOperator:     time.Hour,
+	EntitlementSpannerAdmin:       2 * time.Hour,
+	EntitlementSpannerViewer:      4 * time.Hour,
+	EntitlementLayerAdministrator: 4 * time.Hour,
+}
 
 // Placement is what the organization decided before any layer exists: its naming
 // prefix, its domains, its billing account, its regions, its GitHub organization, and the
@@ -82,9 +114,19 @@ type Placement struct {
 	// StateBucket is the seeded state bucket every backend block names; empty until the
 	// seed has run, and REPLACEME is rendered in its place.
 	StateBucket string `json:"stateBucket,omitempty"`
-	// Operator is the bootstrap administrator's account, who seeds and applies by hand,
-	// and the first secret operator.
+	// Operator is the bootstrap administrator's account, who seeds and applies by hand.
 	Operator string `json:"operator"`
+	// TeamGroups are the environments' team groups by environment, each a group's
+	// address (team-tst@example.com, with no member prefix: the layers write group: in
+	// front). Each person's access to an environment comes from its group: the group
+	// holds the release approval where a release waits for one, and its members ask for
+	// the environment's entitlements. One per environment; the same address may serve
+	// several, but production's group is not the first environment's.
+	TeamGroups map[string]string `json:"teamGroups"`
+	// EntitlementDurations are the longest grants of the environments' entitlements, by
+	// entitlement (Entitlements) as a duration (1h, 90m); an entitlement not named takes
+	// its default. Between 30 minutes and 7 days.
+	EntitlementDurations map[string]string `json:"entitlementDurations,omitempty"`
 	// Regions are the two Cloud Run regions, the primary first.
 	Regions []Region `json:"regions"`
 	// Spanner is the shared instance's configuration.
@@ -195,6 +237,12 @@ func (p *Placement) Validate() error {
 	if err := p.validateProjects(); err != nil {
 		return err
 	}
+	if err := p.validateTeamGroups(); err != nil {
+		return err
+	}
+	if err := p.validateEntitlementDurations(); err != nil {
+		return err
+	}
 	for _, d := range p.ContactDomains {
 		if !strings.HasPrefix(d, "@") || len(d) < 3 {
 			return errors.Newf("contact domain %q is not @<domain>", d)
@@ -251,6 +299,91 @@ func (p *Placement) validateProjects() error {
 	}
 
 	return nil
+}
+
+// validateTeamGroups refuses a placement that names no group for an environment, a
+// group under an environment the model lacks, a person (user:) or any member prefix in
+// place of a group's address, and production's group being the first environment's.
+func (p *Placement) validateTeamGroups() error {
+	for env := range p.TeamGroups {
+		if !slices.Contains(Environments, env) {
+			return errors.Newf("teamGroups names %q, which is not one of %s", env, strings.Join(Environments, ", "))
+		}
+	}
+	for _, env := range Environments {
+		group, ok := p.TeamGroups[env]
+		switch {
+		case !ok || strings.TrimSpace(group) == "":
+			return errors.Newf("teamGroups.%s is empty: each environment names the group whose members approve its releases and ask for its entitlements", env)
+		case strings.HasPrefix(group, "user:"):
+			return errors.Newf("teamGroups.%s %q is a person (user:): an environment's team is a group, and nothing names a person", env, group)
+		case !groupAddressRE.MatchString(group):
+			return errors.Newf("teamGroups.%s %q is not a group's address (name@domain, with no member prefix: the layers write group: in front)", env, group)
+		}
+	}
+	if p.TeamGroups[prdEnvironment] == p.TeamGroups[tstEnvironment] {
+		return errors.Newf("teamGroups.%s is teamGroups.%s (%s): production's team group is not the first environment's", prdEnvironment, tstEnvironment, p.TeamGroups[prdEnvironment])
+	}
+
+	return nil
+}
+
+// validateEntitlementDurations refuses a duration under an entitlement the model lacks,
+// one that is not a duration, and one outside what Privileged Access Manager admits.
+func (p *Placement) validateEntitlementDurations() error {
+	for name, value := range p.EntitlementDurations {
+		if !slices.Contains(Entitlements, name) {
+			return errors.Newf("entitlementDurations names %q, which is not one of %s", name, strings.Join(Entitlements, ", "))
+		}
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return errors.Newf("entitlementDurations.%s %q is not a duration (1h, 90m)", name, value)
+		}
+		if d < shortestGrant || d > longestGrant {
+			return errors.Newf("entitlementDurations.%s %s is outside what Privileged Access Manager admits: between %s and 7 days", name, value, shortestGrant)
+		}
+	}
+
+	return nil
+}
+
+// EntitlementDuration is the longest grant of the entitlement as the layers declare it,
+// in seconds (3600s): the placement's, or the default.
+func (p *Placement) EntitlementDuration(name string) string {
+	d := entitlementDefaults[name]
+	if value, ok := p.EntitlementDurations[name]; ok {
+		if parsed, err := time.ParseDuration(value); err == nil {
+			d = parsed
+		}
+	}
+
+	return strconv.FormatInt(int64(d/time.Second), 10) + "s"
+}
+
+// TeamGroup is the environment's team group as an IAM member (group:<address>).
+func (p *Placement) TeamGroup(env string) string {
+	return "group:" + p.TeamGroups[env]
+}
+
+// TeamGroupAddress is the environment's team group as the address the Workspace Admin
+// console names it by, where the approvals are mailed.
+func (p *Placement) TeamGroupAddress(env string) string {
+	return p.TeamGroups[env]
+}
+
+// ApprovalEnvironments are the environments whose version triggers wait for a release's
+// approval, where the team group holds the approval and an entitlement takes one: every
+// environment but the first, the rule an application's placement derives its own list
+// from when it names none.
+func (*Placement) ApprovalEnvironments() []string {
+	return Environments[1:]
+}
+
+// SharedInstanceEnvironments are the environments whose databases live on the shared
+// instance 2-spn creates, where that layer declares the Spanner entitlements: every
+// environment but the first, whose instance is its own.
+func (*Placement) SharedInstanceEnvironments() []string {
+	return Environments[1:]
 }
 
 // Primary is the primary region.

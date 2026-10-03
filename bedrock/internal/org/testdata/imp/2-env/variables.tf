@@ -133,21 +133,26 @@ variable "github_deployer_key_secret_versions" {
   default     = {}
 }
 
-variable "secret_operators" {
+variable "team_groups" {
   description = <<-EOT
-    IAM members (group:, user: or serviceAccount: and the address) who add
-    secret values in this environment: an operator creates a container ahead
-    of the release that first reads it (bedrock secret add) and adds versions
-    to it, and never reads one. Each is granted the secretOperator custom
-    organization role (1-org) on the environment project. Empty by default;
-    an organization names its operator group here.
+    The environments' team groups by environment code, each a group's address
+    (team-tst@impulseframework.com; the layer writes group: in front), from
+    placement.json (teamGroups). Each person's access to an environment comes
+    from its group: the group holds roles/cloudbuild.builds.approver where a
+    release waits for an approval, and its members ask for the environment's
+    entitlements (team-group.tf). Rendered, never set in terraform.tfvars: a
+    change is a change to placement.json and a render.
   EOT
-  type        = list(string)
-  default     = []
+  type        = map(string)
+  default = {
+    tst = "team-tst@impulseframework.com"
+    stg = "team-stg@impulseframework.com"
+    prd = "team-prd@impulseframework.com"
+  }
 
   validation {
-    condition     = alltrue([for m in var.secret_operators : can(regex("^(group|user|serviceAccount):.+", m))])
-    error_message = "Every secret operator is an IAM member: group:, user: or serviceAccount: followed by the address."
+    condition     = alltrue([for env, g in var.team_groups : can(regex("^[^@:/]+@[^@:/]+$", g))])
+    error_message = "Every team group is a group's address, name@domain, with no member prefix."
   }
 }
 

@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
@@ -73,6 +75,22 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "no infrastructure app yet", mutate: func(p *Placement) { p.GithubInfrastructureAppID, p.GithubInfrastructureKeyVersion = "", "" }},
 		{name: "an infrastructure app named by slug", mutate: func(p *Placement) { p.GithubInfrastructureAppID = "imp-infrastructure" }, wantErr: `githubInfrastructureAppId "imp-infrastructure" is not an App ID`},
 		{name: "a key version of latest", mutate: func(p *Placement) { p.GithubInfrastructureKeyVersion = "latest" }, wantErr: `githubInfrastructureKeyVersion "latest" is not a secret version's number (digits, never latest)`},
+		{name: "no team groups at all", mutate: func(p *Placement) { p.TeamGroups = nil }, wantErr: "teamGroups.tst is empty: each environment names the group"},
+		{name: "no team group for one environment", mutate: func(p *Placement) { delete(p.TeamGroups, "stg") }, wantErr: "teamGroups.stg is empty"},
+		{name: "a team group that is a person", mutate: func(p *Placement) { p.TeamGroups["prd"] = "user:someone@impulseframework.com" }, wantErr: `teamGroups.prd "user:someone@impulseframework.com" is a person (user:): an environment's team is a group`},
+		{name: "a team group with a member prefix", mutate: func(p *Placement) { p.TeamGroups["tst"] = "group:team-tst@impulseframework.com" }, wantErr: `teamGroups.tst "group:team-tst@impulseframework.com" is not a group's address (name@domain, with no member prefix`},
+		{name: "a team group that is not an address", mutate: func(p *Placement) { p.TeamGroups["tst"] = "team-tst" }, wantErr: `teamGroups.tst "team-tst" is not a group's address`},
+		{name: "a team group under an environment the model lacks", mutate: func(p *Placement) { p.TeamGroups["qa"] = "team-qa@impulseframework.com" }, wantErr: `teamGroups names "qa", which is not one of tst, stg, prd`},
+		{name: "production's group the first environment's", mutate: func(p *Placement) { p.TeamGroups["prd"] = p.TeamGroups["tst"] }, wantErr: "teamGroups.prd is teamGroups.tst (team-tst@impulseframework.com): production's team group is not the first environment's"},
+		{name: "one group for tst and stg", mutate: func(p *Placement) { p.TeamGroups["stg"] = p.TeamGroups["tst"] }},
+		{name: "no entitlement durations", mutate: func(p *Placement) { p.EntitlementDurations = nil }},
+		{name: "every entitlement's duration set", mutate: func(p *Placement) {
+			p.EntitlementDurations = map[string]string{"secretOperator": "30m", "spannerAdmin": "90m", "spannerViewer": "168h", "layerAdministrator": "2h"}
+		}},
+		{name: "a duration for an entitlement the model lacks", mutate: func(p *Placement) { p.EntitlementDurations = map[string]string{"releaseOperator": "1h"} }, wantErr: `entitlementDurations names "releaseOperator", which is not one of secretOperator, spannerAdmin, spannerViewer, layerAdministrator`},
+		{name: "a duration that is not one", mutate: func(p *Placement) { p.EntitlementDurations = map[string]string{"secretOperator": "an hour"} }, wantErr: `entitlementDurations.secretOperator "an hour" is not a duration (1h, 90m)`},
+		{name: "a duration too short", mutate: func(p *Placement) { p.EntitlementDurations = map[string]string{"secretOperator": "10m"} }, wantErr: "entitlementDurations.secretOperator 10m is outside what Privileged Access Manager admits: between 30m0s and 7 days"},
+		{name: "a duration too long", mutate: func(p *Placement) { p.EntitlementDurations = map[string]string{"layerAdministrator": "200h"} }, wantErr: "entitlementDurations.layerAdministrator 200h is outside"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -323,6 +341,17 @@ func TestCustomRolePermissions(t *testing.T) {
 			},
 		},
 		{
+			name:     "adds a secret: creating and adding, the project's read and the use of its services, never a payload",
+			resource: "secret_operator",
+			roleID:   "secretOperator",
+			permissions: []string{
+				"resourcemanager.projects.get",
+				"secretmanager.secrets.create", "secretmanager.secrets.get", "secretmanager.secrets.list",
+				"secretmanager.versions.add", "secretmanager.versions.get", "secretmanager.versions.list",
+				"serviceusage.services.use",
+			},
+		},
+		{
 			name:        "sets a job's policy",
 			resource:    "run_job_policy_admin",
 			roleID:      "runJobPolicyAdmin",
@@ -362,6 +391,7 @@ func TestCustomRolePermissions(t *testing.T) {
 				"firebaseauth.configs.get",
 				"iam.workloadIdentityPoolProviders.get",
 				"iam.workloadIdentityPools.get", "iam.workloadIdentityPools.getAttestationRules",
+				"privilegedaccessmanager.entitlements.get",
 				"secretmanager.secrets.get", "spanner.instances.get", "storage.buckets.get",
 			},
 		},
@@ -388,7 +418,7 @@ func TestCustomRolePermissions(t *testing.T) {
 			name:        "plans the shared Spanner layer",
 			resource:    "spanner_layer_plan_reader",
 			roleID:      "spannerLayerPlanReader",
-			permissions: []string{"spanner.instances.get"},
+			permissions: []string{"privilegedaccessmanager.entitlements.get", "spanner.instances.get"},
 		},
 		{
 			name:        "reads a bucket's policy",
@@ -586,6 +616,221 @@ func TestSpannerGrants(t *testing.T) {
 	}
 }
 
+// TestTeamGroup reads what the team group gets: the release approval in the approval
+// environments and not the first, the entitlements with the group eligible, one approval
+// by the group with the approver's justification in the approval environments and none in
+// the first, the longest grants from the placement with the defaults where it sets none,
+// the Spanner entitlements on the project holding the environment's instance (2-env for an
+// own instance, 2-spn bounded to the environment's databases for the shared one), the
+// layer administrator's condition naming the apply identity, and no standing grant to a
+// person anywhere.
+func TestTeamGroup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the release approval, in the approval environments alone",
+			path: "2-env/team-group.tf",
+			want: []string{
+				"  approval_environments = [\"stg\", \"prd\"]\n  approval_required     = contains(local.approval_environments, var.environment)\n",
+				"resource \"google_project_iam_member\" \"release_approver\" {\n  count = local.approval_required ? 1 : 0\n\n  project = local.project_id\n  role    = \"roles/cloudbuild.builds.approver\"\n  member  = local.team_group\n}\n",
+				"  team_group_address = var.team_groups[var.environment]\n  team_group         = \"group:${local.team_group_address}\"\n",
+			},
+		},
+		{
+			name: "the entitlements: the group eligible, the approval step where a release waits for one, the justifications",
+			path: "2-env/team-group.tf",
+			want: []string{
+				"resource \"google_privileged_access_manager_entitlement\" \"team\" {\n  for_each = local.entitlements\n\n  entitlement_id       = \"${local.name}-${each.key}\"\n  location             = \"global\"\n  parent               = \"projects/${local.project_id}\"\n  max_request_duration = each.value.duration\n\n  eligible_users {\n    principals = [local.team_group]\n  }\n",
+				"  requester_justification_config {\n    unstructured {}\n  }\n",
+				"  dynamic \"approval_workflow\" {\n    for_each = local.approval_required ? [1] : []\n    content {\n      manual_approvals {\n        require_approver_justification = true\n\n        steps {\n          approvals_needed          = 1\n          approver_email_recipients = [local.team_group_address]\n\n          approvers {\n            principals = [local.team_group]\n          }\n        }\n      }\n    }\n  }\n",
+				"          condition_expression = role_bindings.value.condition == \"\" ? null : role_bindings.value.condition\n",
+			},
+		},
+		{
+			name: "the longest grants: the placement's eight hours for the viewer, the defaults for the rest",
+			path: "2-env/team-group.tf",
+			want: []string{
+				"  entitlement_durations = {\n    secret_operator     = \"3600s\"\n    spanner_admin       = \"7200s\"\n    spanner_viewer      = \"28800s\"\n    layer_administrator = \"14400s\"\n  }\n",
+			},
+		},
+		{
+			name: "what each entitlement grants, the Spanner ones for an own instance alone, the layer administrator bounded to the apply identity",
+			path: "2-env/team-group.tf",
+			want: []string{
+				"      secret-operator = {\n        declared = true\n        duration = local.entitlement_durations.secret_operator\n        bindings = [{ role = local.org.secret_operator_role, condition = \"\" }]\n      }\n",
+				"      spanner-admin = {\n        declared = local.own_instance\n",
+				"          { role = \"roles/spanner.databaseAdmin\", condition = \"\" },\n          { role = \"roles/spanner.backupAdmin\", condition = \"\" },\n",
+				"      spanner-viewer = {\n        declared = local.own_instance\n",
+				"          { role = \"roles/spanner.databaseReader\", condition = \"\" },\n          { role = local.org.spanner_plan_reader_role, condition = \"\" },\n",
+				"        bindings = [{ role = \"roles/iam.serviceAccountTokenCreator\", condition = local.layer_identity_condition }]\n",
+				"  layer_identity_names = compact([\n    local.org.layer_service_accounts[var.environment],\n    try(local.org.layer_service_account_unique_ids[var.environment], \"\"),\n  ])\n  layer_identity_condition = join(\" || \", [for n in local.layer_identity_names : \"resource.name.endsWith(\\\"/serviceAccounts/${n}\\\")\"])\n",
+				"    } : name => e if e.declared\n",
+			},
+			absent: []string{"user:", "roles/cloudbuild.builds.editor", "roles/owner"},
+		},
+		{
+			name:   "the groups are the variable's default, from the placement, and no person is seeded",
+			path:   "2-env/variables.tf",
+			want:   []string{"variable \"team_groups\" {", "  default = {\n    tst = \"team-tst@impulseframework.com\"\n    stg = \"team-stg@impulseframework.com\"\n    prd = \"team-prd@impulseframework.com\"\n  }\n"},
+			absent: []string{"secret_operators", "user:"},
+		},
+		{
+			name:   "no standing secret operator grant and no seeded person",
+			path:   "2-env/identities.tf",
+			want:   []string{"asks for the secret operator entitlement"},
+			absent: []string{"google_project_iam_member\" \"secret_operator\"", "var.secret_operators"},
+		},
+		{
+			name:   "the seeded values name nobody",
+			path:   "2-env/terraform.tfvars",
+			absent: []string{"secret_operators", "user:"},
+		},
+		{
+			name: "the shared instance's entitlements, per environment on it, bounded to its databases and backups",
+			path: "2-spn/entitlements.tf",
+			want: []string{
+				"  entitled_environments = {\n    stg = { group = \"team-stg@impulseframework.com\", approval = true }\n    prd = { group = \"team-prd@impulseframework.com\", approval = true }\n  }\n",
+				"  entitlement_durations = {\n    spanner_admin  = \"7200s\"\n    spanner_viewer = \"28800s\"\n  }\n",
+				"  environment_databases = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/databases/${local.prefix}-${env}-gbl-\" }\n  environment_backups   = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/backups/${local.prefix}-${env}-gbl-\" }\n",
+				"    for env, e in local.entitled_environments : \"${env}-spanner-admin\" => {\n",
+				"        { role = \"roles/spanner.databaseAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n        { role = \"roles/spanner.backupAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\") || resource.name.startsWith(\\\"${local.environment_backups[env]}\\\")\" },\n        { role = local.org.spanner_plan_reader_role, condition = \"\" },\n",
+				"    for env, e in local.entitled_environments : \"${env}-spanner-viewer\" => {\n",
+				"        { role = \"roles/spanner.databaseReader\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n",
+				"  entitlement_id       = \"${local.prefix}-${each.key}\"\n",
+				"  eligible_users {\n    principals = [\"group:${each.value.group}\"]\n  }\n",
+				"    for_each = each.value.approval ? [1] : []\n",
+				"          approver_email_recipients = [each.value.group]\n",
+			},
+			absent: []string{"tst = { group", "user:"},
+		},
+		{
+			name: "1-org publishes the apply identities' unique ids for the condition",
+			path: "1-org/outputs.tf",
+			want: []string{"output \"layer_service_account_unique_ids\" {", "  value       = { for k, sa in google_service_account.tofu : k => sa.unique_id }\n"},
+		},
+		{
+			name: "the READMEs say what the group holds, where the Spanner entitlements are and whose the other layers' recovery is",
+			path: "2-env/README.md",
+			want: []string{
+				"### The team group",
+				"Release approval is the one standing grant: `roles/cloudbuild.builds.approver`\non the environment project in `stg` and `prd`",
+				"unset, the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours.",
+				"so `2-spn`\ndeclares them on that project (`entitlements.tf` there)",
+				"recovery is the bootstrap administrator's",
+			},
+			absent: []string{"### Secret operators", "`var.secret_operators`"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content := renderedFile(t, tt.path)
+			for _, w := range tt.want {
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks:\n%s", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(content, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
+			}
+		})
+	}
+}
+
+// TestEntitlementPrerequisites pins what creating the entitlements needs from 1-org: the
+// admin role in the app and spn role sets and the API in the app and spn API sets.
+func TestEntitlementPrerequisites(t *testing.T) {
+	t.Parallel()
+
+	variables := renderedFile(t, "1-org/variables.tf")
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "the app role set", want: "      \"roles/monitoring.admin\",\n      # 2-env declares the team group's entitlements on the environment project\n      # (Privileged Access Manager); a starting set, completed by refusal.\n      \"roles/privilegedaccessmanager.admin\",\n      \"roles/resourcemanager.projectIamAdmin\",\n      \"roles/run.admin\",\n"},
+		{name: "the spn role set", want: "      \"roles/monitoring.admin\",\n      # 2-spn declares the environments' Spanner entitlements on the spn project\n      # (Privileged Access Manager); a starting set, completed by refusal.\n      \"roles/privilegedaccessmanager.admin\",\n      \"roles/resourcemanager.projectIamAdmin\",\n      \"roles/serviceusage.serviceUsageAdmin\",\n      \"roles/spanner.admin\",\n"},
+		{name: "the app API set", want: "      \"privilegedaccessmanager.googleapis.com\",\n      \"run.googleapis.com\",\n"},
+		{name: "the spn API set", want: "      \"privilegedaccessmanager.googleapis.com\",\n      \"spanner.googleapis.com\",\n    ]\n  }\n}\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if !strings.Contains(variables, tt.want) {
+				t.Errorf("1-org/variables.tf lacks:\n%s", tt.want)
+			}
+		})
+	}
+}
+
+// TestEntitlementDuration reads the longest grants as the layers declare them: the
+// placement's, in seconds, and the defaults where it sets none.
+func TestEntitlementDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		durations map[string]string
+		want      map[string]string
+	}{
+		{
+			name: "the defaults",
+			want: map[string]string{"secretOperator": "3600s", "spannerAdmin": "7200s", "spannerViewer": "14400s", "layerAdministrator": "14400s"},
+		},
+		{
+			name:      "the placement's where set, the defaults for the rest",
+			durations: map[string]string{"secretOperator": "30m", "layerAdministrator": "168h"},
+			want:      map[string]string{"secretOperator": "1800s", "spannerAdmin": "7200s", "spannerViewer": "14400s", "layerAdministrator": "604800s"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := Placement{EntitlementDurations: tt.durations}
+			for name, want := range tt.want {
+				if got := p.EntitlementDuration(name); got != want {
+					t.Errorf("EntitlementDuration(%s) = %q, want %q", name, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestApprovalAgreement holds the organization's approval environments, where the team
+// group holds the release approval, to the rule an application's placement derives its
+// own from when it names none: every environment but the first.
+func TestApprovalAgreement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "the organization's rule", want: "stg,prd"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			org := strings.Join((&Placement{}).ApprovalEnvironments(), ",")
+			application := strings.Join((&derive.Placement{Environments: Environments}).ApprovalEnvironments(), ",")
+			if org != tt.want || application != tt.want {
+				t.Errorf("the organization's approval environments are %q and an application's %q, want both %q", org, application, tt.want)
+			}
+		})
+	}
+}
+
 func TestLabelsBlock(t *testing.T) {
 	t.Parallel()
 
@@ -636,6 +881,13 @@ func TestViewPhrases(t *testing.T) {
 		{name: "seed labels", placement: Placement{SourceRepo: "acme-infrastructure", Labels: map[string]string{"team": "core"}}, check: func(v *view) string { return v.SeedLabels() }, want: "terraform=true,terraform_source_path=0-bootstrap,source_repo=acme-infrastructure,environment=boot,team=core"},
 		{name: "label prose", placement: Placement{Labels: map[string]string{"team": "core", "cost": "a"}}, check: func(v *view) string { return v.ExtraLabelsProse() + " / " + v.ExtraLabelKeys() }, want: "`cost = \"a\"`, `team = \"core\"` / `cost`, `team`"},
 		{name: "restorable environments prose", placement: Placement{}, check: func(v *view) string { return v.RestorableEnvironmentsProse() }, want: "`tst` and `stg`"},
+		{name: "the approval environments, as a list and as prose", placement: Placement{}, check: func(v *view) string { return v.ApprovalEnvironmentsList() + " " + v.ApprovalEnvironmentsProse() }, want: "[\"stg\", \"prd\"] `stg` and `prd`"},
+		{name: "the team groups as a variable's default", placement: Placement{TeamGroups: map[string]string{"tst": "a@x.com", "stg": "b@x.com", "prd": "c@x.com"}}, check: func(v *view) string { return v.TeamGroupLines() }, want: "    tst = \"a@x.com\"\n    stg = \"b@x.com\"\n    prd = \"c@x.com\""},
+		{name: "the shared instance's environments with their groups and approvals", placement: Placement{TeamGroups: map[string]string{"tst": "a@x.com", "stg": "b@x.com", "prd": "c@x.com"}}, check: func(v *view) string { return v.SharedInstanceEntitlementLines() }, want: "    stg = { group = \"b@x.com\", approval = true }\n    prd = { group = \"c@x.com\", approval = true }"},
+		{name: "the default longest grants as prose", placement: Placement{}, check: func(v *view) string { return v.EntitlementDefaultsProse() }, want: "the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours"},
+		{name: "durations in words", placement: Placement{}, check: func(*view) string {
+			return durationWords(time.Hour) + "|" + durationWords(90*time.Minute) + "|" + durationWords(12*time.Hour) + "|" + durationWords(3*time.Hour)
+		}, want: "an hour|90 minutes|12 hours|three hours"},
 		{name: "impulse's checks: the list, as prose and backticked", placement: Placement{}, check: func(v *view) string {
 			return strings.Join(v.ImpulseChecks(), ",") + " / " + v.ImpulseChecksProse() + " / " + v.ImpulseChecksProseQuoted()
 		}, want: "title,go,image,secrets,migrations / title, go, image, secrets and migrations / `title`, `go`, `image`, `secrets` and `migrations`"},

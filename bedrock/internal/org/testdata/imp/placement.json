@@ -12,6 +12,12 @@
   "sourceRepo": "imp-impulse-infrastructure",
   "stateBucket": "imp-boot-gbl-state-a1b2",
   "operator": "bedrock@impulseframework.com",
+  "teamGroups": {
+    "tst": "team-tst@impulseframework.com",
+    "stg": "team-stg@impulseframework.com",
+    "prd": "team-prd@impulseframework.com"
+  },
+  "entitlementDurations": {"spannerViewer": "8h"},
   "regions": [
     {"name": "us-central1", "code": "uc1"},
     {"name": "us-west3", "code": "uw3"}

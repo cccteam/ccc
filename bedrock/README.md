@@ -72,8 +72,9 @@ again does not, because its pull request is already labeled as tagged.
   policies), `2-shr` (the shared project: the registries), `2-spn` (the
   Spanner instances), `2-net` (the load balancer, the certificates and the hostnames) and
   `2-env` (per environment: the application identities and their grants, the records
-  bucket, the repository links). Rendered by `bedrock org` from the organization's
-  placement into the organization's infrastructure repository.
+  bucket, the repository links, the team group's release approval and entitlements).
+  Rendered by `bedrock org` from the organization's placement into the organization's
+  infrastructure repository.
 - **Application stack**: the OpenTofu root under the application repository's
   `infrastructure/` directory (or the one layer under `3-app/` of an infrastructure
   repository): the Cloud Run services and the migrate job, the database, the secret
@@ -83,7 +84,10 @@ again does not, because its pull request is already labeled as tagged.
   organization's facts the stack needs and the bedrock the pipeline runs
   (`bedrockVersion`, and `bedrockSha256` for a release); for an organization it records
   the prefix, the domains, the organization and billing ids, the regions, the Spanner
-  configuration, the GitHub organization, the applications and the environment projects.
+  configuration, the GitHub organization, the applications, the environment projects and
+  each environment's team group (`teamGroups`: the group whose members approve the
+  environment's releases and ask for its entitlements, with `entitlementDurations` for
+  the longest grants).
 - **Environment**: `tst`, `stg` and `prd`, in promotion order. A pull request deploys to
   the first; a release goes through them in order, each after it is live in the previous
   one.
