@@ -169,8 +169,18 @@ func (m *Model) firestore(a *app.App) error {
 			return errors.Newf("%s (%s) is declared at the %s level and %s (%s) at the %s level; the stack sets both on the processes that construct the database's level, so they belong together", key.Name, key.Declaration(), key.Level, database.Name, database.Declaration(), database.Level)
 		}
 	}
+	project := m.byRole(RoleFirestoreProject)
+	if project != nil && database == nil {
+		return errors.Newf("%s (%s) names the project of a Firestore database, and the config package declares no database (%s)", project.Name, project.Declaration(), varFirestoreDatabase)
+	}
 	if database == nil {
 		return nil
+	}
+	if project == nil {
+		return errors.Newf("%s (%s) declares a Firestore database, and the config package declares no variable for its project (%s): the stack sets it to the environment project, where the database is, since the Spanner project is the shared instance's in an environment that shares one", database.Name, database.Declaration(), varFirestoreProject)
+	}
+	if project.Level != database.Level {
+		return errors.Newf("%s (%s) is declared at the %s level and %s (%s) at the %s level; the stack sets both on the processes that construct the database's level, so they belong together", project.Name, project.Declaration(), project.Level, database.Name, database.Declaration(), database.Level)
 	}
 	fs := &Firestore{Dir: path.Join(path.Dir(m.Schema.MigrationsDir), FirestoreDir)}
 	fs.IndexesFile = path.Join(fs.Dir, FirestoreIndexesFile)

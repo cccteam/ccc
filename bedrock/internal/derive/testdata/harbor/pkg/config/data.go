@@ -196,6 +196,8 @@ type dataConfig struct {
 	// as the Cloud Tasks API names it (projects/<project>/locations/<region>/queues/<name>).
 	TasksQueue string `env:"APP_TASKS_QUEUE"`
 
+	// FirestoreProject is the project the Firestore database belongs to.
+	FirestoreProject string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
 	// FirestoreDatabase is the Firestore database the application keeps documents in, by id.
 	FirestoreDatabase string `env:"APP_FIRESTORE_DATABASE"`
 	// FirebaseAPIKey is the Firebase web API key the browser initializes the SDK with.

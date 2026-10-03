@@ -197,6 +197,7 @@ above them.
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
 | `APP_ASSETS_BUCKET` | data | the assets bucket | yes | | yes |
 | `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |
+| `GOOGLE_CLOUD_FIRESTORE_PROJECT` | data | the environment project (the Firestore database's) | yes | yes | yes |
 | `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | yes | yes |
 | `APP_FIREBASE_API_KEY` | data | the Firebase web API key | yes | yes | yes |
 | `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |

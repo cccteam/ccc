@@ -230,9 +230,12 @@ locals {
   # migration signals the running instances through it.
   # dataConfig.FirebaseAPIKey: the web API key the browser presents to sign in
   # (firestore.tf), a public value by design, beside it.
+  # dataConfig.FirestoreProject: the database's project, this environment's; the
+  # Spanner project is the shared instance's in an environment that shares one.
   firestore_env = {
-    APP_FIRESTORE_DATABASE = google_firestore_database.firestore.name
-    APP_FIREBASE_API_KEY   = google_apikeys_key.firebase.key_string
+    GOOGLE_CLOUD_FIRESTORE_PROJECT = local.project_id
+    APP_FIRESTORE_DATABASE         = google_firestore_database.firestore.name
+    APP_FIREBASE_API_KEY           = google_apikeys_key.firebase.key_string
   }
 
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an

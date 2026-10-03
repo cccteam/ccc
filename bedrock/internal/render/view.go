@@ -176,7 +176,10 @@ type view struct {
 	// opens the database's live service when it is constructed, and the release's
 	// role migration signals the running instances through it, so the migrate command
 	// receives the database's name and a grant on it like any process of that level.
-	FirestoreDatabase     *derive.Variable
+	FirestoreDatabase *derive.Variable
+	// FirestoreProject is the variable naming the database's project, set to the
+	// environment project; nil with FirestoreDatabase.
+	FirestoreProject      *derive.Variable
 	JobsReadsFirestore    bool
 	MigrateReadsFirestore bool
 	// FirebaseAPIKey is the variable the Firebase web API key of the Firestore database
@@ -839,6 +842,7 @@ func (v *view) declarations() {
 	}
 	v.FirestoreDatabase = v.byRole(derive.RoleFirestoreDatabase)
 	if v.FirestoreDatabase != nil {
+		v.FirestoreProject = v.byRole(derive.RoleFirestoreProject)
 		v.MigrateReadsFirestore = v.Migrate.Reads(v.FirestoreDatabase.Level)
 	}
 	if v.FirestoreDatabase != nil && v.Jobs != nil {

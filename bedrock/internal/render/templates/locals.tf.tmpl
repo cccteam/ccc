@@ -257,7 +257,10 @@ locals {
   # {{.FirebaseAPIKey.Declaration}}: the web API key the browser presents to sign in
   # (firestore.tf), a public value by design, beside it.
 {{- end}}
+  # {{.FirestoreProject.Declaration}}: the database's project, this environment's; the
+  # Spanner project is the shared instance's in an environment that shares one.
   firestore_env = {
+    {{.FirestoreProject.Name}}  = local.project_id
     {{.FirestoreDatabase.Name}} = google_firestore_database.firestore.name
 {{- if .FirebaseAPIKey}}
     {{.FirebaseAPIKey.Name}} = google_apikeys_key.firebase.key_string

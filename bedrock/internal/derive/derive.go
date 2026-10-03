@@ -194,6 +194,11 @@ const (
 	RoleAssetsBucket Role = "assets-bucket"
 	// RoleTasksQueue names the task queue to the processes that construct its level.
 	RoleTasksQueue Role = "tasks-queue"
+	// RoleFirestoreProject names the Firestore database's project to the processes that
+	// construct its level: the environment project, where the database is. The Spanner
+	// project is the shared instance's in an environment that shares one, so the
+	// database's project is told on its own.
+	RoleFirestoreProject Role = "firestore-project"
 	// RoleFirestoreDatabase names the Firestore database to the processes that construct
 	// its level.
 	RoleFirestoreDatabase Role = "firestore-database"
@@ -218,7 +223,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue, RoleFirestoreDatabase, RoleFirebaseAPIKey:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleAssetsBucket, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey:
 		return true
 	default:
 		return false
@@ -287,6 +292,12 @@ const (
 	// variable to its id and grants the processes that construct the variable's level
 	// on that database alone.
 	varFirestoreDatabase = "APP_FIRESTORE_DATABASE"
+	// varFirestoreProject is the variable an application with a Firestore database
+	// declares for the database's project: the stack sets it to the environment project,
+	// where the database is; empty, the application falls back to the Spanner project,
+	// which is the shared instance's in an environment that shares one, so the stack
+	// never leaves it empty.
+	varFirestoreProject = "GOOGLE_CLOUD_FIRESTORE_PROJECT"
 	// varFirebaseAPIKey is the variable an application with a Firestore database declares
 	// to serve live pages to a browser: the stack creates a web API key restricted to the
 	// APIs the browser's sign-in calls and sets the variable to it. The key is a public
@@ -311,6 +322,7 @@ var wellKnown = map[string]Role{
 	varAssetsBucket:      RoleAssetsBucket,
 	varTasksQueue:        RoleTasksQueue,
 	varFirestoreDatabase: RoleFirestoreDatabase,
+	varFirestoreProject:  RoleFirestoreProject,
 	varFirebaseAPIKey:    RoleFirebaseAPIKey,
 }
 

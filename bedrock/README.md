@@ -164,7 +164,9 @@ integration environment's), the variable set to its resource name, with `enqueue
 the queue and Service Account User on its own account for the site and, when it
 constructs that level, the job process, so a task calls the application back with the
 enqueuer's OIDC token; a config variable `APP_FIRESTORE_DATABASE` becomes a Firestore
-database in Native mode beside the Spanner database, the variable set to its id, with
+database in Native mode beside the Spanner database, the variable set to its id and
+`GOOGLE_CLOUD_FIRESTORE_PROJECT` to the environment project (the Spanner project is the
+shared instance's where one is shared, so the database's project is told on its own), with
 `datastore.user` under a condition naming that database alone for the site and, when they
 construct that level, the migrate command (the data level opens the database's live
 service when it is constructed, and the release's role migration signals the running
@@ -223,7 +225,9 @@ It also refuses:
   that some environment's `build_secrets` in `terraform.tfvars` does not declare, naming
   the environments: a release that passed the earlier environments would fail in the
   image build of the one lacking it. An optional mount passes with nothing said.
-- a Firestore database (`APP_FIRESTORE_DATABASE`) without `schema/firestore/firestore.indexes.json`
+- a Firestore database (`APP_FIRESTORE_DATABASE`) without its project variable
+  (`GOOGLE_CLOUD_FIRESTORE_PROJECT`), which the stack sets to the environment project,
+  or without `schema/firestore/firestore.indexes.json`
   or `schema/firestore/firestore.rules` beside the schema migrations, naming the missing
   file: the stack applies the database's indexes, time-to-live policies and rules from
   them, so render and check both stop before the stack is written. `APP_FIREBASE_API_KEY`

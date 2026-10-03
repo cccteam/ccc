@@ -72,7 +72,7 @@ func TestDerive(t *testing.T) {
 				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
 				"APP_STAFF_OIDC_CLIENT_ID", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_REDIRECT_URL", "APP_STAFF_OIDC_HOSTED_DOMAIN",
 				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_GROUP_LOOKUP",
-				varAssetsBucket, varTasksQueue, varFirestoreDatabase, varFirebaseAPIKey,
+				varAssetsBucket, varTasksQueue, varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey,
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", varJobsJob},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
@@ -102,6 +102,7 @@ func TestDerive(t *testing.T) {
 				varJobsJob:                     SupplyImage,
 				varAssetsBucket:                SupplyDerived,
 				varTasksQueue:                  SupplyDerived,
+				varFirestoreProject:            SupplyDerived,
 				varFirestoreDatabase:           SupplyDerived,
 				varFirebaseAPIKey:              SupplyDerived,
 			},
@@ -690,6 +691,8 @@ func TestFirestore(t *testing.T) {
 	)
 	database := Variable{Name: varFirestoreDatabase, Role: RoleFirestoreDatabase, Level: LevelData, Struct: "dataConfig", Field: "FirestoreDatabase"}
 	key := Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, Level: LevelData, Struct: "dataConfig", Field: "FirebaseAPIKey"}
+	project := Variable{Name: varFirestoreProject, Role: RoleFirestoreProject, Level: LevelData, Struct: "dataConfig", Field: "FirestoreProject"}
+	siteProject := Variable{Name: varFirestoreProject, Role: RoleFirestoreProject, Level: LevelSite, Struct: "siteConfig", Field: "FirestoreProject"}
 	tests := []struct {
 		name      string
 		variables []Variable
@@ -706,68 +709,83 @@ func TestFirestore(t *testing.T) {
 		},
 		{
 			name:       "the two files are read",
-			variables:  []Variable{database, key},
+			variables:  []Variable{database, project, key},
 			files:      map[string]string{FirestoreIndexesFile: indexes, FirestoreRulesFile: rules},
 			want:       "schema/firestore: 1 index(es) subscriptions_resource_tags; 3 field(s) subscriptions_expiry (ttl), changes_body, changes_expires (ttl); rules_version = '2';",
 			wantFields: []string{"ttl, 2 index(es), listed", "no ttl, 0 index(es), listed", "ttl, 0 index(es), unlisted"},
 		},
 		{
-			name:      "the indexes file is missing",
+			name:      "a database without its project variable is refused",
 			variables: []Variable{database},
+			wantErr:   "APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) declares a Firestore database, and the config package declares no variable for its project (GOOGLE_CLOUD_FIRESTORE_PROJECT): the stack sets it to the environment project",
+		},
+		{
+			name:      "a project variable without a database is refused",
+			variables: []Variable{project},
+			wantErr:   "GOOGLE_CLOUD_FIRESTORE_PROJECT (dataConfig.FirestoreProject) names the project of a Firestore database, and the config package declares no database (APP_FIRESTORE_DATABASE)",
+		},
+		{
+			name:      "the project variable at another level than the database is refused",
+			variables: []Variable{database, siteProject},
+			wantErr:   "GOOGLE_CLOUD_FIRESTORE_PROJECT (siteConfig.FirestoreProject) is declared at the site level and APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) at the data level; the stack sets both on the processes that construct the database's level, so they belong together",
+		},
+		{
+			name:      "the indexes file is missing",
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreRulesFile: rules},
 			wantErr:   "APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) declares a Firestore database, and schema/firestore/firestore.indexes.json is missing: the stack applies the database's composite indexes, time-to-live policies and security rules from the files beside the schema migrations",
 		},
 		{
 			name:      "the rules file is missing",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: indexes},
 			wantErr:   "APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) declares a Firestore database, and schema/firestore/firestore.rules is missing",
 		},
 		{
 			name:      "the indexes file is not JSON",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: "{", FirestoreRulesFile: rules},
 			wantErr:   "schema/firestore/firestore.indexes.json",
 		},
 		{
 			name:      "an index without a collection",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"fields":[{"fieldPath":"a","order":"ASCENDING"}]}]}`, FirestoreRulesFile: rules},
 			wantErr:   "schema/firestore/firestore.indexes.json: indexes[0] names no collectionGroup",
 		},
 		{
 			name:      "an index without fields",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s"}]}`, FirestoreRulesFile: rules},
 			wantErr:   "indexes[0] on s lists no fields",
 		},
 		{
 			name:      "a field with both shapes",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","fields":[{"fieldPath":"a","order":"ASCENDING","arrayConfig":"CONTAINS"}]}]}`, FirestoreRulesFile: rules},
 			wantErr:   "indexes[0].fields[0] carries both an order and an arrayConfig; a field takes one",
 		},
 		{
 			name:      "a field with neither shape",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","fields":[{"fieldPath":"a"}]}]}`, FirestoreRulesFile: rules},
 			wantErr:   "indexes[0].fields[0] carries neither an order nor an arrayConfig",
 		},
 		{
 			name:      "an unknown order",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","fields":[{"fieldPath":"a","order":"UP"}]}]}`, FirestoreRulesFile: rules},
 			wantErr:   `indexes[0].fields[0]: order "UP" is not one of ASCENDING, DESCENDING`,
 		},
 		{
 			name:      "an unknown query scope",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: `{"indexes":[{"collectionGroup":"s","queryScope":"ALL","fields":[{"fieldPath":"a","order":"ASCENDING"}]}]}`, FirestoreRulesFile: rules},
 			wantErr:   `indexes[0]: queryScope "ALL" is not one of COLLECTION, COLLECTION_GROUP, COLLECTION_RECURSIVE`,
 		},
 		{
 			name:      "a field override without a path",
-			variables: []Variable{database},
+			variables: []Variable{database, project},
 			files:     map[string]string{FirestoreIndexesFile: `{"fieldOverrides":[{"collectionGroup":"s","ttl":true}]}`, FirestoreRulesFile: rules},
 			wantErr:   "fieldOverrides[0] names no collectionGroup or no fieldPath",
 		},

@@ -212,6 +212,7 @@ above them.
 | `{{.TasksQueue.Name}}` | {{.TasksQueue.Level}} | the task queue | yes | |{{if .Jobs}} {{if .JobsReadsTasks}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .FirestoreDatabase}}
+| `{{.FirestoreProject.Name}}` | {{.FirestoreProject.Level}} | the environment project (the Firestore database's) | yes |{{if .MigrateReadsFirestore}} yes{{end}} |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
 | `{{.FirestoreDatabase.Name}}` | {{.FirestoreDatabase.Level}} | the Firestore database | yes |{{if .MigrateReadsFirestore}} yes{{end}} |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
 {{- end}}
 {{- if .FirebaseAPIKey}}
