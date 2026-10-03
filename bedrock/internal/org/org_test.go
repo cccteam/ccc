@@ -340,7 +340,7 @@ func TestCustomRolePermissions(t *testing.T) {
 				"logging.buckets.get", "logging.sinks.get",
 				"run.jobs.get", "run.services.get", "run.services.listTagBindings",
 				"secretmanager.secrets.get", "secretmanager.versions.get",
-				"serviceusage.apiKeys.get", "storage.buckets.get",
+				"apikeys.keys.get", "apikeys.keys.getKeyString", "storage.buckets.get",
 			},
 		},
 	}

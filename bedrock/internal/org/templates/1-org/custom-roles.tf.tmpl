@@ -242,8 +242,11 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     "secretmanager.secrets.get",
     "secretmanager.versions.get",
     # API keys: the web API key the application's browsers present, by name and string
-    # (a public value by design).
-    "serviceusage.apiKeys.get",
+    # (a public value by design). The API Keys service answers on its own permissions,
+    # not Service Usage's: the key's read asks apikeys.keys.get and, for the string the
+    # stack hands the site, apikeys.keys.getKeyString.
+    "apikeys.keys.get",
+    "apikeys.keys.getKeyString",
     # Cloud Storage: the assets bucket, and not its objects.
     "storage.buckets.get",
   ]
