@@ -318,15 +318,15 @@ func Test_patchTemplate_tenant(t *testing.T) {
 				"tenantsAdded, tenantsRemoved = nil, nil",
 				"tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))",
 				"tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))",
-				"a.Tenants().Add(domain)",
-				"a.Tenants().Remove(domain)",
+				"a.TenantRoster().Add(domain)",
+				"a.TenantRoster().Remove(domain)",
 				"if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {",
 				"logger.FromCtx(ctx).Errorf(",
 			},
 		},
 		{
 			name:            "another resource carries none of it",
-			wantNotContains: []string{"tenantsAdded", "tenantsRemoved", "Tenants()", "KindTenants"},
+			wantNotContains: []string{"tenantsAdded", "tenantsRemoved", "TenantRoster()", "KindTenants"},
 		},
 	}
 
@@ -362,7 +362,7 @@ func Test_patchTemplate_tenant(t *testing.T) {
 			// signal, the signal before the answer.
 			s := string(out)
 			commit := strings.Index(s, "}); err != nil {")
-			add := strings.Index(s, "a.Tenants().Add(domain)")
+			add := strings.Index(s, "a.TenantRoster().Add(domain)")
 			signal := strings.Index(s, "Signal(ctx, resource.KindTenants)")
 			answer := strings.Index(s, "return httpio.NewEncoder(w).Ok(")
 			if commit >= add || add >= signal || signal >= answer {

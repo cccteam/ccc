@@ -680,10 +680,10 @@ const (
 	// their backstop. The live service is required in every application, so there is
 	// no nil check.
 	tenantsCommitted = `for _, domain := range tenantsAdded {
-			{{ .ReceiverName }}.Tenants().Add(domain)
+			{{ .ReceiverName }}.TenantRoster().Add(domain)
 		}
 		for _, domain := range tenantsRemoved {
-			{{ .ReceiverName }}.Tenants().Remove(domain)
+			{{ .ReceiverName }}.TenantRoster().Remove(domain)
 		}
 		if len(tenantsAdded)+len(tenantsRemoved) > 0 {
 			if err := {{ .ReceiverName }}.LiveService().Signal(ctx, resource.KindTenants); err != nil {
@@ -1008,7 +1008,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveToken() http.HandlerFunc 
 
 	// domainGuardTemplate emits the application's DomainGuard middleware once; generated
 	// route registration wraps every domain-scoped route in it. The guard reads the
-	// application's tenant roster first (Tenants().Has: no read, no wait) and, under
+	// application's tenant roster first (TenantRoster().Has: no read, no wait) and, under
 	// WithConcealedDomains, the caller's foothold next, answering the same not-found
 	// either way. No marker check is needed: a URL domain is pure data, and
 	// accesstypes.DomainScope routes it to a tenant partition by construction — no value
@@ -1047,7 +1047,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) DomainGuard() func(http.Handl
 			defer span.End()
 
 			domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-			if !{{ .ReceiverName }}.Tenants().Has(domain) {
+			if !{{ .ReceiverName }}.TenantRoster().Has(domain) {
 				return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
 			}
 			{{- if .ConcealedDomains }}
@@ -1083,7 +1083,7 @@ import (
 // dispatcher ask the roster before a tenant-scoped request runs, and the generated
 // {{ .Name }} write paths add and remove tenants after their commit and publish the
 // tenants signal, so every instance reloads. The application exposes the roster as
-// Tenants(); resource.WithTenantSignals wires the live service the roster reloads on.
+// TenantRoster(); resource.WithTenantSignals wires the live service the roster reloads on.
 func New{{ .Name }}Roster(client resource.Client, opts ...resource.TenantRosterOption) *resource.TenantRoster {
 	return resource.NewTenantRoster(client, {{ printf "%q" .Table }}, {{ printf "%q" .KeyColumn }}, opts...)
 }
@@ -1228,8 +1228,8 @@ type validatorApp interface {
 var _ validatorApp = (*{{ .ApplicationName }})(nil)
 {{ end }}
 {{ if .HasDomainScoped -}}
-// domainScopedApp is the application surface domain-scoped routes draw on. Tenants is
-// the application's tenant roster (resource.TenantRoster, built by the generated
+// domainScopedApp is the application surface domain-scoped routes draw on. TenantRoster
+// is the application's tenant roster (resource.TenantRoster, built by the generated
 // New<Record>Roster constructor and started by the application): whether a domain is a
 // known tenant, never whether any particular row exists. The generated DomainGuard and
 // the consolidated dispatcher ask it first{{ if .ConcealedDomains }}, and, since domains are concealed
@@ -1238,7 +1238,7 @@ var _ validatorApp = (*{{ .ApplicationName }})(nil)
 // (zz_gen_domain_guard.go) and asserted here to complete the middleware surface the
 // generated route registration wires.
 type domainScopedApp interface {
-	Tenants() *resource.TenantRoster
+	TenantRoster() *resource.TenantRoster
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 }
 
@@ -1893,7 +1893,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 						}
 
 						domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
-						if !{{ .ReceiverName }}.Tenants().Has(domain) {
+						if !{{ .ReceiverName }}.TenantRoster().Has(domain) {
 							return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 						}
 						{{- if .ConcealedDomains }}

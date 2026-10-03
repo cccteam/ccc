@@ -65,6 +65,21 @@ func rejectTenantAnnotation(pStruct *parser.Struct, annotations genlang.StructAn
 	return errors.Newf("struct %s: @%s on a %s; the tenant record is a table-backed @%s, since its rows are the tenants", pStruct.Name(), tenantKeyword, kind, resourceKeyword)
 }
 
+// rejectReservedStem refuses a struct whose plural file stem is one the generator
+// writes for itself (reservedOutputStems), naming the file and what the generator
+// writes to it, so the collision is refused at capture rather than written over. The
+// tenant record is where it was first met: a record named Tenant has the handler file
+// zz_gen_tenants.go, which the roster constructor's file once shared. Called for every
+// resource kind through rejectReservedResourceName.
+func rejectReservedStem(name, stem string) error {
+	carries, reserved := reservedOutputStems[stem]
+	if !reserved {
+		return nil
+	}
+
+	return errors.Newf("struct %s: its generated files would be named %s, the file the generator writes %s to; rename the resource", name, generatedGoFileName(stem), carries)
+}
+
 // rejectSecondTenant refuses a second @tenant in the package: an application has one
 // tenant record, since one route segment serves its tenant-scoped routes.
 func rejectSecondTenant(resources []*resourceInfo) error {
@@ -172,7 +187,7 @@ func (r *resourceGenerator) generateTenants() error {
 	}
 
 	begin := time.Now()
-	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(tenantsOutputName))
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(tenantRosterOutputName))
 
 	keyColumn, _ := tenant.PrimaryKey().LookupTag(spannerTagKey)
 	if err := r.writeFormattedGoFile(destinationFilePath, "tenantsTemplate", tenantsTemplate, &tenantsData{

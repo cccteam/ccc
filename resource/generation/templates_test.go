@@ -204,7 +204,7 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				"var _ resourceApp = (*App)(nil)",
 				"Validator() resource.ValidatorFunc",
 				"var _ validatorApp = (*App)(nil)",
-				"Tenants() *resource.TenantRoster",
+				"TenantRoster() *resource.TenantRoster",
 				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
 				"var _ domainScopedApp = (*App)(nil)",
 				"var _ = (*App).RPCClient",
@@ -221,7 +221,7 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				ConcealedDomains: true,
 			},
 			wantContains: []string{
-				"Tenants() *resource.TenantRoster",
+				"TenantRoster() *resource.TenantRoster",
 				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
 				"var _ domainScopedApp = (*App)(nil)",
 				"generation.WithConcealedDomains",

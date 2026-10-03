@@ -223,13 +223,16 @@ func (c *client) resolveRPCFeature(method *rpcMethodInfo, annotations genlang.St
 }
 
 // rejectReservedResourceName refuses a struct whose resource would be the library's
-// FeatureFlags: the flags are served by the library's handlers on every application.
+// FeatureFlags (the flags are served by the library's handlers on every application),
+// and one whose plural file stem is a file the generator writes for itself
+// (rejectReservedStem).
 func (c *client) rejectReservedResourceName(pStruct *parser.Struct, kind string) error {
-	if c.pluralize(pStruct.Name()) == string(resource.FeatureFlagsResource) {
+	plural := c.pluralize(pStruct.Name())
+	if plural == string(resource.FeatureFlagsResource) {
 		return errors.Newf("struct %s: %s is the feature flags' resource, which the library serves on every application; a %s cannot take the name", pStruct.Name(), resource.FeatureFlagsResource, kind)
 	}
 
-	return nil
+	return rejectReservedStem(pStruct.Name(), fileStem(plural))
 }
 
 // rejectReservedMethodName refuses an RPC struct named SetFeature: the flip is the

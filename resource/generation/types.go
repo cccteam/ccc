@@ -219,9 +219,10 @@ const (
 	resourceInterfaceOutputName = "resources_iface"
 	resourceEnumsFileName       = "enums"
 	domainGuardOutputName       = "domain_guard"
-	// tenantsOutputName names the handler package's file carrying the tenant record's
-	// roster constructor (New<Record>Roster).
-	tenantsOutputName             = "tenants"
+	// tenantRosterOutputName names the handler package's file carrying the tenant
+	// record's roster constructor (New<Record>Roster): a singular stem, since every
+	// resource's handler file takes the plural of its name.
+	tenantRosterOutputName        = "tenant_roster"
 	permissionsOutputName         = "permissions"
 	liveOutputName                = "live"
 	decodersOutputName            = "decoders"
@@ -238,6 +239,25 @@ const (
 	featuresOutputName     = "features"
 	featureTestsOutputName = "features_test"
 )
+
+// reservedOutputStems are the stems of the files the generator writes for itself into
+// the two packages where every resource's own files land, the handler package's and the
+// resources package's, each with what it carries. A resource or computed resource whose
+// plural file stem is one of them is refused at capture (rejectReservedStem): its files
+// and the generator's own would otherwise be written to one name, and whichever is
+// written last would stand.
+var reservedOutputStems = map[string]string{
+	resourceInterfaceOutputName:   "the resource interfaces",
+	resourceEnumsFileName:         "the enumerations",
+	domainGuardOutputName:         "the domain guard",
+	tenantRosterOutputName:        "the tenant roster constructor",
+	permissionsOutputName:         "the permission endpoints",
+	liveOutputName:                "the live handlers",
+	decodersOutputName:            "the decoders",
+	appContractOutputName:         "the application contract",
+	consolidatedHandlerOutputName: "the consolidated handler",
+	featuresOutputName:            "the feature flags",
+}
 
 type informationSchemaResult struct {
 	TableName            string  `spanner:"TABLE_NAME"`

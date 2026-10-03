@@ -525,7 +525,7 @@ func Test_domainGuardTemplate(t *testing.T) {
 			wantContains: []string{
 				"func (a *App) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {",
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
-				"if !a.Tenants().Has(domain) {",
+				"if !a.TenantRoster().Has(domain) {",
 				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
 				"next.ServeHTTP(w, r)",
 			},
@@ -535,7 +535,7 @@ func Test_domainGuardTemplate(t *testing.T) {
 			name:      "concealed domains ask the roster, then the caller's foothold",
 			concealed: true,
 			wantContains: []string{
-				"if !a.Tenants().Has(domain) {",
+				"if !a.TenantRoster().Has(domain) {",
 				"if ok, err := a.UserPermissions(r).HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {",
 				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
 			},
@@ -574,7 +574,7 @@ func Test_domainGuardTemplate(t *testing.T) {
 			}
 			if tt.concealed {
 				s := string(out)
-				roster, foothold := strings.Index(s, "a.Tenants().Has(domain)"), strings.Index(s, "HasGrants(ctx")
+				roster, foothold := strings.Index(s, "a.TenantRoster().Has(domain)"), strings.Index(s, "HasGrants(ctx")
 				if roster < 0 || foothold < 0 || roster > foothold {
 					t.Errorf("the guard must ask the roster before the foothold (roster at %d, foothold at %d):\n%s", roster, foothold, out)
 				}
@@ -634,7 +634,7 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				`case "stations":`,
 				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
 				`domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)`,
-				`if !a.Tenants().Has(domain) {`,
+				`if !a.TenantRoster().Has(domain) {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
 				`fossilDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())`,
 				`vaultDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))`,
@@ -673,8 +673,8 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				"tenantsAdded, tenantsRemoved = nil, nil",
 				"tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))",
 				"tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))",
-				"a.Tenants().Add(domain)",
-				"a.Tenants().Remove(domain)",
+				"a.TenantRoster().Add(domain)",
+				"a.TenantRoster().Remove(domain)",
 				"if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {",
 				"logger.FromCtx(ctx).Errorf(",
 			},
@@ -695,7 +695,7 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				ConcealedDomains:    true,
 			},
 			wantContains: []string{
-				`if !a.Tenants().Has(domain) {`,
+				`if !a.TenantRoster().Has(domain) {`,
 				`if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
 			},
@@ -714,7 +714,7 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				ReceiverName:        "a",
 				HandlerName:         "PatchResources",
 			},
-			wantNotContains: []string{`case "stations":`, "WithPrefixPattern", "Tenants()", "router.Domain"},
+			wantNotContains: []string{`case "stations":`, "WithPrefixPattern", "TenantRoster()", "router.Domain"},
 		},
 	}
 
