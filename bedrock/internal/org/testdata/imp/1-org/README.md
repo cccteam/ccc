@@ -300,7 +300,7 @@ carries those; bedrock reads the list from impulse when it renders
 (`angular-<workspace>`, one per browser workspace) are not required by the
 rule, since the placement does not carry each application's workspaces. A
 pull request merges once every required check passes on its latest commit and
-its branch holds every commit of its base. A renamed job is one change to
+its branch holds every commit of its base. The checks are not enforced on the creation of a branch: a hotfix line is created from a released commit of the default branch, which carries no pull-request check (they ran on the pull request's head, not on its squash commit), and every change to the line after that is a pull request. A renamed job is one change to
 `github.tf`, timed with the release that renames it; requiring both names
 would block every pull request. The rule requires impulse's names once every
 application's workflow reports them: an application takes the workflow

@@ -1883,6 +1883,7 @@ func TestRepositoryRules(t *testing.T) {
       },
     ]`,
 				`strict_required_status_checks_policy = true`,
+				`do_not_enforce_on_create = true`,
 				`allowed_merge_methods           = ["squash"]`,
 				`require_last_push_approval      = var.github_infrastructure_team != ""`,
 				`operations_environments = ["tst", "stg", "prd"]`,

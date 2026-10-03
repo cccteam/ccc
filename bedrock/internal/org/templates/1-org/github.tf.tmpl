@@ -210,6 +210,13 @@ resource "github_repository_ruleset" "branch" {
 
     required_status_checks {
       strict_required_status_checks_policy = true
+      # A hotfix line is created from a released commit on the default branch, which
+      # carries none of the pull-request checks (they ran on the pull request's head,
+      # not on its squash commit), so the checks are not enforced on the creation of a
+      # branch: without this, `bedrock hotfix start` is refused with "required status
+      # checks are expected". Every push to the line after that is a pull request,
+      # which the checks gate as on the default branch.
+      do_not_enforce_on_create = true
 
       dynamic "required_check" {
         for_each = local.required_checks[each.value.app]
