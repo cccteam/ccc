@@ -40,7 +40,7 @@ jobs:
           cache-dependency-path: go.sum
       - name: The pinned bedrock, from its release
         run: |
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/bedrock" "$BEDROCK_URL"
+          curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 -o "$RUNNER_TEMP/bedrock" "$BEDROCK_URL"
           echo "$BEDROCK_SHA256  $RUNNER_TEMP/bedrock" | sha256sum --check -
           chmod 0755 "$RUNNER_TEMP/bedrock"
           "$RUNNER_TEMP/bedrock" --version

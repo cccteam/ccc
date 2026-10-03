@@ -449,15 +449,18 @@ var goInstallEnv = []string{
 	"GOPROXY=https://proxy.golang.org", "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GOINSECURE=",
 }
 
-// The FetchBedrock step's timeout in seconds: a release pin's download, or a commit pin's
-// go install, which pulls the Go image and builds bedrock. The sweep's whole-build timeout
+// The FetchBedrock step's timeout in seconds: a release pin's download (three retries of an
+// attempt bounded to a minute, so a GitHub download that hangs or answers 502 for a while,
+// which the lab saw three times in a quarter of an hour, is tried again inside the step's
+// time), or a commit pin's go install, which pulls the Go image and builds bedrock. The
+// sweep's whole-build timeout
 // is what it spends after that step plus the step's own timeout, so the longer build of a
 // commit pin never eats the time the later steps had. The pipeline's whole-build timeout
 // is Cloud Build's ceiling: a release that waits for its maintenance window waits inside
 // the run, and every step keeps its own timeout, so a hung step still fails on time and
 // only the wait uses the headroom.
 const (
-	releaseFetchSeconds = 120
+	releaseFetchSeconds = 300
 	commitFetchSeconds  = 600
 	// pipelineCeilingSeconds is Cloud Build's longest build, 24 hours.
 	pipelineCeilingSeconds = 86400
@@ -484,7 +487,7 @@ func (v *view) FetchBedrockStep() string {
       - -c
       - |
         set -euo pipefail
-        curl -fsSL --retry 3 -o /builder/home/bedrock "%s"
+        curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 -o /builder/home/bedrock "%s"
         echo "%s  /builder/home/bedrock" | sha256sum --check -
         chmod 0755 /builder/home/bedrock
         /builder/home/bedrock --version

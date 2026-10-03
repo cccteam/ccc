@@ -121,6 +121,10 @@ func TestGuardPlan(t *testing.T) {
 
 	own := `{"address": "google_cloud_run_v2_service.site[\"us-central1\"]", "type": "google_cloud_run_v2_service", "change": {"actions": ["create"], "after": {"name": "quill-pr7"}}}`
 	ownMember := `{"address": "google_project_iam_member.app", "type": "google_project_iam_member", "change": {"actions": ["create"], "after": {"member": "serviceAccount:quill-pr7-app@p.iam.gserviceaccount.com", "project": "p"}}}`
+	// The deploy identity's Firestore role is a project grant whose condition bounds it to
+	// the pull request's own database; the same role bounded to the environment's is not.
+	ownConditioned := `{"address": "google_project_iam_member.firestore_deploy", "type": "google_project_iam_member", "change": {"actions": ["create"], "after": {"member": "serviceAccount:quill-deploy@p.iam.gserviceaccount.com", "role": "roles/datastore.user", "condition": [{"title": "quill-pr7-fs only", "expression": "resource.name == \"projects/p/databases/quill-pr7-fs\""}]}}}`
+	foreignConditioned := `{"address": "google_project_iam_member.firestore_deploy", "type": "google_project_iam_member", "change": {"actions": ["delete"], "before": {"member": "serviceAccount:quill-deploy@p.iam.gserviceaccount.com", "role": "roles/datastore.user", "condition": [{"title": "quill-fs only", "expression": "resource.name == \"projects/p/databases/quill-fs\""}]}, "after": null}}`
 	sleep := `{"address": "time_sleep.wait", "type": "time_sleep", "change": {"actions": ["create"], "after": {}}}`
 	noop := `{"address": "google_spanner_instance.shared", "type": "google_spanner_instance", "change": {"actions": ["no-op"], "after": {"name": "tst-shared"}}}`
 	foreign := `{"address": "google_cloud_run_v2_service.site_tst", "type": "google_cloud_run_v2_service", "change": {"actions": ["delete"], "before": {"name": "quill-app"}, "after": null}}`
@@ -147,6 +151,18 @@ func TestGuardPlan(t *testing.T) {
 			name:    "the pull request's own resources, its accounts' memberships and what shapes nothing pass",
 			plan:    plan(own, ownMember, sleep, noop),
 			wantOut: []string{"Guard passed: 3 planned change(s), all pull request 7's."},
+		},
+		{
+			name:    "the deploy identity's grant bounded to the pull request's database passes",
+			plan:    plan(own, ownConditioned),
+			wantOut: []string{"Guard passed: 2 planned change(s), all pull request 7's."},
+		},
+		{
+			name:        "the deploy identity's grant bounded to the environment's database is refused",
+			plan:        plan(own, foreignConditioned),
+			wantOut:     []string{"google_project_iam_member.firestore_deploy (delete)"},
+			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
+			wantComment: "A pull-request stack applies only resources named quill-pr7",
 		},
 		{
 			name:    "a ruleset whose source is named for the pull request's database passes",

@@ -19,9 +19,10 @@ import (
 // edited the stack any way at all, so every resource the saved plan creates, changes or
 // destroys must carry the pull request's name (<app>-pr<N>) in what names it (name,
 // account_id, service, job, database, parent, secret_id, service_account_id, bucket, or
-// the source of a ruleset), or be an IAM membership of one of the pull request's own
-// accounts. Resources outside the google
-// provider (time_sleep) shape nothing and pass. Anything else stops the build and is
+// the source of a ruleset), be an IAM membership of one of the pull request's own
+// accounts, or be a grant whose condition bounds it to one of the pull request's resources
+// (the deploy identity's Firestore role on the pull request's database). Resources outside
+// the google provider (time_sleep) shape nothing and pass. Anything else stops the build and is
 // listed on the pull request. Shared mode (/gcbrun shared-db) is refused too when the
 // pull request changes the migrations, which would change the shared database before any
 // release.
@@ -57,7 +58,7 @@ func GuardPlan(ctx context.Context, clients *Clients, w Workspace, out io.Writer
 		return err
 	}
 	if pr != nil {
-		body := fmt.Sprintf("The pull-request build stopped: its plan touches resources that do not belong to this pull request. A pull-request stack applies only resources named %s, or memberships of its own accounts. Build %s:\n\n```\n%s\n```", name, build.ID, strings.Join(offenders, "\n"))
+		body := fmt.Sprintf("The pull-request build stopped: its plan touches resources that do not belong to this pull request. A pull-request stack applies only resources named %s, memberships of its own accounts, and grants bounded by their condition to its resources. Build %s:\n\n```\n%s\n```", name, build.ID, strings.Join(offenders, "\n"))
 		if err := pr.comment(ctx, body, out); err != nil {
 			return err
 		}
@@ -155,7 +156,8 @@ func planOffenders(data []byte, name string) (offenders []string, count int, err
 }
 
 // ownedBy reports whether the change is the pull request's: its naming attributes carry
-// the name, or it is an IAM membership of one of the pull request's accounts.
+// the name, or it is an IAM membership of one of the pull request's accounts, or a grant
+// bounded by its condition to one of the pull request's resources.
 func ownedBy(c planChange, name string) bool {
 	values := c.Change.After
 	if values == nil {
@@ -170,9 +172,28 @@ func ownedBy(c planChange, name string) bool {
 	if strings.Contains(strings.Join(ident, " "), name) {
 		return true
 	}
+	if !strings.HasSuffix(c.Type, "_iam_member") {
+		return false
+	}
 	member, _ := values["member"].(string)
 
-	return strings.HasSuffix(c.Type, "_iam_member") && strings.HasPrefix(member, "serviceAccount:"+name+"-")
+	return strings.HasPrefix(member, "serviceAccount:"+name+"-") || conditioned(values, name)
+}
+
+// conditioned reports whether a grant's condition bounds it to a resource that carries the
+// name: the deploy identity's Firestore role is granted on the project under a condition on
+// the pull request's own database (resource.name == .../databases/<app>-pr<N>-fs), so the
+// grant is the pull request's though its member is not.
+func conditioned(values map[string]any, name string) bool {
+	conds, _ := values["condition"].([]any)
+	for _, c := range conds {
+		m, _ := c.(map[string]any)
+		if expr, _ := m["expression"].(string); strings.Contains(expr, name) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // jsonText is a plan value as text: a string as it is, anything else as its JSON.

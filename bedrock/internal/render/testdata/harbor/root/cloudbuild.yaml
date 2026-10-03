@@ -59,12 +59,12 @@ steps:
   - id: FetchBedrock
     name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
-    timeout: 120s
+    timeout: 300s
     args:
       - -c
       - |
         set -euo pipefail
-        curl -fsSL --retry 3 -o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/v0.1.0/bedrock-linux-amd64"
+        curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 -o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/v0.1.0/bedrock-linux-amd64"
         echo "0000000000000000000000000000000000000000000000000000000000000000  /builder/home/bedrock" | sha256sum --check -
         chmod 0755 /builder/home/bedrock
         /builder/home/bedrock --version
