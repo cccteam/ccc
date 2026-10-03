@@ -110,10 +110,22 @@ func Test_generatedOutput_removeStaleOutput(t *testing.T) {
 			wantKept: map[string][]string{"app": {"app.go", genPrefix + "_ships.go"}},
 		},
 		{
+			name:    "a router package: the release file goes with the router it was written beside, a hand-written JSON file stays",
+			targets: map[string]generatedFileDeleteMethod{"router": prefix},
+			stale: map[string]map[string]string{"router": {
+				genPrefix + "_router.go":    "old",
+				genPrefix + "_release.json": "{}",
+				genPrefix + "_routes.go":    "old",
+				"fixture.json":              "hand-written",
+			}},
+			writes:   map[string]map[string]string{"router": {genPrefix + "_routes.go": "rewritten"}},
+			wantKept: map[string][]string{"router": {"fixture.json", genPrefix + "_routes.go"}},
+		},
+		{
 			name:    "a TypeScript target by header, and a types package by method file names",
 			targets: map[string]generatedFileDeleteMethod{"web": headerComment, "types": methodFiles},
 			stale: map[string]map[string]string{
-				"web":   {genPrefix + "_api.ts": generationHeader + "\nold", genPrefix + "_gone.ts": generationHeader + "\nold", "index.ts": "hand-written"},
+				"web":   {genPrefix + "_api.ts": generationHeader + "\nold", genPrefix + "_gone.ts": generationHeader + "\nold", "index.ts": "hand-written", "package.json": "{}"},
 				"types": {generatedGoFileName(jsonOutputName): "old", generatedGoFileName(storageOutputName): "old", genPrefix + "_notmine.go": "someone else's", "payload.go": "hand-written"},
 			},
 			writes: map[string]map[string]string{
@@ -121,7 +133,7 @@ func Test_generatedOutput_removeStaleOutput(t *testing.T) {
 				"types": {generatedGoFileName(jsonOutputName): "rewritten"},
 			},
 			wantKept: map[string][]string{
-				"web":   {"index.ts", genPrefix + "_api.ts"},
+				"web":   {"index.ts", "package.json", genPrefix + "_api.ts"},
 				"types": {"payload.go", genPrefix + "_notmine.go", generatedGoFileName(jsonOutputName)},
 			},
 		},

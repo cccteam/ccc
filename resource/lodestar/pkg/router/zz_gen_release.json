@@ -1,0 +1,13 @@
+{
+  "outlets": {
+    "default": {
+      "oldestAnswered": ""
+    },
+    "droids": {
+      "kind": "api-key"
+    },
+    "portal": {
+      "oldestAnswered": ""
+    }
+  }
+}

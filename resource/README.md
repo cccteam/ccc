@@ -522,6 +522,40 @@ proves it: in range answered, below or above refused with the header and no hand
 and no body read, no header and `dev` answered, session and file routes answered at any
 release, the API-key outlets unchecked, and the refusal landing before the hook.
 
+**The release file.** Beside the router the generator writes `zz_gen_release.json`, which
+names every outlet and, for each session outlet, the oldest release it answers, so a
+deploy tells from the checkout alone, without building or running the server, whether a
+release needs a maintenance window. It is written only when a router is generated, with
+the other generated files, and the sweep removes it when the router goes. One entry per
+outlet, keyed by the outlet's name (`default` for `GenerateRoutes`, the name given to
+`WithRouterOutlet` otherwise): a session outlet carries `oldestAnswered`, the release as
+declared (`"1.5.0"`), `"this"` for `generation.ThisRelease`, or `""` when the option is
+absent and every release that sends the header is answered; an API-key outlet carries
+`"kind": "api-key"` and no `oldestAnswered`, since it is never checked. Lodestar's, with
+no release declared on either session outlet:
+
+```json
+{
+  "outlets": {
+    "default": {
+      "oldestAnswered": ""
+    },
+    "droids": {
+      "kind": "api-key"
+    },
+    "portal": {
+      "oldestAnswered": ""
+    }
+  }
+}
+```
+
+`resource.ReadReleaseFile(dir)` reads it from the router package's directory into a
+`resource.ReleaseFile` (`Outlets` by name, each a `ReleaseOutlet` with `APIKey` and
+`OldestAnswered`, `"this"` read back as `resource.ThisRelease`), refusing a file that is
+not this shape, so the deploy and the tests share one parser; the name is
+`resource.ReleaseFileName`.
+
 **The generated test** drives every generated route through `New` with recording stubs
 and asserts the middleware each request passed through, in order, for its outlet; that
 each flavor's session routes answer behind the group and before the guards; that under

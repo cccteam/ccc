@@ -233,6 +233,9 @@ const (
 	servedRouterTestOutputName    = "router_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
 	collectionOutputName          = "collection"
+	// releaseOutputName is the stem of the router package's release file,
+	// resource.ReleaseFileName, which names each outlet's oldest answered release.
+	releaseOutputName = "release"
 	// featuresOutputName names the feature flag files: the resources package's
 	// declarations and the handler package's handlers; featureTestsOutputName the
 	// generated feature gate tests.
@@ -240,23 +243,32 @@ const (
 	featureTestsOutputName = "features_test"
 )
 
-// reservedOutputStems are the stems of the files the generator writes for itself into
-// the two packages where every resource's own files land, the handler package's and the
-// resources package's, each with what it carries. A resource or computed resource whose
-// plural file stem is one of them is refused at capture (rejectReservedStem): its files
-// and the generator's own would otherwise be written to one name, and whichever is
-// written last would stand.
-var reservedOutputStems = map[string]string{
-	resourceInterfaceOutputName:   "the resource interfaces",
-	resourceEnumsFileName:         "the enumerations",
-	domainGuardOutputName:         "the domain guard",
-	tenantRosterOutputName:        "the tenant roster constructor",
-	permissionsOutputName:         "the permission endpoints",
-	liveOutputName:                "the live handlers",
-	decodersOutputName:            "the decoders",
-	appContractOutputName:         "the application contract",
-	consolidatedHandlerOutputName: "the consolidated handler",
-	featuresOutputName:            "the feature flags",
+// reservedOutput is one file the generator writes for itself: its name and what it
+// carries.
+type reservedOutput struct {
+	file    string
+	carries string
+}
+
+// reservedOutputStems are the stems the generator keeps for the files it writes for
+// itself: the files in the two packages where every resource's own files land, the
+// handler package's and the resources package's, where a resource's files and the
+// generator's would otherwise be written to one name and whichever is written last would
+// stand; and the router package's release file, whose stem stays the generator's. A
+// resource or computed resource whose plural file stem is one of them is refused at
+// capture (rejectReservedStem), naming the generator's file and what it carries.
+var reservedOutputStems = map[string]reservedOutput{
+	resourceInterfaceOutputName:   {file: generatedGoFileName(resourceInterfaceOutputName), carries: "the resource interfaces"},
+	resourceEnumsFileName:         {file: generatedGoFileName(resourceEnumsFileName), carries: "the enumerations"},
+	domainGuardOutputName:         {file: generatedGoFileName(domainGuardOutputName), carries: "the domain guard"},
+	tenantRosterOutputName:        {file: generatedGoFileName(tenantRosterOutputName), carries: "the tenant roster constructor"},
+	permissionsOutputName:         {file: generatedGoFileName(permissionsOutputName), carries: "the permission endpoints"},
+	liveOutputName:                {file: generatedGoFileName(liveOutputName), carries: "the live handlers"},
+	decodersOutputName:            {file: generatedGoFileName(decodersOutputName), carries: "the decoders"},
+	appContractOutputName:         {file: generatedGoFileName(appContractOutputName), carries: "the application contract"},
+	consolidatedHandlerOutputName: {file: generatedGoFileName(consolidatedHandlerOutputName), carries: "the consolidated handler"},
+	featuresOutputName:            {file: generatedGoFileName(featuresOutputName), carries: "the feature flags"},
+	releaseOutputName:             {file: resource.ReleaseFileName, carries: "the release file"},
 }
 
 type informationSchemaResult struct {

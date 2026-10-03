@@ -131,8 +131,11 @@ func GenerateRoutes(targetDir, routePrefix string, options ...OutletOption) Reso
 // emits, in the same package: zz_gen_router.go holds the Handlers interface (the full
 // surface the router needs), the Hooks struct (the application's additions: one field per
 // outlet and two for the edges), and New(h Handlers, hooks Hooks) *chi.Mux, written linear
-// and inline with the middleware chain documented at the top of the file; and
-// zz_gen_router_test.go proves that chain by driving every route through New.
+// and inline with the middleware chain documented at the top of the file;
+// zz_gen_router_test.go proves that chain by driving every route through New; and
+// zz_gen_release.json (resource.ReleaseFileName) names every outlet and each session
+// outlet's oldest answered release, for a deploy reading the checkout
+// (resource.ReadReleaseFile).
 //
 // Every outlet then declares how it authenticates, Auth or APIKey, and a session outlet
 // that serves a browser application declares WebApp. Requires GenerateRoutes. Without the
@@ -378,7 +381,9 @@ const ThisRelease = resource.ThisRelease
 // window, when only the server's own release is answered. The default outlet declares
 // it on GenerateRoutes, an additional outlet on WithRouterOutlet; without it every
 // release that sends the header is answered. A machine outlet (APIKey) carries no
-// release and refuses the option.
+// release and refuses the option. The declaration is also written to the release file
+// beside the router (resource.ReleaseFileName), which a deploy reads from the checkout
+// to tell whether the release needs a maintenance window.
 func OldestAnswered(release string) OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		if release != ThisRelease && !isRelease(release) {

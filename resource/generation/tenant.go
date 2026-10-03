@@ -72,12 +72,12 @@ func rejectTenantAnnotation(pStruct *parser.Struct, annotations genlang.StructAn
 // zz_gen_tenants.go, which the roster constructor's file once shared. Called for every
 // resource kind through rejectReservedResourceName.
 func rejectReservedStem(name, stem string) error {
-	carries, reserved := reservedOutputStems[stem]
+	output, reserved := reservedOutputStems[stem]
 	if !reserved {
 		return nil
 	}
 
-	return errors.Newf("struct %s: its generated files would be named %s, the file the generator writes %s to; rename the resource", name, generatedGoFileName(stem), carries)
+	return errors.Newf("struct %s: its generated files would take the stem of %s, the file the generator writes %s to; rename the resource", name, output.file, output.carries)
 }
 
 // rejectSecondTenant refuses a second @tenant in the package: an application has one

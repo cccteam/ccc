@@ -385,8 +385,9 @@ type servedFlavor struct {
 }
 
 // runServedRouterGeneration renders the served router and its test (GenerateRouter)
-// beside the route tables. fileRoutes are each outlet's stored-file routes by outlet
-// name, which the session outlets' version checks exempt.
+// beside the route tables, then the release file naming each outlet's oldest answered
+// release. fileRoutes are each outlet's stored-file routes by outlet name, which the
+// session outlets' version checks exempt.
 func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes map[string][]*generatedRoute) error {
 	begin := time.Now()
 	data := r.servedRouterData(outlets, negativeTests, fileRoutes)
@@ -404,7 +405,7 @@ func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, ne
 	}
 	log.Printf("Generated router test file in %s: %s\n", time.Since(begin), testDestination)
 
-	return nil
+	return r.runReleaseFileGeneration(outlets)
 }
 
 // servedRouterData builds the template payload from the validated outlet declarations

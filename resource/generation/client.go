@@ -761,7 +761,8 @@ func isVowel(b byte) bool {
 
 // removeGeneratedFiles removes the previous run's stale output from directory: the
 // generated files there, by method, that this run did not write (written holds the
-// paths it did). It runs after the run has written everything, so a package compiling
+// paths it did). A generated file is a .go, .ts, .dot or .json file; nothing else is
+// read or touched. It runs after the run has written everything, so a package compiling
 // against the tree during the run never misses a file. A directory that does not exist
 // holds nothing to remove.
 func removeGeneratedFiles(directory string, method generatedFileDeleteMethod, written map[string]struct{}) error {
@@ -785,7 +786,7 @@ func removeGeneratedFiles(directory string, method generatedFileDeleteMethod, wr
 	}
 
 	for _, f := range files {
-		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") && !strings.HasSuffix(f, ".dot") {
+		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") && !strings.HasSuffix(f, ".dot") && !strings.HasSuffix(f, ".json") {
 			continue
 		}
 		if _, ok := written[filepath.Join(directory, f)]; ok {

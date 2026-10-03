@@ -12,8 +12,8 @@ import (
 )
 
 // TestGeneratedCodeIsCommitted re-runs the full generation pipeline and fails if any
-// generated file differs from the state on disk. The zz_gen files (Go, TypeScript, DOT)
-// are the golden output of the resource generators: any drift here is a generator
+// generated file differs from the state on disk. The zz_gen files (Go, TypeScript, DOT,
+// JSON) are the golden output of the resource generators: any drift here is a generator
 // behavior change that must be either intentional (commit the new output) or a
 // regression. The comparison hashes the files before and after, so it holds whether the
 // tree is committed or still untracked.
