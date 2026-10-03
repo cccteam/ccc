@@ -406,13 +406,23 @@ thing one step hands the next. In order:
   the deploy identity into memory and passed as BuildKit secrets, never build
   arguments); the digest goes to `environment.sh`. The build runs in a BuildKit container
   (buildx's docker-container driver, created for the build: the one driver that
-  exports a cache) and pushes a plain image. It reads a layer cache from the
-  registry and writes its own there (`cache-<commit>`): this commit's, the commit the
-  environment runs live, and in a pull-request build the pull request's last build. Layers
-  are content-addressed, so the cache changes nothing in what a build produces; it spares
-  the work whose inputs are unchanged, and the environments after the first rebuild the
-  same commit from the cache alone. Every environment still builds its own image from the
-  commit; nothing is promoted between environments.
+  exports a cache) and pushes a plain image. Three builds: the Dockerfile's two reserved
+  stages, `go-modules` and `web-packages`, each exporting its layers alone to the registry
+  under `cache-<commit>-go` and `cache-<commit>-web`, then the full build, reading those
+  caches and exporting nothing. Only the downloads, which go.sum and bun.lock pin, are
+  ever served from a cache; the compile and the bundles are built fresh in every
+  environment, and since every stage copies its inputs by name, no per-build file of the
+  pipeline is an input of any layer. A tag build reads this commit's caches and the live
+  release's commit's; a pull-request build reads its own pull request's last build's and
+  the live release's; a tag build never reads a pull-request build's. Before composing
+  the builds the step asks the registry which candidate tags exist, names only those as
+  sources and writes this commit's tags only when they are absent (the registry's tags
+  are immutable), so the log carries no ERROR line for an import docker cannot find or an
+  export the registry refuses; its "Layer cache:" line names what was read, by the commit
+  it belongs to, and whether this commit's caches were written or were held already. A
+  workspace whose package.json lists trustedDependencies has its install stage built with
+  no cache in or out, and the log says why. Every environment still builds its own image
+  from the commit; nothing is promoted between environments.
 - `deploy maintenance on`: puts the application into maintenance when the run needs it,
   at one of two places. Before the stack is applied, a run that replaces the database (a
   restore run); after the wait for the maintenance window (`--window`), a breaking

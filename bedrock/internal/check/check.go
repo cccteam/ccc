@@ -87,6 +87,12 @@ type Report struct {
 	Binaries []BinaryFinding
 	Bundles  []BundleFinding
 	JobNames []JobNameFinding
+	// Stages are the instructions the Dockerfile's reserved stages hold beyond their
+	// install, which the image build would export to the registry's cache for every
+	// environment; MissingStages are the reserved stages the Dockerfile lacks, whose
+	// downloads the image build then caches nothing of (a warning, not drift).
+	Stages        []StageFinding
+	MissingStages []string
 	// ReleaseLines are the release-please settings under which a feature release would
 	// not open a new hotfix line (a feature on the patch below 1.0).
 	ReleaseLines []ReleaseLineFinding
@@ -104,10 +110,10 @@ type MaintenanceFinding struct {
 }
 
 // Clean reports no drift, no refused resource, a sound migration sequence, every
-// required build secret declared, every job's binary built and release lines that a
-// feature release opens.
+// required build secret declared, every job's binary built, reserved stages holding
+// their install alone, and release lines that a feature release opens.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.JobNames) == 0 && len(r.ReleaseLines) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.JobNames) == 0 && len(r.Stages) == 0 && len(r.ReleaseLines) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -163,17 +169,9 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 		return nil, err
 	}
 	r.BuildSecrets = buildSecrets
-	binaries, err := scanBinaries(appDir, m)
-	if err != nil {
+	if err := r.scanImage(appDir, m); err != nil {
 		return nil, err
 	}
-	r.Binaries = binaries
-	r.Bundles = scanBundles(m)
-	jobNames, err := scanJobName(appDir, m)
-	if err != nil {
-		return nil, err
-	}
-	r.JobNames = jobNames
 	releaseLines, err := scanReleaseLines(appDir)
 	if err != nil {
 		return nil, err
@@ -182,6 +180,29 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 	r.Maintenance = scanMaintenance(m, appDir, time.Now())
 
 	return r, nil
+}
+
+// scanImage reads the Dockerfile against the stack: the binaries its jobs run, the
+// bundles its site serves, the job name it carries, and its reserved stages.
+func (r *Report) scanImage(appDir string, m *derive.Model) error {
+	binaries, err := scanBinaries(appDir, m)
+	if err != nil {
+		return err
+	}
+	r.Binaries = binaries
+	r.Bundles = scanBundles(m)
+	jobNames, err := scanJobName(appDir, m)
+	if err != nil {
+		return err
+	}
+	r.JobNames = jobNames
+	stages, missing, err := scanReservedStages(appDir)
+	if err != nil {
+		return err
+	}
+	r.Stages, r.MissingStages = stages, missing
+
+	return nil
 }
 
 // scanMaintenance warns about the maintenance windows at now: production without a
@@ -346,8 +367,14 @@ func (r *Report) Write(w io.Writer) {
 	for _, j := range r.JobNames {
 		fmt.Fprintf(w, "  refused  Dockerfile lacks %s: the pipeline passes the job of each build as the build argument JOBS_JOB, and the runtime stage sets %s from it (ARG JOBS_JOB, then ENV %s=\"${JOBS_JOB}\"), as the seeded Dockerfile does, so the site starts the job of its own build\n", j.Missing, j.Var, j.Var)
 	}
+	for _, s := range r.Stages {
+		fmt.Fprintf(w, "  refused  Dockerfile:%d stage %s %s (%q): the image build exports this stage's layers to the registry's cache, which every environment's build reads, so the stage holds its install and nothing else\n", s.Line, s.Stage, s.Problem, s.Instruction)
+	}
 	for _, rl := range r.ReleaseLines {
 		fmt.Fprintf(w, "  refused  %s: %s\n", rl.Path, rl.Problem)
+	}
+	for _, name := range r.MissingStages {
+		fmt.Fprintf(w, "  warning  Dockerfile has no %s stage: the image build caches nothing for %s, and every environment's build repeats it; the seeded Dockerfile (bedrock render into an empty directory) shows the stage\n", name, reserved[name].what)
 	}
 	for _, mf := range r.Maintenance {
 		fmt.Fprintf(w, "  warning  %s\n", mf.Problem)

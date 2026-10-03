@@ -40,8 +40,9 @@ ENV CGO_ENABLED=0 \
 
 WORKDIR /go/src/app
 
-# The module graph first, on its own layer, so a source change does not re-download it on
-# a cached local build (the pipeline builds with --no-cache regardless).
+# The module graph first, on its own layer, so a source change does not re-download it: a
+# local build keeps the layer, and the pipeline's build reads the download from the cache
+# it keeps in the registry per commit.
 COPY go.mod go.sum ./
 RUN go mod download
 

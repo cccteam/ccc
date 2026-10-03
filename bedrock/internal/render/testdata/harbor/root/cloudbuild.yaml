@@ -19,7 +19,7 @@
 #   PlanEnvironments          a pull request's preview: the stack planned and tested for every environment, as each one's plan identity (deploy plan-environments)
 #   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
-#   BuildImage                one image per environment, built from the commit with the registry's layer cache and pushed (deploy build-image)
+#   BuildImage                one image per environment, built fresh from the commit over the registry's dependency caches and pushed (deploy build-image)
 #   MaintenanceOnRestore      a restore run's maintenance revision, before its database is replaced (deploy maintenance on)
 #   *EnvironmentStack         a tag build's apply of the environment's stack: planned, tested and applied as the apply identity (deploy stack)
 #   CreateJobs                this build's jobs from the stack's template jobs on this image: the migrate job and the job process's; not run (deploy jobs)
@@ -152,8 +152,11 @@ steps:
     waitFor: [PlanPullRequestStack]
 
   # The image, built from the commit's Dockerfile with the declared build arguments and
-  # build secrets, reading the registry's layer cache (this commit's, the live release's)
-  # and writing its own, pushed under <release>-<env> and <commit>-<env>.
+  # build secrets, pushed under <release>-<env> and <commit>-<env>. The Dockerfile's two
+  # dependency stages are built first and their layers alone exported to the registry's
+  # cache (cache-<commit>-go, cache-<commit>-web, written once per commit and read by the
+  # builds after: this commit's and the live release's); the compile and the bundles are
+  # built fresh in every environment and never exported.
   - id: BuildImage
     name: gcr.io/cloud-builders/docker
     entrypoint: /builder/home/bedrock

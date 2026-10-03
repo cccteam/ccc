@@ -307,15 +307,33 @@ type imageView struct {
 	// VersionVar is the variable the image sets to the release, empty when the code
 	// declares none.
 	VersionVar string
+	// RootGo reports Go files in the root package, which the Go stage copies as *.go;
+	// GoDirs are the top-level directories holding Go packages, copied one line each.
+	RootGo bool
+	GoDirs []string
+	// Ignores are the paths the seeded .dockerignore keeps out of a local build's
+	// context: the git and workflow directories, the stack, the tests, and each
+	// workspace's installs and outputs; a name that is a Go package directory stays in.
+	Ignores []string
 }
 
 // workspace is one browser workspace: its root-relative directory (web), the build
-// stage that builds it, and its bundles.
+// stage that builds it, its bundles, and the files its install stage copies, space
+// separated as a COPY instruction's sources (web/package.json web/bun.lock).
 type workspace struct {
 	Dir     string
 	Stage   string
 	Bundles []bundle
+	Install string
 }
+
+// ignoredPaths are the names the seeded .dockerignore lists at the root, before each
+// workspace's installs and outputs.
+var ignoredPaths = []string{".git", ".github", "infrastructure", "test"}
+
+// workspaceIgnores are what a workspace's install and build leave under it, which a
+// local build must not send: the installed packages, the CLI's cache, the bundles.
+var workspaceIgnores = []string{"node_modules", ".angular", "dist"}
 
 // bundle is one built browser bundle: the variable naming its directory to the server
 // (APP_CONSOLE_DIST), its path under the workspace (dist/console), and the workspace and
@@ -378,10 +396,21 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 			return w.Dir == b.Workspace
 		})
 		if at < 0 {
-			iv.Workspaces = append(iv.Workspaces, workspace{Dir: b.Workspace, Stage: b.Stage})
+			iv.Workspaces = append(iv.Workspaces, workspace{Dir: b.Workspace, Stage: b.Stage, Install: strings.Join(m.ImageInputs.WorkspaceInputs(b.Workspace), " ")})
 			at = len(iv.Workspaces) - 1
 		}
 		iv.Workspaces[at].Bundles = append(iv.Workspaces[at].Bundles, b)
+	}
+	iv.RootGo, iv.GoDirs = m.ImageInputs.RootGo, m.ImageInputs.GoDirs
+	for _, name := range ignoredPaths {
+		if !slices.Contains(iv.GoDirs, name) {
+			iv.Ignores = append(iv.Ignores, name)
+		}
+	}
+	for _, w := range iv.Workspaces {
+		for _, name := range workspaceIgnores {
+			iv.Ignores = append(iv.Ignores, w.Dir+"/"+name)
+		}
 	}
 
 	return iv

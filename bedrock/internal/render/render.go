@@ -8,8 +8,9 @@
 // terraform.tfvars holds the placement values a person fills in per environment, the
 // stack's .gitignore keeps the per-environment backend caches and saved plans out of
 // the repository, and the Dockerfile at the application root is the image build a
-// person takes over from its first shape. Files the tool never writes (the lock file,
-// the placement) have no tier here.
+// person takes over from its first shape, with the .dockerignore beside it that keeps a
+// local build's context small. Files the tool never writes (the lock file, the
+// placement) have no tier here.
 package render
 
 import (
@@ -77,13 +78,14 @@ const (
 	rootTemplateDir = "templates/root"
 	templateExt     = ".tmpl"
 	// The files the tool writes once: the placement values per environment, the
-	// stack's ignore rules, and the image build.
+	// stack's ignore rules, the image build and what a local build of it leaves out.
 	tfvarsFile = "terraform.tfvars"
 	ignoreFile = ".gitignore"
 	// generateFile is bedrock's generate-time step, rendered beside the application's
 	// //go:generate directive.
-	generateFile   = "bedrock.go"
-	dockerfileFile = "Dockerfile"
+	generateFile     = "bedrock.go"
+	dockerfileFile   = "Dockerfile"
+	dockerignoreFile = ".dockerignore"
 	// rulesFile is the stack's copy of the application's Firestore security rules, which
 	// firestore.tf releases to the database; rendered only with a Firestore database.
 	rulesFile = derive.FirestoreRulesFile
@@ -91,9 +93,10 @@ const (
 
 // seeded are the files the tool writes once.
 var seeded = map[string]bool{
-	tfvarsFile:     true,
-	ignoreFile:     true,
-	dockerfileFile: true,
+	tfvarsFile:       true,
+	ignoreFile:       true,
+	dockerfileFile:   true,
+	dockerignoreFile: true,
 }
 
 // placed are the files whose place depends on the application: the generate-time step

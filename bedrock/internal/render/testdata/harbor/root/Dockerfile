@@ -24,7 +24,12 @@
 #
 # A local build passes it the same way: podman build --secret id=NAME,src=<file> ...
 #
-# The pipeline's build is cloudbuild.yaml's BuildImage step.
+# The pipeline's build is cloudbuild.yaml's BuildImage step. It builds the two dependency
+# stages below first and exports their layers alone to the registry's cache, one tag per
+# commit, then builds the rest fresh in every environment, reading those caches and
+# exporting nothing: the compile and the bundles are never served from a cache, and no
+# per-build file of the pipeline is an input of any layer, since every stage copies its
+# inputs by name.
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -33,25 +38,61 @@ ARG COMMIT=unknown
 # to the site as APP_JOBS_JOB, so each revision starts the job of its own build.
 ARG JOBS_JOB=
 
-# ---- Go: the server, the migrate command and the job process ----------------------------------------------
+# ---- Dependencies: the downloads, cached per commit --------------------------------------
+# Two reserved stages. The image build exports each one's layers to the registry under
+# cache-<commit>-go and cache-<commit>-web, for the environments after the first to read,
+# so a stage holds its lockfile copy and its one command and nothing else: bedrock check
+# refuses more (a WORKDIR line is fine, and so is the bun binary's copy). What they hold
+# is pinned by go.sum and bun.lock and verified at download, so a stored copy equals a
+# fresh one.
+#
 # The go image is pinned at a digest that carries a toolchain at least as new as go.mod
-# declares (go1.27.1, published 2026-09-02), found the way the header says. GOTOOLCHAIN=local
-# makes a go.mod that outruns the image fail the build instead of downloading a toolchain:
-# the fix is a new digest here, never a download.
-FROM cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16 AS build-env
-
-ENV CGO_ENABLED=0 \
-    GOTOOLCHAIN=local
-
+# declares (go1.27.1, published 2026-09-02), found the way the header says. The compile
+# stage sets GOTOOLCHAIN=local, which makes a go.mod that outruns the image fail the build
+# there instead of downloading a toolchain: the fix is a new digest here, never a download.
+FROM cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16 AS go-modules
 WORKDIR /go/src/app
-
-# The module graph first, on its own layer, so a source change does not re-download it: a
-# local build keeps the layer, and the pipeline's build reads it from the layer cache it
-# keeps in the registry.
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . ./
+# bun installs each workspace from its bun.lock; Angular's CLI itself runs under Node, so the
+# installer and the builders are a node image with bun's pinned binary copied in from bun's
+# own image. Nothing else of that image is used. --frozen-lockfile installs exactly what
+# bun.lock records or fails: the lockfile is the build's input, never its output.
+FROM docker.io/oven/bun@sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2 AS bun-binary
+
+FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS web-packages
+COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
+WORKDIR /src/web
+COPY web/package.json web/bun.lock ./
+RUN bun install --frozen-lockfile
+WORKDIR /src/portal
+COPY portal/package.json portal/bun.lock ./
+RUN bun install --frozen-lockfile
+
+# ---- Go: the server, the migrate command and the job process, built fresh in every environment ----
+# The compile reads the module cache from go-modules, at the go image's default place (the
+# image runs as root with no GOPATH set, so $HOME/go), and the sources by name. GOPROXY=off:
+# a module the cache lacks fails the compile rather than being downloaded, so the layer
+# depends on nothing but the copied files and the downloaded modules. -mod=readonly keeps
+# go.mod an input, never rewritten.
+FROM cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16 AS build-env
+
+ENV CGO_ENABLED=0 \
+    GOTOOLCHAIN=local \
+    GOPROXY=off \
+    GOFLAGS=-mod=readonly
+
+WORKDIR /go/src/app
+
+COPY --from=go-modules /root/go/pkg/mod /root/go/pkg/mod
+COPY go.mod go.sum ./
+COPY *.go ./
+# One line per top-level directory holding Go packages, test files aside, as the code had
+# them when this file was seeded. A new top-level package directory gets its own line
+# here; a missing one fails the compile within seconds, naming the package.
+COPY cmd/ cmd/
+COPY pkg/ pkg/
 
 # -trimpath keeps the build directory out of the binaries; -s -w drop the symbol table and
 # the debug information, which nothing in a deployed image reads. No build tags: the
@@ -60,11 +101,8 @@ RUN go build -trimpath -ldflags="-s -w" -o /build/app . && \
     go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate && \
     go build -trimpath -ldflags="-s -w" -o /build/jobs ./cmd/jobs
 
-# ---- Browser: the Angular bundles --------------------------------------------------------
-# bun installs each workspace from its bun.lock and runs its scripts; Angular's CLI itself
-# runs under Node, so the builder is a node image with bun's pinned binary copied in from
-# bun's own image. Nothing else of that image is used. One stage per workspace.
-FROM docker.io/oven/bun@sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2 AS bun-binary
+# ---- Browser: the Angular bundles, built fresh in every environment ----------------------
+# One stage per workspace.
 
 FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS web-build-env
 
@@ -77,14 +115,15 @@ ARG VERSION
 ENV CI=true
 
 WORKDIR /src/web
+
+# The installed packages come from web-packages, the source after them: a change to the
+# source rebuilds the bundles and never the install.
+COPY --from=web-packages /src/web/node_modules ./node_modules
 COPY web/ ./
 
-# --frozen-lockfile installs exactly what bun.lock records or fails: the lockfile is the
-# build's input, never its output. `bun run build` builds every browser app of the
-# workspace (web/package.json), whose default configuration is production; it
-# writes dist/console.
-RUN bun install --frozen-lockfile && \
-    bun run build
+# `bun run build` builds every browser app of the workspace (web/package.json), whose
+# default configuration is production; it writes dist/console.
+RUN bun run build
 
 FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS portal-build-env
 
@@ -97,14 +136,15 @@ ARG VERSION
 ENV CI=true
 
 WORKDIR /src/portal
+
+# The installed packages come from web-packages, the source after them: a change to the
+# source rebuilds the bundles and never the install.
+COPY --from=web-packages /src/portal/node_modules ./node_modules
 COPY portal/ ./
 
-# --frozen-lockfile installs exactly what bun.lock records or fails: the lockfile is the
-# build's input, never its output. `bun run build` builds every browser app of the
-# workspace (portal/package.json), whose default configuration is production; it
-# writes dist/portal.
-RUN bun install --frozen-lockfile && \
-    bun run build
+# `bun run build` builds every browser app of the workspace (portal/package.json), whose
+# default configuration is production; it writes dist/portal.
+RUN bun run build
 
 # ---- Runtime: a static image with the three binaries, the bundles, and the schema -----------
 FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566a8d40766b2a4769f33a824

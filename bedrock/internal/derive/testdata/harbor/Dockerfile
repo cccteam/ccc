@@ -23,10 +23,10 @@ ARG COMMIT=unknown
 ARG JOBS_JOB=
 
 # ---- Go: the server and the migrate command ----------------------------------------------
-# CCC's reference deployment pins this image at a digest that carries go1.26.3; harbor's go.mod declares
-# go 1.26.6, so the pin here is the current image (go1.27.1, published 2026-09-02), found
-# the way the header says. GOTOOLCHAIN=local makes a go.mod that outruns the image fail the
-# build instead of downloading a toolchain: the fix is a new digest here, never a download.
+# The go image is pinned at a digest that carries a toolchain at least as new as go.mod
+# declares (go1.27.1, published 2026-09-02), found the way the header says. GOTOOLCHAIN=local
+# makes a go.mod that outruns the image fail the build instead of downloading a toolchain:
+# the fix is a new digest here, never a download.
 FROM cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16 AS build-env
 
 ENV CGO_ENABLED=0 \
@@ -34,8 +34,9 @@ ENV CGO_ENABLED=0 \
 
 WORKDIR /go/src/app
 
-# The module graph first, on its own layer, so a source change does not re-download it on
-# a cached local build (the pipeline builds with --no-cache regardless).
+# The module graph first, on its own layer, so a source change does not re-download it: a
+# local build keeps the layer, and the pipeline's build reads the download from the cache
+# it keeps in the registry per commit.
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -50,8 +51,8 @@ RUN go build -trimpath -ldflags="-s -w" -o /build/app . && \
 
 # ---- Console: the Angular bundle ---------------------------------------------------------
 # bun installs the workspace from web/bun.lock and runs its scripts; Angular's CLI itself
-# runs under Node, so the builder is the reference deployment's node image with bun's pinned binary
-# copied in from bun's own image. Nothing else of that image is used.
+# runs under Node, so the builder is a node image with bun's pinned binary copied in from
+# bun's own image. Nothing else of that image is used.
 FROM docker.io/oven/bun@sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2 AS bun-binary
 
 FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS console-build-env

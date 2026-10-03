@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,10 +9,51 @@ import (
 	"testing"
 )
 
+// seededDockerfile is the seeded Dockerfile's shape in short: the two reserved stages,
+// the bun binary's stage, and a compile stage.
+const seededDockerfile = `FROM go AS go-modules
+WORKDIR /go/src/app
+COPY go.mod go.sum ./
+RUN go mod download
+FROM bun AS bun-binary
+FROM node AS web-packages
+COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
+WORKDIR /src/web
+COPY web/package.json web/bun.lock ./
+RUN bun install --frozen-lockfile
+FROM go AS build-env
+COPY --from=go-modules /root/go/pkg/mod /root/go/pkg/mod
+COPY . ./
+RUN go build -o /build/app .
+`
+
+// recordJSON is one deployment record as the records bucket holds it.
+func recordJSON(version, commit, build, status, timestamp string) string {
+	return `{"app":"harbor","env":"tst","version":"` + version + `","commit":"` + commit + `","status":"` + status + `","build":"` + build + `","timestamp":"` + timestamp + `"}`
+}
+
 func TestBuildImage(t *testing.T) {
 	t.Parallel()
 
 	const env = "export SKIP_DEPLOY=\"\"\nexport IMAGE=\"reg/quill\"\nexport IMAGE_TAG=\"v1.2.3-tst\"\nexport COMMIT_TAG=\"c9-tst\"\nexport VERSION=\"v1.2.3\"\n"
+	const (
+		goStage  = "docker buildx build --target go-modules"
+		webStage = "docker buildx build --target web-packages"
+		tail     = " --output type=cacheonly --file Dockerfile ."
+		fromC9Go = " --cache-from type=registry,ref=reg/quill:cache-c9-go"
+		fromC9W  = " --cache-from type=registry,ref=reg/quill:cache-c9-web"
+		fromC8Go = " --cache-from type=registry,ref=reg/quill:cache-c8-go"
+		fromC8W  = " --cache-from type=registry,ref=reg/quill:cache-c8-web"
+		fromC7Go = " --cache-from type=registry,ref=reg/quill:cache-c7-go"
+		fromC7W  = " --cache-from type=registry,ref=reg/quill:cache-c7-web"
+		toC9Go   = " --cache-to type=registry,ref=reg/quill:cache-c9-go,mode=max"
+		toC9W    = " --cache-to type=registry,ref=reg/quill:cache-c9-web,mode=max"
+	)
+	// firstBuild is the stage builds of a commit's first build: both caches written, none read.
+	firstBuild := []string{goStage + toC9Go + tail, webStage + toC9W + tail}
+	tagged := map[string]string{"_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst"}
+	pulled := map[string]string{"_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst", prNumberSub: "7"}
+	live := map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")}
 	tests := []struct {
 		name      string
 		env       string
@@ -19,10 +61,23 @@ func TestBuildImage(t *testing.T) {
 		buildArgs string
 		secrets   map[string]string
 		metadata  string
-		wantArgs  []string
-		wantOut   []string
-		wantErr   string
-		wantBuilt bool
+		// dockerfile replaces the seeded one; files are more files of the checkout.
+		dockerfile string
+		files      map[string]string
+		// subs are the build's substitutions beyond the commit, records the bucket's
+		// objects, held the tags the registry holds.
+		subs    map[string]string
+		records map[string]string
+		held    []string
+		// wantStages are the stage builds in order, as the log shows them (the first
+		// build's when nil); wantArgs and wantNoArgs are what the full build's line
+		// carries and lacks.
+		wantStages []string
+		wantArgs   []string
+		wantNoArgs []string
+		wantOut    []string
+		wantErr    string
+		wantBuilt  bool
 		// hooks takes the hooks program out of the image; wantHooks are the docker commands
 		// that do it.
 		hooks     bool
@@ -31,7 +86,7 @@ func TestBuildImage(t *testing.T) {
 		{name: "a torn-down environment builds nothing", env: "export SKIP_DEPLOY=\"true\"\n", wantOut: []string{tornDown}},
 		{name: "a build to reuse is not rebuilt", env: env + "export REUSE_IMAGE=\"true\"\nexport IMAGE_DIGEST=\"sha256:old\"\n", wantOut: []string{"Reusing reg/quill@sha256:old"}},
 		{
-			name:      "the build takes its arguments and its secrets, and leaves the digest",
+			name:      "the build takes its arguments and its secrets, writes the commit's first caches, and leaves the digest",
 			env:       env,
 			declared:  "NPM_TOKEN=projects/p/secrets/npm/versions/2",
 			buildArgs: "_WIDGET_MODE=on\n# a hook's note\nFRONTEND_VERSION=4.1\n",
@@ -40,10 +95,10 @@ func TestBuildImage(t *testing.T) {
 			wantArgs: []string{
 				"--build-arg VERSION=v1.2.3", "--build-arg COMMIT=c9", "--build-arg _WIDGET_MODE=on", "--build-arg FRONTEND_VERSION=4.1",
 				"--secret id=NPM_TOKEN,src=SECRETS/NPM_TOKEN", "--tag reg/quill:c9-tst", "--tag reg/quill:v1.2.3-tst", "--push .",
-				"--cache-from type=registry,ref=reg/quill:cache-c9", "--cache-to type=registry,ref=reg/quill:cache-c9,mode=max,ignore-error=true",
 			},
-			wantOut:   []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Layer cache: read from cache-c9, written to reg/quill:cache-c9", "Built and pushed reg/quill@sha256:new"},
-			wantBuilt: true,
+			wantNoArgs: []string{"--cache-from", "--cache-to", "--no-cache", "--target"},
+			wantOut:    []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Layer cache: read nothing; written cache-c9-go, cache-c9-web.", "Built and pushed reg/quill@sha256:new"},
+			wantBuilt:  true,
 		},
 		{
 			name:      "an application with a job process bakes its build's job into the image",
@@ -52,6 +107,98 @@ func TestBuildImage(t *testing.T) {
 			wantArgs:  []string{"--build-arg VERSION=v1.2.3", "--build-arg COMMIT=c9", "--build-arg JOBS_JOB=projects/p/locations/us-central1/jobs/quill-jobs-v1-2-3", "--push ."},
 			wantOut:   []string{"Built and pushed reg/quill@sha256:new"},
 			wantBuilt: true,
+		},
+		{
+			name:       "a tag build after another environment's reads this commit's caches and the live release's, and writes nothing",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			subs:       tagged,
+			records:    live,
+			held:       []string{"cache-c9-go", "cache-c9-web", "cache-c8-go", "cache-c8-web"},
+			wantStages: []string{goStage + fromC9Go + fromC8Go + tail, webStage + fromC9W + fromC8W + tail},
+			wantArgs:   []string{fromC9Go + fromC8Go + fromC9W + fromC8W + " --tag"},
+			wantNoArgs: []string{"--cache-to"},
+			wantOut:    []string{"Layer cache: read cache-c9-go, cache-c9-web (this commit), cache-c8-go, cache-c8-web (the live release v1.2.2, build b-0); not written, the registry holds them."},
+			wantBuilt:  true,
+		},
+		{
+			name:       "a candidate tag the registry lacks is not named",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			subs:       tagged,
+			records:    live,
+			held:       []string{"cache-c8-go"},
+			wantStages: []string{goStage + fromC8Go + toC9Go + tail, webStage + toC9W + tail},
+			wantArgs:   []string{fromC8Go + " --tag"},
+			wantNoArgs: []string{"cache-c8-web", "--cache-to"},
+			wantOut:    []string{"Layer cache: read cache-c8-go (the live release v1.2.2, build b-0); written cache-c9-go, cache-c9-web."},
+			wantBuilt:  true,
+		},
+		{
+			name:       "a live release with nothing held is named",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			subs:       tagged,
+			records:    live,
+			wantOut:    []string{"Layer cache: read nothing; nothing held for the live release v1.2.2, build b-0 (c8); written cache-c9-go, cache-c9-web."},
+			wantNoArgs: []string{"--cache-from"},
+			wantBuilt:  true,
+		},
+		{
+			name:       "one of this commit's tags held, the other is written",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			held:       []string{"cache-c9-go"},
+			wantStages: []string{goStage + fromC9Go + tail, webStage + toC9W + tail},
+			wantArgs:   []string{fromC9Go + " --tag"},
+			wantOut:    []string{"Layer cache: read cache-c9-go (this commit); written cache-c9-web; the registry holds cache-c9-go."},
+			wantBuilt:  true,
+		},
+		{
+			name:       "a pull-request build reads its last build's caches and the live release's, never this commit's by name",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			subs:       pulled,
+			records:    map[string]string{"gs://records/harbor/tst/pr7-c7/b-3.json": recordJSON("pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"), "gs://records/harbor/tst/v1.2.2/b-0.json": live["gs://records/harbor/tst/v1.2.2/b-0.json"]},
+			held:       []string{"cache-c7-go", "cache-c7-web", "cache-c8-go", "cache-c8-web"},
+			wantStages: []string{goStage + fromC7Go + fromC8Go + toC9Go + tail, webStage + fromC7W + fromC8W + toC9W + tail},
+			wantArgs:   []string{fromC7Go + fromC8Go + fromC7W + fromC8W + " --tag"},
+			wantOut:    []string{"Layer cache: read cache-c7-go, cache-c7-web (the pull request's last build, build b-3), cache-c8-go, cache-c8-web (the live release v1.2.2, build b-0); written cache-c9-go, cache-c9-web."},
+			wantBuilt:  true,
+		},
+		{
+			name:       "a pull request's first build reads the live release's alone, and a rebuilt commit's held tags are not written",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			subs:       pulled,
+			records:    live,
+			held:       []string{"cache-c8-go", "cache-c8-web", "cache-c9-go", "cache-c9-web"},
+			wantStages: []string{goStage + fromC8Go + tail, webStage + fromC8W + tail},
+			wantNoArgs: []string{"--cache-to", "cache-c9"},
+			wantOut:    []string{"Layer cache: read cache-c8-go, cache-c8-web (the live release v1.2.2, build b-0); not written, the registry holds cache-c9-go, cache-c9-web."},
+			wantBuilt:  true,
+		},
+		{
+			name:       "trusted install scripts leave web-packages out of the cache in both directions",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			files:      map[string]string{"web/package.json": `{"name": "web", "trustedDependencies": ["esbuild"]}`},
+			held:       []string{"cache-c9-web"},
+			wantStages: []string{goStage + toC9Go + tail, webStage + " --no-cache" + tail},
+			wantNoArgs: []string{"--cache-from", "--no-cache"},
+			wantOut:    []string{"web-packages is built with no cache in or out: web/package.json lists trustedDependencies, whose install scripts run at install and may fetch or vary, so a stored install need not equal a fresh one.", "Layer cache: read nothing; written cache-c9-go."},
+			wantBuilt:  true,
+		},
+		{
+			name:       "a Dockerfile without the reserved stages is built once, with no cache",
+			env:        env,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			dockerfile: "FROM go AS build-env\nCOPY . ./\nRUN go build -o /build/app .\n",
+			held:       []string{"cache-c9-go"},
+			wantStages: []string{},
+			wantNoArgs: []string{"--cache-from", "--cache-to"},
+			wantOut:    []string{"The Dockerfile has no go-modules stage, so the Go module download is not cached; the seeded Dockerfile carries the stage.", "The Dockerfile has no web-packages stage, so the browser package install is not cached", "Layer cache: read nothing; nothing to write."},
+			wantBuilt:  true,
 		},
 		{name: "a build secret the deploy identity cannot read is refused", env: env, declared: "NPM_TOKEN=projects/p/secrets/npm/versions/9", wantErr: "Build REJECTED: the build secret NPM_TOKEN (projects/p/secrets/npm/versions/9) could not be read"},
 		{name: "a push without a digest is refused", env: env, metadata: `{}`, wantErr: "no image digest", wantBuilt: true},
@@ -69,7 +216,15 @@ func TestBuildImage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, map[string]string{commitSub: "c9", buildSecretsSub: tt.declared, projectSub: "p"}), BuildArgsFile: tt.buildArgs})
+			subs := map[string]string{commitSub: "c9", buildSecretsSub: tt.declared, projectSub: "p"}
+			maps.Copy(subs, tt.subs)
+			dockerfile := tt.dockerfile
+			if dockerfile == "" {
+				dockerfile = seededDockerfile
+			}
+			files := map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, subs), BuildArgsFile: tt.buildArgs, dockerfileName: dockerfile}
+			maps.Copy(files, tt.files)
+			w := workspaceFiles(t, files)
 			secretDir := t.TempDir()
 			var secretSeen string
 			hooks := ""
@@ -77,7 +232,7 @@ func TestBuildImage(t *testing.T) {
 				hooks = filepath.Join(t.TempDir(), "hooks")
 			}
 			run := &fakeRunner{outputs: map[string]string{"docker create": "cid-1\n"}, effect: func(c Command) error {
-				if c.Args[0] != "buildx" || c.Args[1] != "build" {
+				if c.Args[0] != "buildx" || c.Args[1] != "build" || slices.Contains(c.Args, "--target") {
 					return nil
 				}
 				for _, arg := range c.Args {
@@ -89,8 +244,14 @@ func TestBuildImage(t *testing.T) {
 
 				return os.WriteFile(filepath.Join(string(w), MetadataFile), []byte(tt.metadata), 0o600)
 			}}
+			registry := &fakeRegistry{digests: map[string]string{}}
+			for _, tag := range tt.held {
+				registry.digests["reg/quill:"+tag] = "sha256:" + tag
+			}
+			store := &memoryStore{objects: tt.records}
+			clients := &Clients{Exec: run, Secrets: (&fakeSecrets{payloads: tt.secrets}).open, Registry: registry.open, Storage: store.open}
 			var out strings.Builder
-			err := BuildImage(t.Context(), &Clients{Exec: run, Secrets: (&fakeSecrets{payloads: tt.secrets}).open}, w, secretDir, hooks, &out)
+			err := BuildImage(t.Context(), clients, w, secretDir, hooks, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("BuildImage() error = %v, want %q", err, tt.wantErr)
@@ -99,12 +260,16 @@ func TestBuildImage(t *testing.T) {
 				t.Fatalf("BuildImage() error = %v\n%s", err, out.String())
 			}
 			var built, builder bool
-			var taken []string
+			var taken, stages []string
 			buildLine := ""
 			for _, line := range run.lines() {
 				switch {
 				case strings.HasPrefix(line, "docker buildx create --driver docker-container --use"):
 					builder = true
+
+					continue
+				case strings.HasPrefix(line, "docker buildx build --target "):
+					stages = append(stages, line)
 
 					continue
 				case strings.HasPrefix(line, "docker buildx build "):
@@ -129,17 +294,34 @@ func TestBuildImage(t *testing.T) {
 			if strings.Join(taken, "|") != strings.Join(tt.wantHooks, "|") {
 				t.Errorf("took the hooks program with %q, want %q", taken, tt.wantHooks)
 			}
-			if !tt.wantBuilt || tt.wantErr != "" || tt.secrets == nil {
+			if !tt.wantBuilt {
 				return
 			}
+			wantStages := tt.wantStages
+			if wantStages == nil {
+				wantStages = firstBuild
+			}
+			if !slices.Equal(stages, wantStages) {
+				t.Errorf("stage builds:\n%s\nwant:\n%s", strings.Join(stages, "\n"), strings.Join(wantStages, "\n"))
+			}
+			for _, c := range run.ran {
+				if slices.Contains(c.Args, dockerBuildx) && c.Dir != string(w) {
+					t.Errorf("ran %v in %s, want the builder and the builds in the workspace", c.Args, c.Dir)
+				}
+			}
 			line := strings.ReplaceAll(buildLine, secretDir, "SECRETS")
-			for _, want := range tt.wantArgs {
+			for _, want := range append(tt.wantArgs, "--provenance=false", "--sbom=false", "--push") {
 				if !strings.Contains(line, want) {
 					t.Errorf("docker %s lacks %q", line, want)
 				}
 			}
-			if strings.Contains(line, "--no-cache") {
-				t.Errorf("docker %s builds without the layer cache", line)
+			for _, unwanted := range tt.wantNoArgs {
+				if strings.Contains(line, unwanted) {
+					t.Errorf("docker %s carries %q", line, unwanted)
+				}
+			}
+			if tt.wantErr != "" || tt.secrets == nil {
+				return
 			}
 			if secretSeen != "s3cret" {
 				t.Errorf("the build saw the secret as %q", secretSeen)
@@ -151,16 +333,6 @@ func TestBuildImage(t *testing.T) {
 			if env[digestFact] != "sha256:new" {
 				t.Errorf("IMAGE_DIGEST = %q", env[digestFact])
 			}
-			for _, c := range run.ran[:2] {
-				if !slices.Contains(c.Args, "buildx") || c.Dir != string(w) {
-					t.Errorf("ran %v in %s, want the builder and the build in the workspace", c.Args, c.Dir)
-				}
-			}
-			for _, want := range []string{"--provenance=false", "--sbom=false", "--push"} {
-				if !strings.Contains(line, want) {
-					t.Errorf("docker %s lacks %q", line, want)
-				}
-			}
 		})
 	}
 }
@@ -168,46 +340,50 @@ func TestBuildImage(t *testing.T) {
 func TestCacheSources(t *testing.T) {
 	t.Parallel()
 
-	record := func(env, version, commit, build, status, timestamp string) string {
-		return `{"app":"harbor","env":"` + env + `","version":"` + version + `","commit":"` + commit + `","status":"` + status + `","build":"` + build + `","timestamp":"` + timestamp + `"}`
-	}
 	tagged := map[string]string{commitSub: "c9", "_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst"}
+	pulled := map[string]string{commitSub: "c9", "_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst", prNumberSub: "7"}
 	tests := []struct {
 		name    string
 		subs    map[string]string
 		records map[string]string
 		want    []string
 	}{
-		{name: "a build without a records bucket reads its own commit's cache alone", subs: map[string]string{commitSub: "c9"}, want: []string{"c9"}},
-		{name: "an environment without a record reads its own commit's cache alone", subs: tagged, want: []string{"c9"}},
+		{name: "a build without a records bucket reads its own commit's cache alone", subs: map[string]string{commitSub: "c9"}, want: []string{"c9 (this commit)"}},
+		{name: "a tag build in an environment without a record reads its own commit's cache alone", subs: tagged, want: []string{"c9 (this commit)"}},
 		{
 			name:    "a tag build reads its own commit's cache, then the live release's",
 			subs:    tagged,
-			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": record("tst", "v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
-			want:    []string{"c9", "c8"},
+			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
+			want:    []string{"c9 (this commit)", "c8 (the live release v1.2.2, build b-0)"},
 		},
 		{
-			name: "a pull-request build reads its last build's cache before the live release's",
-			subs: map[string]string{commitSub: "c9", "_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst", prNumberSub: "7"},
+			name: "a pull-request build reads its last build's cache before the live release's, and never names its own commit",
+			subs: pulled,
 			records: map[string]string{
-				"gs://records/harbor/tst/pr7-c7/b-3.json": record("tst", "pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"),
-				"gs://records/harbor/tst/v1.2.2/b-0.json": record("tst", "v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z"),
-				"gs://records/harbor/tst/pr8-c6/b-4.json": record("tst", "pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z"),
-				"gs://records/harbor/tst/v1.2.1/b-9.json": record("tst", "v1.2.1", "c5", "b-9", Preview, "2026-09-29T06:00:00Z"),
+				"gs://records/harbor/tst/pr7-c7/b-3.json": recordJSON("pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"),
+				"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z"),
+				"gs://records/harbor/tst/pr8-c6/b-4.json": recordJSON("pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z"),
+				"gs://records/harbor/tst/v1.2.1/b-9.json": recordJSON("v1.2.1", "c5", "b-9", Preview, "2026-09-29T06:00:00Z"),
 			},
-			want: []string{"c9", "c7", "c8"},
+			want: []string{"c7 (the pull request's last build, build b-3)", "c8 (the live release v1.2.2, build b-0)"},
+		},
+		{
+			name:    "a pull request's first build reads the live release's alone",
+			subs:    pulled,
+			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
+			want:    []string{"c8 (the live release v1.2.2, build b-0)"},
 		},
 		{
 			name:    "another pull request's live record is not the environment's release",
 			subs:    tagged,
-			records: map[string]string{"gs://records/harbor/tst/pr8-c6/b-4.json": record("tst", "pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z")},
-			want:    []string{"c9"},
+			records: map[string]string{"gs://records/harbor/tst/pr8-c6/b-4.json": recordJSON("pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z")},
+			want:    []string{"c9 (this commit)"},
 		},
 		{
-			name:    "a commit is listed once",
+			name:    "a commit that is this commit and the live release is listed once, with both reasons",
 			subs:    tagged,
-			records: map[string]string{"gs://records/harbor/tst/v1.2.3/b-1.json": record("tst", "v1.2.3", "c9", "b-1", Live, "2026-09-27T05:00:00Z")},
-			want:    []string{"c9"},
+			records: map[string]string{"gs://records/harbor/tst/v1.2.3/b-1.json": recordJSON("v1.2.3", "c9", "b-1", Live, "2026-09-27T05:00:00Z")},
+			want:    []string{"c9 (this commit, the live release v1.2.3, build b-1)"},
 		},
 	}
 	for _, tt := range tests {
@@ -215,9 +391,13 @@ func TestCacheSources(t *testing.T) {
 			t.Parallel()
 
 			store := &memoryStore{objects: tt.records}
-			got, err := cacheSources(t.Context(), store.open, &Build{ID: "b-1", Substitutions: tt.subs})
+			sources, err := cacheSources(t.Context(), store.open, &Build{ID: "b-1", Substitutions: tt.subs})
 			if err != nil {
 				t.Fatalf("cacheSources() error = %v", err)
+			}
+			got := make([]string, 0, len(sources))
+			for _, s := range sources {
+				got = append(got, s.String())
 			}
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("cacheSources() = %v, want %v", got, tt.want)

@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/check"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
@@ -26,13 +28,39 @@ const (
 	// buildSecretsSub lists the declared build secrets: NAME=<secret version>, comma
 	// separated.
 	buildSecretsSub = "_BUILD_SECRETS"
-	// cacheTagPrefix is the registry tag under which a build exports its layer cache,
-	// followed by the commit: cache-<commit>. The layers are content-addressed, so a cache
-	// changes nothing in what a build produces; it spares the work whose inputs are
-	// unchanged (the dependency downloads, the browser build of an untouched web tree,
-	// and for the environments after the first the whole image).
-	cacheTagPrefix = "cache-"
 )
+
+// The dependency caches. The seeded Dockerfile's two reserved stages, go-modules and
+// web-packages, are built first, each exporting its layers to the registry under
+// cache-<commit>-go and cache-<commit>-web; the full build then reads those caches and
+// exports nothing. Only the downloads, whose content go.sum and bun.lock pin and the
+// package managers verify, are ever served from a cache: a compiled or bundled layer is
+// built fresh in every environment, and no per-build file of the pipeline leaves the
+// worker. A tag is written once, by the first build of the commit that finds it absent,
+// and never updated: the registry's tags are immutable.
+const (
+	cacheTagPrefix = "cache-"
+	goCacheSuffix  = "-go"
+	webCacheSuffix = "-web"
+	// cacheOnlyOutput keeps a dependency stage's result in the builder alone: its layers
+	// reach the registry through --cache-to, never as an image.
+	cacheOnlyOutput = "type=cacheonly"
+	// packageManifest is the file whose trustedDependencies entry names the packages
+	// whose install scripts bun runs.
+	packageManifest = "package.json"
+)
+
+// cacheStage is one reserved stage: its name, its cache tag's suffix and what it
+// downloads.
+type cacheStage struct {
+	name, suffix, what string
+}
+
+// cacheStages are the two, in the order they are built.
+var cacheStages = []cacheStage{
+	{name: check.GoModulesStage, suffix: goCacheSuffix, what: "the Go module download"},
+	{name: check.WebPackagesStage, suffix: webCacheSuffix, what: "the browser package install"},
+}
 
 // BuildImage builds the application's image from the checkout's Dockerfile and pushes
 // it under its two tags (<release>-<env> and <commit>-<env>), unless the release check
@@ -71,7 +99,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	if err != nil {
 		return err
 	}
-	args := []string{dockerBuildx, "build", "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
+	args := []string{dockerBuildx, dockerBuild, "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
 	if env[jobsJobFact] != "" {
 		_, job, err := buildJob(build.Substitutions[projectSub], env, jobsJobFact)
 		if err != nil {
@@ -89,16 +117,12 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	}
 	metadata := filepath.Join(string(w), MetadataFile)
 	args = append(args, secretArgs...)
-	sources, err := cacheSources(ctx, clients.Storage, build)
+	plan, err := planCache(ctx, clients, w, build, env[imageFact], out)
 	if err != nil {
 		return err
 	}
-	for _, commit := range sources {
-		args = append(args, "--cache-from", "type=registry,ref="+env[imageFact]+":"+cacheTagPrefix+commit)
-	}
-	exported := env[imageFact] + ":" + cacheTagPrefix + build.Substitutions[commitSub]
-	args = append(args, "--cache-to", "type=registry,ref="+exported+",mode=max,ignore-error=true")
-	fmt.Fprintf(out, "Layer cache: read from %s, written to %s (a tag the registry already holds is left as it is).\n", cacheTagPrefix+strings.Join(sources, ", "+cacheTagPrefix), exported)
+	fmt.Fprintln(out, plan.line())
+	args = append(args, plan.fullArgs()...)
 	args = append(args,
 		"--tag", env[imageFact]+":"+env[commitTagFact],
 		"--tag", env[imageFact]+":"+env[imageTagFact],
@@ -108,15 +132,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 		// image index with an attestation manifest beside it.
 		"--provenance=false", "--sbom=false",
 		"--file", "Dockerfile", "--push", ".")
-	// Exporting a cache to the registry takes buildx's docker-container driver: the docker
-	// driver a Cloud Build step starts with builds and pushes but exports no cache ("Cache
-	// export is not supported for the docker driver"). A builder of that driver is created
-	// for this build and used; its BuildKit runs in a container beside the step's daemon,
-	// pulling and pushing with the step's registry credentials.
-	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: []string{dockerBuildx, "create", "--driver", "docker-container", "--use"}}, out); err != nil {
-		return err
-	}
-	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: args}, out); err != nil {
+	if err := runBuilds(ctx, clients, w, plan, args, out); err != nil {
 		return err
 	}
 	digest, err := imageDigest(metadata)
@@ -131,21 +147,309 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	return takeHooks(ctx, clients, env[imageFact]+"@"+digest, hooks, out)
 }
 
-// cacheSources lists the commits whose layer caches the build reads, this commit's first:
-// its own (another environment built this commit already, or the pull request's earlier
-// build pushed it), the commit the environment runs live (the previous release's layers,
-// most of which an ordinary change keeps), and in a pull-request build the pull request's
-// last build. A cache the registry lacks is skipped by docker. The records are read
-// through the records bucket; a build without one reads only its own commit's cache.
-func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]string, error) {
-	commit := build.Substitutions[commitSub]
-	sources := []string{commit}
-	add := func(c string) {
-		if c != "" && !slices.Contains(sources, c) {
-			sources = append(sources, c)
+// runBuilds creates the builder and runs the builds in it: each reserved stage the
+// Dockerfile has, exporting its cache, then the full build with the arguments composed.
+// Exporting a cache to the registry takes buildx's docker-container driver: the docker
+// driver a Cloud Build step starts with builds and pushes but exports no cache ("Cache
+// export is not supported for the docker driver"). A builder of that driver is created
+// for this build and used; its BuildKit runs in a container beside the step's daemon,
+// pulling and pushing with the step's registry credentials. The full build finds the
+// stages the builds before it made in that same builder.
+func runBuilds(ctx context.Context, clients *Clients, w Workspace, plan *cachePlan, full []string, out io.Writer) error {
+	if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: []string{dockerBuildx, "create", "--driver", "docker-container", "--use"}}, out); err != nil {
+		return err
+	}
+	for _, s := range plan.stages {
+		if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: plan.stageArgs(s)}, out); err != nil {
+			return err
 		}
 	}
+
+	return clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: full}, out)
+}
+
+// cacheSource is one commit whose caches the build may read, and what it is to the
+// build.
+type cacheSource struct {
+	Commit string
+	// Why says what the commit is: this commit; the live release, with its version and
+	// build; the pull request's last build. A commit that is two of those says both.
+	Why []string
+}
+
+// String is the source as the tests and the log name it.
+func (s cacheSource) String() string {
+	return s.Commit + " (" + strings.Join(s.Why, ", ") + ")"
+}
+
+// cachePlan is the build's layer cache: the reserved stages the Dockerfile has, the
+// commits whose caches may be read, which of their tags the registry holds, and the
+// stage built with no cache at all.
+type cachePlan struct {
+	image   string
+	commit  string
+	sources []cacheSource
+	// stages are the reserved stages the Dockerfile has, in build order.
+	stages []cacheStage
+	// held says, by tag, whether the registry holds it.
+	held map[string]bool
+	// uncached is the package.json listing trustedDependencies, when one does, which
+	// leaves web-packages out of the cache in both directions: the install scripts of
+	// those packages run at install and may fetch or vary, so a stored install need not
+	// equal a fresh one.
+	uncached string
+}
+
+// planCache reads the Dockerfile for its reserved stages and each workspace's manifest
+// for trusted install scripts, lists the commits whose caches the build may read, and
+// asks the registry which of the candidate tags exist (one request per tag, as the
+// release check asks after the image's tags), so that the build names only tags that
+// exist and writes only tags that are absent: docker prints an ERROR line for an import
+// it cannot find and for an export the registry's immutable tags refuse, and neither
+// belongs in a build log.
+func planCache(ctx context.Context, clients *Clients, w Workspace, build *Build, image string, out io.Writer) (*cachePlan, error) {
+	src, err := os.ReadFile(filepath.Join(string(w), dockerfileName))
+	if err != nil {
+		return nil, errors.Wrap(err, "os.ReadFile(): Dockerfile")
+	}
+	stages := check.Stages(src)
+	plan := &cachePlan{image: image, commit: build.Substitutions[commitSub], held: map[string]bool{}}
+	for _, s := range cacheStages {
+		stage := check.Named(stages, s.name)
+		if stage == nil {
+			fmt.Fprintf(out, "The Dockerfile has no %s stage, so %s is not cached; the seeded Dockerfile carries the stage.\n", s.name, s.what)
+
+			continue
+		}
+		plan.stages = append(plan.stages, s)
+		if s.name != check.WebPackagesStage {
+			continue
+		}
+		manifest, err := trustedScripts(string(w), stage)
+		if err != nil {
+			return nil, err
+		}
+		if manifest != "" {
+			plan.uncached = manifest
+			fmt.Fprintf(out, "%s is built with no cache in or out: %s lists trustedDependencies, whose install scripts run at install and may fetch or vary, so a stored install need not equal a fresh one.\n", s.name, manifest)
+		}
+	}
+	plan.sources, err = cacheSources(ctx, clients.Storage, build)
+	if err != nil {
+		return nil, err
+	}
+	registry, err := clients.Registry(ctx)
+	if err != nil {
+		return nil, err
+	}
+	commits := []string{plan.commit}
+	for _, s := range plan.sources {
+		if !slices.Contains(commits, s.Commit) {
+			commits = append(commits, s.Commit)
+		}
+	}
+	for _, s := range plan.stages {
+		if !plan.cacheable(s) {
+			continue
+		}
+		for _, commit := range commits {
+			tag := plan.tag(commit, s)
+			digest, err := registry.Digest(ctx, image, tag)
+			if err != nil {
+				return nil, err
+			}
+			plan.held[tag] = digest != ""
+		}
+	}
+
+	return plan, nil
+}
+
+// trustedScripts is the package.json the web-packages stage copies that lists
+// trustedDependencies, or empty when none does. The manifests are read inside the
+// checkout alone (an os.Root), since the Dockerfile names them; one the checkout lacks is
+// left to the build, whose copy of it fails naming the file.
+func trustedScripts(root string, stage *check.Stage) (string, error) {
+	checkout, err := os.OpenRoot(root)
+	if err != nil {
+		return "", errors.Wrap(err, "os.OpenRoot()")
+	}
+	defer checkout.Close()
+	for _, in := range stage.Instructions {
+		from, sources := in.Copies()
+		if from != "" {
+			continue
+		}
+		for _, source := range sources {
+			if path.Base(source) != packageManifest {
+				continue
+			}
+			data, err := checkout.ReadFile(filepath.FromSlash(source))
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return "", errors.Wrapf(err, "os.Root.ReadFile(): %s", source)
+			}
+			var manifest struct {
+				TrustedDependencies []string `json:"trustedDependencies"`
+			}
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return "", errors.Wrapf(err, "json.Unmarshal(): %s", source)
+			}
+			if len(manifest.TrustedDependencies) > 0 {
+				return source, nil
+			}
+		}
+	}
+
+	return "", nil
+}
+
+// tag is the cache tag of a commit's stage.
+func (p *cachePlan) tag(commit string, s cacheStage) string {
+	return cacheTagPrefix + commit + s.suffix
+}
+
+// cacheable reports whether the stage reads and writes a cache at all.
+func (p *cachePlan) cacheable(s cacheStage) bool {
+	return s.name != check.WebPackagesStage || p.uncached == ""
+}
+
+// reads lists the stage's tags the registry holds among the sources, in source order.
+func (p *cachePlan) reads(s cacheStage) []string {
+	var tags []string
+	for _, source := range p.sources {
+		if tag := p.tag(source.Commit, s); p.held[tag] && !slices.Contains(tags, tag) {
+			tags = append(tags, tag)
+		}
+	}
+
+	return tags
+}
+
+// writes reports whether the stage's cache for this commit is exported: when the stage
+// is cached and the registry lacks the tag.
+func (p *cachePlan) writes(s cacheStage) bool {
+	return p.cacheable(s) && !p.held[p.tag(p.commit, s)]
+}
+
+// stageArgs are the docker arguments of one reserved stage's build: the stage as the
+// target, the caches it reads, its own cache exported when absent, every layer of the
+// stage (mode=max), and no image.
+func (p *cachePlan) stageArgs(s cacheStage) []string {
+	args := []string{dockerBuildx, dockerBuild, "--target", s.name}
+	if !p.cacheable(s) {
+		args = append(args, "--no-cache")
+	}
+	for _, tag := range p.reads(s) {
+		args = append(args, "--cache-from", "type=registry,ref="+p.image+":"+tag)
+	}
+	if p.writes(s) {
+		args = append(args, "--cache-to", "type=registry,ref="+p.image+":"+p.tag(p.commit, s)+",mode=max")
+	}
+
+	return append(args, "--output", cacheOnlyOutput, "--file", dockerfileName, ".")
+}
+
+// fullArgs are the full build's cache arguments: every tag the stages read, and no
+// export.
+func (p *cachePlan) fullArgs() []string {
+	var args []string
+	for _, s := range p.stages {
+		for _, tag := range p.reads(s) {
+			args = append(args, "--cache-from", "type=registry,ref="+p.image+":"+tag)
+		}
+	}
+
+	return args
+}
+
+// line says what the cache did: the tags read, by the commit they belong to and what it
+// is to the build; the sources the registry holds nothing for; and whether this commit's
+// tags were written or were held already.
+func (p *cachePlan) line() string {
+	var groups, missing []string
+	thisRead := false
+	for _, source := range p.sources {
+		var tags []string
+		for _, s := range p.stages {
+			if tag := p.tag(source.Commit, s); p.held[tag] && p.cacheable(s) {
+				tags = append(tags, tag)
+			}
+		}
+		switch {
+		case len(tags) > 0:
+			groups = append(groups, strings.Join(tags, ", ")+" ("+strings.Join(source.Why, ", ")+")")
+			thisRead = thisRead || source.Commit == p.commit
+		case source.Commit != p.commit:
+			missing = append(missing, strings.Join(source.Why, ", ")+" ("+source.Commit+")")
+		}
+	}
+	read := "read nothing"
+	if len(groups) > 0 {
+		read = "read " + strings.Join(groups, ", ")
+	}
+	if len(missing) > 0 {
+		read += "; nothing held for " + strings.Join(missing, ", ")
+	}
+	var written, held []string
+	for _, s := range p.stages {
+		switch tag := p.tag(p.commit, s); {
+		case !p.cacheable(s):
+		case p.writes(s):
+			written = append(written, tag)
+		default:
+			held = append(held, tag)
+		}
+	}
+	var wrote string
+	switch {
+	case len(written) == 0 && len(held) == 0:
+		wrote = "nothing to write"
+	case len(written) == 0 && thisRead:
+		wrote = "not written, the registry holds them"
+	case len(written) == 0:
+		wrote = "not written, the registry holds " + strings.Join(held, ", ")
+	case len(held) == 0:
+		wrote = "written " + strings.Join(written, ", ")
+	default:
+		wrote = "written " + strings.Join(written, ", ") + "; the registry holds " + strings.Join(held, ", ")
+	}
+
+	return "Layer cache: " + read + "; " + wrote + "."
+}
+
+// cacheSources lists the commits whose caches the build may read, in the order they are
+// named. A tag build reads this commit's (another environment built this commit already)
+// and the commit the environment runs live (the previous release's downloads, most of
+// which an ordinary change keeps). A pull-request build reads its own pull request's
+// last build's and the live release's. A tag build never reads a pull-request build's
+// cache: a pull-request build runs a contributor's branch and hooks as a registry
+// writer, and a release commit's tag cannot be written ahead of it, since a squash
+// commit's hash is unknowable until it exists. The records are read through the records
+// bucket; a build without one reads this commit's cache alone.
+func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]cacheSource, error) {
+	commit := build.Substitutions[commitSub]
+	var sources []cacheSource
+	add := func(c, why string) {
+		if c == "" {
+			return
+		}
+		for i := range sources {
+			if sources[i].Commit == c {
+				sources[i].Why = append(sources[i].Why, why)
+
+				return
+			}
+		}
+		sources = append(sources, cacheSource{Commit: c, Why: []string{why}})
+	}
 	bucket, app, env := build.Substitutions[recordsBucket], build.Substitutions[appSub], build.Substitutions[envSub]
+	pr := build.Substitutions[prNumberSub]
+	if bucket == "" || app == "" || env == "" || pr == "" {
+		add(commit, "this commit")
+	}
 	if bucket == "" || app == "" || env == "" {
 		return sources, nil
 	}
@@ -154,7 +458,7 @@ func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]string, 
 		return nil, err
 	}
 	defer store.Close()
-	if pr := build.Substitutions[prNumberSub]; pr != "" {
+	if pr != "" {
 		last, err := newestRecordWhere(ctx, store, bucket, app+"/"+env+"/pr"+pr+"-", func(*Record) bool {
 			return true
 		})
@@ -162,7 +466,7 @@ func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]string, 
 			return nil, err
 		}
 		if last != nil {
-			add(last.Commit)
+			add(last.Commit, "the pull request's last build, build "+last.Build)
 		}
 	}
 	live, err := newestLiveRelease(ctx, store, bucket, app, env)
@@ -170,7 +474,7 @@ func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]string, 
 		return nil, err
 	}
 	if live != nil {
-		add(live.Commit)
+		add(live.Commit, "the live release "+live.Version+", build "+live.Build)
 	}
 
 	return sources, nil
@@ -181,10 +485,14 @@ func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]string, 
 const (
 	hooksInImage  = "/hooks"
 	dockerProgram = "docker"
-	// dockerBuildx is docker's buildx plugin, which creates the builder and builds.
+	// dockerBuildx is docker's buildx plugin, which creates the builder and builds
+	// (dockerBuild).
 	dockerBuildx = "buildx"
+	dockerBuild  = "build"
 	// dockerCreate makes a container from an image without starting it, to copy a file out.
 	dockerCreate = "create"
+	// dockerfileName is the image build at the application root.
+	dockerfileName = "Dockerfile"
 )
 
 // takeHooks copies the hooks program out of the image to dst, when dst is set: a

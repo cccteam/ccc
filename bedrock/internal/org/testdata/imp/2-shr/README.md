@@ -15,7 +15,9 @@ each environment's Cloud Run pull. Applied by the layers workflow as
   `untagged_retention_days` (7) are deleted; the newest
   `keep_tagged_versions` (10) versions of each image are exempt from every
   delete. Tagged versions are never deleted unless `tagged_retention_days` is
-  set. `cleanup_dry_run` makes the policies log instead of delete.
+  set, except the image build's dependency caches, the tags starting with
+  `cache-`, which are deleted after 30 days; release tags are untouched.
+  `cleanup_dry_run` makes the policies log instead of delete.
   Vulnerability scanning is left at the project default.
 - `roles/artifactregistry.reader` on every repository for the Cloud Run
   service agent of each environment in `pull_environments` (tst, stg, prd).

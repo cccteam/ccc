@@ -43,6 +43,20 @@ resource "google_artifact_registry_repository" "app" {
     }
   }
 
+  # The image build's dependency caches, cache-<commit>-go and cache-<commit>-web:
+  # written once per commit and read by the builds of the commits after it, and a
+  # month on no build reads them. A release tag starts with the release or the
+  # commit, never with cache-, so this selects no release.
+  cleanup_policies {
+    id     = "delete-build-caches"
+    action = "DELETE"
+    condition {
+      tag_state    = "TAGGED"
+      tag_prefixes = ["cache-"]
+      older_than   = "${30 * 24 * 60 * 60}s"
+    }
+  }
+
   cleanup_policies {
     id     = "keep-newest"
     action = "KEEP"

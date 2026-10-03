@@ -175,6 +175,35 @@ func TestRun(t *testing.T) {
 			},
 			wantClean: true,
 		},
+		{
+			name: "a reserved stage of the Dockerfile holding more than its install is refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				path := filepath.Join(dir, "root", "Dockerfile")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = bytes.Replace(data, []byte("RUN go mod download\n"), []byte("COPY . ./\nRUN go mod download\n"), 1)
+				if err := os.WriteFile(path, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantOutput: []string{"22 owned file(s) match the code", "refused  Dockerfile:56 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
+		},
+		{
+			name: "a Dockerfile without the reserved stages is warned about, not refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				if err := os.WriteFile(filepath.Join(dir, "root", "Dockerfile"), []byte("FROM golang AS build-env\nRUN go build -o /build/app . && go build -o /build/migrate ./cmd/deployment/migrate && go build -o /build/jobs ./cmd/jobs\nFROM scratch\nARG JOBS_JOB\nENV APP_VERSION=1 APP_CONSOLE_DIST=/c APP_PORTAL_DIST=/p APP_JOBS_JOB=\"${JOBS_JOB}\"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantClean:  true,
+			wantOutput: []string{"warning  Dockerfile has no go-modules stage: the image build caches nothing for the Go module download", "warning  Dockerfile has no web-packages stage: the image build caches nothing for the browser package install"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

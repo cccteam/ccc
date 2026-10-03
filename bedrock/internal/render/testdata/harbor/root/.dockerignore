@@ -1,0 +1,14 @@
+# Kept out of a local image build's context, for the build's size: the git history, the
+# workflows, the stack, the tests, and each browser workspace's installs and outputs.
+# Nothing in the pipeline depends on this file, since the Dockerfile copies its inputs by
+# name. Seeded by bedrock once and yours after that.
+.git
+.github
+infrastructure
+test
+web/node_modules
+web/.angular
+web/dist
+portal/node_modules
+portal/.angular
+portal/dist

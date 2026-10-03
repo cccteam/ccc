@@ -74,6 +74,9 @@ type Model struct {
 	// declaration order: the default store (APP_FILE_STORE) and the named ones
 	// (APP_FILE_STORE_<NAME>); none when the code declares no store.
 	FileStores []FileStore
+	// ImageInputs is what the seeded Dockerfile copies into its build stages by name:
+	// the Go package directories and each browser workspace's install files.
+	ImageInputs ImageInputs
 	// Environments are the placement's environments, with the hostnames each serves.
 	Environments []Environment
 	// Placement is the placement the model was derived for.
@@ -647,6 +650,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, err
 	}
 	if err := m.generateStep(a); err != nil {
+		return nil, err
+	}
+	if err := m.imageInputs(a); err != nil {
 		return nil, err
 	}
 	m.router(a)

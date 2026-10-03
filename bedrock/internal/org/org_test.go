@@ -1309,6 +1309,49 @@ func TestPlacementProjects(t *testing.T) {
 	}
 }
 
+func TestBuildCacheCleanup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the rule deletes the tags starting with cache- after thirty days and selects nothing by another name",
+			path: "2-shr/registry.tf",
+			want: []string{
+				"  cleanup_policies {\n    id     = \"delete-build-caches\"\n    action = \"DELETE\"\n    condition {\n      tag_state    = \"TAGGED\"\n      tag_prefixes = [\"cache-\"]\n      older_than   = \"${30 * 24 * 60 * 60}s\"\n    }\n  }\n",
+				"never with cache-, so this selects no release",
+			},
+			absent: []string{"tag_prefixes = [\"v\"]"},
+		},
+		{
+			name: "the README says so",
+			path: "2-shr/README.md",
+			want: []string{"the tags starting with\n  `cache-`, which are deleted after 30 days; release tags are untouched."},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			text := renderedFile(t, tt.path)
+			for _, want := range tt.want {
+				if !strings.Contains(text, want) {
+					t.Errorf("%s lacks %q", tt.path, want)
+				}
+			}
+			for _, absent := range tt.absent {
+				if strings.Contains(text, absent) {
+					t.Errorf("%s carries %q", tt.path, absent)
+				}
+			}
+		})
+	}
+}
+
 func TestApplicationProjects(t *testing.T) {
 	t.Parallel()
 
