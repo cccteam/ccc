@@ -59,7 +59,14 @@ var (
 	// envHeadingRE matches the environment template's opening comment, which names the
 	// application.
 	envHeadingRE = regexp.MustCompile(`(?m)^(# Development environment for )([a-z0-9-]+)\.`)
+	// manifestNameRE matches the name and short_name fields of a web app manifest, whose
+	// value is the application's display name or starts with it (Solo, Solo Portal).
+	manifestNameRE = regexp.MustCompile(`("(?:name|short_name)":\s*")([^"]*)"`)
 )
+
+// webManifest is the name of a browser project's web app manifest, the file the browser
+// reads when it installs the application.
+const webManifest = "manifest.webmanifest"
 
 // envTemplates are the environment template names an application may carry.
 var envTemplates = map[string]bool{".envrc.template": true, ".env.template": true, ".env.example": true}
@@ -92,13 +99,28 @@ func Display(name string) string {
 // name as the application's: the workspace name in package.json and bun.lock
 // (<candidate>-web, <candidate>-<site>-web), the environment template's values that name
 // the service and the development database (<candidate>, <candidate>-dev) and its
-// heading comment, and the root README's heading. rel is the file's path in the tree and
-// text its content; a file outside those slots comes back unchanged. Nowhere else: the
-// candidate names are English words (sites, outlets), so a template's prose says "the
-// application" rather than naming it.
+// heading comment, the root README's heading, and, in display form, the browser
+// projects' titles and the name and short_name of their web app manifests (Solo, Solo
+// Portal). rel is the file's path in the tree and text its content; a file outside those
+// slots comes back unchanged. Nowhere else: the candidate names are English words (sites,
+// outlets), so a template's prose says "the application" rather than naming it.
 func RenameApp(rel, text, from, to string) string {
 	base := path.Base(rel)
 	switch {
+	case base == webManifest:
+		// The manifest names the installed application in display form, alone or with the
+		// project's suffix (Solo Portal).
+		fromTitle, toTitle := Display(from), Display(to)
+
+		return manifestNameRE.ReplaceAllStringFunc(text, func(m string) string {
+			sub := manifestNameRE.FindStringSubmatch(m)
+			name := sub[2]
+			if name != fromTitle && !strings.HasPrefix(name, fromTitle+" ") {
+				return m
+			}
+
+			return sub[1] + toTitle + strings.TrimPrefix(name, fromTitle) + `"`
+		})
 	case base == "package.json" || base == "bun.lock":
 		return workspaceNameRE.ReplaceAllStringFunc(text, func(m string) string {
 			sub := workspaceNameRE.FindStringSubmatch(m)

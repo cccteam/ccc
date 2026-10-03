@@ -495,9 +495,14 @@ func TestRenderName(t *testing.T) {
 			"export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=beacon\n",
 		},
 	}
+	// The web app manifest names the installed application in display form, the
+	// portal's with its suffix.
+	consoleManifest := []string{`"name": "Beacon"`, `"short_name": "Beacon"`}
+	portalManifest := []string{`"name": "Beacon Portal"`, `"short_name": "Beacon Portal"`}
 	oneWorkspace := map[string][]string{
 		"web/package.json": {`"name": "beacon-web"`},
 		"web/bun.lock":     {`"name": "beacon-web"`},
+		"web/console/public/manifest.webmanifest": consoleManifest,
 	}
 	tests := []struct {
 		name      string
@@ -506,12 +511,19 @@ func TestRenderName(t *testing.T) {
 	}{
 		{name: "solo", candidate: "solo", slots: oneWorkspace},
 		{name: "tenanted", candidate: "tenanted", slots: oneWorkspace},
-		{name: "outlets", candidate: "outlets", slots: oneWorkspace},
+		{name: "outlets", candidate: "outlets", slots: map[string][]string{
+			"web/package.json": {`"name": "beacon-web"`},
+			"web/bun.lock":     {`"name": "beacon-web"`},
+			"web/console/public/manifest.webmanifest": consoleManifest,
+			"web/portal/public/manifest.webmanifest":  portalManifest,
+		}},
 		{name: "sites", candidate: "sites", slots: map[string][]string{
-			"apps/console/web/package.json": {`"name": "beacon-console-web"`},
-			"apps/console/web/bun.lock":     {`"name": "beacon-console-web"`},
-			"apps/portal/web/package.json":  {`"name": "beacon-portal-web"`},
-			"apps/portal/web/bun.lock":      {`"name": "beacon-portal-web"`},
+			"apps/console/web/package.json":                {`"name": "beacon-console-web"`},
+			"apps/console/web/bun.lock":                    {`"name": "beacon-console-web"`},
+			"apps/console/web/public/manifest.webmanifest": consoleManifest,
+			"apps/portal/web/package.json":                 {`"name": "beacon-portal-web"`},
+			"apps/portal/web/bun.lock":                     {`"name": "beacon-portal-web"`},
+			"apps/portal/web/public/manifest.webmanifest":  portalManifest,
 		}},
 	}
 	for _, tt := range tests {

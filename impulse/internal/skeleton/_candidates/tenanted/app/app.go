@@ -18,7 +18,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
-	"github.com/jtwatson/spaassets"
 )
 
 const (
@@ -91,8 +90,11 @@ type App struct {
 	tenants        *resource.TenantRoster
 	validate       *validator.Validate
 	logExporter    logger.Exporter
-	consoleDist    string
-	live           live.Service
+	// console serves the console's built bundle at /: the resource package's served
+	// browser app holds the deep-link rewrite, the prefix strip, and the two cache classes a
+	// service worker needs (hashed files immutable, everything else revalidated).
+	console *resource.BrowserApp
+	live    live.Service
 	// features is the application's copy of its feature flags, read through the
 	// configuration's database client when the App is built; featuresErr is why it
 	// could not be, which Start reports.
@@ -110,7 +112,7 @@ func New(cfg Configurer) *App {
 		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
-		consoleDist:    cfg.ConsoleDist(),
+		console:        resource.NewBrowserApp(cfg.ConsoleDist(), "/"),
 		live:           cfg.Live(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
 	}
@@ -165,31 +167,18 @@ func (a *App) CompressionMiddleware() func(http.Handler) http.Handler {
 	return middleware.Compress(5)
 }
 
-// DeepLink rewrites the console's Angular routes to its entry point so bookmarked
-// frontend routes load the single-page application.
+// DeepLink rewrites the console's Angular routes to its entry document so bookmarked
+// frontend routes load the single-page application: a request whose last segment has no
+// extension is served index.html, and a path with an extension is a file or a 404.
 func (a *App) DeepLink(next http.Handler) http.Handler {
-	return spaassets.DeepLink(next, "/")
+	return a.console.DeepLink(next)
 }
 
-// Assets serves the console's built Angular application.
+// Assets serves the console's built Angular application: a hashed file is immutable for
+// a year, every other file (the entry document, the worker files, the manifest, the icons)
+// is revalidated on each use, which is what the service worker needs under any cache.
 func (a *App) Assets() http.HandlerFunc {
-	return serveSPA(http.FileServer(http.Dir(a.consoleDist)))
-}
-
-// serveSPA wraps a file server with the caching posture a single-page application
-// wants: the entry document is never cached, hashed assets are cached forever.
-func serveSPA(assets http.Handler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/") || strings.HasSuffix(r.URL.Path, "/index.html") {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache") // For HTTP/1.0 backward compatibility
-			w.Header().Set("Expires", "0")       // For proxies
-		} else {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		}
-
-		assets.ServeHTTP(w, r)
-	}
+	return a.console.Assets()
 }
 
 // UserPermissions returns the permission checker for a request, composed from the

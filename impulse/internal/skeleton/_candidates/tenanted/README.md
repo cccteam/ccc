@@ -151,6 +151,16 @@ The two packages are bundled with the application code rather than prebundled by
 `prebundle` exclusion in `angular.json`), so a plain reload shows the new build in any
 browser profile: nothing is held behind an immutable URL, and no cache needs clearing.
 
+The console installs as a progressive web app. The production build emits a service worker
+(`@angular/service-worker`, configured by `web/ngsw-config.json`) that keeps the files of the
+build an open tab loaded, so a release never breaks a tab still running the previous build,
+and the library's update notice offers Reload when a new build is ready; the worker is off
+under `ng serve`. The manifest and the icons sit in `web/console/public/`
+(`manifest.webmanifest`, `icons/`), a placeholder set to replace with the application's own
+mark. The server serves every bundle through the resource package's `BrowserApp`, which sets
+the cache headers a worker needs; a build deployed without `ngsw.json` makes every installed
+worker unregister itself and drop its caches. `impulse check` (`installable`) holds the wiring.
+
 The console's component specs run on Angular's unit-test builder (`@angular/build:unit-test`)
 with Vitest under jsdom in Node: no browser, no Karma. `bun run test` runs them once, the
 form the Checks section and CI use; `bun ng test console` watches. The specs beside the

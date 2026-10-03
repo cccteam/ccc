@@ -1,8 +1,9 @@
 import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
-import { ApplicationConfig } from '@angular/core';
+import { ApplicationConfig, isDevMode } from '@angular/core';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 import { createApi } from '@app/service/zz_gen_api';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
@@ -16,6 +17,7 @@ import {
   RESOURCE_META,
   SESSION_PATH,
 } from '@cccteam/resource-angular/types';
+import { provideAppUpdate } from '@cccteam/resource-angular/ui-app-update';
 import { firestoreChangeFeed } from '@cccteam/resource-firestore';
 import { environment } from '@env';
 import { routes } from './app.routes';
@@ -58,5 +60,15 @@ export const appConfig: ApplicationConfig = {
     // The XSRF cookie is the staff auth's (pkg/auth/staff, XSRFCookie): HttpClient echoes it in
     // the X-XSRF-TOKEN header on every mutating request, and the server verifies the echo.
     provideHttpClient(withXsrfConfiguration({ cookieName: 'staff-xsrf' })),
+    // The service worker that installs the application and keeps an open tab on the build
+    // it loaded through a release: the worker keeps that build's files, so a lazy chunk
+    // still loads after a deploy, and the new build is picked up when the person chooses.
+    // Off in dev mode, where the dev server emits no worker; registered once the
+    // application is stable or thirty seconds after start, whichever comes first. The
+    // update provider starts the library's update service: one persistent notice with
+    // Reload when a new build is ready, and the server's build picked up when the server
+    // refuses this one's release.
+    provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' }),
+    provideAppUpdate(),
   ],
 };

@@ -385,14 +385,16 @@ func (o Outlet) cloneProject(a *app.App, g *app.Generator, mount, consoleAuth st
 }
 
 // moveRewrites are the textual substitutions that move a browser project from one API
-// prefix and mount path to another: the proxy and client prefix, the base element, and
-// the base URL, which an application at the root writes empty in development.
+// prefix and mount path to another: the proxy and client prefix, the base element, the
+// web app manifest's id (the mount path, which identifies the installed application),
+// and the base URL, which an application at the root writes empty in development.
 func moveRewrites(oldPrefix, oldMount, newPrefix, newMount string) []rewrite {
 	oldBase, newBase := basePath(oldMount), basePath(newMount)
 	rewrites := []rewrite{
 		{"'/" + oldPrefix + "/'", "'/" + newPrefix + "/'"},
 		{"'/" + oldPrefix + "'", "'/" + newPrefix + "'"},
 		{`<base href="` + oldBase + `" />`, `<base href="` + newBase + `" />`},
+		{`"id": "` + oldBase + `"`, `"id": "` + newBase + `"`},
 		{"baseUrl: '" + oldBase + "'", "baseUrl: '" + newBase + "'"},
 	}
 	if oldBase == "/" {
@@ -776,16 +778,19 @@ func lineList(lines []int) string {
 	return strings.Join(parts, ", ")
 }
 
-// deepLinkRootRE matches a DeepLink call that rewrites to the root; loginURLRE captures
-// the login page a data level's construction names.
+// rootMountRE matches the App serving the console's bundle at the root: the resource
+// package's served browser app built with "/" as its mount path
+// (resource.NewBrowserApp(dir, "/")), or the older spaassets.DeepLink call rewriting to
+// "/"; loginURLRE captures the login page a data level's construction names.
 var (
-	deepLinkRootRE = regexp.MustCompile(`DeepLink\([^)]*"/"\)`)
-	loginURLRE     = regexp.MustCompile(`LoginURL:\s*"(/[^"]*)"`)
+	rootMountRE = regexp.MustCompile(`(?:DeepLink|NewBrowserApp)\(.*"/"\)`)
+	loginURLRE  = regexp.MustCompile(`LoginURL:\s*"(/[^"]*)"`)
 )
 
 // oldPrefixScan collects what still names the console's old API prefix or its old place
-// after the move, for the brief: the App's DeepLink at the root (its Assets pair serves
-// the bundle from the mount path too), a LoginURL naming a page outside the mount path,
+// after the move, for the brief: the App serving the console's bundle at the root (the
+// served browser app's mount path, which its DeepLink and Assets pair delegate to), a
+// LoginURL naming a page outside the mount path,
 // the hand-written Go naming the old prefix as a string literal (routes, hooks, tests),
 // and the README, process files, and environment template naming it.
 type oldPrefixScan struct {
@@ -819,7 +824,7 @@ func (sc *oldPrefixScan) file(rel string, data []byte, isGo, isProse bool) {
 	for line := range strings.Lines(string(data)) {
 		n++
 		switch {
-		case isGo && deepLinkRootRE.MatchString(line):
+		case isGo && rootMountRE.MatchString(line):
 			sc.deepLinks.add(rel, n)
 		case isGo && strings.Contains(line, sc.literal):
 			sc.literals.add(rel, n)
@@ -836,7 +841,7 @@ func (sc *oldPrefixScan) file(rel string, data []byte, isGo, isProse bool) {
 // literals, and prose, each file on one line.
 func (sc *oldPrefixScan) report(ch *Change, oldPrefix, prefix string) {
 	for _, m := range sc.deepLinks.sorted() {
-		ch.skipf("%s:%s: DeepLink rewrites the console's routes to \"/\"; it moves to %q, and Assets serves the bundle behind http.StripPrefix(%q), as a second browser application's pair does", m.file, lineList(m.lines), sc.mount+"/", sc.mount)
+		ch.skipf("%s:%s: serves the console's bundle at \"/\"; it moves to %q: resource.NewBrowserApp(cfg.ConsoleDist(), %q) serves it under the mount path, as a second browser application's does (a spaassets.DeepLink and Assets pair becomes that one type)", m.file, lineList(m.lines), sc.mount+"/", sc.mount)
 	}
 	keys := make([]string, 0, len(sc.loginURLs))
 	for k := range sc.loginURLs {
@@ -916,7 +921,7 @@ func (o Outlet) Meaning() string {
 		}
 		fmt.Fprintf(&b, "This is a session outlet: a browser surface bound to %s (the program declares it with that auth's `Auth` and `WebApp(\"/%s\")`), so its people sign in under `/%s/user/login` and the generated router serves its browser application from `/%s/`. Give the App what the generated `Handlers` now requires: `%s()` returning the auth's session handlers (an auth's embedded session manager satisfies its handler interface, so the method returns it), and the `%sDeepLink` and `%sAssets` pair serving a dist directory from configuration (`APP_%s_DIST` defaulting to `web/dist/%s`), like the console's. A route of the outlet's own goes in the `%s` field of the application's `Hooks`, inside the outlet's guards. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: sign in under `/%s/user/login` and read `user-domains` and the permission digest there, and show a resource that is not a member answers not found under the prefix. If the outlet's audience is another population, add an auth for it (`impulse add auth`), point the outlet's `Auth` at it, and add its development login to the bootstrap identities.\n\n", auth, o.Name, o.Prefix, o.Name, pascal, pascal, pascal, upper, o.Name, pascal, o.Name, o.Prefix)
 		fmt.Fprintf(&b, "The outlet serves the live routes (`/%s/live/renew`, `/%s/live/unsubscribe`, `/%s/live/token`) through the App's one `LiveService`, the live service the data level opens over the application's Firestore database, so it needs no live wiring of its own; its browser application's list and record pages opt in through the client packages' live option as the console's do.\n\n", o.Prefix, o.Prefix, o.Prefix)
-		b.WriteString("Every browser outlet takes one shape: its API under its application's mount path (`/" + o.Name + "/api` under `/" + o.Name + "`), so the application's scope covers its own API, login, and callback routes; `impulse check` warns where an outlet's API sits elsewhere. With two browser applications none is mounted at `/`: an installed application's scope is every URL under its start, so one at `/` would own the origin and the other would never get its own install prompt, and the generator refuses the shape. A console that was alone at `/` therefore moved to `/console` with its API at `/console/api` (the generator program, the project's `baseHref` and `servePath`, its proxy, environments, and base element), and the regenerated router answers the root alone with a redirect to `/console/`. The App's `DeepLink` and `Assets` pair follows (`spaassets.DeepLink(next, \"/console/\")`, the bundle behind `http.StripPrefix(\"/console\")`, as the portal's pair reads in the reference), as do a `LoginURL` naming the console's login page, the hand-written routes, hooks, and tests that name `/api`, and the README and Procfile lines; the brief lists each by file and line.\n")
+		b.WriteString("Every browser outlet takes one shape: its API under its application's mount path (`/" + o.Name + "/api` under `/" + o.Name + "`), so the application's scope covers its own API, login, and callback routes; `impulse check` warns where an outlet's API sits elsewhere. With two browser applications none is mounted at `/`: an installed application's scope is every URL under its start, so one at `/` would own the origin and the other would never get its own install prompt, and the generator refuses the shape. A console that was alone at `/` therefore moved to `/console` with its API at `/console/api` (the generator program, the project's `baseHref` and `servePath`, its proxy, environments, and base element), and the regenerated router answers the root alone with a redirect to `/console/`. The App's `DeepLink` and `Assets` pair follows (the resource package's served browser app built with the mount path, `resource.NewBrowserApp(cfg.ConsoleDist(), \"/console\")`, which strips the mount prefix and rewrites the application's routes to its entry document, as the portal's reads in the reference), as do a `LoginURL` naming the console's login page, the hand-written routes, hooks, and tests that name `/api`, and the README and Procfile lines; the brief lists each by file and line.\n")
 
 		return b.String()
 	}

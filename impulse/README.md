@@ -702,11 +702,13 @@ tested with and renders them offline.
 While embedded they are not Go modules: each carries its `go.mod` as `go.mod.tmpl`, and
 the leading underscore keeps the tree out of `./...` so nothing compiles it in place.
 Rendering writes `go.mod` back under the target module path and rewrites every import.
-A template names its application by its own candidate name in four places only — the
+A template names its application by its own candidate name in five places only — the
 workspace name in `package.json` and `bun.lock`, the service name and development
-database ids in `.envrc.template`, and the README heading — and rendering puts the
-application's name there; everywhere else the prose says "the application", since the
-candidate names are English words.
+database ids in `.envrc.template`, the README heading, and, in display form, each browser
+project's titles (the page title, the component title fields, the login card) and the
+`name` and `short_name` of its web app manifest (`public/manifest.webmanifest`, the
+portal's ending in Portal) — and rendering puts the application's name there; everywhere
+else the prose says "the application", since the candidate names are English words.
 The templates are therefore validated by rendering them and running the rendered
 application's build, tests, and `impulse check`, never in place, and under a module path
 outside `github.com/cccteam/ccc/impulse` (ccc's CI renders them as

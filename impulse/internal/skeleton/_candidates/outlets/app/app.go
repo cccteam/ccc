@@ -24,7 +24,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
-	"github.com/jtwatson/spaassets"
 )
 
 const (
@@ -114,8 +113,12 @@ type App struct {
 	tenants        *resource.TenantRoster
 	validate       *validator.Validate
 	logExporter    logger.Exporter
-	consoleDist    string
-	portalDist     string
+	// consoleApp and portalApp serve the two built bundles under /console and /portal: the
+	// resource package's served browser app holds the deep-link rewrite, the prefix strip,
+	// and the two cache classes a service worker needs (hashed files immutable, everything
+	// else revalidated).
+	consoleApp     *resource.BrowserApp
+	portalApp      *resource.BrowserApp
 	machinesAPIKey string
 	live           live.Service
 	// features is the application's copy of its feature flags, read through the
@@ -136,8 +139,8 @@ func New(cfg Configurer) *App {
 		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
-		consoleDist:    cfg.ConsoleDist(),
-		portalDist:     cfg.PortalDist(),
+		consoleApp:     resource.NewBrowserApp(cfg.ConsoleDist(), "/console"),
+		portalApp:      resource.NewBrowserApp(cfg.PortalDist(), "/portal"),
 		machinesAPIKey: cfg.MachinesAPIKey(),
 		live:           cfg.Live(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
@@ -227,26 +230,34 @@ func (a *App) CompressionMiddleware() func(http.Handler) http.Handler {
 	return middleware.Compress(5)
 }
 
-// DeepLink rewrites the console's Angular routes to its entry point under /console/ so
-// bookmarked frontend routes load the single-page application.
+// DeepLink rewrites the console's Angular routes under /console/ to its entry document so
+// bookmarked frontend routes load the single-page application: a request whose last
+// segment has no extension is served index.html, and a path with an extension is a file
+// or a 404.
 func (a *App) DeepLink(next http.Handler) http.Handler {
-	return spaassets.DeepLink(next, "/console/")
+	return a.consoleApp.DeepLink(next)
 }
 
-// Assets serves the console's built Angular application from /console/.
+// Assets serves the console's built Angular application: a hashed file is immutable for
+// a year, every other file (the entry document, the worker files, the manifest, the icons)
+// is revalidated on each use, which is what the service worker needs under any cache.
 func (a *App) Assets() http.HandlerFunc {
-	return serveSPA(http.StripPrefix("/console", http.FileServer(http.Dir(a.consoleDist))))
+	return a.consoleApp.Assets()
 }
 
-// PortalDeepLink rewrites the portal's Angular routes to its entry point under
-// /portal/.
+// PortalDeepLink rewrites the portal's Angular routes under /portal/ to its entry document so
+// bookmarked frontend routes load the single-page application: a request whose last
+// segment has no extension is served index.html, and a path with an extension is a file
+// or a 404.
 func (a *App) PortalDeepLink(next http.Handler) http.Handler {
-	return spaassets.DeepLink(next, "/portal/")
+	return a.portalApp.DeepLink(next)
 }
 
-// PortalAssets serves the portal's built Angular application from /portal/.
+// PortalAssets serves the portal's built Angular application: a hashed file is immutable for
+// a year, every other file (the entry document, the worker files, the manifest, the icons)
+// is revalidated on each use, which is what the service worker needs under any cache.
 func (a *App) PortalAssets() http.HandlerFunc {
-	return serveSPA(http.StripPrefix("/portal", http.FileServer(http.Dir(a.portalDist))))
+	return a.portalApp.Assets()
 }
 
 // MachinesAuth authenticates the machines outlet's clients: the request must carry the
@@ -269,22 +280,6 @@ func (a *App) MachinesAuth(next http.Handler) http.Handler {
 
 		return nil
 	})
-}
-
-// serveSPA wraps a file server with the caching posture a single-page application
-// wants: the entry document is never cached, hashed assets are cached forever.
-func serveSPA(assets http.Handler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/") || strings.HasSuffix(r.URL.Path, "/index.html") {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache") // For HTTP/1.0 backward compatibility
-			w.Header().Set("Expires", "0")       // For proxies
-		} else {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		}
-
-		assets.ServeHTTP(w, r)
-	}
 }
 
 // UserPermissions returns the permission checker for a request, composed from the

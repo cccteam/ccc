@@ -500,7 +500,7 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 		"web/console: the console project serves under /console/ with its API at /console/api (angular.json baseHref and servePath, the proxy, the environments, the base element)",
 	}
 	moveSkipped := []string{
-		`app/assets.go:9: DeepLink rewrites the console's routes to "/"; it moves to "/console/", and Assets serves the bundle behind http.StripPrefix("/console"), as a second browser application's pair does`,
+		`app/assets.go:11: serves the console's bundle at "/"; it moves to "/console/": resource.NewBrowserApp(cfg.ConsoleDist(), "/console") serves it under the mount path, as a second browser application's does (a spaassets.DeepLink and Assets pair becomes that one type)`,
 		`pkg/config/site.go:5: LoginURL "/login" is the console's login page, which is now under /console/: "/console/login"`,
 		`test/integration/login_test.go:5, 9: names "/api", the console's old prefix, in a string literal; the console's API is now /console/api`,
 		"Procfile:2: names /api, the console's old prefix; the console's API is now /console/api and its pages are under /console/",
@@ -570,9 +570,10 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			files["cmd/generate/resourcegenerator/main.go"] = beaconRouterProgram
 			files["pkg/auth/members/members.go"] = strings.ReplaceAll(strings.ReplaceAll(files["pkg/auth/staff/staff.go"], "staff", "members"), "Staff", "Members")
 			files["web/console/src/app/app.config.ts"] = "provideHttpClient(withXsrfConfiguration({ cookieName: 'staff-xsrf' }));\n"
-			// What a move leaves for the agent: the App's root deep link, a login page, a
-			// test naming the prefix, and the prose; a generated file naming it is not read.
-			files["app/assets.go"] = "package app\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/jtwatson/spaassets\"\n)\n\nfunc (a *App) DeepLink(next http.Handler) http.Handler { return spaassets.DeepLink(next, \"/\") }\n"
+			// What a move leaves for the agent: the App's bundle served at the root (the
+			// resource package's served browser app, as the skeletons build it), a login page,
+			// a test naming the prefix, and the prose; a generated file naming it is not read.
+			files["app/assets.go"] = "package app\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/cccteam/ccc/resource\"\n)\n\ntype App struct{ console *resource.BrowserApp }\n\nfunc New(dist string) *App { return &App{console: resource.NewBrowserApp(dist, \"/\")} }\n\nfunc (a *App) DeepLink(next http.Handler) http.Handler { return a.console.DeepLink(next) }\n"
 			files["pkg/config/site.go"] = "package config\n\n// Settings for the console's auth.\nvar settings = struct{ LoginURL string }{\n\tLoginURL: \"/login\",\n}\n"
 			files["test/integration/login_test.go"] = "package integration\n\nimport \"testing\"\n\nconst session = \"/api/user/session\"\n\nfunc TestLogin(t *testing.T) {\n\tt.Log(session)\n\tt.Log(\"/api/permission-digest\")\n}\n"
 			files["pkg/router/zz_gen_router.go"] = "package router\n\nconst prefix = \"/api/\"\n"
@@ -727,6 +728,7 @@ func TestOutletApplyConsoleUnderPath(t *testing.T) {
 	files["web/console/proxy.conf.js"] = "module.exports = {\n  '/console/api/': {\n    target: 'http://127.0.0.1:8090',\n  },\n};\n"
 	files["web/console/src/index.html"] = "<html>\n  <head>\n    <base href=\"/console/\" />\n  </head>\n</html>\n"
 	files["web/console/src/environments/environment.ts"] = "export const environment = {\n  production: false,\n  baseUrl: '/console/',\n  apiUrl: '/console/api',\n};\n"
+	files["web/console/public/manifest.webmanifest"] = "{\n  \"name\": \"Beacon\",\n  \"id\": \"/console/\",\n  \"scope\": \"./\",\n  \"start_url\": \"./\"\n}\n"
 	files["app/assets.go"] = "package app\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/jtwatson/spaassets\"\n)\n\nfunc (a *App) DeepLink(next http.Handler) http.Handler { return spaassets.DeepLink(next, \"/console/\") }\n"
 	a := beacon(t, files)
 
@@ -752,6 +754,7 @@ func TestOutletApplyConsoleUnderPath(t *testing.T) {
 	for rel, want := range map[string]string{
 		"web/kiosk/proxy.conf.js":                     "'/kiosk/api/': {",
 		"web/kiosk/src/index.html":                    `<base href="/kiosk/" />`,
+		"web/kiosk/public/manifest.webmanifest":       "\"id\": \"/kiosk/\",\n  \"scope\": \"./\",\n  \"start_url\": \"./\"",
 		"web/kiosk/src/environments/environment.ts":   "baseUrl: '/kiosk/',\n  apiUrl: '/kiosk/api',",
 		"web/console/src/environments/environment.ts": "baseUrl: '/console/',\n  apiUrl: '/console/api',",
 		"cmd/generate/resourcegenerator/main.go":      "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n",
@@ -759,5 +762,34 @@ func TestOutletApplyConsoleUnderPath(t *testing.T) {
 		if got := read(t, a, rel); !strings.Contains(got, want) {
 			t.Errorf("%s = %q, want %q", rel, got, want)
 		}
+	}
+}
+
+// TestRootMount pins the two shapes of an App serving the console's bundle at the root
+// that a move lists for the agent: the resource package's served browser app built with
+// "/" as its mount path, and the older spaassets deep link rewriting to "/". A bundle
+// already under a mount path is not one.
+func TestRootMount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		line string
+		want bool
+	}{
+		{name: "the served browser app at the root", line: `		console: resource.NewBrowserApp(cfg.ConsoleDist(), "/"),`, want: true},
+		{name: "the older deep link at the root", line: `	return spaassets.DeepLink(next, "/")`, want: true},
+		{name: "the served browser app under a mount path", line: `		console: resource.NewBrowserApp(cfg.ConsoleDist(), "/console"),`, want: false},
+		{name: "the older deep link under a mount path", line: `	return spaassets.DeepLink(next, "/console/")`, want: false},
+		{name: "a delegating handler names no mount path", line: `	return a.console.DeepLink(next)`, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := rootMountRE.MatchString(tt.line); got != tt.want {
+				t.Errorf("rootMountRE.MatchString(%q) = %v, want %v", tt.line, got, tt.want)
+			}
+		})
 	}
 }
