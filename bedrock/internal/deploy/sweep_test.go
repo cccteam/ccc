@@ -33,7 +33,7 @@ func TestSweep(t *testing.T) {
 	// The pull request's stack names its own templates in its substitutions output; the
 	// trigger's substitutions name the environment's, which no copy of a pull request's is
 	// under.
-	const output = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_JOB": "us-central1=quill-pr7-migrate", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev"}`
+	const output = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{}", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev"}`
 	tests := []struct {
 		name        string
 		services    map[string]map[string]any
@@ -58,25 +58,24 @@ func TestSweep(t *testing.T) {
 				"projects/p/locations/us-central1/services/quill-pr12": service("quill-pr12", "quill", "12"),
 				"projects/p/locations/us-central1/services/quill-pr9":  service("quill-pr9", "quill", "9"),
 				"projects/p/locations/us-central1/services/other-pr3":  service("other-pr3", "other", "3"),
-				// The pull request's templates (the stack's, destroyed with it), its builds'
-				// copies (deleted here), and an open pull request's copy (stays).
-				"projects/p/locations/us-central1/jobs/quill-pr7-migrate":             job("quill-pr7-migrate", "quill", "7", ""),
-				"projects/p/locations/us-central1/jobs/quill-pr7-jobs":                job("quill-pr7-jobs", "quill", "7", ""),
-				"projects/p/locations/us-central1/jobs/quill-pr7-migrate-pr7-abc1234": job("quill-pr7-migrate-pr7-abc1234", "quill", "7", "pr7-abc1234"),
-				"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-abc1234":    job("quill-pr7-jobs-pr7-abc1234", "quill", "7", "pr7-abc1234"),
-				"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-def5678":    job("quill-pr7-jobs-pr7-def5678", "quill", "7", "pr7-def5678"),
-				"projects/p/locations/us-central1/jobs/quill-pr12-jobs-pr12-abc1234":  job("quill-pr12-jobs-pr12-abc1234", "quill", "12", "pr12-abc1234"),
-				"projects/p/locations/us-central1/jobs/quill-migrate":                 job("quill-migrate", "quill", "", ""),
+				// The pull request's template (the stack's, destroyed with it), its builds'
+				// copies (deleted here), an open pull request's copy (stays), and the
+				// environment's own template (stays).
+				"projects/p/locations/us-central1/jobs/quill-pr7-jobs":               job("quill-pr7-jobs", "quill", "7", ""),
+				"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-abc1234":   job("quill-pr7-jobs-pr7-abc1234", "quill", "7", "pr7-abc1234"),
+				"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-def5678":   job("quill-pr7-jobs-pr7-def5678", "quill", "7", "pr7-def5678"),
+				"projects/p/locations/us-central1/jobs/quill-pr12-jobs-pr12-abc1234": job("quill-pr12-jobs-pr12-abc1234", "quill", "12", "pr12-abc1234"),
+				"projects/p/locations/us-central1/jobs/quill-jobs":                   job("quill-jobs", "quill", "", ""),
 			},
 			states:  map[int]string{7: "closed", 12: "open"},
 			output:  output,
-			wantOut: []string{"Pull requests with an environment: 7 9 12", "Pull request 7 is closed: its environment goes.", "Job quill-pr7-migrate-pr7-abc1234 deleted with pull request 7's environment.", "Job quill-pr7-jobs-pr7-abc1234 deleted with pull request 7's environment.", "Job quill-pr7-jobs-pr7-def5678 deleted with pull request 7's environment.", "Notice: GitHub did not answer for pull request 9", "Pull request 12 is open: its environment stays."},
+			wantOut: []string{"Pull requests with an environment: 7 9 12", "Pull request 7 is closed: its environment goes.", "Job quill-pr7-jobs-pr7-abc1234 deleted with pull request 7's environment.", "Job quill-pr7-jobs-pr7-def5678 deleted with pull request 7's environment.", "Notice: GitHub did not answer for pull request 9", "Pull request 12 is open: its environment stays."},
 			wantTofu: []string{
 				"tofu init -input=false -no-color -backend-config=prefix=3-app/quill/tst/pr7 -backend-config=impersonate_service_account=quill-apply@p.iam.gserviceaccount.com",
 				"tofu output -json substitutions",
 				"tofu destroy -auto-approve -input=false -no-color -var environment=tst -var pull_request=7",
 			},
-			wantDeleted: []string{"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-abc1234", "projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-def5678", "projects/p/locations/us-central1/jobs/quill-pr7-migrate-pr7-abc1234"},
+			wantDeleted: []string{"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-abc1234", "projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-def5678"},
 		},
 		{
 			name: "a closed pull request whose stack has no output is destroyed, its jobs left alone",

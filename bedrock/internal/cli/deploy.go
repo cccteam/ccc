@@ -29,9 +29,10 @@ placement pins (bedrockVersion) downloaded and verified against its checksum (be
 a commit pin, that commit built with go install and verified by Go's checksum database. The steps,
 in order: resolve, validate-release, guard-migrations, plan-environments, pr-stack plan, pr-stack
 guard, pr-stack apply, check-release, build-image, maintenance on (a restore run), stack plan, stack
-apply, jobs, migrate --preflight, window, maintenance on --window (a breaking release), migrate,
-service, shift-traffic, maintenance off, sweep-jobs, record and talk-back, with hook <stage> where
-the application commits a hook script. The hourly sweep runs sweep.`,
+apply, jobs (an application with a job process), migrate --preflight, window, maintenance on
+--window (a breaking release), migrate, service, shift-traffic, maintenance off, sweep-jobs (a job
+process again), record and talk-back, with hook <stage> where the application commits a hook
+script. The hourly sweep runs sweep.`,
 	}
 	envStack := &cobra.Command{
 		Use:   "stack",
@@ -73,8 +74,8 @@ GitHub token from the Cloud Build connection the trigger reads it through, and w
 the later steps share: the trigger's kind (a tag's build, or a pull request's, which deploys only
 to tst), the pull request's instruction (the words after its latest /gcbrun comment: shared-db,
 reload-db, down), the image and its tags (<release>-<env> and <commit>-<env>), and whether the
-migrate job runs and traffic shifts. It refuses a build that is neither a tag's nor a pull
-request's, one that names no services or migrate job, a pull-request build with no connection or
+migrations run and traffic shifts. It refuses a build that is neither a tag's nor a pull
+request's, one that names no services, a pull-request build with no connection or
 no /gcbrun comment, an unknown option, and shared-db with reload-db. A tag build may carry a
 restore instruction (_RESTORE: empty, or production-backup for the environment on production's
 instance; _REQUESTER names who asked): the environment's database is replaced before the release
@@ -208,36 +209,44 @@ after it.`,
 	return cmd
 }
 
+// migrateProgram is where the image build leaves the migrate command for the migration
+// steps: the home directory every step of a build shares, beside the hooks program.
+const migrateProgram = "/builder/home/migrate"
+
 // newDeployMigrate is deploy migrate.
 func newDeployMigrate(d deps) *cobra.Command {
 	var (
-		workspace string
-		preflight bool
+		workspace, programPath, versionVariable string
+		preflight                               bool
 	)
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "Run the migrate job with this build's image",
-		Long: `migrate runs this build's migrate job, the copy deploy jobs made of the stack's template job on this
-image (<template>-<version key>), once to completion through the Cloud Run API, with the seed
-(schema/devseed as data migrations after the schema) where _SEED is true: every pull request, its
-database being new, and a release build only in the environments the placement's seed list names. A
-seeded database takes nothing twice. The job is deleted at the end of the step whether the execution
-succeeded or failed: its logs stay in Cloud Logging, and the deployment record lists the migrations
-applied. A build that runs no migrations (shared-db) has no job to run; a failed execution stops the
-build and names itself. With --preflight, in a run that waits for the maintenance window
-(WINDOW_NEEDED) and replaces no database, the job is run once with -version instead, before the
-wait: it starts on the release's image against the environment's database and prints what the
-migrations tables say, so an image that does not start, a configuration that does not load or a
-database that cannot be reached stops the run with nothing changed and the window not entered;
-nothing is applied, and the job stays for the migrations after the window. Any other run says so
-and does nothing.`,
+		Short: "Run the release's migrate command on this worker",
+		Long: `migrate runs the migrations on the build worker: the release's own migrate command, which build-image
+took out of the environment's image (/migrate), run in the checkout as the deploy identity with the
+variables the stack derived for it (MIGRATE_ENV, which the stack steps read from the applied stack's
+substitutions output: the levels the command constructs, and no secret) and the variable the image
+sets to the release (--version-variable) set to the build's version, with the seed (schema/devseed as
+data migrations after the schema) where _SEED is true: every pull request, its database being new,
+and a release build only in the environments the placement's seed list names. A seeded database
+takes nothing twice. The command reaches Spanner and Firestore through their APIs as the deploy
+identity, which the stack grants database admin on the application's own database; its lines go
+straight into the build log, and the deployment record lists the migrations applied. A build that
+runs no migrations (shared-db) runs nothing; a command that exits with an error stops the build, its
+message above. With --preflight, in a run that waits for the maintenance window (WINDOW_NEEDED) and
+replaces no database, the command is run once with -version instead, before the wait: it loads its
+configuration against the environment's database and prints what the migrations tables say, so a
+configuration that does not load or a database that cannot be reached stops the run with nothing
+changed and the window not entered; nothing is applied. Any other run says so and does nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), preflight, cmd.OutOrStdout())
+			return deploy.Migrate(cmd.Context(), d.deploy, deploy.Workspace(workspace), programPath, versionVariable, preflight, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
-	cmd.Flags().BoolVar(&preflight, "preflight", false, "run the job once with -version before the wait for the maintenance window, and keep it")
+	cmd.Flags().StringVar(&programPath, "program-path", migrateProgram, "where build-image left the migrate command")
+	cmd.Flags().StringVar(&versionVariable, "version-variable", "", "the variable the image sets to the release, set to the build's version for the command; none when empty")
+	cmd.Flags().BoolVar(&preflight, "preflight", false, "run the command once with -version before the wait for the maintenance window")
 
 	return cmd
 }
@@ -247,21 +256,21 @@ func newDeployJobs(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
 		Use:   "jobs",
-		Short: "Make this build's jobs from the stack's template jobs, without running them",
-		Long: `jobs makes this build's jobs right after the image build: copies of the template jobs the stack owns
-(named by the stack's _MIGRATE_JOB and _JOBS_JOB; never run, never deployed to), each named
-<template>-<version key> (v0.1.15 gives v0-1-15) and put on this build's image with the pipeline's
-labels through the Cloud Run API. The migrate job, made when the build runs migrations, is what
-deploy migrate runs once and deletes. The job process's job (cmd/jobs) takes the template's IAM
-policy too (the stack grants the site's identity run.invoker on the template; the copy is what lets
-the site start this job): the image the build made names it to the site (APP_JOBS_JOB), so the
-revision this build deploys starts a job of its own code, and a traffic rollback to an earlier
-revision starts that revision's job. Only the running service starts the job process: the pipeline
-never runs it, a hook never starts it, and a schedule calls an endpoint on the service, which starts
-it. The jobs' variables, identity, timeout, retries and resources are the templates', the application
-layer's. A build of a version this environment deployed before updates the jobs it made then. The
-step runs before the migrations: making a job touches no data, so a failure here stops the run with
-the database untouched. A torn-down pull-request environment has nothing to make.`,
+		Short: "Make this build's job of the job process from the stack's template job, without running it",
+		Long: `jobs makes this build's job of the job process (cmd/jobs) right after the image build, for an
+application with one: a copy of the template job the stack owns (named by the stack's _JOBS_JOB;
+never run, never deployed to), named <template>-<version key> (v0.1.15 gives v0-1-15) and put on
+this build's image with the pipeline's labels through the Cloud Run API, with the template's IAM
+policy (the stack grants the site's identity run.invoker on the template; the copy is what lets the
+site start this job): the image the build made names it to the site (APP_JOBS_JOB), so the revision
+this build deploys starts a job of its own code, and a traffic rollback to an earlier revision starts
+that revision's job. Only the running service starts the job process: the pipeline never runs it, a
+hook never starts it, and a schedule calls an endpoint on the service, which starts it. The job's
+variables, identity, timeout, retries and resources are the template's, the application layer's. A
+build of a version this environment deployed before updates the job it made then. The step runs
+before the migrations: making a job touches no data, so a failure here stops the run with the
+database untouched. An application without a job process has no step for it; a torn-down
+pull-request environment has nothing to make.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.Jobs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
@@ -427,9 +436,10 @@ func newDeployStackApply(d deps) *cobra.Command {
 		Short: "Apply the saved plan of the pull request's stack",
 		Long: `apply applies exactly the plan the guard passed. After a destroy nothing deploys (SKIP_DEPLOY is
 appended to environment.sh); else the stack's substitutions output names the pull request's
-services, migrate job, job process's job and hostname, which are appended for the steps after. A
-database recreated without being asked (resolve found the migrations the last build applied no
-longer in the tree) is said on the pull request. It runs in the OpenTofu image.`,
+services, job process's job, hostname and the migrate command's variables, which are appended
+for the steps after. A database recreated without being asked (resolve found the migrations the
+last build applied no longer in the tree) is said on the pull request. It runs in the OpenTofu
+image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.ApplyStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
@@ -567,8 +577,8 @@ the build at its stage. The pipeline has a step for each stage the application i
 // newDeployBuildImage is deploy build-image.
 func newDeployBuildImage(d deps) *cobra.Command {
 	var (
-		workspace, secretDir, hooksPath string
-		hooks                           bool
+		workspace, secretDir, migratePath, hooksPath string
+		hooks                                        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "build-image",
@@ -584,9 +594,10 @@ docker-container driver, created for the build: the one driver that exports a ca
 plain image. It reads a layer cache from the registry and writes its own there (cache-<commit>): this commit's, the commit the environment runs live, and in a
 pull-request build the pull request's last build; layers are content-addressed, so the cache changes
 nothing in what the build produces. The digest the push answered is appended to
-environment.sh (IMAGE_DIGEST). With --hooks, the application's hooks program (/hooks in the image)
-is copied out of the image, built or reused, for the hook steps after it. It runs in the docker
-builder image, whose docker it drives.`,
+environment.sh (IMAGE_DIGEST). The migrate command (/migrate in the image) is copied out of the
+image, built or reused, into the home directory the steps share, for the migration steps after it,
+which run it on the worker; with --hooks, the application's hooks program (/hooks) is copied out the
+same way for the hook steps. It runs in the docker builder image, whose docker it drives.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path := ""
@@ -594,11 +605,12 @@ builder image, whose docker it drives.`,
 				path = hooksPath
 			}
 
-			return deploy.BuildImage(cmd.Context(), d.deploy, deploy.Workspace(workspace), secretDir, path, cmd.OutOrStdout())
+			return deploy.BuildImage(cmd.Context(), d.deploy, deploy.Workspace(workspace), secretDir, migratePath, path, cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)
 	cmd.Flags().StringVar(&secretDir, "secret-dir", "/dev/shm", "where the build secrets are written for docker, memory-backed")
+	cmd.Flags().StringVar(&migratePath, "migrate-path", migrateProgram, "where the migrate command is left for the migration steps")
 	cmd.Flags().BoolVar(&hooks, "hooks", false, "take the hooks program out of the image for the hook steps")
 	cmd.Flags().StringVar(&hooksPath, "hooks-path", hooksProgram, "where the hooks program is left")
 
@@ -633,15 +645,15 @@ func newDeploySweepJobs(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
 		Use:   "sweep-jobs",
-		Short: "Delete the builds' jobs that nothing runs any more",
-		Long: `sweep-jobs deletes the builds' jobs nothing runs any more: a job of the job process (a copy of the
-template job, named after it) whose version key no revision of the service in any region carries,
-since a revision that exists can take a traffic rollback and then starts the job of its own build;
-and a migrate job a run that did not finish left behind (a run that finished deleted its own). A job
-with an execution still running stays, and so does one made in the last three hours, since its build
-may still be running; the templates stay always. Nothing retires a revision: that is Cloud Run's own
-ceiling of revisions per service. The step runs after traffic moved. A pull request's jobs go with
-its environment (/gcbrun down, the hourly sweep).`,
+		Short: "Delete the builds' jobs of the job process that nothing runs any more",
+		Long: `sweep-jobs deletes the builds' jobs nothing runs any more, for an application with a job process: a
+job of the job process (a copy of the template job, named after it) whose version key no revision of
+the service in any region carries, since a revision that exists can take a traffic rollback and then
+starts the job of its own build. A job with an execution still running stays, and so does one made
+in the last three hours, since its build may still be running; the template stays always. Nothing
+retires a revision: that is Cloud Run's own ceiling of revisions per service. The step runs after
+traffic moved; an application without a job process has no step for it. A pull request's jobs go
+with its environment (/gcbrun down, the hourly sweep).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.SweepJobs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())

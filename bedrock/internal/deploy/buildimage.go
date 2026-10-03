@@ -74,9 +74,11 @@ var cacheStages = []cacheStage{
 // mounts; it is never a build argument, which the image would keep. The digest the push
 // answered goes to the environment file (IMAGE_DIGEST).
 //
-// With hooks set, the hooks program the image carries (/hooks) is taken out of the image,
-// built or reused, and left at hooks for the hook steps after it.
-func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, hooks string, out io.Writer) error {
+// The migrate command the image carries (/migrate) is taken out of the image, built or
+// reused, and left at migrate for the migration steps after it, which run it on the build
+// worker; with hooks set, the hooks program (/hooks) is taken out the same way for the
+// hook steps.
+func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, migrate, hooks string, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -89,7 +91,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	if env[reuseImageFact] == trueValue {
 		fmt.Fprintf(out, "Reusing %s@%s: the release check found this release already built from this commit.\n", env[imageFact], env[digestFact])
 
-		return takeHooks(ctx, clients, env[imageFact]+"@"+env[digestFact], hooks, out)
+		return takeOut(ctx, clients, env[imageFact]+"@"+env[digestFact], programs(migrate, hooks), out)
 	}
 	build, err := w.Build()
 	if err != nil {
@@ -144,7 +146,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, h
 	}
 	fmt.Fprintf(out, "Built and pushed %s@%s\n", env[imageFact], digest)
 
-	return takeHooks(ctx, clients, env[imageFact]+"@"+digest, hooks, out)
+	return takeOut(ctx, clients, env[imageFact]+"@"+digest, programs(migrate, hooks), out)
 }
 
 // runBuilds creates the builder and runs the builds in it: each reserved stage the
@@ -480,11 +482,14 @@ func cacheSources(ctx context.Context, open StoreFunc, build *Build) ([]cacheSou
 	return sources, nil
 }
 
-// hooksInImage is where the image carries the hooks program, and dockerProgram the program
-// the image build drives.
+// Where the image carries the programs the pipeline runs on the build worker, and the
+// program the image build drives.
 const (
-	hooksInImage  = "/hooks"
-	dockerProgram = "docker"
+	// migrateInImage is the migrate command, which the migration steps run; hooksInImage
+	// the hooks program, which the hook steps run.
+	migrateInImage = "/migrate"
+	hooksInImage   = "/hooks"
+	dockerProgram  = "docker"
 	// dockerBuildx is docker's buildx plugin, which creates the builder and builds
 	// (dockerBuild).
 	dockerBuildx = "buildx"
@@ -495,11 +500,33 @@ const (
 	dockerfileName = "Dockerfile"
 )
 
-// takeHooks copies the hooks program out of the image to dst, when dst is set: a
-// container is created from the image (pulled when this worker lacks it, with the step's
-// registry credentials), the program copied out, the container removed. It never runs.
-func takeHooks(ctx context.Context, clients *Clients, image, dst string, out io.Writer) error {
-	if dst == "" {
+// program is one program the image build takes out of the image: where the image carries
+// it, where it goes, what the log calls it, and how the Dockerfile builds it, which the
+// refusal names when the image lacks it.
+type program struct {
+	src, dst, what, builds string
+}
+
+// programs are the programs taken out of the image, each when its destination is set: the
+// migrate command, which every pipeline runs, and the hooks program.
+func programs(migrate, hooks string) []program {
+	var list []program
+	if migrate != "" {
+		list = append(list, program{src: migrateInImage, dst: migrate, what: "migrate command", builds: "go build -o /build/migrate ./cmd/deployment/migrate"})
+	}
+	if hooks != "" {
+		list = append(list, program{src: hooksInImage, dst: hooks, what: "hooks program", builds: "go build -o /build/hooks ./cmd/deployment/hooks"})
+	}
+
+	return list
+}
+
+// takeOut copies the programs out of the image to where the steps after the build run
+// them: a container is created from the image (pulled when this worker lacks it, with the
+// step's registry credentials), each program copied out, the container removed. It never
+// runs. The first program the image lacks is the refusal, once the container is removed.
+func takeOut(ctx context.Context, clients *Clients, image string, programs []program, out io.Writer) error {
+	if len(programs) == 0 {
 		return nil
 	}
 	created, err := clients.Exec.Output(ctx, Command{Name: dockerProgram, Args: []string{dockerCreate, image}}, out)
@@ -507,14 +534,25 @@ func takeHooks(ctx context.Context, clients *Clients, image, dst string, out io.
 		return err
 	}
 	id := strings.TrimSpace(string(created))
-	copyErr := clients.Exec.Run(ctx, Command{Name: dockerProgram, Args: []string{"cp", id + ":" + hooksInImage, dst}}, out)
-	if err := clients.Exec.Run(ctx, Command{Name: dockerProgram, Args: []string{"rm", id}}, io.Discard); err != nil && copyErr == nil {
+	// The program the image lacks, and docker's reason: the refusal is composed after the
+	// container is removed, so a failed copy never leaves one behind.
+	var missing *program
+	var copyErr error
+	for i := range programs {
+		p := &programs[i]
+		if err := clients.Exec.Run(ctx, Command{Name: dockerProgram, Args: []string{"cp", id + ":" + p.src, p.dst}}, out); err != nil {
+			missing, copyErr = p, err
+
+			break
+		}
+		fmt.Fprintf(out, "The %s is taken out of the image to %s.\n", p.what, p.dst)
+	}
+	if err := clients.Exec.Run(ctx, Command{Name: dockerProgram, Args: []string{"rm", id}}, io.Discard); err != nil && missing == nil {
 		return err
 	}
-	if copyErr != nil {
-		return errors.Newf("the image carries no hooks program at %s (the Dockerfile builds it: go build -o /build/hooks ./cmd/deployment/hooks): %v", hooksInImage, copyErr)
+	if missing != nil {
+		return errors.Newf("the image carries no %s at %s (the Dockerfile builds it: %s): %v", missing.what, missing.src, missing.builds, copyErr)
 	}
-	fmt.Fprintf(out, "The hooks program is taken out of the image to %s.\n", dst)
 
 	return nil
 }

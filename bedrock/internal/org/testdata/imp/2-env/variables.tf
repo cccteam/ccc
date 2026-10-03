@@ -7,8 +7,8 @@ variable "applications" {
 
     A code is at most 6 characters because it is embedded in service account
     IDs, which are limited to 30: imp-<env>-gbl-<code>-deploy is 25 with a
-    6-character code, and the runtime identities its stack creates
-    (imp-<env>-gbl-<code>-migrate) are 26.
+    6-character code, the longest; the runtime identities its stack creates
+    (imp-<env>-gbl-<code>-app, -jobs) are shorter.
   EOT
   type        = list(string)
   default     = ["harbor", "beacon"]

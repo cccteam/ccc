@@ -150,9 +150,9 @@ func (s *stack) replaceDatabase(ctx context.Context, app, reason string, w Works
 // ApplyStack applies the saved plan, unless it holds no change (a build after another of
 // the same tree): then there is nothing to apply and the state is read as it is. After a
 // destroy nothing deploys (SKIP_DEPLOY); else the stack's substitutions output names the
-// pull request's services and jobs and its hostname, which go to the environment file for
-// the steps after, and a database the build recreated without being asked is said on the
-// pull request.
+// pull request's services, its job process's job, its hostname and the variables its
+// migrate command runs with, which go to the environment file for the steps after, and a
+// database the build recreated without being asked is said on the pull request.
 func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, build, ok, err := pullRequestStep(w, out)
 	if err != nil || !ok {
@@ -190,11 +190,11 @@ func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Write
 	if err := w.Append(facts); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "The pull request's stack names %s=%s %s=%s", services, facts[services], migrateJobFact, facts[migrateJobFact])
+	fmt.Fprintf(out, "The pull request's stack names %s=%s", services, facts[services])
 	if facts[jobsJobFact] != "" {
 		fmt.Fprintf(out, " %s=%s", jobsJobFact, facts[jobsJobFact])
 	}
-	fmt.Fprintf(out, " %s=%s\n", prHostnameFact, facts[prHostnameFact])
+	fmt.Fprintf(out, " %s=%s, and the migrate command's settings (%s).\n", prHostnameFact, facts[prHostnameFact], migrateEnvFact)
 	if env[replaceDatabaseFact] != trueValue || env[reloadReasonFact] == gcbrun+" reload-db" {
 		return nil
 	}
@@ -218,23 +218,27 @@ func (s *stack) facts(ctx context.Context) (map[string]string, error) {
 }
 
 // stackFacts reads the stack's substitutions output (a map of the trigger's
-// substitutions for this pull request) into the facts the deploy steps read: the
-// services, the migrate job, the job process's job when the application has one, and the
-// hostname.
+// substitutions as the stack now stands) into the facts the deploy steps read: the
+// services, the job process's job when the application has one, the hostname, and the
+// variables the migrate command runs with (MIGRATE_ENV, from _MIGRATE_ENV), which the
+// migrate step requires and a stack applied by an older bedrock lacks.
 func stackFacts(data []byte) (map[string]string, error) {
 	var subs map[string]string
 	if err := json.Unmarshal(data, &subs); err != nil {
 		return nil, errors.Wrap(err, "json.Unmarshal(): the stack's substitutions output")
 	}
-	facts := map[string]string{services: subs["_SERVICES"], migrateJobFact: subs["_MIGRATE_JOB"], prHostnameFact: subs["_HOSTNAME"]}
-	if facts[services] == "" || facts[migrateJobFact] == "" {
-		return nil, errors.New("the pull request's stack named no services or no migrate job (its substitutions output has no _SERVICES or _MIGRATE_JOB)")
+	facts := map[string]string{services: subs["_SERVICES"], prHostnameFact: subs["_HOSTNAME"]}
+	if facts[services] == "" {
+		return nil, errors.New("the stack named no services (its substitutions output has no _SERVICES)")
 	}
 	if job, ok := subs["_JOBS_JOB"]; ok {
 		if job == "" {
-			return nil, errors.New("the pull request's stack names an empty _JOBS_JOB")
+			return nil, errors.New("the stack names an empty _JOBS_JOB")
 		}
 		facts[jobsJobFact] = job
+	}
+	if settings := subs[migrateEnvSub]; settings != "" {
+		facts[migrateEnvFact] = settings
 	}
 
 	return facts, nil

@@ -20,9 +20,10 @@
 #
 # The substitutions are everything the pipeline needs to know about this
 # environment that the code does not: the environment, the project, the
-# services and the migrate job by region and name, the registry, the records
-# bucket. The revision template (variables, secret mounts, identity, scaling)
-# is this layer's; a deploy changes the image and its labels, nothing else.
+# services by region and name, the variables the migrate command runs with,
+# the registry, the records bucket. The revision template (variables, secret
+# mounts, identity, scaling) is this layer's; a deploy changes the image and
+# its labels, nothing else.
 #
 # Building as a user-specified service account needs the build logs sent to
 # Cloud Logging (options.logging: CLOUD_LOGGING_ONLY in cloudbuild.yaml); the
@@ -38,7 +39,7 @@ locals {
     _APP                     = local.app
     _PROJECT                 = local.project_id
     _SERVICES                = join(",", [for code, service in google_cloud_run_v2_service.app : "${service.location}=${service.name}"]) # region=service per region; the pipeline updates each
-    _MIGRATE_JOB             = "${google_cloud_run_v2_job.migrate.location}=${google_cloud_run_v2_job.migrate.name}"                     # region=job; the pipeline updates it to the image and runs it
+    _MIGRATE_ENV             = jsonencode(local.migrate_env)                                                                             # the variables the migrate command runs with on the build worker (locals.tf), as a JSON object; the pipeline reads them back from this output after it applies the stack, so a release that changes them migrates with its own
     _REGISTRY                = coalesce(local.registry, "REGISTRY_NOT_REGISTERED_IN_2-SHR")
     _RECORDS_BUCKET          = local.env.records_bucket
     _REPO_CONNECTION_NAME    = try(coalesce(local.env.connection_name), "")                         # the pipeline mints a GitHub token from the connection for the tag check and the comment read; empty until 2-env holds the connection (a null output is absent from remote state, hence try), when no trigger exists and the pipeline refuses a build
@@ -52,17 +53,17 @@ locals {
     _APPLY_IDENTITY          = local.identities.apply_identity_email # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
     _RESTORE                 = ""                                    # a restore run's instruction (empty, or production-backup): the environment's database is replaced before the release deploys; set by bedrock restore when it runs the trigger, never on a tag's own build, and refused in prd
     _REQUESTER               = ""                                    # who asked for the restore or the migration operation; the record carries it
-    _MIGRATE_ACTION          = ""                                    # a migration operation (version, rerun or force) the operations workflow asks the migrate job for (bedrock migration); empty on a tag's own build
+    _MIGRATE_ACTION          = ""                                    # a migration operation (version, rerun or force) the operations workflow asks the migrate command for (bedrock migration); empty on a tag's own build
     _MIGRATE_TABLE           = ""                                    # the migrations table a force sets: schema, or data; empty means schema
     _MIGRATE_VERSION         = ""                                    # the version a force sets: an integer, or -1 for no version
-    _MIGRATE_LOGS            = local.migrate_logs_view               # the log view the pipeline reads the migrate job's lines through (logging.tf); empty in prd, which has none
     # The schema migrations, root-relative: /gcbrun shared-db is refused when a
     # pull request changes anything under it. The repository as GitHub names it
     # (owner/name, from the module path): the sweep asks GitHub about each pull
-    # request by it. _SEED says whether the migrate job applies the development
-    # seed to this environment's database at a release build: the placement's
-    # seed environments, none by default, never production. The pull-request
-    # trigger overrides it: a pull request's database is new and always seeded.
+    # request by it. _SEED says whether the migrate command applies the
+    # development seed to this environment's database at a release build: the
+    # placement's seed environments, none by default, never production. The
+    # pull-request trigger overrides it: a pull request's database is new and
+    # always seeded.
     _MIGRATIONS_DIR = "schema/migrations"
     _REPO_FULL_NAME = "impulseframework/beacon"
     _HOSTNAME       = local.hostnames[0]

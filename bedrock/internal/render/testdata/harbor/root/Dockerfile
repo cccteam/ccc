@@ -1,6 +1,6 @@
-# harbor's container image: one image that serves the site (/app, the entrypoint) and runs
-# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with)
-# and the job process (/jobs, the command its Cloud Run job is deployed with).
+# harbor's container image: one image that serves the site (/app, the entrypoint) and carries
+# the deployment's migrate command (/migrate, which the pipeline takes out of it and runs on the
+# build worker) and the job process (/jobs, the command its Cloud Run job is deployed with).
 # Seeded by bedrock from the code's shape and then yours: bedrock render writes it once and
 # never again, so the image build can grow with the application.
 #

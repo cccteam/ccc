@@ -15,7 +15,7 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-// cloudRunAPI is where the services and jobs are read, changed and run.
+// cloudRunAPI is where the services and jobs are read and changed.
 const cloudRunAPI = "https://run.googleapis.com"
 
 // The keys of a resource's document the steps write: a traffic target's type, revision,
@@ -35,18 +35,16 @@ const (
 	keyEtag     = "etag"
 )
 
-// Run reads and changes Cloud Run services and jobs and follows what it started: the
-// v2 API, or a fake in tests. A resource is its JSON document, as the API answers it,
-// so a change edits the document and sends it back whole.
+// Run reads and changes Cloud Run services and jobs and follows what it changed: the v2
+// API, or a fake in tests. A resource is its JSON document, as the API answers it, so a
+// change edits the document and sends it back whole. Nothing here runs a job: the
+// pipeline runs none (the job process's job is the running service's to start).
 type Run interface {
 	// Get reads the resource (projects/<p>/locations/<r>/jobs/<j> or .../services/<s>).
 	Get(ctx context.Context, name string) (map[string]any, error)
 	// Patch sends the resource back and waits for the change to settle; with fields, only
 	// those are updated. It answers the resource as it settled.
 	Patch(ctx context.Context, name string, resource map[string]any, fields ...string) (map[string]any, error)
-	// RunJob starts an execution of the job, with the arguments overriding the container's
-	// when given, and waits for it to end. It answers the execution.
-	RunJob(ctx context.Context, name string, args []string) (map[string]any, error)
 	// Services lists the services of the project in the region, every page.
 	Services(ctx context.Context, project, region string) ([]map[string]any, error)
 	// Jobs lists the jobs of the project in the region, every page.
@@ -225,19 +223,6 @@ func (c *cloudRun) Patch(ctx context.Context, name string, resource map[string]a
 		path += "?updateMask=" + strings.Join(fields, ",")
 	}
 	op, err := c.call(ctx, http.MethodPatch, path, resource)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.wait(ctx, op)
-}
-
-func (c *cloudRun) RunJob(ctx context.Context, name string, args []string) (map[string]any, error) {
-	body := map[string]any{}
-	if len(args) > 0 {
-		body["overrides"] = map[string]any{"containerOverrides": []map[string]any{{"args": args}}}
-	}
-	op, err := c.call(ctx, http.MethodPost, "/v2/"+name+":run", body)
 	if err != nil {
 		return nil, err
 	}

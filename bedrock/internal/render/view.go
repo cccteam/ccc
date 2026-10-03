@@ -65,7 +65,7 @@ type view struct {
 	// PreviousEnvMap is the HCL map from each environment to the one before it.
 	ApprovalList   string
 	ApprovalsProse string
-	// SeedList is the HCL list of the environments whose migrate job applies the
+	// SeedList is the HCL list of the environments whose migration applies the
 	// development seed.
 	SeedList string
 	// BuildMachine is the Cloud Build machine the placement puts the builds on, empty
@@ -745,11 +745,11 @@ func (v *view) environments() {
 // operationsEnv is one environment as the operations workflow addresses it: its
 // project, the workload identity provider and the operations identity (both named
 // after the project, as 2-env creates them), the version trigger, the restore a run
-// makes there, the migrate template job (whose copies a build runs) and the log bucket
-// holding the job's lines (both named as the application stack names them). Wired is
-// false for an environment the placement records no project for. Restorable is false
-// for production, which is never restored by a run and whose migrations are the
-// platform operator's: a rerun of a release alone reaches it.
+// makes there, and the log bucket holding the application's build logs, where the
+// migration's lines are (named as the application stack names it). Wired is false for
+// an environment the placement records no project for. Restorable is false for
+// production, which is never restored by a run and whose migrations are the platform
+// operator's: a rerun of a release alone reaches it.
 type operationsEnv struct {
 	Env        string
 	Wired      bool
@@ -759,7 +759,6 @@ type operationsEnv struct {
 	Identity   string
 	Trigger    string
 	Restore    string
-	MigrateJob string
 	Logs       string
 }
 
@@ -778,9 +777,8 @@ func (v *view) operations() {
 	for _, env := range v.P.Environments {
 		o := operationsEnv{
 			Env: env, Restorable: env != v.Production,
-			Trigger:    v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-version",
-			MigrateJob: v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-migrate",
-			Logs:       v.Prefix + "-" + env + "-gbl-" + v.App + "-migrate-logs",
+			Trigger: v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-version",
+			Logs:    v.Prefix + "-" + env + "-gbl-" + v.App + "-migrate-logs",
 		}
 		if o.Restorable {
 			o.Restore = v.P.RestoreKind(env)
@@ -865,7 +863,6 @@ func (v *view) blocks() {
 	stem := v.Prefix + "-<env>-gbl-" + v.App + "-"
 	identities := [][2]string{
 		{stem + v.Site.Name, v.Site.Main + ", the served site (Cloud Run service)"},
-		{stem + v.Migrate.Name, v.Migrate.Dir + " (Cloud Run job)"},
 	}
 	if v.Jobs != nil {
 		v.JobsLevels = joinAnd(v.Jobs.Levels)

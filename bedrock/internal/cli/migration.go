@@ -43,12 +43,13 @@ check and the pipeline's guard refuse a directory that is not; renumber moves a 
 migrations back into the sequence, and the seed files after a removed one down.
 
 It also holds the three operations on an environment's migrations, started from GitHub through the
-operations workflow and done by the environment's pipeline as the deploy identity: version prints
-what each migrations table says about the database, rerun runs the release again so the migrate
-job continues a file that stopped from its failed statement, and force sets a migrations table to
-the version the database is really at and lets the release continue. They are for the states the
-migration runner refuses to guess at, and none reaches production, which is the platform
-operator's (the README, When the migrate job fails).`,
+operations workflow and done by the environment's pipeline as the deploy identity, which runs the
+release's migrate command on the build worker: version prints what each migrations table says about
+the database, rerun runs the release again so the migrate command continues a file that stopped
+from its failed statement, and force sets a migrations table to the version the database is really
+at and lets the release continue. They are for the states the migration runner refuses to guess
+at, and none reaches production, which is the platform operator's (the README, When the migration
+fails).`,
 	}
 	cmd.AddCommand(newMigrationRenumber(d), newMigrationVersion(d), newMigrationRerun(d), newMigrationForce(d))
 
@@ -77,7 +78,7 @@ func (f *operationFlags) migrationTarget(d deps, env string) (*repositoryContext
 		return nil, err
 	}
 	if env == rc.placement.Production() {
-		return nil, errors.Newf("%s is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migrate job fails); a release is run again in production with bedrock rerun", env)
+		return nil, errors.Newf("%s is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migration fails); a release is run again in production with bedrock rerun", env)
 	}
 
 	return rc, nil
@@ -91,12 +92,12 @@ func newMigrationVersion(d deps) *cobra.Command {
 		Short: "Print an environment's migration version, from GitHub",
 		Long: `version starts the operations workflow's migration job for the environment and the release with the
 version action: the environment's version trigger runs the release with _MIGRATE_ACTION=version,
-and after the usual steps (the release check, the record gate, the image) the migrate job runs once
-with -version and prints what each migrations table says about the database (no version, a version,
-or dirty at one with the progress recorded); the run then stops before the service, the traffic
-shift and the record, so nothing in the environment changes. The lines print in the build log and in
-the workflow run's summary. The command refuses production and checks the release exists; it
-dispatches as the person signed in to gh (or GITHUB_TOKEN).`,
+and after the usual steps (the release check, the record gate, the image) the migrate command runs
+once on the build worker with -version and prints what each migrations table says about the
+database (no version, a version, or dirty at one with the progress recorded); the run then stops
+before the service, the traffic shift and the record, so nothing in the environment changes. The
+lines print in the build log and in the workflow run's summary. The command refuses production and
+checks the release exists; it dispatches as the person signed in to gh (or GITHUB_TOKEN).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := args[0]
@@ -108,7 +109,7 @@ dispatches as the person signed in to gh (or GITHUB_TOKEN).`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Asked, as %s, for %s's migration version at %s: the operations workflow of %s/%s runs it (%s). The migrate job prints what each migrations table says about the database, in the build log and in the run's summary; nothing else deploys.\n",
+			fmt.Fprintf(cmd.OutOrStdout(), "Asked, as %s, for %s's migration version at %s: the operations workflow of %s/%s runs it (%s). The migrate command prints what each migrations table says about the database, in the build log and in the run's summary; nothing else deploys.\n",
 				login, env, flags.release, rc.owner, rc.repo, workflowURL(rc))
 
 			return nil
@@ -124,10 +125,10 @@ func newMigrationRerun(d deps) *cobra.Command {
 	var flags operationFlags
 	cmd := &cobra.Command{
 		Use:   actionRerun + " <env> --release <tag>",
-		Short: "Run a release again so its migrate job continues from where it stopped, from GitHub",
+		Short: "Run a release again so its migration continues from where it stopped, from GitHub",
 		Long: `rerun starts the operations workflow's migration job for the environment and the release with the
-rerun action: the environment's version trigger runs the release again, and the migrate job runs as
-it always does. A migration file that stopped at a statement, its progress recorded, continues from
+rerun action: the environment's version trigger runs the release again, and the migrate command runs
+as it always does. A migration file that stopped at a statement, its progress recorded, continues from
 that statement once the cause is fixed (usually rows the statement validated), applies the rest of
 the file and the files after it, and the release deploys; nothing applied is repeated. It is the
 everyday case after a data fix. The command refuses production and checks the release exists; it
@@ -143,7 +144,7 @@ dispatches as the person signed in to gh (or GITHUB_TOKEN).`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Asked, as %s, for %s to run %s again: the operations workflow of %s/%s runs it (%s). The migrate job continues a file that stopped from its failed statement once the cause is fixed, and the release continues to the service, the traffic shift and the record.\n",
+			fmt.Fprintf(cmd.OutOrStdout(), "Asked, as %s, for %s to run %s again: the operations workflow of %s/%s runs it (%s). The migrate command continues a file that stopped from its failed statement once the cause is fixed, and the release continues to the service, the traffic shift and the record.\n",
 				login, env, flags.release, rc.owner, rc.repo, workflowURL(rc))
 
 			return nil
@@ -165,9 +166,9 @@ func newMigrationForce(d deps) *cobra.Command {
 		Short: "Set an environment's migration version and let the release continue, from GitHub",
 		Long: `force starts the operations workflow's migration job for the environment and the release with the
 force action: the environment's version trigger runs the release with _MIGRATE_ACTION=force, the
-table and the version, and after the usual steps the migrate job runs once with -force <version> (or
--force-data <version> for the data migrations table), sets the table to that version, clean, and
-prints the row before and after; then the job runs as it always does, the migrations continue from
+table and the version, and after the usual steps the migrate command runs once with -force <version>
+(or -force-data <version> for the data migrations table), sets the table to that version, clean, and
+prints the row before and after; then the command runs as it always does, the migrations continue from
 the forced version, and the release continues to the service, the traffic shift and the record,
 which carries the table, the version and who asked. It is for the states the runner refuses to
 guess at: a database the old library left dirty with no progress recorded, an in-flight operation
@@ -202,7 +203,7 @@ release exists; it dispatches as the person signed in to gh (or GITHUB_TOKEN).`,
 			if n >= 0 {
 				to = "version " + strconv.Itoa(n)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Asked, as %s, for %s's %s migrations table to be set to %s and %s to continue: the operations workflow of %s/%s runs it (%s). The migrate job sets the version and prints the row before and after, then the migrations run from it and the release continues to the service, the traffic shift and the record, which names you.\n",
+			fmt.Fprintf(cmd.OutOrStdout(), "Asked, as %s, for %s's %s migrations table to be set to %s and %s to continue: the operations workflow of %s/%s runs it (%s). The migrate command sets the version and prints the row before and after, then the migrations run from it and the release continues to the service, the traffic shift and the record, which names you.\n",
 				login, env, table, to, flags.release, rc.owner, rc.repo, workflowURL(rc))
 
 			return nil

@@ -1,6 +1,7 @@
-# beacon's container image: one image that serves the site (/app, the entrypoint) and runs
-# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with); it also carries
-# the hooks program (/hooks), which the pipeline takes out of it and runs on the build worker.
+# beacon's container image: one image that serves the site (/app, the entrypoint) and carries
+# the deployment's migrate command (/migrate, which the pipeline takes out of it and runs on the
+# build worker); it
+# also carries the hooks program (/hooks), taken out and run on the build worker the same way.
 # Seeded by bedrock from the code's shape and then yours: bedrock render writes it once and
 # never again, so the image build can grow with the application.
 #

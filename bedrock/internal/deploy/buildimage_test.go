@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/go-playground/errors/v5"
 )
 
 // seededDockerfile is the seeded Dockerfile's shape in short: the two reserved stages,
@@ -78,13 +80,19 @@ func TestBuildImage(t *testing.T) {
 		wantOut    []string
 		wantErr    string
 		wantBuilt  bool
-		// hooks takes the hooks program out of the image; wantHooks are the docker commands
-		// that do it.
+		// hooks takes the hooks program out of the image beside the migrate command, which
+		// every build takes; wantTaken are the docker commands that do it; noMigrate leaves
+		// the image without the migrate command.
 		hooks     bool
-		wantHooks []string
+		noMigrate bool
+		wantTaken []string
 	}{
 		{name: "a torn-down environment builds nothing", env: "export SKIP_DEPLOY=\"true\"\n", wantOut: []string{tornDown}},
-		{name: "a build to reuse is not rebuilt", env: env + "export REUSE_IMAGE=\"true\"\nexport IMAGE_DIGEST=\"sha256:old\"\n", wantOut: []string{"Reusing reg/quill@sha256:old"}},
+		{
+			name: "a build to reuse is not rebuilt, and the migrate command is taken out of it", env: env + "export REUSE_IMAGE=\"true\"\nexport IMAGE_DIGEST=\"sha256:old\"\n",
+			wantOut:   []string{"Reusing reg/quill@sha256:old", "The migrate command is taken out of the image to MIGRATE."},
+			wantTaken: []string{"docker create reg/quill@sha256:old", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
+		},
 		{
 			name:      "the build takes its arguments and its secrets, writes the commit's first caches, and leaves the digest",
 			env:       env,
@@ -99,6 +107,7 @@ func TestBuildImage(t *testing.T) {
 			wantNoArgs: []string{"--cache-from", "--cache-to", "--no-cache", "--target"},
 			wantOut:    []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Layer cache: read nothing; written cache-c9-go, cache-c9-web.", "Built and pushed reg/quill@sha256:new"},
 			wantBuilt:  true,
+			wantTaken:  []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
 		},
 		{
 			name:      "an application with a job process bakes its build's job into the image",
@@ -107,6 +116,7 @@ func TestBuildImage(t *testing.T) {
 			wantArgs:  []string{"--build-arg VERSION=v1.2.3", "--build-arg COMMIT=c9", "--build-arg JOBS_JOB=projects/p/locations/us-central1/jobs/quill-jobs-v1-2-3", "--push ."},
 			wantOut:   []string{"Built and pushed reg/quill@sha256:new"},
 			wantBuilt: true,
+			wantTaken: []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
 		},
 		{
 			name:       "a tag build after another environment's reads this commit's caches and the live release's, and writes nothing",
@@ -203,13 +213,18 @@ func TestBuildImage(t *testing.T) {
 		{name: "a build secret the deploy identity cannot read is refused", env: env, declared: "NPM_TOKEN=projects/p/secrets/npm/versions/9", wantErr: "Build REJECTED: the build secret NPM_TOKEN (projects/p/secrets/npm/versions/9) could not be read"},
 		{name: "a push without a digest is refused", env: env, metadata: `{}`, wantErr: "no image digest", wantBuilt: true},
 		{
-			name: "the hooks program is taken out of the built image", env: env, metadata: `{"containerimage.digest": "sha256:new"}`, hooks: true, wantBuilt: true,
-			wantOut:   []string{"The hooks program is taken out of the image to HOOKS."},
-			wantHooks: []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/hooks HOOKS", "docker rm cid-1"},
+			name: "the hooks program is taken out of the built image beside the migrate command", env: env, metadata: `{"containerimage.digest": "sha256:new"}`, hooks: true, wantBuilt: true,
+			wantOut:   []string{"The migrate command is taken out of the image to MIGRATE.", "The hooks program is taken out of the image to HOOKS."},
+			wantTaken: []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker cp cid-1:/hooks HOOKS", "docker rm cid-1"},
 		},
 		{
 			name: "and out of a reused one", env: env + "export REUSE_IMAGE=\"true\"\nexport IMAGE_DIGEST=\"sha256:old\"\n", hooks: true,
-			wantHooks: []string{"docker create reg/quill@sha256:old", "docker cp cid-1:/hooks HOOKS", "docker rm cid-1"},
+			wantTaken: []string{"docker create reg/quill@sha256:old", "docker cp cid-1:/migrate MIGRATE", "docker cp cid-1:/hooks HOOKS", "docker rm cid-1"},
+		},
+		{
+			name: "an image without the migrate command is refused, the container removed", env: env, metadata: `{"containerimage.digest": "sha256:new"}`, noMigrate: true, wantBuilt: true,
+			wantErr:   "the image carries no migrate command at /migrate (the Dockerfile builds it: go build -o /build/migrate ./cmd/deployment/migrate)",
+			wantTaken: []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
 		},
 	}
 	for _, tt := range tests {
@@ -227,11 +242,15 @@ func TestBuildImage(t *testing.T) {
 			w := workspaceFiles(t, files)
 			secretDir := t.TempDir()
 			var secretSeen string
-			hooks := ""
+			home := t.TempDir()
+			migrate, hooks := filepath.Join(home, "migrate"), ""
 			if tt.hooks {
-				hooks = filepath.Join(t.TempDir(), "hooks")
+				hooks = filepath.Join(home, "hooks")
 			}
 			run := &fakeRunner{outputs: map[string]string{"docker create": "cid-1\n"}, effect: func(c Command) error {
+				if tt.noMigrate && c.Args[0] == "cp" && strings.HasSuffix(c.Args[1], ":/migrate") {
+					return errors.New("docker failed: exit status 1")
+				}
 				if c.Args[0] != "buildx" || c.Args[1] != "build" || slices.Contains(c.Args, "--target") {
 					return nil
 				}
@@ -251,7 +270,7 @@ func TestBuildImage(t *testing.T) {
 			store := &memoryStore{objects: tt.records}
 			clients := &Clients{Exec: run, Secrets: (&fakeSecrets{payloads: tt.secrets}).open, Registry: registry.open, Storage: store.open}
 			var out strings.Builder
-			err := BuildImage(t.Context(), clients, w, secretDir, hooks, &out)
+			err := BuildImage(t.Context(), clients, w, secretDir, migrate, hooks, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("BuildImage() error = %v, want %q", err, tt.wantErr)
@@ -278,21 +297,20 @@ func TestBuildImage(t *testing.T) {
 
 					continue
 				}
-				if hooks != "" {
-					line = strings.ReplaceAll(line, hooks, "HOOKS")
-				}
-				taken = append(taken, line)
+				taken = append(taken, placeholders(line, migrate, hooks))
 			}
-			said := out.String()
-			if hooks != "" {
-				said = strings.ReplaceAll(said, hooks, "HOOKS")
-			}
-			containsAll(t, said, tt.wantOut...)
+			containsAll(t, placeholders(out.String(), migrate, hooks), tt.wantOut...)
 			if built != tt.wantBuilt || builder != tt.wantBuilt {
 				t.Fatalf("ran %v, want a build %t with a docker-container builder created before it", run.lines(), tt.wantBuilt)
 			}
-			if strings.Join(taken, "|") != strings.Join(tt.wantHooks, "|") {
-				t.Errorf("took the hooks program with %q, want %q", taken, tt.wantHooks)
+			// Every built image has its migrate command taken out; a case that says nothing
+			// else about the take-out wants that alone.
+			wantTaken := tt.wantTaken
+			if wantTaken == nil && tt.wantBuilt && tt.wantErr == "" {
+				wantTaken = []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"}
+			}
+			if strings.Join(taken, "|") != strings.Join(wantTaken, "|") {
+				t.Errorf("took the programs out with %q, want %q", taken, wantTaken)
 			}
 			if !tt.wantBuilt {
 				return
@@ -335,6 +353,16 @@ func TestBuildImage(t *testing.T) {
 			}
 		})
 	}
+}
+
+// placeholders puts the names MIGRATE and HOOKS where the text names the programs' paths.
+func placeholders(text, migrate, hooks string) string {
+	text = strings.ReplaceAll(text, migrate, "MIGRATE")
+	if hooks != "" {
+		text = strings.ReplaceAll(text, hooks, "HOOKS")
+	}
+
+	return text
 }
 
 func TestCacheSources(t *testing.T) {

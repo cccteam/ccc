@@ -5,7 +5,8 @@
 # instance (2-env output spanner_instance: {{.Integration}}'s own, or the shared spn
 # instance for {{.SharedInstanceEnvs}}). GoogleSQL dialect, as the migrations under
 # {{.Schema.MigrationsDir}} are written. No schema here: the migrations own it, run
-# by the migrate job ({{.Schema.MigrateCall}}) as the migrate identity.
+# by the pipeline on the build worker ({{.Schema.MigrateCall}}, the release's own
+# migrate command) as the deploy identity.
 #
 # Modeled on CCC's reference deployment. Deletion protection in
 # both its forms is on for {{.Production}}: the provider-side flag stops a plan from
@@ -15,7 +16,7 @@
 # A pull-request stack in shared mode (var.shared_database) creates none: the
 # site runs against {{.Integration}}'s database, named by local.database_name, and
 # the app identity is granted on it below; no DDL grant, and the pipeline
-# never runs the migrate job.
+# never runs the migrations.
 # ---------------------------------------------------------------------------
 
 resource "google_spanner_database" "{{.App}}" {
@@ -77,27 +78,24 @@ resource "google_spanner_database_iam_member" "jobs_user" {
 }
 {{- end}}
 
-# DDL, for the migrations ({{.Schema.MigrateCall}}), on this database only, and
-# never on a shared one.
-resource "google_spanner_database_iam_member" "migrate_admin" {
+# DDL, for the migrations ({{.Schema.MigrateCall}}), which the pipeline runs on
+# the build worker as the deploy identity from 2-env: database admin on this
+# database only, never on a shared one, and nothing on the instance. The grant
+# is a member of the database's own policy, so the database's name bounds it
+# the way the apply identity's instance-level roles are bounded by a condition
+# naming the application's databases.
+resource "google_spanner_database_iam_member" "deploy_admin" {
   count = local.own_database ? 1 : 0
 
   project  = local.instance.project
   instance = local.instance.name
   database = google_spanner_database.{{.App}}[0].name
   role     = "roles/spanner.databaseAdmin"
-  member   = local.migrate_member
-
-  depends_on = [google_service_account.migrate]
+  member   = local.identities.deploy_identity_member
 
   lifecycle {
     replace_triggered_by = [google_spanner_database.{{.App}}[0]]
   }
-}
-
-moved {
-  from = google_spanner_database_iam_member.migrate_admin
-  to   = google_spanner_database_iam_member.migrate_admin[0]
 }
 
 # ---------------------------------------------------------------------------

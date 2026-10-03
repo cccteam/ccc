@@ -22,11 +22,11 @@
 #   BuildImage                one image per environment, built fresh from the commit over the registry's dependency caches and pushed (deploy build-image)
 #   MaintenanceOnRestore      a restore run's maintenance revision, before its database is replaced (deploy maintenance on)
 #   *EnvironmentStack         a tag build's apply of the environment's stack: planned, tested and applied as the apply identity (deploy stack)
-#   CreateJobs                this build's jobs from the stack's template jobs on this image: the migrate job and the job process's; not run (deploy jobs)
-#   PreflightMigrations       a window release's migrate job run once with -version before the wait: the image, the configuration and the database answer with nothing changed (deploy migrate --preflight)
+#   CreateJobs                this build's job for the job process, from the stack's template job on this image; not run (deploy jobs)
+#   PreflightMigrations       a window release's migrate command run once with -version before the wait: the command, its configuration and the database answer with nothing changed (deploy migrate --preflight)
 #   WaitForWindow             a window release's wait, inside the run, until the environment's maintenance window opens (deploy window)
 #   MaintenanceOnWindow       a breaking release's maintenance revision, once the window is open (deploy maintenance on --window)
-#   RunMigrations             this build's migrate job, run once to completion and deleted (deploy migrate)
+#   RunMigrations             the release's migrate command, taken out of the image, run once on this worker as the deploy identity (deploy migrate)
 #   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
 #   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
 #   MaintenanceOff            the task queue resumed against the release, when the run was in maintenance (deploy maintenance off)
@@ -47,7 +47,7 @@
 # except for two lanes that run side by side: the pull request's stack (its plan, guard and
 # apply) and the image (the release check and the build), joined again at the restore run's
 # maintenance step. A window release (one that turns away the release the environment runs,
-# or any release where the environment's setting says all) builds its image and makes its jobs,
+# or any release where the environment's setting says all) builds its image and applies its stack,
 # then waits inside the run for the environment's maintenance window; the window holds only
 # maintenance, the migrations and the rollout.
 
@@ -156,7 +156,8 @@ steps:
   # dependency stages are built first and their layers alone exported to the registry's
   # cache (cache-<commit>-go, cache-<commit>-web, written once per commit and read by the
   # builds after: this commit's and the live release's); the compile and the bundles are
-  # built fresh in every environment and never exported.
+  # built fresh in every environment and never exported. The migrate command (/migrate) is
+  # taken out of the image for the migration steps after it.
   - id: BuildImage
     name: gcr.io/cloud-builders/docker
     entrypoint: /builder/home/bedrock
@@ -179,9 +180,11 @@ steps:
     waitFor: [BuildImage, ApplyPullRequestStack]
 
   # A tag build only: the environment's stack planned and applied as the apply identity,
-  # after the image build (a failed build changes no infrastructure) and before the jobs and
-  # the migrations (what they need, a template job, a secret container, a bucket, exists
-  # first). The plan is this build's own, summarized in the log and the deployment record;
+  # after the image build (a failed build changes no infrastructure) and before the
+  # migrations (what they need, the database, the deploy identity's grant on it, a bucket,
+  # exists first, and the stack's substitutions output then carries the variables the
+  # migrate command runs with). The plan is this build's own, summarized in the log and
+  # the deployment record;
   # the tests run before the apply, and a failure leaves the stack unapplied.
   # A restore run waits in this step for Spanner to restore the database from the backup,
   # which takes as long as the backup is large (a quarter of an hour for a database with
@@ -199,29 +202,28 @@ steps:
     args: [deploy, stack, apply]
     timeout: 1800s
 
-  # This build's jobs, made from the stack's template jobs on this image and named after the
-  # version: the migrate job, which RunMigrations runs once and deletes, and the job
-  # process's job (cmd/jobs), which only the running service starts. Made before the
-  # migrations: a failure here leaves the database untouched.
+  # This build's job for the job process (cmd/jobs), made from the stack's template job
+  # on this image and named after the version; only the running service starts it. Made
+  # before the migrations: a failure here leaves the database untouched.
   - id: CreateJobs
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
     args: [deploy, jobs]
     timeout: 600s
 
-  # A window release only: this build's migrate job run once with -version before the
-  # wait, so the image starts, the configuration loads and the database answers before
-  # the window is entered; nothing is applied, and the job stays for the migrations. Any
+  # A window release only: the release's migrate command, taken out of the image, run once
+  # with -version on this worker before the wait, so the command starts, its configuration
+  # loads and the database answers before the window is entered; nothing is applied. Any
   # other run says so and does nothing.
   - id: PreflightMigrations
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
-    args: [deploy, migrate, --preflight]
+    args: [deploy, migrate, --preflight, --version-variable, APP_VERSION]
     timeout: 1200s
 
   # A window release only: the wait, inside the run, until the environment's maintenance
   # window opens (the checkout's placement, "maintenance"), with the image built and the
-  # jobs made, so the window holds only maintenance, the migrations and the rollout. The
+  # stack applied, so the window holds only maintenance, the migrations and the rollout. The
   # step prints when the run proceeds; an opening further away than the build can wait
   # stops the run here with nothing changed. A run in maintenance already passes at once.
   # Its timeout is the build's: the wait is bounded by the build's remaining time.
@@ -242,13 +244,14 @@ steps:
     args: [deploy, maintenance, "on", --window]
     timeout: 900s
 
-  # This build's migrate job, run once to completion and then deleted (its execution's logs
-  # stay in Cloud Logging); with the seed in a pull request and in the environments the
+  # The release's migrate command, taken out of the image by BuildImage, run once on this
+  # worker as the deploy identity with the variables the stack derives for it (its lines
+  # are this build's log); with the seed in a pull request and in the environments the
   # placement's seed list names.
   - id: RunMigrations
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
-    args: [deploy, migrate]
+    args: [deploy, migrate, --version-variable, APP_VERSION]
     timeout: 2400s
 
   # The application's hook after the migrations: infrastructure/hooks/after-migrate.sh.
@@ -296,9 +299,8 @@ steps:
     timeout: 300s
 
   # The builds' jobs nothing runs any more are deleted: a job of the job process whose
-  # version no revision in any region carries, and a migrate job a run that did not finish
-  # left behind. A job with an execution running, or made in the last three hours, stays;
-  # the templates always stay.
+  # version no revision in any region carries. A job with an execution running, or made in
+  # the last three hours, stays; the template always stays.
   - id: SweepJobs
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock

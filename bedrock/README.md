@@ -77,7 +77,7 @@ again does not, because its pull request is already labeled as tagged.
   infrastructure repository.
 - **Application stack**: the OpenTofu root under the application repository's
   `infrastructure/` directory (or the one layer under `3-app/` of an infrastructure
-  repository): the Cloud Run services and the migrate job, the database, the secret
+  repository): the Cloud Run services, the database, the secret
   containers, the backend service, the triggers and the sweep schedule, per environment.
   Rendered by `bedrock render` from the code and the application's placement.
 - **Placement**: `placement.json` beside the stack. For an application it records the
@@ -155,8 +155,9 @@ directory; `--app` overrides.
 What the stack carries comes from declarations in the code: a config variable tagged as
 a secret becomes a Secret Manager container mounted at a pinned version; a directory auth
 becomes the registration variables, the redirect output and the hand steps in the README;
-a main package under `cmd/deployment/migrate` becomes the migrate job's template (never
-run; each build copies it into a job of its own, runs it once and deletes it); a main package
+a main package under `cmd/deployment/migrate` becomes the migrate command, which the
+pipeline takes out of each build's image and runs on the build worker as the deploy
+identity, granted database admin on the application's own database by the stack; a main package
 under `cmd/jobs` becomes the job process: a template Cloud Run job in the primary
 region (never run, never deployed to; each build copies it into a job of its own, named
 after it with the build's version, on the build's image), its runtime identity with the
@@ -166,7 +167,7 @@ and, when the site's config declares `APP_JOBS_JOB`, that variable baked into ea
 build's image as the name of that build's job, with `run.invoker` for the site's
 identity on the template job, copied by the pipeline onto each build's job, so the
 running service, and only it, starts the job of its own build through the Cloud Run API
-(a schedule calls an endpoint on the service; the pipeline runs only the migrate job); a config variable
+(a schedule calls an endpoint on the service; the pipeline never runs it); a config variable
 `APP_FILE_STORE` (the application's default file store) or `APP_FILE_STORE_<NAME>` (a
 named store, `APP_FILE_STORE_DOCUMENTS`) becomes a Cloud Storage bucket in the primary
 region, one per variable, named `<app>-files-<project number>` or
@@ -343,7 +344,7 @@ thing one step hands the next. In order:
   GitHub token from the Cloud Build connection, and works out the facts: the trigger's
   kind (a tag's build, or a pull request's, which deploys only to the first environment),
   the pull request's instruction (the words after its latest `/gcbrun` comment:
-  `shared-db`, `reload-db`, `down`), the image and its tags, whether the migrate job runs
+  `shared-db`, `reload-db`, `down`), the image and its tags, whether the migrations run
   and traffic shifts, and whether a stale pull-request database is recreated (a migration
   the last build applied is no longer in the tree). A tag build may carry a restore
   instruction (`_RESTORE`: `empty`, or `production-backup` for the environment on
@@ -463,48 +464,49 @@ thing one step hands the next. In order:
   production's instance) the plan step first drops the environment's database and
   restores it, under its own name, from the most recent backup of production's database
   on the instance they share, as the apply identity; the plan then recreates the
-  memberships the drop took with it, and the migrate job applies whatever production's
+  memberships the drop took with it, and the migrate command applies whatever production's
   backup predates. The backup and the moment its data is from reach the record
   (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`). While the application is in maintenance the
   plan carries the maintenance variable's live value (`-var maintenance=1`): the stack
   declares `APP_MAINTENANCE` with `var.maintenance`, empty by default, and an entry of the
   service's env set cannot be ignored on its own, so declared and live agree and the apply
   leaves the service alone while the database is replaced.
-- `deploy migrate`: runs this build's migrate job, the copy `deploy jobs` made of the
-  template on this image, once to completion, with the seed (`schema/devseed` as data
-  migrations after the schema) where `_SEED` is true: every pull request, and a release
-  build only in the environments the placement's seed list names; then deletes the job,
-  whether the execution succeeded or failed (its logs stay in Cloud Logging, and the
-  deployment record lists the migrations applied). The lines the job wrote are read from
-  Cloud Logging through the view over the job's own log bucket (`_MIGRATE_LOGS`, the
-  stack's `logging.tf`) and printed after the run, so a failed migration's message is in
-  the build log; production has no view, and the step prints the query that finds them.
-  A release build may carry a migration operation (`_MIGRATE_ACTION`, from the
-  operations workflow: `version`, `rerun` or `force`, with `_MIGRATE_TABLE`,
-  `_MIGRATE_VERSION` and `_REQUESTER`; `bedrock migration`, below): `version` runs the
-  job once with `-version` and leaves `SKIP_DEPLOY` with the reason, so nothing else
-  deploys; `force` runs it with `-force <n>` (or `-force-data <n>`), leaves the force for
-  the record, then runs the job as it always does; `rerun` is the job as it always does.
-  An operation that cannot run (an unknown action or table, a force whose version is
-  missing or not an integer, a force without a requester) is refused by `deploy resolve`
-  and again here, before any job runs.
-- `deploy jobs`: makes this build's jobs right after the image build, before the
-  migrations, as copies of the stack's template jobs (`_MIGRATE_JOB`, `_JOBS_JOB`) named
-  after them with the build's version, on this build's image with the pipeline's labels:
-  the migrate job, when the build runs migrations, and the job process's job (`cmd/jobs`)
-  with the template's IAM policy (the site's `run.invoker`). It runs neither; the image the
-  build made names the job process's job to the site (`APP_JOBS_JOB`), so the revision
-  starts the job of its own build and a traffic rollback starts the earlier one. Made
-  before the migrations so that a failure here leaves the database untouched.
+- `deploy migrate`: runs the release's migrate command, which `deploy build-image` took
+  out of the image (`/builder/home/migrate`), on the build worker as the deploy identity,
+  once to completion, from the checkout's root (where the command finds the schema
+  directory), with the variables the stack derives for it (`MIGRATE_ENV`, which the stack
+  steps read from the applied stack's `_MIGRATE_ENV` output, so a release that changes
+  them migrates with its own) and the release in the version variable the pipeline names
+  (`--version-variable`); with the seed (`schema/devseed` as data migrations after the
+  schema) where `_SEED` is true: every pull request, and a release build only in the
+  environments the placement's seed list names. The command's lines are the build log's,
+  so a failed migration's message is where the run is read, and the deployment record
+  lists the migrations applied. A release build may carry a migration operation
+  (`_MIGRATE_ACTION`, from the operations workflow: `version`, `rerun` or `force`, with
+  `_MIGRATE_TABLE`, `_MIGRATE_VERSION` and `_REQUESTER`; `bedrock migration`, below):
+  `version` runs the command once with `-version` and leaves `SKIP_DEPLOY` with the
+  reason, so nothing else deploys; `force` runs it with `-force <n>` (or `-force-data
+  <n>`), leaves the force for the record, then runs it as it always does; `rerun` is the
+  command as it always does. An operation that cannot run (an unknown action or table, a
+  force whose version is missing or not an integer, a force without a requester) is
+  refused by `deploy resolve` and again here, before the command runs.
+- `deploy jobs`: makes this build's job for the job process (`cmd/jobs`) right after the
+  image build, before the migrations, as a copy of the stack's template job (`_JOBS_JOB`)
+  named after it with the build's version, on this build's image with the pipeline's
+  labels and the template's IAM policy (the site's `run.invoker`). It does not run it; the
+  image the build made names the job to the site (`APP_JOBS_JOB`), so the revision starts
+  the job of its own build and a traffic rollback starts the earlier one. Made before the
+  migrations so that a failure here leaves the database untouched. The step is rendered
+  only for an application with a job process.
 - `deploy migrate --preflight`: in a run that waits for the maintenance window and
-  replaces no database, runs this build's migrate job once with `-version` before the
-  wait, and keeps it: the job starts on the release's image against the environment's
-  database and prints what the migrations tables say, so an image that does not start, a
+  replaces no database, runs the release's migrate command once with `-version` before
+  the wait: the command starts on the build worker against the environment's database
+  and prints what the migrations tables say, so a command that does not start, a
   configuration that does not load or a database that cannot be reached stops the run
   with nothing changed and the window not entered. Nothing is applied. Any other run says
   so and does nothing.
 - `deploy window`: in a run that waits for the maintenance window, holds the run at the
-  gate until the environment's window opens, with the image built and the jobs made, so
+  gate until the environment's window opens, with the image built and the stack applied, so
   the window holds only maintenance, the migrations and the rollout. It reads the
   setting from the checkout's `placement.json`, prints when the run will proceed and
   waits, reading the clock again at most every ten minutes; when the window opens it
@@ -514,10 +516,10 @@ thing one step hands the next. In order:
   after a window release that failed) passes at once.
 - `deploy sweep-jobs`: after the traffic shift, deletes the builds' jobs nothing runs any
   more: a job of the job process whose version no revision in any region carries (a
-  revision that exists can take a rollback, and then starts its own build's job), and a
-  migrate job a run that did not finish left behind. A job with an execution running, or
-  made in the last three hours (its build may still be running), stays; the templates
-  always stay. Nothing retires a revision: that is Cloud Run's own ceiling. Jobs are
+  revision that exists can take a rollback, and then starts its own build's job). A job
+  with an execution running, or made in the last three hours (its build may still be
+  running), stays; the template always stays. The step is rendered only for an
+  application with a job process. Nothing retires a revision: that is Cloud Run's own ceiling. Jobs are
   deleted because Cloud Run allows 1,000 per project and region, shared by every
   application and pull-request environment. How far back a rollback reaches is the shared
   registry's keep count: Cloud Run keeps an image only while a serving revision uses it,
@@ -627,9 +629,10 @@ How a window release runs, in the pipeline's order: the release check at the sta
 waits for the window, and refuses what can never proceed, production without a setting
 when the release is breaking, a window whose next opening is further away than the
 build can wait (the build's timeout of 24 hours less three hours for the steps after the
-window), a window with no opening ahead; the image is built, the stack applied and the
-build's jobs made, so nothing that can fail on its own is left for the window; the
-pre-flight runs the migrate job once with `-version` (`deploy migrate --preflight`);
+window), a window with no opening ahead; the image is built and the stack applied (and
+the build's job made, where the application has a job process), so nothing that can fail
+on its own is left for the window; the pre-flight runs the migrate command once with
+`-version` (`deploy migrate --preflight`);
 the run waits inside the build for the window to open (`deploy window`), printing when
 it will proceed, so the approver approves by day and the run proceeds at night on its
 own; then, for a breaking release, maintenance goes on (`deploy maintenance on
@@ -739,7 +742,7 @@ the Actions tab starts the same job, with `action` set to the operation):
 
 ```sh
 bedrock migration version tst --release v1.4.0              # print the database's migration version
-bedrock migration rerun tst --release v1.4.0                # run the release again; the migrate job continues from where it stopped
+bedrock migration rerun tst --release v1.4.0                # run the release again; the migrate command continues from where it stopped
 bedrock migration force tst 40 --release v1.4.0             # set the schema version to 40, then let the release continue
 bedrock migration force tst 2 --release v1.4.0 --table data # the same for the data migrations table
 bedrock migration force tst none --release v1.4.0           # no version at all (the migrate command's -1)
@@ -749,24 +752,24 @@ The job runs in the GitHub Environment named after the target, exchanges its tok
 the environment's operations identity as the restore job does, and runs the environment's
 version trigger for the release with `_MIGRATE_ACTION`, `_MIGRATE_TABLE`,
 `_MIGRATE_VERSION` and `_REQUESTER`. `deploy migrate` reads them after the usual steps
-have run (the release check, the record gate, the image): `version` runs the job once
-with `-version`, prints its lines, and the run stops before the service, the traffic shift
-and the record, so nothing in the environment changes; `rerun` is the release run again,
-the job running as it always does; `force` runs the job with `-force <n>` (or `-force-data
-<n>`), prints its lines, then runs the job as it always does (with `-seed` where `_SEED`
-is true), and the release continues to the service, the traffic shift and the record,
-which carries the force (the table, the version, the requester). A version that is
-missing or not an integer, an unknown action or table, or a force without a requester is
-refused before any job runs; a force whose second run fails leaves the run failed like
-any failed migrate job, with the runner's message. Cloud Run returns no output with an
-execution, so the pipeline reads the job's lines from Cloud Logging through a view over
-the migrate job's own log bucket (the stack's `logging.tf`: a sink on the job's name
-fills the bucket, and the deploy identity and the operations identity hold
-`roles/logging.viewAccessor` on that view and nothing wider, so neither reads the
-application's own logs) and prints them into the build log, for a plain run too, so a
-failed migration's message reaches the person who started the run without a console; the
-workflow run's summary carries the same lines. Production has no door and no view: its
-procedure is under When the migrate job fails, below. The command itself changes nothing:
+have run (the release check, the record gate, the image, the stack): `version` runs the
+migrate command once with `-version`, and the run stops before the service, the traffic
+shift and the record, so nothing in the environment changes; `rerun` is the release run
+again, the command running as it always does; `force` runs the command with `-force <n>`
+(or `-force-data <n>`), then runs it as it always does (with `-seed` where `_SEED` is
+true), and the release continues to the service, the traffic shift and the record, which
+carries the force (the table, the version, the requester). A version that is missing or
+not an integer, an unknown action or table, or a force without a requester is refused
+before the command runs; a force whose second run fails leaves the run failed like any
+failed migration, with the runner's message. The command runs on the build worker, so its
+lines are the build log's; the workflow reads them back from Cloud Logging by the build's
+id and the migration steps' names, through the view over the bucket the stack's
+`logging.tf` fills with the application's builds (a sink on its triggers' ids; the
+operations identity holds `roles/logging.viewAccessor` on that view and nothing wider, so
+it reads neither the application's own logs nor another application's builds), and
+prints them in the run and in its summary, so a failed migration's message reaches the
+person who started the run without a console. Production has no door and no view: its
+procedure is under When the migration fails, below. The command itself changes nothing:
 it checks the environment (one of the placement's, not production, wired with a project),
 the release (a tag that exists) and, for a force, the version, then dispatches and prints
 where to watch.
@@ -792,7 +795,7 @@ A hotfix is based on the release production runs, and it deploys like any releas
 through tst and stg, then prd, each after the one before holds it live. What matters in
 an environment that ran a later release is its database. When the later release applied
 no migration and no seed file, the hotfix deploys into that environment as it is: its
-migrate job finds a database at a version it knows, and the environment runs the hotfix
+migrate command finds a database at a version it knows, and the environment runs the hotfix
 until the held-up release resumes. When the later release did move the database, the
 environment holds a file the hotfix does not carry, and the release check refuses the
 hotfix there, naming the file; the environment is restored to the hotfix first, from an
@@ -859,23 +862,23 @@ and restores it under its own name as the apply identity, and the migrations pro
 backup predates then apply. The environment's file objects are kept, and its Firestore
 documents are deleted as in every restore.
 
-## When the migrate job fails
+## When the migration fails
 
 A migration file that fails leaves the database at that file's version, dirty, and the
-job's message, in the build log and in the operations workflow run's summary when the
-run was started from GitHub, says which of three cases it is. Each case names the
-workflow's `action` input and the `bedrock migration` command that dispatches it.
+migrate command's message, in the build log and in the operations workflow run's summary
+when the run was started from GitHub, says which of three cases it is. Each case names
+the workflow's `action` input and the `bedrock migration` command that dispatches it.
 
-1. **The job stopped at a statement and can continue.** The message reads `<file>
+1. **The migration stopped at a statement and can continue.** The message reads `<file>
    stopped at statement <n> of <m> (<statement>): <cause>; fix the cause and rerun,
    which continues from statement <n>, or force a version`: the runner recorded how far
    the file got. Usually the statement validated existing rows (a `NOT NULL`, a check
    constraint, a unique index) and a row failed it. Fix the rows, then run the release
    again: action `rerun`, `bedrock migration rerun <env> --release <tag>`. The migrate
-   job continues from the failed statement, applies the rest of the file and the files
+   command continues from the failed statement, applies the rest of the file and the files
    after it, and the release deploys. Nothing is repeated: the statements before it are
    applied and recorded, and the failed one had not applied.
-2. **The job cannot continue.** The message says the database is dirty with no progress
+2. **The migration cannot continue.** The message says the database is dirty with no progress
    recorded (a database the old library left at cut-over), that a DDL operation it
    recorded is no longer there, or that the applied part of a file changed since. A
    person decides what the database really holds. First the state: action `version`,
@@ -885,7 +888,7 @@ workflow's `action` input and the `bedrock migration` command that dispatches it
    at: the version before the file when none of it applied, the file's own version when
    all of it did; action `force` with that version, `bedrock migration force <env> <n>
    --release <tag>` (`--table data` for the data migrations table, `none` for no version).
-   The migrate job sets the row, prints it before and after, then runs the migrations
+   The migrate command sets the row, prints it before and after, then runs the migrations
    from there, and the release deploys; its record carries the force and who asked. A
    force applies no statement itself: a file whose applied part changed is forced to the
    version before it and applied again whole, so its statements must be safe to repeat.
@@ -899,17 +902,16 @@ In production the door is narrower. No developer credential reaches `prd`, and t
 operations identity there serves one action: `run`, which `bedrock rerun prd <release>`
 dispatches (bedrock rerun, below). That is the release's tag build again, from the start,
 with no instruction, and it waits for its approval in Cloud Build as every production
-release does; so a migrate job that stopped at a statement continues from it once the
+release does; so a migration that stopped at a statement continues from it once the
 cause is fixed, and the record names who asked. The version and the force do not reach
-production, and the pipeline reads no log view there: the platform operator runs those
-two with their own credential, through the environment's version trigger, since that is
-where a migrate job on the release's image exists (the stack's template job runs no image
-of its own, and each build's copy of it is deleted at the end of the migrate step). The
-trigger run takes the same substitutions the door passes, and the pipeline does the rest
-as everywhere, the record naming the operator:
+production, whose logs are read in the console: the platform operator runs those two with
+their own credential, through the environment's version trigger, since that is where the
+release's migrate command runs, on the build worker as the deploy identity. The trigger
+run takes the same substitutions the door passes, and the pipeline does the rest as
+everywhere, the record naming the operator:
 
 ```sh
-# The version: the migrate job prints it and nothing else deploys.
+# The version: the migrate command prints it and nothing else deploys.
 gcloud builds triggers run <prefix>-prd-<region code>-<app>-version --tag <release> \
   --region <region> --project <project> --substitutions _MIGRATE_ACTION=version,_REQUESTER=<you>
 # A force, then the migrations and the release.
@@ -918,10 +920,10 @@ gcloud builds triggers run <prefix>-prd-<region code>-<app>-version --tag <relea
   --substitutions _MIGRATE_ACTION=force,_MIGRATE_TABLE=schema,_MIGRATE_VERSION=40,_REQUESTER=<you>
 ```
 
-The build log prints the Cloud Logging query that finds the job's lines (the step reads
-no view in production); the operator reads them in the console or with `gcloud logging
-read '<query>' --project <project>`. Nobody runs the trigger by hand for a rerun, in
-production or anywhere: `bedrock rerun` is its door.
+The command's lines are in the build log, under the `RunMigrations` step, which the
+operator reads in the console or with `gcloud builds log <build> --region <region>
+--project <project>`. Nobody runs the trigger by hand for a rerun, in production or
+anywhere: `bedrock rerun` is its door.
 
 ## bedrock restore
 
@@ -960,14 +962,14 @@ exchanges its token for the environment's operations identity in the environment
 GitHub Environment, as a restore does, and runs the version trigger for the release with
 `_REQUESTER` alone: no restore, no migration operation. The build is the release's tag
 build again, from the start, as the deploy identity: the image is built, the stack
-applied, the migrations run (a migrate job that stopped at a statement continues from it
+applied, the migrations run (a migration that stopped at a statement continues from it
 once the cause is fixed), the revision deploys, traffic moves, and the record names who
 asked. Nothing of a rerun is a restore, so production is reached like any environment:
 its operations identity exists for this action alone, the workflow and the pipeline
 refuse the restore instruction and the migration operations there, and a rerun in
 production waits for its approval in Cloud Build as every production release does. The
 migration job's `rerun` option (`bedrock migration rerun`) was named first and runs the
-release again below production with the migrate job's lines printed in the run; the
+release again below production with the migrate command's lines printed in the run; the
 release's own action is `run`, and `bedrock rerun` is its command. Nobody runs a trigger
 or submits a build by hand: every build starts from a trigger, and a release is run again
 through this door.

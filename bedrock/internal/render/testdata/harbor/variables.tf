@@ -38,8 +38,8 @@ variable "shared_database" {
     (Optional) For a pull-request stack only: the site runs against tst's
     database instead of one of its own (/gcbrun shared-db). The stack then
     creates no database and grants no DDL: the pull request's app identity gets
-    database user on tst's database, and the migrate job exists but the
-    pipeline never runs it, and refuses shared-db when the pull request changes
+    database user on tst's database, and the pipeline never runs the
+    migrations, and refuses shared-db when the pull request changes
     anything under schema/migrations against its base, because a migration
     on the shared database would change tst before any release.
   EOT
@@ -235,7 +235,7 @@ variable "staff_oidc_group_lookup" {
 }
 
 variable "staff_oidc_group_prefix" {
-  description = "Local-part prefix of the Google Groups that carry staff roles: <prefix><role>@<domain> assigns <role> (APP_STAFF_OIDC_GROUP_PREFIX, dataConfig.StaffGroupPrefix). Required non-empty by the session library at construction, so the migrate job carries it too."
+  description = "Local-part prefix of the Google Groups that carry staff roles: <prefix><role>@<domain> assigns <role> (APP_STAFF_OIDC_GROUP_PREFIX, dataConfig.StaffGroupPrefix). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "staff-"
 
@@ -246,7 +246,7 @@ variable "staff_oidc_group_prefix" {
 }
 
 variable "staff_oidc_hosted_domain" {
-  description = "Google Workspace domain staff logins are restricted to (APP_STAFF_OIDC_HOSTED_DOMAIN, dataConfig.StaffHostedDomain). Required non-empty by the session library at construction, so the migrate job carries it too."
+  description = "Google Workspace domain staff logins are restricted to (APP_STAFF_OIDC_HOSTED_DOMAIN, dataConfig.StaffHostedDomain). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "impulseframework.com"
 }

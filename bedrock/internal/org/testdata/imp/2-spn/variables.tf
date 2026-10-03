@@ -15,8 +15,8 @@ variable "database_admins" {
     identities are added here after the environment layers have run for it.
 
     Everything below the instance is the application layer's: the database
-    user grants for runtime identities and the migrate identity's admin grant
-    are made on each database by the layer that creates it.
+    user grants for runtime identities and the deploy identity's admin grant, for
+    the migrations it runs, are made on each database by the layer that creates it.
 
     Example:
       {

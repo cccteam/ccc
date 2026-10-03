@@ -44,6 +44,17 @@ maintenance window when the release declares its outlet answers its own
 release alone (`OldestAnswered(generation.ThisRelease)` in the generator
 program, which the pipeline reads from the release file beside the router).
 
+A stack rendered by an older bedrock has a template migrate job and a
+migrate identity, from when the pipeline ran the migrations as a Cloud Run
+job. The first apply after a render with this bedrock removes them (the job,
+the account, its project roles and the deploy identity's user grant on it)
+and grants the deploy identity, which now runs the migrate command on the
+build worker, `roles/spanner.databaseAdmin` on the database and
+`roles/datastore.user` on the Firestore database in their place: the plan
+shows the job and the account destroyed and the grants created, and nothing
+on the service. The log bucket and its sink keep their names; the sink's
+filter now names this application's builds.
+
 By hand, the same shape as `2-env`: no workspaces, one state prefix per
 environment (`3-app/harbor/<env>`, the stack's slot in the organization's
 state bucket), supplied at init, with a backend cache per environment:
@@ -66,19 +77,22 @@ from `2-env`'s state.
 
 ## What it creates
 
-- **Runtime identities**, one per process:
+- **Runtime identities**, one per deployed process:
   `imp-<env>-gbl-harbor-app` for the site (`main.go`) with
   `roles/logging.logWriter`, `roles/cloudtrace.agent`,
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
-  on the database, and accessor on the secrets; `imp-<env>-gbl-harbor-migrate`
-  for the migration job (`cmd/deployment/migrate`) with
-  `roles/logging.logWriter` and `roles/monitoring.metricWriter` on the project
-  (the Spanner client's own metrics) and `roles/spanner.databaseAdmin` on the
-  database only, for DDL; `imp-<env>-gbl-harbor-jobs` for the job process
+  on the database, and accessor on the secrets; `imp-<env>-gbl-harbor-jobs` for the job process
   (`cmd/jobs`) with the site's project roles, `roles/spanner.databaseUser`
   on the database and accessor on the secrets at the levels it constructs.
   The deploy identity from `2-env` gets `roles/iam.serviceAccountUser` on
-  each.
+  each. The migration (`cmd/deployment/migrate`) has no identity of its
+  own: the pipeline takes the migrate command out of the release's image and
+  runs it on the build worker as the deploy identity, and this stack grants
+  that identity `roles/spanner.databaseAdmin` on the database only, for DDL
+  (a member of the database's own policy, so no other database is reached;
+  `spanner.tf`), and `roles/datastore.user` on the Firestore
+  database under the condition naming it (`firestore.tf`). It holds no
+  accessor on a runtime secret, which a migration never reads.
 - **The database** `imp-<env>-gbl-harbor-db` on the environment's instance
   (`2-env` output `spanner_instance`: tst's own, the spn instance for stg and
   prd), GoogleSQL, no schema (the migrations own it). prd: deletion and drop
@@ -111,8 +125,9 @@ from `2-env`'s state.
   (`dataConfig.FirestoreDatabase` names it to the processes that construct
   the data level), Native mode, in the primary region, beside the
   Spanner database; prd keeps point-in-time recovery on and resists deletion.
-  The site, the migrate command (its role migration is a
-  policy write the running instances hear through this database) and the
+  The site, the deploy identity, for the migrate command it runs
+  on the build worker (its role migration is a policy write the running
+  instances hear through this database) and the
   job process hold `roles/datastore.user` under a condition naming this
   database alone, so nothing else in the shared environment project is
   reachable. With it, what live pages need of the
@@ -139,18 +154,19 @@ from `2-env`'s state.
 
   The site's identity holds accessor, and so does the job process's, on
   the secrets at the levels it constructs: it runs the application's own
-  code, and what that code reads the derivation cannot know. The migrate step
+  code, and what that code reads the derivation cannot know. The migrate command
   constructs the same configuration level, but its work is known: the session
   library reads these values only when someone signs in (the cookie key falls
-  back to an ephemeral one), which a migration never does, so the migrate
-  identity holds no accessor.
+  back to an ephemeral one), which a migration never does, so the deploy
+  identity that runs it holds no accessor, and the command runs without them.
 - **Cloud Run**: the service `imp-<env>-<region>-harbor-app` in both regions (`uc1|uw3`)
   (ingress internal and load balancer, 0 to 2 instances, CPU only during
-  requests, `allUsers` invoker so the load balancer can forward) and the template job
-  `imp-<env>-uc1-harbor-migrate` (one task, no retries, 15-minute timeout;
-  never run: each build copies it into a job of its own on the build's image,
-  which the pipeline runs once and deletes),
-  and the template job `imp-<env>-uc1-harbor-jobs` for the job process
+  requests, `allUsers` invoker so the load balancer can forward). The migration (`cmd/deployment/migrate`) is no Cloud
+  Run resource: the pipeline takes the migrate command out of the release's
+  image and runs it on the build worker as the deploy identity, with the
+  variables `locals.tf` derives for it (`migrate_env`, which `cloud-build.tf`
+  passes to the pipeline as `_MIGRATE_ENV`).
+  Beside the service, the template job `imp-<env>-uc1-harbor-jobs` for the job process
   (`cmd/jobs`; its timeout, retries and resources are `var.jobs_timeout`,
   `var.jobs_retries` and `var.jobs_resources`), never run and never deployed
   to: each build copies it into a job of its own, named after it with the
@@ -169,11 +185,12 @@ from `2-env`'s state.
   a job with an execution running, or made in the last three hours, stays.
   Revisions are retired by Cloud Run alone (its ceiling of 1,000 per service;
   idle ones cost nothing), and bedrock keeps none of its own. Jobs are deleted
-  because every build makes them and Cloud Run allows 1,000 jobs per project
+  because every build makes one and Cloud Run allows 1,000 jobs per project
   and region, shared by every application and pull-request environment. How
   far back a rollback reaches is the registry's keep count: Cloud Run keeps an
   image only while a serving revision uses it, and an old revision needs the
-  shared registry's copy to start again. All created with a placeholder image.
+  shared registry's copy to start again. The service and the job are created
+  with a placeholder image.
   From the first deploy on, the image
   and the labels and annotations a deploy stamps are the pipeline's
   (`ignore_changes`); identity, scaling, variables, and secret mounts stay
@@ -203,7 +220,7 @@ from `2-env`'s state.
   (`placement.json`, `maintenance`: `"anytime"`, or the client's weekly and
   dated slots in a time zone, every environment but prd anytime
   unless written, prd refused until written), waiting inside the
-  run with its image built and its jobs made; under `"releases": "all"` every
+  run with its image built and its stack applied; under `"releases": "all"` every
   release waits for the window and an ordinary one then deploys the rolling
   way.
 
@@ -212,7 +229,7 @@ from `2-env`'s state.
 By level (`pkg/config`): a process gets the levels it constructs and nothing
 above them.
 
-| Variable | Level | Value | Service | Migrate job | Job process |
+| Variable | Level | Value | Service | Migrate command | Job process |
 |---|---|---|---|---|---|
 | `APP_SERVICE_NAME` | core | `harbor` / `harbor-migrate` / `harbor-jobs` | yes | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes | yes |
@@ -230,8 +247,8 @@ above them.
 | `APP_JOBS_JOB` | site | the job of the build, baked into the image (Dockerfile, `ARG JOBS_JOB`) | yes | | |
 | `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
-The migrate job and the job process carry the hosted domain and group prefix because the session
-library refuses to construct without them. The migrate job carries the Firestore
+The migrate command and the job process carry the hosted domain and group prefix because the session
+library refuses to construct without them. The migrate command carries the Firestore
 database because the data level opens its live service when it is constructed, and
 the release's role migration signals the running instances through it; the web
 API key rides beside it, a public value. Not set: `APP_VERSION` (the
@@ -292,8 +309,11 @@ What `cloudbuild.yaml` in the harbor repository can rely on, from the trigger
 substitutions and this stack's outputs:
 
 - `_ENV`, `_APP`, `_PROJECT`; `_SERVICES` as `<region>=<service>` per region,
-  comma-separated; `_MIGRATE_JOB` as `<region>=<job>`, and `_JOBS_JOB` the
-  same for the job process; `_FILE_STORES`, the file stores' buckets as
+  comma-separated; `_MIGRATE_ENV`, the variables the migrate command runs
+  with on the build worker, as a JSON object (`locals.tf`, `migrate_env`;
+  the pipeline reads it back from the `substitutions` output after it
+  applies the stack, so a release that changes them migrates with its
+  own); `_JOBS_JOB` as `<region>=<job>` for the job process; `_FILE_STORES`, the file stores' buckets as
   this stack addresses them, comma-separated, which a restore run in tst
   replaces with the database; `_REGISTRY` as
   `<hostname>/<shr project>/<repository>`; `_RECORDS_BUCKET`;
@@ -316,16 +336,14 @@ substitutions and this stack's outputs:
   `_MIGRATE_ACTION`, `_MIGRATE_TABLE` and `_MIGRATE_VERSION`, empty on a tag's
   own build and set by the operations workflow's migration job (`version`,
   `rerun` or `force` on the environment's migrations, with `_REQUESTER` naming
-  who asked), and `_MIGRATE_LOGS`, the log view the pipeline reads the migrate
-  job's lines through (`logging.tf`; empty in production, which has none);
-  `_MIGRATIONS_DIR`, the
+  who asked); `_MIGRATIONS_DIR`, the
   schema migrations directory, which decides whether `/gcbrun shared-db` is
   allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep;
   `_HOSTNAME`, the environment's canonical hostname (a pull-request stack's
   own, which the pipeline talks back with); `_DEPLOYER_APP_ID` and
   `_DEPLOYER_KEY_SECRET`, the deployer GitHub App the pipeline talks back on a
   pull request as and the pinned secret version of its key, empty until 2-env
-  holds them; `_SEED`, true where the migrate job applies the development seed
+  holds them; `_SEED`, true where the migrate command applies the development seed
   (`schema/devseed`, as data migrations tracked apart from the schema, so a
   seeded database takes nothing twice): always on the pull-request trigger, a
   pull request's database being new; on a release build only in the
@@ -338,17 +356,21 @@ substitutions and this stack's outputs:
 - The services are deployed through the Cloud Run API by `bedrock deploy
   service`, which changes the image and the labels and leaves the template's
   variables, secrets and identity alone: the revision template is this stack's.
-  `deploy jobs` makes each build's jobs as copies of the template jobs on the
-  build's image: the migrate job, which `deploy migrate` runs once and
-  deletes, and the job process's job, with the template's IAM policy;
-  `deploy sweep-jobs` deletes the builds' jobs nothing runs any more.
-- `logging.tf` routes the migrate job's log entries into a log bucket of their
-  own (a sink on the job's name; the entries stay in the project's `_Default`
-  bucket too) and grants the deploy identity and the operations identity
-  `roles/logging.viewAccessor` on that bucket's view alone, so `deploy migrate`
-  prints the lines the job wrote into the build log and the operations
-  workflow's migration job prints them in its summary, and neither identity
-  reads the application's own logs. In every environment but production.
+  `deploy migrate` runs the release's migrate command, which `deploy
+  build-image` took out of the image, on the build worker as the deploy
+  identity, with `_MIGRATE_ENV`'s variables and the release in
+  `APP_VERSION`; its lines are the build log's. `deploy jobs` makes each
+  build's job for the job process as a copy of the template job on the
+  build's image, with the template's IAM policy; `deploy sweep-jobs` deletes
+  the builds' jobs nothing runs any more.
+- `logging.tf` routes the log entries of this application's builds (a sink
+  on the version trigger's id and, in tst, the pull-request trigger's;
+  the entries stay in the project's `_Default` bucket too) into a log bucket
+  of their own and grants the operations identity `roles/logging.viewAccessor`
+  on that bucket's view alone, so the operations workflow's migration job
+  prints the migration steps' lines in its summary and the identity reads
+  neither the application's own logs nor another application's builds. In
+  every environment but production.
 - One image per release and environment in the one repository,
   `harbor:<release>-<env>` (its commit's tag beside it), carrying the site,
   the migrate command and the job process, with `APP_VERSION` baked in at build.
@@ -399,7 +421,7 @@ The same stack, applied in tst with `pull_request` set to the pull request's
 number, is that pull request's environment: its own state
 (`3-app/harbor/tst/pr<N>`), its own database on tst's instance and its
 own runtime identities, short names throughout (`harbor-pr<N>` for the service in
-each region, `harbor-pr<N>-migrate`, `harbor-pr<N>-app`, `harbor-pr<N>-db`), and the
+each region, `harbor-pr<N>-app`, `harbor-pr<N>-db`), and the
 hostname `harbor-pr<N>.impulseframework.dev`, which the wildcard backend 2-env creates once
 in tst serves by picking the Cloud Run service named by the hostname's
 first label (2-net's `*.impulseframework.dev` host rule points at it). It reads
@@ -411,7 +433,7 @@ applies it as the tst apply identity before it deploys, and destroys it on
 Shared mode. `/gcbrun shared-db` applies the stack with `shared_database`
 true: no database of its own, the app identity granted database user on
 tst's database (an additive membership naming the pull request's own
-account), the migrate template present, no migrate job made. The pipeline refuses it when
+account), and the pipeline runs no migration. It refuses shared mode when
 the pull request changes anything under `schema/migrations` against its
 base, because a migration on the shared database would change tst before
 any release. A later plain `/gcbrun` switches back: the pull request's own
@@ -545,8 +567,9 @@ bounds). What an application adds is declared in files of its own:
 - **The Dockerfile.** Seeded from the code's shape (the site and the migrate
   command, the job process, the browser workspace and its bundles, the schema
   directory) and then yours: extra stages, build arguments, private assets.
-  `bedrock check` refuses a Dockerfile that builds no binary for a job the
-  stack deploys (`/migrate`, `/jobs`), or that drops the lines carrying
+  `bedrock check` refuses a Dockerfile that builds no binary the pipeline
+  runs or deploys (`/migrate`, taken out of the image for the migration
+  steps; `/jobs`, the job process's), or that drops the lines carrying
   the build's job to the site (`ARG JOBS_JOB`, `ENV APP_JOBS_JOB="${JOBS_JOB}"`).
 
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
@@ -599,9 +622,8 @@ Per environment, after the first apply:
 | `database` | `{ project, instance, name }`. |
 | `firestore_database` | The Firestore database's id. |
 | `hostnames` | For `2-net`'s host rules, certificate, and DNS. |
-| `identities` | `{ app, jobs, migrate }` runtime identity emails. |
+| `identities` | `{ app, jobs }` runtime identity emails. |
 | `jobs_job` | `{ name, region, resource }` of the job process's Cloud Run job. |
-| `migrate_job` | `{ name, region }` of the migration job. |
 | `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to the backend service URI. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers harbor. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |

@@ -18,8 +18,9 @@ import (
 )
 
 // fakeRunner is Runner in tests: it records every command, answers Output from outputs
-// by the command's name and first argument ("tofu show"), fails the commands fail
-// names, and runs effect on each Run (docker writing its metadata file).
+// by the whole command line ("tofu output -json substitutions") or else by the command's
+// name and first argument ("tofu show"), fails the commands fail names the same two ways,
+// and runs effect on each Run (docker writing its metadata file).
 type fakeRunner struct {
 	mu      sync.Mutex
 	ran     []Command
@@ -36,11 +37,29 @@ func (r *fakeRunner) key(c Command) string {
 	return c.Name + " " + c.Args[0]
 }
 
+// failure is the error set for the command, by its whole line first.
+func (r *fakeRunner) failure(c Command) error {
+	if err, ok := r.fail[c.String()]; ok {
+		return err
+	}
+
+	return r.fail[r.key(c)]
+}
+
+// output is what the command answers, by its whole line first.
+func (r *fakeRunner) output(c Command) string {
+	if out, ok := r.outputs[c.String()]; ok {
+		return out
+	}
+
+	return r.outputs[r.key(c)]
+}
+
 func (r *fakeRunner) Run(_ context.Context, c Command, out io.Writer) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ran = append(r.ran, c)
-	if err := r.fail[r.key(c)]; err != nil {
+	if err := r.failure(c); err != nil {
 		return err
 	}
 	if r.effect != nil {
@@ -55,11 +74,11 @@ func (r *fakeRunner) Output(_ context.Context, c Command, _ io.Writer) ([]byte, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ran = append(r.ran, c)
-	if err := r.fail[r.key(c)]; err != nil {
+	if err := r.failure(c); err != nil {
 		return nil, err
 	}
 
-	return []byte(r.outputs[r.key(c)]), nil
+	return []byte(r.output(c)), nil
 }
 
 // lines are the commands run, as a log shows them.

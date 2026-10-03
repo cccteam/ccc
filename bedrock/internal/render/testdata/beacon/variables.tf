@@ -38,8 +38,8 @@ variable "shared_database" {
     (Optional) For a pull-request stack only: the site runs against tst's
     database instead of one of its own (/gcbrun shared-db). The stack then
     creates no database and grants no DDL: the pull request's app identity gets
-    database user on tst's database, and the migrate job exists but the
-    pipeline never runs it, and refuses shared-db when the pull request changes
+    database user on tst's database, and the pipeline never runs the
+    migrations, and refuses shared-db when the pull request changes
     anything under schema/migrations against its base, because a migration
     on the shared database would change tst before any release.
   EOT

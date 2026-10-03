@@ -16,7 +16,8 @@
 # triggers and reads the builds they start (1-org's cloudBuildTriggerRunner)
 # and acts as the deploy identity the trigger's builds run as, which starting
 # a trigger requires, and nothing else here; below production the
-# application's stack adds the read of the migrate job's log view. In prd
+# application's stack adds the read of the view over its build logs, where the
+# migrate command's lines are. In prd
 # the identity serves the rerun alone: the workflow and the pipeline refuse
 # the restore instruction there, no migration operation reaches it, and it
 # reads no log view.

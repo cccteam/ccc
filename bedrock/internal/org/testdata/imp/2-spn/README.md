@@ -78,7 +78,8 @@ same environments is listed in `database_planners` and bound as
 
 Database level, the application layer: `roles/spanner.databaseUser` for each
 runtime identity on its database and `roles/spanner.databaseAdmin` for the
-migrate identity on its own database for DDL. Those grants name a database
+deploy identity, which runs the migrations on the build worker, on its own
+application's database for DDL. Those grants name a database
 that only the application layer knows, so they are made there, with
 `google_spanner_database_iam_member`. A person's time-limited access to an
 environment's databases is this layer's (the entitlements above): bounded by

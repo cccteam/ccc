@@ -229,7 +229,7 @@ var stateAttribute = regexp.MustCompile(`(?m)^\s*(project|instance|name)\s*=\s*"
 // production's database on the instance the two share, as the apply identity (which holds
 // database admin on that instance). The database's address keeps its state entry, so the
 // plan then finds the restored database and recreates the memberships the drop took with
-// it; the migrate job applies whatever production's backup predates. The backup and the
+// it; the migrations then apply whatever production's backup predates. The backup and the
 // moment its data is from are appended for the record (RESTORE_BACKUP, RESTORE_BACKUP_TIME).
 func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]string, w Workspace) error {
 	app, env, requester := subs[appSub], subs[envSub], facts[requesterFact]
@@ -352,16 +352,18 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 	if err != nil {
 		return err
 	}
+	s := newEnvironmentStack(clients, w, subs[applyIdentitySub], out)
 	if len(p.Changes) == 0 {
 		fmt.Fprintf(out, "Nothing to apply: %s's stack matches the code.\n", subs[envSub])
-
-		return nil
+	} else {
+		if err := s.tofu(ctx, "apply", "-input=false", "-no-color", filepath.Join(string(w), StackPlanFile)); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
 	}
-	s := newEnvironmentStack(clients, w, subs[applyIdentitySub], out)
-	if err := s.tofu(ctx, "apply", "-input=false", "-no-color", filepath.Join(string(w), StackPlanFile)); err != nil {
+	if err := s.migrateSettings(ctx, w); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -371,6 +373,26 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 	}
 
 	return s.clearFirestore(ctx, subs, w)
+}
+
+// migrateSettings reads the variables the migrate command runs with off the stack's
+// substitutions output as the stack now stands (_MIGRATE_ENV: the levels the command
+// constructs, for this environment), and leaves them for the migrate step (MIGRATE_ENV).
+// The trigger's copy is the last apply's: a release that declares a new variable of those
+// levels changes them in this very apply, and the first release after the stack began to
+// carry them finds them nowhere else.
+func (s *stack) migrateSettings(ctx context.Context, w Workspace) error {
+	facts, err := s.facts(ctx)
+	if err != nil {
+		return err
+	}
+	settings := facts[migrateEnvFact]
+	if settings == "" {
+		return errors.Newf("the stack's substitutions output names no %s, the migrate command's settings: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateEnvSub)
+	}
+	fmt.Fprintf(s.out, "The migrate command's settings are read from the stack as applied (%s).\n", migrateEnvSub)
+
+	return w.Append(map[string]string{migrateEnvFact: settings})
 }
 
 // clearFirestore deletes every document of the environment's Firestore database in a

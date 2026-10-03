@@ -44,8 +44,8 @@ const (
 )
 
 // skipped is a step's answer to a run an earlier step ended: the reason that step left
-// (SKIP_REASON: a version run, whose migrate job printed the database's migration version
-// and nothing else deploys), else the pull request's environment torn down.
+// (SKIP_REASON: a version run, whose migrate command printed the database's migration
+// version and nothing else deploys), else the pull request's environment torn down.
 func skipped(env map[string]string) string {
 	if reason := env[skipReasonFact]; reason != "" {
 		return reason
@@ -181,7 +181,7 @@ type hotfixLine struct {
 // hotfixGate is the line check at production's door, then the database check a hotfix
 // passes in every environment. A hotfix is built from production's release, so an
 // environment that ran a later release may hold a migration or seed file the hotfix does
-// not carry, or one whose content differs; the hotfix's migrate job would fail on it,
+// not carry, or one whose content differs; the hotfix's migration would fail on it,
 // and the hotfix is refused with the restore named instead. The environment's newest
 // live deployment record lists what its database holds, each file with its content's
 // hash, and the build's checkout carries the hotfix's files. In production, the

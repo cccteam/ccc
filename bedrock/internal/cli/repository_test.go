@@ -264,19 +264,19 @@ func TestMigrationOperations(t *testing.T) {
 		{
 			name:         "version dispatches the migration job with the version action",
 			args:         []string{"migration", "version", "tst", "--release", "v0.1.4", "--placement", placement},
-			wantOut:      []string{"Asked, as octocat, for tst's migration version at v0.1.4: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). The migrate job prints what each migrations table says about the database, in the build log and in the run's summary; nothing else deploys."},
+			wantOut:      []string{"Asked, as octocat, for tst's migration version at v0.1.4: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). The migrate command prints what each migrations table says about the database, in the build log and in the run's summary; nothing else deploys."},
 			wantDispatch: "operations.yml master action=version environment=tst release=v0.1.4",
 		},
 		{
 			name:         "rerun dispatches the migration job with the rerun action",
 			args:         []string{"migration", "rerun", "stg", "--release", "v0.1.4", "--placement", placement},
-			wantOut:      []string{"Asked, as octocat, for stg to run v0.1.4 again: the operations workflow of impulseframework/harbor runs it", "The migrate job continues a file that stopped from its failed statement once the cause is fixed, and the release continues"},
+			wantOut:      []string{"Asked, as octocat, for stg to run v0.1.4 again: the operations workflow of impulseframework/harbor runs it", "The migrate command continues a file that stopped from its failed statement once the cause is fixed, and the release continues"},
 			wantDispatch: "operations.yml master action=rerun environment=stg release=v0.1.4",
 		},
 		{
 			name:         "force dispatches the migration job with the table and the version",
 			args:         []string{"migration", "force", "tst", "40", "--release", "v0.1.4", "--placement", placement},
-			wantOut:      []string{"Asked, as octocat, for tst's schema migrations table to be set to version 40 and v0.1.4 to continue: the operations workflow of impulseframework/harbor runs it", "The migrate job sets the version and prints the row before and after, then the migrations run from it and the release continues to the service, the traffic shift and the record, which names you."},
+			wantOut:      []string{"Asked, as octocat, for tst's schema migrations table to be set to version 40 and v0.1.4 to continue: the operations workflow of impulseframework/harbor runs it", "The migrate command sets the version and prints the row before and after, then the migrations run from it and the release continues to the service, the traffic shift and the record, which names you."},
 			wantDispatch: "operations.yml master action=force environment=tst release=v0.1.4 table=schema version=40",
 		},
 		{
@@ -289,7 +289,7 @@ func TestMigrationOperations(t *testing.T) {
 			name:        "production is refused before any call",
 			args:        []string{"migration", "version", "prd", "--release", "v0.1.4", "--placement", placement},
 			wantNoCalls: true,
-			wantErr:     "prd is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migrate job fails); a release is run again in production with bedrock rerun",
+			wantErr:     "prd is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migration fails); a release is run again in production with bedrock rerun",
 		},
 		{
 			name:        "a force in production is refused before any call",

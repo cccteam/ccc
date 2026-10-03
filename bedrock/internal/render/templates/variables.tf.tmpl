@@ -38,8 +38,8 @@ variable "shared_database" {
     (Optional) For a pull-request stack only: the site runs against {{.Integration}}'s
     database instead of one of its own (/gcbrun shared-db). The stack then
     creates no database and grants no DDL: the pull request's app identity gets
-    database user on {{.Integration}}'s database, and the migrate job exists but the
-    pipeline never runs it, and refuses shared-db when the pull request changes
+    database user on {{.Integration}}'s database, and the pipeline never runs the
+    migrations, and refuses shared-db when the pull request changes
     anything under {{.Schema.MigrationsDir}} against its base, because a migration
     on the shared database would change {{.Integration}} before any release.
   EOT
@@ -238,7 +238,7 @@ variable "{{.AuthVar}}_group_lookup" {
 }
 
 variable "{{.AuthVar}}_group_prefix" {
-  description = "Local-part prefix of the Google Groups that carry {{.Auth.Name}} roles: <prefix><role>@<domain> assigns <role> ({{.GroupPrefix.Name}}, {{.GroupPrefix.Declaration}}). Required non-empty by the session library at construction, so the migrate job carries it too."
+  description = "Local-part prefix of the Google Groups that carry {{.Auth.Name}} roles: <prefix><role>@<domain> assigns <role> ({{.GroupPrefix.Name}}, {{.GroupPrefix.Declaration}}). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "{{.Auth.GroupPrefixDefault}}"
 
@@ -249,7 +249,7 @@ variable "{{.AuthVar}}_group_prefix" {
 }
 
 variable "{{.AuthVar}}_hosted_domain" {
-  description = "Google Workspace domain {{.Auth.Name}} logins are restricted to ({{.HostedDomain.Name}}, {{.HostedDomain.Declaration}}). Required non-empty by the session library at construction, so the migrate job carries it too."
+  description = "Google Workspace domain {{.Auth.Name}} logins are restricted to ({{.HostedDomain.Name}}, {{.HostedDomain.Declaration}}). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "{{.P.HostedDomain}}"
 }

@@ -23,8 +23,8 @@ release with the run action: the workflow's job, in the GitHub Environment named
 environment, exchanges its GitHub token for the environment's operations identity and runs the
 environment's version trigger for the release with no instruction, as the release's tag ran it. The
 build runs from the start as the deploy identity: the image is built, the stack applied, the
-migrations run (a migrate job that stopped at a statement continues from it once the cause is
-fixed), the revision deploys, traffic moves, and the record names who asked. Production is reached
+migrations run on the build worker (a migration that stopped at a statement continues from it once
+the cause is fixed), the revision deploys, traffic moves, and the record names who asked. Production is reached
 like any environment, since nothing of a rerun is a restore: the trigger's approval gate applies
 as to any release, and the GitHub Environment's lock as to a restore. The command itself changes
 nothing: it checks that the release exists and that the placement records the environment's

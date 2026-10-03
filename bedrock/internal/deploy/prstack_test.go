@@ -226,7 +226,7 @@ func TestGuardPlan(t *testing.T) {
 func TestApplyStack(t *testing.T) {
 	t.Parallel()
 
-	const substitutions = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_JOB": "us-central1=quill-pr7-migrate", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_ENV": "tst"}`
+	const substitutions = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_ENV": "tst"}`
 	const oneChange = `{"resource_changes": [{"address": "google_cloud_run_v2_service.site[\"us-central1\"]", "type": "google_cloud_run_v2_service", "change": {"actions": ["create"], "after": {"name": "quill-pr7"}}}]}`
 	tests := []struct {
 		name string
@@ -244,17 +244,24 @@ func TestApplyStack(t *testing.T) {
 		wantErr     string
 	}{
 		{
-			name:        "the stack's output names what the steps after deploy",
+			name:        "the stack's output names what the steps after deploy, the migrate command's settings among them",
 			output:      substitutions,
-			wantFacts:   map[string]string{services: "us-central1=quill-pr7", migrateJobFact: "us-central1=quill-pr7-migrate", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev"},
+			wantFacts:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: `{"APP_SERVICE_NAME":"quill-migrate"}`, jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev"},
+			wantOut:     []string{"The pull request's stack names SERVICES=us-central1=quill-pr7 JOBS_JOB=us-central1=quill-pr7-jobs PR_HOSTNAME=quill-pr7.example.dev, and the migrate command's settings (MIGRATE_ENV)."},
 			wantApplied: true,
 		},
 		{
 			name:      "a plan with nothing to apply is not applied, and the state names what deploys",
 			plan:      `{"resource_changes": [{"address": "google_spanner_instance.shared", "type": "google_spanner_instance", "change": {"actions": ["no-op"], "after": {"name": "tst-shared"}}}]}`,
 			output:    substitutions,
-			wantFacts: map[string]string{services: "us-central1=quill-pr7", migrateJobFact: "us-central1=quill-pr7-migrate"},
+			wantFacts: map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: `{"APP_SERVICE_NAME":"quill-migrate"}`},
 			wantOut:   []string{"Nothing to apply: the pull request's stack matches the code."},
+		},
+		{
+			name:        "a stack applied by an older bedrock names no settings for the migrate command, which the migrate step refuses",
+			output:      `{"_SERVICES": "us-central1=quill-pr7", "_HOSTNAME": "quill-pr7.example.dev"}`,
+			wantFacts:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: ""},
+			wantApplied: true,
 		},
 		{
 			name:        "after a destroy nothing deploys, the pull request's builds' jobs deleted first",
@@ -272,8 +279,8 @@ func TestApplyStack(t *testing.T) {
 		},
 		{
 			name:    "an output naming no services is refused",
-			output:  `{"_MIGRATE_JOB": "us-central1=quill-pr7-migrate"}`,
-			wantErr: "named no services or no migrate job",
+			output:  `{"_MIGRATE_ENV": "{}"}`,
+			wantErr: "the stack named no services (its substitutions output has no _SERVICES)",
 		},
 		{
 			name:     "a failed apply stops the build",

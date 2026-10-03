@@ -362,8 +362,10 @@ resource "google_secret_manager_secret_iam_member" "deploy_build_secrets" {
 
 # The deploy identity holds nothing on a Spanner instance: pull-request
 # databases are created and dropped by the pull-request stack, which runs as
-# the apply identity (above), and every other touch of a database is the
-# migrate job's, as the migrate identity on its own database.
+# the apply identity (above), and its one other touch of a database, the
+# migrations it runs on the build worker, is through database admin on the
+# application's own database, a member of that database's policy the
+# application's stack grants.
 
 # Service Account User on the application's runtime identities is granted in
 # the application's stack, where those identities are created: the deploy identity may act

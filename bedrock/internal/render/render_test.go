@@ -204,19 +204,23 @@ func TestPipelineFlowItems(t *testing.T) {
 }
 
 // TestPipelineOrder proves the rendered pipeline keeps the order a window release needs,
-// start check, image, jobs, pre-flight, wait, maintenance, migrate, revision, traffic,
-// record, carries the release file's directory to the release check, and keeps every
-// step's own timeout under the whole-build ceiling of 24 hours.
+// start check, image, the job where the application has a job process, pre-flight, wait,
+// maintenance, migrate, revision, traffic, record, carries the release file's directory to
+// the release check and the version variable to the migration steps, renders the job steps
+// only for an application with a job process, and keeps every step's own timeout under the
+// whole-build ceiling of 24 hours.
 func TestPipelineOrder(t *testing.T) {
 	t.Parallel()
 
 	order := []string{"ValidateRelease", "CheckRelease", "BuildImage", "MaintenanceOnRestore", "PlanEnvironmentStack", "ApplyEnvironmentStack", "CreateJobs", "PreflightMigrations", "WaitForWindow", "MaintenanceOnWindow", "RunMigrations", "DeployServiceNoTraffic", "ShiftTraffic", "MaintenanceOff", "SweepJobs", "WriteDeploymentRecord"}
+	jobSteps := []string{"CreateJobs", "SweepJobs"}
 	timeouts := map[string]string{"ValidateRelease": "300s", "BuildImage": "1800s", "PlanEnvironmentStack": "7200s", "PreflightMigrations": "1200s", "WaitForWindow": "86400s", "MaintenanceOnWindow": "900s", "RunMigrations": "2400s", "DeployServiceNoTraffic": "1200s", "ShiftTraffic": "600s"}
 	tests := []struct {
 		name string
 		file string
+		jobs bool
 	}{
-		{name: "harbor's pipeline", file: "testdata/harbor/root/cloudbuild.yaml"},
+		{name: "harbor's pipeline", file: "testdata/harbor/root/cloudbuild.yaml", jobs: true},
 		{name: "beacon's pipeline", file: "testdata/beacon/root/cloudbuild.yaml"},
 	}
 	for _, tt := range tests {
@@ -237,8 +241,19 @@ func TestPipelineOrder(t *testing.T) {
 					seen[ids[len(ids)-1]] = timeout
 				}
 			}
+			want := order
+			if !tt.jobs {
+				want = slices.DeleteFunc(slices.Clone(order), func(id string) bool {
+					return slices.Contains(jobSteps, id)
+				})
+				for _, id := range jobSteps {
+					if slices.Contains(ids, id) {
+						t.Errorf("step %s is rendered for an application without a job process", id)
+					}
+				}
+			}
 			at := 0
-			for _, id := range order {
+			for _, id := range want {
 				i := slices.Index(ids[at:], id)
 				if i < 0 {
 					t.Errorf("step %s is missing or out of order after %v", id, ids[:at])
@@ -816,12 +831,87 @@ func TestSubstitutionNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SubstitutionNames() error = %v", err)
 	}
-	for _, want := range []string{"_ENV", "_APP", "_PROJECT", "_SERVICES", "_MIGRATE_JOB", "_SEED", "_DEPLOYER_KEY_SECRET", "_BUILD_SECRETS"} {
+	for _, want := range []string{"_ENV", "_APP", "_PROJECT", "_SERVICES", "_MIGRATE_ENV", "_SEED", "_DEPLOYER_KEY_SECRET", "_BUILD_SECRETS"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("SubstitutionNames() = %v, want it to contain %s", names, want)
 		}
 	}
 	if slices.Contains(names, "_PR_NUMBER") {
 		t.Errorf("SubstitutionNames() = %v: _PR_NUMBER is the trigger's, not the map's", names)
+	}
+}
+
+// TestMigrationGrants proves the rendered stacks grant the deploy identity, which runs the
+// migrate command on the build worker, database admin on the application's own database
+// the way they pin its project roles, and the Firestore user role only where the migrate
+// command constructs that level; that no migrate identity, template migrate job or job
+// output remains and the pipeline's contract carries the command's variables in place of
+// the job; that the pipeline hands the migration steps the version variable; and that the
+// operations workflow reads the build's own log by step name under static job names.
+func TestMigrationGrants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		dir           string
+		wantFirestore bool
+	}{
+		{name: "harbor, whose migrate command reads Firestore", dir: "testdata/harbor", wantFirestore: true},
+		{name: "beacon, whose migrate command does not", dir: "testdata/beacon"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			files := map[string]string{}
+			for _, name := range []string{"spanner.tf", "firestore.tf", "service-accounts.tf", "cloud-run.tf", "cloud-build.tf", "outputs.tf", "logging.tf", "locals.tf", "README.md", "root/cloudbuild.yaml", "root/.github/workflows/operations.yml"} {
+				content, err := os.ReadFile(filepath.Join(tt.dir, name))
+				if err != nil {
+					t.Fatalf("ReadFile() error = %v", err)
+				}
+				files[name] = string(content)
+			}
+			present := map[string][]string{
+				"spanner.tf":                            {`resource "google_spanner_database_iam_member" "deploy_admin" {`, "  role     = \"roles/spanner.databaseAdmin\"\n  member   = local.identities.deploy_identity_member"},
+				"cloud-build.tf":                        {"_MIGRATE_ENV             = jsonencode(local.migrate_env)"},
+				"locals.tf":                             {"migrate_env = merge(local.core_env, local.data_env"},
+				"logging.tf":                            {`resource.labels.build_trigger_id`, `"operations_reads_migrate_logs"`},
+				"README.md":                             {"`roles/spanner.databaseAdmin` on the database only, for DDL", "The first apply after a render with this bedrock removes them"},
+				"root/cloudbuild.yaml":                  {"args: [deploy, migrate, --preflight, --version-variable, APP_VERSION]", "args: [deploy, migrate, --version-variable, APP_VERSION]"},
+				"root/.github/workflows/operations.yml": {`labels.build_step=~\"(Preflight|Run)Migrations\"`, "    name: restore the environment\n", "    name: run the release again\n", "    name: the migrations' operation\n"},
+			}
+			absent := map[string][]string{
+				"spanner.tf":                            {"migrate_admin", "local.migrate_member"},
+				"service-accounts.tf":                   {`"google_service_account" "migrate"`, "deploy_uses_migrate", "local.migrate_member"},
+				"cloud-run.tf":                          {`"google_cloud_run_v2_job" "migrate"`},
+				"cloud-build.tf":                        {"_MIGRATE_JOB", "_MIGRATE_LOGS"},
+				"outputs.tf":                            {`output "migrate_job"`, "google_service_account.migrate"},
+				"locals.tf":                             {"migrate_account", "job_env"},
+				"logging.tf":                            {"deploy_reads_migrate_logs", "cloud_run_job"},
+				"README.md":                             {"the migrate job", "Migrate job", "`_MIGRATE_JOB`", "`_MIGRATE_LOGS`"},
+				"root/.github/workflows/operations.yml": {"MIGRATE_JOB", "inputs.environment }} to", "cloud_run_job", "migrate job"},
+			}
+			firestore := []string{`resource "google_project_iam_member" "firestore_deploy" {`, "  member  = local.identities.deploy_identity_member"}
+			if tt.wantFirestore {
+				present["firestore.tf"] = firestore
+			} else {
+				absent["firestore.tf"] = firestore
+			}
+			absent["firestore.tf"] = append(absent["firestore.tf"], "firestore_migrate", "local.migrate_member")
+			for name, wants := range present {
+				for _, want := range wants {
+					if !strings.Contains(files[name], want) {
+						t.Errorf("%s lacks %q", name, want)
+					}
+				}
+			}
+			for name, wants := range absent {
+				for _, want := range wants {
+					if strings.Contains(files[name], want) {
+						t.Errorf("%s still carries %q", name, want)
+					}
+				}
+			}
+		})
 	}
 }

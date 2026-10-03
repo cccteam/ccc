@@ -1,9 +1,17 @@
+// migrate.go runs the migrations: the release's own migrate command, taken out of the
+// environment's image by the image build, run on the build worker as the deploy identity,
+// with its lines in the build log.
+
 package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
+	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,17 +27,22 @@ const (
 	buildIDLabel = "gcb-build-id"
 )
 
-// The migration operation a release build may carry, from the operations workflow
-// (bedrock migration version|rerun|force): _MIGRATE_ACTION names it, _MIGRATE_TABLE the
-// table a force sets (schema, or data) and _MIGRATE_VERSION the version it sets (-1 for no
-// version); _REQUESTER says who asked. _MIGRATE_LOGS is the log view the job's lines are
-// read through, which the environment's stack defines in every environment but
-// production. The migrate command's flags are what the job runs with.
+// The migrate command's settings and the migration operation a release build may carry.
+// _MIGRATE_ENV is the stack's: the variables the migrate command runs with, as a JSON
+// object of name to value (the levels the command constructs, as the stack derives them
+// for the environment or the pull request; no secret, the command never had one). The
+// stack steps read it back from the applied stack's substitutions output into MIGRATE_ENV,
+// so a release that changes the variables migrates with its own, where the trigger's copy
+// is the last apply's. The operation comes from the operations workflow (bedrock migration
+// version|rerun|force): _MIGRATE_ACTION names it, _MIGRATE_TABLE the table a force sets
+// (schema, or data) and _MIGRATE_VERSION the version it sets (-1 for no version);
+// _REQUESTER says who asked. The migrate command's flags are what it runs with.
 const (
+	migrateEnvSub     = "_MIGRATE_ENV"
+	migrateEnvFact    = "MIGRATE_ENV"
 	migrateActionSub  = "_MIGRATE_ACTION"
 	migrateTableSub   = "_MIGRATE_TABLE"
 	migrateVersionSub = "_MIGRATE_VERSION"
-	migrateLogsSub    = "_MIGRATE_LOGS"
 	actionVersion     = "version"
 	actionRerun       = "rerun"
 	actionForce       = "force"
@@ -45,11 +58,7 @@ const (
 	forcedVersionFact = "MIGRATE_FORCED_VERSION"
 	skipReasonFact    = "SKIP_REASON"
 	// versionSkipped is the reason a version run leaves for the steps after it.
-	versionSkipped = "The run asked for the migration version, which the migrate job printed: nothing else deploys."
-	// logTries is how many times the step looks for the job's lines, logWait apart, before
-	// giving up: Cloud Logging holds what a job wrote a few seconds after the job ends.
-	logTries = 12
-	logWait  = 5 * time.Second
+	versionSkipped = "The run asked for the migration version, which the migrate command printed: nothing else deploys."
 )
 
 // The labels a deploy stamps on the jobs and the services' revisions: who deployed, what
@@ -83,7 +92,7 @@ func pipelineLabels(build *Build, version string) map[string]string {
 }
 
 // target reads a region=name pair, as the stack's substitutions name the services and
-// the migrate job; fact names the one refused.
+// the job process's job; fact names the one refused.
 func target(fact, pair string) (region, name string, err error) {
 	region, name, ok := strings.Cut(pair, "=")
 	if !ok || region == "" || name == "" {
@@ -94,7 +103,7 @@ func target(fact, pair string) (region, name string, err error) {
 }
 
 // MigrateAction is the migration operation a build carries: what the operations workflow
-// asked the migrate job for, beyond the migrations themselves.
+// asked the migrate command for, beyond the migrations themselves.
 type MigrateAction struct {
 	// Action is version, rerun or force.
 	Action string
@@ -160,9 +169,9 @@ func (a *MigrateAction) String() string {
 	}
 	switch a.Action {
 	case actionVersion:
-		return actionVersion + ": the migrate job prints the database's migration version and nothing else deploys" + by
+		return actionVersion + ": the migrate command prints the database's migration version and nothing else deploys" + by
 	case actionRerun:
-		return actionRerun + ": the migrate job runs as it always does and the release continues" + by
+		return actionRerun + ": the migrate command runs as it always does and the release continues" + by
 	default:
 		return fmt.Sprintf("%s: the %s migrations table is set to %s, then the migrations run and the release continues%s", actionForce, a.Table, a.versionWord(), by)
 	}
@@ -177,22 +186,26 @@ func (a *MigrateAction) versionWord() string {
 	return "version " + strconv.Itoa(a.Version)
 }
 
-// Migrate runs this build's migrate job, the copy of the template job that deploy jobs made
-// on this image (<template>-<version key>), once to completion, with the seed (schema/devseed
-// as data migrations after the schema) where _SEED is true: every pull request, its database
-// being new, and a release build only in the environments the placement's seed list names.
-// A seeded database takes nothing twice. A build carrying a migration operation does what
-// it asks first: version runs the job with -version alone and the steps after do nothing;
-// force runs it with -force <n> (or -force-data <n>), leaves the force for the record, and
-// then runs the migrations as always; rerun is the migrations as always, by name. The lines
-// the job wrote are read from Cloud Logging through the environment's log view and printed
-// after each run. The job is deleted at the end of the step whether the execution succeeded
-// or failed: its logs stay in Cloud Logging, and the deployment record lists the migrations
-// applied. A build that runs no migrations (shared-db) has no job to run; a failed
-// execution stops the build and names itself; an operation that cannot run is refused
-// before any job starts. With preflight, in a run that waits for the maintenance window,
-// the job is run once with -version instead, before the wait, and kept (preflight below).
-func Migrate(ctx context.Context, clients *Clients, w Workspace, preflight bool, out io.Writer) error {
+// Migrate runs the migrations on the build worker: the release's own migrate command,
+// which the image build took out of the environment's image to program, run in the
+// checkout (where it reads the schema directory, as it does in the image) as the deploy
+// identity, with the variables the stack derived for it (MIGRATE_ENV, the levels it
+// constructs; the version variable set to the build's version, as the image sets it for
+// the processes it runs) and the flags the facts decide: the seed (schema/devseed as data
+// migrations after the schema) where _SEED is true, every pull request, its database being
+// new, and a release build only in the environments the placement's seed list names. A
+// seeded database takes nothing twice. The command reaches Spanner and Firestore through
+// their APIs as the deploy identity, which the application stack grants database admin
+// on the application's own database and nothing wider; its lines go straight into the
+// build log. A build carrying a migration operation does what it asks first: version runs
+// the command with -version alone and the steps after do nothing; force runs it with
+// -force <n> (or -force-data <n>), leaves the force for the record, and then runs the
+// migrations as always; rerun is the migrations as always, by name. A build that runs no
+// migrations (shared-db) runs nothing; a failed run stops the build with the command's
+// lines above; an operation that cannot run is refused before anything runs. With
+// preflight, in a run that waits for the maintenance window, the command is run once with
+// -version instead, before the wait (preflight below).
+func Migrate(ctx context.Context, clients *Clients, w Workspace, program, versionVariable string, preflight bool, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -206,7 +219,7 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, preflight bool,
 		return nil
 	}
 	if env[runMigrationsFact] != trueValue {
-		fmt.Fprintln(out, "Skipping the migrate job: this build does not run migrations.")
+		fmt.Fprintln(out, "Skipping the migrations: this build does not run them.")
 
 		return nil
 	}
@@ -218,33 +231,45 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, preflight bool,
 	if err != nil {
 		return err
 	}
-	run, err := clients.Run(ctx)
+	vars, err := migrateSettings(env, versionVariable)
 	if err != nil {
 		return err
 	}
-	_, name, err := buildJob(build.Substitutions[projectSub], env, migrateJobFact)
-	if err != nil {
-		return err
+	if _, err := os.Stat(program); err != nil {
+		return errors.Newf("no migrate command at %s: the image build takes %s out of the image (deploy build-image), and the Dockerfile builds it (go build -o /build/migrate ./cmd/deployment/migrate)", program, migrateInImage)
 	}
-	m := &migrateRun{clients: clients, run: run, name: name, job: shortName(name), view: build.Substitutions[migrateLogsSub], out: out}
-	if _, err := run.Get(ctx, name); err != nil {
-		if isNotFound(err) {
-			return errors.Newf("this build's migrate job %s does not exist: deploy jobs makes it right after the image build", m.job)
-		}
-
-		return err
-	}
+	m := &migrateRun{exec: clients.Exec, command: Command{Dir: string(w), Env: vars, Name: program}, out: out}
+	fmt.Fprintf(out, "The migrate command %s runs on this worker as the deploy identity with %d variables from the stack.\n", program, len(vars))
 	if preflight {
 		return m.preflight(ctx)
 	}
-	outcome := m.perform(ctx, w, build, action)
-	if err := run.Delete(ctx, name); err != nil {
-		fmt.Fprintf(out, "Job %s was not deleted (%v): deploy sweep-jobs deletes it.\n", m.job, err)
-	} else {
-		fmt.Fprintf(out, "Job %s deleted: its execution's logs stay in Cloud Logging.\n", m.job)
+
+	return m.perform(ctx, w, build, action)
+}
+
+// migrateSettings are the variables the migrate command runs with, NAME=value sorted by
+// name: the stack's (MIGRATE_ENV, which the stack steps read from the applied stack's
+// substitutions output, the levels the command constructs for this environment or pull
+// request) and the version variable, when the pipeline names one, set to the build's
+// version, which the image sets for the processes it runs and the worker does not.
+func migrateSettings(env map[string]string, versionVariable string) ([]string, error) {
+	raw := env[migrateEnvFact]
+	if raw == "" {
+		return nil, errors.Newf("%s names no settings for the migrate command (%s): the stack steps write them from the stack's substitutions output (%s)", EnvironmentFile, migrateEnvFact, migrateEnvSub)
+	}
+	var settings map[string]string
+	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
+		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", migrateEnvFact)
+	}
+	if versionVariable != "" {
+		settings[versionVariable] = env[versionFact]
+	}
+	vars := make([]string, 0, len(settings))
+	for _, name := range slices.Sorted(maps.Keys(settings)) {
+		vars = append(vars, name+"="+settings[name])
 	}
 
-	return outcome
+	return vars, nil
 }
 
 // preflightDue reports whether the pre-flight has anything to do: a run that waits for
@@ -264,30 +289,27 @@ func preflightDue(env map[string]string, out io.Writer) bool {
 	}
 }
 
-// migrateRun is one step's runs of the build's migrate job.
+// migrateRun is one step's runs of the migrate command: the command with its directory
+// and variables, run with the arguments of each run.
 type migrateRun struct {
-	clients *Clients
-	run     Run
-	// name is the job's resource name, job its short name, view the log view the job's
-	// lines are read through (empty: not read here).
-	name, job, view string
-	out             io.Writer
+	exec    Runner
+	command Command
+	out     io.Writer
 }
 
-// preflight runs the job once with -version before the run waits for the window: the job
-// starts on the release's image against the environment's database and prints what the
-// migrations tables say, so an image that does not start, a configuration that does not
-// load or a database that cannot be reached stops the run here, with nothing changed and
-// the window not entered. Nothing is applied, and the job stays for the migrations after
-// the window.
+// preflight runs the command once with -version before the run waits for the window: the
+// release's own command loads its configuration against the environment's database and
+// prints what the migrations tables say, so a configuration that does not load or a
+// database that cannot be reached stops the run here, with nothing changed and the window
+// not entered. Nothing is applied.
 func (m *migrateRun) preflight(ctx context.Context) error {
-	fmt.Fprintf(m.out, "=== Pre-flight: running job [%s] once with %s before the window ===\n", m.job, versionArg)
+	fmt.Fprintf(m.out, "=== Pre-flight: running the migrate command once with %s before the window ===\n", versionArg)
 	if err := m.once(ctx, []string{versionArg}); err != nil {
 		fmt.Fprintln(m.out, "Pre-flight failed before the window: nothing changed, and the run stops here.")
 
 		return err
 	}
-	fmt.Fprintln(m.out, "Pre-flight passed: the migrate job runs on this image against the environment's database; the job stays for the migrations after the window.")
+	fmt.Fprintln(m.out, "Pre-flight passed: the release's migrate command loads its configuration and reaches the environment's database; the migrations run after the window.")
 
 	return nil
 }
@@ -307,7 +329,7 @@ func (m *migrateRun) perform(ctx context.Context, w Workspace, build *Build, act
 
 		return m.migrations(ctx, build)
 	default:
-		fmt.Fprintf(m.out, "Rerun%s: the migrate job runs as it always does, continuing a file that stopped from its failed statement, and the release continues.\n", by(action.Requester))
+		fmt.Fprintf(m.out, "Rerun%s: the migrate command runs as it always does, continuing a file that stopped from its failed statement, and the release continues.\n", by(action.Requester))
 
 		return m.migrations(ctx, build)
 	}
@@ -322,23 +344,21 @@ func by(requester string) string {
 	return ", asked for by " + requester
 }
 
-// migrations runs the job as it always runs: the schema migrations, and the seed where
-// _SEED is true.
+// migrations runs the command as it always runs: the schema migrations, and the seed
+// where _SEED is true.
 func (m *migrateRun) migrations(ctx context.Context, build *Build) error {
-	fmt.Fprintf(m.out, "=== Running job [%s] once ===\n", m.job)
 	var args []string
 	if build.Substitutions[seedSub] == trueValue {
 		args = []string{seedArg}
-		fmt.Fprintln(m.out, "Seeding: the migrate job applies schema/devseed as data migrations.")
+		fmt.Fprintln(m.out, "Seeding: the migrate command applies schema/devseed as data migrations.")
 	}
 
 	return m.once(ctx, args)
 }
 
-// version runs the job with -version alone, prints what it said, and leaves SKIP_DEPLOY
-// for the steps after, with the reason: nothing in the environment changes.
+// version runs the command with -version alone and leaves SKIP_DEPLOY for the steps
+// after, with the reason: nothing in the environment changes.
 func (m *migrateRun) version(ctx context.Context, w Workspace) error {
-	fmt.Fprintf(m.out, "=== Running job [%s] once with %s ===\n", m.job, versionArg)
 	if err := m.once(ctx, []string{versionArg}); err != nil {
 		return err
 	}
@@ -347,100 +367,44 @@ func (m *migrateRun) version(ctx context.Context, w Workspace) error {
 	return w.Append(map[string]string{skipDeploy: trueValue, skipReasonFact: versionSkipped})
 }
 
-// force runs the job with the force, prints the rows it printed, and leaves the force for
+// force runs the command with the force, whose rows it prints, and leaves the force for
 // the record.
 func (m *migrateRun) force(ctx context.Context, w Workspace, action *MigrateAction) error {
 	flag := forceArg
 	if action.Table == tableData {
 		flag = forceDataArg
 	}
-	args := []string{flag, strconv.Itoa(action.Version)}
 	fmt.Fprintf(m.out, "Force%s: the %s migrations table is set to %s; the migrations run after it and the release continues.\n", by(action.Requester), action.Table, action.versionWord())
-	fmt.Fprintf(m.out, "=== Running job [%s] once with %s ===\n", m.job, strings.Join(args, " "))
-	if err := m.once(ctx, args); err != nil {
+	if err := m.once(ctx, []string{flag, strconv.Itoa(action.Version)}); err != nil {
 		return err
 	}
 
 	return w.Append(map[string]string{forcedTableFact: action.Table, forcedVersionFact: strconv.Itoa(action.Version)})
 }
 
-// once runs the job once to completion with the arguments, prints the lines it wrote, and
-// answers how it went.
+// once runs the command once with the arguments, its lines on the build log as it writes
+// them, and says how long it took; a command that exits with an error fails the step, its
+// message above.
 func (m *migrateRun) once(ctx context.Context, args []string) error {
-	execution, runErr := m.run.RunJob(ctx, m.name, args)
-	outcome := executionOutcome(execution, runErr)
-	if runErr == nil {
-		m.lines(ctx, shortName(text(execution, keyName)))
+	c := m.command
+	c.Args = args
+	fmt.Fprintf(m.out, "=== Running the migrate command%s ===\n", withArgs(args))
+	started := time.Now()
+	if err := m.exec.Run(ctx, c, m.out); err != nil {
+		return errors.Newf("the migration failed after %s: the migrate command's lines are above (%v)", time.Since(started).Round(time.Second), errors.Cause(err))
 	}
-	if outcome == nil {
-		fmt.Fprintf(m.out, "Migrate job done: execution %s succeeded.\n", shortName(text(execution, keyName)))
-	}
-
-	return outcome
-}
-
-// lines prints what the execution wrote, read from Cloud Logging through the environment's
-// log view by the execution's name. The entries follow the execution's end by a few
-// seconds, so the read is tried again until a line is there or a minute has passed. With
-// no view (production, or a stack from before the view) the lines are not read here, and
-// the query that finds them is printed instead.
-func (m *migrateRun) lines(ctx context.Context, execution string) {
-	query := loggingQuery(execution)
-	if m.view == "" || m.clients.Logs == nil {
-		fmt.Fprintf(m.out, "The job's lines are not read here (no log view): Cloud Logging query %s\n", query)
-
-		return
-	}
-	logs, err := m.clients.Logs(ctx)
-	if err != nil {
-		fmt.Fprintf(m.out, "The job's lines could not be read (%v): Cloud Logging query %s\n", err, query)
-
-		return
-	}
-	sleep := m.clients.Sleep
-	if sleep == nil {
-		sleep = sleepFor
-	}
-	for try := 1; ; try++ {
-		lines, err := logs.Lines(ctx, m.view, execution)
-		if err != nil {
-			fmt.Fprintf(m.out, "The job's lines could not be read (%v): Cloud Logging query %s\n", err, query)
-
-			return
-		}
-		if len(lines) > 0 {
-			fmt.Fprintf(m.out, "--- %s wrote ---\n", execution)
-			for _, line := range lines {
-				fmt.Fprintln(m.out, line)
-			}
-			fmt.Fprintln(m.out, "---")
-
-			return
-		}
-		if try == logTries {
-			fmt.Fprintf(m.out, "No line of %s reached Cloud Logging in a minute: query %s\n", execution, query)
-
-			return
-		}
-		if err := sleep(ctx, logWait); err != nil {
-			return
-		}
-	}
-}
-
-// executionOutcome is nil when the execution succeeded, else why the migrations failed:
-// the run the API refused, or the execution's failed tasks, named with the Cloud Logging
-// query that finds its logs, which outlive the job.
-func executionOutcome(execution map[string]any, runErr error) error {
-	if runErr != nil {
-		return runErr
-	}
-	executionName := shortName(text(execution, keyName))
-	if failed, _ := execution["failedCount"].(float64); failed > 0 {
-		return errors.Newf("the migrate job failed: execution %s has %d failed task(s); its logs say why (Cloud Logging: %s)", executionName, int(failed), loggingQuery(executionName))
-	}
+	fmt.Fprintf(m.out, "Migrate command done in %s.\n", time.Since(started).Round(time.Second))
 
 	return nil
+}
+
+// withArgs spells the arguments of a run for its heading, nothing for none.
+func withArgs(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+
+	return " with " + strings.Join(args, " ")
 }
 
 // builtImage is this build's image by digest, as the image build left it in the

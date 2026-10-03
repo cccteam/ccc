@@ -1,6 +1,6 @@
-// jobs.go makes each build's jobs from the stack's template jobs: the migrate job of this
-// build and, for an application with a job process, the job of this build's revision, right
-// after the image build and before anything touches the database.
+// jobs.go makes each build's job of the job process from the stack's template job, for an
+// application with one, right after the image build and before anything touches the
+// database.
 
 package deploy
 
@@ -14,19 +14,18 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// Jobs creates this build's jobs: copies of the template jobs the stack owns (named by the
-// substitutions _MIGRATE_JOB and _JOBS_JOB; never run, never deployed to), each named
-// <template>-<version key> and put on this build's image with the pipeline's labels. The
-// migrate job, made when this build runs migrations, is what deploy migrate runs once and
-// deletes at the end of its step. The job process's job (cmd/jobs) takes the template's IAM
-// policy too: the image the build made names it to the site (APP_JOBS_JOB), so the revision
-// this build deploys starts a job of its own code, and a traffic rollback to an earlier
-// revision starts that revision's job; only the running service starts it, the pipeline
-// never does. The step runs right after the image build, before the migrations and before
-// anything the run waits for: making a job touches no data, so a failure here stops the run
-// with the database untouched. A build of a version this environment deployed before updates
-// the jobs it made then, the same code. A torn-down pull-request environment has nothing to
-// make.
+// Jobs creates this build's job for the job process (cmd/jobs), when the application has
+// one: a copy of the template job the stack owns (named by the substitution _JOBS_JOB;
+// never run, never deployed to), named <template>-<version key>, put on this build's image
+// with the pipeline's labels and given the template's IAM policy: the image the build made
+// names it to the site (APP_JOBS_JOB), so the revision this build deploys starts a job of
+// its own code, and a traffic rollback to an earlier revision starts that revision's job;
+// only the running service starts it, the pipeline never does. The step runs right after
+// the image build, before the migrations and before anything the run waits for: making a
+// job touches no data, so a failure here stops the run with the database untouched. A
+// build of a version this environment deployed before updates the job it made then, the
+// same code. An application without a job process has nothing to make, and the pipeline
+// has no step for it; a torn-down pull-request environment has nothing to make either.
 func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -34,6 +33,11 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 	}
 	if env[skipDeploy] == trueValue {
 		fmt.Fprintln(out, skipped(env))
+
+		return nil
+	}
+	if env[jobsJobFact] == "" {
+		fmt.Fprintln(out, "No job to make: the stack's substitutions name no template for a job process (_JOBS_JOB), the application having no cmd/jobs.")
 
 		return nil
 	}
@@ -50,30 +54,11 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 		return err
 	}
 	project := build.Substitutions[projectSub]
-	labels := pipelineLabels(build, env[versionFact])
-	if env[runMigrationsFact] == trueValue {
-		template, name, err := buildJob(project, env, migrateJobFact)
-		if err != nil {
-			return err
-		}
-		verb, err := makeJob(ctx, run, template, name, image, labels, out)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "Job %s %s: deploy migrate runs it once and deletes it.\n", shortName(name), verb)
-	} else {
-		fmt.Fprintln(out, "No migrate job: this build does not run migrations.")
-	}
-	if env[jobsJobFact] == "" {
-		fmt.Fprintln(out, "No job for a job process: the stack's substitutions name no template (_JOBS_JOB), the application having no cmd/jobs.")
-
-		return nil
-	}
 	template, name, err := buildJob(project, env, jobsJobFact)
 	if err != nil {
 		return err
 	}
-	verb, err := makeJob(ctx, run, template, name, image, labels, out)
+	verb, err := makeJob(ctx, run, template, name, image, pipelineLabels(build, env[versionFact]), out)
 	if err != nil {
 		return err
 	}

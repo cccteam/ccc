@@ -1,7 +1,7 @@
-# {{.App}}'s container image: one image that serves the site (/app, the entrypoint) and runs
-# the deployment's migration step (/migrate, the command the Cloud Run job is deployed with){{if .Image.JobsPkg}}
-# and the job process (/jobs, the command its Cloud Run job is deployed with){{end}}{{if .Image.HooksPkg}}; it also carries
-# the hooks program (/hooks), which the pipeline takes out of it and runs on the build worker{{end}}.
+# {{.App}}'s container image: one image that serves the site (/app, the entrypoint) and carries
+# the deployment's migrate command (/migrate, which the pipeline takes out of it and runs on the
+# build worker){{if .Image.JobsPkg}} and the job process (/jobs, the command its Cloud Run job is deployed with){{end}}{{if .Image.HooksPkg}}; it
+# also carries the hooks program (/hooks), taken out and run on the build worker the same way{{end}}.
 # Seeded by bedrock from the code's shape and then yours: bedrock render writes it once and
 # never again, so the image build can grow with the application.
 #

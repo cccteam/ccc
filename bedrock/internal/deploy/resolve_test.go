@@ -77,7 +77,7 @@ func tagBuild(overrides map[string]string) map[string]string {
 		"TAG_NAME": "v1.2.3", "COMMIT_SHA": "deadbeefcafe", "SHORT_SHA": "deadbee",
 		"REPO_FULL_NAME": "impulseframework/harbor", "_REPO_CONNECTION_NAME": "imp-tst-github", "_REPO_NAME": "harbor",
 		"_ENV": "tst", "_APP": "harbor", "_PROJECT": "tst-project", "_REGISTRY": "us-central1-docker.pkg.dev/shr/reg",
-		"_SERVICES": "us-central1=harbor-app", "_MIGRATE_JOB": "us-central1=harbor-migrate",
+		"_SERVICES": "us-central1=harbor-app", "_MIGRATE_ENV": `{"APP_SERVICE_NAME":"harbor-migrate"}`,
 		"_DEFAULT_BRANCH": "master", "_WIDGET_MODE": trickyValue,
 	}
 	for name, value := range overrides {
@@ -105,7 +105,7 @@ func prBuild(overrides map[string]string) map[string]string {
 }
 
 // known is the stack's contract in these tests.
-var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_JOB", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_SEED", "_RESTORE", "_REQUESTER", "_MIGRATE_ACTION", "_MIGRATE_TABLE", "_MIGRATE_VERSION", "_MIGRATE_LOGS"}
+var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_ENV", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_SEED", "_RESTORE", "_REQUESTER", "_MIGRATE_ACTION", "_MIGRATE_TABLE", "_MIGRATE_VERSION"}
 
 func buildFor(t *testing.T, subs map[string]string) string {
 	t.Helper()
@@ -299,17 +299,17 @@ func TestResolve(t *testing.T) {
 			name: "a version operation is read and reported",
 			subs: tagBuild(map[string]string{migrateActionSub: actionVersion, requesterSub: "octocat"}),
 			want: withComment(tag, "", func(o *outcome) {
-				o.Migration = "version: the migrate job prints the database's migration version and nothing else deploys, asked for by octocat"
+				o.Migration = "version: the migrate command prints the database's migration version and nothing else deploys, asked for by octocat"
 			}),
-			wantOut: []string{"Migration operation version: the migrate job prints the database's migration version and nothing else deploys, asked for by octocat."},
+			wantOut: []string{"Migration operation version: the migrate command prints the database's migration version and nothing else deploys, asked for by octocat."},
 		},
 		{
 			name: "a rerun needs no requester",
 			subs: tagBuild(map[string]string{migrateActionSub: actionRerun}),
 			want: withComment(tag, "", func(o *outcome) {
-				o.Migration = "rerun: the migrate job runs as it always does and the release continues"
+				o.Migration = "rerun: the migrate command runs as it always does and the release continues"
 			}),
-			wantOut: []string{"Migration operation rerun: the migrate job runs as it always does and the release continues."},
+			wantOut: []string{"Migration operation rerun: the migrate command runs as it always does and the release continues."},
 		},
 		{
 			name: "a force names its table and version",
@@ -465,7 +465,7 @@ func TestResolve(t *testing.T) {
 			want:    tag,
 		},
 		{
-			name:    "a new seed file beside the applied ones is a data migration the migrate job applies: nothing is restored",
+			name:    "a new seed file beside the applied ones is a data migration the migrate command applies: nothing is restored",
 			subs:    seededTag(nil),
 			records: liveSeeded,
 			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent, "schema/devseed/000002_More.up.sql": "insert b"},
@@ -624,9 +624,9 @@ func TestResolve(t *testing.T) {
 			wantErr: `_ENV must be tst, stg, or prd (got "dev")`,
 		},
 		{
-			name:    "a build that names no migrate job is refused",
-			subs:    tagBuild(map[string]string{"_MIGRATE_JOB": ""}),
-			wantErr: "_SERVICES and _MIGRATE_JOB name the Cloud Run services and the migrate job this build updates; one is empty",
+			name:    "a build that names no services is refused",
+			subs:    tagBuild(map[string]string{"_SERVICES": ""}),
+			wantErr: "_SERVICES names the Cloud Run services this build updates; it is empty",
 		},
 		{
 			name:    "a failed mint says which connection",
@@ -728,7 +728,7 @@ func TestFactsWrite(t *testing.T) {
 		{
 			name:      "a tag build with a declared substitution",
 			subs:      tagBuild(nil),
-			wantEnv:   map[string]string{"GITHUB_TOKEN": "tok", "SERVICES": "us-central1=harbor-app", "MIGRATE_JOB": "us-central1=harbor-migrate", sharedDBFact: "", "SKIP_DEPLOY": "", "IMAGE_TAG": "v1.2.3-tst", "COMMIT_TAG": "deadbeefcafe-tst", "RELEASE": "v1.2.3", runMigrationsFact: "true", "SHIFT_TRAFFIC": "true", "_ENV": "tst", "_WIDGET_MODE": trickyValue},
+			wantEnv:   map[string]string{"GITHUB_TOKEN": "tok", "SERVICES": "us-central1=harbor-app", sharedDBFact: "", "SKIP_DEPLOY": "", "IMAGE_TAG": "v1.2.3-tst", "COMMIT_TAG": "deadbeefcafe-tst", "RELEASE": "v1.2.3", runMigrationsFact: "true", "SHIFT_TRAFFIC": "true", "_ENV": "tst", "_MIGRATE_ENV": `{"APP_SERVICE_NAME":"harbor-migrate"}`, "_WIDGET_MODE": trickyValue},
 			wantArgs:  "_WIDGET_MODE=" + trickyValue + "\n",
 			wantShell: trickyValue + "\n",
 		},

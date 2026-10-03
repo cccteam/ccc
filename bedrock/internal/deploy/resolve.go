@@ -45,7 +45,6 @@ const (
 // The facts resolve exports, by the names the shell steps read (the record step's are
 // beside it), and the trigger's substitution naming the pull request.
 const (
-	migrateJobFact    = "MIGRATE_JOB"
 	jobsJobFact       = "JOBS_JOB"
 	sharedDBFact      = "SHARED_DB"
 	reloadDBFact      = "RELOAD_DB"
@@ -103,11 +102,8 @@ type Clients struct {
 	GitHub GitHubFunc
 	// Registry opens Artifact Registry, for the release check on the image.
 	Registry RegistryFunc
-	// Run opens Cloud Run, for the migrate job and the services.
+	// Run opens Cloud Run, for the services and the job process's jobs.
 	Run RunFunc
-	// Logs opens Cloud Logging, for the lines the migrate job wrote, read through the
-	// environment's log view.
-	Logs LogsFunc
 	// Tasks opens Cloud Tasks, for the queue a maintenance step pauses and resumes.
 	Tasks TasksFunc
 	// Metrics opens Cloud Monitoring, for the active instances a maintenance step waits on.
@@ -130,7 +126,8 @@ type Clients struct {
 	// SecretsAs opens Secret Manager as an impersonated identity, for the tests of a
 	// stack's plan.
 	SecretsAs SecretsAsFunc
-	// Exec runs the programs a step drives: tofu, docker, a hook's script.
+	// Exec runs the programs a step drives: tofu, docker, the migrate command, a hook's
+	// script.
 	Exec Runner
 }
 
@@ -138,7 +135,7 @@ type Clients struct {
 func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, StorageAs: NewStorageAs, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
-		Registry: NewArtifactRegistry, Run: NewCloudRun, Logs: NewCloudLogging, Secrets: NewSecretManager, Exec: OSRunner{},
+		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{},
 		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs,
 	}
 }
@@ -285,11 +282,10 @@ type Facts struct {
 	Token string
 	// The facts the environment file exports, as the later steps read them. JobsJob
 	// names the job process's Cloud Run job, empty for an application without one.
-	Services   string
-	MigrateJob string
-	JobsJob    string
-	SharedDB   bool
-	ReloadDB   bool
+	Services string
+	JobsJob  string
+	SharedDB bool
+	ReloadDB bool
 	// ReloadReason says why the pull request's database is recreated: the comment
 	// asked (/gcbrun reload-db), or the migrations the last build applied are no longer
 	// in the tree.
@@ -329,9 +325,9 @@ type Facts struct {
 }
 
 // Resolve reads the build and works out the facts: the trigger's kind, the pull
-// request's instruction, the image and its tags, whether the migrate job runs and
+// request's instruction, the image and its tags, whether the migrations run and
 // traffic shifts. It refuses a build that is neither a tag's nor a pull request's, one
-// that names no services or migrate job, a pull-request build outside tst, one with no
+// that names no services, a pull-request build outside tst, one with no
 // connection to read its comment through or no /gcbrun comment, an unknown option, and
 // shared-db with reload-db.
 func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.Writer) (*Facts, error) {
@@ -371,8 +367,8 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 
 // newFacts reads the build and refuses one the pipeline cannot run: a build is a tag's
 // or a pull request's, in one of the environments, and names what it updates (the
-// services, region=name comma-separated, and the migrate job, region=name, from the
-// application layer's substitutions output).
+// services, region=name comma-separated, from the application layer's substitutions
+// output; the job process's job the same way when the application has one).
 func newFacts(data []byte) (*Facts, error) {
 	var build Build
 	if err := json.Unmarshal(data, &build); err != nil {
@@ -393,9 +389,9 @@ func newFacts(data []byte) (*Facts, error) {
 	if f.Tag == "" && f.Environment != tstEnvironment {
 		return nil, errors.Newf("a pull-request build deploys only to tst (this trigger's _ENV is %s)", f.Environment)
 	}
-	f.Services, f.MigrateJob, f.JobsJob = subs["_SERVICES"], subs["_MIGRATE_JOB"], subs["_JOBS_JOB"]
-	if f.Services == "" || f.MigrateJob == "" {
-		return nil, errors.New("_SERVICES and _MIGRATE_JOB name the Cloud Run services and the migrate job this build updates; one is empty")
+	f.Services, f.JobsJob = subs["_SERVICES"], subs["_JOBS_JOB"]
+	if f.Services == "" {
+		return nil, errors.New("_SERVICES names the Cloud Run services this build updates; it is empty")
 	}
 	if err := f.restore(); err != nil {
 		return nil, err
@@ -599,12 +595,12 @@ func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string
 // list (_SEED is true on its version trigger) holds the development seed its live release
 // applied, and that release's record lists the seed files by name and content; when the
 // tree no longer carries one of them as it was applied (edited, renumbered or removed
-// since), the database holds data the seed no longer describes, and the migrate job would
-// apply none of it again (a seeded database takes nothing twice). So the build restores
+// since), the database holds data the seed no longer describes, and the migrate command
+// would apply none of it again (a seeded database takes nothing twice). So the build restores
 // the environment to an empty database, as a restore run asked for by the release itself
 // (RESTORE=empty), and the migrations and the seed apply from the start; the reason goes
 // on the record. A seed file added beside the applied ones is a new data migration the
-// migrate job applies, and recreates nothing. A pull-request build has its own rule
+// migrate command applies, and recreates nothing. A pull-request build has its own rule
 // (staleDatabase); a restore asked for already replaces the database; an environment off
 // the seed list never applied the seed, so a changed seed is nothing to it; production is
 // never on the list, and is never restored by a run. Only a live record of a release
@@ -693,7 +689,7 @@ func newestRecordWhere(ctx context.Context, store Store, bucket, prefix string, 
 }
 
 // instruction reads the latest /gcbrun comment: the words after it are its options
-// (shared-db: the site runs against tst's database and the migrate job does not run;
+// (shared-db: the site runs against tst's database and the migrations do not run;
 // reload-db: the pull request's own database is recreated; down: the pull request's
 // environment is destroyed and nothing deploys). Anything else is a typo and stops the
 // build rather than being ignored.
@@ -724,8 +720,8 @@ func (f *Facts) instruction(all []github.Comment) error {
 		return errors.Newf("%s shared-db with reload-db: reload-db recreates the pull request's own database, and in shared mode there is none", gcbrun)
 	}
 	if f.SharedDB {
-		// tst's schema is tst's: the migrate job never runs against the shared database
-		// (the guard refuses shared-db when the migrations changed at all).
+		// tst's schema is tst's: the migrate command never runs against the shared
+		// database (the guard refuses shared-db when the migrations changed at all).
 		f.RunMigrations = false
 	}
 
@@ -794,7 +790,6 @@ func (f *Facts) environment() string {
 	facts := [][2]string{
 		{"GITHUB_TOKEN", f.Token},
 		{services, f.Services},
-		{migrateJobFact, f.MigrateJob},
 		{jobsJobFact, f.JobsJob},
 		{sharedDBFact, flag(f.SharedDB)},
 		{reloadDBFact, flag(f.ReloadDB)},

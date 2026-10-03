@@ -108,12 +108,13 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 }
 
 // deleteBuildJobs deletes the jobs the pull request's builds made: the copies of its
-// stack's template jobs, named under those templates' prefixes. The templates' names come
-// from the stack's substitutions output, where a pull request's build learns them: the
-// trigger's substitutions name the environment's templates, which no copy of a pull
-// request's is under. It runs with the stack initialized and before it is destroyed,
-// since the output lives in its state; a stack whose output cannot be read, one never
-// applied, names no jobs, and nothing is deleted.
+// stack's template job for the job process, named under the template's prefix. The
+// template's name comes from the stack's substitutions output, where a pull request's
+// build learns it: the trigger's substitutions name the environment's template, which no
+// copy of a pull request's is under. It runs with the stack initialized and before it is
+// destroyed, since the output lives in its state; a stack whose output cannot be read,
+// one never applied, names no job, and nothing is deleted; an application without a job
+// process made none.
 func deleteBuildJobs(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number string, out io.Writer) error {
 	facts, err := s.facts(ctx)
 	if err != nil {
@@ -121,25 +122,22 @@ func deleteBuildJobs(ctx context.Context, clients *Clients, s *stack, subs map[s
 
 		return nil
 	}
+	if facts[jobsJobFact] == "" {
+		fmt.Fprintf(out, "Pull request %s's stack names no template for a job process; its builds made no job.\n", number)
+
+		return nil
+	}
 	project := subs[projectSub]
-	region, template, err := target(migrateJobFact, facts[migrateJobFact])
+	region, template, err := target(jobsJobFact, facts[jobsJobFact])
 	if err != nil {
 		return err
-	}
-	prefixes := []string{jobPrefix(project, region, template)}
-	if facts[jobsJobFact] != "" {
-		jobsRegion, jobsTemplate, err := target(jobsJobFact, facts[jobsJobFact])
-		if err != nil {
-			return err
-		}
-		prefixes = append(prefixes, jobPrefix(project, jobsRegion, jobsTemplate))
 	}
 	run, err := clients.Run(ctx)
 	if err != nil {
 		return err
 	}
 
-	return deletePullRequestJobs(ctx, run, project, region, prefixes, subs[appSub], number, out)
+	return deletePullRequestJobs(ctx, run, project, region, []string{jobPrefix(project, region, template)}, subs[appSub], number, out)
 }
 
 // pullRequestEnvironments are the numbers of the pull requests whose services stand, in

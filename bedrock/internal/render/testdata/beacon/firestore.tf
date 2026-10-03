@@ -6,9 +6,10 @@
 # APP_FIRESTORE_DATABASE, at the level whose processes read and write it (the
 # data level as a rule). The stack then creates imp-<env>-gbl-beacon-fs in
 # Native mode in the primary region, sets the variable to its id, and grants
-# the site and, when they construct that level, the migrate command (whose
-# role migration signals the running instances through it) and the job
-# process datastore.user on that database alone. With it, from the two files
+# the site and, when they construct that level, the job process and the
+# deploy identity that runs the migrate command on the build worker (whose
+# role migration signals the running instances through it) datastore.user on
+# that database alone. With it, from the two files
 # beside the schema migrations (schema/firestore), the database's composite
 # indexes, its time-to-live policies and its security rules; Token Creator for
 # the site on its own account, for the custom tokens live pages sign a browser

@@ -1,7 +1,8 @@
-// binaries.go checks the image build against the jobs the stack deploys: a Cloud Run job
-// runs a command the image must carry (/migrate for the migrate command, /jobs for the job
-// process), and a Dockerfile that builds no such binary makes a job that fails at its
-// first run, after the stack and the pipeline said nothing.
+// binaries.go checks the image build against the commands the pipeline runs from the
+// image: the migrate command (/migrate), which the pipeline takes out of the image and
+// runs on the build worker, and the job process (/jobs), which the stack deploys as a
+// Cloud Run job. A Dockerfile that builds no such binary makes a migration step or a job
+// that fails at its first run, after the stack and the pipeline said nothing.
 
 package check
 
@@ -21,10 +22,11 @@ import (
 // dockerfileName is the image build at the application root.
 const dockerfileName = "Dockerfile"
 
-// BinaryFinding is a job whose command the Dockerfile does not build.
+// BinaryFinding is a program whose binary the Dockerfile does not build.
 type BinaryFinding struct {
 	// Process is the program's name (migrate, jobs, hooks), Dir its main package, Binary
-	// the path in the image, and Runs what runs it (the migrate job, the hook steps).
+	// the path in the image, and Runs what runs it (the migration steps, the job, the
+	// hook steps).
 	Process string
 	Dir     string
 	Binary  string
@@ -74,10 +76,11 @@ func scanBinaries(appDir string, m *derive.Model) ([]BinaryFinding, error) {
 	var findings []BinaryFinding
 	type binary struct{ name, dir, runs string }
 	var want []binary
-	for _, p := range []*derive.Process{m.Migrate, m.Jobs} {
-		if p != nil {
-			want = append(want, binary{name: p.Name, dir: p.Dir, runs: "the " + p.Name + " job runs"})
-		}
+	if m.Migrate != nil {
+		want = append(want, binary{name: m.Migrate.Name, dir: m.Migrate.Dir, runs: "the pipeline's migration steps run"})
+	}
+	if m.Jobs != nil {
+		want = append(want, binary{name: m.Jobs.Name, dir: m.Jobs.Dir, runs: "the " + m.Jobs.Name + " job runs"})
 	}
 	if m.HookProgram != nil {
 		want = append(want, binary{name: "hooks", dir: m.HookProgram.Dir, runs: "the pipeline's hook steps run"})

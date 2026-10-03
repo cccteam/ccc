@@ -1,5 +1,5 @@
-// sweepjobs.go deletes the builds' jobs that nothing runs any more: the job process's jobs
-// whose version no revision carries, and the migrate jobs a run that did not finish left.
+// sweepjobs.go deletes the builds' jobs of the job process that nothing runs any more:
+// the ones whose version no revision carries.
 
 package deploy
 
@@ -22,12 +22,11 @@ const youngJob = 3 * time.Hour
 // SweepJobs deletes the jobs deploy jobs made that nothing runs any more. A job of the job
 // process stays while a revision of the service, in any region, carries its version key: a
 // revision that exists can take a traffic rollback, and then starts the job of its own
-// build. A build's migrate job is deleted by deploy migrate at the end of its step; one a
-// run that did not finish left behind goes here. Any job stays while an execution of it is
-// still running, and while it is younger than three hours, since its build may still be
-// running; the templates always stay. Nothing here retires a revision: that is Cloud Run's
-// own ceiling of revisions per service. A torn-down pull-request environment has nothing to
-// sweep.
+// build. Any job stays while an execution of it is still running, and while it is younger
+// than three hours, since its build may still be running; the template always stays.
+// Nothing here retires a revision: that is Cloud Run's own ceiling of revisions per
+// service. An application without a job process has nothing to sweep, and the pipeline
+// has no step for it; a torn-down pull-request environment has nothing to sweep either.
 func SweepJobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -38,12 +37,17 @@ func SweepJobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer
 
 		return nil
 	}
+	if env[jobsJobFact] == "" {
+		fmt.Fprintln(out, "No job to sweep: the stack's substitutions name no template for a job process (_JOBS_JOB), the application having no cmd/jobs.")
+
+		return nil
+	}
 	build, err := w.Build()
 	if err != nil {
 		return err
 	}
 	project := build.Substitutions[projectSub]
-	region, migrateTemplate, err := target(migrateJobFact, env[migrateJobFact])
+	region, template, err := target(jobsJobFact, env[jobsJobFact])
 	if err != nil {
 		return err
 	}
@@ -55,30 +59,13 @@ func SweepJobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer
 	if err != nil {
 		return err
 	}
-	now := time.Now()
-	deleted, err := sweepLeftovers(ctx, run, jobs, jobPrefix(project, region, migrateTemplate), now, out)
+	kept, err := keptKeys(ctx, run, project, env[services])
 	if err != nil {
 		return err
 	}
-	if env[jobsJobFact] != "" {
-		jobsRegion, jobsTemplate, err := target(jobsJobFact, env[jobsJobFact])
-		if err != nil {
-			return err
-		}
-		if jobsRegion != region {
-			if jobs, err = run.Jobs(ctx, project, jobsRegion); err != nil {
-				return err
-			}
-		}
-		kept, err := keptKeys(ctx, run, project, env[services])
-		if err != nil {
-			return err
-		}
-		n, err := sweepBuildJobs(ctx, run, jobs, jobPrefix(project, jobsRegion, jobsTemplate), kept, now, out)
-		if err != nil {
-			return err
-		}
-		deleted += n
+	deleted, err := sweepBuildJobs(ctx, run, jobs, jobPrefix(project, region, template), kept, time.Now(), out)
+	if err != nil {
+		return err
 	}
 	fmt.Fprintf(out, "Swept the builds' jobs: %d deleted.\n", deleted)
 
@@ -113,34 +100,6 @@ func sweepBuildJobs(ctx context.Context, run Run, jobs []map[string]any, prefix 
 		}
 		deleted++
 		fmt.Fprintf(out, "Job %s deleted: no revision carries its version.\n", shortName(name))
-	}
-
-	return deleted, nil
-}
-
-// sweepLeftovers deletes the migrate jobs under the prefix, the ones a run that did not
-// finish left behind (a run that finished deleted its own), unless an execution is running
-// or the job is young, and answers how many went.
-func sweepLeftovers(ctx context.Context, run Run, jobs []map[string]any, prefix string, now time.Time, out io.Writer) (int, error) {
-	deleted := 0
-	for _, job := range sortedByName(jobs) {
-		name := text(job, keyName)
-		if !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		stays, err := stays(ctx, run, job, now, out)
-		if err != nil || stays {
-			if err != nil {
-				return deleted, err
-			}
-
-			continue
-		}
-		if err := run.Delete(ctx, name); err != nil {
-			return deleted, err
-		}
-		deleted++
-		fmt.Fprintf(out, "Job %s deleted: a migrate job of a run that did not finish.\n", shortName(name))
 	}
 
 	return deleted, nil

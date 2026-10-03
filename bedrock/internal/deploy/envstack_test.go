@@ -515,49 +515,77 @@ const applyRestoreEnv = "export SKIP_DEPLOY=\"\"\nexport RESTORE=\"empty\"\nexpo
 func TestApplyEnvironmentStack(t *testing.T) {
 	t.Parallel()
 
+	// The stack's substitutions output, which the step reads for the migrate command's
+	// settings, and the two reads by their command lines.
+	const (
+		substitutionsOutput = `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}"}`
+		readSubstitutions   = "tofu output -json substitutions"
+		readFirestore       = "tofu output -raw firestore_database"
+	)
+	settingsRead := "The migrate command's settings are read from the stack as applied (_MIGRATE_ENV)."
 	tests := []struct {
 		name     string
 		subs     map[string]string
 		planJSON string
-		// env replaces the environment file; outputs are what tofu output answers.
+		// env replaces the environment file; outputs are what tofu output answers, by
+		// command line, and fail what it refuses.
 		env      string
 		outputs  map[string]string
+		fail     map[string]error
 		wantOut  []string
 		wantTofu []string
+		// wantSettings are the migrate command's settings the step left (MIGRATE_ENV);
 		// wantCleared is the Firestore database whose documents a restore run deleted.
-		wantCleared string
-		wantErr     string
+		wantSettings string
+		wantCleared  string
+		wantErr      string
 	}{
 		{
-			name:        "a restore run deletes the Firestore database's documents after the apply, as the apply identity",
-			subs:        tstSubs(),
-			planJSON:    stackPlanJSON,
-			env:         applyRestoreEnv,
-			outputs:     map[string]string{"tofu output": "quill-fs\n"},
-			wantOut:     []string{"Applied tst's stack: 2 added, 1 changed, 1 destroyed.", "Restore: every document of the Firestore database quill-fs is deleted; its documents referred to rows the restore replaced."},
-			wantTofu:    []string{"tofu apply -input=false -no-color WS/stack.plan", "tofu output -raw firestore_database"},
-			wantCleared: "projects/p-stg/databases/quill-fs",
+			name:         "a restore run deletes the Firestore database's documents after the apply, as the apply identity",
+			subs:         tstSubs(),
+			planJSON:     stackPlanJSON,
+			env:          applyRestoreEnv,
+			outputs:      map[string]string{readSubstitutions: substitutionsOutput, readFirestore: "quill-fs\n"},
+			wantOut:      []string{"Applied tst's stack: 2 added, 1 changed, 1 destroyed.", settingsRead, "Restore: every document of the Firestore database quill-fs is deleted; its documents referred to rows the restore replaced."},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions, readFirestore},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantCleared:  "projects/p-stg/databases/quill-fs",
 		},
 		{
-			name:     "a restore run of a stack without a Firestore database clears nothing",
-			subs:     tstSubs(),
-			planJSON: stackPlanJSON,
-			env:      applyRestoreEnv,
-			wantOut:  []string{"No Firestore database to clear: the stack has no firestore_database output"},
-			wantTofu: []string{"tofu apply -input=false -no-color WS/stack.plan", "tofu output -raw firestore_database"},
+			name:         "a restore run of a stack without a Firestore database clears nothing",
+			subs:         tstSubs(),
+			planJSON:     stackPlanJSON,
+			env:          applyRestoreEnv,
+			outputs:      map[string]string{readSubstitutions: substitutionsOutput},
+			fail:         map[string]error{readFirestore: errors.New("no output")},
+			wantOut:      []string{"No Firestore database to clear: the stack has no firestore_database output"},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions, readFirestore},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
 		},
 		{
-			name:     "the saved plan is applied as the apply identity",
-			subs:     tagSubs(),
-			planJSON: stackPlanJSON,
-			wantOut:  []string{"Applied stg's stack: 2 added, 1 changed, 1 destroyed."},
-			wantTofu: []string{"tofu apply -input=false -no-color WS/stack.plan"},
+			name:         "the saved plan is applied as the apply identity, and the migrate command's settings read from the applied stack",
+			subs:         tagSubs(),
+			planJSON:     stackPlanJSON,
+			outputs:      map[string]string{readSubstitutions: substitutionsOutput},
+			wantOut:      []string{"Applied stg's stack: 2 added, 1 changed, 1 destroyed.", settingsRead},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
 		},
 		{
-			name:     "a plan with no change applies nothing",
+			name:         "a plan with no change applies nothing, and still reads the settings",
+			subs:         tagSubs(),
+			planJSON:     `{"resource_changes": []}`,
+			outputs:      map[string]string{readSubstitutions: substitutionsOutput},
+			wantOut:      []string{"Nothing to apply: stg's stack matches the code.", settingsRead},
+			wantTofu:     []string{readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+		},
+		{
+			name:     "a stack whose output names no settings for the migrate command is refused",
 			subs:     tagSubs(),
 			planJSON: `{"resource_changes": []}`,
-			wantOut:  []string{"Nothing to apply: stg's stack matches the code."},
+			outputs:  map[string]string{readSubstitutions: `{"_SERVICES": "us-central1=quill-app"}`},
+			wantErr:  "the stack's substitutions output names no _MIGRATE_ENV, the migrate command's settings",
 		},
 		{
 			name:    "a build whose plan step did not run is refused",
@@ -582,11 +610,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 				files[StackPlanJSONFile] = tt.planJSON
 			}
 			w := workspaceFiles(t, files)
-			run := &fakeRunner{outputs: tt.outputs}
-			if run.outputs == nil {
-				run.outputs = map[string]string{}
-				run.fail = map[string]error{"tofu output": errors.New("no output")}
-			}
+			run := &fakeRunner{outputs: tt.outputs, fail: tt.fail}
 			store := &fakeFirestore{}
 			var out strings.Builder
 			err := ApplyEnvironmentStack(t.Context(), &Clients{Exec: run, FirestoreAs: store.open}, w, &out)
@@ -611,6 +635,9 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			}
 			if env[environmentApplied] != "" {
 				t.Errorf("the apply appended %s", environmentApplied)
+			}
+			if env[migrateEnvFact] != tt.wantSettings {
+				t.Errorf("%s = %q, want %q", migrateEnvFact, env[migrateEnvFact], tt.wantSettings)
 			}
 			if store.database != tt.wantCleared {
 				t.Errorf("cleared %q, want %q", store.database, tt.wantCleared)

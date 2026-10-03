@@ -55,7 +55,7 @@ func TestScanBinaries(t *testing.T) {
 			name:       "a migrate command the Dockerfile does not build is found",
 			dockerfile: "FROM golang AS build-env\nRUN go build -o /build/app .\n",
 			model:      derive.Model{Migrate: migrate},
-			want:       []BinaryFinding{{Process: "migrate", Dir: "cmd/deployment/migrate", Binary: "/migrate", Runs: "the migrate job runs"}},
+			want:       []BinaryFinding{{Process: "migrate", Dir: "cmd/deployment/migrate", Binary: "/migrate", Runs: "the pipeline's migration steps run"}},
 		},
 		{
 			name:       "a hooks program the Dockerfile does not build is found",

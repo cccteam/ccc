@@ -30,21 +30,19 @@ locals {
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
 
-  # The runtime accounts' IDs: by the convention, or the short name.
-  app_account     = local.is_pr ? "${local.pr_name}-app" : "${local.name}-gbl-${local.app}-app"
-  migrate_account = local.is_pr ? "${local.pr_name}-migrate" : "${local.name}-gbl-${local.app}-migrate"
+  # The runtime accounts' IDs: by the convention, or the short name. The
+  # migration has none: the pipeline runs the migrate command on the build
+  # worker as the deploy identity from 2-env (local.identities).
+  app_account = local.is_pr ? "${local.pr_name}-app" : "${local.name}-gbl-${local.app}-app"
 
   # The same accounts as members and as resource names, spelled out rather than
   # read from the account resources, so a plan knows every membership before
   # the accounts exist: the pull-request build's guard reads the pull request's
   # name off each planned change, and a member known only after apply would
   # stop the first build of every pull request.
-  app_email            = "${local.app_account}@${local.project_id}.iam.gserviceaccount.com"
-  migrate_email        = "${local.migrate_account}@${local.project_id}.iam.gserviceaccount.com"
-  app_member           = "serviceAccount:${local.app_email}"
-  migrate_member       = "serviceAccount:${local.migrate_email}"
-  app_account_name     = "projects/${local.project_id}/serviceAccounts/${local.app_email}"
-  migrate_account_name = "projects/${local.project_id}/serviceAccounts/${local.migrate_email}"
+  app_email        = "${local.app_account}@${local.project_id}.iam.gserviceaccount.com"
+  app_member       = "serviceAccount:${local.app_email}"
+  app_account_name = "projects/${local.project_id}/serviceAccounts/${local.app_email}"
 
   # The environment before this one in the promotion order (tst, stg, prd) and
   # its deployment-records bucket: the pipeline runs a release here only after
@@ -52,9 +50,8 @@ locals {
   previous_environment    = { tst = "", stg = "tst", prd = "stg" }[var.environment]
   previous_records_bucket = try(data.terraform_remote_state.previous_env[0].outputs.records_bucket, "")
 
-  # The service runs in both lab regions; the migrate job in the primary only
-  # (a job runs once, from one place). Keyed by region code because the code
-  # is what names the regional resources.
+  # The service runs in both lab regions. Keyed by region code because the
+  # code is what names the regional resources.
   regions = {
     (local.env.region_code)           = local.env.region
     (local.env.secondary_region_code) = local.env.secondary_region
@@ -93,12 +90,14 @@ locals {
   # (Secret Version Adder), and var.secret_versions pins which one runs.
   #
   # readers: which runtime identity mounts it. Only the service: the migrate
-  # step also constructs the data level, but the session library reads the
+  # command also constructs the data level, but the session library reads the
   # cookie key (falling back to an ephemeral one), the client secret, and the
   # admin credentials only when a browser signs in, which a migration never
-  # does. So the migrate identity holds no accessor grant. The design brief's
-  # rule of thumb ("every process that constructs the level") would grant it;
-  # this is the narrower reading, and a fork for the derivation to settle.
+  # does. So the deploy identity, which runs the migrate command, holds no
+  # accessor grant on a runtime secret, and the command runs with none. The
+  # design brief's rule of thumb ("every process that constructs the level")
+  # would grant it; this is the narrower reading, and a fork for the
+  # derivation to settle.
   secrets = {
     APP_COOKIE_KEY = {
       name    = "cookie-key"
@@ -154,8 +153,11 @@ locals {
   # detail the Dockerfile owns. Neither is set here.
   service_env = merge(local.core_env, local.data_env)
 
-  # cmd/deployment/migrate reads core and data and nothing above them.
-  job_env = merge(local.core_env, local.data_env, {
+  # cmd/deployment/migrate reads core and data and nothing above them: what the pipeline
+  # runs the migrate command with on the build worker (cloud-build.tf,
+  # _MIGRATE_ENV). The release's own variable is the image's, which the
+  # pipeline sets from the build.
+  migrate_env = merge(local.core_env, local.data_env, {
     APP_SERVICE_NAME = "${local.app}-migrate"
   })
 

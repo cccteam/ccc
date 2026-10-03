@@ -40,13 +40,12 @@ output "hostnames" {
 }
 
 output "identities" {
-  description = "Runtime identities by process: app (the site){{if .Jobs}}, jobs (the job process){{end}} and migrate (the migration job)."
+  description = "Runtime identities by process: app (the site){{if .Jobs}} and jobs (the job process){{end}}. The migration runs on the build worker as the deploy identity, 2-env's."
   value = {
-    app     = google_service_account.app.email
+    app = google_service_account.app.email
 {{- if .Jobs}}
-    jobs    = google_service_account.jobs.email
+    jobs = google_service_account.jobs.email
 {{- end}}
-    migrate = google_service_account.migrate.email
   }
 }
 {{- if .Jobs}}
@@ -67,14 +66,6 @@ output "net_hosts" {
     { for host in local.hostnames : host => google_compute_backend_service.app[0].id },
     { for host in local.next_hostnames : host => google_compute_backend_service.next[0].id },
   )
-}
-
-output "migrate_job" {
-  description = "The migration job the pipeline runs before a release takes traffic: name and region."
-  value = {
-    name   = google_cloud_run_v2_job.migrate.name
-    region = google_cloud_run_v2_job.migrate.location
-  }
 }
 
 output "registry" {

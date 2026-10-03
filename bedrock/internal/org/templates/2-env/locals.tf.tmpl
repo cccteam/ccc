@@ -130,10 +130,13 @@ locals {
   ]
 
   # The deploy identity runs every build and deploy and never writes
-  # infrastructure: new revisions, job executions, build logs, and the jobs it
-  # makes per build from the stack's template jobs (the migrate job, and the job
-  # process's job, whose IAM policy it copies from its template: runJobPolicyAdmin,
-  # 1-org's custom role, since run.developer cannot set a job's policy). Its
+  # infrastructure: new revisions, build logs, the migrations (the release's
+  # migrate command, run on the build worker as this identity, with database
+  # admin on the application's own database granted by the application's
+  # stack), and the job it makes per build from the stack's template job for
+  # the job process, whose IAM policy it copies from its template
+  # (runJobPolicyAdmin, 1-org's custom role, since run.developer cannot set a
+  # job's policy). Its
   # monitoring.viewer reads the metrics a maintenance step waits on (the old
   # revision's active instances, before the database is replaced or
   # migrated). cloudBuildBuildReader, 1-org's custom role, reads the build it
