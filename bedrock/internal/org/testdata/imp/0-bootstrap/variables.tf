@@ -7,8 +7,9 @@ variable "boot_layer_roles" {
   description = "Organization-level roles granted to the boot layer identity. The gcloud seed in this layer's README grants the same list; change both together."
   type        = list(string)
   default = [
-    "roles/iam.organizationRoleAdmin",         # the custom project-updater role granted to the org layer identity
-    "roles/iam.serviceAccountAdmin",           # the org layer identity's service account
+    "roles/iam.organizationRoleAdmin",         # the custom roles this layer creates (project updater, state bucket policy admin)
+    "roles/iam.serviceAccountAdmin",           # the org layer identity's service account, and the federation bindings on both identities
+    "roles/iam.workloadIdentityPoolAdmin",     # the boot project's identity pool and provider for the layers workflow (github.tf)
     "roles/resourcemanager.folderAdmin",       # the terraform folder
     "roles/resourcemanager.organizationAdmin", # org-level IAM bindings for the org layer identity
     "roles/resourcemanager.projectCreator",    # the boot project
@@ -21,6 +22,24 @@ variable "boot_layer_roles" {
 variable "boot_project_id" {
   description = "(Required) Project ID of the boot project created during the gcloud seed, including the random suffix chosen for it (e.g. \"imp-boot-gbl-core-a1b2\"). This layer adopts the project rather than creating it, so the ID has to be supplied rather than derived."
   type        = string
+}
+
+variable "github_default_branch" {
+  description = "The default branch of the infrastructure repository, from which alone the layers workflow applies: the identity provider maps a token of a push to it, or of a run started from it, to apply (github.tf)."
+  type        = string
+  default     = "master"
+}
+
+variable "github_organization" {
+  description = "The GitHub organization that holds the infrastructure repository and the application repositories."
+  type        = string
+  default     = "impulseframework"
+}
+
+variable "infrastructure_repository" {
+  description = "This repository's name under the GitHub organization: the one repository whose workflow tokens the boot project's identity provider trusts (github.tf)."
+  type        = string
+  default     = "imp-impulse-infrastructure"
 }
 
 variable "terraform_folder_id" {
@@ -52,6 +71,7 @@ variable "org_layer_roles" {
     "roles/resourcemanager.projectCreator",  # environment projects
     "roles/resourcemanager.projectDeleter",  # project lifecycle
     "roles/resourcemanager.projectIamAdmin", # IAM bindings inside those projects
+    "roles/resourcemanager.tagAdmin",        # the public-invoker tag and the grants on its value (1-org tags.tf)
     "roles/serviceusage.serviceUsageAdmin",  # API enablement
   ]
 }
@@ -65,4 +85,10 @@ variable "prefix" {
   description = "Short org-wide prefix used in resource names (e.g. \"imp\")."
   type        = string
   default     = "imp"
+}
+
+variable "state_bucket" {
+  description = "The seeded state bucket every backend block names (placement.json, stateBucket). This layer grants on it for the two identities it owns (state-bucket.tf); the bucket itself stays outside OpenTofu."
+  type        = string
+  default     = "imp-boot-gbl-state-a1b2"
 }

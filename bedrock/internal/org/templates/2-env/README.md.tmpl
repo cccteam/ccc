@@ -9,31 +9,46 @@ once per environment, as that environment's layer identity
 
 ## Applying
 
+Applied by the layers workflow (`{{.WorkflowPath}}`), once per environment in
+promotion order: a pull request that changes this directory plans it for
+tst, stg and prd as each environment's plan identity
+(`{{.Prefix}}-<env>-gbl-plan`) and posts the three plans; the merge applies it
+for tst, then stg, then prd as `{{.Prefix}}-<env>-gbl-tofu`, and stops at the
+first failure. tst first because it holds the GitHub token secret and makes
+the grants the other two connections need. Run workflow on the Actions tab,
+with `2-env`, applies the three again with no change: each environment
+grants the next environment's deploy identities read on its records bucket
+(the release gate reads the previous environment's records) and reads those
+identities from the next environment's state, which the first pass did not
+have yet, so a registration applies this layer twice; `bedrock org register
+<app>` prints that sequence. The first `init` writes `.terraform.lock.hcl`;
+commit it. `terraform.tfvars` is committed and holds the boot project, the
+bucket, and the two GitHub values; `environment` is never in it; the
+applications are in `applications.auto.tfvars`, rendered from
+`placement.json`.
+
 No workspaces. The state of each environment lives at its own prefix,
 `2-env/<env>`, in the state bucket, and a backend block cannot read a
-variable, so the prefix is supplied at init. `TF_DATA_DIR` keeps one backend
-cache per environment in the same checkout, so an init for one environment
-can never be paired with a plan for another:
+variable, so the prefix is supplied at init, which is how the workflow runs
+it too. By hand, for recovery, a member of the environment's team group asks
+for the Layer administrator entitlement (`roles/iam.serviceAccountTokenCreator`
+on the environment's apply identity, for a short time), and
+`GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` makes the Google provider and the state
+backend act as that identity, on the same code the workflow runs; `TF_DATA_DIR`
+keeps one backend cache per environment in the same checkout, so an init for
+one environment can never be paired with a plan for another:
 
 ```bash
 cd 2-env
+export GOOGLE_IMPERSONATE_SERVICE_ACCOUNT={{.Prefix}}-tst-gbl-tofu@<tst project>.iam.gserviceaccount.com
 export TF_DATA_DIR=.terraform.tst
 tofu init -backend-config="prefix=2-env/tst"
 tofu plan -var environment=tst
 tofu apply -var environment=tst
 ```
 
-Then the same with `stg` and `prd`. Apply `tst` first: it holds the GitHub
-token secret and makes the grants the other two connections need. Then `tst`
-and `stg` once more whenever an application was added: each environment
-grants the next environment's deploy identities read on its records bucket
-(the release gate reads the previous environment's records) and reads those
-identities from the next environment's state, which the first pass did not
-have yet; `bedrock org register <app>` prints that sequence. The first
-`init` writes `.terraform.lock.hcl`; commit it. `terraform.tfvars` is
-committed and holds the boot project, the bucket, and the two GitHub values;
-`environment` is never in it; the applications are in
-`applications.auto.tfvars`, rendered from `placement.json`.
+Then the same with `stg` and `prd`, each under its own entitlement and
+identity.
 
 Order among the project layers: `2-shr` and `2-spn` before this layer (it
 reads their outputs: the instance for stg and prd, the repository names for a
@@ -254,11 +269,15 @@ of a container created here, with the same variable pointing at it.
 
 ## Prerequisites this layer does not create
 
-- On the state bucket, for each environment layer identity: object read on
-  the `1-org/`, `2-shr/`, `2-spn/`, and `2-net/` objects and object admin on
-  `2-env/<env>/`, plus bucket IAM authority so this layer can grant the
-  application apply identities their slots (below). Bucket IAM for the layer
-  identities belongs to the seed or `0-bootstrap`.
+- On the state bucket, for each environment layer identity, from `1-org`
+  (`workflow.tf` there): the list, object read on `1-org/`, `2-shr/`,
+  `2-spn/`, `2-net/` and every `2-env/`, object user on `2-env/<env>/`, and
+  the bucket's policy authority (0-bootstrap's custom role) so this layer
+  can grant the application identities their slots (below). The federation
+  binding that lets the workflow become the identity is `1-org`'s too.
+- `roles/resourcemanager.tagUser` on the public-invoker tag for each
+  application's apply identity, from `1-org` (`public-invokers.auto.tfvars`),
+  committed after this layer has created the identities.
 - Nothing grants the application apply identity anything on the boot
   project, so the application stacks use their environment project as quota
   project; this layer grants `serviceUsageConsumer` there for that.

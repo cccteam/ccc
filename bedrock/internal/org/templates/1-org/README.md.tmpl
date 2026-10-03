@@ -1,9 +1,10 @@
 # 1-org
 
 Where the organization is described: folders, the org policy baseline,
-Essential Contacts, every project, and the identities that will manage each
-project's own layer. Applied by the bootstrap administrator for now, later by Cloud Build in
-the boot project as `{{.Prefix}}-org-gbl-tofu`.
+Essential Contacts, every project, and the identities that manage each
+project's own layer. Its first apply is the bootstrap administrator's; from
+then on the layers workflow applies it as `{{.Prefix}}-org-gbl-tofu` and plans it
+on a pull request as `{{.Prefix}}-org-gbl-plan`.
 
 ## What it creates
 
@@ -34,6 +35,25 @@ the boot project as `{{.Prefix}}-org-gbl-tofu`.
   plan identity `{{.Prefix}}-<key>-gbl-plan`, holding `roles/viewer` and
   `roles/browser`. Both get `roles/serviceusage.serviceUsageConsumer` on the
   boot project, which is their quota project.
+- The plan identities of the two boot layers, `{{.Prefix}}-boot-gbl-plan` and
+  `{{.Prefix}}-org-gbl-plan`, in the boot project (`workflow.tf`), with the
+  organization-level reads of `var.boot_plan_roles`: `0-bootstrap` cannot
+  make its own, and a plan of either layer as its apply identity would run a
+  pull request's code with the power to apply.
+- For every identity it creates, what the layers workflow needs
+  (`workflow.tf`): the federation binding on the boot project's pool (a plan
+  identity admits a pull request's run, an apply identity a run on the
+  default branch alone) and the state bucket's grants (the list, the layer's
+  own prefix, the upstream prefixes it reads). The environment layer
+  identities also get the bucket's policy authority (`0-bootstrap`'s custom
+  role), for the application identities `2-env` creates. Each layer grants
+  for the identities it creates because IAM refuses a binding for a service
+  account that does not exist.
+- `roles/resourcemanager.tagUser` on the public-invoker tag value for each
+  application's apply identity in every environment (`tags.tf`, from
+  `public-invokers.auto.tfvars`): the identity binds the tag to its own Cloud
+  Run services. Rendered by `bedrock org register` and committed once `2-env`
+  has created the identities.
 - The custom organization role `secretContainerAdmin`: creates, updates,
   deletes, and lists secrets, manages their IAM, and enables, disables, and
   destroys versions, but can neither add a version (`versions.add`) nor read
@@ -124,13 +144,16 @@ the boot project as `{{.Prefix}}-org-gbl-tofu`.
 
 ## Applying
 
-In a terminal, in this directory, after `0-bootstrap` has been applied and its
-state migrated. `terraform.tfvars` needs `boot_project_id` from the
-`0-bootstrap` output, and `initialize.tf` needs the bucket name in its backend
-block (the same substitution as in `0-bootstrap`).
+The first apply is the bootstrap administrator's, in a terminal, in this
+directory, after `0-bootstrap` has been applied and its state migrated: the
+identities this layer creates do not exist yet, so nothing can run it as one.
+`terraform.tfvars` needs `boot_project_id` from the `0-bootstrap` output; the
+backend block and the read of `0-bootstrap`'s state name the bucket from
+`placement.json`. `GITHUB_TOKEN` is the person's own (below).
 
 ```bash
 cd 1-org
+export GITHUB_TOKEN=$(gh auth token)
 tofu init
 tofu plan
 tofu apply
@@ -138,7 +161,20 @@ tofu apply
 
 Review the plan carefully. It creates folders, org policy, and projects with
 `deletion_policy = "PREVENT"`, which is hard to undo. The first `init` writes
-`.terraform.lock.hcl`; commit it.
+`.terraform.lock.hcl`; commit it. Then record the `project_ids` and
+`project_numbers` outputs in `placement.json` (`projects`, `projectNumbers`)
+and run `bedrock org render`: the layers workflow names every layer's
+identities by them.
+
+From then on the layers workflow (`{{.WorkflowPath}}`) applies this layer as
+`{{.Prefix}}-org-gbl-tofu` on a merge into `{{.GithubDefaultBranch}}` and plans it on a
+pull request as `{{.Prefix}}-org-gbl-plan`, the plan identity this layer makes for
+itself (`workflow.tf`); the GitHub side runs with the infrastructure GitHub
+App's token, minted in the run (`0-bootstrap/README.md`, "The infrastructure
+GitHub App"). By hand, for recovery, the bootstrap administrator applies it
+the way the first apply ran: with their own sign-in, their own GitHub token
+and the organization-level roles the seed names. No entitlement covers this
+layer.
 
 Set `essential_contact_emails` in `terraform.tfvars` before applying if you
 want Essential Contacts registered. Addresses must be in one of
@@ -148,10 +184,12 @@ want Essential Contacts registered. Addresses must be in one of
 
 GitHub is configured here, by OpenTofu with the GitHub provider, never by a
 bedrock command: `github.tf` declares each application's repository, its rules
-and its Environments, and the operator applies it with their own sign-in. Set
+and its Environments. The layers workflow applies it with the infrastructure
+GitHub App's installation token, minted in the run from the key the boot
+project holds, so the audit log names the app; a person applying by hand sets
 `GITHUB_TOKEN` to the token of an owner of the organization before `tofu plan`
 or `tofu apply` (`export GITHUB_TOKEN=$(gh auth token)` with gh signed in as
-that owner); the audit log then names the person. bedrock commands use the
+that owner), and the audit log names the person. bedrock commands use the
 GitHub API only to act: `bedrock restore` dispatches a workflow, `bedrock
 hotfix` creates branches and pull requests, the pipeline talks back on a pull
 request.
@@ -217,6 +255,7 @@ required checks, the rulesets' names.
 | `allowed_contact_domains` | Domains permitted as Essential Contacts. | `list(string)` | `{{.ContactDomainsList}}` | no |
 | `audit_log_retention_days` | Retention for the audit log bucket; only with `central_logging`. | `number` | `400` | no |
 | `billing_account_id` | Billing account to link projects to. | `string` | n/a | yes |
+| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | nine roles, see `variables.tf` | no |
 | `boot_project_id` | Boot project from `0-bootstrap`; quota and billing project for API calls. | `string` | n/a | yes |
 | `central_logging` | Create the log project, audit log bucket, and folder sinks. | `bool` | `false` | no |
 | `essential_contact_emails` | Addresses registered as Essential Contacts on every folder. | `list(string)` | `[]` | no |
@@ -227,7 +266,9 @@ required checks, the rulesets' names.
 | `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `projects` | Every project, keyed by environment code. | `map(object)` | the six above | no |
+| `public_invokers` | Per application, its apply identities' members, granted tagUser on the public-invoker tag. Rendered into `public-invokers.auto.tfvars`. | `map(list(string))` | `{}` | no |
 | `required_apis` | APIs per API set. | `map(list(string))` | `app`, `log`, `net`, `shr`, `spn` | no |
+| `state_bucket` | The state bucket, read for `0-bootstrap`'s outputs and granted on for the identities created here. | `string` | the placement's `stateBucket` | no |
 
 `terraform.tfvars` sets the required ones.
 
@@ -341,6 +382,7 @@ bucket, prefix `1-org`.
 | `gcp_region`, `region_code` | Primary region and its short code. |
 | `gcp_secondary_region`, `secondary_region_code` | Secondary region and its short code. |
 | `layer_service_accounts` | Layer identity email by environment code. |
+| `boot_plan_service_accounts` | Plan identity email of the two boot layers (boot, org). |
 | `log_project_id` | Log project; `null` while `central_logging` is off. |
 | `org_id` | Numeric organization ID. |
 | `plan_service_accounts` | Plan identity email by environment code. |

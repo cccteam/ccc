@@ -2,8 +2,8 @@
 
 The shared network project: the one global external Application Load
 Balancer every application is served through, its address, certificate, and
-the public DNS zone of the apps domain. Applied by the bootstrap administrator for now, later
-by Cloud Build in the boot project as `imp-net-gbl-tofu`.
+the public DNS zone of the apps domain. Applied by the layers workflow as
+`imp-net-gbl-tofu`, planned on a pull request as `imp-net-gbl-plan`.
 
 There is no VPC in this project. See "Cross-project backends" for why.
 
@@ -142,9 +142,15 @@ and the records are recreated for it; every host in `hosts` changes with it.
 
 ## Applying
 
-In a terminal, in this directory, after `1-org` has been applied. The bucket
-name in the backend block and in the remote state block needs the same
-substitution as the earlier layers.
+By the layers workflow (`.github/workflows/layers.yml`), after `1-org` has been applied:
+a pull request that changes this directory plans it as the plan identity and
+posts the plan, and the merge applies it as the layer identity. Both hold
+their state-bucket grants from `1-org`. The first `init` writes
+`.terraform.lock.hcl`; commit it.
+
+By hand, for recovery, the bootstrap administrator applies it with their own
+sign-in and the organization-level roles the seed names (no entitlement
+covers a shared layer; `0-bootstrap/README.md`, "Recovery, by hand"):
 
 ```bash
 cd 2-net
@@ -152,9 +158,6 @@ tofu init
 tofu plan
 tofu apply
 ```
-
-The first `init` writes `.terraform.lock.hcl`; commit it. Until the Cloud
-Build runner is wired, the bootstrap administrator applies this layer.
 
 ## Inputs
 

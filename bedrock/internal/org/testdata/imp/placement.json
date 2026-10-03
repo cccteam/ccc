@@ -7,6 +7,8 @@
   "githubOrganization": "impulseframework",
   "githubReleaseAppId": "5080645",
   "githubDefaultBranch": "master",
+  "githubInfrastructureAppId": "5080700",
+  "githubInfrastructureKeyVersion": "1",
   "sourceRepo": "imp-impulse-infrastructure",
   "stateBucket": "imp-boot-gbl-state-a1b2",
   "operator": "bedrock@impulseframework.com",
@@ -17,6 +19,15 @@
   "spanner": {"config": "nam10"},
   "contactDomains": ["@impulseframework.com", "@cloud-team.com"],
   "applications": ["harbor", "beacon"],
-  "projects": {"tst": "imp-tst-gbl-core-1a2b", "stg": "imp-stg-gbl-core-3c4d", "prd": "imp-prd-gbl-core-5e6f"},
+  "projects": {
+    "boot": "imp-boot-gbl-core-a1b2",
+    "shr": "imp-shr-gbl-core-7a8b",
+    "net": "imp-net-gbl-core-9c0d",
+    "spn": "imp-spn-gbl-core-2e3f",
+    "tst": "imp-tst-gbl-core-1a2b",
+    "stg": "imp-stg-gbl-core-3c4d",
+    "prd": "imp-prd-gbl-core-5e6f"
+  },
+  "projectNumbers": {"boot": "100000000001"},
   "labels": {"bedrock-lab": "true"}
 }

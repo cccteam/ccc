@@ -1,0 +1,215 @@
+# ---------------------------------------------------------------------------
+# The layers workflow's identities
+#
+# Every layer is planned on a pull request as its plan identity and applied on
+# the merge as its apply identity by .github/workflows/layers.yml, signed in through the
+# boot project's workload identity pool (0-bootstrap/github.tf) with no key.
+# This layer creates the identities of the six project layers
+# (service-accounts.tf) and, here, the plan identities of the two boot layers,
+# which 0-bootstrap cannot make for itself: its own identity exists before it,
+# and a plan of either layer as an apply identity would run a pull request's
+# code with the power to apply. Until this layer's first apply, a pull request
+# that touches 0-bootstrap or 1-org gets no plan.
+#
+# For every identity it creates, this layer makes the federation binding (a
+# plan identity admits a pull request's run, an apply identity a run on the
+# default branch alone) and the state bucket's grants: the layer's own prefix,
+# the upstream prefixes it reads, and the list. 0-bootstrap makes the same
+# for the two identities it owns. IAM refuses a binding for a service account
+# that does not exist, which is why each layer grants for the identities it
+# creates, and why the environment layer identities receive the bucket's
+# policy authority here: 2-env grants the application identities it creates
+# their slots (2-env/identities.tf).
+# ---------------------------------------------------------------------------
+
+locals {
+  boot = data.terraform_remote_state.boot.outputs
+
+  workflow_plan  = "principalSet://iam.googleapis.com/${local.boot.github_pool_name}/attribute.purpose/plan"
+  workflow_apply = "principalSet://iam.googleapis.com/${local.boot.github_pool_name}/attribute.purpose/apply"
+
+  # The two boot layers' plan identities, in the boot project, named after
+  # their layers (boot, org), with the state prefixes each one reads.
+  boot_plans = {
+    boot = { layer = "0-bootstrap", reads = ["0-bootstrap"] }
+    org  = { layer = "1-org", reads = ["0-bootstrap", "1-org"] }
+  }
+
+  state_bucket_objects = "projects/_/buckets/${var.state_bucket}/objects"
+
+  # Each project layer's own state prefix: a shared layer's is its directory,
+  # an environment's is 2-env/<env>; and the upstream prefixes it reads: a
+  # shared layer reads this layer's, an environment reads this layer's, the
+  # shared layers' and every environment's (the next environment's identities
+  # for the record gate, tst's deploy identities for the pull-request builds).
+  layer_state_prefixes    = { for k, v in local.layers : k => v.folder == "shared" ? "2-${k}" : "2-env/${k}" }
+  layer_upstream_prefixes = { for k, v in local.layers : k => v.folder == "shared" ? ["1-org"] : ["1-org", "2-shr", "2-spn", "2-net", "2-env"] }
+  environment_layers      = { for k, v in local.layers : k => v if v.folder != "shared" }
+}
+
+# ---------------------------------------------------------------------------
+# The boot layers' plan identities
+# ---------------------------------------------------------------------------
+
+resource "google_service_account" "boot_plan" {
+  for_each = local.boot_plans
+
+  project      = var.boot_project_id
+  account_id   = "${var.prefix}-${each.key}-gbl-plan"
+  display_name = "OpenTofu plan SA - ${var.prefix}-${each.key}-gbl"
+  description  = "Read-only plan identity for ${var.prefix}-${each.key}-gbl. Plans ${each.value.layer} on a pull request of the infrastructure repository and never applies."
+}
+
+# Organization-level reads (var.boot_plan_roles): the layers they plan declare
+# folders, projects, tags and custom roles across the organization.
+resource "google_organization_iam_member" "boot_plan" {
+  for_each = {
+    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :
+    "${pair[0]}__${pair[1]}" => { plan = pair[0], role = pair[1] }
+  }
+
+  org_id = local.org_id
+  role   = each.value.role
+  member = google_service_account.boot_plan[each.value.plan].member
+}
+
+resource "google_project_iam_member" "boot_plan_quota" {
+  for_each = local.boot_plans
+
+  project = var.boot_project_id
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = google_service_account.boot_plan[each.key].member
+}
+
+# A plan of this layer reads the applications' repositories with the
+# infrastructure GitHub App's token, minted from the key the boot project
+# holds; the org plan identity reads that one secret.
+resource "google_secret_manager_secret_iam_member" "org_plan_infrastructure_key" {
+  project   = var.boot_project_id
+  secret_id = local.boot.github_infrastructure_key_secret
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.boot_plan["org"].member
+}
+
+# ---------------------------------------------------------------------------
+# Federation bindings: who may become each identity
+# ---------------------------------------------------------------------------
+
+resource "google_service_account_iam_member" "tofu_workflow" {
+  for_each = local.layers
+
+  service_account_id = google_service_account.tofu[each.key].name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = local.workflow_apply
+}
+
+resource "google_service_account_iam_member" "plan_workflow" {
+  for_each = local.layers
+
+  service_account_id = google_service_account.plan[each.key].name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = local.workflow_plan
+}
+
+resource "google_service_account_iam_member" "boot_plan_workflow" {
+  for_each = local.boot_plans
+
+  service_account_id = google_service_account.boot_plan[each.key].name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = local.workflow_plan
+}
+
+# ---------------------------------------------------------------------------
+# The state bucket
+# ---------------------------------------------------------------------------
+
+resource "google_storage_bucket_iam_member" "tofu_state_list" {
+  for_each = local.layers
+
+  bucket = var.state_bucket
+  role   = "roles/storage.legacyBucketReader"
+  member = google_service_account.tofu[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "plan_state_list" {
+  for_each = local.layers
+
+  bucket = var.state_bucket
+  role   = "roles/storage.legacyBucketReader"
+  member = google_service_account.plan[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "boot_plan_state_list" {
+  for_each = local.boot_plans
+
+  bucket = var.state_bucket
+  role   = "roles/storage.legacyBucketReader"
+  member = google_service_account.boot_plan[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "tofu_state_own" {
+  for_each = local.layers
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectUser"
+  member = google_service_account.tofu[each.key].member
+
+  condition {
+    title       = "${local.layer_names[each.key]}-state"
+    description = "The layer's own state prefix."
+    expression  = "resource.name.startsWith(\"${local.state_bucket_objects}/${local.layer_state_prefixes[each.key]}/\")"
+  }
+}
+
+resource "google_storage_bucket_iam_member" "tofu_state_upstream" {
+  for_each = local.layers
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.tofu[each.key].member
+
+  condition {
+    title       = "${local.layer_names[each.key]}-upstream-state"
+    description = "The upstream states the layer reads outputs from."
+    expression  = join(" || ", [for p in local.layer_upstream_prefixes[each.key] : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])
+  }
+}
+
+resource "google_storage_bucket_iam_member" "plan_state_read" {
+  for_each = local.layers
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.plan[each.key].member
+
+  condition {
+    title       = "${local.layer_names[each.key]}-plan-state"
+    description = "The layer's own state prefix and the upstream states it reads."
+    expression  = join(" || ", [for p in concat([local.layer_state_prefixes[each.key]], local.layer_upstream_prefixes[each.key]) : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])
+  }
+}
+
+resource "google_storage_bucket_iam_member" "boot_plan_state_read" {
+  for_each = local.boot_plans
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.boot_plan[each.key].member
+
+  condition {
+    title       = "${var.prefix}-${each.key}-gbl-plan-state"
+    description = "The layer's own state prefix and the upstream states it reads."
+    expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])
+  }
+}
+
+# The environment layer identities grant the application identities 2-env
+# creates their own slots in the bucket, which takes the bucket's policy
+# authority (0-bootstrap's custom role).
+resource "google_storage_bucket_iam_member" "environment_tofu_policy_admin" {
+  for_each = local.environment_layers
+
+  bucket = var.state_bucket
+  role   = local.boot.state_bucket_policy_admin_role
+  member = google_service_account.tofu[each.key].member
+}

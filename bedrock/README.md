@@ -932,22 +932,47 @@ bedrock org register quill                                      # an application
 ```
 
 `org new` renders the six layers, each with its `.tf` files, its README and its seeded
-`terraform.tfvars`, and at the root the README, the journal, the ignore rules and the
-OpenTofu version, then prints the hand steps the model needs before the first apply (the
-seed, the bootstrap apply on local state and its migration into the bucket, the billing
-grants). Everything the seed decides is `REPLACEME` in the seeded values until it has run.
+`terraform.tfvars`, the layers workflow (`.github/workflows/layers.yml`), and at the root
+the README, the journal, the ignore rules and the OpenTofu version, then prints the hand
+steps the model needs before the workflow can run (the seed, the bootstrap apply on local
+state and its migration into the bucket, the billing grants, the first apply of 1-org).
+Everything the seed decides is `REPLACEME` in the seeded values until it has run.
 
-`org render` rewrites the owned files from the placement and seeds the absent ones;
-`org check` compares them and exits 1 on drift.
+`org render` rewrites the owned files from the placement, seeds the absent ones and says
+what the workflow still lacks in the placement; `org check` compares the owned files, the
+workflow among them, and exits 1 on drift.
+
+The layers workflow plans every layer a pull request changes, as that layer's plan
+identity, and posts each plan on the pull request; the merge applies those layers as their
+apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env
+for tst, stg and prd), one at a time, stopping at the first failure; Run workflow on the
+Actions tab applies one layer again with no change to it. No key exists anywhere: a run
+signs in through a workload identity pool in the boot project (0-bootstrap's `github.tf`)
+whose provider trusts tokens of the infrastructure repository from that workflow file
+alone and maps each token's event and ref to plan or apply, and each identity's binding
+admits one of the two, so a pull request's code reads and never writes. The placement
+names what the workflow runs with: every project under `projects` (`boot` from the seed,
+the six others from 1-org's `project_ids`), the boot project's number under
+`projectNumbers.boot` (the provider's name), and the infrastructure GitHub App whose token
+1-org's GitHub provider takes (`githubInfrastructureAppId`, and
+`githubInfrastructureKeyVersion`, the pinned version of its key in the boot project's
+container; `0-bootstrap/README.md` has the person's steps). The first applies of
+0-bootstrap and 1-org are the bootstrap administrator's, before the identities exist;
+recovery is by hand, for 2-env under the Layer administrator entitlement with
+`GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` set to the environment's apply identity, for the
+other layers as the bootstrap administrator.
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
-applications, each layer's `applications.auto.tfvars` is rendered from it (1-org's
-repositories, 2-env's list, 2-shr's pushers and pullers, 2-spn's database admins, 2-net's
-hostnames with the wildcard for pull-request environments), and the apply sequence is
-printed: 1-org, then 2-env for every environment, then for every environment but the last
-again (each grants the next environment's deploy identity read on its records bucket, from
-state the first pass did not have), then 2-shr and 2-spn, then the application's own
-stack per environment, then 2-net.
+applications, each layer's values are rendered from it (1-org's repositories and its
+`public-invokers.auto.tfvars`, 2-env's list, 2-shr's pushers and pullers, 2-spn's database
+admins, 2-net's hostnames with the wildcard for pull-request environments), and the pull
+requests the registration takes through the workflow are printed, since one pass in layer
+order does not follow the order the grants need: first 1-org's repository with 2-env's
+identities, then 2-env again from the Actions tab (each environment grants the next
+environment's deploy identity read on its records bucket, from state the first pass did not
+have), then 1-org's public-invoker grants with 2-shr and 2-spn (grants on identities that
+exist now), then the application's own stack per environment, then 2-net. A file a later
+pull request carries stays in the working tree until then.
 
 The application's GitHub repository is configured by `1-org`, with the GitHub provider,
 never by a bedrock command: the repository itself (private; squash the only merge method,
@@ -961,8 +986,9 @@ parentheses) and the infrastructure workflow's `bedrock check` passing on its la
 squash the only merge and, when the placement names an infrastructure team, that team's
 approval of a change to the workflow and Cloud Build files), and the GitHub Environments
 the operations workflow runs in (every environment but production, each deploying from
-the default branch alone). The operator applies it with their own sign-in, `GITHUB_TOKEN`
-from `gh auth token`, after reading the plan; the placement names the release app by its
+the default branch alone). The workflow applies it with the infrastructure GitHub App's
+installation token, minted in the run; a person applying by hand uses their own sign-in,
+`GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
 App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
 by its slug), the default branch (`githubDefaultBranch`) and the team
 (`githubInfrastructureTeam`, empty for none). A repository that existed before the layer

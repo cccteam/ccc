@@ -20,7 +20,8 @@ func newOrg(d deps) *cobra.Command {
 		Use:   "org",
 		Short: "The organization foundation: the layers every application deploys into",
 		Long: `org holds the commands that render and check an organization's infrastructure repository:
-the six layers of the CCC provisioning model (0-bootstrap, 1-org, 2-shr, 2-spn, 2-net, 2-env),
+the six layers of the CCC provisioning model (0-bootstrap, 1-org, 2-shr, 2-spn, 2-net, 2-env)
+and the layers workflow that plans them on a pull request and applies them on its merge,
 rendered from the organization placement, placement.json at the repository root, the way an
 application's stack is rendered from its code.`,
 	}
@@ -37,16 +38,18 @@ func newOrgNew(_ deps) *cobra.Command {
 		Short: "Render an organization foundation for an organization that has none",
 		Long: `new renders an organization's infrastructure repository into a new or empty directory from
 its placement: the six layers of the CCC provisioning model, each with its .tf files, its
-README and its seeded terraform.tfvars, and at the root the README, the journal, the ignore
-rules and the OpenTofu version. It then prints the hand steps the model needs before the first
-apply: the seed (the terraform folder, the boot project, the boot identity and the state
-bucket, as the bootstrap administrator), the bootstrap apply on local state and its migration
-into the bucket, and the billing grants, all spelled out in 0-bootstrap/README.md.
+README and its seeded terraform.tfvars, the layers workflow under .github/workflows, and at
+the root the README, the journal, the ignore rules and the OpenTofu version. It then prints
+the hand steps the model needs before the workflow can run: the seed (the terraform folder,
+the boot project, the boot identity and the state bucket, as the bootstrap administrator), the
+bootstrap apply on local state and its migration into the bucket, the billing grants and the
+first apply of 1-org, all spelled out in 0-bootstrap/README.md; from then on the workflow
+plans every layer on a pull request and applies it on the merge, as the layer's own identity.
 
 The placement is read from --placement, or from placement.json in the directory. The .tf
-files and the READMEs are owned: org render rewrites them, and org check compares them.
-Everything the seed decides (the boot project's suffix, the state bucket, the folder) is
-REPLACEME in the seeded values until the seed has run.`,
+files, the READMEs and the workflow are owned: org render rewrites them, and org check
+compares them. Everything the seed decides (the boot project's suffix, the state bucket, the
+folder) is REPLACEME in the seeded values until the seed has run.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[0]
@@ -80,26 +83,47 @@ REPLACEME in the seeded values until the seed has run.`,
 	return cmd
 }
 
-// handSteps says what a person does before the first apply, and where the commands are.
+// handSteps says what a person does before the workflow can run, and where the commands are.
 func handSteps(p *org.Placement) string {
 	return fmt.Sprintf(`
-By hand, before the first apply (the commands are in 0-bootstrap/README.md):
+By hand, before the layers workflow can run (the commands are in 0-bootstrap/README.md):
   0. On GitHub, in a browser: the organization, this infrastructure repository (never
-     managed by the layers), the release and deployer apps with their keys, installed on
-     the organization (the release app's App ID goes into placement.json, githubReleaseAppId),
-     the organization secrets, the Cloud Build app, and, if a team is to approve changes to
+     managed by the layers; default branch %s), the release, deployer and infrastructure
+     apps with their keys, installed on the organization (the release app's App ID goes
+     into placement.json, githubReleaseAppId; the infrastructure app's App ID and the
+     version of its key in the boot project's container, githubInfrastructureAppId and
+     githubInfrastructureKeyVersion, once 0-bootstrap has made the container), the
+     organization secrets, the Cloud Build app, and, if a team is to approve changes to
      the applications' check files, that team (githubInfrastructureTeam).
   1. Seed, as %s: the terraform folder at the organization root (%s), the boot
      project %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its
      organization roles, and the state bucket %s-boot-gbl-state-<suffix>.
   2. Put the seed's values in place: boot_project_id and terraform_folder_id in
-     0-bootstrap/terraform.tfvars, boot_project_id in 1-org and 2-env, the bucket in
-     placement.json (stateBucket), and run bedrock org render for the backend blocks.
+     0-bootstrap/terraform.tfvars, boot_project_id in 1-org and 2-env, and in
+     placement.json the bucket (stateBucket) and the boot project's id and number
+     (projects.boot, projectNumbers.boot); then bedrock org render, for the backend
+     blocks, the bucket's grants and the workflow.
   3. Apply 0-bootstrap on local state, then migrate its state into the bucket.
   4. A billing administrator grants roles/billing.user on %s to the two identities.
-Then 1-org (with GITHUB_TOKEN set to an organization owner's token, for the applications'
-repositories), the three shared layers, 2-env per environment, and the applications.
-`, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount)
+  5. Apply 1-org, with GITHUB_TOKEN set to an organization owner's token, and record its
+     project_ids and project_numbers in placement.json (projects, projectNumbers); then
+     bedrock org render, so the workflow names every layer's identities.
+From then on the layers workflow (%s) applies every layer, these two included: a pull
+request plans the layers it touches as their plan identities and posts the plans, the
+merge applies them as their apply identities, in layer order. The shared layers, 2-env per
+environment and the applications' registrations go through it; a person applies by hand
+for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
+`, p.GithubDefaultBranch, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, org.WorkflowFile)
+}
+
+// workflowNotice says what the layers workflow still lacks in the placement, or nothing.
+func workflowNotice(p *org.Placement) string {
+	missing := p.WorkflowUnwired()
+	if len(missing) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("The layers workflow cannot run every layer yet: record %s in placement.json and run bedrock org render.\n", strings.Join(missing, ", "))
 }
 
 func newOrgRender(_ deps) *cobra.Command {
@@ -112,8 +136,9 @@ func newOrgRender(_ deps) *cobra.Command {
 		Use:   renderCommand,
 		Short: "Rewrite the organization's owned files from the placement",
 		Long: `render rewrites the owned files of the organization's infrastructure repository (the layers'
-.tf files and READMEs, the root README and the OpenTofu version) from the placement, and
-seeds the files that are absent. Run from the repository root, or name it with --dir.`,
+.tf files and READMEs, the layers workflow, the root README and the OpenTofu version) from
+the placement, and seeds the files that are absent. Run from the repository root, or name it
+with --dir.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
@@ -132,6 +157,7 @@ seeds the files that are absent. Run from the repository root, or name it with -
 			if len(written.Seeded) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s.\n", strings.Join(written.Seeded, ", "))
 			}
+			fmt.Fprint(cmd.OutOrStdout(), workflowNotice(p))
 			if len(p.Applications) > 0 {
 				fmt.Fprint(cmd.OutOrStdout(), applicationProjects(p, "each application"))
 			}
@@ -154,11 +180,11 @@ func newOrgCheck(_ deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Compare the organization's committed layers with what the placement renders",
-		Long: `check renders the organization's layers afresh and compares every owned file with the one in
-the repository. It exits 1 when any differs or is missing, listing each with the first line
-that differs: the drift between the placement and the committed infrastructure. Seeded
-files (each layer's terraform.tfvars, the journal, the ignore rules) are a person's and are
-not compared.`,
+		Long: `check renders the organization's layers and the layers workflow afresh and compares every
+owned file with the one in the repository. It exits 1 when any differs or is missing, listing
+each with the first line that differs: the drift between the placement and the committed
+infrastructure. Seeded files (each layer's terraform.tfvars, the journal, the ignore rules)
+are a person's and are not compared.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
@@ -206,17 +232,20 @@ func newOrgRegister(_ deps) *cobra.Command {
 		Use:   "register <app>",
 		Short: "Register an application in the foundation",
 		Long: `register adds an application to the organization: its code goes into placement.json's
-applications, the layers' applications.auto.tfvars are rendered from it (1-org's repositories,
-2-env's list, 2-shr's pushers and pullers, 2-spn's database admins, 2-net's hostnames), and the
-apply sequence is printed: 1-org (the repository exists, configured: private, squash the only
-merge, its rulesets with the required checks, its Environments), then 2-env for every
-environment, then for every environment but the last again (each grants the next
-environment's deploy identity read on its records bucket, from state the first pass did not
-have), then 2-shr and 2-spn (the grants, on identities that exist now), then the application's
-own stack per environment, then 2-net (the hostnames, onto backends that exist now). An application code is 1 to 6 lowercase alphanumeric characters starting with a letter,
-registered once. Run from the repository root, or name it with --dir. Before 1-org has run, the
-placement records no environment projects and the rendered values carry REPLACEME; record
-1-org's project_ids in placement.json (projects) and run org render.`,
+applications, the layers' values are rendered from it (1-org's repositories and its
+public-invoker grants, 2-env's list, 2-shr's pushers and pullers, 2-spn's database admins,
+2-net's hostnames), and the pull requests the registration takes through the layers workflow
+are printed, since one pass in layer order does not follow the order the grants need: first
+1-org and 2-env (the repository, then the identities under it), then 2-env again from the
+Actions tab (each environment grants the next environment's deploy identity read on its
+records bucket, from state the first pass did not have), then 1-org's public-invoker grants
+with 2-shr and 2-spn (the grants, on identities that exist now), then the application's own
+stack per environment, then 2-net (the hostnames, onto backends that exist now). The files a
+later pull request carries stay in the working tree until then. An application code is 1 to 6
+lowercase alphanumeric characters starting with a letter, registered once. Run from the
+repository root, or name it with --dir. Before 1-org has run, the placement records no
+environment projects and the rendered values carry REPLACEME; record 1-org's project_ids in
+placement.json (projects) and run org render.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := args[0]
@@ -242,11 +271,12 @@ placement records no environment projects and the rendered values carry REPLACEM
 				return err
 			}
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the five applications.auto.tfvars among them.\n", app, placement, written.Owned)
+			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", app, placement, written.Owned)
 			if missing := p.ProjectsMissing(); len(missing) > 0 {
 				fmt.Fprintf(out, "The placement records no project for %s: the rendered values carry REPLACEME there until 1-org's project_ids are recorded in placement.json (projects) and org render runs.\n", strings.Join(missing, ", "))
 			}
-			fmt.Fprint(out, applySequence(app))
+			fmt.Fprint(out, workflowNotice(p))
+			fmt.Fprint(out, applySequence(p, app))
 			fmt.Fprint(out, applicationProjects(p, app))
 
 			return nil
@@ -275,20 +305,26 @@ func applicationProjects(p *org.Placement, app string) string {
 	return b.String()
 }
 
-// applySequence says what to apply after an application was registered, in order.
-func applySequence(app string) string {
+// applySequence says how a registered application reaches the layers through the layers
+// workflow: the pull requests, in order, and the one run from the Actions tab.
+func applySequence(p *org.Placement, app string) string {
 	return fmt.Sprintf(`
-Apply, in order (each layer from its directory; 2-env per environment, -var environment=<env>):
-  1. 1-org, with GITHUB_TOKEN set to an organization owner's token: %s's repository exists,
-     private, squash the only merge, with its rulesets (the required checks, the release
-     tags) and its Environments; a repository made before this import first (1-org/README.md).
-  2. 2-env for tst, stg and prd: %s's identities, database, repository link and triggers.
-  3. 2-env for tst and stg again: each environment grants the next environment's deploy
-     identity read on its records bucket, from state the first pass did not have.
-  4. 2-shr and 2-spn: the registry grants and the database admins, on identities that exist now.
-  5. %s's own stack, rendered in its repository (bedrock render), applied per environment.
-  6. 2-net: the hostnames, onto the backends the stack created.
-`, app, app, app)
+Register through the layers workflow, as pull requests into %s (each merge applies the layers
+it touches, in layer order); a file a later pull request carries stays in the working tree
+until then:
+  1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars:
+     %s's repository (private, squash the only merge, its rulesets and Environments; a
+     repository made before this is imported first, 1-org/README.md), then, in tst, stg
+     and prd, its identities, database, repository link and triggers.
+  2. Run workflow (the Actions tab) with 2-env: tst and stg grant the next environment's
+     deploy identity read on their records bucket, from state the first pass did not have.
+  3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and
+     2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
+     database admins, on identities that exist now.
+  4. %s's own stack, rendered in its repository (bedrock render), applied per environment
+     by its pipeline with the first release.
+  5. 2-net/applications.auto.tfvars: the hostnames, onto the backends the stack created.
+`, p.GithubDefaultBranch, app, app)
 }
 
 // orgPlacement reads the placement named, or the one at the repository root.

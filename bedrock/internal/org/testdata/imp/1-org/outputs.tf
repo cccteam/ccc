@@ -52,6 +52,11 @@ output "plan_service_accounts" {
   value       = { for k, sa in google_service_account.plan : k => sa.email }
 }
 
+output "boot_plan_service_accounts" {
+  description = "Read-only plan identity email of the two boot layers (boot for 0-bootstrap, org for 1-org), in the boot project; a pull request plans those layers as them."
+  value       = { for k, sa in google_service_account.boot_plan : k => sa.email }
+}
+
 output "prefix" {
   description = "Org-wide naming prefix."
   value       = var.prefix

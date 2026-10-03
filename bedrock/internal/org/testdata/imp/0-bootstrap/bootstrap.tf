@@ -50,9 +50,9 @@ import {
   to = google_folder.terraform
 }
 
-# The boot project hosts the layer identities, the state bucket, and the Cloud
-# Build runner, and acts as the quota and billing project for every downstream
-# layer.
+# The boot project hosts the layer identities, the state bucket, the layers
+# workflow's identity pool and the infrastructure GitHub App's key (github.tf),
+# and acts as the quota and billing project for every downstream layer.
 #
 # random_project_id is off and the ID comes from a variable: the project already
 # exists with a suffix the seed script chose, and the module would otherwise
@@ -75,15 +75,15 @@ module "boot_project" {
 
   activate_apis = [
     "cloudbilling.googleapis.com",         # link the billing account to projects created by 1-org
-    "cloudbuild.googleapis.com",           # the layer runner; its triggers are wired in a later change
     "cloudresourcemanager.googleapis.com", # folders, projects, IAM
     "essentialcontacts.googleapis.com",    # Essential Contacts set by 1-org
-    "iam.googleapis.com",                  # service accounts
-    "iamcredentials.googleapis.com",       # short-lived credentials, should a human ever run a layer as its identity
-    "logging.googleapis.com",              # Cloud Build logs, and the log sinks if 1-org's central logging is turned on
+    "iam.googleapis.com",                  # service accounts, the layers workflow's identity pool
+    "iamcredentials.googleapis.com",       # the short-lived tokens the workflow and a recovering administrator run a layer with
+    "logging.googleapis.com",              # the log sinks if 1-org's central logging is turned on
     "orgpolicy.googleapis.com",            # org policy constraints
     "serviceusage.googleapis.com",         # API enablement in downstream projects
     "storage.googleapis.com",              # the state bucket
+    "sts.googleapis.com",                  # the token exchange of the workflow's sign-in (github.tf)
 
     # Every downstream layer reaches its APIs through this project as the quota project
     # (user_project_override), and an API refuses a quota project where it is disabled:
@@ -109,14 +109,15 @@ import {
   to = module.boot_project.module.project-factory.google_project.main
 }
 
-# The identity this layer itself runs as once the Cloud Build runner is wired.
-# The seed script creates it; it is adopted rather than recreated, because
-# destroying it mid-run would cut off the run doing the destroying.
+# The identity this layer runs as through the layers workflow, after the
+# bootstrap administrator's first apply (github.tf). The seed script creates
+# it; it is adopted rather than recreated, because destroying it mid-run would
+# cut off the run doing the destroying.
 resource "google_service_account" "boot_tofu" {
   project      = var.boot_project_id
   account_id   = "${var.prefix}-boot-gbl-tofu"
   display_name = "OpenTofu SA - ${local.boot_layer_name}"
-  description  = "Layer identity for ${local.boot_layer_name}. Applies the 0-bootstrap layer from Cloud Build in this project."
+  description  = "Layer identity for ${local.boot_layer_name}. Applies the 0-bootstrap layer from the infrastructure repository's workflow."
 }
 
 import {
@@ -130,7 +131,7 @@ import {
 # shrinking boot_layer_roles revokes permissions from the identity running the
 # apply, and the run that does it may not survive to finish.
 resource "google_organization_iam_member" "boot_tofu" {
-  # checkov:skip=CKV_GCP_117: the boot layer identity has to create folders, projects, org-level IAM bindings, and custom roles before any narrower scope exists. It has no keys and runs only from Cloud Build in the boot project.
+  # checkov:skip=CKV_GCP_117: the boot layer identity has to create folders, projects, org-level IAM bindings, and custom roles before any narrower scope exists. It has no keys and runs only from the infrastructure repository's workflow, from its default branch.
   # checkov:skip=CKV_GCP_49: See CKV_GCP_117 above.
   # checkov:skip=CKV_GCP_45: iam.serviceAccountAdmin is granted at the org node because this layer creates service accounts in a project that is itself created here.
   for_each = toset(var.boot_layer_roles)
@@ -164,11 +165,11 @@ resource "google_service_account" "org_tofu" {
   project      = module.boot_project.project_id
   account_id   = "${var.prefix}-org-gbl-tofu"
   display_name = "OpenTofu SA - ${local.org_layer_name}"
-  description  = "Layer identity for ${local.org_layer_name}. Applies the 1-org layer from Cloud Build in the boot project."
+  description  = "Layer identity for ${local.org_layer_name}. Applies the 1-org layer from the infrastructure repository's workflow."
 }
 
 resource "google_organization_iam_member" "org_tofu" {
-  # checkov:skip=CKV_GCP_117: the org layer identity must manage folders, projects, org policies, IAM, and a custom role across the hierarchy this repo owns. It has no keys and runs only from Cloud Build in the boot project.
+  # checkov:skip=CKV_GCP_117: the org layer identity must manage folders, projects, org policies, IAM, and a custom role across the hierarchy this repo owns. It has no keys and runs only from the infrastructure repository's workflow, from its default branch.
   # checkov:skip=CKV_GCP_49: See CKV_GCP_117 above.
   # checkov:skip=CKV_GCP_45: iam.serviceAccountAdmin is granted at the org node because 1-org creates service accounts inside projects that do not exist at bootstrap time, so project-level scoping is not possible.
   for_each = toset(var.org_layer_roles)
@@ -192,6 +193,15 @@ resource "google_organization_iam_member" "org_tofu_project_updater" {
   org_id = local.org_id
   role   = google_organization_iam_custom_role.project_updater.id
   member = google_service_account.org_tofu.member
+}
+
+# The boot identity manages the boot project's labels and metadata through the
+# project module when this layer runs through the workflow; the bootstrap
+# administrator's Owner covered the first apply.
+resource "google_organization_iam_member" "boot_tofu_project_updater" {
+  org_id = local.org_id
+  role   = google_organization_iam_custom_role.project_updater.id
+  member = google_service_account.boot_tofu.member
 }
 
 # Billing is granted on the billing account, not the org node. Gated for the

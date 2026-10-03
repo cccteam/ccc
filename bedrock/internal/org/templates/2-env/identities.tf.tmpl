@@ -157,9 +157,9 @@ check "repositories_registered" {
 # bucket, not on an object), so it is granted on its own, unconditionally,
 # through legacyBucketReader: the identity can name every object in the
 # bucket and open only its own. The bucket is the boot project's; this layer
-# grants on it because this layer creates the identity, and when the runner
-# is wired the environment layer identity needs bucket IAM authority on the
-# state bucket for it (0-bootstrap README, "Not yet wired").
+# grants on it because this layer creates the identity (a grant on an
+# identity that does not exist is refused), with the bucket's policy
+# authority 1-org gives each environment layer identity (1-org/workflow.tf).
 # ---------------------------------------------------------------------------
 
 resource "google_storage_bucket_iam_member" "apply_state_list" {
@@ -365,16 +365,11 @@ resource "google_secret_manager_secret_iam_member" "deploy_build_secrets" {
 # the application's stack, where those identities are created: the deploy identity may act
 # as this application's services and jobs and no other's.
 
-# The application apply identity binds the public-invoker tag (1-org tags.tf)
-# to its own Cloud Run services, which is what lets it grant allUsers
-# roles/run.invoker there under the environment folder's domain policy.
-resource "google_tags_tag_value_iam_member" "apply_public_invoker" {
-  for_each = local.apps
-
-  tag_value = local.org.public_invoker_tag_value
-  role      = "roles/resourcemanager.tagUser"
-  member    = google_service_account.apply[each.key].member
-}
+# The application apply identity binds the public-invoker tag to its own Cloud
+# Run services, which is what lets it grant allUsers roles/run.invoker there
+# under the environment folder's domain policy. tagUser on the value is 1-org's
+# grant, where the tag is owned (its public-invokers.auto.tfvars names this
+# identity), since setting the value's policy is the tag owner's right.
 
 # ---------------------------------------------------------------------------
 # Secret operators

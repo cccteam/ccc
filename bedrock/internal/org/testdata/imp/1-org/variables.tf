@@ -21,6 +21,22 @@ variable "billing_account_id" {
   type        = string
 }
 
+variable "boot_plan_roles" {
+  description = "Organization-level roles granted to the plan identities of the two boot layers (0-bootstrap and 1-org, both in the boot project): the reads a plan of either layer needs, at the organization node since the layers declare folders, projects, tags and custom roles across it. A starting set, completed by refusal."
+  type        = list(string)
+  default = [
+    "roles/browser",                         # the organization, its folders and projects
+    "roles/essentialcontacts.viewer",        # Essential Contacts per folder
+    "roles/iam.securityReviewer",            # every IAM policy the grants are refreshed through, and the custom roles
+    "roles/iam.serviceAccountViewer",        # the identities in every project
+    "roles/iam.workloadIdentityPoolViewer",  # the boot project's pool and provider
+    "roles/orgpolicy.policyViewer",          # the folder-scoped constraints
+    "roles/resourcemanager.tagViewer",       # the public-invoker tag
+    "roles/secretmanager.viewer",            # the key container's metadata, never a version's payload
+    "roles/serviceusage.serviceUsageViewer", # each project's enabled APIs
+  ]
+}
+
 variable "boot_project_id" {
   description = "(Required) Boot project created by 0-bootstrap. Used as the quota and billing project for API calls."
   type        = string
@@ -301,6 +317,18 @@ variable "projects" {
     condition     = !contains(keys(var.projects), "log")
     error_message = "The log project is added by central_logging, not by var.projects."
   }
+}
+
+variable "public_invokers" {
+  description = "Per application, the IAM members of its apply identities in every environment (2-env's), granted roles/resourcemanager.tagUser on the public-invoker tag value (tags.tf): an apply identity binds the tag to its own Cloud Run services, which is what lets it grant allUsers roles/run.invoker there. Rendered into public-invokers.auto.tfvars by bedrock org register and committed after 2-env has created the identities, since a grant on an identity that does not exist is refused."
+  type        = map(list(string))
+  default     = {}
+}
+
+variable "state_bucket" {
+  description = "The seeded state bucket every backend block names (placement.json, stateBucket). This layer reads 0-bootstrap's state from it and grants on it for the identities it creates (workflow.tf)."
+  type        = string
+  default     = "imp-boot-gbl-state-a1b2"
 }
 
 variable "required_apis" {

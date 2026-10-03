@@ -60,8 +60,19 @@ type Placement struct {
 	// read by its slug with the operator's token.
 	GithubReleaseAppID string `json:"githubReleaseAppId"`
 	// GithubDefaultBranch is the default branch of every application repository, from
-	// which alone the operations workflow's Environments deploy.
+	// which alone the operations workflow's Environments deploy, and of this repository,
+	// from which alone the layers workflow applies.
 	GithubDefaultBranch string `json:"githubDefaultBranch"`
+	// GithubInfrastructureAppID is the App ID of the infrastructure GitHub App, whose
+	// installation token the layers workflow mints for 1-org's GitHub provider: digits,
+	// from the app's settings page. Empty until the app exists; a run of 1-org through
+	// the workflow refuses until it is recorded.
+	GithubInfrastructureAppID string `json:"githubInfrastructureAppId,omitempty"`
+	// GithubInfrastructureKeyVersion is the number of the Secret Manager version holding
+	// the infrastructure app's private key, in the container 0-bootstrap creates in the
+	// boot project (<prefix>-boot-gbl-github-infrastructure-key): pinned, never latest.
+	// Empty until a version was added.
+	GithubInfrastructureKeyVersion string `json:"githubInfrastructureKeyVersion,omitempty"`
 	// GithubInfrastructureTeam is the slug of the organization's infrastructure team,
 	// whose approval a change to an application's workflow and Cloud Build files
 	// needs; empty for none.
@@ -85,13 +96,15 @@ type Placement struct {
 	// order they were added; empty for an organization with none yet. bedrock org
 	// register adds one; the layers' applications.auto.tfvars are rendered from it.
 	Applications []string `json:"applications"`
-	// Projects are the environment projects by environment (tst, stg, prd), the ids
-	// 1-org's apply chose (its project_ids output): what the applications' identities
-	// and backends are named under. Absent until 1-org has run; REPLACEME is rendered
-	// in their place.
+	// Projects are the projects by key: boot, the project the seed chose, and shr, net,
+	// spn, tst, stg and prd, the ids 1-org's apply chose (its project_ids output). The
+	// environment projects are what the applications' identities and backends are named
+	// under; every project names the layer identities the layers workflow signs in as.
+	// Absent until the seed or 1-org has run; REPLACEME is rendered in their place.
 	Projects map[string]string `json:"projects,omitempty"`
-	// ProjectNumbers are the environment projects' numbers by environment, from 1-org's
-	// project_numbers output, recorded beside Projects. An application's placement
+	// ProjectNumbers are the projects' numbers by the same keys: boot from the seed (the
+	// layers workflow names the boot project's identity provider by it), the rest from
+	// 1-org's project_numbers output, recorded beside Projects. An application's placement
 	// records its environments' ids and numbers together (bedrock org register prints
 	// the block), for the operations workflow that starts a restore from GitHub.
 	ProjectNumbers map[string]string `json:"projectNumbers,omitempty"`
@@ -109,6 +122,19 @@ const (
 // Environments are the model's environments in promotion order; pull requests deploy
 // to the first, production is the last.
 var Environments = []string{tstEnvironment, stgEnvironment, prdEnvironment}
+
+// The model's other project keys: the boot project, and the three shared projects.
+const (
+	bootProject = "boot"
+	shrProject  = "shr"
+	netProject  = "net"
+	spnProject  = "spn"
+)
+
+// ProjectKeys are the model's projects by key, in layer order: the boot project (the
+// seed's, 0-bootstrap's and 1-org's layers run there), the shared projects, then the
+// environment projects.
+var ProjectKeys = []string{bootProject, shrProject, netProject, spnProject, tstEnvironment, stgEnvironment, prdEnvironment}
 
 // Region is one region: its name and the three-letter code resource names carry.
 type Region struct {
@@ -163,24 +189,11 @@ func (p *Placement) Validate() error {
 			return errors.Newf("region %q needs a name and a three-character code", r.Name)
 		}
 	}
-	if !projectNumberRE.MatchString(p.GithubReleaseAppID) {
-		return errors.Newf("githubReleaseAppId %q is not an App ID (digits)", p.GithubReleaseAppID)
+	if err := p.validateGithubApps(); err != nil {
+		return err
 	}
-	for env, id := range p.Projects {
-		if !slices.Contains(Environments, env) {
-			return errors.Newf("projects names %q, which is not one of %s", env, strings.Join(Environments, ", "))
-		}
-		if strings.TrimSpace(id) == "" {
-			return errors.Newf("projects.%s is empty", env)
-		}
-	}
-	for env, number := range p.ProjectNumbers {
-		if !slices.Contains(Environments, env) {
-			return errors.Newf("projectNumbers names %q, which is not one of %s", env, strings.Join(Environments, ", "))
-		}
-		if !projectNumberRE.MatchString(number) {
-			return errors.Newf("projectNumbers.%s %q is not a project number (digits)", env, number)
-		}
+	if err := p.validateProjects(); err != nil {
+		return err
 	}
 	for _, d := range p.ContactDomains {
 		if !strings.HasPrefix(d, "@") || len(d) < 3 {
@@ -195,6 +208,45 @@ func (p *Placement) Validate() error {
 	for k, v := range p.Labels {
 		if !labelRE.MatchString(k) || v == "" {
 			return errors.Newf("label %q = %q is not a lowercase key with a value", k, v)
+		}
+	}
+
+	return nil
+}
+
+// validateGithubApps refuses a GitHub App named by its slug instead of its App ID, and a
+// key version that is not a version's number (latest among them).
+func (p *Placement) validateGithubApps() error {
+	if !projectNumberRE.MatchString(p.GithubReleaseAppID) {
+		return errors.Newf("githubReleaseAppId %q is not an App ID (digits)", p.GithubReleaseAppID)
+	}
+	if p.GithubInfrastructureAppID != "" && !projectNumberRE.MatchString(p.GithubInfrastructureAppID) {
+		return errors.Newf("githubInfrastructureAppId %q is not an App ID (digits)", p.GithubInfrastructureAppID)
+	}
+	if p.GithubInfrastructureKeyVersion != "" && !projectNumberRE.MatchString(p.GithubInfrastructureKeyVersion) {
+		return errors.Newf("githubInfrastructureKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubInfrastructureKeyVersion)
+	}
+
+	return nil
+}
+
+// validateProjects refuses a project or a project number under a key the model lacks, an
+// empty project id, and a number that is not one.
+func (p *Placement) validateProjects() error {
+	for key, id := range p.Projects {
+		if !slices.Contains(ProjectKeys, key) {
+			return errors.Newf("projects names %q, which is not one of %s", key, strings.Join(ProjectKeys, ", "))
+		}
+		if strings.TrimSpace(id) == "" {
+			return errors.Newf("projects.%s is empty", key)
+		}
+	}
+	for key, number := range p.ProjectNumbers {
+		if !slices.Contains(ProjectKeys, key) {
+			return errors.Newf("projectNumbers names %q, which is not one of %s", key, strings.Join(ProjectKeys, ", "))
+		}
+		if !projectNumberRE.MatchString(number) {
+			return errors.Newf("projectNumbers.%s %q is not a project number (digits)", key, number)
 		}
 	}
 
@@ -232,14 +284,14 @@ func (p *Placement) labelKeys() []string {
 	return keys
 }
 
-// Project is the environment's project id, or the REPLACEME form until 1-org has run
-// and the placement records it.
-func (p *Placement) Project(env string) string {
-	if id, ok := p.Projects[env]; ok {
+// Project is the project id under a key (boot, or an environment or shared project),
+// or the REPLACEME form until the seed or 1-org has run and the placement records it.
+func (p *Placement) Project(key string) string {
+	if id, ok := p.Projects[key]; ok {
 		return id
 	}
 
-	return p.Prefix + "-" + env + "-gbl-core-" + replaceMe
+	return p.Prefix + "-" + key + "-gbl-core-" + replaceMe
 }
 
 // ProjectsMissing names the environments whose project the placement does not record.
@@ -248,6 +300,24 @@ func (p *Placement) ProjectsMissing() []string {
 	for _, env := range Environments {
 		if _, ok := p.Projects[env]; !ok {
 			missing = append(missing, env)
+		}
+	}
+
+	return missing
+}
+
+// WorkflowUnwired names the placement values the layers workflow still lacks, as the
+// keys a person records: projectNumbers.boot (the identity provider is named by the
+// boot project's number) and projects.<key> for every project whose layer identities
+// the workflow signs in as. Empty once every layer can run.
+func (p *Placement) WorkflowUnwired() []string {
+	var missing []string
+	if _, ok := p.ProjectNumbers[bootProject]; !ok {
+		missing = append(missing, "projectNumbers."+bootProject)
+	}
+	for _, key := range ProjectKeys {
+		if _, ok := p.Projects[key]; !ok {
+			missing = append(missing, "projects."+key)
 		}
 	}
 

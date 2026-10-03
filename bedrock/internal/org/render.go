@@ -28,6 +28,16 @@ const (
 	tfvarsFile  = "terraform.tfvars"
 	journalFile = "JOURNAL.md"
 	ignoreFile  = ".gitignore"
+	// workflowDir holds the layers workflow, the one GitHub workflow of the repository:
+	// rendered and owned like the layers' files, compared by org check.
+	workflowDir = ".github/workflows"
+	// workflowName is the workflow file's name under workflowDir.
+	workflowName = "layers.yml"
+	// mappedPurpose is the attribute the boot project's identity provider maps a
+	// GitHub token's event and ref to: plan for a pull request into the default branch,
+	// apply for a push to it or a run started from it, none for anything else. Each
+	// identity's federation binding selects one value.
+	mappedPurpose = "attribute.purpose"
 	// modelLabelWidth is the width of the model's longest label key,
 	// terraform_source_path, which every labels block aligns to.
 	modelLabelWidth = len("terraform_source_path")
@@ -37,8 +47,32 @@ const (
 	blockLineCount = 6
 )
 
+// The model's layers by directory.
+const (
+	bootstrapLayer = "0-bootstrap"
+	orgLayer       = "1-org"
+	shrLayer       = "2-shr"
+	spnLayer       = "2-spn"
+	netLayer       = "2-net"
+	envLayer       = "2-env"
+)
+
 // Layers are the model's layers, in apply order.
-var Layers = []string{"0-bootstrap", "1-org", "2-shr", "2-spn", "2-net", "2-env"}
+var Layers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, netLayer, envLayer}
+
+// WorkflowFile is the layers workflow's path under the repository root.
+const WorkflowFile = workflowDir + "/" + workflowName
+
+// layerProjects is the project each single-run layer's identities live in, by layer: the
+// boot project for the two boot layers (both identities are named after their layer, boot
+// and org), the layer's own project for the shared ones. 2-env's are the environments'.
+var layerProjects = map[string]struct{ name, project string }{
+	bootstrapLayer: {name: bootProject, project: bootProject},
+	orgLayer:       {name: "org", project: bootProject},
+	shrLayer:       {name: shrProject, project: shrProject},
+	spnLayer:       {name: spnProject, project: spnProject},
+	netLayer:       {name: netProject, project: netProject},
+}
 
 // seeded are the files the tool writes once, by base name.
 var seeded = map[string]bool{
@@ -151,6 +185,118 @@ func (v *view) NextBackend(env, app string) string {
 // Prd is the production environment, the last.
 func (*view) Prd() string {
 	return Environments[len(Environments)-1]
+}
+
+// LayerRun is one run of the layers workflow: a layer, the environment it is applied in
+// (2-env alone; empty for the rest), the state prefix its init names (2-env alone), and
+// the identities the run signs in as: the apply identity on the default branch, the plan
+// identity on a pull request. Name is the run as the workflow and its comments call it.
+type LayerRun struct {
+	Name        string
+	Layer       string
+	Environment string
+	StatePrefix string
+	Apply       string
+	Plan        string
+}
+
+// LayerRuns is every run of the layers workflow in layer order: the five single-run
+// layers, then 2-env once per environment in promotion order. An identity under a project
+// the placement does not record carries REPLACEME, which the workflow refuses to run.
+func (v *view) LayerRuns() []LayerRun {
+	runs := make([]LayerRun, 0, len(Layers)-1+len(Environments))
+	for _, layer := range Layers {
+		if layer == envLayer {
+			for _, env := range Environments {
+				runs = append(runs, LayerRun{
+					Name: layer + " " + env, Layer: layer, Environment: env, StatePrefix: layer + "/" + env,
+					Apply: v.identityEmail(env, env, "tofu"), Plan: v.identityEmail(env, env, "plan"),
+				})
+			}
+
+			continue
+		}
+		p := layerProjects[layer]
+		runs = append(runs, LayerRun{
+			Name: layer, Layer: layer,
+			Apply: v.identityEmail(p.name, p.project, "tofu"), Plan: v.identityEmail(p.name, p.project, "plan"),
+		})
+	}
+
+	return runs
+}
+
+// identityEmail is a layer identity's email: <prefix>-<name>-gbl-<suffix> in the project
+// under the key, as 0-bootstrap and 1-org name them.
+func (v *view) identityEmail(name, projectKey, suffix string) string {
+	return v.Prefix + "-" + name + "-gbl-" + suffix + "@" + v.Project(projectKey) + ".iam.gserviceaccount.com"
+}
+
+// BootProject is the boot project's id, or its REPLACEME form until the seed's values
+// are recorded.
+func (v *view) BootProject() string {
+	return v.Project(bootProject)
+}
+
+// WorkflowPool is the id of the boot project's workload identity pool for the layers
+// workflow, as 0-bootstrap names it; WorkflowProvider the full name of its provider,
+// which the workflow's sign-in step takes, or empty until the placement records the boot
+// project's number.
+func (v *view) WorkflowPool() string {
+	return v.Prefix + "-boot-github"
+}
+
+func (v *view) WorkflowProvider() string {
+	number, ok := v.ProjectNumbers[bootProject]
+	if !ok {
+		return ""
+	}
+
+	return "projects/" + number + "/locations/global/workloadIdentityPools/" + v.WorkflowPool() + "/providers/github"
+}
+
+// WorkflowPath is the workflow file's path, for the provider's condition and the READMEs.
+func (*view) WorkflowPath() string {
+	return WorkflowFile
+}
+
+// MappedPurpose is the provider attribute the federation bindings select on.
+func (*view) MappedPurpose() string {
+	return mappedPurpose
+}
+
+// InfrastructureKeySecret is the Secret Manager container in the boot project that holds
+// the infrastructure GitHub App's private key, as 0-bootstrap names it.
+func (v *view) InfrastructureKeySecret() string {
+	return v.Prefix + "-boot-gbl-github-infrastructure-key"
+}
+
+// InfrastructureRepository is this repository under its GitHub organization, the one
+// repository whose tokens the boot project's provider trusts.
+func (v *view) InfrastructureRepository() string {
+	return v.GithubOrganization + "/" + v.SourceRepo
+}
+
+// LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr, 2-spn and 2-net,
+// then 2-env for tst, stg and prd.
+func (*view) LayerOrderProse() string {
+	return prose(Layers[:len(Layers)-1]) + ", then " + Layers[len(Layers)-1] + " for " + prose(Environments)
+}
+
+// SingleRunLayers are the layers applied once, in order: every one but 2-env.
+func (*view) SingleRunLayers() []string {
+	return Layers[:len(Layers)-1]
+}
+
+// Layers is the model's layers in apply order, for the templates.
+func (*view) Layers() []string {
+	return Layers
+}
+
+// WorkflowName is the workflow file's name, which the workflow names itself by when it
+// asks GitHub for its earlier runs.
+func (*view) WorkflowName() string {
+	return workflowName
 }
 
 // FirstEnvironment is the first environment in promotion order, where the pull-request
@@ -323,6 +469,11 @@ func Render(p *Placement) ([]render.File, error) {
 		return nil, err
 	}
 	files = append(files, root...)
+	workflow, err := renderDir(templateDir+"/"+workflowDir, workflowDir+"/", v)
+	if err != nil {
+		return nil, err
+	}
+	files = append(files, workflow...)
 	for _, layer := range Layers {
 		rendered, err := renderDir(templateDir+"/"+layer, layer+"/", v)
 		if err != nil {

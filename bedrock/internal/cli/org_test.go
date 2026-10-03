@@ -41,19 +41,26 @@ func TestOrgCommands(t *testing.T) {
 
 				return run(t, "org", "new", dir)
 			},
-			wantOut: []string{"Rendered the imp foundation", "61 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars", "By hand, before the first apply", "Seed, as bedrock@impulseframework.com", "imp-boot-gbl-tofu"},
+			wantOut: []string{
+				"Rendered the imp foundation", "66 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
+				"By hand, before the layers workflow can run", "Seed, as bedrock@impulseframework.com", "imp-boot-gbl-tofu",
+				"projects.boot, projectNumbers.boot", "5. Apply 1-org, with GITHUB_TOKEN", "the layers workflow (.github/workflows/layers.yml) applies every layer",
+			},
 		},
 		{
-			name: "check is clean after new",
+			name: "check is clean after new, the workflow among the owned files",
 			steps: func(t *testing.T, dir string) (int, string) {
 				t.Helper()
 				if code, out := run(t, "org", "new", dir); code != 0 {
 					t.Fatalf("org new: %d %s", code, out)
 				}
+				if _, err := os.Stat(filepath.Join(dir, ".github", "workflows", "layers.yml")); err != nil {
+					t.Errorf("org new wrote no workflow: %v", err)
+				}
 
 				return run(t, "org", "check", "--dir", dir)
 			},
-			wantOut: []string{"61 owned file(s) match the placement"},
+			wantOut: []string{"66 owned file(s) match the placement"},
 		},
 		{
 			name: "register adds an application, renders the values and prints the sequence",
@@ -83,7 +90,33 @@ func TestOrgCommands(t *testing.T) {
 
 				return code, out
 			},
-			wantOut: []string{"Registered quill in", "Apply, in order", "2-env for tst and stg again", "6. 2-net: the hostnames"},
+			wantOut: []string{
+				"Registered quill in", "1-org/public-invokers.auto.tfvars among them", "Register through the layers workflow, as pull requests into master",
+				"1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars", "2. Run workflow (the Actions tab) with 2-env",
+				"3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and", "5. 2-net/applications.auto.tfvars: the hostnames",
+			},
+		},
+		{
+			name: "render says what the workflow still lacks",
+			steps: func(t *testing.T, dir string) (int, string) {
+				t.Helper()
+				if code, out := run(t, "org", "new", dir); code != 0 {
+					t.Fatalf("org new: %d %s", code, out)
+				}
+				path := filepath.Join(dir, "placement.json")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				edited := strings.Replace(string(data), `"projectNumbers": {"boot": "100000000001"},`, "", 1)
+				edited = strings.Replace(edited, `    "boot": "imp-boot-gbl-core-a1b2",`, "", 1)
+				if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				return run(t, "org", "render", "--dir", dir)
+			},
+			wantOut: []string{"66 owned file(s) written", "The layers workflow cannot run every layer yet: record projectNumbers.boot, projects.boot in placement.json and run bedrock org render."},
 		},
 		{
 			name: "check reports a hand edit",
@@ -104,7 +137,29 @@ func TestOrgCommands(t *testing.T) {
 				return run(t, "org", "check", "--dir", dir)
 			},
 			wantCode: 1,
-			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 of 61 owned file(s) differ"},
+			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 of 66 owned file(s) differ"},
+		},
+		{
+			name: "check reports a hand edit to the workflow",
+			steps: func(t *testing.T, dir string) (int, string) {
+				t.Helper()
+				if code, out := run(t, "org", "new", dir); code != 0 {
+					t.Fatalf("org new: %d %s", code, out)
+				}
+				path := filepath.Join(dir, ".github", "workflows", "layers.yml")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				edited := strings.Replace(string(data), "      fail-fast: true\n", "      fail-fast: false\n", 1)
+				if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				return run(t, "org", "check", "--dir", dir)
+			},
+			wantCode: 1,
+			wantOut:  []string{".github/workflows/layers.yml: line ", "  want:       fail-fast: true", "  got:        fail-fast: false", "1 of 66 owned file(s) differ"},
 		},
 		{
 			name: "render keeps the seeded values",
@@ -128,7 +183,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return code, out
 			},
-			wantOut: []string{"61 owned file(s) written"},
+			wantOut: []string{"66 owned file(s) written"},
 		},
 	}
 	for _, tt := range tests {

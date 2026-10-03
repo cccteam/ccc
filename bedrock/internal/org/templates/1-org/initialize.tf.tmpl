@@ -28,6 +28,17 @@ terraform {
   }
 }
 
+# 0-bootstrap's outputs: the layers workflow's identity pool, the bucket policy
+# role and the key container, which this layer binds and grants with
+# (workflow.tf).
+data "terraform_remote_state" "boot" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "0-bootstrap"
+  }
+}
+
 # Every API call is billed and quota-counted against the boot project, so a
 # project this layer creates needs no API enabled just to be created and
 # populated.
@@ -41,9 +52,10 @@ provider "google-beta" {
   billing_project       = var.boot_project_id
 }
 
-# The applications' repositories (github.tf) are configured with the operator's
-# own GitHub sign-in: GITHUB_TOKEN, the token of an owner of the organization
-# (gh auth token). Nothing in this layer holds it.
+# The applications' repositories (github.tf) are configured with GITHUB_TOKEN:
+# in the layers workflow an installation token of the infrastructure GitHub
+# App, minted in the run (0-bootstrap/github.tf); by hand, the token of an
+# owner of the organization (gh auth token). Nothing in this layer holds it.
 provider "github" {
   owner = var.github_organization
 }

@@ -6,8 +6,9 @@
 # layer and holds the roles of its role set in var.layer_roles. The plan
 # identity ({prefix}-{env}-gbl-plan) is read-only: roles/viewer and
 # roles/browser, so a plan can run from a pull request without the power to
-# apply. Both run from Cloud Build in the boot project once the runner is
-# wired; neither has keys, and org policy forbids creating any.
+# apply. Both run from the infrastructure repository's layers workflow,
+# signed in through the boot project's identity pool (workflow.tf); neither
+# has keys, and org policy forbids creating any.
 # ---------------------------------------------------------------------------
 
 resource "google_service_account" "tofu" {
@@ -16,7 +17,7 @@ resource "google_service_account" "tofu" {
   project      = module.project[each.key].project_id
   account_id   = "${local.layer_names[each.key]}-tofu"
   display_name = "OpenTofu SA - ${local.layer_names[each.key]}"
-  description  = "Layer identity for ${local.layer_names[each.key]}. Applies the layer from Cloud Build in the boot project."
+  description  = "Layer identity for ${local.layer_names[each.key]}. Applies the layer from the infrastructure repository's workflow."
 
   depends_on = [time_sleep.apis_ready]
 }
@@ -27,13 +28,13 @@ resource "google_service_account" "plan" {
   project      = module.project[each.key].project_id
   account_id   = "${local.layer_names[each.key]}-plan"
   display_name = "OpenTofu plan SA - ${local.layer_names[each.key]}"
-  description  = "Read-only plan identity for ${local.layer_names[each.key]}. Plans the layer from Cloud Build in the boot project and never applies."
+  description  = "Read-only plan identity for ${local.layer_names[each.key]}. Plans the layer on a pull request of the infrastructure repository and never applies."
 
   depends_on = [time_sleep.apis_ready]
 }
 
 resource "google_project_iam_member" "tofu" {
-  # checkov:skip=CKV_GCP_49: these are automation identities, not human accounts. Roles come from var.layer_roles rather than roles/owner and are scoped to a single project; the identity has no keys and runs only from Cloud Build in the boot project.
+  # checkov:skip=CKV_GCP_49: these are automation identities, not human accounts. Roles come from var.layer_roles rather than roles/owner and are scoped to a single project; the identity has no keys and runs only from the infrastructure repository's workflow.
   for_each = {
     for pair in flatten([
       for key, cfg in local.layers : [
