@@ -450,7 +450,8 @@ auth is declared, so a misspelled or removed auth package is a compile error at
 `BindAuth(crew.Name)`; `<Outlet>Auth(next)` per API-key outlet; `LoggerMiddleware`,
 `SecurityHeaders`, `NoCaching`, and `CompressionMiddleware`; and per `WebApp` a
 `DeepLink` and `Assets` pair, prefixed with the outlet's name for an additional outlet
-(`PortalDeepLink`, `PortalAssets`). Route-parameter capture (`httpio.WithParams`) is
+(`PortalDeepLink`, `PortalAssets`), which the application builds on
+`resource.BrowserApp` (section 17). Route-parameter capture (`httpio.WithParams`) is
 mounted by the router itself. `Hooks` is a struct, never a map, so an outlet added or
 removed surfaces as a compile error at every hook that names it:
 
@@ -1432,3 +1433,53 @@ value `testDomain`, and the application's `newTestHandler` adds it to the test
 application's roster with `Add`, since the empty schema holds no tenant row; under
 concealed domains a case with no grants has no foothold and is answered as if the domain
 did not exist.
+
+## 17. The served browser app
+
+A built browser application is served by one type, `resource.BrowserApp`, from the
+directory the build wrote into and under the mount path the application's router
+declares (`generation.WebApp`, section 8): `/` for the application at the root,
+`/console` for one under a path. `NewBrowserApp(dir, mountPath)` builds it, and the
+application's two handlers delegate to it, one line each:
+
+```go
+// DeepLink rewrites the console's Angular routes to its entry document.
+func (a *App) DeepLink(next http.Handler) http.Handler {
+	return a.console.DeepLink(next)
+}
+
+// Assets serves the console's built Angular application.
+func (a *App) Assets() http.HandlerFunc {
+	return a.console.Assets()
+}
+```
+
+**The deep-link rule.** A request whose last path segment has no extension, Angular
+matrix parameters (`;key=value`) removed, is an application route: `DeepLink` rewrites it
+to `<mount>/index.html` and passes it on, so a bookmarked or reloaded route loads the
+application. A path with an extension passes through unchanged and is a file or a 404.
+`Assets` strips the mount prefix, serves the file from the directory, and answers 404 for
+a missing file, a path outside the mount, and a directory; a directory is never listed.
+
+**Two cache classes, by file name.** The build stamps most of its files with a content
+hash, eight uppercase letters or digits before the extension (`main-ZPJWNJT4.js`,
+`chunk-3ANMYK5A.js`, `styles-A4ABYBXD.css`, `media/<name>-<hash>.woff2`). Such a file
+answers `Cache-Control: public, max-age=31536000, immutable`: its name changes with its
+content, so the service worker and any cache between the browser and the server may keep
+it for a year without asking. Every other file answers `Cache-Control: no-cache`:
+`index.html`, `ngsw.json`, `ngsw-worker.js`, `safety-worker.js`, `worker-basic.min.js`,
+`manifest.webmanifest`, the favicon, the icons, `prerendered-routes.json` and
+`3rdpartylicenses.txt` keep their names across builds, so a copy may be kept but must be
+revalidated before each use, and an unchanged file answers 304. The validator is a strong
+`ETag` over the file's content, beside `Last-Modified`, because the files ride in a
+container image whose modification times are the build's. The two classes are what make
+the worker safe under any cache: a cache that kept a stale `ngsw.json` or entry document
+would hand the worker a build whose hashed files the server no longer has, and a cache
+that asked again for every hashed file would make the worker's prefetch of a build cost a
+round trip per file. `manifest.webmanifest` answers `Content-Type:
+application/manifest+json`, which Go's type table lacks.
+
+**The kill switch.** A build deployed without `ngsw.json` makes every installed worker
+unregister itself and drop its caches: the worker fetches `ngsw.json` after each page
+load and on each of its checks, and a 404 there is its signal to stand down, after which
+the page is served by the network alone.
