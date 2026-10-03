@@ -79,7 +79,7 @@ func subscribe(t *testing.T, svc *livefirestore.Service, kind live.Kind) *counte
 
 // signal writes a signal of the kind through the service, failing the test on an error.
 // One answer is retried: the emulator answers a write as already canceled when it
-// rides the connection whose listener streams were cancelled a moment before (the drop
+// rides the connection whose listener streams were canceled a moment before (the drop
 // in the reopen test), although the document is written and the listeners go on to see
 // it; a real Firestore never cancels a call whose context is alive, so the retry is the
 // test's allowance for the emulator and nothing the service does.
