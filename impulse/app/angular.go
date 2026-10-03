@@ -47,6 +47,9 @@ type AngularProject struct {
 	// relative to the workspace: the path it names, ngsw-config.json in the project root
 	// when it is true, and empty when it is unset or false.
 	ServiceWorker string
+	// Defines are the global identifiers the production build defines (the define
+	// option): the build options' entries with the production configuration's over them.
+	Defines map[string]string
 }
 
 // ReadAngular reads the projects of the browser workspace at the root-relative
@@ -67,10 +70,12 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 						Index    json.RawMessage   `json:"index"`
 						Assets   []json.RawMessage `json:"assets"`
 						BaseHref string            `json:"baseHref"`
+						Define   map[string]string `json:"define"`
 					} `json:"options"`
 					Configurations struct {
 						Production struct {
-							ServiceWorker json.RawMessage `json:"serviceWorker"`
+							ServiceWorker json.RawMessage   `json:"serviceWorker"`
+							Define        map[string]string `json:"define"`
 						} `json:"production"`
 					} `json:"configurations"`
 				} `json:"build"`
@@ -107,6 +112,12 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 				assetDirs = append(assetDirs, dir)
 			}
 		}
+		defines := map[string]string{}
+		for _, layer := range []map[string]string{build.Options.Define, build.Configurations.Production.Define} {
+			for k, v := range layer {
+				defines[k] = v
+			}
+		}
 		projects = append(projects, AngularProject{
 			Name:          name,
 			ProjectType:   p.ProjectType,
@@ -121,6 +132,7 @@ func (a *App) ReadAngular(webDir string) ([]AngularProject, error) {
 			AssetDirs:     assetDirs,
 			BaseHref:      build.Options.BaseHref,
 			ServiceWorker: serviceWorkerPath(build.Configurations.Production.ServiceWorker, p.Root),
+			Defines:       defines,
 		})
 	}
 	sort.Slice(projects, func(i, j int) bool { return projects[i].Name < projects[j].Name })

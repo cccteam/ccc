@@ -24,6 +24,15 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.GenerateRoutes("apps/portal/pkg/router", "api",
 			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff", generation.Password),
 			generation.WebApp("/"),
+			// The oldest release of the portal this outlet still answers. The portal sends the
+			// release it was built from in X-Api-Version, and the server answers releases from
+			// this one up to its own (APP_VERSION) and refuses the rest with 412, which the
+			// portal turns into a reload onto the current build. The first release is the
+			// default, written out so the option is seen: raise it to the release that removed
+			// what older builds of the portal still read (a field, a method, a former name kept
+			// by @formerly), and ThisRelease answers the server's own release alone, for a
+			// release deployed inside a maintenance window.
+			generation.OldestAnswered("0.0.1"),
 		),
 		generation.GenerateHandlerTests("apps/portal/test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment

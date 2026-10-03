@@ -81,8 +81,9 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 			}
 		}
 
-		for _, o := range outletSurfaces(site) {
-			o := &o
+		surfaces := outletSurfaces(site)
+		for i := range surfaces {
+			o := &surfaces[i]
 			if !site.GeneratedRouter && !called[o.Mount] {
 				details = append(details, fmt.Sprintf("%s: no file in %s calls %s; the %s outlet's routes are not mounted", g.File, routesDir, o.Mount, o.Name))
 
@@ -293,7 +294,9 @@ func outletList(p app.Profile, live []liveWiring) []string {
 	for i := range p.Sites {
 		site := &p.Sites[i]
 		var outlets []string
-		for _, o := range outletSurfaces(site) {
+		surfaces := outletSurfaces(site)
+		for j := range surfaces {
+			o := &surfaces[j]
 			desc := fmt.Sprintf("%s (/%s", o.Name, o.Prefix)
 			if o.ServesSessions && !o.Default {
 				desc += ", sessions"

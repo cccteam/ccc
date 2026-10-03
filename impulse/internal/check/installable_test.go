@@ -61,7 +61,8 @@ func TestInstallable(t *testing.T) {
           "options": {
             "index": "console/src/index.html",
             "assets": [{ "glob": "**/*", "input": "console/public" }],
-            "baseHref": "/console/"
+            "baseHref": "/console/",
+            "define": { "APP_VERSION": "'dev'" }
           },
           "configurations": { "production": { "serviceWorker": "ngsw-config.json" } }
         }
@@ -70,6 +71,9 @@ func TestInstallable(t *testing.T) {
   }
 }
 `
+	// The installed workspace without the release define.
+	angularJSONNoDefine := strings.Replace(angularJSON, `,
+            "define": { "APP_VERSION": "'dev'" }`, "", 1)
 	const angularJSONNoWorker = `{
   "version": 1,
   "projects": {
@@ -92,9 +96,12 @@ func TestInstallable(t *testing.T) {
   }
 }
 `
-	const packageJSON = `{ "dependencies": { "@angular/core": "^21.1.1", "@angular/router": "^21.1.1", "@angular/service-worker": "^21.1.1" } }`
-	const packageJSONNoWorker = `{ "dependencies": { "@angular/core": "^21.1.1", "@angular/router": "^21.1.1" } }`
-	const packageJSONOtherLine = `{ "dependencies": { "@angular/core": "^21.1.1", "@angular/router": "^21.1.1", "@angular/service-worker": "^20.0.0" } }`
+	const buildFeed = `"build": "ng build console --define \"APP_VERSION='${VERSION:-dev}'\""`
+	packageJSON := `{ "scripts": { ` + buildFeed + ` }, "dependencies": { "@angular/core": "^21.1.1", "@angular/router": "^21.1.1", "@angular/service-worker": "^21.1.1" } }`
+	const packageJSONNoWorker = `{ "scripts": { "build": "ng build console" }, "dependencies": { "@angular/core": "^21.1.1", "@angular/router": "^21.1.1" } }`
+	packageJSONOtherLine := `{ "scripts": { ` + buildFeed + ` }, "dependencies": { "@angular/core": "^21.1.1", "@angular/router": "^21.1.1", "@angular/service-worker": "^20.0.0" } }`
+	// The installed workspace whose build script passes no define: every build stamps dev.
+	const packageJSONNoFeed = `{ "scripts": { "build": "ng build console" }, "dependencies": { "@angular/core": "^21.1.1", "@angular/router": "^21.1.1", "@angular/service-worker": "^21.1.1" } }`
 	const ngswConfig = `{
   "index": "/index.html",
   "navigationUrls": ["/**", "!/**/*.*", "!/**/*__*", "!/**/*__*/**", "!/api/**"],
@@ -107,24 +114,27 @@ func TestInstallable(t *testing.T) {
   "assetGroups": []
 }
 `
-	const appConfig = `import { ApplicationConfig, isDevMode } from '@angular/core';
+	const appConfig = `import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { ApplicationConfig, isDevMode } from '@angular/core';
 import { provideServiceWorker } from '@angular/service-worker';
+import { apiVersionInterceptor } from '@cccteam/resource-angular/resource-client';
+import { API_VERSION } from '@cccteam/resource-angular/types';
 import { provideAppUpdate } from '@cccteam/resource-angular/ui-app-update';
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    { provide: API_VERSION, useValue: APP_VERSION },
+    provideHttpClient(withInterceptors([apiVersionInterceptor])),
     provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' }),
     provideAppUpdate(),
   ],
 };
 `
-	const appConfigNoUpdate = `import { ApplicationConfig, isDevMode } from '@angular/core';
-import { provideServiceWorker } from '@angular/service-worker';
-
-export const appConfig: ApplicationConfig = {
-  providers: [provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' })],
-};
-`
+	appConfigNoUpdate := strings.Replace(appConfig, "\n    provideAppUpdate(),", "", 1)
+	// The installed app config without the API_VERSION provider, and without the
+	// interceptor's registration.
+	appConfigNoVersion := strings.Replace(appConfig, "\n    { provide: API_VERSION, useValue: APP_VERSION },", "", 1)
+	appConfigNoInterceptor := strings.Replace(appConfig, "provideHttpClient(withInterceptors([apiVersionInterceptor]))", "provideHttpClient()", 1)
 	const appConfigPlain = `import { ApplicationConfig } from '@angular/core';
 
 export const appConfig: ApplicationConfig = { providers: [] };
@@ -278,7 +288,7 @@ func (a *App) Assets() http.HandlerFunc {
 				"app/app.go":                              handlersSpaassets,
 			}),
 			want: Result{Name: name, Status: Warn, Summary: "0 of 1 browser application(s) install as progressive web apps; 1 not installable", Details: []string{
-				"web/console: project console (outlet default at /console) is not installable: no @angular/service-worker dependency, no worker config, no worker or update provider, and no manifest link",
+				"web/console: project console (outlet default at /console) is not installable: no @angular/service-worker dependency, no worker config, no worker or update provider, no manifest link, and no release stamped (no APP_VERSION define, no API_VERSION provider, no version interceptor)",
 			}},
 		},
 		{
@@ -312,6 +322,34 @@ func (a *App) Assets() http.HandlerFunc {
 			files: with(map[string]string{"web/console/public/icons/icon-512-maskable.png": ""}),
 			want: Result{Name: name, Status: Fail, Summary: "1 browser application(s) partly installable; the first missing piece of each is named", Details: []string{
 				"web/console/public/manifest.webmanifest: icon icons/icon-512-maskable.png is not there (web/console/public/icons/icon-512-maskable.png)",
+			}},
+		},
+		{
+			name:  "a build that defines no release fails",
+			files: with(map[string]string{"web/angular.json": angularJSONNoDefine}),
+			want: Result{Name: name, Status: Fail, Summary: "1 browser application(s) partly installable; the first missing piece of each is named", Details: []string{
+				`web/angular.json: project console's build defines no APP_VERSION; add "define": { "APP_VERSION": "'dev'" } to its build options, which the workspace's build script redefines from VERSION for a release build`,
+			}},
+		},
+		{
+			name:  "a build script that feeds no release fails",
+			files: with(map[string]string{"web/package.json": packageJSONNoFeed}),
+			want: Result{Name: name, Status: Fail, Summary: "1 browser application(s) partly installable; the first missing piece of each is named", Details: []string{
+				`web/package.json: the build script's ng build console passes no --define of APP_VERSION, so every build stamps dev; add --define \"APP_VERSION='${VERSION:-dev}'\"`,
+			}},
+		},
+		{
+			name:  "an app config that provides no version fails",
+			files: with(map[string]string{"web/console/src/app/app.config.ts": appConfigNoVersion}),
+			want: Result{Name: name, Status: Fail, Summary: "1 browser application(s) partly installable; the first missing piece of each is named", Details: []string{
+				"web/console/src/app/app.config.ts: nothing under web/console/src provides API_VERSION ({ provide: API_VERSION, useValue: APP_VERSION }, the token from @cccteam/resource-angular/types), so the client sends no release and the server never refuses a build it stopped answering",
+			}},
+		},
+		{
+			name:  "an app config without the version interceptor fails",
+			files: with(map[string]string{"web/console/src/app/app.config.ts": appConfigNoInterceptor}),
+			want: Result{Name: name, Status: Fail, Summary: "1 browser application(s) partly installable; the first missing piece of each is named", Details: []string{
+				"web/console/src/app/app.config.ts: nothing under web/console/src registers the version interceptor (provideHttpClient(withInterceptors([apiVersionInterceptor])), from @cccteam/resource-angular/resource-client), so the application's own HttpClient calls carry no release",
 			}},
 		},
 		{

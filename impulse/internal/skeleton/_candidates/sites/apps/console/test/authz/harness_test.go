@@ -112,6 +112,11 @@ func (c *testConfigurer) LogExporter() logger.Exporter {
 	return logger.NewConsoleExporter()
 }
 
+// AppVersion is dev: the matrix drives the bare test router, which checks no version.
+func (c *testConfigurer) AppVersion() string {
+	return "dev"
+}
+
 func (c *testConfigurer) Dist() string { return "" }
 
 // Live is an in-memory live service: the live service is required in every

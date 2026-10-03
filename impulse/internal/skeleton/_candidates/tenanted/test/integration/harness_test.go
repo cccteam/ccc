@@ -83,6 +83,12 @@ func (c *servedConfigurer) Validator() *validator.Validate { return validator.Ne
 
 func (c *servedConfigurer) LogExporter() logger.Exporter { return logger.NewConsoleExporter() }
 
+// AppVersion is dev: the served stack's version check answers every release, so no
+// suite's request is refused for the release it carries.
+func (c *servedConfigurer) AppVersion() string {
+	return "dev"
+}
+
 func (c *servedConfigurer) ConsoleDist() string { return "" }
 
 // Live is the in-memory live service the auths' permission engines signal policy

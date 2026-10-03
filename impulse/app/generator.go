@@ -373,6 +373,17 @@ func (r *reader) readArg(expr ast.Expr, option string, expect paramKind) Arg {
 		r.problemf(expr, "%s argument %s should be a %s", option, exprText(expr), expect)
 
 		return Arg{Kind: ArgOther, Text: exprText(expr)}
+	case paramRelease:
+		// generation.ThisRelease is the one identifier a release takes; any other
+		// qualified name is reported here, and a literal is read below.
+		if sel, ok := expr.(*ast.SelectorExpr); ok {
+			if isQualified(expr, r.pkg, ThisReleaseIdent) {
+				return Arg{Kind: ArgIdent, Str: sel.Sel.Name}
+			}
+			r.problemf(expr, "%s argument %s should be a %s", option, exprText(expr), expect)
+
+			return Arg{Kind: ArgOther, Text: exprText(expr)}
+		}
 	case paramString, paramBool, paramStringMap, paramBoolMap, paramAny, paramNone:
 	}
 

@@ -38,7 +38,14 @@ const (
 	// paramFlavor is an auth flavor: one of the generation package's AuthFlavor
 	// constants, written as generation.<Flavor>.
 	paramFlavor
+	// paramRelease is a release: a semantic version string literal, or the generation
+	// package's ThisRelease identifier for the server's own release.
+	paramRelease
 )
+
+// ThisReleaseIdent is the generation package's identifier naming the server's own
+// release as an outlet's oldest answered release (generation.ThisRelease).
+const ThisReleaseIdent = "ThisRelease"
 
 func (k paramKind) String() string {
 	switch k {
@@ -58,6 +65,8 @@ func (k paramKind) String() string {
 		return "OutletOption"
 	case paramFlavor:
 		return "generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"
+	case paramRelease:
+		return "release string literal (\"1.5.0\") or generation." + ThisReleaseIdent
 	case paramAny, paramNone:
 		return "argument"
 	default:
@@ -81,6 +90,8 @@ func (k paramKind) argKind() ArgKind {
 		return ArgCall
 	case paramFlavor:
 		return ArgIdent
+	case paramRelease:
+		return ArgString
 	case paramAny, paramNone:
 		return ArgOther
 	default:
@@ -94,7 +105,7 @@ func (k paramKind) optionKind() optionKind {
 		return kindTSOption
 	case paramOutletOption:
 		return kindOutletOption
-	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramFlavor:
+	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramFlavor, paramRelease:
 		return 0
 	default:
 		return 0
@@ -112,6 +123,7 @@ const (
 	optAuth               = "Auth"
 	optAPIKey             = "APIKey"
 	optWebApp             = "WebApp"
+	optOldestAnswered     = "OldestAnswered"
 )
 
 // The generation package's AuthFlavor identifiers, as a program writes them
@@ -186,6 +198,7 @@ var knownOptions = map[string]optionSpec{
 	optAuth:           {kind: kindOutletOption, params: []paramKind{paramString, paramFlavor}},
 	optAPIKey:         {kind: kindOutletOption},
 	optWebApp:         {kind: kindOutletOption, params: []paramKind{paramString}},
+	optOldestAnswered: {kind: kindOutletOption, params: []paramKind{paramRelease}},
 
 	"ForOutlet":           {kind: kindTSOption, params: []paramKind{paramString}},
 	"GeneratePermissions": {kind: kindTSOption},

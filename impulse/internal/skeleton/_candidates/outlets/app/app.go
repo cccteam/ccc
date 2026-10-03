@@ -88,6 +88,10 @@ type Configurer interface {
 	LiveOrigins() []string
 	Validator() *validator.Validate
 	LogExporter() logger.Exporter
+	// AppVersion is the release this build was made from (APP_VERSION, dev where no
+	// release built it): what the generated router's session outlets check a browser
+	// application's X-Api-Version against.
+	AppVersion() string
 	ConsoleDist() string
 	PortalDist() string
 	MachinesAPIKey() string
@@ -113,6 +117,7 @@ type App struct {
 	tenants        *resource.TenantRoster
 	validate       *validator.Validate
 	logExporter    logger.Exporter
+	version        string
 	// consoleApp and portalApp serve the two built bundles under /console and /portal: the
 	// resource package's served browser app holds the deep-link rewrite, the prefix strip,
 	// and the two cache classes a service worker needs (hashed files immutable, everything
@@ -139,6 +144,7 @@ func New(cfg Configurer) *App {
 		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
+		version:        cfg.AppVersion(),
 		consoleApp:     resource.NewBrowserApp(cfg.ConsoleDist(), "/console"),
 		portalApp:      resource.NewBrowserApp(cfg.PortalDist(), "/portal"),
 		machinesAPIKey: cfg.MachinesAPIKey(),
@@ -199,6 +205,13 @@ func (a *App) Portal() session.OIDCAzureHandlers {
 // LoggerMiddleware returns a middleware that logs requests.
 func (a *App) LoggerMiddleware() func(http.Handler) http.Handler {
 	return logger.NewRequestLogger(a.logExporter)
+}
+
+// ServerVersion is the release this server was built from, the configuration's
+// APP_VERSION: what the generated router's session outlets check the console and the portal's
+// X-Api-Version against. A development build reports dev, which checks nothing.
+func (a *App) ServerVersion() string {
+	return a.version
 }
 
 // SecurityHeaders is a middleware that sets security-related headers on the response.

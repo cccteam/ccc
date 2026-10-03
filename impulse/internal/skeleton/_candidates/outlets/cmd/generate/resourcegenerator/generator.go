@@ -26,6 +26,15 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.GenerateRoutes("pkg/router", "console/api",
 			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff", generation.Password),
 			generation.WebApp("/console"),
+			// The oldest release of the console this outlet still answers. The console sends the
+			// release it was built from in X-Api-Version, and the server answers releases from
+			// this one up to its own (APP_VERSION) and refuses the rest with 412, which the
+			// console turns into a reload onto the current build. The first release is the
+			// default, written out so the option is seen: raise it to the release that removed
+			// what older builds of the console still read (a field, a method, a former name kept
+			// by @formerly), and ThisRelease answers the server's own release alone, for a
+			// release deployed inside a maintenance window.
+			generation.OldestAnswered("0.0.1"),
 		),
 		// The portal outlet is a second browser surface: structs annotated with @outlet
 		// naming portal are served under /portal/api behind the members auth, whose people
@@ -35,6 +44,15 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.WithRouterOutlet("portal", "portal/api",
 			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members", generation.OIDCAzure),
 			generation.WebApp("/portal"),
+			// The oldest release of the portal this outlet still answers. The portal sends the
+			// release it was built from in X-Api-Version, and the server answers releases from
+			// this one up to its own (APP_VERSION) and refuses the rest with 412, which the
+			// portal turns into a reload onto the current build. The first release is the
+			// default, written out so the option is seen: raise it to the release that removed
+			// what older builds of the portal still read (a field, a method, a former name kept
+			// by @formerly), and ThisRelease answers the server's own release alone, for a
+			// release deployed inside a maintenance window.
+			generation.OldestAnswered("0.0.1"),
 		),
 		// The machines outlet is the machine REST API: structs annotated with @outlet
 		// naming machines are served under /machines, which the router composes behind

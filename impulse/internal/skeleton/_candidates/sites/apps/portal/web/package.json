@@ -4,7 +4,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve portal --no-hmr",
-    "build": "ng build portal",
+    "build": "ng build portal --define \"APP_VERSION='${VERSION:-dev}'\"",
     "lint": "ng lint portal",
     "test": "ng test portal --watch=false",
     "ccclib:local": "./ccclib.sh local",

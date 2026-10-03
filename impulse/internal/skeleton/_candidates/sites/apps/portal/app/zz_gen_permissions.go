@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/resources"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/router"
 	"github.com/cccteam/ccc/resource"
 )
 
@@ -15,9 +16,10 @@ import (
 // The scope is the request's input (?domain= names a tenant partition, absent
 // means global) and the payload is advisory and fail-closed: denied targets are
 // absent, and so is every resource, field and method gated behind a feature flag
-// that is off (resources.FeatureGates). The generated router registers it at GET /api/permission-digest.
+// that is off (resources.FeatureGates); a renamed field or method
+// (@formerly) appears under its former name too, with the same states. The generated router registers it at GET /api/permission-digest.
 func (a *App) PermissionDigest() http.HandlerFunc {
-	return resource.PermissionDigestHandler(a.UserPermissions, resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet()))
+	return resource.PermissionDigestHandler(a.UserPermissions, resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet()), resource.WithFormerNames(router.Collection()))
 }
 
 // UserDomains serves the session user's domain membership — the sorted list of

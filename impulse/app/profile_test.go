@@ -131,3 +131,52 @@ func TestTenancyScan(t *testing.T) {
 		t.Errorf("PolicyChecks = %v, want none", a.PolicyChecks)
 	}
 }
+
+// TestReadOutletOptions pins what an outlet declaration's options set on the outlet: the
+// web app's mount, the oldest answered release in either of its forms, and nothing from
+// an argument the reader could not interpret.
+func TestReadOutletOptions(t *testing.T) {
+	t.Parallel()
+
+	call := func(name string, args ...Arg) Arg {
+		return Arg{Kind: ArgCall, Call: &Call{Name: name, Args: args}}
+	}
+	tests := []struct {
+		name string
+		args []Arg
+		want Outlet
+	}{
+		{
+			name: "a web app and a release",
+			args: []Arg{call(optWebApp, Arg{Kind: ArgString, Str: "/console"}), call(optOldestAnswered, Arg{Kind: ArgString, Str: "1.5.0"})},
+			want: Outlet{WebApp: "/console", OldestAnswered: "1.5.0"},
+		},
+		{
+			name: "this release",
+			args: []Arg{call(optOldestAnswered, Arg{Kind: ArgIdent, Str: ThisReleaseIdent})},
+			want: Outlet{OldestAnswered: ThisReleaseIdent},
+		},
+		{
+			name: "a release the reader could not interpret",
+			args: []Arg{call(optOldestAnswered, Arg{Kind: ArgOther, Text: "release"})},
+			want: Outlet{},
+		},
+		{
+			name: "an API key outlet declares no release",
+			args: []Arg{call(optAPIKey)},
+			want: Outlet{APIKey: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got Outlet
+			readOutletOptions(&got, tt.args)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("readOutletOptions() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

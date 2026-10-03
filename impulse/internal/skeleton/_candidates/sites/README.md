@@ -160,6 +160,13 @@ mark. The server serves every bundle through the resource package's `BrowserApp`
 the cache headers a worker needs; a build deployed without `ngsw.json` makes every installed
 worker unregister itself and drop its caches. `impulse check` (`installable`) holds the wiring.
 
+Each site's production build stamps the release into its bundle (`VERSION=1.2.3 bun run build`;
+`bun run build` alone stamps `dev`, as the dev server does), and the application sends it in
+`X-Api-Version` with every request. The server answers releases from the outlet's `OldestAnswered` (in
+`cmd/generate`) up to its own `APP_VERSION` and refuses the rest with 412, which the update
+notice turns into a reload onto the current build; a `dev` build on either side checks
+nothing.
+
 Each workspace's component specs run on Angular's unit-test builder (`@angular/build:unit-test`)
 with Vitest under jsdom in Node: no browser, no Karma. `bun run test` in a workspace runs
 its specs once, the form the Checks section and CI use; `bun ng test console` (or `portal`)

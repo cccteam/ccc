@@ -268,7 +268,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			name: "installable flat: the console has none of it", fixture: "flat", check: installable{},
 			wantStatus: Warn, wantSummary: "0 of 1 browser application(s) install as progressive web apps; 1 not installable",
 			wantDetails: []string{
-				"web/console: project console (outlet default at /) is not installable: no @angular/service-worker dependency, no worker config, no worker or update provider, and no manifest link",
+				"web/console: project console (outlet default at /) is not installable: no @angular/service-worker dependency, no worker config, no worker or update provider, no manifest link, and no release stamped (no APP_VERSION define, no API_VERSION provider, no version interceptor)",
 			},
 		},
 		{

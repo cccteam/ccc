@@ -548,14 +548,19 @@ func (o Outlet) registerScripts(a *app.App, webDir, from string, ch *Change) {
 // single-run form).
 var workspaceScripts = []string{"build", "lint", "test"}
 
-// scriptFlags are the flags a project's segment of a workspace script carries.
-const scriptFlags = `((?: --?[^\s"&]+)*)`
+// scriptFlags are the flags a project's segment of a workspace script carries: bare
+// flags (--watch=false) and a flag with a quoted value, which package.json spells with
+// escaped quotes (--define \"APP_VERSION='${VERSION:-dev}'\").
+const scriptFlags = `((?: --?[^\s"&\\]+(?: \\"(?:[^"\\]|\\.)*\\")?)*)`
+
+// scriptValue matches one script's JSON string value, escaped quotes included.
+const scriptValue = `((?:[^"\\]|\\.)*)`
 
 // extendScript appends the project's segment to the named workspace script after the
 // from project's, with the same flags, and reports whether the script had a segment to
 // follow.
 func extendScript(text, script, from, project string) (string, bool) {
-	valueRE := regexp.MustCompile(`"` + script + `":\s*"([^"]*)"`)
+	valueRE := regexp.MustCompile(`"` + script + `":\s*"` + scriptValue + `"`)
 	vm := valueRE.FindStringSubmatchIndex(text)
 	if vm == nil {
 		return text, false

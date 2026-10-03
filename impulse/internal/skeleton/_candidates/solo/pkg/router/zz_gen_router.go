@@ -7,7 +7,7 @@
 //	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
 //	default (/api), password sessions:
 //	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /api/user/login, GET /api/user/session, DELETE /api/user/session
-//	  + ValidateSession, ValidateXSRFToken: hooks.Default, generatedRoutes
+//	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
@@ -28,6 +29,11 @@ type Handlers interface {
 	GeneratedHandlers
 	// The default outlet's session handlers.
 	session.PasswordAuthHandlers
+	// ServerVersion is the release this server was built from, the configuration's
+	// APP_VERSION: what each session outlet checks a browser application's
+	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
+	// dev for one, checks nothing.
+	ServerVersion() string
 
 	// Every request.
 	LoggerMiddleware() func(http.Handler) http.Handler
@@ -64,6 +70,9 @@ type Hooks struct {
 // a not-found handler per outlet prefix, and the browser applications.
 func New(h Handlers, hooks Hooks) *chi.Mux {
 	r := chi.NewRouter()
+	// The release this server was built from, which every session outlet's version
+	// check compares a browser application's X-Api-Version against.
+	serverVersion := h.ServerVersion()
 
 	// Every request.
 	r.Use(hooks.Outermost...)
@@ -92,6 +101,14 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
 			r.Use(h.ValidateXSRFToken)
+			// The version check: a browser application sends its release in X-Api-Version,
+			// and releases from 0.0.1 up to the server's own are answered. An application outside that
+			// range is refused with 412 naming the server's release, before its body is read;
+			// a request without the header, the session routes above are answered at any release.
+			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
+				ServerVersion:  serverVersion,
+				OldestAnswered: "0.0.1",
+			}))
 
 			registerGenerated(r, hooks.Default, "Default", func(r chi.Router) {
 				generatedRoutes(r, h)

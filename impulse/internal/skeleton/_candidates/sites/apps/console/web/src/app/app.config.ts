@@ -1,4 +1,4 @@
-import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
+import { provideHttpClient, withInterceptors, withXsrfConfiguration } from '@angular/common/http';
 import { ApplicationConfig, isDevMode } from '@angular/core';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -7,9 +7,10 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { createApi } from '@app/service/zz_gen_api';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
-import { provideResourceClient } from '@cccteam/resource-angular/resource-client';
+import { apiVersionInterceptor, provideResourceClient } from '@cccteam/resource-angular/resource-client';
 import {
   API_URL,
+  API_VERSION,
   BASE_URL,
   CHANGE_FEED,
   FRONTEND_LOGIN_PATH,
@@ -30,6 +31,13 @@ export const appConfig: ApplicationConfig = {
     { provide: METHOD_META, useValue: methodMeta },
     { provide: BASE_URL, useValue: environment.baseUrl },
     { provide: API_URL, useValue: environment.apiUrl },
+    // The release this build was made from, which the build defines (APP_VERSION: dev
+    // unless the build script is given VERSION, as the image's browser stage does). The
+    // client sends it in X-Api-Version with every request; the server answers releases
+    // from the outlet's oldest answered up to its own and refuses the rest with 412, which
+    // the update provider below turns into a reload onto the current build. A dev build
+    // sends no header and is never refused.
+    { provide: API_VERSION, useValue: APP_VERSION },
     // The generated API client: one typed surface over every route, one permission
     // cache for the app's pages and the library's guard, directive, and forms. The
     // library hands the factory the options it owns and the application spreads them
@@ -37,8 +45,8 @@ export const appConfig: ApplicationConfig = {
     // as activity, and the error hook, which on a 401 returns the browser to the login
     // page with the attempted URL kept. With the client comes the ErrorHandler: an
     // ApiError nobody caught raises one global notice in the server's words, and a
-    // refusal a page reports in place raises none. No HTTP interceptor; HttpClient
-    // carries the XSRF echo alone.
+    // refusal a page reports in place raises none. The one HTTP interceptor, registered
+    // below, adds the release header to the application's own HttpClient calls.
     provideResourceClient((options) => createApi({ baseUrl: environment.apiUrl, ...options })),
     // The change feed the live pages listen through: the Firestore feed from its own
     // package, so the client stays free of the SDK. AuthService starts the client's live
@@ -59,7 +67,9 @@ export const appConfig: ApplicationConfig = {
     provideAnimationsAsync(),
     // The XSRF cookie is the staff auth's (pkg/auth/staff, XSRFCookie): HttpClient echoes it in
     // the X-XSRF-TOKEN header on every mutating request, and the server verifies the echo.
-    provideHttpClient(withXsrfConfiguration({ cookieName: 'staff-xsrf' })),
+    // The version interceptor adds X-Api-Version to the application's own same-origin
+    // HttpClient calls, as the client does to its own.
+    provideHttpClient(withInterceptors([apiVersionInterceptor]), withXsrfConfiguration({ cookieName: 'staff-xsrf' })),
     // The service worker that installs the application and keeps an open tab on the build
     // it loaded through a release: the worker keeps that build's files, so a lazy chunk
     // still loads after a deploy, and the new build is picked up when the person chooses.

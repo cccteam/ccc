@@ -131,7 +131,7 @@ const beaconPackage = `{
   "scripts": {
     "ng": "ng",
     "start:console": "ng serve console --no-hmr",
-    "build": "ng build console",
+    "build": "ng build console --define \"APP_VERSION='${VERSION:-dev}'\"",
     "lint": "ng lint console",
     "test": "ng test console --watch=false",
     "ccclib:local": "./ccclib.sh local"
@@ -390,7 +390,7 @@ func TestOutletApply(t *testing.T) {
 				pkg := read(t, a, "web/package.json")
 				for _, want := range []string{
 					"    \"start:console\": \"ng serve console --no-hmr\",\n    \"start:portal\": \"ng serve portal --no-hmr\",\n",
-					`"build": "ng build console && ng build portal"`,
+					`"build": "ng build console --define \"APP_VERSION='${VERSION:-dev}'\" && ng build portal --define \"APP_VERSION='${VERSION:-dev}'\""`,
 					`"lint": "ng lint console && ng lint portal"`,
 					`"test": "ng test console --watch=false && ng test portal --watch=false"`,
 				} {

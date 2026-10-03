@@ -98,6 +98,11 @@ type Outlet struct {
 	APIKey bool
 	// WebApp is the WebApp option's mount path, empty when the outlet serves none.
 	WebApp string
+	// OldestAnswered is the OldestAnswered option's release, the oldest release of the
+	// browser application the outlet still answers: a semantic version as written,
+	// ThisRelease for the server's own release, or empty when the outlet declares none
+	// (every release that sends one is answered).
+	OldestAnswered string
 	// Pos is the position of the declaring call.
 	Pos string
 }
@@ -195,6 +200,10 @@ func readOutletOptions(o *Outlet, args []Arg) {
 		case optWebApp:
 			if len(c.Args) == 1 && c.Args[0].Kind == ArgString {
 				o.WebApp = c.Args[0].Str
+			}
+		case optOldestAnswered:
+			if len(c.Args) == 1 && (c.Args[0].Kind == ArgString || c.Args[0].Kind == ArgIdent) {
+				o.OldestAnswered = c.Args[0].Str
 			}
 		}
 	}

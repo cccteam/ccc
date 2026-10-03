@@ -78,6 +78,10 @@ type Configurer interface {
 	LiveOrigins() []string
 	Validator() *validator.Validate
 	LogExporter() logger.Exporter
+	// AppVersion is the release this build was made from (APP_VERSION, dev where no
+	// release built it): what the generated router's session outlets check a browser
+	// application's X-Api-Version against.
+	AppVersion() string
 	Dist() string
 }
 
@@ -92,6 +96,7 @@ type App struct {
 	tenants        *resource.TenantRoster
 	validate       *validator.Validate
 	logExporter    logger.Exporter
+	version        string
 	// site serves the site's built bundle at /: the resource package's served browser
 	// app holds the deep-link rewrite, the prefix strip, and the two cache classes a
 	// service worker needs (hashed files immutable, everything else revalidated).
@@ -114,6 +119,7 @@ func New(cfg Configurer) *App {
 		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
+		version:        cfg.AppVersion(),
 		site:           resource.NewBrowserApp(cfg.Dist(), "/"),
 		live:           cfg.Live(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
@@ -138,6 +144,13 @@ func New(cfg Configurer) *App {
 // LoggerMiddleware returns a middleware that logs requests.
 func (a *App) LoggerMiddleware() func(http.Handler) http.Handler {
 	return logger.NewRequestLogger(a.logExporter)
+}
+
+// ServerVersion is the release this server was built from, the configuration's
+// APP_VERSION: what the generated router's session outlets check the site's
+// X-Api-Version against. A development build reports dev, which checks nothing.
+func (a *App) ServerVersion() string {
+	return a.version
 }
 
 // SecurityHeaders is a middleware that sets security-related headers on the response.

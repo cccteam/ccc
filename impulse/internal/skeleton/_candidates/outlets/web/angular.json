@@ -26,6 +26,7 @@
             "polyfills": ["zone.js"],
             "tsConfig": "console/tsconfig.app.json",
             "inlineStyleLanguage": "scss",
+            "define": { "APP_VERSION": "'dev'" },
             "assets": [
               {
                 "glob": "**/*",
@@ -131,6 +132,7 @@
             "polyfills": ["zone.js"],
             "tsConfig": "portal/tsconfig.app.json",
             "inlineStyleLanguage": "scss",
+            "define": { "APP_VERSION": "'dev'" },
             "assets": [
               {
                 "glob": "**/*",

@@ -29,8 +29,12 @@ import (
 // so the login, callback and stored-file navigations reach the server instead of the cached
 // entry document; the app config provides the worker and the library's update provider;
 // the entry document links the web app manifest, which identifies the application by its
-// mount path and starts it there; and every icon the manifest declares is there at the
-// size it declares, read from the PNG header. On the server side: the application's asset
+// mount path and starts it there; every icon the manifest declares is there at the size
+// it declares, read from the PNG header; the build defines APP_VERSION and the
+// workspace's build script redefines it from VERSION, so a release build stamps its
+// release and any other dev; and the app config provides API_VERSION from it and
+// registers the version interceptor, so every request carries the release the server
+// checks. On the server side: the application's asset
 // handlers are built from resource.NewBrowserApp with the outlet's mount path, which holds
 // the deep-link rewrite and the two cache classes a worker needs, and the module the type
 // replaces, github.com/jtwatson/spaassets, is imported nowhere and gone from go.mod. A
@@ -43,11 +47,11 @@ type installable struct{}
 func (installable) Name() string { return "installable" }
 
 func (installable) Describe() string {
-	return "every browser application bound to a session outlet installs as a progressive web app (worker dependency and config excluding its API, manifest and icons, update provider) and is served through the resource package's served browser app"
+	return "every browser application bound to a session outlet installs as a progressive web app (worker dependency and config excluding its API, manifest and icons, update provider, the release stamped and sent with every request) and is served through the resource package's served browser app"
 }
 
 func (installable) Meaning() string {
-	return "An installable application is one the browser can install, with a service worker that keeps the files of the build an open tab loaded, so a release never breaks that tab, and a web app manifest that names and identifies the application. The skeletons carry the whole shape: `@angular/service-worker` beside the other Angular packages in `package.json`; `ngsw-config.json` at the workspace root, named by every project's production configuration (`\"serviceWorker\": \"ngsw-config.json\"`), whose `navigationUrls` carry `!/api/**` so the login, callback and stored-file navigations under the mount reach the server; `provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' })` and `provideAppUpdate()` (from `@cccteam/resource-angular/ui-app-update`) in `app.config.ts`; `public/manifest.webmanifest` with `id` the mount path with a trailing slash (`/` or `/console/`), `scope` and `start_url` `./`, and three PNG icons under `public/icons/` whose dimensions match their `sizes`; and `<link rel=\"manifest\">` in `index.html`. On the server the App holds a `*resource.BrowserApp` per bundle, built with `resource.NewBrowserApp(dir, mount)`, and its `DeepLink` and `Assets` delegate to it one line each, which retires `github.com/jtwatson/spaassets` and the application's own cache header code. Each line under the check names the first missing piece of one project, by file."
+	return "An installable application is one the browser can install, with a service worker that keeps the files of the build an open tab loaded, so a release never breaks that tab, and a web app manifest that names and identifies the application. The skeletons carry the whole shape: `@angular/service-worker` beside the other Angular packages in `package.json`; `ngsw-config.json` at the workspace root, named by every project's production configuration (`\"serviceWorker\": \"ngsw-config.json\"`), whose `navigationUrls` carry `!/api/**` so the login, callback and stored-file navigations under the mount reach the server; `provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' })` and `provideAppUpdate()` (from `@cccteam/resource-angular/ui-app-update`) in `app.config.ts`; `public/manifest.webmanifest` with `id` the mount path with a trailing slash (`/` or `/console/`), `scope` and `start_url` `./`, and three PNG icons under `public/icons/` whose dimensions match their `sizes`; and `<link rel=\"manifest\">` in `index.html`. The release reaches the browser the same way in every skeleton: the project's build options define `APP_VERSION` as `'dev'`, the workspace's `build` script redefines it from the `VERSION` environment variable (`ng build console --define \"APP_VERSION='${VERSION:-dev}'\"`, which the image's browser stage sets), and `app.config.ts` provides it as `API_VERSION` (`{ provide: API_VERSION, useValue: APP_VERSION }`, the token from `@cccteam/resource-angular/types`) and registers `apiVersionInterceptor` through `provideHttpClient(withInterceptors([apiVersionInterceptor]))`, so the client and the application's own HttpClient calls send `X-Api-Version` and the server can refuse a build it no longer answers; a `dev` build sends no header. On the server the App holds a `*resource.BrowserApp` per bundle, built with `resource.NewBrowserApp(dir, mount)`, and its `DeepLink` and `Assets` delegate to it one line each, which retires `github.com/jtwatson/spaassets` and the application's own cache header code. Each line under the check names the first missing piece of one project, by file."
 }
 
 // The names the check reads: the Angular package that ships the worker and the package
@@ -60,6 +64,20 @@ const (
 	browserAppConstructor = "NewBrowserApp"
 	manifestFile          = "manifest.webmanifest"
 )
+
+// The names the release pieces read: the identifier the build defines, the environment
+// variable the build script redefines it from, the token the app config provides it as,
+// and the interceptor that adds it to the application's own HttpClient calls.
+const (
+	versionDefine      = "APP_VERSION"
+	versionVariable    = "VERSION"
+	versionToken       = "API_VERSION"
+	versionInterceptor = "apiVersionInterceptor"
+)
+
+// versionFeed is the build script flag that redefines the identifier from the variable,
+// as package.json spells it.
+const versionFeed = `--define \"APP_VERSION='${VERSION:-dev}'\"`
 
 // installState is how far one browser project is along the shape.
 type installState int
@@ -85,8 +103,9 @@ func (c installable) Run(_ context.Context, env *Env) Result {
 	for i := range p.Sites {
 		site := &p.Sites[i]
 		g := site.Generator
-		for _, o := range outletSurfaces(site) {
-			o := &o
+		surfaces := outletSurfaces(site)
+		for i := range surfaces {
+			o := &surfaces[i]
 			if o.WebApp == "" || !o.ServesSessions {
 				continue
 			}
@@ -167,14 +186,15 @@ type piece struct {
 // with the first missing piece as the finding (or, for a project with none of the
 // browser side, the note saying so). The pieces are read in the order a developer adds
 // them: the dependency, the worker config, its API exclusion, the providers, the manifest
-// link, the manifest and its icons, and the server's handlers.
+// link, the manifest and its icons, the release (the define, the build script that feeds
+// it, the token and the interceptor), and the server's handlers.
 func (installable) project(a *app.App, handlersDir string, p *boundProject, o *outletSurface) (installState, string, error) {
-	var pieces []piece
-	dependency, err := dependencyPiece(a, p)
+	manifest, err := readPackageJSON(a, p)
 	if err != nil {
 		return 0, "", err
 	}
-	pieces = append(pieces, dependency)
+	var pieces []piece
+	pieces = append(pieces, dependencyPiece(p, manifest))
 
 	config, configRel := workerConfigPiece(a, p)
 	pieces = append(pieces, config)
@@ -186,7 +206,7 @@ func (installable) project(a *app.App, handlersDir string, p *boundProject, o *o
 		pieces = append(pieces, piece{present: finding == "", finding: finding})
 	}
 
-	providers, err := providersPiece(a, p)
+	providers, version, err := providerPieces(a, p)
 	if err != nil {
 		return 0, "", err
 	}
@@ -204,6 +224,7 @@ func (installable) project(a *app.App, handlersDir string, p *boundProject, o *o
 		}
 		pieces = append(pieces, piece{present: finding == "", finding: finding})
 	}
+	pieces = append(pieces, definePiece(p), scriptPiece(p, manifest), version)
 
 	// The browser side is what "none of it" means; the server side is read after it.
 	present := 0
@@ -228,37 +249,102 @@ func (installable) project(a *app.App, handlersDir string, p *boundProject, o *o
 	case len(missing) == 0:
 		return installedAll, "", nil
 	case present == 0:
-		return installedNone, fmt.Sprintf("%s: project %s (outlet %s at %s) is not installable: no %s dependency, no worker config, no worker or update provider, and no manifest link", path.Join(p.WebDir, p.Root), p.Name, o.Name, o.WebApp, serviceWorkerPackage), nil
+		return installedNone, fmt.Sprintf("%s: project %s (outlet %s at %s) is not installable: no %s dependency, no worker config, no worker or update provider, no manifest link, and no release stamped (no %s define, no %s provider, no version interceptor)", path.Join(p.WebDir, p.Root), p.Name, o.Name, o.WebApp, serviceWorkerPackage, versionDefine, versionToken), nil
 	default:
 		return installedPart, missing[0], nil
 	}
 }
 
-// dependencyPiece reads the workspace's package.json for the service worker package at
-// the Angular line, the spec of @angular/core.
-func dependencyPiece(a *app.App, p *boundProject) (piece, error) {
+// packageManifest is what the check reads of the workspace's package.json: the
+// dependencies and the package scripts.
+type packageManifest struct {
+	Scripts      map[string]string `json:"scripts"`
+	Dependencies map[string]string `json:"dependencies"`
+}
+
+// readPackageJSON reads the workspace's package.json; a workspace without one reads as
+// empty, and every piece that needs it reports the file.
+func readPackageJSON(a *app.App, p *boundProject) (packageManifest, error) {
 	packageJSON := path.Join(p.WebDir, "package.json")
 	data, err := os.ReadFile(a.Abs(packageJSON))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return piece{}, errors.Wrap(err, "os.ReadFile()")
+		return packageManifest{}, errors.Wrap(err, "os.ReadFile()")
 	}
-	var manifest struct {
-		Dependencies map[string]string `json:"dependencies"`
-	}
+	var manifest packageManifest
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, &manifest); err != nil {
-			return piece{}, errors.Wrapf(err, "json.Unmarshal(): %s", packageJSON)
+			return packageManifest{}, errors.Wrapf(err, "json.Unmarshal(): %s", packageJSON)
 		}
 	}
+
+	return manifest, nil
+}
+
+// dependencyPiece reads the workspace's package.json for the service worker package at
+// the Angular line, the spec of @angular/core.
+func dependencyPiece(p *boundProject, manifest packageManifest) piece {
+	packageJSON := path.Join(p.WebDir, "package.json")
 	core, worker := manifest.Dependencies[angularCore], manifest.Dependencies[serviceWorkerPackage]
 	switch {
 	case worker == "":
-		return piece{finding: fmt.Sprintf("%s: %s is not a dependency; add it at the workspace's Angular line (%s, the line of %s)", packageJSON, serviceWorkerPackage, core, angularCore)}, nil
+		return piece{finding: fmt.Sprintf("%s: %s is not a dependency; add it at the workspace's Angular line (%s, the line of %s)", packageJSON, serviceWorkerPackage, core, angularCore)}
 	case worker != core:
-		return piece{present: true, finding: fmt.Sprintf("%s: %s is %s, not the workspace's Angular line %s (%s)", packageJSON, serviceWorkerPackage, worker, core, angularCore)}, nil
+		return piece{present: true, finding: fmt.Sprintf("%s: %s is %s, not the workspace's Angular line %s (%s)", packageJSON, serviceWorkerPackage, worker, core, angularCore)}
 	default:
-		return piece{present: true}, nil
+		return piece{present: true}
 	}
+}
+
+// definePiece reads the project's build for the define of the release identifier: the
+// build options (or the production configuration) define APP_VERSION, as 'dev', and the
+// build script redefines it for a release build. Without the define the identifier is
+// undefined at run time, and the app config cannot provide it.
+func definePiece(p *boundProject) piece {
+	angularJSON := path.Join(p.WebDir, "angular.json")
+	if _, ok := p.Defines[versionDefine]; ok {
+		return piece{present: true}
+	}
+
+	return piece{finding: fmt.Sprintf("%s: project %s's build defines no %s; add \"define\": { %q: \"'dev'\" } to its build options, which the workspace's build script redefines from %s for a release build", angularJSON, p.Name, versionDefine, versionDefine, versionVariable)}
+}
+
+// scriptPiece reads the workspace's build script for the project's segment (ng build
+// <project>) redefining the release identifier from the VERSION environment variable, so
+// the image's browser stage, which sets it, stamps the release into the bundle and every
+// other build stamps dev. A segment that defines the identifier from anything else counts
+// as present and is reported.
+func scriptPiece(p *boundProject, manifest packageManifest) piece {
+	packageJSON := path.Join(p.WebDir, "package.json")
+	segment, ok := buildSegment(manifest.Scripts["build"], p.Name)
+	switch {
+	case manifest.Scripts["build"] == "":
+		return piece{finding: fmt.Sprintf("%s: no build script; add \"build\": \"ng build %s %s\" so a release build stamps its release and any other dev", packageJSON, p.Name, versionFeed)}
+	case !ok:
+		return piece{finding: fmt.Sprintf("%s: the build script has no ng build %s segment; add one with %s so a release build stamps its release and any other dev", packageJSON, p.Name, versionFeed)}
+	case !strings.Contains(segment, "--define") || !strings.Contains(segment, versionDefine):
+		return piece{finding: fmt.Sprintf("%s: the build script's ng build %s passes no --define of %s, so every build stamps dev; add %s", packageJSON, p.Name, versionDefine, versionFeed)}
+	case !versionVariableRE.MatchString(segment):
+		return piece{present: true, finding: fmt.Sprintf("%s: the build script's ng build %s defines %s from something other than the %s environment variable, which the image's browser stage sets; pass %s", packageJSON, p.Name, versionDefine, versionVariable, versionFeed)}
+	default:
+		return piece{present: true}
+	}
+}
+
+// versionVariableRE matches a shell reference to the VERSION environment variable.
+var versionVariableRE = regexp.MustCompile(`\$\{?` + versionVariable + `\b`)
+
+// buildSegment finds the project's segment of a workspace build script: the && separated
+// command that runs ng build <project>.
+func buildSegment(script, project string) (string, bool) {
+	segmentRE := regexp.MustCompile(`\bng build ` + regexp.QuoteMeta(project) + `(\s|$)`)
+	for _, segment := range strings.Split(script, "&&") {
+		segment = strings.TrimSpace(segment)
+		if segmentRE.MatchString(segment) {
+			return segment, true
+		}
+	}
+
+	return "", false
 }
 
 // workerConfigPiece reads the project's production configuration for the worker config it
@@ -329,40 +415,71 @@ func apiUnderMount(prefix, mount string) (string, bool) {
 	return rel, true
 }
 
-// providersPiece reads the hand-written TypeScript under the project's source root for
-// the two provider calls, the worker's and the update service's; specs and generated
-// files are not read.
-func providersPiece(a *app.App, p *boundProject) (piece, error) {
+// providerPieces reads the hand-written TypeScript under the project's source root for
+// the provider calls: the worker's and the update service's as one piece, and the
+// release's, the API_VERSION provider and the version interceptor, as another; specs and
+// generated files are not read.
+func providerPieces(a *app.App, p *boundProject) (providers, version piece, err error) {
 	source := path.Join(p.WebDir, p.SourceRoot)
-	worker, update, err := providerCalls(a.Abs(source))
+	calls, err := providerCalls(a.Abs(source))
 	if err != nil {
-		return piece{}, err
+		return piece{}, piece{}, err
 	}
 	appConfig := path.Join(source, "app", "app.config.ts")
 	const workerCall = "provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' })"
 	const updateCall = "provideAppUpdate() from @cccteam/resource-angular/ui-app-update"
 	switch {
-	case !worker && !update:
-		return piece{finding: fmt.Sprintf("%s: nothing under %s provides the service worker (%s) or the update provider (%s)", appConfig, source, workerCall, updateCall)}, nil
-	case !worker:
-		return piece{present: true, finding: fmt.Sprintf("%s: nothing under %s provides the service worker (%s)", appConfig, source, workerCall)}, nil
-	case !update:
-		return piece{present: true, finding: fmt.Sprintf("%s: nothing under %s provides the update provider (%s), so a new build is never announced and a refused build never picked up", appConfig, source, updateCall)}, nil
+	case !calls.worker && !calls.update:
+		providers = piece{finding: fmt.Sprintf("%s: nothing under %s provides the service worker (%s) or the update provider (%s)", appConfig, source, workerCall, updateCall)}
+	case !calls.worker:
+		providers = piece{present: true, finding: fmt.Sprintf("%s: nothing under %s provides the service worker (%s)", appConfig, source, workerCall)}
+	case !calls.update:
+		providers = piece{present: true, finding: fmt.Sprintf("%s: nothing under %s provides the update provider (%s), so a new build is never announced and a refused build never picked up", appConfig, source, updateCall)}
 	default:
-		return piece{present: true}, nil
+		providers = piece{present: true}
 	}
+	const versionProvision = "{ provide: API_VERSION, useValue: APP_VERSION }, the token from @cccteam/resource-angular/types"
+	const interceptorCall = "provideHttpClient(withInterceptors([apiVersionInterceptor])), from @cccteam/resource-angular/resource-client"
+	switch {
+	case !calls.version && !calls.interceptor:
+		version = piece{finding: fmt.Sprintf("%s: nothing under %s provides %s (%s) or registers the version interceptor (%s), so no request carries the release and the server never refuses a build it stopped answering", appConfig, source, versionToken, versionProvision, interceptorCall)}
+	case !calls.version:
+		version = piece{present: true, finding: fmt.Sprintf("%s: nothing under %s provides %s (%s), so the client sends no release and the server never refuses a build it stopped answering", appConfig, source, versionToken, versionProvision)}
+	case !calls.interceptor:
+		version = piece{present: true, finding: fmt.Sprintf("%s: nothing under %s registers the version interceptor (%s), so the application's own HttpClient calls carry no release", appConfig, source, interceptorCall)}
+	default:
+		version = piece{present: true}
+	}
+
+	return providers, version, nil
 }
 
-// providerCalls reports whether the hand-written TypeScript under a source root calls
-// provideServiceWorker and provideAppUpdate. The tree is opened as a root, so the walk
-// stays inside it; a source root that is not there has neither.
-func providerCalls(abs string) (worker, update bool, err error) {
+// configCalls is what the hand-written TypeScript under a source root calls of the
+// shape: the worker and update providers, the API_VERSION provision, and the version
+// interceptor's registration.
+type configCalls struct {
+	worker, update, version, interceptor bool
+}
+
+// all reports whether every call was seen, so the walk can stop.
+func (c configCalls) all() bool {
+	return c.worker && c.update && c.version && c.interceptor
+}
+
+// versionProvisionRE matches the provision of the API_VERSION token.
+var versionProvisionRE = regexp.MustCompile(`\bprovide:\s*` + versionToken + `\b`)
+
+// providerCalls reports which of the shape's calls the hand-written TypeScript under a
+// source root makes. The tree is opened as a root, so the walk stays inside it; a source
+// root that is not there makes none.
+func providerCalls(abs string) (configCalls, error) {
+	var calls configCalls
 	root, err := os.OpenRoot(abs)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, false, nil
+		return calls, nil
 	}
 	if err != nil {
-		return false, false, errors.Wrap(err, "os.OpenRoot()")
+		return calls, errors.Wrap(err, "os.OpenRoot()")
 	}
 	defer root.Close()
 
@@ -387,19 +504,21 @@ func providerCalls(abs string) (worker, update bool, err error) {
 			return errors.Wrap(err, "fs.ReadFile()")
 		}
 		text := string(data)
-		worker = worker || strings.Contains(text, "provideServiceWorker(")
-		update = update || strings.Contains(text, "provideAppUpdate(")
-		if worker && update {
+		calls.worker = calls.worker || strings.Contains(text, "provideServiceWorker(")
+		calls.update = calls.update || strings.Contains(text, "provideAppUpdate(")
+		calls.version = calls.version || versionProvisionRE.MatchString(text)
+		calls.interceptor = calls.interceptor || (strings.Contains(text, "withInterceptors(") && strings.Contains(text, versionInterceptor))
+		if calls.all() {
 			return fs.SkipAll
 		}
 
 		return nil
 	})
 	if err != nil {
-		return false, false, errors.Wrap(err, "fs.WalkDir()")
+		return calls, errors.Wrap(err, "fs.WalkDir()")
 	}
 
-	return worker, update, nil
+	return calls, nil
 }
 
 // linkTagRE matches a link element; relAttrRE and hrefAttrRE read its rel and href.

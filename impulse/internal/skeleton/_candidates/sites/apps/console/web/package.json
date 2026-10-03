@@ -4,7 +4,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve console --no-hmr",
-    "build": "ng build console",
+    "build": "ng build console --define \"APP_VERSION='${VERSION:-dev}'\"",
     "lint": "ng lint console",
     "test": "ng test console --watch=false",
     "ccclib:local": "./ccclib.sh local",
