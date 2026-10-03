@@ -90,7 +90,8 @@ from `2-env`'s state.
   runs it on the build worker as the deploy identity, and this stack grants
   that identity `roles/spanner.databaseAdmin` on the database only, for DDL
   (a member of the database's own policy, so no other database is reached;
-  `spanner.tf`){{if .MigrateReadsFirestore}}, and `roles/datastore.user` on the Firestore
+  `spanner.tf`), `roles/monitoring.metricWriter` on the project for the Spanner
+  client's metrics (`service-accounts.tf`){{if .MigrateReadsFirestore}}, and `roles/datastore.user` on the Firestore
   database under the condition naming it (`firestore.tf`){{end}}. It holds no
   accessor on a runtime secret, which a migration never reads.
 - **The database** `{{.Prefix}}-<env>-gbl-{{.App}}-db` on the environment's instance

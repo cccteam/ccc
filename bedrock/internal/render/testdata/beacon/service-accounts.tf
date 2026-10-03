@@ -46,3 +46,13 @@ resource "google_service_account_iam_member" "deploy_uses_app" {
 
   depends_on = [google_service_account.app]
 }
+
+# The migrate command runs on the build worker as the deploy identity (the pipeline
+# takes it out of the release's image): its output is the build's log, and the
+# Spanner client writes its client-side metrics, which log a denial every minute
+# without metricWriter. The identity is 2-env's, so nothing here is depended on.
+resource "google_project_iam_member" "deploy_metrics" {
+  project = local.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = local.identities.deploy_identity_member
+}

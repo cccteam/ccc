@@ -87,7 +87,8 @@ from `2-env`'s state.
   runs it on the build worker as the deploy identity, and this stack grants
   that identity `roles/spanner.databaseAdmin` on the database only, for DDL
   (a member of the database's own policy, so no other database is reached;
-  `spanner.tf`). It holds no
+  `spanner.tf`), `roles/monitoring.metricWriter` on the project for the Spanner
+  client's metrics (`service-accounts.tf`). It holds no
   accessor on a runtime secret, which a migration never reads.
 - **The database** `imp-<env>-gbl-beacon-db` on the environment's instance
   (`2-env` output `spanner_instance`: tst's own, the spn instance for stg and

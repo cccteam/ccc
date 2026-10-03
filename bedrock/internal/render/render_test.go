@@ -873,10 +873,11 @@ func TestMigrationGrants(t *testing.T) {
 			}
 			present := map[string][]string{
 				"spanner.tf":                            {`resource "google_spanner_database_iam_member" "deploy_admin" {`, "  role     = \"roles/spanner.databaseAdmin\"\n  member   = local.identities.deploy_identity_member"},
+				"service-accounts.tf":                   {`resource "google_project_iam_member" "deploy_metrics" {`, "  role    = \"roles/monitoring.metricWriter\"\n  member  = local.identities.deploy_identity_member"},
 				"cloud-build.tf":                        {"_MIGRATE_ENV             = jsonencode(local.migrate_env)"},
 				"locals.tf":                             {"migrate_env = merge(local.core_env, local.data_env"},
 				"logging.tf":                            {`resource.labels.build_trigger_id`, `"operations_reads_migrate_logs"`},
-				"README.md":                             {"`roles/spanner.databaseAdmin` on the database only, for DDL", "The first apply after a render with this bedrock removes them"},
+				"README.md":                             {"`roles/spanner.databaseAdmin` on the database only, for DDL", "`roles/monitoring.metricWriter` on the project for the Spanner\n  client's metrics", "The first apply after a render with this bedrock removes them"},
 				"root/cloudbuild.yaml":                  {"args: [deploy, migrate, --preflight, --version-variable, APP_VERSION]", "args: [deploy, migrate, --version-variable, APP_VERSION]"},
 				"root/.github/workflows/operations.yml": {`labels.build_step=~\"(Preflight|Run)Migrations\"`, "    name: restore the environment\n", "    name: run the release again\n", "    name: the migrations' operation\n"},
 			}
