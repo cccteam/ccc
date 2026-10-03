@@ -263,6 +263,23 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no browser apps",
 		},
 		{
+			// The fixture's console carries none of the shape: a warning, not a failure. Its
+			// portal workspace declares a project with no root, so no project is bound there.
+			name: "installable flat: the console has none of it", fixture: "flat", check: installable{},
+			wantStatus: Warn, wantSummary: "0 of 1 browser application(s) install as progressive web apps; 1 not installable",
+			wantDetails: []string{
+				"web/console: project console (outlet default at /) is not installable: no @angular/service-worker dependency, no worker config, no worker or update provider, and no manifest link",
+			},
+		},
+		{
+			name: "installable sites declare no browser application", fixture: "sites", check: installable{},
+			wantStatus: Skip, wantSummary: "no browser project is bound to a session outlet",
+		},
+		{
+			name: "installable no site", fixture: "badprogram", check: installable{},
+			wantStatus: Skip, wantSummary: "no site generator",
+		},
+		{
 			name: "rpc-execute flat", fixture: "flat", check: rpcExecute{},
 			wantStatus: Fail, wantSummary: "1 RPC finding(s) (regenerate and read the generator output)",
 			wantDetails: []string{

@@ -135,6 +135,7 @@ checks:
   package-manager
   registry-pins
   test-runner
+  installable
   ci-workflow
   paging
   rpc-execute
