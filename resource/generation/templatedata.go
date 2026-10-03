@@ -308,6 +308,29 @@ type featureDeclarationsData struct {
 	Gates        []featureGateEntry
 }
 
+// fileHoldersData feeds the resources package's zz_gen_file_holders.go: the table
+// resources with a stored @file by struct name, the computed ones with their key
+// columns and store expressions, and the packages those expressions import.
+type fileHoldersData struct {
+	Source   string
+	Package  string
+	Imports  []string
+	Tables   []string
+	Computed []computedHolder
+}
+
+// computedHolder is one computed resource's holder: its resource name and key columns.
+type computedHolder struct {
+	Resource string
+	Keys     []computedHolderKey
+}
+
+// computedHolderKey is one key column with its store's name expression.
+type computedHolderKey struct {
+	Field     string
+	StoreExpr string
+}
+
 // featuresData feeds the handler package's zz_gen_features.go: the feature flag
 // handlers as delegations to the library's.
 type featuresData struct {
@@ -378,10 +401,7 @@ type appContractData struct {
 	HasValidator    bool
 	HasDomainScoped bool
 	HasRPC          bool
-	// HasFileStore asserts FileStore() while any @upload method streams into it or any
-	// @file route opens a stored file from it.
-	HasFileStore bool
-	HasComputed  bool
+	HasComputed     bool
 	// ConcealedDomains says the domain-scoped surface asks the caller's foothold after
 	// the roster (WithConcealedDomains); the contract's methods are the same either way,
 	// and the comment says which question the guard asks.

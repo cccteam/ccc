@@ -124,12 +124,12 @@ func TestFinding_String(t *testing.T) {
 		{
 			name:    "an interleaved child names its parent",
 			finding: CascadeReleaseFinding{Resource: "RefitTask", Table: "RefitTasks", Parent: "Refits"},
-			want:    "RefitTask stores files on RefitTasks, whose rows the database deletes by cascade, interleaved in Refits, so a cascade releases none of their objects and the sweep removes them; an application that cares deletes the rows by patch first (README section 13)",
+			want:    "RefitTask stores files on RefitTasks, whose rows the database deletes by cascade, interleaved in Refits, so a cascade releases none of their objects and the orphaned-file cleanup removes them; an application that cares deletes the rows by patch first (README section 13)",
 		},
 		{
 			name:    "a cascading foreign key names its column",
 			finding: CascadeReleaseFinding{Resource: "Attachment", Table: "Attachments", Column: "OrderId"},
-			want:    "Attachment stores files on Attachments, whose rows the database deletes by cascade, through the foreign key on OrderId, so a cascade releases none of their objects and the sweep removes them; an application that cares deletes the rows by patch first (README section 13)",
+			want:    "Attachment stores files on Attachments, whose rows the database deletes by cascade, through the foreign key on OrderId, so a cascade releases none of their objects and the orphaned-file cleanup removes them; an application that cares deletes the rows by patch first (README section 13)",
 		},
 	}
 

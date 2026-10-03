@@ -24,17 +24,28 @@ import (
 // Two placements. Field scope, on the column holding the store key of a @resource,
 // @virtual, or keyed @computed struct: @file bare, or @file(segment), with optional
 // name: Field and type: Field naming the sibling columns that carry the file's name
-// and media type. The key column goes off the wire in both directions: never returned
-// on read or list, never accepted on create or update, absent from the TypeScript
-// interface and metadata; a NOT NULL key means a row is added by the @upload method
-// that stores its file, so Create is not registered. Struct scope, on a keyed @computed
-// struct: @file or @file(segment), and the computed package declares
-// <Name><Segment>(ctx, key…, qSet, client, computedClient) (*resource.Content, error)
-// beside Read<Name>, rendering the document at request time; a nil content is 404.
+// and media type. The key column says which store holds the file by its type: string
+// or *string is the default store, resource.Key[S] or *resource.Key[S] the named store
+// S, a type the application declares embedding resource.Store. The key column goes off
+// the wire in both directions: never returned on read or list, never accepted on
+// create or update, absent from the TypeScript interface and metadata; a NOT NULL key
+// means a row is added by the @upload method that stores its file, so Create is not
+// registered. Struct scope, on a keyed @computed struct: @file or @file(segment), and
+// the computed package declares <Name><Segment>(ctx, key…, qSet, client,
+// computedClient) (*resource.Content, error) beside Read<Name>, rendering the document
+// at request time; a nil content is 404.
+//
+// A field-scope @file on a struct whose read route is suppressed is a declaration that
+// serves nothing: no route, no handler, no segment in the client, but the key column
+// still counts, so the release after a commit and the orphaned-file cleanup know the
+// keys the table holds. A shared resources package declares its file tables that way.
+//
 // Refused at generation, naming the struct: a key-less struct, an unknown sibling, two
-// declarations on one segment, a field that is not a string or a nullable string, a
-// struct-scope declaration on anything but a computed struct, a declaration on a struct
-// whose read route is suppressed, and a content function that is missing or has another
+// declarations on one segment, a key field that is not a string, a nullable string, or
+// a resource.Key, a sibling that is not a string or a nullable string, a resource.Key
+// column with no @file (its keys would be invisible to the release and the cleanup), a
+// struct-scope declaration on anything but a computed struct, a rendered file under a
+// suppressed read route, and a content function that is missing or has another
 // signature.
 
 // The named arguments of a field-scope @file.
@@ -43,6 +54,12 @@ const (
 	fileTypeArgKey = "type"
 	// defaultFileSegment is the segment a bare @file serves under.
 	defaultFileSegment = "content"
+)
+
+// The resource package's typed-store names, as the key column's type is read.
+const (
+	keyTypeName   = "Key"
+	storeTypeName = "Store"
 )
 
 // fileSegmentPattern is the shape a segment takes: a lowercase path segment,
@@ -62,12 +79,56 @@ type fileRoute struct {
 }
 
 // fileField is a column the file route's frame reads for itself: the Go field, its
-// declared type (string or *string), and whether the column allows NULL.
+// declared type (string, *string, resource.Key[S] or *resource.Key[S]), whether the
+// column allows NULL, and, for a key column, the named store its type names.
 type fileField struct {
 	Name     string
 	Type     string
 	Pointer  bool
 	Nullable bool
+	// Store is the named store a key column's type names, nil for the default store
+	// and for the name and type columns.
+	Store *types.Named
+	// storeLocal spells the store type from inside the declaring struct's package,
+	// where the generated FileKeys and FileHolders live; storeQualified spells it
+	// package-qualified by package name, for the handler package.
+	storeLocal     string
+	storeQualified string
+}
+
+// Typed reports a key column typed by a named store.
+func (f *fileField) Typed() bool {
+	return f.Store != nil
+}
+
+// StoreType is the named store's type as the handler package spells it
+// (resources.Documents); empty for the default store.
+func (f *fileField) StoreType() string {
+	return f.storeQualified
+}
+
+// StoreNameExpr is the store's name as the handler package spells it:
+// resource.DefaultStore, or resource.StoreNameFor[resources.Documents]().
+func (f *fileField) StoreNameExpr() string {
+	return storeNameExpr(f.storeQualified)
+}
+
+// StoreNameExprLocal is the store's name as the declaring package spells it:
+// resource.DefaultStore, or resource.StoreNameFor[Documents]().
+func (f *fileField) StoreNameExprLocal() string {
+	return storeNameExpr(f.storeLocal)
+}
+
+// defaultStoreExpr spells the default store's name in generated code.
+const defaultStoreExpr = "resource.DefaultStore"
+
+// storeNameExpr renders a store's name from its type's spelling, empty for the default.
+func storeNameExpr(storeType string) string {
+	if storeType == "" {
+		return defaultStoreExpr
+	}
+
+	return "resource.StoreNameFor[" + storeType + "]()"
 }
 
 // Rendered reports whether the file is rendered by a content function rather than
@@ -128,8 +189,8 @@ func parseFile(arg genlang.Arg) (segment, nameField, typeField string, err error
 // it: the field's Go type, nullability, and whether the struct declares it at all.
 type fileFieldLookup func(name string) (goType types.Type, nullable bool, ok bool)
 
-// fileFieldOf checks a column the frame reads: it exists and is a string or a
-// nullable string (*string).
+// fileFieldOf checks a column the frame reads beside the key: it exists and is a
+// string or a nullable string (*string).
 func fileFieldOf(structName, declaring, role, name string, lookup fileFieldLookup) (*fileField, error) {
 	goType, nullable, ok := lookup(name)
 	if !ok {
@@ -148,14 +209,76 @@ func fileFieldOf(structName, declaring, role, name string, lookup fileFieldLooku
 	return &fileField{Name: name, Type: typeStringer(goType), Pointer: pointer, Nullable: nullable || pointer}, nil
 }
 
+// fileKeyOf checks the key column a field-scope @file sits on: a string or a nullable
+// string for the default store, or resource.Key[S] or a pointer to one for the named
+// store S. pkg is the declaring struct's package, which decides how the store type is
+// spelled from inside it.
+func fileKeyOf(structName, name string, lookup fileFieldLookup, pkg *types.Package) (*fileField, error) {
+	goType, nullable, ok := lookup(name)
+	if !ok {
+		return nil, errors.Newf("struct %s field %s: @%s names store key %s, which is not a field of the struct", structName, name, fileKeyword, name)
+	}
+	t := types.Unalias(goType)
+	pointer := false
+	if p, isPointer := t.(*types.Pointer); isPointer {
+		pointer = true
+		t = types.Unalias(p.Elem())
+	}
+	field := &fileField{Name: name, Type: typeStringer(goType), Pointer: pointer, Nullable: nullable || pointer}
+	if store, isKey := storeTypeOf(t); isKey {
+		field.Store = store
+		field.storeQualified = typeStringer(store)
+		field.storeLocal = types.TypeString(store, func(p *types.Package) string {
+			if p == pkg {
+				return ""
+			}
+
+			return p.Name()
+		})
+
+		return field, nil
+	}
+	if !types.Identical(t, types.Typ[types.String]) {
+		return nil, errors.Newf("struct %s field %s: the store key of a @%s is a string or a nullable string (*string) for the default store, or resource.Key[S] or *resource.Key[S] for the named store S, not %s", structName, name, fileKeyword, typeStringer(goType))
+	}
+
+	return field, nil
+}
+
+// storeTypeOf reads the named store off a resource.Key[S] instantiation: S, and whether
+// t is one.
+func storeTypeOf(t types.Type) (*types.Named, bool) {
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok || !isNamedType(named, resourcePackagePath, keyTypeName) || named.TypeArgs().Len() != 1 {
+		return nil, false
+	}
+	store, ok := types.Unalias(named.TypeArgs().At(0)).(*types.Named)
+	if !ok {
+		return nil, false
+	}
+
+	return store, true
+}
+
+// isTypedKey reports whether a field's type is resource.Key[S] or a pointer to one.
+func isTypedKey(goType types.Type) bool {
+	t := types.Unalias(goType)
+	if p, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(p.Elem())
+	}
+	_, ok := storeTypeOf(t)
+
+	return ok
+}
+
 // fileRouteOf builds the stored-file route a field-scope @file declares.
-func fileRouteOf(structName, keyField string, arg genlang.Arg, lookup fileFieldLookup) (*fileRoute, error) {
+func fileRouteOf(structName, keyField string, arg genlang.Arg, lookup fileFieldLookup, pkg *types.Package) (*fileRoute, error) {
 	segment, nameField, typeField, err := parseFile(arg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "struct %s field %s: @%s", structName, keyField, fileKeyword)
 	}
 	route := &fileRoute{Segment: segment}
-	if route.Key, err = fileFieldOf(structName, keyField, "store key", keyField, lookup); err != nil {
+	if route.Key, err = fileKeyOf(structName, keyField, lookup, pkg); err != nil {
 		return nil, err
 	}
 	if nameField != "" {
@@ -172,8 +295,10 @@ func fileRouteOf(structName, keyField string, arg genlang.Arg, lookup fileFieldL
 	return route, nil
 }
 
-// checkFileRoutes enforces what every kind shares: a keyed struct, a read route, and
-// one declaration per segment.
+// checkFileRoutes enforces what every kind shares: a keyed struct, one declaration per
+// segment, and a read route under a rendered file. A stored file under a suppressed
+// read route is a declaration that serves nothing, and is accepted: the key column
+// still gives the release and the orphaned-file cleanup the keys the table holds.
 func checkFileRoutes(structName string, files []*fileRoute, keyed, readDisabled bool) error {
 	if len(files) == 0 {
 		return nil
@@ -181,14 +306,14 @@ func checkFileRoutes(structName string, files []*fileRoute, keyed, readDisabled 
 	if !keyed {
 		return errors.Newf("struct %s: @%s needs a row to belong to, and %s declares no @%s; declare the key, or drop @%s", structName, fileKeyword, structName, primarykeyKeyword, fileKeyword)
 	}
-	if readDisabled {
-		return errors.Newf("struct %s: @%s serves the file under the read route, which %s suppresses; remove @%s(%s), or drop @%s", structName, fileKeyword, structName, suppressKeyword, ReadHandler, fileKeyword)
-	}
 	seen := make(map[string]string, len(files))
 	for _, file := range files {
 		declaring := "the struct"
 		if file.Key != nil {
 			declaring = "field " + file.Key.Name
+		}
+		if readDisabled && file.Rendered() {
+			return errors.Newf("struct %s: the struct-scope @%s renders its file under the read route, which %s suppresses; remove @%s(%s), or drop @%s", structName, fileKeyword, structName, suppressKeyword, ReadHandler, fileKeyword)
 		}
 		if prior, dup := seen[file.Segment]; dup {
 			return errors.Newf("struct %s: @%s declares segment %q twice, on %s and on %s; give one another segment, @%s(%s)", structName, fileKeyword, file.Segment, prior, declaring, fileKeyword, "thumbnail")
@@ -197,6 +322,17 @@ func checkFileRoutes(structName string, files []*fileRoute, keyed, readDisabled 
 	}
 
 	return nil
+}
+
+// refuseUntaggedTypedKey refuses a column typed resource.Key[S] that carries no @file:
+// the type says the column holds a named store's keys, and without the declaration
+// the release and the orphaned-file cleanup would never see them.
+func refuseUntaggedTypedKey(structName, fieldName string, goType types.Type) error {
+	if !isTypedKey(goType) {
+		return nil
+	}
+
+	return errors.Newf("struct %s field %s is typed %s, a named store's key, but declares no @%s; declare @%s on it so the release and the orphaned-file cleanup see its keys, or type it string", structName, fieldName, typeStringer(goType), fileKeyword, fileKeyword)
 }
 
 // resolveResourceFiles reads a table or view struct's @file declarations onto res:
@@ -221,6 +357,10 @@ func resolveResourceFiles(res *resourceInfo, pStruct *parser.Struct, annotations
 
 	for i, pField := range pStruct.Fields() {
 		if !annotations.Fields[i].Has(fileKeyword) {
+			if err := refuseUntaggedTypedKey(pStruct.Name(), pField.Name(), pField.GoType()); err != nil {
+				return err
+			}
+
 			continue
 		}
 		field, ok := byName[pField.Name()]
@@ -230,7 +370,7 @@ func resolveResourceFiles(res *resourceInfo, pStruct *parser.Struct, annotations
 		if field.IsPrimaryKey {
 			return errors.Newf("struct %s field %s: @%s goes on the column holding the store key, not on the primary key", pStruct.Name(), pField.Name(), fileKeyword)
 		}
-		route, err := fileRouteOf(pStruct.Name(), pField.Name(), annotations.Fields[i].Get(fileKeyword), lookup)
+		route, err := fileRouteOf(pStruct.Name(), pField.Name(), annotations.Fields[i].Get(fileKeyword), lookup, structPackage(pStruct))
 		if err != nil {
 			return err
 		}
@@ -270,13 +410,17 @@ func resolveComputedFiles(res *computedResource, pStruct *parser.Struct, annotat
 
 	for i, pField := range pStruct.Fields() {
 		if !annotations.Fields[i].Has(fileKeyword) {
+			if err := refuseUntaggedTypedKey(pStruct.Name(), pField.Name(), pField.GoType()); err != nil {
+				return err
+			}
+
 			continue
 		}
 		field := byName[pField.Name()]
 		if field.IsPrimaryKey {
 			return errors.Newf("struct %s field %s: @%s goes on the field holding the store key, not on the primary key", pStruct.Name(), pField.Name(), fileKeyword)
 		}
-		route, err := fileRouteOf(pStruct.Name(), pField.Name(), annotations.Fields[i].Get(fileKeyword), lookup)
+		route, err := fileRouteOf(pStruct.Name(), pField.Name(), annotations.Fields[i].Get(fileKeyword), lookup, structPackage(pStruct))
 		if err != nil {
 			return err
 		}
@@ -285,6 +429,16 @@ func resolveComputedFiles(res *computedResource, pStruct *parser.Struct, annotat
 	}
 
 	return checkFileRoutes(pStruct.Name(), res.Files, res.HasPrimaryKey(), res.ReadHandlerDisabled())
+}
+
+// structPackage is the package a parsed struct is declared in.
+func structPackage(pStruct *parser.Struct) *types.Package {
+	named, ok := types.Unalias(pStruct.GoType()).(*types.Named)
+	if !ok {
+		return nil
+	}
+
+	return named.Obj().Pkg()
 }
 
 // rejectFileAnnotations refuses @file on a kind that serves no read route to hang a
@@ -301,6 +455,136 @@ func rejectFileAnnotations(pStruct *parser.Struct, annotations genlang.StructAnn
 	}
 	if len(errs) > 0 {
 		return errors.Wrap(errors.Join(errs...), "file annotation error")
+	}
+
+	return nil
+}
+
+// storeUse is one store a package uses and where: the key column or the upload that
+// names it, so a refusal and the router's start-up check can say so.
+type storeUse struct {
+	// Store is the named store's type, nil for the default.
+	Store *types.Named
+	// Qualified spells the type as the handler and router packages do; empty for the
+	// default.
+	Qualified string
+	// Where names the first declaration that uses the store.
+	Where string
+}
+
+// NameExpr is the store's name as the router package spells it.
+func (u storeUse) NameExpr() string {
+	return storeNameExpr(u.Qualified)
+}
+
+// key identifies the store: the type's qualified name, empty for the default.
+func (u storeUse) key() string {
+	if u.Store == nil {
+		return ""
+	}
+
+	return qualifiedTypeName(u.Store)
+}
+
+// storesUsed lists the stores the generated package uses, each once, the default
+// first: every stored @file key column (routed or not, since the release and the
+// cleanup read them all) and every non-suppressed @upload. The generated router
+// requires each at start, and the upload stores are checked against the columns.
+func (r *resourceGenerator) storesUsed() []storeUse {
+	var uses []storeUse
+	add := func(use storeUse) {
+		if slices.ContainsFunc(uses, func(have storeUse) bool { return have.key() == use.key() }) {
+			return
+		}
+		uses = append(uses, use)
+	}
+	addFiles := func(name string, files []*fileRoute) {
+		for _, file := range files {
+			if file.Key == nil {
+				continue
+			}
+			add(storeUse{Store: file.Key.Store, Qualified: file.Key.storeQualified, Where: fmt.Sprintf("the @%s column %s.%s", fileKeyword, name, file.Key.Name)})
+		}
+	}
+	for _, res := range r.resources {
+		addFiles(res.Name(), res.Files)
+	}
+	if r.genComputedResources {
+		for _, res := range r.computedResources {
+			addFiles(res.Name(), res.Files)
+		}
+	}
+	if r.genRPCMethods {
+		for _, rpcMethod := range r.rpcMethods {
+			if rpcMethod.SuppressHandler || rpcMethod.Upload == nil {
+				continue
+			}
+			add(storeUse{Store: rpcMethod.Upload.Store, Qualified: rpcMethod.Upload.StoreType(), Where: fmt.Sprintf("the @%s method %s", uploadKeyword, rpcMethod.Name())})
+		}
+	}
+	slices.SortStableFunc(uses, func(a, b storeUse) int {
+		return strings.Compare(a.key(), b.key())
+	})
+
+	return uses
+}
+
+// validateUploadStores refuses an @upload naming a store no @file column holds: its
+// keys would have no column to land in, so the objects would be the cleanup's the
+// moment they were stored. The default store counts as held by any string key column.
+func (r *resourceGenerator) validateUploadStores() error {
+	if !r.genRPCMethods {
+		return nil
+	}
+	held := make(map[string]bool)
+	for _, use := range r.storesUsed() {
+		if strings.HasPrefix(use.Where, "the @"+fileKeyword) {
+			held[use.key()] = true
+		}
+	}
+	var errs []error
+	for _, rpcMethod := range r.rpcMethods {
+		if rpcMethod.Upload == nil {
+			continue
+		}
+		use := storeUse{Store: rpcMethod.Upload.Store}
+		if held[use.key()] {
+			continue
+		}
+		if rpcMethod.Upload.Store == nil {
+			errs = append(errs, errors.Newf("struct %s: @%s streams to the default store, and no @%s column typed string holds its keys; declare the column the body records them in, or name the store the body's column belongs to with %s:", rpcMethod.Name(), uploadKeyword, fileKeyword, uploadStoreArgKey))
+
+			continue
+		}
+		errs = append(errs, errors.Newf("struct %s: @%s(%s: %s) names a store no @%s column holds; type the column the body records its keys in resource.Key[%s], or name that column's store", rpcMethod.Name(), uploadKeyword, uploadStoreArgKey, rpcMethod.Upload.StoreType(), fileKeyword, rpcMethod.Upload.StoreType()))
+	}
+	if len(errs) > 0 {
+		return errors.Wrap(errors.Join(errs...), "upload store errors")
+	}
+
+	return nil
+}
+
+// validateStoreTypes refuses a named store's type declared in a package the run did
+// not load: the generated code names the type in the resources, handler and router
+// packages, and only a loaded package's qualifier resolves there.
+func (r *resourceGenerator) validateStoreTypes() error {
+	for _, use := range r.storesUsed() {
+		if use.Store == nil || use.Store.Obj().Pkg() == nil {
+			continue
+		}
+		path := use.Store.Obj().Pkg().Path()
+		loaded := false
+		for _, pkg := range r.loadedPackages {
+			if pkg != nil && pkg.PkgPath == path {
+				loaded = true
+
+				break
+			}
+		}
+		if !loaded {
+			return errors.Newf("%s names the store %s, declared in %s, which this generator run does not read; declare the store type in the resources package, or in a package the run names (WithRPC, WithVirtualResources, WithComputedResources, WithTypes)", use.Where, use.Qualified, path)
+		}
 	}
 
 	return nil
@@ -428,8 +712,12 @@ func fileSetTags(files []*fileRoute) []resource.FieldTags {
 	return tags
 }
 
-// fileSegments lists a struct's file segments for the TypeScript descriptor.
-func fileSegments(files []*fileRoute) []string {
+// fileSegments lists a struct's file segments for the TypeScript descriptor; none
+// under a suppressed read route, which serves no file.
+func fileSegments(files []*fileRoute, readDisabled bool) []string {
+	if readDisabled {
+		return nil
+	}
 	segments := make([]string, 0, len(files))
 	for _, file := range files {
 		segments = append(segments, file.Segment)

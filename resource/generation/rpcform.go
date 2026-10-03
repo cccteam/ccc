@@ -33,7 +33,7 @@ const resourcePackagePath = "github.com/cccteam/ccc/resource"
 const executeForms = `an @rpc struct declares Execute in one of three forms:
 	Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error                       // runs inside the handler's transaction
 	Execute(ctx context.Context, client resource.Client, rpcClient *Client) error                              // runs outside one
-	Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.Files, client *Client) error // an @upload method, inside the transaction
+	Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.Files, client *Client) error // an @upload method, inside the transaction; resource.FilesIn[S] for the named store S
 either returning error alone, or (Result, error) with Result a struct type or a pointer to one`
 
 // executeSignature is what classification reads off an Execute method: how it
@@ -49,8 +49,10 @@ type executeSignature struct {
 	// declare the statuses with @answers.
 	choosesStatus bool
 	// takesFiles marks the upload form: Execute's third parameter is
-	// resource.Files, and the method must declare @upload.
+	// resource.Files or resource.FilesIn[S], and the method must declare @upload.
+	// filesStore is S for the typed form, nil for resource.Files.
 	takesFiles bool
+	filesStore *types.Named
 }
 
 // classifyExecute reads the struct's Execute method and returns its signature.
@@ -87,18 +89,9 @@ func classifyExecute(s *parser.Struct) (executeSignature, error) {
 		return none, errors.Newf("struct %s: Execute's second parameter is %s, neither resource.ReadWriteTransaction nor resource.Client; %s", s.Name(), typeStringer(second), executeForms)
 	}
 
-	clientParam := params.At(2)
-	if params.Len() == 4 {
-		// The upload form: the files come third, the client fourth, and the
-		// body runs inside the transaction, which is what claims the files.
-		if !isNamedType(params.At(2).Type(), resourcePackagePath, "Files") {
-			return none, errors.Newf("struct %s: Execute takes four parameters but the third is %s, not resource.Files; %s", s.Name(), typeStringer(params.At(2).Type()), executeForms)
-		}
-		if out.form != rpcFormTxn {
-			return none, errors.Newf("struct %s: an upload runs inside the handler's transaction, which claims the files, so Execute's second parameter is resource.ReadWriteTransaction, not %s; %s", s.Name(), typeStringer(params.At(1).Type()), executeForms)
-		}
-		out.takesFiles = true
-		clientParam = params.At(3)
+	clientParam, err := classifyUploadParams(s, params, &out)
+	if err != nil {
+		return none, err
 	}
 	if client, ok := clientParam.Type().(*types.Pointer); !ok || !isNamed(client.Elem()) {
 		return none, errors.Newf("struct %s: Execute's client parameter is %s, not a pointer to the application's RPC client type; %s", s.Name(), typeStringer(clientParam.Type()), executeForms)
@@ -129,6 +122,49 @@ func classifyExecute(s *parser.Struct) (executeSignature, error) {
 	default:
 		return none, errors.Newf("struct %s: Execute returns %s; it returns error, or (Result, error); %s", s.Name(), typeTupleString(results), executeForms)
 	}
+}
+
+// classifyUploadParams reads the upload form's parameters into out when Execute takes
+// four: the files come third, the client fourth, and the body runs inside the
+// transaction, which is what claims the files. It returns the client parameter, the
+// third in the plain form and the fourth in the upload form.
+func classifyUploadParams(s *parser.Struct, params *types.Tuple, out *executeSignature) (*types.Var, error) {
+	if params.Len() != 4 {
+		return params.At(2), nil
+	}
+	store, ok := filesParamStore(params.At(2).Type())
+	if !ok {
+		return nil, errors.Newf("struct %s: Execute takes four parameters but the third is %s, not resource.Files or resource.FilesIn[S]; %s", s.Name(), typeStringer(params.At(2).Type()), executeForms)
+	}
+	if out.form != rpcFormTxn {
+		return nil, errors.Newf("struct %s: an upload runs inside the handler's transaction, which claims the files, so Execute's second parameter is resource.ReadWriteTransaction, not %s; %s", s.Name(), typeStringer(params.At(1).Type()), executeForms)
+	}
+	out.takesFiles = true
+	out.filesStore = store
+
+	return params.At(3), nil
+}
+
+// filesParamStore reads the store off an upload Execute's files parameter: resource.Files
+// is the default store (nil, true), resource.FilesIn[S] the named store S (S, true), and
+// anything else is not a files parameter (nil, false).
+func filesParamStore(t types.Type) (*types.Named, bool) {
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return nil, false
+	}
+	if isNamedType(named, resourcePackagePath, "Files") {
+		return nil, true
+	}
+	if !isNamedType(named, resourcePackagePath, "FilesIn") || named.TypeArgs().Len() != 1 {
+		return nil, false
+	}
+	store, ok := types.Unalias(named.TypeArgs().At(0)).(*types.Named)
+	if !ok {
+		return nil, false
+	}
+
+	return store, true
 }
 
 func isNamed(t types.Type) bool {

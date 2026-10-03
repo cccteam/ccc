@@ -216,6 +216,21 @@ type servedRouterData struct {
 	// NegativeRouterTests are the outlet-isolation cases the routes test proves over
 	// NewTestRouter, re-proven here through New.
 	NegativeRouterTests []negativeRouterTest
+	// FileStores are the file stores the generated code reads and writes, which New
+	// requires on the resource client before the server starts; StoreImports are the
+	// packages the named stores' types are declared in.
+	FileStores   []servedFileStore
+	StoreImports []string
+}
+
+// servedFileStore is one file store as the router requires it at start and the router
+// test wires it.
+type servedFileStore struct {
+	// NameExpr is the store's name as the router spells it: resource.DefaultStore, or
+	// resource.StoreNameFor[pkg.T]() for the named store T.
+	NameExpr string
+	// OptionExpr wires a stub store under that name on the router test's mock client.
+	OptionExpr string
 }
 
 // servedOutlet is one outlet as the served router composes it.
@@ -425,6 +440,7 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		MultiAuth:           multiAuth,
 		NegativeRouterTests: negativeTests,
 	}
+	data.FileStores, data.StoreImports = r.servedFileStores()
 	if multiAuth {
 		for path := range authPaths {
 			data.AuthImports = append(data.AuthImports, path)
@@ -601,6 +617,9 @@ import (
 	"{{ . }}"
 {{- end }}
 	"github.com/cccteam/ccc/resource"
+{{- range .StoreImports }}
+	"{{ . }}"
+{{- end }}
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
@@ -611,6 +630,12 @@ type Handlers interface {
 	GeneratedHandlers
 {{- range .ExtraOutlets }}
 	Generated{{ .Suffix }}Handlers
+{{- end }}
+{{- if .FileStores }}
+	// ResourceClient is the client the generated handlers run against. The file
+	// stores the generated code reads and writes are wired on it, and New refuses to
+	// start without them (resource.RequireFileStores).
+	ResourceClient() resource.Client
 {{- end }}
 {{- range .SessionOutlets }}
 {{- if .Getter }}
@@ -681,6 +706,14 @@ type Hooks struct {
 // per outlet with its authentication around its generated routes and the outlet's hook,
 // a not-found handler per outlet prefix, and the browser applications.
 func New(h Handlers, hooks Hooks) *chi.Mux {
+{{- if .FileStores }}
+	// Every file store the generated code reads or writes is wired on the resource
+	// client, or the server does not start: an unwired store would otherwise surface
+	// on the first upload, file request or releasing delete.
+	if err := resource.RequireFileStores(h.ResourceClient(){{ range .FileStores }}, {{ .NameExpr }}{{ end }}); err != nil {
+		panic(fmt.Sprintf("router.New: %v", err))
+	}
+{{- end }}
 	r := chi.NewRouter()
 {{- if .SessionOutlets }}
 	// The release this server was built from, which every session outlet's version
@@ -820,6 +853,9 @@ func registerGenerated(r chi.Router, hook func(chi.Router, func(chi.Router)), na
 package {{ .Package }}
 
 import (
+{{- if .FileStores }}
+	"context"
+{{- end }}
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -831,6 +867,9 @@ import (
 	"{{ . }}"
 {{- end }}
 	"github.com/cccteam/ccc/resource"
+{{- range .StoreImports }}
+	"{{ . }}"
+{{- end }}
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
@@ -1495,6 +1534,29 @@ type routerHandlersStub struct {
 func (s *routerHandlersStub) ServerVersion() string {
 	return s.serverVersion
 }
+{{- if .FileStores }}
+
+// ResourceClient answers with a mock client carrying every file store New requires,
+// each a stub: the router test never reaches a store.
+func (s *routerHandlersStub) ResourceClient() resource.Client {
+	return resource.NewMockClient(nil, nil, nil{{ range .FileStores }}, {{ .OptionExpr }}{{ end }})
+}
+
+// stubFileStore satisfies resource.FileStore for the router test.
+type stubFileStore struct{}
+
+func (stubFileStore) Put(context.Context, string, string, io.Reader) error {
+	return nil
+}
+
+func (stubFileStore) Delete(context.Context, []string) error {
+	return nil
+}
+
+func (stubFileStore) Open(context.Context, string) (*resource.Content, error) {
+	return nil, nil
+}
+{{- end }}
 
 func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {
 	return &routerHandlersStub{

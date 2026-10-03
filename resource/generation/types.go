@@ -241,6 +241,9 @@ const (
 	// generated feature gate tests.
 	featuresOutputName     = "features"
 	featureTestsOutputName = "features_test"
+	// fileHoldersOutputName names the resources package's file holders file: every
+	// resource recording stored files' keys, for the orphaned-file cleanup.
+	fileHoldersOutputName = "file_holders"
 )
 
 // reservedOutput is one file the generator writes for itself: its name and what it
@@ -268,6 +271,7 @@ var reservedOutputStems = map[string]reservedOutput{
 	appContractOutputName:         {file: generatedGoFileName(appContractOutputName), carries: "the application contract"},
 	consolidatedHandlerOutputName: {file: generatedGoFileName(consolidatedHandlerOutputName), carries: "the consolidated handler"},
 	featuresOutputName:            {file: generatedGoFileName(featuresOutputName), carries: "the feature flags"},
+	fileHoldersOutputName:         {file: generatedGoFileName(fileHoldersOutputName), carries: "the file holders"},
 	releaseOutputName:             {file: resource.ReleaseFileName, carries: "the release file"},
 }
 
@@ -484,11 +488,13 @@ type rpcMethodInfo struct {
 	// the Execute signature; @answers must accompany it.
 	choosesStatus bool
 	// Upload is the method's validated @upload declaration; nil for a JSON
-	// method. Set iff Execute takes resource.Files.
+	// method. Set iff Execute takes resource.Files or resource.FilesIn[S].
 	Upload *rpcUpload
-	// takesFiles marks an Execute whose third parameter is resource.Files,
-	// read off the signature; @upload must accompany it.
+	// takesFiles marks an Execute whose third parameter is resource.Files or
+	// resource.FilesIn[S], read off the signature; @upload must accompany it.
+	// filesStore is S for the typed form, nil for resource.Files.
 	takesFiles bool
+	filesStore *types.Named
 	// Feature is the method's @feature: the flag its route and its digest entry are
 	// gated behind; nil when the method is not gated.
 	Feature *featureGate
@@ -513,11 +519,35 @@ type rpcUpload struct {
 	// MaxBytes bounds the whole multipart body; the frame answers 413 naming
 	// it before a byte over the limit is read.
 	MaxBytes int64
+	// Store is the named store the files stream to (store: S, Execute taking
+	// resource.FilesIn[S]); nil for the default store.
+	Store *types.Named
 }
 
 // MaxBytesText renders the maximum the way the declaration wrote it.
 func (u *rpcUpload) MaxBytesText() string {
 	return resource.FormatByteSize(u.MaxBytes)
+}
+
+// Typed reports an upload to a named store.
+func (u *rpcUpload) Typed() bool {
+	return u.Store != nil
+}
+
+// StoreType is the named store's type as the handler package spells it; empty for
+// the default store.
+func (u *rpcUpload) StoreType() string {
+	if u.Store == nil {
+		return ""
+	}
+
+	return typeStringer(u.Store)
+}
+
+// StoreNameExpr is the store's name as the handler package spells it:
+// resource.DefaultStore, or resource.StoreNameFor[resources.Documents]().
+func (u *rpcUpload) StoreNameExpr() string {
+	return storeNameExpr(u.StoreType())
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -846,16 +876,18 @@ func (c *computedResource) ReadHandlerDisabled() bool {
 	return c.SuppressReadHandler || !c.HasPrimaryKey()
 }
 
-// HasStoredFile reports whether any @file names a key column: the application must
-// then supply a FileStore.
+// HasStoredFile reports whether any @file names a key column: the store the column
+// names must then be wired on the resource client.
 func (c *computedResource) HasStoredFile() bool {
-	for _, file := range c.Files {
-		if file.Key != nil {
-			return true
-		}
-	}
+	return len(c.FileKeyFields()) > 0
+}
 
-	return false
+// FileKeyFields are the fields holding a stored file's key, one per field-scope @file
+// in declaration order, each with its store: what the generated FileHolders declares
+// for the orphaned-file cleanup, flagged computed, since the rows come from the
+// application's code and the keys are its to supply.
+func (c *computedResource) FileKeyFields() []*fileField {
+	return fileKeyFields(c.Files)
 }
 
 // KeyParamList renders the read route's key parameters as the generated handlers name
@@ -1212,29 +1244,29 @@ func (r *resourceInfo) PatchPermissionList() string {
 }
 
 // FileKeyFields are the fields holding a stored file's key, one per field-scope @file
-// in declaration order: what the generated FileKeys method declares, so a delete or a
-// key replacement releases the old object after commit.
-func (r *resourceInfo) FileKeyFields() []string {
-	var fields []string
-	for _, file := range r.Files {
+// in declaration order, each with its store: what the generated FileKeys method
+// declares, so a delete or a key replacement releases the old object from that store
+// after commit, and what the generated FileHolders hands the orphaned-file cleanup.
+func (r *resourceInfo) FileKeyFields() []*fileField {
+	return fileKeyFields(r.Files)
+}
+
+// fileKeyFields lists the key columns of a struct's stored files, in declaration order.
+func fileKeyFields(files []*fileRoute) []*fileField {
+	var fields []*fileField
+	for _, file := range files {
 		if file.Key != nil {
-			fields = append(fields, file.Key.Name)
+			fields = append(fields, file.Key)
 		}
 	}
 
 	return fields
 }
 
-// HasStoredFile reports whether any @file names a key column: the application must
-// then supply a FileStore.
+// HasStoredFile reports whether any @file names a key column: the store the column
+// names must then be wired on the resource client.
 func (r *resourceInfo) HasStoredFile() bool {
-	for _, file := range r.Files {
-		if file.Key != nil {
-			return true
-		}
-	}
-
-	return false
+	return len(r.FileKeyFields()) > 0
 }
 
 // KeyParamList renders the read route's key parameters as the generated handlers name
@@ -2003,7 +2035,7 @@ const (
 	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
 	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
 	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
-	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB); its Execute takes resource.Files
+	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB[, store: S]); its Execute takes resource.Files, or resource.FilesIn[S] for the named store S
 	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
 	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
 	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field])]; on a keyed @computed struct, @file[(segment)] rendered by <Name><Segment>

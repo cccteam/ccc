@@ -814,7 +814,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 		PageDefault:  pageDefault(res.PageDefault),
 		PageMax:      res.PageMax,
 		Order:        apiOrder(res.DeclaredOrder),
-		Files:        fileSegments(res.Files),
+		Files:        fileSegments(res.Files, res.ReadHandlerDisabled()),
 		Feature:      featureNameOf(res.Feature),
 	}
 
@@ -914,7 +914,7 @@ func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIR
 		PageDefault: pageDefault(res.PageDefault),
 		PageMax:     res.PageMax,
 		Order:       apiOrder(res.DeclaredOrder),
-		Files:       fileSegments(res.Files),
+		Files:       fileSegments(res.Files, res.ReadHandlerDisabled()),
 		Feature:     featureNameOf(res.Feature),
 	}
 	for _, field := range res.PrimaryKeys() {

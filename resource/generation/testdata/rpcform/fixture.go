@@ -145,6 +145,25 @@ type (
 
 	// @rpc
 	UploadFilesNotThird struct{}
+
+	// Documents is a named store the typed upload forms stream to.
+	Documents struct{ resource.Store }
+
+	// @rpc
+	// @upload(max: 5MB, store: Documents)
+	UploadTyped struct{}
+
+	// @rpc
+	// @upload(max: 5MB)
+	UploadTypedUndeclared struct{}
+
+	// @rpc
+	// @upload(max: 5MB, store: Documents)
+	UploadStoreUntyped struct{}
+
+	// @rpc
+	// @upload(max: 5MB, store: Photos)
+	UploadStoreMismatch struct{}
 )
 
 func (Verdict) HTTPStatus() int { return 200 }
@@ -239,5 +258,17 @@ func (*UploadNoMax) Execute(context.Context, resource.ReadWriteTransaction, reso
 	return nil
 }
 func (*UploadFilesNotThird) Execute(context.Context, resource.ReadWriteTransaction, *Client, resource.Files) error {
+	return nil
+}
+func (*UploadTyped) Execute(context.Context, resource.ReadWriteTransaction, resource.FilesIn[Documents], *Client) error {
+	return nil
+}
+func (*UploadTypedUndeclared) Execute(context.Context, resource.ReadWriteTransaction, resource.FilesIn[Documents], *Client) error {
+	return nil
+}
+func (*UploadStoreUntyped) Execute(context.Context, resource.ReadWriteTransaction, resource.Files, *Client) error {
+	return nil
+}
+func (*UploadStoreMismatch) Execute(context.Context, resource.ReadWriteTransaction, resource.FilesIn[Documents], *Client) error {
 	return nil
 }

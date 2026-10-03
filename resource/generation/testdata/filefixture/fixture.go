@@ -209,6 +209,39 @@ type (
 		// @file
 		StoreKey string
 	}
+
+	// Documents is a named store: the documents' own bucket.
+	Documents struct{ resource.Store }
+
+	// Photos is a second named store, so a key of one can be held against the other.
+	Photos struct{ resource.Store }
+
+	// TypedDocument keeps its files in the Documents store: the key columns are typed
+	// resource.Key[Documents], the second nullable.
+	TypedDocument struct {
+		ID       ccc.UUID `spanner:"Id"`
+		FileName string   `spanner:"FileName"`
+		// @file(name: FileName)
+		StoreKey resource.Key[Documents] `spanner:"StoreKey"`
+		// @file(thumbnail)
+		ThumbKey *resource.Key[Documents] `spanner:"ThumbKey"`
+	}
+
+	// UntaggedTyped types a column as a store's key without declaring the file.
+	UntaggedTyped struct {
+		ID  ccc.UUID                `spanner:"Id"`
+		Key resource.Key[Documents] `spanner:"Key"`
+	}
+
+	// TypedComputed's row names a stored file in the Documents store.
+	//
+	// @computed
+	TypedComputed struct {
+		// @primarykey
+		ID ccc.UUID
+		// @file
+		StoreKey resource.Key[Documents]
+	}
 )
 
 // The computed structs a QuerySet is instantiated over declare their resource names, as

@@ -187,9 +187,10 @@ func (r *resourceGenerator) accumulateResourceRoutes(outlets []routerOutlet, out
 
 // resourceFileRoutes builds the @file routes of a resource under the outlet route
 // prefix: one GET per declared segment under the read route, with the read route's
-// parameters. Empty for a resource that declares none.
+// parameters. Empty for a resource that declares none, and for one whose read is
+// suppressed: its stored files are declared for the release and the cleanup alone.
 func (r *resourceGenerator) resourceFileRoutes(res *resourceInfo, routePrefix string) ([]*generatedRoute, error) {
-	if len(res.Files) == 0 {
+	if len(res.Files) == 0 || res.ReadHandlerDisabled() {
 		return nil, nil
 	}
 	read, err := r.resourceRoute(res, ReadHandler, routePrefix)
@@ -205,9 +206,10 @@ func (r *resourceGenerator) resourceFileRoutes(res *resourceInfo, routePrefix st
 }
 
 // computedFileRoutes builds the @file routes of a computed resource under the outlet
-// route prefix, under its read route as resourceFileRoutes does.
+// route prefix, under its read route as resourceFileRoutes does, and none under a
+// suppressed read.
 func (r *resourceGenerator) computedFileRoutes(res *computedResource, routePrefix string) ([]*generatedRoute, error) {
-	if len(res.Files) == 0 {
+	if len(res.Files) == 0 || res.ReadHandlerDisabled() {
 		return nil, nil
 	}
 	routes, err := r.computedResourceRoutes(res, routePrefix)

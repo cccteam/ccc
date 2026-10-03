@@ -211,6 +211,7 @@ func newStruct(obj types.Object) *Struct {
 		s.fields = append(s.fields, &Field{
 			TypeInfo:    TypeInfo{field},
 			tags:        reflect.StructTag(st.Tag(i)),
+			pkg:         obj.Pkg(),
 			isLocalType: isTypeLocalToPackage(field, obj.Pkg()),
 		})
 	}
@@ -356,8 +357,12 @@ func (s *Struct) Method(methodName string) *types.Func {
 // Field is an abstraction combining types.Var and ast.Field for simpler parsing.
 type Field struct {
 	TypeInfo
-	astInfo     *ast.Field
-	tags        reflect.StructTag
+	astInfo *ast.Field
+	tags    reflect.StructTag
+	// pkg is the package the struct was reached from: the package of the object
+	// newStruct was given, which for a nested struct is the outer field's. A type of
+	// that package spells unqualified in the field's resolved type.
+	pkg         *types.Package
 	comments    string
 	isLocalType bool
 	errs        []string
@@ -401,22 +406,28 @@ func (f *Field) IsLocalType() bool {
 	return f.isLocalType
 }
 
-// ResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
-func (f *Field) ResolvedType() string {
-	if f.IsLocalType() {
-		return f.UnqualifiedType()
+// localQualifier spells a package the way the package the struct was reached from
+// does: nothing for that package, its name for any other. A type of that package then
+// reads unqualified wherever it appears in the field's type, as a type argument
+// included: resource.Key[Documents] in the package declaring Documents.
+func (f *Field) localQualifier(p *types.Package) string {
+	if p == nil || (f.pkg != nil && p.Path() == f.pkg.Path()) {
+		return ""
 	}
 
-	return f.Type()
+	return p.Name()
 }
 
-// DerefResolvedType returns this Field's pointer-dereferenced unqualified type if it's local, or its pointer-dereferenced qualified type otherwise.
-func (f *Field) DerefResolvedType() string {
-	if f.IsLocalType() {
-		return f.DerefUnqualifiedType()
-	}
+// ResolvedType returns this Field's type as its own package spells it: a type of that
+// package unqualified, every other package-qualified.
+func (f *Field) ResolvedType() string {
+	return types.TypeString(f.obj.Type(), f.localQualifier)
+}
 
-	return f.DerefType()
+// DerefResolvedType returns this Field's pointer-dereferenced type as its own package
+// spells it (ResolvedType).
+func (f *Field) DerefResolvedType() string {
+	return types.TypeString(derefType(f.obj.Type()), f.localQualifier)
 }
 
 // Comments returns the godoc comment text on the field's declaration.

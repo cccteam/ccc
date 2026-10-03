@@ -860,6 +860,7 @@ func (c *client) classifyRPCMethod(s *parser.Struct) (*rpcMethodInfo, error) {
 		ResultPointer: signature.resultPointer,
 		choosesStatus: signature.choosesStatus,
 		takesFiles:    signature.takesFiles,
+		filesStore:    signature.filesStore,
 		Fields:        make([]*rpcField, 0, len(s.Fields())),
 	}, nil
 }

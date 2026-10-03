@@ -240,21 +240,8 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				"domainScopedApp",
 				"RPCClient",
 				"ComputedClient",
-				"fileApp",
+				"FileStore",
 			},
-		},
-		{
-			name: "an @upload method or a stored @file asserts the FileStore",
-			data: appContractData{
-				Package:         "app",
-				ApplicationName: "App",
-				HasFileStore:    true,
-			},
-			wantContains: []string{
-				"FileStore() resource.FileStore",
-				"var _ fileApp = (*App)(nil)",
-			},
-			wantNotContains: []string{"UploadStore", "Promote"},
 		},
 	}
 

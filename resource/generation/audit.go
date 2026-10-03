@@ -18,7 +18,7 @@ type Finding interface {
 // CascadeReleaseFinding says a resource stores files on a table whose rows the
 // database deletes by cascade, so those rows never pass through the patch machinery,
 // the release of their objects (README section 13) never runs for them, and the
-// application's sweep removes the objects later. Parent is set when the table is an
+// orphaned-file cleanup removes the objects later. Parent is set when the table is an
 // interleaved child declared ON DELETE CASCADE; Column when a foreign key on the
 // table carries the CASCADE delete rule. One finding per cause.
 type CascadeReleaseFinding struct {
@@ -37,7 +37,7 @@ func (f CascadeReleaseFinding) String() string {
 		cause = "through the foreign key on " + f.Column
 	}
 
-	return fmt.Sprintf("%s stores files on %s, whose rows the database deletes by cascade, %s, so a cascade releases none of their objects and the sweep removes them; an application that cares deletes the rows by patch first (README section 13)",
+	return fmt.Sprintf("%s stores files on %s, whose rows the database deletes by cascade, %s, so a cascade releases none of their objects and the orphaned-file cleanup removes them; an application that cares deletes the rows by patch first (README section 13)",
 		f.Resource, f.Table, cause)
 }
 

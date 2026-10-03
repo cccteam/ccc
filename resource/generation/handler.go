@@ -150,25 +150,13 @@ type handlerFeatures struct {
 	// handler decodes through the targeted constructor, which carries a
 	// conditional Execute decision to the frame instead of refusing it.
 	hasTargetedRPC bool
-	// hasUpload reports a non-suppressed @upload method: its handler streams
-	// the files to the application's FileStore.
-	hasUpload bool
-	// hasStoredFile reports a routed @file whose key column names an object in the
-	// application's FileStore; with hasUpload it asserts FileStore() on the
-	// application.
-	hasStoredFile bool
 	// hasFileDecoder and hasComputedFileDecoder report routed @file declarations on
-	// table or view resources and on computed resources: each emits its decoder
-	// constructor.
+	// table or view resources and on computed resources whose read route is served:
+	// each emits its decoder constructor.
 	hasFileDecoder         bool
 	hasComputedFileDecoder bool
 	// rpcPackage qualifies the generated Method union; set iff hasRPC.
 	rpcPackage string
-}
-
-// hasFileStore reports whether the application must supply a FileStore.
-func (f handlerFeatures) hasFileStore() bool {
-	return f.hasUpload || f.hasStoredFile
 }
 
 func (r *resourceGenerator) handlerFeatures() handlerFeatures {
@@ -186,11 +174,8 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 		if hasConsolidatedHandler(res) {
 			f.hasPatch = true
 		}
-		if !res.RoutingDisabled() && len(res.Files) > 0 {
+		if !res.RoutingDisabled() && !res.ReadHandlerDisabled() && len(res.Files) > 0 {
 			f.hasFileDecoder = true
-			if res.HasStoredFile() {
-				f.hasStoredFile = true
-			}
 		}
 	}
 	if r.genComputedResources {
@@ -198,11 +183,8 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 			if !res.ReadHandlerDisabled() || !res.SuppressListHandler {
 				f.hasComputed = true
 			}
-			if !res.RoutingDisabled() && len(res.Files) > 0 {
+			if !res.RoutingDisabled() && !res.ReadHandlerDisabled() && len(res.Files) > 0 {
 				f.hasComputedFileDecoder = true
-				if res.HasStoredFile() {
-					f.hasStoredFile = true
-				}
 			}
 		}
 	}
@@ -213,9 +195,6 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 				f.rpcPackage = r.rpc.Package()
 				if rpcMethod.Target != nil {
 					f.hasTargetedRPC = true
-				}
-				if rpcMethod.Upload != nil {
-					f.hasUpload = true
 				}
 			}
 		}
@@ -281,7 +260,6 @@ func (r *resourceGenerator) generateAppContract() error {
 		HasValidator:        f.hasPatch || f.hasRPC,
 		HasDomainScoped:     r.hasDomainScoped(),
 		HasRPC:              f.hasRPC,
-		HasFileStore:        f.hasFileStore(),
 		HasComputed:         f.hasComputed,
 		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {
@@ -357,8 +335,10 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 		handlerData = append(handlerData, data)
 	}
 	// The @file routes hang under the read route, so their handlers live in the same
-	// file as the resource's; a resource whose routing is off generates none.
-	if !res.RoutingDisabled() {
+	// file as the resource's; a resource whose routing is off, or whose read is
+	// suppressed, generates none: its @file columns then only name the keys the
+	// release and the orphaned-file cleanup read.
+	if !res.RoutingDisabled() && !res.ReadHandlerDisabled() {
 		for _, file := range res.Files {
 			data, err := r.fileHandlerContent(res, file)
 			if err != nil {

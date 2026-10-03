@@ -9,8 +9,8 @@ import (
 
 // TestResolveUpload pins the @upload contract: the declaration and the
 // resource.Files signature go together, the transaction form is the only one, the
-// maximum is required and a size, and each malformed shape is refused naming the
-// struct.
+// maximum is required and a size, a named store is declared on both sides or neither,
+// and each malformed shape is refused naming the struct.
 func TestResolveUpload(t *testing.T) {
 	t.Parallel()
 
@@ -20,11 +20,16 @@ func TestResolveUpload(t *testing.T) {
 		name         string
 		structName   string
 		wantMaxBytes int64
+		wantStore    string
 		wantErr      string
 		wantClassify string
 	}{
 		{name: "a declared upload with the files signature", structName: "UploadForm", wantMaxBytes: 5 << 20},
 		{name: "an upload may answer", structName: "UploadAnswers", wantMaxBytes: 5 << 20},
+		{name: "a named store on the declaration and the signature", structName: "UploadTyped", wantMaxBytes: 5 << 20, wantStore: "rpcform.Documents"},
+		{name: "the typed signature without store: is refused", structName: "UploadTypedUndeclared", wantErr: "Execute takes resource.FilesIn[rpcform.Documents], the named store's files, but @upload names no store; declare @upload(max: ..., store: rpcform.Documents)"},
+		{name: "store: with the untyped signature is refused", structName: "UploadStoreUntyped", wantErr: "@upload names store: Documents but Execute takes resource.Files, the default store's; take resource.FilesIn[Documents], or drop the argument"},
+		{name: "two different stores are refused", structName: "UploadStoreMismatch", wantErr: "@upload names store: Photos but Execute takes resource.FilesIn[rpcform.Documents]; the declaration and the signature name one store"},
 		{name: "the files signature without a declaration is refused", structName: "UploadUndeclared", wantErr: "takes resource.Files but the method declares no @upload"},
 		{name: "a declaration without the files signature is refused", structName: "UploadNoFiles", wantErr: "does not take resource.Files"},
 		{name: "the client form cannot upload", structName: "UploadClientForm", wantClassify: "an upload runs inside the handler's transaction"},
@@ -57,7 +62,7 @@ func TestResolveUpload(t *testing.T) {
 			if err != nil {
 				t.Fatalf("classifyExecute(%s) error = %v", tt.structName, err)
 			}
-			rpcMethod := &rpcMethodInfo{Struct: s, Form: signature.form, takesFiles: signature.takesFiles}
+			rpcMethod := &rpcMethodInfo{Struct: s, Form: signature.form, takesFiles: signature.takesFiles, filesStore: signature.filesStore}
 			if signature.result != nil {
 				rpcMethod.Result = &wireShape{Source: signature.result.Obj().Name()}
 			}
@@ -81,6 +86,8 @@ func TestResolveUpload(t *testing.T) {
 				t.Errorf("Upload = %+v, want none", rpcMethod.Upload)
 			case tt.wantMaxBytes != 0 && (rpcMethod.Upload == nil || rpcMethod.Upload.MaxBytes != tt.wantMaxBytes):
 				t.Errorf("Upload = %+v, want max %d", rpcMethod.Upload, tt.wantMaxBytes)
+			case rpcMethod.Upload != nil && (rpcMethod.Upload.StoreType() != tt.wantStore || rpcMethod.Upload.Typed() != (tt.wantStore != "")):
+				t.Errorf("Upload store = %q (typed %v), want %q", rpcMethod.Upload.StoreType(), rpcMethod.Upload.Typed(), tt.wantStore)
 			}
 		})
 	}

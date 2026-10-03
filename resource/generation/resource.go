@@ -344,6 +344,17 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	// The store checks and the file holders run once every kind that can name a store
+	// is extracted, the RPC methods last: an upload's store against the @file columns,
+	// each named store's type against the loaded packages, and the holders the
+	// orphaned-file cleanup reads.
+	if err := r.validateStores(); err != nil {
+		return err
+	}
+	if err := r.generateFileHolders(); err != nil {
+		return err
+	}
+
 	// The method pairs render once every path is extracted, the RPC methods last, so
 	// the JSON pair covers each defined type a field uses anywhere, and after every
 	// package sweep, so a pair written into the RPC package survives its own sweep.

@@ -10,7 +10,19 @@ import (
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
+
+// The named store the typed fixtures keep their files in, as the fixture package and
+// the handler package spell it.
+const (
+	fixtureStoreLocal     = "Documents"
+	fixtureStoreQualified = "filefixture.Documents"
+)
+
+// fileFieldOptions compares file fields by their spellings: the store's go/types value
+// is reached through them.
+var fileFieldOptions = cmp.Options{cmp.AllowUnexported(fileRoute{}, fileField{}), cmpopts.IgnoreFields(fileField{}, "Store")}
 
 // pointerToString is the nullable string type as the frame spells it.
 const pointerToString = "*string"
@@ -114,20 +126,30 @@ func Test_resolveResourceFiles(t *testing.T) {
 			wantFiles: []*fileRoute{{Segment: "content", Key: &fileField{Name: "StoreKey", Type: pointerToString, Pointer: true, Nullable: true}}},
 		},
 		{name: "an unknown sibling is refused naming it", fixture: "BadSibling", wantErr: "@file names name field Missing, which is not a field of the struct"},
-		{name: "a key column that is not a string is refused", fixture: "BadType", wantErr: "the store key of a @file is a string or a nullable string (*string), not int64"},
+		{name: "a key column that is not a string is refused", fixture: "BadType", wantErr: "the store key of a @file is a string or a nullable string (*string) for the default store, or resource.Key[S] or *resource.Key[S] for the named store S, not int64"},
 		{name: "a type column that is not a string is refused", fixture: "BadSiblingType", wantErr: "the type field of a @file is a string or a nullable string (*string), not int64"},
 		{name: "a segment that is not a route segment is refused", fixture: "BadSegment", wantErr: `segment "Content" is not a route segment`},
 		{name: "the struct-scope form on a table is refused", fixture: "StructScoped", wantErr: "a struct-scope @file is a rendered file, which is a @computed struct's content"},
 		{name: "two declarations on one segment are refused", fixture: "Twice", wantErr: `@file declares segment "content" twice, on field FirstKey and on field SecondKey`},
 		{name: "the declaration on the primary key is refused", fixture: "OnKey", wantErr: "@file goes on the column holding the store key, not on the primary key"},
 		{
-			name:    "a suppressed read route has nothing to hang the file under",
+			name:    "a suppressed read route keeps the declaration for the release and the cleanup",
 			fixture: "Logo",
 			mutate: func(res *resourceInfo) {
 				res.SuppressedHandlers = []HandlerType{ReadHandler}
 			},
-			wantErr: "@file serves the file under the read route, which Logo suppresses",
+			wantFiles: []*fileRoute{{Segment: "content", Key: &fileField{Name: "StoreKey", Type: pointerToString, Pointer: true, Nullable: true}}},
 		},
+		{
+			name:    "typed keys name their store, the second nullable",
+			fixture: "TypedDocument",
+			wantFiles: []*fileRoute{
+				{Segment: "content", Key: &fileField{Name: "StoreKey", Type: "resource.Key[" + fixtureStoreQualified + "]", storeLocal: fixtureStoreLocal, storeQualified: fixtureStoreQualified}, Name: &fileField{Name: "FileName", Type: "string"}},
+				{Segment: "thumbnail", Key: &fileField{Name: "ThumbKey", Type: "*resource.Key[" + fixtureStoreQualified + "]", Pointer: true, Nullable: true, storeLocal: fixtureStoreLocal, storeQualified: fixtureStoreQualified}},
+			},
+			wantCreateDisabled: true,
+		},
+		{name: "a typed key without the declaration is refused", fixture: "UntaggedTyped", wantErr: "struct UntaggedTyped field Key is typed resource.Key[filefixture.Documents], a named store's key, but declares no @file"},
 	}
 
 	for _, tt := range tests {
@@ -145,8 +167,13 @@ func Test_resolveResourceFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolveResourceFiles(%s) error = %v", tt.fixture, err)
 			}
-			if diff := cmp.Diff(tt.wantFiles, res.Files, cmp.AllowUnexported(fileRoute{}, fileField{})); diff != "" {
+			if diff := cmp.Diff(tt.wantFiles, res.Files, fileFieldOptions); diff != "" {
 				t.Errorf("Files mismatch (-want +got):\n%s", diff)
+			}
+			for _, file := range res.Files {
+				if typed := file.Key.Typed(); typed != (file.Key.storeQualified != "") || (typed && file.Key.StoreNameExpr() != "resource.StoreNameFor["+fixtureStoreQualified+"]()") || (!typed && file.Key.StoreNameExpr() != "resource.DefaultStore") {
+					t.Errorf("key %s: Typed() = %v, StoreNameExpr() = %q", file.Key.Name, typed, file.Key.StoreNameExpr())
+				}
 			}
 			if res.CreateDisabled() != tt.wantCreateDisabled || res.CreateHandlerDisabled() != tt.wantCreateDisabled {
 				t.Errorf("CreateDisabled() = %v, CreateHandlerDisabled() = %v, want %v", res.CreateDisabled(), res.CreateHandlerDisabled(), tt.wantCreateDisabled)
@@ -227,6 +254,11 @@ func Test_resolveComputedFiles(t *testing.T) {
 			fixture:   "StoredComputed",
 			wantFiles: []*fileRoute{{Segment: "content", Key: &fileField{Name: "StoreKey", Type: "string"}, Name: &fileField{Name: "Name", Type: "string"}}},
 		},
+		{
+			name:      "a typed key on a computed struct names its store",
+			fixture:   "TypedComputed",
+			wantFiles: []*fileRoute{{Segment: "content", Key: &fileField{Name: "StoreKey", Type: "resource.Key[" + fixtureStoreQualified + "]", storeLocal: fixtureStoreLocal, storeQualified: fixtureStoreQualified}}},
+		},
 		{name: "a key-less computed struct is refused", fixture: "KeylessComputed", wantErr: "@file needs a row to belong to, and KeylessComputed declares no @primarykey"},
 		{name: "a name column on the struct-scope form is refused", fixture: "NamedRender", wantErr: "a struct-scope @file renders its file, whose name and type come from the resource.Content the content function returns"},
 	}
@@ -246,7 +278,7 @@ func Test_resolveComputedFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolveComputedFiles(%s) error = %v", tt.fixture, err)
 			}
-			if diff := cmp.Diff(tt.wantFiles, res.Files, cmp.AllowUnexported(fileRoute{}, fileField{})); diff != "" {
+			if diff := cmp.Diff(tt.wantFiles, res.Files, fileFieldOptions); diff != "" {
 				t.Errorf("Files mismatch (-want +got):\n%s", diff)
 			}
 			for _, file := range res.Files {
@@ -390,6 +422,33 @@ func Test_fileRoutes(t *testing.T) {
 				t.Helper()
 
 				return fileGenerator().resourceFileRoutes(fixtureResource(t, structs, "BadType", nil), "api")
+			},
+		},
+		{
+			name: "a suppressed read has no route to hang a file under",
+			build: func(t *testing.T) ([]*generatedRoute, error) {
+				t.Helper()
+				res, err := fileFixtureResource(t, structs, "Logo", func(res *resourceInfo) {
+					res.SuppressedHandlers = []HandlerType{ReadHandler}
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				return fileGenerator().resourceFileRoutes(res, "api")
+			},
+		},
+		{
+			name: "a computed resource's suppressed read has no file route either",
+			build: func(t *testing.T) ([]*generatedRoute, error) {
+				t.Helper()
+				res, err := fileFixtureComputed(t, structs, "StoredComputed")
+				if err != nil {
+					t.Fatal(err)
+				}
+				res.SuppressReadHandler = true
+
+				return fileGenerator().computedFileRoutes(res, "api")
 			},
 		},
 	}
@@ -547,67 +606,108 @@ func Test_fileHandlerTemplate(t *testing.T) {
 	t.Parallel()
 
 	structs := fixtureStructs(loadFixture(t, "filefixture"))
-	res, err := fileFixtureResource(t, structs, "Document", func(res *resourceInfo) {
-		res.PermissionScope = accesstypes.DomainPermissionScope
-	})
-	if err != nil {
-		t.Fatal(err)
+
+	tests := []struct {
+		name    string
+		fixture string
+		// wants are the lines each segment's handler carries.
+		wants map[string][]string
+	}{
+		{
+			name:    "string keys open the default store",
+			fixture: "Document",
+			wants: map[string][]string{
+				"content": {
+					"func (a *App) DocumentContent() http.HandlerFunc {",
+					"ID          ccc.UUID `json:\"id\" perm:\"-\"`",
+					"StoreKey    string   `json:\"-\" perm:\"-\"`",
+					"FileName    string   `json:\"-\" perm:\"-\"`",
+					"ContentType string   `json:\"-\" perm:\"-\"`",
+					"decoder := NewFileDecoder[resources.Document, request](a, \"content\")",
+					"id := httpio.Param[ccc.UUID](r, router.DocumentID)",
+					"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
+					"querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))",
+					"row, err := resources.NewDocumentQueryFromQuerySet(querySet).SetID(id).Read(ctx, a.ResourceClient())",
+					"source := &row.Data",
+					"file.Key = source.StoreKey",
+					"file.Name = source.FileName",
+					"file.ContentType = source.ContentType",
+					"if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.DefaultStore), file, \"content\", \"Document\", id); err != nil {",
+				},
+				"thumbnail": {
+					"func (a *App) DocumentThumbnail() http.HandlerFunc {",
+					"ThumbKey *string  `json:\"-\" perm:\"-\"`",
+					"decoder := NewFileDecoder[resources.Document, request](a, \"thumbnail\")",
+					"if source.ThumbKey != nil {\n\t\t\tfile.Key = *source.ThumbKey\n\t\t}",
+					"if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.DefaultStore), file, \"thumbnail\", \"Document\", id); err != nil {",
+				},
+			},
+		},
+		{
+			name:    "typed keys open the named store and serve by the plain key",
+			fixture: "TypedDocument",
+			wants: map[string][]string{
+				"content": {
+					"func (a *App) TypedDocumentContent() http.HandlerFunc {",
+					"StoreKey resource.Key[filefixture.Documents] `json:\"-\" perm:\"-\"`",
+					"file.Key = string(source.StoreKey)",
+					"file.Name = source.FileName",
+					"if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.StoreNameFor[filefixture.Documents]()), file, \"content\", \"TypedDocument\", id); err != nil {",
+				},
+				"thumbnail": {
+					"ThumbKey *resource.Key[filefixture.Documents] `json:\"-\" perm:\"-\"`",
+					"if source.ThumbKey != nil {\n\t\t\tfile.Key = string(*source.ThumbKey)\n\t\t}",
+					"if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.StoreNameFor[filefixture.Documents]()), file, \"thumbnail\", \"TypedDocument\", id); err != nil {",
+				},
+			},
+		},
 	}
 
-	c := &client{}
-	for _, file := range res.Files {
-		out, err := c.generateTemplateOutput("fileHandler", fileHandlerTemplate, fileHandlerData{
-			handlerContentData: handlerContentData{ResourcePackage: "resources", Resource: res, VirtualResourcesPackage: "virtualresources", ApplicationName: "App", ReceiverName: "a"},
-			File:               file,
-		})
-		if err != nil {
-			t.Fatalf("generateTemplateOutput(%s) error = %v", file.Segment, err)
-		}
-		// The handler is a function body, so it is formatted inside a package.
-		formatted, err := format.Source(append([]byte("package app\n\n"), out...))
-		if err != nil {
-			t.Fatalf("format.Source(%s) error = %v on:\n%s", file.Segment, err, out)
-		}
-		wants := map[string][]string{
-			"content": {
-				"func (a *App) DocumentContent() http.HandlerFunc {",
-				"ID          ccc.UUID `json:\"id\" perm:\"-\"`",
-				"StoreKey    string   `json:\"-\" perm:\"-\"`",
-				"FileName    string   `json:\"-\" perm:\"-\"`",
-				"ContentType string   `json:\"-\" perm:\"-\"`",
-				"decoder := NewFileDecoder[resources.Document, request](a, \"content\")",
-				"id := httpio.Param[ccc.UUID](r, router.DocumentID)",
-				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
-				"querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))",
-				"row, err := resources.NewDocumentQueryFromQuerySet(querySet).SetID(id).Read(ctx, a.ResourceClient())",
-				"source := &row.Data",
-				"file.Key = source.StoreKey",
-				"file.Name = source.FileName",
-				"file.ContentType = source.ContentType",
-				"if err := resource.ServeStoredFile(ctx, w, r, a.FileStore(), file, \"content\", \"Document\", id); err != nil {",
-			},
-			"thumbnail": {
-				"func (a *App) DocumentThumbnail() http.HandlerFunc {",
-				"ThumbKey *string  `json:\"-\" perm:\"-\"`",
-				"decoder := NewFileDecoder[resources.Document, request](a, \"thumbnail\")",
-				"if source.ThumbKey != nil {\n\t\t\tfile.Key = *source.ThumbKey\n\t\t}",
-				"if err := resource.ServeStoredFile(ctx, w, r, a.FileStore(), file, \"thumbnail\", \"Document\", id); err != nil {",
-			},
-		}
-		for _, want := range wants[file.Segment] {
-			if !strings.Contains(string(formatted), want) {
-				t.Errorf("%s handler missing %q:\n%s", file.Segment, want, formatted)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := fileFixtureResource(t, structs, tt.fixture, func(res *resourceInfo) {
+				res.PermissionScope = accesstypes.DomainPermissionScope
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
-		if file.Segment == "thumbnail" && strings.Contains(string(formatted), "file.Name") {
-			t.Errorf("thumbnail handler reads a name column it does not declare:\n%s", formatted)
-		}
+
+			c := &client{}
+			for _, file := range res.Files {
+				out, err := c.generateTemplateOutput("fileHandler", fileHandlerTemplate, fileHandlerData{
+					handlerContentData: handlerContentData{ResourcePackage: "resources", Resource: res, VirtualResourcesPackage: "virtualresources", ApplicationName: "App", ReceiverName: "a"},
+					File:               file,
+				})
+				if err != nil {
+					t.Fatalf("generateTemplateOutput(%s) error = %v", file.Segment, err)
+				}
+				// The handler is a function body, so it is formatted inside a package.
+				formatted, err := format.Source(append([]byte("package app\n\n"), out...))
+				if err != nil {
+					t.Fatalf("format.Source(%s) error = %v on:\n%s", file.Segment, err, out)
+				}
+				for _, want := range tt.wants[file.Segment] {
+					if !strings.Contains(string(formatted), want) {
+						t.Errorf("%s handler missing %q:\n%s", file.Segment, want, formatted)
+					}
+				}
+				if file.Segment == "thumbnail" && strings.Contains(string(formatted), "file.Name") {
+					t.Errorf("thumbnail handler reads a name column it does not declare:\n%s", formatted)
+				}
+				if strings.Contains(string(formatted), "a.FileStore()") {
+					t.Errorf("%s handler reads a store off the application, not the resource client:\n%s", file.Segment, formatted)
+				}
+			}
+		})
 	}
 }
 
 // Test_resourceFileTemplate_fileKeys pins the generated FileKeys method: a struct with
-// stored files declares its key fields in declaration order beside an unchanged
-// DefaultConfig, and a struct with none declares no such method.
+// stored files declares its key fields in declaration order, each with its store,
+// beside an unchanged DefaultConfig; a typed key's patch setter takes the typed key; and
+// a struct with no file declares no such method.
 func Test_resourceFileTemplate_fileKeys(t *testing.T) {
 	t.Parallel()
 
@@ -617,10 +717,17 @@ func Test_resourceFileTemplate_fileKeys(t *testing.T) {
 		name    string
 		fixture string
 		want    string
+		wantToo string
 		absent  string
 	}{
-		{name: "two stored files name both keys", fixture: "Document", want: "func (Document) FileKeys() []accesstypes.Field {\n\treturn []accesstypes.Field{\"StoreKey\", \"ThumbKey\"}\n}"},
-		{name: "one stored file with a nullable key names it", fixture: "Logo", want: "func (Logo) FileKeys() []accesstypes.Field {\n\treturn []accesstypes.Field{\"StoreKey\"}\n}"},
+		{name: "two stored files name both keys", fixture: "Document", want: "func (Document) FileKeys() []resource.FileKey {\n\treturn []resource.FileKey{\n\t\t{Field: \"StoreKey\", Store: resource.DefaultStore},\n\t\t{Field: \"ThumbKey\", Store: resource.DefaultStore},\n\t}\n}"},
+		{name: "one stored file with a nullable key names it", fixture: "Logo", want: "func (Logo) FileKeys() []resource.FileKey {\n\treturn []resource.FileKey{\n\t\t{Field: \"StoreKey\", Store: resource.DefaultStore},\n\t}\n}"},
+		{
+			name:    "typed keys name the store by its local type and type their setters",
+			fixture: "TypedDocument",
+			want:    "func (TypedDocument) FileKeys() []resource.FileKey {\n\treturn []resource.FileKey{\n\t\t{Field: \"StoreKey\", Store: resource.StoreNameFor[Documents]()},\n\t\t{Field: \"ThumbKey\", Store: resource.StoreNameFor[Documents]()},\n\t}\n}",
+			wantToo: "SetStoreKey(v resource.Key[Documents]) *TypedDocumentUpdatePatch {",
+		},
 		{name: "a struct with no file declares no method", fixture: "NoFile", want: "func (NoFile) DefaultConfig() resource.Config {\n\treturn defaultConfig()\n}", absent: "FileKeys"},
 	}
 
@@ -644,6 +751,9 @@ func Test_resourceFileTemplate_fileKeys(t *testing.T) {
 			if !strings.Contains(string(formatted), tt.want) {
 				t.Errorf("resource file mismatch: want\n%s\nin\n%s", tt.want, formatted)
 			}
+			if tt.wantToo != "" && !strings.Contains(string(formatted), tt.wantToo) {
+				t.Errorf("resource file mismatch: want\n%s\nin\n%s", tt.wantToo, formatted)
+			}
 			if tt.fixture != "NoFile" && !strings.Contains(string(formatted), "func ("+tt.fixture+") DefaultConfig() resource.Config {\n\treturn defaultConfig()\n}") {
 				t.Errorf("DefaultConfig changed for %s:\n%s", tt.fixture, formatted)
 			}
@@ -662,7 +772,11 @@ func Test_computedResourceHandlerTemplate_files(t *testing.T) {
 	tests := []struct {
 		name    string
 		fixture string
-		wants   []string
+		// suppressRead suppresses the read route, under which a stored file is declared
+		// for the release and the cleanup alone.
+		suppressRead bool
+		wants        []string
+		notWants     []string
 	}{
 		{
 			name:    "a rendered file calls the content function and serves what it returns",
@@ -689,8 +803,25 @@ func Test_computedResourceHandlerTemplate_files(t *testing.T) {
 				"httpio.NewNotFoundMessagef(\"StoredComputed %v does not exist\", id)",
 				"file.Key = source.StoreKey",
 				"file.Name = source.Name",
-				"if err := resource.ServeStoredFile(ctx, w, r, a.FileStore(), file, \"content\", \"StoredComputed\", id); err != nil {",
+				"if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.DefaultStore), file, \"content\", \"StoredComputed\", id); err != nil {",
 			},
+		},
+		{
+			name:    "a typed key on a computed struct opens the named store",
+			fixture: "TypedComputed",
+			wants: []string{
+				"func (a *App) TypedComputedContent() http.HandlerFunc {",
+				"StoreKey resource.Key[filefixture.Documents] `json:\"-\" perm:\"-\"`",
+				"file.Key = string(source.StoreKey)",
+				"if err := resource.ServeStoredFile(ctx, w, r, a.ResourceClient().FileStore(resource.StoreNameFor[filefixture.Documents]()), file, \"content\", \"TypedComputed\", id); err != nil {",
+			},
+		},
+		{
+			name:         "a suppressed read serves no file",
+			fixture:      "StoredComputed",
+			suppressRead: true,
+			wants:        []string{"func (a *App) StoredComputeds() http.HandlerFunc {"},
+			notWants:     []string{"StoredComputedContent", "ServeStoredFile", "ReadStoredComputed"},
 		},
 	}
 
@@ -702,6 +833,7 @@ func Test_computedResourceHandlerTemplate_files(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			res.SuppressReadHandler = tt.suppressRead
 			shape, err := walkFixture(t, structs, tt.fixture)
 			if err != nil {
 				t.Fatalf("walk(%s) error = %v", tt.fixture, err)
@@ -731,6 +863,11 @@ func Test_computedResourceHandlerTemplate_files(t *testing.T) {
 			for _, want := range tt.wants {
 				if !strings.Contains(string(formatted), want) {
 					t.Errorf("handler missing %q:\n%s", want, formatted)
+				}
+			}
+			for _, notWant := range tt.notWants {
+				if strings.Contains(string(formatted), notWant) {
+					t.Errorf("handler carries %q:\n%s", notWant, formatted)
 				}
 			}
 			// The key column stays off the read handler's wire too.

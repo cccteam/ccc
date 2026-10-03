@@ -17,6 +17,7 @@ func Test_classifyExecute(t *testing.T) {
 		wantResult  string
 		wantPointer bool
 		wantFiles   bool
+		wantStore   string
 		wantErr     string
 	}{
 		{name: "transaction form", structName: "TxnForm", want: rpcFormTxn},
@@ -26,6 +27,7 @@ func Test_classifyExecute(t *testing.T) {
 		{name: "a pointer result answers", structName: "AnswersPointer", want: rpcFormClient, wantResult: "rpcform.Report", wantPointer: true},
 		{name: "the upload form takes the files third", structName: "UploadForm", want: rpcFormTxn, wantFiles: true},
 		{name: "the upload form may answer", structName: "UploadAnswers", want: rpcFormTxn, wantResult: "rpcform.Report", wantFiles: true},
+		{name: "the typed upload form carries the store", structName: "UploadTyped", want: rpcFormTxn, wantFiles: true, wantStore: "rpcform.Documents"},
 		{name: "a basic result is refused", structName: "AnswersBasic", wantErr: "struct AnswersBasic: Execute answers with string, which is not a struct type or a pointer to one"},
 		{name: "three results are refused", structName: "ThreeResults", wantErr: "struct ThreeResults: Execute returns (rpcform.Report, int, error); it returns error, or (Result, error)"},
 		{name: "no Execute", structName: "NoExecute", wantErr: "struct NoExecute has no Execute method"},
@@ -71,6 +73,13 @@ func Test_classifyExecute(t *testing.T) {
 			}
 			if signature.takesFiles != tt.wantFiles {
 				t.Errorf("classifyExecute(%s) takesFiles = %v, want %v", tt.structName, signature.takesFiles, tt.wantFiles)
+			}
+			var gotStore string
+			if signature.filesStore != nil {
+				gotStore = typeStringer(signature.filesStore)
+			}
+			if gotStore != tt.wantStore {
+				t.Errorf("classifyExecute(%s) filesStore = %q, want %q", tt.structName, gotStore, tt.wantStore)
 			}
 		})
 	}
