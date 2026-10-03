@@ -196,6 +196,16 @@ func acceptsNull(nullableFields map[accesstypes.Field]struct{}, fieldName access
 // the request fields behind a feature flag that is off: a body naming one is refused
 // as it would be for a field the struct does not declare.
 func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission, hidden map[accesstypes.Field]struct{}) (*PatchSet[Resource], *Request, error) {
+	// A field's former wire name is rewritten to its current one before either read
+	// below, so the typed decode and the map decode see one name.
+	if former := fieldMapper.FormerNames(); len(former) > 0 {
+		body, err := rewriteFormerKeys(req.Body, former)
+		if err != nil {
+			return nil, nil, err
+		}
+		req.Body = body
+	}
+
 	request := new(Request)
 	pr, pw := io.Pipe()
 	tr := io.TeeReader(req.Body, pw)

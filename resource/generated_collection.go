@@ -22,6 +22,7 @@ type FieldTags struct {
 	SQLType   string // raw sqltype tag value, the column's declared Spanner type; "" where the decoder sizes nothing
 	Nullable  string // raw nullable tag value; "" or "true" are the only legal values, and true only on a slice-typed field
 	Feature   string // raw feature tag value, the flag the field is gated behind; "" where the field is not gated
+	Formerly  string // raw formerly tag value, the field's former wire name; "" where the field was never renamed
 }
 
 // FieldTagsFromStructTag extracts the registration-relevant values from a struct tag: the
@@ -42,6 +43,7 @@ func FieldTagsFromStructTag(field accesstypes.Field, tag reflect.StructTag) Fiel
 		SQLType:   tag.Get(sqltypeTagKey),
 		Nullable:  tag.Get(nullableTagKey),
 		Feature:   tag.Get(featureTagKey),
+		Formerly:  tag.Get(formerlyTagKey),
 	}
 }
 
@@ -76,6 +78,9 @@ type SetData struct {
 	ImmutableFields map[accesstypes.Tag]struct{}
 	// PositionalFields are the tags declared masking:"positional".
 	PositionalFields map[accesstypes.Tag]struct{}
+	// FormerTags maps each renamed field's tag to its former wire name (the formerly
+	// tag); nil when no field was renamed.
+	FormerTags map[accesstypes.Tag]accesstypes.Tag
 }
 
 // NewSetData computes the registration data for a request struct described by fields,
@@ -105,6 +110,7 @@ func NewSetData(fields []FieldTags, permissions ...accesstypes.Permission) (SetD
 		TagPermissions:   reg.tags,
 		ImmutableFields:  reg.immutableFields,
 		PositionalFields: reg.positionalFields,
+		FormerTags:       reg.formerTags,
 	}, nil
 }
 
@@ -148,6 +154,13 @@ type CollectionResource struct {
 	Permissions   []accesstypes.Permission
 	Tags          []TagData
 	ImmutableTags []accesstypes.Tag
+
+	// Formerly is an RPC method resource's former name (@formerly on the method): the
+	// name older browser applications still execute it under, which the generated
+	// router answers at the former route and deploy-time role migration
+	// (access.MigrateRoles) writes an Execute grant row for beside the current name.
+	// Empty for a method never renamed and for every other resource.
+	Formerly accesstypes.Resource
 
 	// The resource's binding vocabulary (ABAC design plan §04), compiled from
 	// the field-level binding annotations: attributes conditions reference,
@@ -205,6 +218,11 @@ type TagData struct {
 	// Masking is how the field's masked cells meet a sort or a filter; empty
 	// is MaskingConcealing, the default.
 	Masking Masking
+	// Formerly is the field's former wire name (@formerly on the field): the name
+	// older browser applications still send and read, which deploy-time role
+	// migration (access.MigrateRoles) writes grant rows for beside Name, copying its
+	// masks and conditions. Empty for a field never renamed.
+	Formerly accesstypes.Tag
 }
 
 // CollectionBuilder assembles CollectionData by replaying the registration semantics a
@@ -227,8 +245,17 @@ func (b *CollectionBuilder) AddResourceSet(scope accesstypes.PermissionScope, re
 	for tag := range set.PositionalFields {
 		b.g.setTagMasking(scope, res, tag, MaskingPositional)
 	}
+	for tag, former := range set.FormerTags {
+		b.g.setTagFormerName(scope, res, tag, former)
+	}
 
 	return nil
+}
+
+// SetMethodFormerName records an RPC method resource's former name within scope: the
+// name older browser applications still execute it under.
+func (b *CollectionBuilder) SetMethodFormerName(scope accesstypes.PermissionScope, method, former accesstypes.Resource) {
+	b.g.setFormerName(scope, method, former)
 }
 
 // SetResourceQueryKeys records how a list of res is ordered and narrowed within
@@ -300,6 +327,7 @@ type (
 	resourceStore     map[accesstypes.Resource][]accesstypes.Permission
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
 	maskingMap        map[accesstypes.Resource]map[accesstypes.Tag]Masking
+	formerTagMap      map[accesstypes.Resource]map[accesstypes.Tag]accesstypes.Tag
 )
 
 // queryKeys is how a list of one resource is ordered and narrowed: the declared
@@ -323,6 +351,10 @@ type GeneratedCollection struct {
 	parents         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
 	masking         map[accesstypes.PermissionScope]maskingMap
 	queryKeys       map[accesstypes.PermissionScope]map[accesstypes.Resource]queryKeys
+	// formerTags are the renamed fields' former wire names by tag, and formerNames
+	// the renamed methods' former names, each within scope.
+	formerTags  map[accesstypes.PermissionScope]formerTagMap
+	formerNames map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -338,6 +370,8 @@ func newGeneratedCollection() *GeneratedCollection {
 		parents:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
 		masking:         make(map[accesstypes.PermissionScope]maskingMap, 2),
 		queryKeys:       make(map[accesstypes.PermissionScope]map[accesstypes.Resource]queryKeys, 2),
+		formerTags:      make(map[accesstypes.PermissionScope]formerTagMap, 2),
+		formerNames:     make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
 	}
 }
 
@@ -436,6 +470,13 @@ func (g *GeneratedCollection) addResourceDeclarations(res *CollectionResource) e
 		g.setResourceParent(res.Scope, res.Name, res.Parent)
 	}
 
+	if res.Formerly != "" {
+		if res.Formerly == res.Name {
+			return errors.Newf("resource %q names itself as its former name", res.Name)
+		}
+		g.setFormerName(res.Scope, res.Name, res.Formerly)
+	}
+
 	if len(res.Order) > 0 || len(res.QueryKeys) > 0 {
 		for _, tag := range slices.Concat(res.Order, res.QueryKeys) {
 			if _, ok := g.tagStore[res.Scope][res.Name][tag]; !ok {
@@ -486,7 +527,60 @@ func (g *GeneratedCollection) addResourceTags(res *CollectionResource) error {
 		}
 	}
 
+	// A former name is a name no field of the resource carries, current or former.
+	former := make(map[accesstypes.Tag]accesstypes.Tag, len(res.Tags))
+	for _, tag := range res.Tags {
+		if tag.Formerly == "" {
+			continue
+		}
+		if _, current := g.tagStore[res.Scope][res.Name][tag.Formerly]; current {
+			return errors.Newf("tag %q under resource %q names %q as its former name, which is another tag's name", tag.Name, res.Name, tag.Formerly)
+		}
+		if other, taken := former[tag.Formerly]; taken {
+			return errors.Newf("tags %q and %q under resource %q name %q as their former name; a former name belongs to one field", other, tag.Name, res.Name, tag.Formerly)
+		}
+		former[tag.Formerly] = tag.Name
+		g.setTagFormerName(res.Scope, res.Name, tag.Name, tag.Formerly)
+	}
+
 	return nil
+}
+
+// setTagFormerName records a renamed field's former wire name within scope.
+func (g *GeneratedCollection) setTagFormerName(scope accesstypes.PermissionScope, res accesstypes.Resource, tag, former accesstypes.Tag) {
+	if g.formerTags[scope] == nil {
+		g.formerTags[scope] = make(formerTagMap)
+	}
+	if g.formerTags[scope][res] == nil {
+		g.formerTags[scope][res] = make(map[accesstypes.Tag]accesstypes.Tag)
+	}
+	g.formerTags[scope][res][tag] = former
+}
+
+// setFormerName records a renamed method's former name within scope.
+func (g *GeneratedCollection) setFormerName(scope accesstypes.PermissionScope, res, former accesstypes.Resource) {
+	if g.formerNames[scope] == nil {
+		g.formerNames[scope] = make(map[accesstypes.Resource]accesstypes.Resource)
+	}
+	g.formerNames[scope][res] = former
+}
+
+// FormerTagName reports the former wire name of a renamed field within scope (the
+// field's @formerly), and whether the field was renamed. Deploy-time role migration
+// writes grant rows for both names from a grant that names the current one.
+func (g *GeneratedCollection) FormerTagName(scope accesstypes.PermissionScope, res accesstypes.Resource, tag accesstypes.Tag) (accesstypes.Tag, bool) {
+	former, ok := g.formerTags[scope][res][tag]
+
+	return former, ok
+}
+
+// FormerName reports the former name of a renamed RPC method within scope (the
+// method's @formerly), and whether the method was renamed. Deploy-time role migration
+// writes an Execute grant row for both names from a grant that names the current one.
+func (g *GeneratedCollection) FormerName(scope accesstypes.PermissionScope, res accesstypes.Resource) (accesstypes.Resource, bool) {
+	former, ok := g.formerNames[scope][res]
+
+	return former, ok
 }
 
 // setTagMasking records a field's masking behavior within scope; only the
@@ -1064,7 +1158,7 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 				if len(tagPerms) == 0 {
 					tagPerms = nil
 				}
-				res.Tags = append(res.Tags, TagData{Name: tag, Permissions: tagPerms, Masking: g.masking[key.scope][key.name][tag]})
+				res.Tags = append(res.Tags, TagData{Name: tag, Permissions: tagPerms, Masking: g.masking[key.scope][key.name][tag], Formerly: g.formerTags[key.scope][key.name][tag]})
 			}
 		}
 
@@ -1092,6 +1186,10 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 
 		if parent, ok := g.parents[key.scope][key.name]; ok {
 			res.Parent = parent
+		}
+
+		if former, ok := g.formerNames[key.scope][key.name]; ok {
+			res.Formerly = former
 		}
 
 		if qk, ok := g.queryKeys[key.scope][key.name]; ok {

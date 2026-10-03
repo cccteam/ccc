@@ -45,7 +45,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 	routerTestRoutes = append(routerTestRoutes, computedTestRoutes...)
 
-	r.accumulateRPCRoutes(outlets, outletRoutes)
+	routerTestRoutes = append(routerTestRoutes, r.accumulateRPCRoutes(outlets, outletRoutes)...)
 
 	// The feature flag routes: the features route on every outlet, the FeatureFlags
 	// routes and SetFeature on the session-serving ones.
@@ -266,13 +266,16 @@ func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, out
 }
 
 // accumulateRPCRoutes builds every unsuppressed RPC method's route into each member
-// outlet's RoutesMap. RPC routes carry no dispatch-test entries (the dispatch test
-// covers resource and computed routes).
-func (r *resourceGenerator) accumulateRPCRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) {
+// outlet's RoutesMap, returning the dispatch-test routes: a renamed method's, whose
+// former route the dispatch test proves reaches the same handler. Every other RPC
+// route carries no dispatch-test entry (the dispatch test covers resource and
+// computed routes).
+func (r *resourceGenerator) accumulateRPCRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) []*generatedRoute {
 	if !r.genRPCMethods {
-		return
+		return nil
 	}
 
+	var routerTestRoutes []*generatedRoute
 	for _, rpcStruct := range r.rpcMethods {
 		if rpcStruct.SuppressHandler {
 			continue
@@ -283,22 +286,24 @@ func (r *resourceGenerator) accumulateRPCRoutes(outlets []routerOutlet, outletRo
 				continue
 			}
 
-			outletRoutes[i].RoutesMap[rpcStruct.Name()] = []*generatedRoute{r.rpcRoute(rpcStruct, outlet.prefix)}
+			route := r.rpcRoute(rpcStruct, outlet.prefix)
+			outletRoutes[i].RoutesMap[rpcStruct.Name()] = []*generatedRoute{route}
+			if route.FormerPath != "" {
+				routerTestRoutes = append(routerTestRoutes, route)
+			}
 		}
 	}
+
+	return routerTestRoutes
 }
 
 // rpcRoute builds the route for an RPC method under the outlet route prefix: POST at
-// the kebab-cased method name, under the domain segment pair for domain-scoped methods.
+// the kebab-cased method name, under the domain segment pair for domain-scoped
+// methods, and for a renamed method the former route beside it at the kebab-cased
+// former name.
 func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix string) *generatedRoute {
-	path := fmt.Sprintf("/%s/%s", routePrefix, strcase.ToKebab(rpcStruct.Name()))
-	testPath := path
-	if rpcStruct.IsDomainScoped() {
-		path = fmt.Sprintf("/%s/%s/{%s}/%s", routePrefix, r.domainRouteSegment, r.domainRouteParam, strcase.ToKebab(rpcStruct.Name()))
-		testPath = fmt.Sprintf("/%s/%s/%s/%s", routePrefix, r.domainRouteSegment, domainTestValue, strcase.ToKebab(rpcStruct.Name()))
-	}
-
-	return &generatedRoute{
+	path, testPath := r.rpcPaths(rpcStruct, routePrefix, strcase.ToKebab(rpcStruct.Name()))
+	route := &generatedRoute{
 		Method:       http.MethodPost,
 		Path:         path,
 		HandlerFunc:  rpcStruct.Name(),
@@ -306,6 +311,23 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix strin
 		TestURL:      testPath,
 		Feature:      rpcStruct.Feature,
 	}
+	if former := rpcStruct.FormerRouteName(); former != "" {
+		route.FormerPath, route.FormerTestURL = r.rpcPaths(rpcStruct, routePrefix, former)
+	}
+
+	return route
+}
+
+// rpcPaths renders a method's route and its test URL under the outlet route prefix for
+// one route name: under the domain segment pair for a domain-scoped method.
+func (r *resourceGenerator) rpcPaths(rpcStruct *rpcMethodInfo, routePrefix, routeName string) (path, testPath string) {
+	if rpcStruct.IsDomainScoped() {
+		return fmt.Sprintf("/%s/%s/{%s}/%s", routePrefix, r.domainRouteSegment, r.domainRouteParam, routeName),
+			fmt.Sprintf("/%s/%s/%s/%s", routePrefix, r.domainRouteSegment, domainTestValue, routeName)
+	}
+	path = fmt.Sprintf("/%s/%s", routePrefix, routeName)
+
+	return path, path
 }
 
 // singleKeyRouteTestParam names a single-key read route's parameter after the key
@@ -541,7 +563,11 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]nega
 			if rpcStruct.SuppressHandler || rpcStruct.OnOutlet(outlet.name) {
 				continue
 			}
-			addRoute(r.rpcRoute(rpcStruct, outlet.prefix))
+			route := r.rpcRoute(rpcStruct, outlet.prefix)
+			addRoute(route)
+			if route.FormerTestURL != "" {
+				tests = append(tests, negativeRouterTest{Method: httpMethodConstant(route.Method), URL: route.FormerTestURL})
+			}
 		}
 	}
 

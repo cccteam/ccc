@@ -225,6 +225,21 @@ type setRegistration struct {
 	valueLimits      map[accesstypes.Field]valueLimit
 	nullableFields   map[accesstypes.Field]struct{}
 	gatedFields      map[accesstypes.Field]Feature
+	// formerTags maps each renamed field's tag to its former wire name; nil when no
+	// field carries a formerly tag.
+	formerTags map[accesstypes.Tag]accesstypes.Tag
+}
+
+// recordFormerName reads a field's formerly tag: a renamed field on the wire is recorded
+// by its current tag with its former wire name.
+func (r *setRegistration) recordFormerName(field *FieldTags) {
+	if field.Formerly == "" || field.JSON == "" || field.JSON == "-" {
+		return
+	}
+	if r.formerTags == nil {
+		r.formerTags = make(map[accesstypes.Tag]accesstypes.Tag)
+	}
+	r.formerTags[accesstypes.Tag(field.JSON)] = accesstypes.Tag(field.Formerly)
 }
 
 // recordFeature reads a field's feature tag: a gated field is recorded under the flag
@@ -365,19 +380,21 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 	}
 	slices.Sort(fieldPerms)
 
-	for _, field := range fields {
+	for i := range fields {
+		field := &fields[i]
 		jsonTag := field.JSON
 
 		if field.Immutable {
 			reg.immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 		}
 
-		if err := reg.recordMasking(&field); err != nil {
+		if err := reg.recordMasking(field); err != nil {
 			return nil, err
 		}
-		if err := reg.recordFeature(&field); err != nil {
+		if err := reg.recordFeature(field); err != nil {
 			return nil, err
 		}
+		reg.recordFormerName(field)
 
 		switch field.Perm {
 		case "":

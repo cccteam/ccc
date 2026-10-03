@@ -121,6 +121,10 @@ func (c *client) resolveResource(resource *resourceInfo, pStruct *parser.Struct,
 		return err
 	}
 
+	if err := resolveFieldFormerly(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
 	if err := c.resolveBindingAnnotations(resource, pStruct, annotations, structsByTable); err != nil {
 		return err
 	}
@@ -391,6 +395,10 @@ func applyComputedSuppressDirectives(res *computedResource, suppressArgs iter.Se
 // (its key) is known only once the annotations are.
 func (c *client) resolveVirtualResource(resource *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
 	if err := resolveVirtualAnnotations(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	if err := resolveFieldFormerly(resource, pStruct, annotations); err != nil {
 		return err
 	}
 
@@ -716,6 +724,12 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations 
 
 func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...structValidator) ([]*rpcMethodInfo, error) {
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
+	// The package's structs by name: a method's result declared beside it is read for
+	// its former field names.
+	structsByName := make(map[string]*parser.Struct, len(structs))
+	for _, s := range structs {
+		structsByName[s.Name()] = s
+	}
 	var errs []error
 	for _, s := range structs {
 		annotations, err := scanStruct(s)
@@ -763,37 +777,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 
 		rpcMethod.SuppressHandler = annotations.Struct.Has(suppressKeyword)
 
-		if err := resolvePermissionScope(annotations, &rpcMethod.PermissionScope); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
-
-			continue
-		}
-
-		if err := resolveOutlets(annotations.Struct, &rpcMethod.outletMembership); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
-
-			continue
-		}
-
-		if err := c.resolveTransition(rpcMethod, s, annotations); err != nil {
-			errs = append(errs, err)
-
-			continue
-		}
-
-		if err := resolveAnswers(rpcMethod, s, annotations); err != nil {
-			errs = append(errs, err)
-
-			continue
-		}
-
-		if err := resolveUpload(rpcMethod, s, annotations); err != nil {
-			errs = append(errs, err)
-
-			continue
-		}
-
-		if err := c.resolveRPCFeature(rpcMethod, annotations); err != nil {
+		if err := c.resolveRPCDeclarations(rpcMethod, s, annotations, structsByName); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -802,11 +786,47 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
+	// A former method name is checked against every method once all are known.
+	if err := validateFormerMethodNames(rpcMethods); err != nil {
+		errs = append(errs, err)
+	}
+
 	if len(errs) != 0 {
 		return nil, errors.Wrap(errors.Join(errs...), "RPC method errors")
 	}
 
 	return rpcMethods, nil
+}
+
+// resolveRPCDeclarations applies a method's struct-level declarations in order: its
+// permission scope, its outlets, its transition, its answers, its upload, its feature
+// gate and its former names.
+func (c *client) resolveRPCDeclarations(rpcMethod *rpcMethodInfo, s *parser.Struct, annotations genlang.StructAnnotations, structsByName map[string]*parser.Struct) error {
+	if err := resolvePermissionScope(annotations, &rpcMethod.PermissionScope); err != nil {
+		return errors.Wrapf(err, "on %s", s.Name())
+	}
+
+	if err := resolveOutlets(annotations.Struct, &rpcMethod.outletMembership); err != nil {
+		return errors.Wrapf(err, "on %s", s.Name())
+	}
+
+	if err := c.resolveTransition(rpcMethod, s, annotations); err != nil {
+		return err
+	}
+
+	if err := resolveAnswers(rpcMethod, s, annotations); err != nil {
+		return err
+	}
+
+	if err := resolveUpload(rpcMethod, s, annotations); err != nil {
+		return err
+	}
+
+	if err := c.resolveRPCFeature(rpcMethod, annotations); err != nil {
+		return err
+	}
+
+	return resolveRPCFormerly(rpcMethod, annotations, structsByName)
 }
 
 // classifyRPCMethod reads what the struct's Execute declares: how it runs, what it
@@ -919,7 +939,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 			continue
 		}
 
-		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource"), rejectTenantAnnotation(s, annotations, "@"+computedKeyword+" struct"), c.rejectReservedResourceName(s, "computed resource")); err != nil {
+		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource"), rejectTenantAnnotation(s, annotations, "@"+computedKeyword+" struct"), rejectFormerlyAnnotations(s, annotations, "computed resource"), c.rejectReservedResourceName(s, "computed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue

@@ -425,6 +425,9 @@ func (r *resourceGenerator) collectRPCRegistrations(b *resource.CollectionBuilde
 		if err := b.AddMethodResource(scopeOrGlobal(method.PermissionScope), accesstypes.Execute, accesstypes.Resource(method.Name())); err != nil {
 			return errors.Wrapf(err, "registering RPC method %q", method.Name())
 		}
+		if method.Formerly != "" {
+			b.SetMethodFormerName(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), accesstypes.Resource(method.Formerly))
+		}
 
 		if t := method.Transition; t != nil {
 			b.SetMethodTransition(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), resource.TransitionData{
@@ -470,13 +473,13 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType, extra ...resourc
 		permissions = []accesstypes.Permission{accesstypes.List}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.PermTag(), field.PIITag(), field.MaskingTag()))
+				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.PermTag(), field.PIITag(), field.MaskingTag(), field.FormerlyTag()))
 		}
 	case ReadHandler:
 		permissions = []accesstypes.Permission{accesstypes.Read}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag(), field.MaskingTag()))
+				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag(), field.MaskingTag(), field.FormerlyTag()))
 		}
 	case PatchHandler:
 		// Create is left out where a NOT NULL @file key means a row is added by the
@@ -484,7 +487,7 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType, extra ...resourc
 		permissions = res.PatchPermissions()
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTagForPatch(), field.ImmutableTag(), field.SqltypeTag(), field.NullableTag()))
+				field.JSONTagForPatch(), field.ImmutableTag(), field.SqltypeTag(), field.NullableTag(), field.FormerlyTagForPatch()))
 		}
 	case AllHandlers, fileHandler:
 		return resource.SetData{}, errors.Newf("handlerSetData(): unsupported handler type: %s", handlerType)

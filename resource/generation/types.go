@@ -385,6 +385,11 @@ type generatedRoute struct {
 	// method): the generated route registration wraps exactly these in the
 	// application's FeatureGuard. Nil for an ungated route.
 	Feature *featureGate
+	// FormerPath is the route a renamed method (@formerly) was served at, registered
+	// beside Path on the same handler; FormerTestURL is its test URL. Empty for every
+	// other route.
+	FormerPath    string
+	FormerTestURL string
 }
 
 // SharedHandler reports whether the route's handler is additionally registered
@@ -475,6 +480,20 @@ type rpcMethodInfo struct {
 	// Feature is the method's @feature: the flag its route and its digest entry are
 	// gated behind; nil when the method is not gated.
 	Feature *featureGate
+	// Formerly is the method's former name (@formerly on the struct); empty for a
+	// method never renamed. The router answers the former route beside the current
+	// one, and the collection carries the name for the role migration.
+	Formerly string
+}
+
+// FormerRouteName is the kebab-cased former name the method's former route is served
+// at; empty for a method never renamed.
+func (r *rpcMethodInfo) FormerRouteName() string {
+	if r.Formerly == "" {
+		return ""
+	}
+
+	return strcase.ToKebab(r.Formerly)
 }
 
 // rpcUpload is a method's @upload declaration.
@@ -562,7 +581,7 @@ func (r *rpcMethodInfo) StatusUnion() string {
 // ResponseExpr renders the expression that converts the captured result into
 // the response mirror the handler encodes.
 func (r *rpcMethodInfo) ResponseExpr() string {
-	if r.Result.Flat() {
+	if r.Result.ConvertsWhole(toMirror) {
 		if r.ResultPointer {
 			return "(*" + responseMirror + ")(result)"
 		}
@@ -649,6 +668,9 @@ type rpcField struct {
 	enumeratedResource string
 	Enumeration        string
 	EnumerationValues  []*enumData
+	// Formerly is the request field's former name as its @formerly wrote it; empty for
+	// a field never renamed. A body naming its wire name reaches the field.
+	Formerly string
 }
 
 // MirrorType is the field's type in the handler's request mirror.
@@ -665,6 +687,31 @@ func (r *rpcField) JSONTag() string {
 	camelCaseName := caser.ToCamel(r.Name())
 
 	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
+}
+
+// FormerWireName is the field's former wire name; empty for a field never renamed.
+func (r *rpcField) FormerWireName() string {
+	return formerWireName(r.Formerly)
+}
+
+// FormerlyTag renders formerly:"<former wire name>" onto a renamed request mirror
+// field, and nothing otherwise.
+func (r *rpcField) FormerlyTag() string {
+	if r.Formerly == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s:%q", formerlyOutTagKey, r.FormerWireName())
+}
+
+// formerWireName derives a former wire name from a former name as written, exactly
+// as a current wire name derives from a field's name.
+func formerWireName(former string) string {
+	if former == "" {
+		return ""
+	}
+
+	return strcase.NewCaser(false, nil, nil).ToCamel(former)
 }
 
 // TypescriptDataType is the field's type in the generated interface: the walked wire
@@ -1401,6 +1448,36 @@ type resourceField struct {
 	// off the decoders answer the field as unknown and the handlers leave it out. Nil
 	// when the field is not gated.
 	Feature *featureGate
+
+	// Formerly is the field's former name as its @formerly wrote it; empty for a field
+	// never renamed. Its wire name (FormerWireName) is answered beside the current one.
+	Formerly string
+}
+
+// FormerWireName is the field's former wire name, derived from Formerly as the current
+// wire name is from the field's name; empty for a field never renamed.
+func (f *resourceField) FormerWireName() string {
+	return formerWireName(f.Formerly)
+}
+
+// FormerlyTag renders formerly:"<former wire name>" onto a list or read request-struct
+// field that was renamed and is on the wire, and nothing otherwise.
+func (f *resourceField) FormerlyTag() string {
+	if f.Formerly == "" || f.WireName() == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s:%q", formerlyOutTagKey, f.FormerWireName())
+}
+
+// FormerlyTagForPatch renders the formerly tag onto a patch request-struct field that
+// was renamed and takes a value on the wire, and nothing otherwise.
+func (f *resourceField) FormerlyTagForPatch() string {
+	if f.Formerly == "" || f.IsPrimaryKey || f.IsOutputOnly() {
+		return ""
+	}
+
+	return fmt.Sprintf("%s:%q", formerlyOutTagKey, f.FormerWireName())
 }
 
 // FeatureTag renders feature:"<name>" onto a request-struct field behind a flag, and
@@ -1920,6 +1997,7 @@ const (
 	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field])]; on a keyed @computed struct, @file[(segment)] rendered by <Name><Segment>
 	featureKeyword              string = "feature"              // Gates a resource, a field or an RPC method behind a feature flag, by the flag's constant: @feature(Debriefs)
 	tenantKeyword               string = "tenant"               // Declares the tenant record: the global, table-backed @resource whose rows are the tenants and whose key is the domain in every tenant-scoped URL
+	formerlyKeyword             string = "formerly"             // Declares a field's or a method's former name, answered beside the current one while older applications still send it: @formerly(Title)
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1956,6 +2034,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
 		featureKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		tenantKeyword:               {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		formerlyKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

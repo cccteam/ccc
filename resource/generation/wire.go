@@ -67,6 +67,11 @@ type wireField struct {
 	// Name is the Go field name; JSONName its generated wire name.
 	Name     string
 	JSONName string
+	// FormerName is the field's former wire name (@formerly on a result field): the
+	// response mirror declares a second field under it, FormerGoName, carrying the
+	// same value, so an older application reads the cell it knows. Empty for every
+	// other field.
+	FormerName string
 	// Pointer marks *T; Slice marks []T; ElemPointer marks []*T.
 	Pointer     bool
 	Slice       bool
@@ -91,6 +96,11 @@ type wireField struct {
 // IsLeaf reports whether the field is carried as-is, with no mirror behind it.
 func (f *wireField) IsLeaf() bool {
 	return f.Nested == nil
+}
+
+// FormerGoName is the Go name of the mirror field carrying the former wire name.
+func (f *wireField) FormerGoName() string {
+	return strcase.ToPascal(f.FormerName)
 }
 
 // prefix renders the field's pointer and slice markers as a type prefix.
@@ -186,6 +196,24 @@ func (s *wireShape) Flat() bool {
 	for _, f := range s.Fields {
 		if !f.IsLeaf() {
 			return false
+		}
+	}
+
+	return true
+}
+
+// ConvertsWhole reports whether the shape crosses in the direction by one conversion:
+// a flat shape, except toward the mirror when a field carries a former name, since the
+// mirror then declares a field the source does not have.
+func (s *wireShape) ConvertsWhole(direction wireDirection) bool {
+	if !s.Flat() {
+		return false
+	}
+	if direction == toMirror {
+		for _, f := range s.Fields {
+			if f.FormerName != "" {
+				return false
+			}
 		}
 	}
 
@@ -335,7 +363,7 @@ const (
 // here until the generator runs again. A flat shape renders nothing: its whole
 // conversion is the pin.
 func (s *wireShape) Converters(direction wireDirection, rootMirror string) string {
-	if s.Flat() {
+	if s.ConvertsWhole(direction) {
 		return ""
 	}
 
@@ -419,6 +447,10 @@ func (s *wireShape) writeConverter(b *strings.Builder, direction wireDirection, 
 			b.WriteString(", ")
 		}
 		fmt.Fprintf(b, "%s: %s", f.Name, f.valueExpr(direction, from))
+		// The former name carries the same value toward the mirror.
+		if direction == toMirror && f.FormerName != "" {
+			fmt.Fprintf(b, ", %s: %s", f.FormerGoName(), f.valueExpr(direction, from))
+		}
 	}
 	b.WriteString("}")
 	if direction == toSource {

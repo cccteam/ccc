@@ -38,6 +38,11 @@ const (
 	// @feature; while the flag is off the decoders answer the field as unknown and the
 	// handlers leave it out of every response.
 	featureTagKey = "feature"
+	// formerlyTagKey carries a request struct field's former wire name (formerly.go).
+	// The generator writes it onto every field the source annotated @formerly; a body,
+	// a columns, sort or filter parameter naming the former name reaches the field
+	// under its current one.
+	formerlyTagKey = "formerly"
 )
 
 // maskingPositional is the masking tag value the generator writes for a
@@ -61,6 +66,7 @@ var runtimeTagKeys = []string{
 	sqltypeTagKey,
 	nullableTagKey,
 	featureTagKey,
+	formerlyTagKey,
 }
 
 // Reserved query-string parameter names consumed by QueryDecoder; they can never be used

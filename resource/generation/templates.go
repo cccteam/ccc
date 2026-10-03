@@ -1522,7 +1522,7 @@ import (
 	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }}`" + `
 		{{- end }}
 	}
 
@@ -1572,6 +1572,9 @@ import (
 				case "{{ .Name }}":
 					if !row.Masked("{{ Camel .Name }}") {
 						rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+						{{- if .Formerly }}
+						rmap["{{ .FormerWireName }}"] = rec.{{ .Name }}
+						{{- end }}
 					}
 				{{- end }}
 				{{- end }}
@@ -1599,7 +1602,7 @@ import (
 	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }}`" + `
 		{{- end }}
 	}
 
@@ -1647,6 +1650,9 @@ import (
 			case "{{ .Name }}":
 				if !row.Masked("{{ Camel .Name }}") {
 					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+					{{- if .Formerly }}
+					rmap["{{ .FormerWireName }}"] = rec.{{ .Name }}
+					{{- end }}
 				}
 			{{- end }}
 			{{- end }}
@@ -1664,7 +1670,7 @@ import (
 	patchTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }} {{ $field.FeatureTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTagForPatch }}`" + `
 		{{- end }}
 	}
 	
@@ -1831,7 +1837,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }} {{ $field.FeatureTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }} {{ $field.NullableTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTagForPatch }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[{{ $resourcePackage }}.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, {{ $resource.PatchPermissionList }})
@@ -2728,13 +2734,16 @@ func Collection() *resource.GeneratedCollection {
 				{{- if .Computed }}
 				Computed: true,
 				{{- end }}
+				{{- with .Formerly }}
+				Formerly: "{{ . }}",
+				{{- end }}
 				{{- with .Permissions }}
 				Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} },
 				{{- end }}
 				{{- with .Tags }}
 				Tags: []resource.TagData{
 					{{- range . }}
-					{Name: "{{ .Name }}"{{ with .Permissions }}, Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} }{{ end }}{{ with .Masking }}, Masking: {{ MaskingConstant . }}{{ end }}},
+					{Name: "{{ .Name }}"{{ with .Permissions }}, Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} }{{ end }}{{ with .Masking }}, Masking: {{ MaskingConstant . }}{{ end }}{{ with .Formerly }}, Formerly: "{{ . }}"{{ end }}},
 					{{- end }}
 				},
 				{{- end }}
@@ -2883,6 +2892,11 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
 	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
 	r.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{- else if $route.FormerPath }}
+	// The former route of {{ $route.HandlerFunc }} answers on the same handler.
+	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
+	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	r.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else }}
 	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
 	{{- end }}
@@ -2963,6 +2977,11 @@ func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suf
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
 	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
 	r.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{- else if $route.FormerPath }}
+	// The former route of {{ $route.HandlerFunc }} answers on the same handler.
+	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
+	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	r.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else }}
 	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
 	{{- end }}
@@ -3230,6 +3249,13 @@ func generatedRouterTests() []*generatedRouterTest {
 		{{- range $method := $route.TestMethods }}
 		{
 			url: "{{ $route.TestURL }}", method: {{ $method }},
+			handlerFunc: "{{ $route.HandlerFunc }}",
+			parameters: map[string]string{ {{- range $param := $route.TestParams }}"{{ $param.Key }}": "{{ $param.Value }}", {{ end -}} },
+		},
+		{{- end }}
+		{{- if $route.FormerTestURL }}
+		{
+			url: "{{ $route.FormerTestURL }}", method: {{ index $route.TestMethods 0 }},
 			handlerFunc: "{{ $route.HandlerFunc }}",
 			parameters: map[string]string{ {{- range $param := $route.TestParams }}"{{ $param.Key }}": "{{ $param.Value }}", {{ end -}} },
 		},
@@ -3596,7 +3622,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 {{ . }}{{- end }}
 	type request struct {
 		{{- range $field := .RPCMethod.Fields }}
-		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }}{{ with $field.FormerlyTag }} {{ . }}{{ end }}`" + `
 		{{- end }}
 	}
 	{{- if .RPCMethod.Answers }}
@@ -3606,6 +3632,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 	type response struct {
 		{{- range $field := .RPCMethod.ResultFields }}
 		{{ $field.Name }} {{ $field.MirrorType }} ` + "`json:\"{{ $field.JSONName }}\"`" + `
+		{{- if $field.FormerName }}
+		{{ $field.FormerGoName }} {{ $field.MirrorType }} ` + "`json:\"{{ $field.FormerName }}\"`" + `
+		{{- end }}
 		{{- end }}
 	}
 	{{- end }}

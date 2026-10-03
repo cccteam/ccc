@@ -652,7 +652,7 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			fieldKind = fieldType.Kind()
 		}
 
-		fields[jsonFieldName(jsonFieldNameStr)] = FilterFieldInfo{
+		info := FilterFieldInfo{
 			JSONFieldName: jsonFieldNameStr,
 			GOFieldName:   goStructFieldName,
 			dbColumnNames: dbColumnNames,
@@ -661,6 +661,12 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			Indexed:       structField.Tag.Get(indexTagKey) == trueStr,
 			PII:           structField.Tag.Get(piiTagKey) == trueStr,
 			Positional:    structField.Tag.Get(maskingTagKey) == maskingPositional,
+		}
+		fields[jsonFieldName(jsonFieldNameStr)] = info
+		// A filter naming the field's former wire name is the same condition on the
+		// same column.
+		if former := structField.Tag.Get(formerlyTagKey); former != "" {
+			fields[jsonFieldName(former)] = info
 		}
 	}
 

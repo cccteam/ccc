@@ -82,4 +82,7 @@ const (
 	// (resourceField.FeatureTag); the decoders answer the field as unknown while the
 	// flag is off.
 	featureOutTagKey = "feature"
+	// formerlyOutTagKey carries a renamed request struct field's former wire name
+	// (resourceField.FormerlyTag); the decoders answer the former name as the current.
+	formerlyOutTagKey = "formerly"
 )

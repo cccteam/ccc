@@ -92,6 +92,7 @@ type Ship struct { ... }
 | `@order` | `@resource`, `@virtual`, or `@computed` struct | comma list of `Field [asc\|desc]` | Declares the order a list takes when the request carries no `sort`, naming Go fields of the struct; the direction defaults to `asc`. The primary key is appended at runtime so the order is total, and a request's `sort` replaces the declared order for that request. The declaration is optional, and every paged request needs an order from somewhere: a resource that declares none serves a request without `sort` only as the whole list (`limit=all`), which is not sorted — its table or view statement carries no `ORDER BY` and the rows arrive in the database's own order, a computed list keeps the order its body yielded — and refuses a bare GET or a `limit` with a 400 naming the resource and the way out (section 4). A nullable column renders as the plain direction and sorts in its database's own `NULL` placement, so an index on the column serves the order: Spanner places `NULL` first ascending and last descending, PostgreSQL last ascending and first descending. A computed resource follows the same placement: its handler sorts and pages the body's rows where the application's database would. On a computed resource only a leaf field may be named (a nested field is opaque). The generated TypeScript descriptor carries the declared order (`order: [{ field, direction }]`, JSON names), so a browser client knows a request without a `sort` is already ordered and pages by cursor; to a resource that declares none it sends a `sort` of its own or asks `limit=all`. On a table-backed resource with a bare `@domain`, generation warns when no index leads with the tenant column and then these columns in this order and direction, naming the index it wants (section 9). Example: [Mission](lodestar/pkg/resources/missions.go). |
 
 | `@feature` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct; field of a `@resource`, `@virtual`, or `@computed` struct | the flag's constant, `Debriefs` | Puts the resource, the field, or the method behind a feature flag, so it exists for the browser and the API only while the flag is on (section 15). The argument is the identifier of a `resource.Feature` constant declared in the resources package (`const Debriefs resource.Feature = "debriefs"`, its doc comment the flag's description); the constant's value is the flag's name, `[a-z][a-z0-9_]{0,63}`, and a name declared twice, a malformed name, an unknown identifier, or a value in place of the identifier is refused at generation naming the constants. On a struct every route of the resource or the method answers 404 while the flag is off, exactly as an unregistered route does, its consolidated arm answers as an unknown resource, and the resource, its fields and the method are absent from the permission digest. On a field the decoders answer the field as unknown while the flag is off (a 400 on `columns`, `sort`, `filter` and a patch body naming it) and the handlers leave it out of every response; a primary key, the tenant key, the state column, a `@file` key, and a column a create must supply (NOT NULL with no default, on a resource that serves a create) cannot be gated, and an `@rpc` struct's fields are not gated one by one. The TypeScript metadata and the descriptor carry `feature: '<name>'` on the gated entry, and the client file declares the `Feature` union and constants. |
+| `@formerly` | field of a `@resource` or `@virtual` struct; field of an `@rpc` struct or of the struct its `Execute` answers with; `@rpc` struct | the former name as it was written, `Title` | Keeps a renamed field or method answering under its former name while applications built before the rename are still answered (section 18). The column never changes; only the wire name moves, and the former wire name derives from the argument as the current one does from the field (`@formerly(Title)` on `Headline` answers `title` beside `headline`). On a field, a request body naming the former name is read as the current one and a body naming both is refused with a 400 saying to send one; `columns`, `sort` and `filter` take either name, with the permission checks running against the current field; and every row carries both keys, each masked when the field is. On an `@rpc` struct the router registers the former route (`/release` beside `/publish`) on the same handler, and the generated router test drives both. The generated collection carries the former names (`TagData.Formerly` on a field, `CollectionResource.Formerly` on a method) for the role migration. The TypeScript knows only the current name. A former name equal to the current one, or to another field's or method's name or former name, is refused at generation, as is the annotation on a `@computed` struct and the struct form on a `@resource` or `@virtual` struct. |
 Exactly one of `@resource`, `@virtual`, `@computed`, or `@rpc` may appear on a struct. The generator refuses a struct carrying more than one, naming the kinds it found.
 
 ## 2. Struct tags you write (source structs)
@@ -193,6 +194,7 @@ Read back at runtime by the `resource` package; listed here for reading generate
 | `nullable:"true"` | On a patch request-struct field typed by a slice whose column allows NULL, and nowhere else: a Go slice has one form, so the decoder cannot read the fact off the field's type as it does off a pointer or a Null wrapper. The decoder accepts a JSON `null` for the field and stores the nil slice, which the Spanner client writes as NULL (section 12, nullable slices); a slice field without the tag refuses `null` with `<field> cannot be null`, since its column is NOT NULL. `true` is the only value written; any other value, or the tag on a field that is not a slice, is a startup error (the stale-struct guard). |
 
 | `feature:"debriefs"` | From `@feature` on the field: the flag the field is gated behind, on the list, read and patch request-struct fields alike. While the flag is off the decoders answer the field as an unknown column and the handlers leave it out of the response; the digest leaves `Resource.field` out. The value is the flag's name; a value that is not one is a startup error (the stale-struct guard). |
+| `formerly:"title"` | From `@formerly` on the field: the former wire name, on the list, read and patch request-struct fields alike. The decoders read a body key, a column, a sort field and a filter field under it as the current field, and refuse a body naming both; the generated collection carries it as the tag's `Formerly` (section 18). |
 
 ## 4. Reserved query parameters
 
@@ -1510,3 +1512,44 @@ application/manifest+json`, which Go's type table lacks.
 unregister itself and drop its caches: the worker fetches `ngsw.json` after each page
 load and on each of its checks, and a 404 there is its signal to stand down, after which
 the page is served by the network alone.
+
+## 18. Renaming a field or a method
+
+A field or a method can change its name without breaking the browser applications already
+built against the old one. `@formerly` (section 1) keeps the old name answered beside the
+new one, and the outlet's oldest answered release (section 8) says when the old name can go.
+
+**What moves and what stays.** The column never changes: `@formerly` moves the wire name
+only, so no migration runs and no row is rewritten. On a field, the generated request
+structs carry `formerly:"<old wire name>"` (section 3) and the runtime reads the old name
+as the new one: a create or patch body naming `title` writes the `Headline` column, a body
+naming both `title` and `headline` is refused with a 400 saying to send one, and
+`columns=title`, `sort=title` and `filter=title:eq:...` run against the live field with its
+permission checks. Every row carries both keys, `headline` and `title`, each masked when
+the field is. On a method, the router registers the former route on the same handler, so
+`POST /console/api/release` and `POST /console/api/publish` run the one method, and the
+generated router test drives both. The generated collection carries the former names
+(`TagData.Formerly` on a field, `CollectionResource.Formerly` on a method), so the role
+migration can write grant rows under both. The TypeScript knows only the new name: an
+application built from it sends and reads `headline`, and only an application built before
+the rename still sends `title`.
+
+**Two releases.** Release 1 renames the field and keeps the old name answered:
+
+```go
+// @formerly(Title)
+Headline string `spanner:"Headline"`
+```
+
+Applications built before release 1 keep sending `title` and keep working; applications
+built from release 1 send `headline`. Release 2 removes the annotation and raises the
+outlet's oldest answered release to release 1 (`generation.OldestAnswered("1.0.0")` where
+release 1 is `1.0.0`): an application built before release 1 is answered with a 412
+telling it to reload, and `title` leaves the wire. A method renames the same way, with
+`@formerly(Release)` on the `Publish` struct in release 1 and the annotation gone in
+release 2.
+
+**Cursors.** A page cursor fingerprints its order by the Go field names (section 4), so a
+cursor an application holds across release 1 over an order that names the renamed field is
+refused once, and that list restarts from its first page; a cursor over any other order
+carries across.
