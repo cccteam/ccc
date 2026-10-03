@@ -108,6 +108,10 @@ variable "layer_roles" {
       "roles/cloudbuild.connectionAdmin",
       "roles/cloudscheduler.admin",
       "roles/cloudtasks.queueAdmin",
+      # 2-env owns the pull-request stacks' serverless network endpoint groups
+      # and their backend service, which the project's other roles do not read
+      # or write.
+      "roles/compute.loadBalancerAdmin",
       "roles/iam.serviceAccountAdmin",
       "roles/iam.serviceAccountUser",
       "roles/iam.workloadIdentityPoolAdmin",
