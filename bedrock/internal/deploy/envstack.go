@@ -575,7 +575,7 @@ func (s *stack) initEnvironment(ctx context.Context, app, env, identity string) 
 // the plan could not see. The migrations' sequence rule is GuardMigrations', earlier in
 // the same build.
 func testStack(ctx context.Context, clients *Clients, dir, identity string, subs map[string]string, plan []byte, out io.Writer) error {
-	found, err := check.ScanAuthoritative(dir, fileStorePolicies(subs))
+	found, err := check.ScanAuthoritative(dir, fileStorePolicies(subs, plan))
 	if err != nil {
 		return err
 	}
@@ -616,17 +616,36 @@ func testStack(ctx context.Context, clients *Clients, dir, identity string, subs
 }
 
 // fileStorePolicies are the file stores' bucket policies as the stack addresses them,
-// from the buckets' addresses in _FILE_STORES: the one authoritative IAM resource per
-// store the test admits.
-func fileStorePolicies(subs map[string]string) []string {
+// from the buckets' addresses in _FILE_STORES, the trigger's and the planned stack's
+// substitutions output both (a pull request that declares a store plans its policy before
+// any trigger carries the bucket, which the lab found when the first stack with a file
+// store was refused its own policy): the one authoritative IAM resource per store the test
+// admits.
+func fileStorePolicies(subs map[string]string, plan []byte) []string {
 	var policies []string
-	for _, address := range fileStoreAddresses(subs) {
-		if policy := derive.BucketPolicyAddress(address); policy != "" {
+	for _, address := range append(fileStoreAddresses(subs), plannedFileStores(plan)...) {
+		if policy := derive.BucketPolicyAddress(address); policy != "" && !slices.Contains(policies, policy) {
 			policies = append(policies, policy)
 		}
 	}
 
 	return policies
+}
+
+// plannedFileStores are the buckets the planned stack names in its substitutions output
+// (_FILE_STORES): none when the plan carries no such output or its value is not known yet.
+func plannedFileStores(plan []byte) []string {
+	var doc planDocument
+	if err := json.Unmarshal(plan, &doc); err != nil {
+		return nil
+	}
+	after, ok := doc.OutputChanges["substitutions"].After.(map[string]any)
+	if !ok {
+		return nil
+	}
+	value, _ := after[fileStoresSub].(string)
+
+	return fileStoreAddresses(map[string]string{fileStoresSub: value})
 }
 
 // plannedMounts are the secret versions the planned Cloud Run services and jobs pin

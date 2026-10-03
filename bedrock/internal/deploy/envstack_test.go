@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,6 +79,31 @@ func TestStackPlan(t *testing.T) {
 			}
 			if got.Summary() != fmt.Sprintf("Plan: %d to add, %d to change, %d to destroy.", tt.want.Add, tt.want.Change, tt.want.Destroy) {
 				t.Errorf("Summary() = %q", got.Summary())
+			}
+		})
+	}
+}
+
+func TestPlannedFileStores(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		plan string
+		want []string
+	}{
+		{name: "the buckets the planned substitutions name", plan: plannedStoresJSON, want: []string{"google_storage_bucket.files"}},
+		{name: "several, trimmed", plan: `{"output_changes": {"substitutions": {"after": {"_FILE_STORES": "google_storage_bucket.files, google_storage_bucket.files_documents"}}}}`, want: []string{"google_storage_bucket.files", "google_storage_bucket.files_documents"}},
+		{name: "a plan without the output", plan: stackPlanJSON},
+		{name: "an output not known yet", plan: `{"output_changes": {"substitutions": {"after": null, "after_unknown": true}}}`},
+		{name: "not a plan", plan: "not json"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := plannedFileStores([]byte(tt.plan)); !slices.Equal(got, tt.want) {
+				t.Errorf("plannedFileStores() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -168,6 +194,18 @@ func storesSubs() map[string]string {
 	return subs
 }
 
+// storelessTagSubs is a tag build whose trigger carries no file store yet.
+func storelessTagSubs() map[string]string {
+	subs := tagSubs()
+	delete(subs, fileStoresSub)
+
+	return subs
+}
+
+// plannedStoresJSON is stackPlanJSON with the substitutions output the planned stack
+// writes, naming the default store's bucket the trigger does not carry yet.
+var plannedStoresJSON = strings.TrimSuffix(stackPlanJSON, "}") + `, "output_changes": {"substitutions": {"actions": ["update"], "before": {"_FILE_STORES": ""}, "after": {"_FILE_STORES": "google_storage_bucket.files"}, "after_unknown": false}}}`
+
 // storelessSubs is tst for a stack that names no file store.
 func storelessSubs() map[string]string {
 	subs := tstSubs()
@@ -193,6 +231,8 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		subs      map[string]string
 		pins      map[string]string
 		stackFile string
+		// planJSON is what tofu show -json answers; stackPlanJSON when empty.
+		planJSON string
 		// env is the environment file; state what tofu state list (or state show) answers.
 		env   string
 		state string
@@ -363,6 +403,16 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
 		},
 		{
+			name:      "the policy of a store the pull request declares first, named from the planned substitutions before any trigger carries the bucket",
+			subs:      storelessTagSubs(),
+			pins:      enabledPins(),
+			stackFile: "resource \"google_storage_bucket_iam_policy\" \"files\" {}\n",
+			planJSON:  plannedStoresJSON,
+			wantOut:   []string{"Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
+			wantTofu:  []string{initLine, planLine, showLine},
+			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
+		{
 			name:      "a policy on a bucket that is not a file store's is refused",
 			subs:      tagSubs(),
 			pins:      enabledPins(),
@@ -401,7 +451,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
-			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON, "tofu state": tt.state}}
+			planJSON := tt.planJSON
+			if planJSON == "" {
+				planJSON = stackPlanJSON
+			}
+			run := &fakeRunner{outputs: map[string]string{"tofu show": planJSON, "tofu state": tt.state}}
 			secrets := &fakeSecrets{states: tt.pins}
 			spanner := &fakeSpanner{backup: tt.backup}
 			clients := &Clients{Exec: run, SecretsAs: secrets.openAs, SpannerAs: spanner.open}
