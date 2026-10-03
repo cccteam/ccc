@@ -453,8 +453,8 @@ reader, so the plan runs without the state lock and a pull-request build in tst 
 environment). Each plan runs the tests a tag build runs before its apply: no authoritative IAM
 resource in the stack, and every secret version a planned revision template pins exists and is
 enabled. One comment on the pull request carries every environment's summary; a failing plan or
-test stops the build, which is the required check, and is said on the pull request. A tag build
-plans its own environment later (stack plan). It runs in the OpenTofu image.`,
+test stops the build and is said on the pull request. A tag build plans its own environment
+later (stack plan). It runs in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.PlanEnvironments(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())

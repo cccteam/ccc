@@ -390,7 +390,7 @@ thing one step hands the next. In order:
   its plan identity (a reader, without the state lock, so a pull-request build in tst
   can change no environment), and runs the tests a tag build runs before its apply. One
   comment on the pull request carries every summary; a failing plan or test stops the
-  build, which is a required check. The plan the reviewer approves is each
+  build and the comment says so. The plan the reviewer approves is each
   environment's.
 - `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
   applied into its own state prefix as the apply identity. The plan is saved, the guard
@@ -1065,7 +1065,10 @@ pull-request build stands its own environment up under `<app>-pr<N>` on the pull
 hostname, with its own database (or the environment's, on `/gcbrun shared-db`), and tears
 it down on `/gcbrun down` or by the hourly sweep once the pull request closes. The build
 talks back on the pull request: a deployment the sidebar shows, a comment with the release
-and the database mode, the guard's refusals.
+and the database mode, the guard's refusals. The pull-request build is the developer's
+preview, not a check the merge waits for: a pull request merges on `bedrock check` and the
+CI jobs (`1-org/github.tf` names them), so release-please's release pull request merges
+with no build, and a release's first build is the first environment's tag build.
 
 The guards run before anything deploys: the migration guard (the sequence, one up file
 each, no gaps; a committed schema migration never changes, a seed file may; against the

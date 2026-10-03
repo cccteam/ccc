@@ -1783,9 +1783,9 @@ func TestPublicInvoker(t *testing.T) {
 }
 
 // TestRepositoryRules reads the repository module 1-org renders: the applications it
-// configures, the checks a pull request must pass (the infrastructure workflow's job, the
-// pull-request build under its trigger's name and project, and the five jobs of impulse's
-// CI workflow in the workflow's order), squash as the only merge, the branch up to date
+// configures, the checks a pull request must pass (the infrastructure workflow's job and
+// the five jobs of impulse's CI workflow in the workflow's order; never the pull-request
+// build, which is the preview on /gcbrun), squash as the only merge, the branch up to date
 // before it merges, the environments the operations workflow runs in (every one), and the
 // placement's values as the variables' defaults.
 func TestRepositoryRules(t *testing.T) {
@@ -1800,9 +1800,10 @@ func TestRepositoryRules(t *testing.T) {
 		byPath[f.Path] = string(f.Content)
 	}
 	tests := []struct {
-		name string
-		path string
-		want []string
+		name   string
+		path   string
+		want   []string
+		absent []string
 	}{
 		{
 			name: "the applications are the repositories",
@@ -1810,16 +1811,12 @@ func TestRepositoryRules(t *testing.T) {
 			want: []string{`applications = ["harbor", "beacon"]`},
 		},
 		{
-			name: "the rules name the checks in order (bedrock check, the pull-request build, impulse's five jobs), squash alone and the branch up to date",
+			name: "the rules name the checks in order (bedrock check, impulse's five jobs), squash alone and the branch up to date",
 			path: "1-org/github.tf",
 			want: []string{
 				`      {
         context        = "bedrock check"
         integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "${var.prefix}-tst-${local.region_code}-${app}-pr (${module.project["tst"].project_id})"
-        integration_id = tonumber(data.github_app.cloud_build.id)
       },
       {
         context        = "title"
@@ -1856,6 +1853,23 @@ func TestRepositoryRules(t *testing.T) {
 			},
 		},
 		{
+			name: "the pull-request build is not a required check, so the Cloud Build app is not read",
+			path: "1-org/github.tf",
+			absent: []string{
+				`-pr (${module.project["tst"].project_id})`,
+				`data.github_app.cloud_build`,
+				`google-cloud-build`,
+			},
+		},
+		{
+			name: "the README says the pull-request build is the preview and tst's tag build is a release's first build",
+			path: "1-org/README.md",
+			want: []string{
+				"is not a required check. It is the developer's",
+				"tst's tag build is the release's first build",
+			},
+		},
+		{
 			name: "the placement's values are the variables' defaults",
 			path: "1-org/variables.tf",
 			want: []string{
@@ -1882,6 +1896,11 @@ func TestRepositoryRules(t *testing.T) {
 			for _, w := range tt.want {
 				if !strings.Contains(content, w) {
 					t.Errorf("%s lacks %q", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(content, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
 				}
 			}
 		})
