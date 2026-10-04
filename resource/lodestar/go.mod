@@ -16,7 +16,7 @@ require (
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69
 	github.com/cccteam/ccc/resource v0.10.7-0.20260928050122-b8fa8fb4ac3b
 	github.com/cccteam/ccc/tracer v0.1.7
-	github.com/cccteam/db-initiator v0.4.0
+	github.com/cccteam/db-initiator v0.4.1-0.20261004223623-20a2067c6324
 	github.com/cccteam/httpio v0.7.18
 	github.com/cccteam/logger v0.1.27
 	github.com/cccteam/session v0.11.2-0.20261002075321-9d1b78cebaa7
@@ -56,7 +56,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.59.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/cccteam/ccc/cache v0.1.8-0.20260928033352-026459e32084 // indirect
+	github.com/cccteam/ccc/cache v0.1.8-0.20261004224052-9715e2d9b371 // indirect
 	github.com/cccteam/ccc/pkg v0.1.4 // indirect
 	github.com/cccteam/ccc/securehash v0.0.13 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
