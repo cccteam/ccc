@@ -6,6 +6,7 @@ package router
 import (
 	"net/http"
 
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
@@ -52,10 +53,12 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
-	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when its tab id is
-	// malformed.
-	r = r.With(live.Subscribing())
+	// Every route below runs under the subscribe middleware. It binds the name of the
+	// auth whose sessions the outlet serves to every request, so a live page's
+	// subscriptions and change set belong to <auth>|<user name> and two auths never
+	// share one; a request carrying X-Subscribe is noted on its request log line and
+	// refused when its tab id is malformed. The auth's name is staff.Name.
+	r = r.With(live.Subscribing(staff.Name))
 	domainGuard := h.DomainGuard()
 
 	r.Get("/api/permission-digest", h.PermissionDigest())
