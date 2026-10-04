@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 	"golang.org/x/term"
 
 	"github.com/cccteam/ccc/impulse/app"
@@ -54,7 +57,20 @@ func (nf *newFlags) bind(cmd *cobra.Command) {
 	_ = cmd.MarkFlagRequired("module")
 }
 
+// newDeps are what impulse new reads besides its flags: the running impulse's build, whose
+// version the new application's go.mod pins as its impulse tool, and the runner of the go
+// command that resolves that pin through the module proxy. newNew passes the real ones;
+// tests pass fakes.
+type newDeps struct {
+	build func() check.Build
+	run   check.Execer
+}
+
 func newNew() *cobra.Command {
+	return newNewWith(newDeps{build: check.RunningBuild, run: check.OSExec{}})
+}
+
+func newNewWith(d newDeps) *cobra.Command {
 	var nf newFlags
 
 	cmd := &cobra.Command{
@@ -90,9 +106,21 @@ The first auth signs in with a password unless --oidc-azure or --oidc-google say
 sign in through the organization's directory; --authority then says who owns role
 membership (directory or application) and is asked when not given, as for impulse add auth.
 The flavor is composed the same way, first, and the auth is born in the directory's shape:
-its session migrations are written in that shape rather than moved to it later.`,
+its session migrations are written in that shape rather than moved to it later.
+
+The application's go.mod pins its impulse tool (the tool directive CI's go tool impulse
+check runs) at the impulse running new: a release's version, or the pseudo-version of the
+commit an impulse installed with go install github.com/cccteam/ccc/impulse@<commit> was
+built from. new resolves the pin with go get -tool, through the module proxy, so the
+templates the application starts from and the check its CI runs are the same code. An
+impulse built from a checkout (go build, go run) names no commit the proxy serves, so new
+refuses it before writing anything. With --dev-root the template's pin stands.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			pin, err := toolPin(d.build(), nf.devRoot)
+			if err != nil {
+				return err
+			}
 			reserved, err := skeleton.Reserved(skeleton.Base)
 			if err != nil {
 				return err
@@ -124,7 +152,11 @@ its session migrations are written in that shape rather than moved to it later.`
 			}
 
 			dir := args[0]
-			if err := renderBase(cmd, dir, nf.modulePath, appName, nf.authName, nf.devRoot, nf.skipGit, len(transitions) > 0); err != nil {
+			base := scaffold{
+				dir: dir, modulePath: nf.modulePath, name: appName, authName: nf.authName, devRoot: nf.devRoot,
+				pin: pin, skipGit: nf.skipGit, composing: len(transitions) > 0,
+			}
+			if err := renderBase(cmd, d.run, &base); err != nil {
 				return err
 			}
 			if len(transitions) == 0 {
@@ -139,45 +171,134 @@ its session migrations are written in that shape rather than moved to it later.`
 	return cmd
 }
 
-// renderBase renders the base skeleton with its first auth, makes the first commit unless
-// told not to, and writes the report. With options to compose, the commit is required,
-// since the transitions build on it.
-func renderBase(cmd *cobra.Command, dir, modulePath, name, authName, devRoot string, skipGit, composing bool) error {
-	got, err := skeleton.Render(&skeleton.Options{Candidate: skeleton.Base, Dir: dir, ModulePath: modulePath, Name: name, DevRoot: devRoot, Auth: authName})
+// scaffold is the base rendering impulse new makes: where, under which module path and
+// names, and the impulse pin its go.mod takes.
+type scaffold struct {
+	dir, modulePath, name, authName, devRoot string
+	// pin is the version go.mod pins the impulse tool at (toolPin); empty keeps the
+	// template's.
+	pin string
+	// skipGit leaves the tree uncommitted; composing says options are composed after the
+	// base, which needs the first commit.
+	skipGit, composing bool
+}
+
+// renderBase renders the base skeleton with its first auth, pins its impulse tool, makes
+// the first commit unless told not to, and writes the report. With options to compose, the
+// commit is required, since the transitions build on it.
+func renderBase(cmd *cobra.Command, run check.Execer, s *scaffold) error {
+	got, err := skeleton.Render(&skeleton.Options{Candidate: skeleton.Base, Dir: s.dir, ModulePath: s.modulePath, Name: s.name, DevRoot: s.devRoot, Auth: s.authName})
 	if err != nil {
 		return err
+	}
+	if s.pin != "" {
+		if err := pinTool(cmd.Context(), run, s.dir, s.pin); err != nil {
+			return err
+		}
 	}
 	// The owned files are written from the code before the first commit, so the
 	// application owns them from its first commit; the base's committed workflow equals
 	// the rendering, and a composed option that changes the workspaces rewrites it.
-	if err := writeOwned(dir); err != nil {
+	if err := writeOwned(s.dir); err != nil {
 		return err
 	}
 	gitNote, committed := "", false
-	if !skipGit {
-		gitNote, committed = initRepo(cmd.Context(), dir, modulePath, authName)
+	if !s.skipGit {
+		gitNote, committed = initRepo(cmd.Context(), s.dir, s.modulePath, s.authName)
 	}
-	if composing && !committed {
+	if s.composing && !committed {
 		return errors.Newf("the base was rendered but not committed (%s), so the options were not added; commit it and add them with impulse add", gitNote)
 	}
 
-	port, emulator, firestore := templatePorts(dir)
-	goProcs, err := goProcesses(dir)
+	port, emulator, firestore := templatePorts(s.dir)
+	goProcs, err := goProcesses(s.dir)
 	if err != nil {
 		return err
 	}
-	web, err := webWorkspaces(dir)
+	web, err := webWorkspaces(s.dir)
 	if err != nil {
 		return err
 	}
 	report := renderReport{
-		headline: fmt.Sprintf("Created %s at %s with the %s auth (%d files).", modulePath, dir, authName, got.Files),
-		gitNote:  gitNote, options: !composing,
-		candidate: skeleton.Base, dir: dir, modulePath: modulePath, name: name, devRoot: devRoot,
+		headline: fmt.Sprintf("Created %s at %s with the %s auth (%d files).", s.modulePath, s.dir, s.authName, got.Files),
+		gitNote:  gitNote, options: !s.composing, pin: s.pin,
+		candidate: skeleton.Base, dir: s.dir, modulePath: s.modulePath, name: s.name, devRoot: s.devRoot,
 		rendered: got, port: port, emulator: emulator, firestore: firestore, goProcs: goProcs, web: web,
 		styled: isTerminal(cmd.OutOrStdout()),
 	}
 	report.write(cmd.OutOrStdout())
+
+	return nil
+}
+
+// goModFile is the module file at an application's root.
+const goModFile = "go.mod"
+
+// toolPin is the version the new application's go.mod pins impulse at: the version of the
+// impulse that scaffolds it, so the templates the application starts from and the go tool
+// impulse check its CI runs are the same code. A release pins its own version, and an
+// impulse installed from a commit (go install <module>@<commit>) the pseudo-version of that
+// commit. A build that cannot name its commit, one built from a checkout (go build, go
+// run, whatever version control stamped on it) or reporting (devel), is refused before
+// anything is written: no module proxy serves it, so no pin could fetch it. With a dev
+// root nothing is pinned and the template's pin stands, as it always has there: that
+// application builds against local checkouts, and the impulse scaffolding it is usually
+// built from one.
+func toolPin(b check.Build, devRoot string) (string, error) {
+	if devRoot != "" {
+		return "", nil
+	}
+	if !b.FromModule || !semver.IsValid(b.Version) {
+		return "", errors.Newf("a new application pins its impulse tool at the impulse that creates it, and this impulse is a build from a checkout (%s), which names no commit the module proxy serves: install impulse from a release or a pushed commit (go install %s@<version|commit>) and run impulse new again; nothing was written", b.Version, check.ImpulseModule)
+	}
+
+	return b.Version, nil
+}
+
+// pinTool pins the application's impulse tool at version: it writes the version into
+// go.mod as the impulse require, beside the tool directive, then resolves it with go get
+// -tool through the module proxy, which fetches that impulse, verifies it against Go's
+// checksum database, raises any requirement of the application that impulse needs higher,
+// and records the checksums in go.sum. GOWORK=off keeps a workspace above the directory
+// out of the resolution.
+func pinTool(ctx context.Context, run check.Execer, dir, version string) error {
+	// The rendered tree is read and written through a root scoped to it, as rendering
+	// writes it.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return errors.Wrap(err, "os.OpenRoot()")
+	}
+	defer root.Close()
+
+	info, err := root.Stat(goModFile)
+	if err != nil {
+		return errors.Wrap(err, "os.Root.Stat()")
+	}
+	data, err := root.ReadFile(goModFile)
+	if err != nil {
+		return errors.Wrap(err, "os.Root.ReadFile()")
+	}
+	mod, err := modfile.Parse(filepath.Join(dir, goModFile), data, nil)
+	if err != nil {
+		return errors.Wrap(err, "modfile.Parse()")
+	}
+	if err := mod.AddRequire(check.ImpulseModule, version); err != nil {
+		return errors.Wrap(err, "modfile.File.AddRequire()")
+	}
+	if err := mod.AddTool(check.ImpulseModule); err != nil {
+		return errors.Wrap(err, "modfile.File.AddTool()")
+	}
+	pinned, err := mod.Format()
+	if err != nil {
+		return errors.Wrap(err, "modfile.File.Format()")
+	}
+	if err := root.WriteFile(goModFile, pinned, info.Mode().Perm()); err != nil {
+		return errors.Wrap(err, "os.Root.WriteFile()")
+	}
+	at := check.ImpulseModule + "@" + version
+	if out, err := run.Run(ctx, dir, []string{"GOWORK=off"}, "go", "get", "-tool", at); err != nil {
+		return errors.Newf("go get -tool %s could not resolve the impulse pin through the module proxy (%v): %s. %s is rendered but not committed: once the proxy answers, remove it and run impulse new again", at, errors.Cause(err), strings.TrimSpace(string(out)), dir)
+	}
 
 	return nil
 }

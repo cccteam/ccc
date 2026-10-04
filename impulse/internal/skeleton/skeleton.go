@@ -1,6 +1,7 @@
 // Package skeleton carries the application templates impulse renders: the candidate
-// skeletons under _candidates, embedded in the binary so new and add work offline and
-// ship exactly the tree the release was tested with.
+// skeletons under _candidates, embedded in the binary so new and add render offline and
+// ship exactly the tree the release was tested with. new then pins the application's
+// impulse tool at the running impulse, resolving it through the module proxy.
 //
 // While they sit here the templates are not Go modules. Each carries its go.mod as
 // go.mod.tmpl, so the directory is not a module boundary (go:embed excludes everything

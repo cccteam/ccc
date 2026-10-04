@@ -100,7 +100,7 @@ local framework work instead of the pins. Do not commit that go.work.`,
 // renderOwned writes the files impulse owns from the code of the application at dir, and
 // says for each whether it was written or already read as the code renders.
 func renderOwned(w io.Writer, dir string) error {
-	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, goModFile)); err != nil {
 		return errors.Newf("no go.mod at %s: run render with no arguments from an application root, or name a candidate and a directory to render a skeleton (impulse render <candidate> <dir> --module <path>)", dir)
 	}
 	a, err := app.Discover(dir)
@@ -158,6 +158,8 @@ type renderReport struct {
 	// the first commit; options adds the step that names the options to add next.
 	headline, gitNote string
 	options           bool
+	// pin is the version impulse new pinned the impulse tool at, when it pinned one.
+	pin string
 
 	candidate, dir, modulePath, devRoot string
 	// name is the application's name when the rendering set one.
@@ -207,6 +209,9 @@ func (r *renderReport) write(w io.Writer) {
 	}
 	if r.name != "" {
 		fmt.Fprintf(w, "Named %s: the web package, APP_SERVICE_NAME, and the development database carry it.\n", r.name)
+	}
+	if r.pin != "" {
+		fmt.Fprintf(w, "Pinned the impulse tool in go.mod at %s, the impulse that created the application, so CI's go tool impulse check runs the same code.\n", r.pin)
 	}
 	if r.gitNote != "" {
 		fmt.Fprintln(w, r.gitNote)

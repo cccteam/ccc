@@ -149,6 +149,25 @@ when the database is not in the Spanner project. In development the emulator sta
 through `FIRESTORE_EMULATOR_HOST`; with none of them set the application serves no live
 pages.
 
+The application's `go.mod` pins its impulse tool (the `tool github.com/cccteam/ccc/impulse`
+directive and its require, which CI's `go tool impulse check` runs) at the impulse that
+created it, so the templates the application starts from and the check its CI runs are
+the same code:
+
+- An impulse release pins its own version.
+- An impulse installed from a commit (`go install github.com/cccteam/ccc/impulse@<commit>`)
+  pins that commit's pseudo-version, the version Go gives a commit that has no release tag
+  (`v0.0.0-20261004053859-89401d630235`).
+- An impulse built from a checkout (`go build`, `go run`) names no commit the module proxy
+  serves, so `new` refuses it before writing anything and says to install impulse from a
+  release or a pushed commit.
+
+`new` writes the pin into `go.mod` and resolves it with `go get -tool`, through the module
+proxy: Go fetches that impulse, verifies it against its checksum database, raises any
+requirement the application has that impulse needs higher, and records the checksums in
+`go.sum`. With `--dev-root` the pin is the one the template carries, as before, since that
+application builds against local checkouts.
+
 The tree is committed as the application's first commit (`--skip-git` leaves it
 uncommitted), so `impulse add` can start from a clean tree; with `--dev-root` the `go.work`
 it writes is ignored by git. Options come afterwards, one reviewable change each:
@@ -703,6 +722,9 @@ tested with and renders them offline.
 While embedded they are not Go modules: each carries its `go.mod` as `go.mod.tmpl`, and
 the leading underscore keeps the tree out of `./...` so nothing compiles it in place.
 Rendering writes `go.mod` back under the target module path and rewrites every import.
+The impulse version a template's `go.mod` requires is only what `render <candidate>` and
+`new --dev-root` keep: `new` replaces it with the version of the impulse that runs it, so
+nobody moves it by hand.
 A template names its application by its own candidate name in five places only — the
 workspace name in `package.json` and `bun.lock`, the service name and development
 database ids in `.envrc.template`, the README heading, and, in display form, each browser
