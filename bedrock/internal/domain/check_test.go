@@ -20,8 +20,12 @@ const (
 	authData     = "0f1e2d3c-4b5a.6.authorize.certificatemanager.goog."
 )
 
-// zoneServers are the zone's name servers.
-var zoneServers = []string{"ns-cloud-c1.googledomains.com.", "ns-cloud-c2.googledomains.com.", "ns-cloud-c3.googledomains.com.", "ns-cloud-c4.googledomains.com."}
+// zoneServers are the zone's name servers, and movedServers the set an earlier zone of
+// the same name had before it was made again.
+var (
+	zoneServers  = []string{"ns-cloud-c1.googledomains.com.", "ns-cloud-c2.googledomains.com.", "ns-cloud-c3.googledomains.com.", "ns-cloud-c4.googledomains.com."}
+	movedServers = []string{"ns-cloud-b1.googledomains.com.", "ns-cloud-b2.googledomains.com.", "ns-cloud-b3.googledomains.com.", "ns-cloud-b4.googledomains.com."}
+)
 
 // fakeZones is a Cloud DNS holding one zone, or none.
 type fakeZones struct {
@@ -45,14 +49,16 @@ func (*fakeZones) Close() error {
 	return nil
 }
 
-// fakeResolver answers from maps; a name a map lacks is not found, and a name in fails
-// fails the lookup outright.
+// fakeResolver answers from maps; a name a map lacks is not found, a name in fails fails
+// the lookup outright, and a name in servfail is answered SERVFAIL, as the Go resolver
+// reports it, the answer a delegation to servers that do not serve the zone gets.
 type fakeResolver struct {
-	ns    map[string][]string
-	hosts map[string][]string
-	mx    map[string][]*net.MX
-	cname map[string]string
-	fails string
+	ns       map[string][]string
+	hosts    map[string][]string
+	mx       map[string][]*net.MX
+	cname    map[string]string
+	fails    string
+	servfail map[string]bool
 }
 
 // lookup answers one question from its map: the answer, not found, or the failure.
@@ -60,6 +66,9 @@ func lookup[T any](f *fakeResolver, answers map[string]T, name string) (T, error
 	var zero T
 	if name == f.fails {
 		return zero, errors.New("connection refused")
+	}
+	if f.servfail[name] {
+		return zero, &net.DNSError{Err: serverMisbehaving, Name: name, IsTemporary: true}
 	}
 	v, ok := answers[name]
 	if !ok {
@@ -159,6 +168,8 @@ func TestCheck(t *testing.T) {
 		want       Delegation
 		wantPassed bool
 		wantLines  []string
+		// wantAbsent are texts no line may hold.
+		wantAbsent []string
 		wantErr    string
 	}{
 		{
@@ -266,6 +277,59 @@ func TestCheck(t *testing.T) {
 				"In the registrant's mailbox (registrant_contact in 2-net/terraform.tfvars): open the registrar's verification mail and follow its link within fifteen days of the registration, or the domain is suspended.",
 				authLine("example.app"),
 			},
+			wantAbsent: []string{"gcloud domains", "Cloud Domains, in the network project"},
+		},
+		{
+			name:       "registered here, its registration pointing at the zone: passes",
+			domain:     "example.app",
+			zones:      zoneFor("example.app"),
+			resolver:   resolved("example.app"),
+			want:       Delegated,
+			wantPassed: true,
+			wantLines: []string{
+				"example.app is delegated to the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: it answers the zone's name servers (" + strings.Join(zoneServers, ", ") + ").",
+				"The authorization record resolves: the certificate for example.app and *.example.app is not waiting on it.",
+			},
+		},
+		{
+			name:   "registered here, its registration naming the set of a zone since made again: the step in Cloud Domains",
+			domain: "example.app",
+			zones:  zoneFor("example.app"),
+			resolver: &fakeResolver{
+				ns: map[string][]string{"example.app": movedServers},
+			},
+			want: Repoint,
+			wantLines: []string{
+				"example.app does not answer the zone's name servers (it answers " + strings.Join(movedServers, ", ") + ").",
+				"2-net registers it through Cloud Domains (registrations in 2-net/terraform.tfvars), and its registration names name servers that are not the zone's, as after the zone was made again: the apply does not change the name servers of a registration that exists (2-net/README.md, \"Making a zone again\").",
+				"In Cloud Domains, in the network project ex-net-gbl-core-1a2b: point the registration of example.app at the zone ex-net-gbl-dns-apps with the command below, or in the console (the Cloud Domains page, example.app, Edit DNS details, Cloud DNS, the zone ex-net-gbl-dns-apps, Save). It takes the Cloud Domains Admin role (roles/domains.admin) on the project; the change takes up to 48 hours to be seen everywhere.",
+				"gcloud domains registrations configure dns example.app --cloud-dns-zone=ex-net-gbl-dns-apps --project=ex-net-gbl-core-1a2b",
+				"The certificate is still waiting on the authorization record below, which the zone holds and which resolves once the registration points at the zone.",
+				authLine("example.app"),
+			},
+			wantAbsent: []string{"the apply sets", "the apply that registers it gives", "registrant's mailbox"},
+		},
+		{
+			name:   "registered here, the servers its registration names not answering for it: the step in Cloud Domains",
+			domain: "example.app",
+			zones:  zoneFor("example.app"),
+			resolver: &fakeResolver{
+				servfail: map[string]bool{"example.app": true, authName("example.app"): true},
+			},
+			want: Repoint,
+			wantLines: []string{
+				"example.app does not answer the zone's name servers (the name servers it is delegated to do not answer for it).",
+				"gcloud domains registrations configure dns example.app --cloud-dns-zone=ex-net-gbl-dns-apps --project=ex-net-gbl-core-1a2b",
+				authLine("example.app"),
+			},
+			wantAbsent: []string{"the apply sets", "the apply that registers it gives"},
+		},
+		{
+			name:     "servers that do not answer for a domain not registered here stop the check",
+			domain:   "example.dev",
+			zones:    zoneFor("example.dev"),
+			resolver: &fakeResolver{servfail: map[string]bool{"example.dev": true}},
+			wantErr:  "resolving the name servers of example.dev",
 		},
 		{
 			name:   "name servers that are the zone's and another's are not a delegation",
@@ -351,6 +415,11 @@ func TestCheck(t *testing.T) {
 			for _, want := range tt.wantLines {
 				if !slices.Contains(lines, want) {
 					t.Errorf("output lacks the line %q:\n%s", want, out.String())
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(out.String(), absent) {
+					t.Errorf("output holds %q:\n%s", absent, out.String())
 				}
 			}
 		})

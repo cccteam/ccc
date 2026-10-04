@@ -19,7 +19,10 @@ There is no VPC in this project. See "Cross-project backends" for why.
   `pr12-{{.ExampleApp}}-tst.`.
 - A Cloud DNS public zone for `apps_domain`, DNSSEC on, with A records for
   the apex and the wildcard pointing at the address, the authorization CNAME
-  copied from the DNS authorization, and whatever `extra_records` lists.
+  copied from the DNS authorization, and whatever `extra_records` lists. The
+  zone carries `prevent_destroy`, as every zone a registration here points at
+  does, so neither a plan nor a stray destroy can make it again on other name
+  servers ("Making a zone again").
 - The load balancer: an HTTPS URL map whose host rules come from `hosts`, an
   HTTP URL map that only redirects to HTTPS, the two target proxies (the HTTPS
   one holds the certificate map and the SSL policy), and the two
@@ -134,8 +137,10 @@ the check finds it:
 - **Registered here, the default for a new domain.** The domain is listed in
   `registrations` (`bedrock domain add` writes the entry with the price
   Cloud Domains quotes), and the apply registers it and points it at the
-  zone: no registrar step. Cloud Domains accepts no transfer in, so a domain
-  the organization already owns is delegated instead.
+  zone: no registrar step. The registration keeps those name servers from
+  then on; only a zone made again parts them ("Making a zone again"). Cloud
+  Domains accepts no transfer in, so a domain the organization already owns
+  is delegated instead.
 - **Delegated at the apex.** A domain as it is registered (its apex, such
   as `example.com`) with nothing else on it, registered anywhere: its name
   servers at the registrar become the zone's. One step, once.
@@ -170,6 +175,14 @@ The steps by hand, each where it happens:
 3. At the DNS provider that serves the client's domain, for a label: add the
    NS records `bedrock domain check` prints, one per name server of the zone,
    for the label.
+4. In Cloud Domains, in the network project, for a domain registered here
+   whose registration names other name servers than the zone's (after the
+   zone was made again): point the registration at the zone with the command
+   `bedrock domain check` prints, `gcloud domains registrations configure dns
+   <domain> --cloud-dns-zone=<zone> --project=<network project>`, or in the
+   console: the Cloud Domains page, the domain, Edit DNS details, Cloud DNS
+   and the zone, Save. It takes the Cloud Domains Admin role
+   (`roles/domains.admin`) on the network project.
 
 Then `bedrock domain check` again, until it passes. Cloud DNS assigns a zone
 its name servers, and a zone made again can land on others, so the
@@ -185,6 +198,48 @@ such as a verification record.
 If another domain is chosen for the applications, `apps_domain`
 changes and the zone, the authorization, the certificate, the map entries,
 and the records are recreated for it; every host in `hosts` changes with it.
+The zone's recreation is the deliberate change "Making a zone again"
+describes.
+
+## Making a zone again
+
+Cloud DNS gives a zone its name servers when it creates the zone, and a zone
+made again can land on a different set. Whatever pointed at the old set then
+points at servers that no longer answer for the domain, and the applications'
+names stop resolving until each is pointed again. So the apps zone
+(`dns.tf`) and every parked zone (`domains.tf`) carry `prevent_destroy`, as
+the Spanner instance does in `2-spn`: no plan and no stray destroy removes
+one, and making a zone again (a new `apps_domain`, or a replacement asked
+for by hand) is a deliberate change in steps:
+
+1. In the infrastructure repository, a pull request that removes the
+   `prevent_destroy` rule from the zone's `lifecycle` block, merged and
+   applied. Nothing else changes.
+2. A pull request that makes the change that recreates the zone, still
+   without the rule. Its plan shows the zone destroyed and created.
+3. Everything that pointed at the old set is pointed at the new one, below;
+   `bedrock domain check` prints each step with the zone's new name servers.
+4. `bedrock org render` writes the rule back, in a pull request of its own:
+   the files are bedrock's, and `bedrock org check` reports the difference
+   until then.
+
+What a zone made again moves:
+
+- **The registration's name servers**, for a domain registered here. A
+  registration keeps the name servers it was registered with: the provider
+  cannot change them in place (it would replace the registration, which
+  `prevent_destroy` on the registration refuses), so `domains.tf` ignores
+  them after the registration and the apply never re-points it. The
+  registration is pointed at the new zone in Cloud Domains, the fourth of
+  the steps by hand in "Delegating the domain".
+- **The certificate's authorization record.** The same apply copies it into
+  the new zone, and it resolves again once the domain points at the new
+  set; until then a certificate that renews waits on it.
+- **Any delegation a person made**: the name servers at a registrar
+  elsewhere, for a domain delegated at its apex, or the NS records at the
+  parent's DNS provider, for a label. Each is set to the new set, as when it
+  was first made (the second and third of the steps by hand in "Delegating
+  the domain").
 
 ## A domain registered here
 
@@ -210,7 +265,8 @@ A transfer out, if the client wants the domain at another registrar:
   and nothing is delegated again.
 - Once the transfer is done, the registration leaves `registrations` and the
   state, with `prevent_destroy` on the registration in `domains.tf` lifted for
-  that one apply.
+  that one apply (and on its parked zone, for a domain other than the apps
+  domain, since the zone goes with it).
 
 ## Applying
 

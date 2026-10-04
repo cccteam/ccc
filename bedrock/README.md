@@ -1131,7 +1131,13 @@ application-default login`, reading the project's zones), and resolves the domai
 world sees it. When the domain answers the zone's name servers, it passes. Otherwise it
 prints the step and the place, each record on its own line as it is pasted: for a domain
 2-net registers and whose registration is not active yet, the registrant's verification
-mail, followed within fifteen days or the domain is suspended; for an apex, the zone's
+mail, followed within fifteen days or the domain is suspended; for a domain 2-net registers
+whose registration names name servers that are not the zone's (it answers another set, or
+the servers it is delegated to do not answer for it), as after the zone was made again, the
+step in Cloud Domains that points the registration at the zone (`gcloud domains
+registrations configure dns <domain> --cloud-dns-zone=<zone> --project=<network project>`,
+or the console's Cloud Domains page, the domain, Edit DNS details), since the apply never
+changes the name servers of a registration that exists; for an apex, the zone's
 name servers to set at the registrar where the domain is registered, as bare host names
 (`ns-cloud-c1.googledomains.com`, since a registrar takes host names; at Squarespace
 Domains: the domain's DNS settings, Domain Nameservers, Use Custom Nameservers, up to 48
@@ -1158,6 +1164,14 @@ out:
 - the name servers do not change in a transfer, so the zone keeps answering;
 - once it is done, the registration leaves `registrations` and the state, with
   `prevent_destroy` on the registration in 2-net's `domains.tf` lifted for that one apply.
+
+Cloud DNS gives a zone its name servers when it creates the zone, and a zone made again can
+land on a different set, which the registration, the certificate's authorization record and
+any delegation made by hand would no longer point at. So 2-net's apps zone and every zone a
+registration points at carry `prevent_destroy`: a recreation is refused by default and is a
+deliberate change in steps (remove the rule in one change, recreate the zone in the next,
+then point everything at the new set, `bedrock domain check` printing each step), which
+2-net's README describes under "Making a zone again".
 
 ## bedrock org
 

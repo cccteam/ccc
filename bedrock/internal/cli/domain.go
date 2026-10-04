@@ -43,7 +43,11 @@ placement (appsDomain, and projects.net, which 1-org's project_ids fill in).
 The shape of the domain is found, not configured. When the domain answers the zone's name
 servers it is delegated, whether 2-net registered it or a registrar elsewhere points at the
 zone. When 2-net registers it (registrations in 2-net/terraform.tfvars) and the registration
-is not active yet, the check says so and names the registrant's verification mail. A domain
+is not active yet, the check says so and names the registrant's verification mail. When the
+registration names name servers that are not the zone's (the domain answers another set, or
+the servers it is delegated to do not answer for it), as after the zone was made again, the
+check prints the step in Cloud Domains that points the registration at the zone, with its
+gcloud command: the apply never changes the name servers of a registration that exists. A domain
 that can be registered (example.com) gets the registrar step, with the zone's name servers
 to set there; a label of a domain served elsewhere (apps.example.com) gets the NS records to
 add at the DNS provider that serves that domain. A registrable domain that is not delegated

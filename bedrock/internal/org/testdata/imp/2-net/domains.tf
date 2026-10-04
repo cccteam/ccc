@@ -17,7 +17,11 @@
 #
 # A registration is never removed by a plan: deleting one deletes the domain
 # after its grace period. Removal is a deliberate two-step change, as with
-# the Spanner instance.
+# the Spanner instance. Nor does the apply change the name servers of a
+# registration that exists: the provider would replace the registration to do
+# it, so after a zone is made again the registration is pointed at the new
+# zone in Cloud Domains, the step bedrock domain check prints (README.md,
+# "Making a zone again").
 # ---------------------------------------------------------------------------
 
 locals {
@@ -51,6 +55,14 @@ resource "google_dns_managed_zone" "parked" {
 
   dnssec_config {
     state = "on"
+  }
+
+  # The registration points at this zone's name servers, which Cloud DNS
+  # assigns when it creates the zone; a zone made again can land on a
+  # different set, so a recreation is refused by default and is a deliberate
+  # two-step change, as for the apps zone (dns.tf).
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -136,9 +148,12 @@ resource "google_clouddomains_registration" "this" {
   lifecycle {
     # Cloud Domains answers no contact details back (the registrations are
     # redacted) and reports the name servers in its own form, so every read
-    # looks like a change of both, and either would replace the registration.
-    # Both are set at registration and kept; the zone's name servers are the
-    # ones registered (the hostnames resolve).
+    # looks like a change of both, and either would replace the registration:
+    # the provider changes neither in place. Both are set at registration and
+    # kept; the zone's name servers are the ones registered (the hostnames
+    # resolve). A zone made again is the one case they part, and the
+    # registration is then pointed at it in Cloud Domains (README.md, "Making a
+    # zone again"), never by this apply.
     ignore_changes  = [contact_settings, dns_settings]
     prevent_destroy = true
 

@@ -3,7 +3,9 @@
 // holds comes from Cloud DNS; what the world sees comes from the resolver. Which shape the
 // domain has (registered by the network layer, delegated at its apex from a registrar
 // elsewhere, or delegated as a label of a domain served elsewhere) is not configured: it
-// is what the answers show.
+// is what the answers show. A registered domain's name servers are read from the answers
+// too, never trusted from the registration: after its zone is made again, a registration
+// still names the old set until it is pointed at the zone in Cloud Domains.
 
 package domain
 
@@ -40,6 +42,10 @@ const (
 	// squarespacePath is where Squarespace Domains, the registrar of record behind Cloud
 	// Domains and a common one besides, sets a domain's name servers; it has no API.
 	squarespacePath = "At Squarespace Domains: the domain's DNS settings, Domain Nameservers, Use Custom Nameservers (two to thirteen servers); the change takes up to 48 hours to take effect."
+	// serverMisbehaving is the Go resolver's text for an answer of SERVFAIL: the servers
+	// a name is delegated to do not answer for it, as when its zone was made again on
+	// other name servers and the delegation still names the old ones.
+	serverMisbehaving = "server misbehaving"
 )
 
 // Zone is a managed zone as Cloud DNS describes it.
@@ -189,6 +195,12 @@ const (
 	// Refused is an apex, not delegated, that answers records that are not the zone's: a
 	// domain with other DNS on it, which is never delegated whole.
 	Refused
+	// Repoint is a domain the network layer registers whose registration names name
+	// servers that are not the zone's, as after the zone was made again on other ones:
+	// it answers another set, or the servers it is delegated to do not answer for it.
+	// The apply does not change the name servers of a registration that exists, so the
+	// registration is pointed at the zone in Cloud Domains.
+	Repoint
 )
 
 // Report is what the check found.
@@ -201,8 +213,10 @@ type Report struct {
 	// the zone's name servers.
 	ZoneName    string
 	NameServers []string
-	// Answered are the name servers the world sees for the domain.
+	// Answered are the name servers the world sees for the domain; Lame says the
+	// servers it is delegated to do not answer for it (Repoint), so none are seen.
 	Answered []string
+	Lame     bool
 	// Delegation is what the answers show.
 	Delegation Delegation
 	// Parent is the domain served elsewhere that a label belongs to, and Label the
@@ -230,7 +244,9 @@ type appsZone struct {
 // refused when the domain is not a bare lowercase name, when the zone does not exist or
 // serves another domain, and when the zone lacks a record the network layer's apply
 // creates (the apex and wildcard addresses, the authorization record); an answer the
-// resolver fails to give, other than "no such record", stops it too.
+// resolver fails to give, other than "no such record", stops it too, except the servers'
+// failure to answer for a domain the network layer registers, which is a registration
+// to point at the zone (Repoint).
 func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 	if err := Validate(req.Domain); err != nil {
 		return nil, err
@@ -248,25 +264,38 @@ func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 		ZoneName: z.zone.DNSName, NameServers: z.zone.NameServers, Authorization: z.authorization,
 	}
 	r.Answered, err = nameServers(ctx, l.Resolver, req.Domain)
-	if err != nil {
+	r.Lame = registered && serverFailure(err)
+	if err != nil && !r.Lame {
 		return nil, err
 	}
 	switch {
+	case r.Lame:
+		r.Delegation = Repoint
 	case sameNames(r.Answered, r.NameServers):
 		r.Delegation = Delegated
-	case registered:
+	case registered && len(r.Answered) == 0:
 		r.Delegation = Registering
+	case registered:
+		r.Delegation = Repoint
 	default:
 		if err := r.classify(ctx, l.Resolver, z.address); err != nil {
 			return nil, err
 		}
 	}
 	r.AuthorizationResolves, err = resolvesTo(ctx, l.Resolver, z.authorization)
-	if err != nil {
+	if err != nil && (r.Delegation == Delegated || !serverFailure(err)) {
 		return nil, err
 	}
 
 	return r, nil
+}
+
+// serverFailure reports a lookup that the servers answered with a failure (SERVFAIL),
+// which a domain whose delegation names servers that do not serve its zone gets.
+func serverFailure(err error) bool {
+	var dnsErr *net.DNSError
+
+	return errors.As(err, &dnsErr) && !dnsErr.IsNotFound && !dnsErr.IsTimeout && dnsErr.Err == serverMisbehaving
 }
 
 // registeredHere reports whether the network layer's placement lists the domain among
@@ -471,7 +500,7 @@ func (r *Report) Write(w io.Writer) {
 		fmt.Fprintf(w, "%s is delegated to the zone %s in %s: it answers the zone's name servers (%s).\n", r.Domain, r.Zone, r.Project, strings.Join(r.NameServers, ", "))
 	case Registering:
 		fmt.Fprintf(w, "%s does not answer the zone's name servers yet (%s).\n", r.Domain, r.answeredNow())
-		fmt.Fprintf(w, "%s registers it through Cloud Domains (registrations in %s): the apply sets its name servers to the zone's, and they answer once the registration is active.\n", DefaultLayer, netValues)
+		fmt.Fprintf(w, "%s registers it through Cloud Domains (registrations in %s): the apply that registers it gives it the zone's name servers, and they answer once the registration is active.\n", DefaultLayer, netValues)
 		fmt.Fprintf(w, "In the registrant's mailbox (registrant_contact in %s): open the registrar's verification mail and follow its link within fifteen days of the registration, or the domain is suspended.\n", netValues)
 	case ApexUndelegated:
 		fmt.Fprintf(w, "%s does not answer the zone's name servers (%s).\n", r.Domain, r.answeredNow())
@@ -482,6 +511,11 @@ func (r *Report) Write(w io.Writer) {
 		if len(r.Answered) == 0 {
 			fmt.Fprintf(w, "%s answers no name servers at all: if it is not registered yet, bedrock domain add registers it through Cloud Domains in %s instead, with no registrar step.\n", r.Domain, DefaultLayer)
 		}
+	case Repoint:
+		fmt.Fprintf(w, "%s does not answer the zone's name servers (%s).\n", r.Domain, r.answeredNow())
+		fmt.Fprintf(w, "%s registers it through Cloud Domains (registrations in %s), and its registration names name servers that are not the zone's, as after the zone was made again: the apply does not change the name servers of a registration that exists (%s/README.md, \"Making a zone again\").\n", DefaultLayer, netValues, DefaultLayer)
+		fmt.Fprintf(w, "In Cloud Domains, in the network project %s: point the registration of %s at the zone %s with the command below, or in the console (the Cloud Domains page, %s, Edit DNS details, Cloud DNS, the zone %s, Save). It takes the Cloud Domains Admin role (roles/domains.admin) on the project; the change takes up to 48 hours to be seen everywhere.\n", r.Project, r.Domain, r.Zone, r.Domain, r.Zone)
+		fmt.Fprintf(w, "gcloud domains registrations configure dns %s --cloud-dns-zone=%s --project=%s\n", r.Domain, r.Zone, r.Project)
 	case LabelUndelegated:
 		fmt.Fprintf(w, "%s does not answer the zone's name servers (%s).\n", r.Domain, r.answeredNow())
 		fmt.Fprintf(w, "At the DNS provider that serves %s: add NS records for %s pointing at the zone's name servers, in place of any it has, one record per line below (name, type, value). The other records of %s stay as they are.\n", r.Parent, r.Label, r.Parent)
@@ -514,6 +548,8 @@ func (r *Report) writeAuthorization(w io.Writer) {
 		fmt.Fprintln(w, "The certificate is still waiting on the authorization record below: the zone holds it and it does not resolve yet (a delegation just made can take up to 48 hours to be seen everywhere).")
 	case Registering:
 		fmt.Fprintln(w, "The certificate is still waiting on the authorization record below, which the zone holds and which resolves once the registration is active.")
+	case Repoint:
+		fmt.Fprintln(w, "The certificate is still waiting on the authorization record below, which the zone holds and which resolves once the registration points at the zone.")
 	case ApexUndelegated, LabelUndelegated, Refused:
 		host := r.Domain
 		if r.Delegation == LabelUndelegated {
@@ -526,6 +562,9 @@ func (r *Report) writeAuthorization(w io.Writer) {
 
 // answeredNow says which name servers the domain answers today, for a message.
 func (r *Report) answeredNow() string {
+	if r.Lame {
+		return "the name servers it is delegated to do not answer for it"
+	}
 	if len(r.Answered) == 0 {
 		return "it answers none"
 	}
