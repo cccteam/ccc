@@ -157,7 +157,10 @@ schema, the drop) and `roles/spanner.backupAdmin` (the backup schedules a
 production stack makes on its database, which `databaseAdmin` does not read,
 and the backups taken from it); nothing of another application's database.
 In stg and prd the same grants on the shared instance are `2-spn`'s, from its
-`database_admins`. On the state
+`database_admins`, with `roles/resourcemanager.projectIamAdmin` on the `spn`
+project under a condition admitting the grants of
+`roles/monitoring.metricWriter` alone, which the stack gives its runtime
+identities and the deploy identity for the Spanner client's metrics. On the state
 bucket (the boot project's): `roles/storage.legacyBucketReader` unconditionally
 (a list is a request on the bucket and cannot be conditioned by object name),
 `roles/storage.objectUser` on `3-app/<app>/<env>/` (the pull-request stacks
@@ -193,7 +196,9 @@ record as this identity to say where the line's next release will be refused.
 On the Spanner instance the application's database lives on, the
 organization's `spannerPlanReader` role (the database, its IAM policy and its
 backup schedules, nothing of the data): on the tst instance from this layer,
-on the shared instance from `2-spn`'s `database_planners`. tst's deploy identity of the same application may impersonate it
+on the shared instance from `2-spn`'s `database_planners`, which also holds
+`roles/iam.securityReviewer` on the `spn` project for the stack's metric
+writer grants there. tst's deploy identity of the same application may impersonate it
 (`roles/iam.serviceAccountTokenCreator`, read from tst's `2-env` state; tst's
 own in tst), since tst's Cloud Build runs the pull-request builds; nothing
 else may.

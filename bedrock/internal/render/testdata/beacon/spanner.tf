@@ -80,6 +80,35 @@ resource "google_spanner_database_iam_member" "deploy_admin" {
   }
 }
 
+# Client-side metrics. The Spanner client in each process that opens the
+# database (the site and the migrate command, which the
+# pipeline runs on the build worker as the deploy identity) writes its own view
+# of each request (operation and attempt latency, counts) to Cloud Monitoring
+# in the project that owns the instance, and logs a denial at every export
+# when it lacks roles/monitoring.metricWriter there. On an environment's own
+# instance (tst's) that is the environment project, where the identities
+# hold the role already (service-accounts.tf), and nothing is granted here; on
+# the shared instance (stg and prd) it is the spn project, where this stack
+# grants the role to them and nothing else: 2-spn lets the apply identity
+# grant this one role there. A pull-request stack grants nothing to the
+# deploy identity, which the environment's own stack covers.
+locals {
+  spanner_metrics_writers = local.instance.project == local.project_id ? {} : merge(
+    { app = local.app_member },
+    local.is_pr ? {} : { deploy = local.identities.deploy_identity_member },
+  )
+}
+
+resource "google_project_iam_member" "spanner_metrics" {
+  for_each = local.spanner_metrics_writers
+
+  project = local.instance.project
+  role    = "roles/monitoring.metricWriter"
+  member  = each.value
+
+  depends_on = [google_service_account.app]
+}
+
 # ---------------------------------------------------------------------------
 # Backups, prd only: a weekly full backup and a daily incremental one, each
 # kept 90 days, the cadence and retention of the reference deployment with the

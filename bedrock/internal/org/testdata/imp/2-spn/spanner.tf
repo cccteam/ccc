@@ -147,3 +147,43 @@ resource "google_spanner_instance_iam_member" "plan_reader" {
   role     = local.org.spanner_plan_reader_role
   member   = each.value
 }
+
+# The metric writer role, for the Spanner client's metrics. The client in each
+# application's processes (the site, the job process, and the migrate command
+# the pipeline runs on the build worker as the deploy identity) writes its
+# client-side metrics (operation and attempt latency, counts) to Cloud
+# Monitoring in the project that owns the instance, this one, and logs a
+# denial at every export without roles/monitoring.metricWriter here. The
+# runtime identities are the application stack's and do not exist when this
+# layer runs, so the stack grants the role on this project (its spanner.tf),
+# as each member's apply identity. The member holds
+# roles/resourcemanager.projectIamAdmin here under a condition that admits a
+# change to the grants of that one role and of no other
+# (iam.googleapis.com/modifiedGrantsByRole), so it can give itself or anyone
+# else nothing more; a request that changes no grant, such as the read of the
+# policy a plan and an apply make, carries no roles and is admitted.
+resource "google_project_iam_member" "metric_writer_granter" {
+  for_each = var.database_admins
+
+  project = local.project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
+  member  = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} metric writer grants"
+    description = "Grants and removes roles/monitoring.metricWriter on this project, and no other role, for the application's Spanner clients."
+    expression  = "api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly(['roles/monitoring.metricWriter'])"
+  }
+}
+
+# A pull-request build plans the environment's stack as the plan identity,
+# which refreshes the stack's metric writer grants here through this project's
+# IAM policy: roles/iam.securityReviewer, the read of IAM policies, as the plan
+# identities hold it on their environment projects.
+resource "google_project_iam_member" "plan_policy_reader" {
+  for_each = toset(var.database_planners)
+
+  project = local.project_id
+  role    = "roles/iam.securityReviewer"
+  member  = each.value
+}

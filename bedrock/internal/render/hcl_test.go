@@ -2,6 +2,8 @@ package render
 
 import (
 	"io/fs"
+	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -10,6 +12,9 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/function"
+	"github.com/zclconf/go-cty/cty/function/stdlib"
 )
 
 // TestRenderedStackParsesAsHCL parses every rendered .tf file under testdata, so a template whose rendering
@@ -240,4 +245,115 @@ func traversalString(traversal hcl.Traversal) string {
 	}
 
 	return strings.Join(parts, ".")
+}
+
+// TestSpannerMetricsWriters evaluates the rendered stacks' spanner_metrics_writers local, the
+// identities granted roles/monitoring.metricWriter on the project that owns the Spanner
+// instance, where the Spanner client writes its client-side metrics, in both shapes of an
+// environment. On the shared instance, whose project is not the environment's: the site,
+// the job process where it opens the database, and the deploy identity, which runs the
+// migrate command, except in a pull-request stack. On an environment's own instance: none,
+// since service-accounts.tf grants the role on the environment project already.
+func TestSpannerMetricsWriters(t *testing.T) {
+	t.Parallel()
+
+	const (
+		envProject = "imp-stg-gbl-core-3c4d"
+		spnProject = "imp-spn-gbl-core-9a0b"
+	)
+	members := map[string]string{
+		"app":    "serviceAccount:imp-stg-gbl-app-app@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com",
+		"jobs":   "serviceAccount:imp-stg-gbl-app-jobs@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com",
+		"deploy": "serviceAccount:imp-stg-gbl-app-deploy@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com",
+	}
+	tests := []struct {
+		name            string
+		dir             string
+		instanceProject string
+		pullRequest     bool
+		want            []string
+	}{
+		{name: "harbor on the shared instance", dir: "harbor", instanceProject: spnProject, want: []string{"app", "deploy", "jobs"}},
+		{name: "harbor's pull-request stack on the shared instance", dir: "harbor", instanceProject: spnProject, pullRequest: true, want: []string{"app", "jobs"}},
+		{name: "harbor on its own instance", dir: "harbor", instanceProject: envProject},
+		{name: "harbor's pull-request stack on its own instance", dir: "harbor", instanceProject: envProject, pullRequest: true},
+		{name: "beacon, whose job process does not open the database, on the shared instance", dir: "beacon", instanceProject: spnProject, want: []string{"app", "deploy"}},
+		{name: "beacon on its own instance", dir: "beacon", instanceProject: envProject},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join("testdata", tt.dir, "spanner.tf")
+			expr := localExpression(t, path, "spanner_metrics_writers")
+			ctx := &hcl.EvalContext{
+				Variables: map[string]cty.Value{
+					"local": cty.ObjectVal(map[string]cty.Value{
+						"project_id":  cty.StringVal(envProject),
+						"instance":    cty.ObjectVal(map[string]cty.Value{"project": cty.StringVal(tt.instanceProject)}),
+						"is_pr":       cty.BoolVal(tt.pullRequest),
+						"app_member":  cty.StringVal(members["app"]),
+						"jobs_member": cty.StringVal(members["jobs"]),
+						"identities":  cty.ObjectVal(map[string]cty.Value{"deploy_identity_member": cty.StringVal(members["deploy"])}),
+					}),
+				},
+				Functions: map[string]function.Function{"merge": stdlib.MergeFunc},
+			}
+			value, diags := expr.Value(ctx)
+			if diags.HasErrors() {
+				t.Fatalf("%s: spanner_metrics_writers: %s", path, diags.Error())
+			}
+			got := map[string]string{}
+			for k, v := range value.AsValueMap() {
+				got[k] = v.AsString()
+			}
+			if keys := slices.Sorted(maps.Keys(got)); !slices.Equal(keys, tt.want) {
+				t.Fatalf("spanner_metrics_writers = %v, want %v", keys, tt.want)
+			}
+			for k, member := range got {
+				if member != members[k] {
+					t.Errorf("spanner_metrics_writers[%q] = %q, want %q", k, member, members[k])
+				}
+			}
+
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			grant := "resource \"google_project_iam_member\" \"spanner_metrics\" {\n" +
+				"  for_each = local.spanner_metrics_writers\n\n" +
+				"  project = local.instance.project\n" +
+				"  role    = \"roles/monitoring.metricWriter\"\n" +
+				"  member  = each.value\n"
+			if !strings.Contains(string(content), grant) {
+				t.Errorf("%s lacks:\n%s", path, grant)
+			}
+		})
+	}
+}
+
+// localExpression parses a rendered .tf file and returns the expression of the named
+// attribute of its locals blocks, failing the test when there is none.
+func localExpression(t *testing.T, path, name string) hcl.Expression {
+	t.Helper()
+
+	file, diags := hclparse.NewParser().ParseHCLFile(path)
+	if diags.HasErrors() {
+		t.Fatalf("%s: %s", path, diags.Error())
+	}
+	body, ok := file.Body.(*hclsyntax.Body)
+	if !ok {
+		t.Fatalf("%s is not native HCL syntax", path)
+	}
+	for _, block := range body.Blocks {
+		if block.Type != "locals" {
+			continue
+		}
+		if attr, found := block.Body.Attributes[name]; found {
+			return attr.Expr
+		}
+	}
+	t.Fatalf("%s has no local %s", path, name)
+
+	return nil
 }

@@ -30,7 +30,9 @@ resource "google_service_account" "jobs" {
 
 # The site writes request logs (coreConfig.LoggingProjectID), traces, and
 # metrics. Its database and secret grants are on those resources
-# (spanner.tf, secret-manager.tf).
+# (spanner.tf, secret-manager.tf), and so is the metric writer role on the
+# shared Spanner instance's project, where its Spanner client's metrics go in
+# an environment on that instance (spanner.tf).
 resource "google_project_iam_member" "app" {
   for_each = toset([
     "roles/logging.logWriter",
@@ -75,7 +77,9 @@ resource "google_service_account_iam_member" "deploy_uses_app" {
 # The migrate command runs on the build worker as the deploy identity (the pipeline
 # takes it out of the release's image): its output is the build's log, and the
 # Spanner client writes its client-side metrics, which log a denial every minute
-# without metricWriter. The identity is 2-env's, so nothing here is depended on.
+# without metricWriter on the instance's project (this one on an environment's
+# own instance; spanner.tf grants the role on the shared instance's project).
+# The identity is 2-env's, so nothing here is depended on.
 # The environment's stack alone grants it: a pull-request build runs as the same
 # identity, which the environment's grant covers, and a pull-request stack applies
 # only what is the pull request's own.

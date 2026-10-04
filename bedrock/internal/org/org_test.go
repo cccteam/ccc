@@ -926,8 +926,10 @@ func TestLayerPlanRoles(t *testing.T) {
 // TestSpannerGrants reads the Spanner grants 2-spn and 2-env render: each application's
 // apply identity holds the organization's creator role on its instance without condition
 // and the admin roles under a condition naming its own database and backups; the restore
-// right reaches production's backups alone, from every environment but production; and
-// the deploy identity holds nothing on an instance.
+// right reaches production's backups alone, from every environment but production; on the
+// shared instance's project the apply identity may grant the metric writer role, for its
+// stack's Spanner clients, and no other, and the plan identity reads the project's policy;
+// and the deploy identity holds nothing on an instance.
 func TestSpannerGrants(t *testing.T) {
 	t.Parallel()
 
@@ -958,6 +960,31 @@ func TestSpannerGrants(t *testing.T) {
 				`expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\") || resource.name.startsWith(\"${local.own_backups[each.key]}\")"`,
 				`for_each = { for m, v in var.database_admins : m => v if v.restore_from != "" }`,
 				`expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")"`,
+			},
+		},
+		{
+			name: "the shared instance's apply identities may grant the metric writer role on its project and no other, and its plan identities read the project's policy",
+			path: "2-spn/spanner.tf",
+			want: []string{
+				"resource \"google_project_iam_member\" \"metric_writer_granter\" {\n" +
+					"  for_each = var.database_admins\n\n" +
+					"  project = local.project_id\n" +
+					"  role    = \"roles/resourcemanager.projectIamAdmin\"\n" +
+					"  member  = each.key\n\n" +
+					"  condition {\n",
+				`expression  = "api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly(['roles/monitoring.metricWriter'])"`,
+				"resource \"google_project_iam_member\" \"plan_policy_reader\" {\n" +
+					"  for_each = toset(var.database_planners)\n\n" +
+					"  project = local.project_id\n" +
+					"  role    = \"roles/iam.securityReviewer\"\n",
+			},
+		},
+		{
+			name: "the 2-spn README says what the metric writer grants are for and how they are bounded",
+			path: "2-spn/README.md",
+			want: []string{
+				"`roles/resourcemanager.projectIamAdmin` on the `spn`\n  project under a condition that admits a change to the grants of\n  `roles/monitoring.metricWriter` and of no other role",
+				"and `roles/iam.securityReviewer` on the project",
 			},
 		},
 		{

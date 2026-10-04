@@ -29,11 +29,23 @@ stg and prd databases live on. Applied by the layers workflow as
   from production's backup, which adds `spanner.backups.restoreDatabase`
   alone). stg's identity can neither drop production's database nor restore
   over it, and neither application's identity reaches the other's.
+- For the same members, `roles/resourcemanager.projectIamAdmin` on the `spn`
+  project under a condition that admits a change to the grants of
+  `roles/monitoring.metricWriter` and of no other role
+  (`iam.googleapis.com/modifiedGrantsByRole`). The Spanner client in an
+  application's processes (the site, the job process, and the migrate command
+  the deploy identity runs) writes its client-side metrics (operation and
+  attempt latency, counts) to Cloud Monitoring in the project that owns the
+  instance, this one, and logs a denial at every export without that role
+  here. The runtime identities are the application stack's and do not exist
+  when this layer runs, so the stack grants the role itself, as the apply
+  identity, and the condition keeps the identity from granting anything else.
 - The organization's `spannerPlanReader` role (`1-org`) on the instance for
   each member of `database_planners`, the application plan identities of the
-  same environments: a pull-request build plans the environment's stack as
-  the plan identity and refreshes the database, its grants and its backup
-  schedules here, writing nothing.
+  same environments, and `roles/iam.securityReviewer` on the project: a
+  pull-request build plans the environment's stack as the plan identity and
+  refreshes the database, its grants, its backup schedules and its metric
+  writer grants here, writing nothing.
 - The Spanner entitlements of `stg` and `prd`
   (`entitlements.tf`, which first sets the service up on this project: its
   service agent and the service agent role), in Privileged Access Manager:
@@ -63,7 +75,7 @@ own instance lives in the tst project with the pull-request databases.
 
 ## IAM
 
-Two levels, two owners.
+Two levels, two owners, and one project-level role the two share.
 
 Instance level, this layer: creating a database is `spanner.databases.create`
 checked on the instance, so the identity that creates databases, the
@@ -84,6 +96,12 @@ that only the application layer knows, so they are made there, with
 `google_spanner_database_iam_member`. A person's time-limited access to an
 environment's databases is this layer's (the entitlements above): bounded by
 the databases' names, which this layer knows, not by a database.
+
+Project level, for the Spanner client's metrics: this layer lets each apply
+identity in `database_admins` grant `roles/monitoring.metricWriter` on the
+project and no other role, and the application layer makes the grants, to the
+site's and the job process's identities and to the deploy identity, which only
+it knows (its `spanner.tf`).
 
 ## Capacity
 
@@ -116,8 +134,8 @@ tofu apply
 
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
-| `database_admins` | Members granted database admin on the instance. | `list(string)` | `[]` | no |
-| `database_planners` | Members granted the organization's `spannerPlanReader` role on the instance. | `list(string)` | `[]` | no |
+| `database_admins` | Members granted database admin on the instance, bounded to their own databases, and the grants of the metric writer role on the project. | `map(object)` | `{}` | no |
+| `database_planners` | Members granted the organization's `spannerPlanReader` role on the instance and the read of the project's IAM policy. | `list(string)` | `[]` | no |
 | `edition` | Spanner edition. | `string` | `"STANDARD"` | no |
 | `processing_units` | Compute capacity; 100 or 200. | `number` | `100` | no |
 | `spanner_config` | Instance configuration. | `string` | `"nam10"` | no |

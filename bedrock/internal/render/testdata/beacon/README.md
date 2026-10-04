@@ -93,7 +93,14 @@ from `2-env`'s state.
   (a member of the database's own policy, so no other database is reached;
   `spanner.tf`), `roles/monitoring.metricWriter` on the project for the Spanner
   client's metrics (`service-accounts.tf`). It holds no
-  accessor on a runtime secret, which a migration never reads.
+  accessor on a runtime secret, which a migration never reads. The Spanner
+  client writes its client-side metrics (operation and attempt latency,
+  counts) to the project that owns the instance and logs a denial at every
+  export without `roles/monitoring.metricWriter` there: on tst's own instance
+  that is the environment project, covered by the roles above; on the shared
+  instance (stg and prd) it is the spn project, where the site
+  and the deploy identity hold the role too (`spanner.tf`), granted by the
+  apply identity, which `2-spn` lets grant that role there and no other.
 - **The database** `imp-<env>-gbl-beacon-db` on the environment's instance
   (`2-env` output `spanner_instance`: tst's own, the spn instance for stg and
   prd), GoogleSQL, no schema (the migrations own it). prd: deletion and drop

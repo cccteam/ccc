@@ -11,6 +11,10 @@ variable "database_admins" {
     restore_from set (every environment but production) also holds
     roles/spanner.restoreAdmin on that environment's backups of the same
     application, for the restore of its database from production's backup.
+    Every member also holds roles/resourcemanager.projectIamAdmin on the
+    project under a condition admitting changes to the grants of
+    roles/monitoring.metricWriter alone, which its stack grants the
+    application's runtime identities for the Spanner client's metrics.
     A member has to exist before it can be bound, so an application's
     identities are added here after the environment layers have run for it.
 
@@ -40,9 +44,10 @@ variable "database_admins" {
 variable "database_planners" {
   description = <<-EOT
     IAM members granted the organization's spannerPlanReader role on the
-    instance: a pull-request build plans each environment's application stack
-    as that environment's plan identity, which refreshes the stack's database,
-    its grants and its backup schedules here and may write nothing. The
+    instance and roles/iam.securityReviewer on the project: a pull-request
+    build plans each environment's application stack as that environment's
+    plan identity, which refreshes the stack's database, its grants, its
+    backup schedules and its metric writer grants here and may write nothing. The
     application plan identity of each application in stg and prd, which the
     environment layers create, added after they have run for it, like
     database_admins.
