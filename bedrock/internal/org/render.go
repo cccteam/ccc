@@ -394,7 +394,18 @@ func (v *view) TeamGroupLines() string {
 // lines of an HCL map's body, each with its team group's address and whether a grant
 // there waits for an approval, for 2-spn's Spanner entitlements.
 func (v *view) SharedInstanceEntitlementLines() string {
-	envs := v.SharedInstanceEnvironments()
+	return v.entitlementLines(v.SharedInstanceEnvironments())
+}
+
+// EnvironmentEntitlementLines are every environment, in promotion order, as the same
+// lines, for 1-org's layer state entitlements on the boot project.
+func (v *view) EnvironmentEntitlementLines() string {
+	return v.entitlementLines(Environments)
+}
+
+// entitlementLines are the environments as the lines of an HCL map's body, each with
+// its team group's address and whether a grant there waits for an approval.
+func (v *view) entitlementLines(envs []string) string {
 	lines := make([]string, 0, len(envs))
 	for _, env := range envs {
 		lines = append(lines, fmt.Sprintf("    %s = { group = %q, approval = %t }", env, v.TeamGroupAddress(env), slices.Contains(v.ApprovalEnvironments(), env)))

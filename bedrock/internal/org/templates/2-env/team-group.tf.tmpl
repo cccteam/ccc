@@ -20,6 +20,13 @@
 # that the service makes for the time asked and removes after it. Creating
 # an entitlement is roles/privilegedaccessmanager.admin on the project, in
 # the app role set (1-org), with the API in the app API set.
+#
+# A recovery of this layer by hand takes two entitlements for the same time:
+# the layer administrator below, the environment layer identity's roles on
+# this project, and the layer state entitlement 1-org declares on the boot
+# project, the identity's slot in the state bucket and the boot project as
+# its quota project (1-org/entitlements.tf), which an entitlement here cannot
+# reach. The person then runs the layer as themselves (README.md, Applying).
 # ---------------------------------------------------------------------------
 
 locals {
@@ -35,17 +42,17 @@ locals {
   approval_environments = {{.ApprovalEnvironmentsList}}
   approval_required     = contains(local.approval_environments, var.environment)
 
-  # The environment's apply identity (1-org), which the layer administrator
-  # acts as for a recovery, named for the condition by its email and its
-  # unique id: IAM names a service account in a condition's resource.name by
-  # one of the two (the unique id is read from 1-org's state once that layer
-  # has published it), so the condition admits both forms, and no other
-  # identity.
-  layer_identity_names = compact([
-    local.org.layer_service_accounts[var.environment],
-    try(local.org.layer_service_account_unique_ids[var.environment], ""),
-  ])
-  layer_identity_condition = join(" || ", [for n in local.layer_identity_names : "resource.name.endsWith(\"/serviceAccounts/${n}\")"])
+  # What the environment's layer identity holds on this project: the roles of
+  # its role set and roles/storage.admin under the condition naming the
+  # records bucket, read from 1-org's state, where those grants are made, so
+  # the layer administrator grants a person exactly the identity's roles and
+  # the two cannot drift. Until 1-org has published them the entitlement is
+  # not declared, and the check below says why.
+  layer_grants = try(local.org.environment_layer_grants[var.environment], null)
+  layer_administrator_bindings = local.layer_grants == null ? [] : concat(
+    [for role in local.layer_grants.roles : { role = role, condition = "" }],
+    [{ role = "roles/storage.admin", condition = local.layer_grants.storage_admin_condition }],
+  )
 
   # The longest grant of each entitlement, from placement.json.
   entitlement_durations = {
@@ -74,13 +81,13 @@ locals {
   #   spanner-viewer       the same databases, read only, with the
   #                        organization's spannerPlanReader role for the
   #                        instance and the names of its databases.
-  #   layer-administrator  a recovery of this layer: acting as the
-  #                        environment's apply identity for a short time
-  #                        (roles/iam.serviceAccountTokenCreator on that
-  #                        identity alone), so a person plans and applies this
-  #                        layer with exactly the identity's roles, on the same
-  #                        code the layers workflow runs
-  #                        (GOOGLE_IMPERSONATE_SERVICE_ACCOUNT, README).
+  #   layer-administrator  a recovery of this layer: the environment layer
+  #                        identity's roles on this project for a short time,
+  #                        so a person plans and applies this layer as
+  #                        themselves with exactly the identity's roles, on
+  #                        the same code the layers workflow runs, and the
+  #                        audit log names the person. With the layer state
+  #                        entitlement on the boot project (above).
   entitlements = {
     for name, e in {
       secret-operator = {
@@ -105,11 +112,21 @@ locals {
         ]
       }
       layer-administrator = {
-        declared = true
+        declared = length(local.layer_administrator_bindings) > 0
         duration = local.entitlement_durations.layer_administrator
-        bindings = [{ role = "roles/iam.serviceAccountTokenCreator", condition = local.layer_identity_condition }]
+        bindings = local.layer_administrator_bindings
       }
     } : name => e if e.declared
+  }
+}
+
+# The layer administrator grants what 1-org publishes for this environment's
+# layer identity; a 1-org state from before that output publishes nothing, and
+# the entitlement waits for 1-org's next apply.
+check "layer_grants_published" {
+  assert {
+    condition     = local.layer_grants != null
+    error_message = "1-org's state publishes no environment_layer_grants for ${var.environment}, so the layer administrator entitlement is not declared: apply 1-org, then this layer again."
   }
 }
 

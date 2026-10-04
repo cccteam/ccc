@@ -68,6 +68,23 @@ on a pull request as `{{.Prefix}}-org-gbl-plan`.
   below), which a plan of `2-env` refreshes those grants through. Each layer grants
   for the identities it creates because IAM refuses a binding for a service
   account that does not exist.
+- Per environment, the layer state entitlement `{{.Prefix}}-<env>-layer-state`
+  on the boot project (`entitlements.tf`, which first sets Privileged Access
+  Manager up there: the organization's service agent and its role), in
+  Privileged Access Manager: what the environment layer identity holds in the
+  boot project, its slot in the state bucket (its own prefix, the upstream
+  states it reads, the bucket's list and its policy, each bounded by a
+  condition on the name) and `roles/serviceusage.serviceUsageConsumer`, from
+  the same locals as the identity's own grants. A member of the environment's
+  team group asks for it beside `2-env`'s layer administrator for a recovery
+  of `2-env` by hand, as the person (`2-env/README.md`, "Applying"): an
+  entitlement grants on one project, and the bucket is the boot project's.
+  The longest grant is the layer administrator's, and a grant in the approval
+  environments waits for one approval by another member of the group.
+  Declaring it takes `roles/privilegedaccessmanager.admin` on the boot
+  project, which `0-bootstrap` grants this layer's identity; the org plan
+  identity reads the entitlements through `roles/privilegedaccessmanager.viewer`
+  there.
 - `roles/resourcemanager.tagUser` on the public-invoker tag value for each
   application's apply identity in every environment (`tags.tf`, from
   `public-invokers.auto.tfvars`): the identity binds the tag to its own Cloud
@@ -413,6 +430,11 @@ required checks, the rulesets' names.
 | `net` | certificatemanager.editor, compute.loadBalancerAdmin, compute.networkAdmin, compute.securityAdmin, dns.admin, domains.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin |
 | `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the environments' Spanner entitlements), resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |
 
+The `app` set, with the records bucket's storage admin beside it, is also
+what `2-env`'s layer administrator entitlement grants a person for a recovery:
+`2-env` reads it from the `environment_layer_grants` output, so a change to
+the set here changes both.
+
 The plan identities' sets (`var.plan_roles`), each the custom role of the
 kind beside `roles/iam.securityReviewer`:
 
@@ -520,11 +542,11 @@ bucket, prefix `1-org`.
 | `audit_log_bucket` | Audit log bucket name; `null` while `central_logging` is off. |
 | `billing_account_id` | Billing account the projects are linked to. |
 | `boot_project_id` | Boot project, quota and billing project for API calls. |
+| `environment_layer_grants` | By environment code, the environment layer identity's roles on its project (its role set, custom roles by full name) and the condition of its records bucket `roles/storage.admin`: what `2-env`'s layer administrator entitlement grants. |
 | `folder_ids` | Folder ID by key (shared, tst, stg, prd). |
 | `gcp_region`, `region_code` | Primary region and its short code. |
 | `gcp_secondary_region`, `secondary_region_code` | Secondary region and its short code. |
 | `layer_service_accounts` | Layer identity email by environment code. |
-| `layer_service_account_unique_ids` | Layer identity unique id by environment code, for the layer administrator entitlement's condition in `2-env`. |
 | `boot_plan_service_accounts` | Plan identity email of the two boot layers (boot, org). |
 | `log_project_id` | Log project; `null` while `central_logging` is off. |
 | `org_id` | Numeric organization ID. |

@@ -17,6 +17,16 @@ output "boot_project_id" {
   value       = var.boot_project_id
 }
 
+output "environment_layer_grants" {
+  description = "What each environment layer identity holds on its environment project, by environment code: the roles of its role set (a custom role by its full name) and the condition its roles/storage.admin is held under (the records bucket). 2-env's layer administrator entitlement grants a person the same for a recovery, read from here so the two cannot drift."
+  value = {
+    for k, cfg in local.environment_layers : k => {
+      roles                   = [for role in var.layer_roles[cfg.role_set] : lookup(local.custom_roles, role, role)]
+      storage_admin_condition = local.records_bucket_conditions[k]
+    }
+  }
+}
+
 output "folder_ids" {
   description = "Folder ID by folder key (shared, tst, stg, prd)."
   value       = { for k, f in google_folder.this : k => f.folder_id }
@@ -35,11 +45,6 @@ output "gcp_secondary_region" {
 output "layer_service_accounts" {
   description = "Layer identity (apply) service account email by environment code."
   value       = { for k, sa in google_service_account.tofu : k => sa.email }
-}
-
-output "layer_service_account_unique_ids" {
-  description = "Layer identity (apply) service account unique id by environment code: the form beside the email that a condition's resource.name names a service account by, for the layer administrator entitlement 2-env declares on the environment's own apply identity."
-  value       = { for k, sa in google_service_account.tofu : k => sa.unique_id }
 }
 
 output "log_project_id" {

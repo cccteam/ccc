@@ -1284,9 +1284,11 @@ the six others from 1-org's `project_ids`), the boot project's number under
 `githubInfrastructureKeyVersion`, the pinned version of its key in the boot project's
 container; `0-bootstrap/README.md` has the person's steps). The first applies of
 0-bootstrap and 1-org are the bootstrap administrator's, before the identities exist;
-recovery is by hand, for 2-env under the Layer administrator entitlement with
-`GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` set to the environment's apply identity, for the
-other layers as the bootstrap administrator.
+recovery is by hand, for 2-env by a member of the environment's team group under the
+layer administrator entitlement (the environment layer identity's roles on the environment
+project) and the layer state entitlement (its slot in the state bucket, on the boot
+project), running the layer as themselves, for the other layers as the bootstrap
+administrator.
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
 applications, each layer's values are rendered from it (1-org's repositories and its

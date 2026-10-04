@@ -75,9 +75,11 @@ a plan identity may be used from a pull request's run and an apply identity
 from the default branch alone. Run workflow on the Actions tab applies one
 layer again with no change to it, which a registration's second pass of
 `2-env` needs. Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by
-hand"): for `2-env` under the Layer administrator entitlement, acting as the
-environment's apply identity through `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`;
-for the other layers as the bootstrap administrator.
+hand"): for `2-env` as a member of the environment's team group under the
+layer administrator and layer state entitlements, which grant the
+environment layer identity's roles for a short time, so the person runs the
+layer as themselves and the audit log names them; for the other layers as
+the bootstrap administrator.
 
 First-time setup, by hand, before any identity can run. Each step opens with
 the place it happens.

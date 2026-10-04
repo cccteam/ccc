@@ -49,9 +49,11 @@ var (
 
 // The environments' entitlements, by the key placement.json names each under
 // (entitlementDurations): the secret operator (bedrock secret add and pin), the Spanner
-// admin and viewer of the environment's databases, and the layer administrator, who acts
-// as 2-env's apply identity for a recovery. Each has a default longest grant, and
-// Privileged Access Manager admits a longest grant between 30 minutes and 7 days.
+// admin and viewer of the environment's databases, and the layer administrator, who holds
+// 2-env's apply identity's roles for a recovery (with the layer state entitlement, its
+// slot in the state bucket, for the same longest grant). Each has a default longest
+// grant, and Privileged Access Manager admits a longest grant between 30 minutes and 7
+// days.
 const (
 	EntitlementSecretOperator     = "secretOperator"
 	EntitlementSpannerAdmin       = "spannerAdmin"

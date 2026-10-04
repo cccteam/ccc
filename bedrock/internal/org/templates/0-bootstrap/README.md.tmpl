@@ -14,11 +14,15 @@ layers workflow" below).
   identity `{{.Prefix}}-boot-gbl-tofu`. From the first apply on they are ordinary
   managed resources.
 - The boot project's API set (billing, Cloud Build, resource manager,
-  Essential Contacts, IAM, IAM credentials, logging, org policy, service usage,
-  storage), its labels, and the deletion of its default compute service
-  account.
+  Essential Contacts, IAM, IAM credentials, logging, org policy, Privileged
+  Access Manager, service usage, storage), its labels, and the deletion of its
+  default compute service account.
 - Org-level role bindings for the boot layer identity (`var.boot_layer_roles`)
-  and for the org layer identity (`var.org_layer_roles`).
+  and for the org layer identity (`var.org_layer_roles`), and
+  `roles/privilegedaccessmanager.admin` on the boot project alone for the org
+  layer identity: `1-org` declares there each environment's layer state
+  entitlement, the environment layer identity's slot in the state bucket for a
+  recovery of `2-env` by hand (`2-env/README.md`, "Applying").
 - The org layer identity `{{.Prefix}}-org-gbl-tofu`, in the boot project.
 - The custom organization role `{{.Prefix}}GblOrgProjectUpdater`
   (`resourcemanager.projects.update`), granted to both identities.
@@ -386,12 +390,13 @@ so and stops; the Google side of the layer is unaffected. A person applying
 
 When the workflow cannot run (its sign-in broken, the repository unreachable,
 a change that must be applied before it can merge), a person applies from
-their own computer. For `2-env`, the Layer administrator entitlement grants
-`roles/iam.serviceAccountTokenCreator` on the environment's apply identity
-for a short time, and `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` set to that
-identity makes the Google provider and the state backend act as it; the
-person then runs with exactly the identity's roles, on the same code as the
-workflow (`2-env/README.md`). This layer and `1-org` have no entitlement:
+their own computer. For `2-env`, a member of the environment's team group
+asks for two entitlements for the same short time: the layer administrator,
+the environment layer identity's roles on the environment project, and the
+layer state entitlement, the identity's slot in the state bucket and the boot
+project as its quota project. The person then runs the layer as themselves,
+with the identity's roles, on the same code as the workflow, and the audit
+log names the person (`2-env/README.md`). This layer and `1-org` have no entitlement:
 their recovery is the bootstrap administrator's, with the roles step 1 lists
 and their own sign-in, the way the first applies ran (step 2 above, without
 the local state).

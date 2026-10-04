@@ -538,7 +538,8 @@ func TestStorageAdminBounds(t *testing.T) {
 			path: "1-org/service-accounts.tf",
 			want: []string{
 				"resource \"google_project_iam_member\" \"tofu_storage_admin\" {\n  for_each = local.environment_layers\n\n  project = module.project[each.key].project_id\n  role    = \"roles/storage.admin\"\n  member  = google_service_account.tofu[each.key].member\n\n  condition {\n    title       = \"${each.key} records bucket\"\n",
-				`expression  = "resource.name.startsWith(\"projects/_/buckets/${local.layer_names[each.key]}-records-\")"`,
+				`records_bucket_conditions = { for k, v in local.environment_layers : k => "resource.name.startsWith(\"projects/_/buckets/${local.layer_names[k]}-records-\")" }`,
+				"    expression  = local.records_bucket_conditions[each.key]\n",
 			},
 		},
 		{
@@ -1024,8 +1025,9 @@ func TestSpannerGrants(t *testing.T) {
 // the first, the longest grants from the placement with the defaults where it sets none,
 // the Spanner entitlements on the project holding the environment's instance (2-env for an
 // own instance, 2-spn bounded to the environment's databases for the shared one), the
-// layer administrator's condition naming the apply identity, and no standing grant to a
-// person anywhere.
+// layer administrator's bindings from what 1-org publishes of the layer identity's grants
+// (TestLayerAdministratorBindings evaluates them), and no standing grant to a person
+// anywhere.
 func TestTeamGroup(t *testing.T) {
 	t.Parallel()
 
@@ -1081,7 +1083,7 @@ func TestTeamGroup(t *testing.T) {
 			},
 		},
 		{
-			name: "what each entitlement grants, the Spanner ones for an own instance alone, the layer administrator bounded to the apply identity",
+			name: "what each entitlement grants, the Spanner ones for an own instance alone, the layer administrator the layer identity's roles",
 			path: "2-env/team-group.tf",
 			want: []string{
 				"      secret-operator = {\n        declared = true\n        duration = local.entitlement_durations.secret_operator\n        bindings = [{ role = local.org.secret_operator_role, condition = \"\" }]\n      }\n",
@@ -1089,11 +1091,10 @@ func TestTeamGroup(t *testing.T) {
 				"          { role = \"roles/spanner.databaseAdmin\", condition = \"\" },\n          { role = \"roles/spanner.backupAdmin\", condition = \"\" },\n",
 				"      spanner-viewer = {\n        declared = local.own_instance\n",
 				"          { role = \"roles/spanner.databaseReader\", condition = \"\" },\n          { role = local.org.spanner_plan_reader_role, condition = \"\" },\n",
-				"        bindings = [{ role = \"roles/iam.serviceAccountTokenCreator\", condition = local.layer_identity_condition }]\n",
-				"  layer_identity_names = compact([\n    local.org.layer_service_accounts[var.environment],\n    try(local.org.layer_service_account_unique_ids[var.environment], \"\"),\n  ])\n  layer_identity_condition = join(\" || \", [for n in local.layer_identity_names : \"resource.name.endsWith(\\\"/serviceAccounts/${n}\\\")\"])\n",
+				"        bindings = local.layer_administrator_bindings\n",
 				"    } : name => e if e.declared\n",
 			},
-			absent: []string{"user:", "roles/cloudbuild.builds.editor", "roles/owner"},
+			absent: []string{"user:", "roles/cloudbuild.builds.editor", "roles/owner", "roles/iam.serviceAccountTokenCreator"},
 		},
 		{
 			name:   "the groups are the variable's default, from the placement, and no person is seeded",
@@ -1131,9 +1132,10 @@ func TestTeamGroup(t *testing.T) {
 			absent: []string{"tst = { group", "user:"},
 		},
 		{
-			name: "1-org publishes the apply identities' unique ids for the condition",
-			path: "1-org/outputs.tf",
-			want: []string{"output \"layer_service_account_unique_ids\" {", "  value       = { for k, sa in google_service_account.tofu : k => sa.unique_id }\n"},
+			name:   "1-org publishes the layer identity's grants for the layer administrator, and no unique id for a condition",
+			path:   "1-org/outputs.tf",
+			want:   []string{"output \"environment_layer_grants\" {"},
+			absent: []string{"layer_service_account_unique_ids", "sa.unique_id"},
 		},
 		{
 			name: "the READMEs say what the group holds, where the Spanner entitlements are and whose the other layers' recovery is",

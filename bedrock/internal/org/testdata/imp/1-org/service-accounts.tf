@@ -75,6 +75,10 @@ resource "google_project_iam_member" "tofu" {
 # this. A grant added on the records bucket by hand is removed by 2-env's
 # next apply, which sets the bucket's policy whole; a grant on the project
 # is not.
+locals {
+  records_bucket_conditions = { for k, v in local.environment_layers : k => "resource.name.startsWith(\"projects/_/buckets/${local.layer_names[k]}-records-\")" }
+}
+
 resource "google_project_iam_member" "tofu_storage_admin" {
   for_each = local.environment_layers
 
@@ -85,7 +89,7 @@ resource "google_project_iam_member" "tofu_storage_admin" {
   condition {
     title       = "${each.key} records bucket"
     description = "The environment's deployment-records bucket, the one bucket 2-env declares, with its objects."
-    expression  = "resource.name.startsWith(\"projects/_/buckets/${local.layer_names[each.key]}-records-\")"
+    expression  = local.records_bucket_conditions[each.key]
   }
 }
 

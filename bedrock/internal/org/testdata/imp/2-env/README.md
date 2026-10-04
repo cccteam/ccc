@@ -33,24 +33,26 @@ No workspaces. The state of each environment lives at its own prefix,
 `2-env/<env>`, in the state bucket, and a backend block cannot read a
 variable, so the prefix is supplied at init, which is how the workflow runs
 it too. By hand, for recovery, a member of the environment's team group asks
-for the Layer administrator entitlement (`roles/iam.serviceAccountTokenCreator`
-on the environment's apply identity, for a short time), and
-`GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` makes the Google provider and the state
-backend act as that identity, on the same code the workflow runs; `TF_DATA_DIR`
-keeps one backend cache per environment in the same checkout, so an init for
-one environment can never be paired with a plan for another:
+for two entitlements for the same short time ("The team group" below): the
+layer administrator, which grants the environment layer identity's roles on
+the environment project, and the layer state entitlement, which grants the
+identity's slot in the state bucket and the boot project as its quota
+project. The person then runs the layer as themselves, signed in with
+`gcloud auth application-default login`, on the same code the workflow runs:
+the Google provider and the state backend act with the person's own
+credentials, and the audit log names the person, not the identity.
+`TF_DATA_DIR` keeps one backend cache per environment in the same checkout,
+so an init for one environment can never be paired with a plan for another:
 
 ```bash
 cd 2-env
-export GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=imp-tst-gbl-tofu@<tst project>.iam.gserviceaccount.com
 export TF_DATA_DIR=.terraform.tst
 tofu init -backend-config="prefix=2-env/tst"
 tofu plan -var environment=tst
 tofu apply -var environment=tst
 ```
 
-Then the same with `stg` and `prd`, each under its own entitlement and
-identity.
+Then the same with `stg` and `prd`, each under its own two entitlements.
 
 Order among the project layers: `2-shr` and `2-spn` before this layer (it
 reads their outputs: the instance for stg and prd, the repository names for a
@@ -318,12 +320,13 @@ and every request, approval and grant is in the audit log. The longest
 grants come from `placement.json` (`entitlementDurations`, by the keys
 below); unset, the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours.
 
-| Entitlement | Key | What it grants on the environment project |
+| Entitlement | Key | What it grants, on the environment project unless the row says otherwise |
 |---|---|---|
 | `imp-<env>-secret-operator` | `secretOperator` | `1-org`'s `secretOperator` role: `bedrock secret add` creates a container ahead of the release that first reads it (named and labeled as the application stack names it, which adopts it at its next apply) and adds the value, and `bedrock secret pin` moves the pin; the role also finds the project by its labels and bills Secret Manager to it, and never reads a payload. |
 | `imp-<env>-spanner-admin` | `spannerAdmin` | `roles/spanner.databaseAdmin` and `roles/spanner.backupAdmin`: the environment's databases, their schema, rows and backups, for a migration that stopped and the rows it validated. |
 | `imp-<env>-spanner-viewer` | `spannerViewer` | `roles/spanner.databaseReader` and `1-org`'s `spannerPlanReader`: the rows, read only, and the instance with the names of its databases. |
-| `imp-<env>-layer-administrator` | `layerAdministrator` | `roles/iam.serviceAccountTokenCreator` under a condition naming this environment's apply identity (`imp-<env>-gbl-tofu`, by its email and by its unique id, the two forms a condition's `resource.name` can name a service account by) and nothing else: a recovery of this layer by hand, acting as the identity ("Applying" above). |
+| `imp-<env>-layer-administrator` | `layerAdministrator` | The roles this environment's layer identity (`imp-<env>-gbl-tofu`) holds on the environment project: `1-org`'s `app` role set and `roles/storage.admin` under the condition naming the records bucket, read from `1-org`'s `environment_layer_grants` output, so the two cannot drift. A recovery of this layer by hand, as the person ("Applying" above), with the next entitlement. |
+| `imp-<env>-layer-state` | `layerAdministrator` | Declared by `1-org` on the boot project, not here (`1-org/entitlements.tf`): the identity's slot in the state bucket (its own prefix `2-env/<env>/`, the upstream states it reads, the bucket's list and its policy, each by a condition on the name) and `roles/serviceusage.serviceUsageConsumer`, for the boot project as the quota project. An entitlement grants on one project, and the bucket is the boot project's. |
 
 The Spanner entitlements are declared where the environment's instance is.
 For an environment on its own instance (`tst` by default) every
@@ -335,6 +338,14 @@ declares them on that project (`entitlements.tf` there), each database role
 bounded by a condition to the environment's own databases and backups and
 the organization's `spannerPlanReader` role unconditioned, for the instance
 and the names of its databases; the ids are the same.
+
+The layer administrator grants the identity's roles rather than the right
+to act as the identity (`roles/iam.serviceAccountTokenCreator` on it),
+because that right cannot be bounded to the one identity: IAM evaluates no
+`resource.name` for a service account, so a condition naming the identity
+never admits the token call, and without a condition the role admits every
+service account in the project, the deploy and application identities among
+them.
 
 The layer administrator covers this layer alone. The apply identities of
 `0-bootstrap` and `1-org` (in the boot project) and of `2-shr`, `2-spn` and
@@ -520,7 +531,7 @@ the layers that publish them:
 
 | Layer | Output | Used for |
 |---|---|---|
-| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `layer_service_account_unique_ids`, `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role`, `secret_operator_role`, `run_job_policy_admin_role`, `spanner_plan_reader_role` | everything |
+| `1-org` | `prefix`, `project_ids`, `project_numbers`, `layer_service_accounts`, `environment_layer_grants` (the layer administrator's roles), `gcp_region`, `gcp_secondary_region`, `region_code`, `secondary_region_code`, `secret_container_admin_role`, `secret_operator_role`, `run_job_policy_admin_role`, `spanner_plan_reader_role` | everything |
 | `2-shr` | `repository_names` | map of application code to repository ID; the `repositories_registered` warning |
 | `2-spn` | `project_id`, `instance_name` | the shared instance for stg and prd (project falls back to `1-org`'s) |
 | `2-net` | `shared_vpc_id` | null today; gates `compute.networkUser` |

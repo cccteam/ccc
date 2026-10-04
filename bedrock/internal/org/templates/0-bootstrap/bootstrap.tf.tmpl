@@ -68,16 +68,17 @@ module "boot_project" {
   labels                     = local.labels
 
   activate_apis = [
-    "cloudbilling.googleapis.com",         # link the billing account to projects created by 1-org
-    "cloudresourcemanager.googleapis.com", # folders, projects, IAM
-    "essentialcontacts.googleapis.com",    # Essential Contacts set by 1-org
-    "iam.googleapis.com",                  # service accounts, the layers workflow's identity pool
-    "iamcredentials.googleapis.com",       # the short-lived tokens the workflow and a recovering administrator run a layer with
-    "logging.googleapis.com",              # the log sinks if 1-org's central logging is turned on
-    "orgpolicy.googleapis.com",            # org policy constraints
-    "serviceusage.googleapis.com",         # API enablement in downstream projects
-    "storage.googleapis.com",              # the state bucket
-    "sts.googleapis.com",                  # the token exchange of the workflow's sign-in (github.tf)
+    "cloudbilling.googleapis.com",            # link the billing account to projects created by 1-org
+    "cloudresourcemanager.googleapis.com",    # folders, projects, IAM
+    "essentialcontacts.googleapis.com",       # Essential Contacts set by 1-org
+    "iam.googleapis.com",                     # service accounts, the layers workflow's identity pool
+    "iamcredentials.googleapis.com",          # the short-lived tokens the workflow runs a layer with
+    "logging.googleapis.com",                 # the log sinks if 1-org's central logging is turned on
+    "orgpolicy.googleapis.com",               # org policy constraints
+    "privilegedaccessmanager.googleapis.com", # the environments' layer state entitlements 1-org declares here
+    "serviceusage.googleapis.com",            # API enablement in downstream projects
+    "storage.googleapis.com",                 # the state bucket
+    "sts.googleapis.com",                     # the token exchange of the workflow's sign-in (github.tf)
 
     # Every downstream layer reaches its APIs through this project as the quota project
     # (user_project_override), and an API refuses a quota project where it is disabled:
@@ -196,6 +197,18 @@ resource "google_organization_iam_member" "boot_tofu_project_updater" {
   org_id = local.org_id
   role   = google_organization_iam_custom_role.project_updater.id
   member = google_service_account.boot_tofu.member
+}
+
+# 1-org declares on this project each environment's layer state entitlement:
+# the environment layer identity's slot in the state bucket and this project as
+# its quota project, for a short time, to a member of the environment's team
+# group recovering 2-env by hand (1-org/entitlements.tf). Declaring an
+# entitlement takes roles/privilegedaccessmanager.admin on the project it is
+# declared on: granted here, on this project alone.
+resource "google_project_iam_member" "org_tofu_entitlements" {
+  project = module.boot_project.project_id
+  role    = "roles/privilegedaccessmanager.admin"
+  member  = google_service_account.org_tofu.member
 }
 
 # Billing is granted on the billing account, not the org node. Gated for the
