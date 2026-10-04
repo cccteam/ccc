@@ -1287,7 +1287,12 @@ The layers workflow plans every layer a pull request changes, as that layer's pl
 identity, and posts each plan on the pull request; the merge applies those layers as their
 apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env
 for tst, stg and prd), one at a time, stopping at the first failure; Run workflow on the
-Actions tab applies one layer again with no change to it. After each apply of 2-env it
+Actions tab applies one layer again with no change to it. Each layer's apply holds a
+concurrency group of its own (`layers-apply-<layer>`; GitHub runs one job of a concurrency
+group at a time), so an apply waits for another apply of the same layer and for no other
+layer; GitHub keeps one job of a group waiting behind the running one, and a third that
+arrives cancels the one waiting, so where several layers go by Run workflow, start each
+when the previous has finished. After each apply of 2-env it
 restricts Firebase's browser key ("Browser key (auto created by Firebase)") in the
 environment project to the two sign-in APIs, identitytoolkit.googleapis.com and
 securetoken.googleapis.com, as the layer identity: no layer can declare the key, since

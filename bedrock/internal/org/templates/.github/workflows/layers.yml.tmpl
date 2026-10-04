@@ -50,10 +50,11 @@ on:
           - {{.}}
 {{- end}}
 
-# Applies queue behind one another, in the order the pushes came; a pull request's plans give way to
-# its next push.
+# A pull request's plans give way to its next push: its runs share one group, and a new one cancels
+# the one in progress. A push or a Run workflow is a group of its own here; its applies wait on
+# their layers instead (the apply job's concurrency, below).
 concurrency:
-  group: ${{"{{"}} github.event_name == 'pull_request' && format('layers-plan-{0}', github.ref) || 'layers-apply' {{"}}"}}
+  group: ${{"{{"}} github.event_name == 'pull_request' && format('layers-plan-{0}', github.ref) || format('layers-run-{0}', github.run_id) {{"}}"}}
   cancel-in-progress: ${{"{{"}} github.event_name == 'pull_request' {{"}}"}}
 
 permissions: {}
@@ -278,7 +279,17 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # One layer at a time, in the matrix's order (layer order); a failure cancels the rest.
+    # One concurrency group per layer (layers-apply-<layer>, 2-env's environments in one group), so
+    # two applies of one layer never overlap and applies of different layers do not wait on each
+    # other: a Run workflow of 2-spn and one of 2-env started seconds apart both run. GitHub runs one
+    # job of a group and keeps at most one more pending behind it; a job that arrives while one is
+    # pending cancels that pending one, which ends its run (fail-fast). So where several layers go
+    # by Run workflow, start each when the previous has finished.
+    concurrency:
+      group: layers-apply-${{"{{"}} matrix.layer {{"}}"}}
+      cancel-in-progress: false
+    # One layer at a time, in the matrix's order (layer order); a failure cancels the rest. A push
+    # run keeps that order inside the run.
     strategy:
       fail-fast: true
       max-parallel: 1

@@ -319,9 +319,14 @@ themselves. A pull request into `master` plans each layer whose
 posts the plan on the pull request; the merge applies those layers as their
 apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time,
 stopping at the first failure. Run workflow on the Actions tab applies one
-layer again with no change to it. No key exists anywhere: a run presents
-GitHub's token to the pool this layer makes, and Google answers with a token
-for the identity.
+layer again with no change to it. Each layer's apply has a concurrency group
+of its own (`layers-apply-<layer>`; GitHub runs one job of a concurrency
+group at a time): an apply waits for another apply of the same layer and for
+no other layer. GitHub keeps one job of a group waiting behind the running
+one, and a third that arrives cancels the one waiting, so where several
+layers go by Run workflow, start each when the previous has finished. No key
+exists anywhere: a run presents GitHub's token to the pool this layer makes,
+and Google answers with a token for the identity.
 
 Who grants what, and why the first time works in order:
 

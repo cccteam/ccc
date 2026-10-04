@@ -1856,8 +1856,18 @@ func TestWorkflow(t *testing.T) {
 				"    strategy:\n      fail-fast: true\n      max-parallel: 1\n      matrix:\n        include: ${{ fromJSON(needs.layers.outputs.matrix) }}\n",
 				"      IDENTITY: ${{ matrix.apply }}\n",
 				"tofu apply -input=false -no-color \"$RUNNER_TEMP/plan.tfplan\"",
-				"concurrency:\n  group: ${{ github.event_name == 'pull_request' && format('layers-plan-{0}', github.ref) || 'layers-apply' }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
 			},
+		},
+		{
+			name:   "concurrency: a pull request's plans give way to its next push, a push or a Run workflow waits on its layers alone, one group per layer",
+			mutate: func(*Placement) {},
+			want: []string{
+				"\nconcurrency:\n  group: ${{ github.event_name == 'pull_request' && format('layers-plan-{0}', github.ref) || format('layers-run-{0}', github.run_id) }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
+				"      id-token: write\n    # One concurrency group per layer (layers-apply-<layer>, 2-env's environments in one group), so\n",
+				"    concurrency:\n      group: layers-apply-${{ matrix.layer }}\n      cancel-in-progress: false\n    # One layer at a time, in the matrix's order (layer order); a failure cancels the rest. A push\n    # run keeps that order inside the run.\n    strategy:\n      fail-fast: true\n      max-parallel: 1\n",
+				"GitHub runs one\n    # job of a group and keeps at most one more pending behind it; a job that arrives while one is\n    # pending cancels that pending one",
+			},
+			absent: []string{"|| 'layers-apply' }}", "Applies queue behind one another"},
 		},
 		{
 			name:   "the identity per layer, in layer order, 2-env once per environment",

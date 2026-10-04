@@ -64,18 +64,22 @@ random four-hex suffix. Every project and bucket carries the label
 ## How the layers are applied
 
 Routine changes go through pull requests. The workflow
-[`.github/workflows/layers.yml`](.github/workflows/layers.yml), rendered by bedrock like the layers,
-plans every layer a pull request changes as that layer's plan identity and
-posts the plan on the pull request; the merge applies those layers as their
-apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time,
-stopping at the first failure. No key exists anywhere: a run presents
-GitHub's short-lived token to the boot project's workload identity pool
-(`0-bootstrap/github.tf`), and Google answers with a token for the identity;
-a plan identity may be used from a pull request's run and an apply identity
-from the default branch alone. Run workflow on the Actions tab applies one
-layer again with no change to it, which a registration's second pass of
-`2-env` needs. Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by
-hand"): for `2-env` as a member of the environment's team group under the
+[`.github/workflows/layers.yml`](.github/workflows/layers.yml), rendered by bedrock like the
+layers, plans every layer a pull request changes as that layer's plan
+identity and posts the plan on the pull request; the merge applies those
+layers as their apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one
+at a time, stopping at the first failure. No key exists anywhere: a run
+presents GitHub's short-lived token to the boot project's workload identity
+pool (`0-bootstrap/github.tf`), and Google answers with a token for the
+identity; a plan identity may be used from a pull request's run and an apply
+identity from the default branch alone. Run workflow on the Actions tab
+applies one layer again with no change to it, which a registration's second
+pass of `2-env` needs. An apply waits for another apply of the same layer
+and for no other layer, so where several layers go by Run workflow, start
+each when the previous has finished: GitHub keeps one apply of a layer
+waiting behind the running one, and a third that arrives cancels the one
+waiting. Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"):
+for `2-env` as a member of the environment's team group under the
 layer administrator and layer state entitlements, which grant the
 environment layer identity's roles for a short time, so the person runs the
 layer as themselves and the audit log names them; for the other layers as
