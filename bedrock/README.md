@@ -773,6 +773,34 @@ Both find the rest from where they run: the infrastructure root, the application
 environment project (by its labels) and the container (by its labels and the variable);
 `--dir`, `--app`, `--project` and `--container` override.
 
+In the organization's infrastructure repository (the one whose `placement.json` at the root
+names the organization, `organizationId`), the same two commands take one of the
+organization's secrets, the private keys of its GitHub Apps, in place of an environment and
+a variable:
+
+```sh
+bedrock secret add github-infrastructure-key --from-file infrastructure.pem   # the boot project's container
+bedrock secret pin github-infrastructure-key 2                                # placement.json, then org render
+bedrock secret add github-deployer-key tst --from-file deployer.pem          # the environment's container
+bedrock secret pin github-deployer-key tst 1                                  # 2-env/terraform.tfvars
+```
+
+`github-infrastructure-key` is the key of the infrastructure GitHub App, the app the layers
+workflow acts as when 1-org configures the applications' repositories. It lives in
+0-bootstrap's container `<prefix>-boot-gbl-github-infrastructure-key` in the boot project,
+and its pin is `githubInfrastructureKeyVersion` in `placement.json`: `pin` writes it and
+runs `org render`, so the workflow mints its token from that version. `github-deployer-key`
+is the key of the deployer GitHub App, the app the pipeline talks back on a pull request as.
+It lives in 2-env's container `<prefix>-<env>-gbl-github-deployer-key` in each environment's
+project, and its pin is the version's resource name under the environment in 2-env's
+`github_deployer_key_secret_versions`, which the application stacks pass to their
+pipelines. Both are pinned by number, never `latest`, after Secret Manager confirms the
+version is enabled. `add` refuses a project that lacks the container rather than creating
+it, because the container is the layer's own and its apply makes it. The projects come from
+`placement.json` (`projects.boot`, `projects.<env>`); `--project` and `--container`
+override. In an application's repository these names are refused, and in the
+infrastructure repository an application's `[env] [VARIABLE]` is.
+
 ## bedrock migration renumber
 
 `migration renumber` moves the migrations this branch added, up and down files together,
@@ -1135,6 +1163,7 @@ out:
 
 ```sh
 bedrock org new ../infrastructure --placement placement.json   # a foundation for an organization that has none
+bedrock org preflight                                           # before the seed: the bootstrap administrator's roles
 bedrock org render                                              # after a placement change
 bedrock org check                                               # the committed layers against the placement
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
@@ -1156,6 +1185,18 @@ application"), a person signs in to GitHub as that account, so the connection's 
 the account's and nobody's leaving breaks it; a personal access token of the same
 account is the alternative to that step. `2-env` renders the login where it names the
 account. The field is required: a placement without it is refused.
+
+`org preflight` is the check before the seed. The seed and the first applies of 0-bootstrap
+and 1-org run as the bootstrap administrator, a person, before any layer identity exists, so
+that person must hold the roles they need. Run with the administrator's Application Default
+Credentials (`gcloud auth application-default login`), it asks Google which of the
+permissions those runs need the caller holds: on the organization `placement.json` names
+(Cloud Resource Manager's `testIamPermissions`) and on its billing account (Cloud Billing's).
+The roles are Folder Creator, Project Creator, Organization Administrator, Organization
+Policy Administrator, Organization Role Administrator and Tag Administrator at the
+organization, and Billing Account User on the billing account. It prints one line per role,
+`holds` or `missing` with the permissions tested, and exits 1 when a role is missing, saying
+who grants it where, or when it could not check (no credentials, or an API that refused).
 
 `org render` rewrites the owned files from the placement, seeds the absent ones and says
 what the workflow still lacks in the placement; `org check` compares the owned files, the

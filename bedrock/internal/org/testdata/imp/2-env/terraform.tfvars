@@ -14,9 +14,16 @@ state_bucket    = "imp-boot-gbl-state-a1b2"
 # set, the connection and the repository links wait; the rest of the layer
 # applies.
 # github_app_installation_id        = <installation id>
-# github_deployer_app_id            = <the deployer app's App ID, not its installation>
-# github_deployer_key_secret_versions = { tst = "projects/<number>/secrets/imp-tst-gbl-github-deployer-key/versions/1" }
 # github_oauth_token_secret_version = "projects/<tst project>/locations/us-central1/secrets/<connection token secret>/versions/1"
+
+# The deployer GitHub App the pipeline talks back on a pull request as: its App
+# ID, from the app's settings page (not an installation), and per environment
+# the version of its private key in the environment's container, which bedrock
+# secret add github-deployer-key <env> adds and bedrock secret pin
+# github-deployer-key <env> <version> writes here
+# (github_deployer_key_secret_versions). Until both are set for an
+# environment, the pipeline there talks back through nothing.
+# github_deployer_app_id = <the deployer app's App ID>
 
 # The applications are in applications.auto.tfvars, rendered from placement.json
 # (bedrock org register <app> adds one).

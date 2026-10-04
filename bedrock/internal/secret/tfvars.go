@@ -264,6 +264,39 @@ func setVersion(src []byte, file, key, env, variable, version string) ([]byte, e
 	return hclwrite.Format(f.Bytes()), nil
 }
 
+// SetMapEntry sets the key to the value in the map a values file's attribute holds,
+// adding the entry when absent and replacing its value when present, and returns the
+// file formatted; a file without the attribute gains it at its end, as a map of that one
+// entry. Every other byte, comments included, is kept. An attribute that is not a map
+// written out ({ ... }) is refused.
+func SetMapEntry(src []byte, file, attribute, key, value string) ([]byte, error) {
+	if _, err := parsePlacement(src, file); err != nil {
+		return nil, err
+	}
+	f, diags := hclwrite.ParseConfig(src, file, hcl.InitialPos)
+	if diags.HasErrors() {
+		return nil, errors.Wrap(diags, "hclwrite.ParseConfig()")
+	}
+	body := f.Body()
+	attr := body.GetAttribute(attribute)
+	if attr == nil {
+		body.SetAttributeValue(attribute, cty.ObjectVal(map[string]cty.Value{key: cty.StringVal(value)}))
+
+		return hclwrite.Format(f.Bytes()), nil
+	}
+	tokens := attr.Expr().BuildTokens(nil)
+	if len(tokens) < 2 || tokens[0].Type != hclsyntax.TokenOBrace || tokens[len(tokens)-1].Type != hclsyntax.TokenCBrace {
+		return nil, errors.Newf("%s in %s is not a map written out ({ ... })", attribute, file)
+	}
+	set, err := withPin(tokens, key, value)
+	if err != nil {
+		return nil, errors.Newf("%s in %s: %s", attribute, file, err)
+	}
+	body.SetAttributeRaw(attribute, set)
+
+	return hclwrite.Format(f.Bytes()), nil
+}
+
 // item is one entry of an object's tokens: the name its key spells and where its value
 // sits, as indexes into the object's tokens (the end exclusive).
 type item struct {

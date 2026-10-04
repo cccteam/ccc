@@ -40,7 +40,10 @@ func newSecret(d deps) *cobra.Command {
 		Short: "Add secret values and pin the versions an environment runs",
 		Long: `secret holds the commands that add a secret value to Secret Manager ahead of the release
 that reads it (add), and that pin, in an application layer's placement, the version of a
-secret an environment runs (pin); the layer's cloud-run.tf mounts that version.`,
+secret an environment runs (pin); the layer's cloud-run.tf mounts that version. In the
+organization's infrastructure repository the same two commands take one of the
+organization's secrets instead, the private keys of its GitHub Apps: github-infrastructure-key,
+in the boot project, and github-deployer-key, in each environment's project.`,
 	}
 	cmd.AddCommand(newSecretAdd(d))
 	cmd.AddCommand(newSecretPin(d))
@@ -91,23 +94,29 @@ It is refused when an argument has the wrong shape (<env> is tst, stg or prd; <V
 upper snake case under APP_; <version> is a positive integer or latest), when the project or
 the container cannot be told apart (none or several found), when the placement has no
 secret_versions map or that map has no <env> entry, and when the version is disabled or
-absent. A variable already pinned to the version leaves the file as it is.`,
+absent. A variable already pinned to the version leaves the file as it is.
+
+In the organization's infrastructure repository (the one whose placement.json at the root
+names the organization, organizationId), pin takes one of the organization's secrets and a
+version's number, never latest. pin github-infrastructure-key <version> writes
+githubInfrastructureKeyVersion in placement.json and runs org render, which writes it into
+the layers workflow; the container is <prefix>-boot-gbl-github-infrastructure-key in the
+boot project (projects.boot). pin github-deployer-key <env> <version> writes the version's
+resource name under <env> in 2-env/terraform.tfvars (github_deployer_key_secret_versions);
+the container is <prefix>-<env>-gbl-github-deployer-key in the environment's project
+(projects.<env>). --project and --container override; --app and --layer are refused, and so
+is an application's [env] [VARIABLE]. Secret Manager is asked first, as above, and the pull
+request carrying the change goes through the layers workflow.`,
 		Args: cobra.MaximumNArgs(3),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+			if _, p, err := d.orgRepository(f.dir); err == nil && p != nil {
+				return d.completeOrgSecret(cmd.Context(), args, &f, p, true), cobra.ShellCompDirectiveNoFileComp
+			}
+
 			return d.completePin(cmd.Context(), args, &f), cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := d.resolvePin(cmd, args, &f)
-			if err != nil {
-				return err
-			}
-			r, err := secret.Pin(cmd.Context(), d.secrets, req)
-			if err != nil {
-				return err
-			}
-			r.Write(cmd.OutOrStdout())
-
-			return nil
+			return d.pin(cmd, args, &f)
 		},
 	}
 
@@ -133,6 +142,32 @@ absent. A variable already pinned to the version leaves the file as it is.`,
 	})
 
 	return cmd
+}
+
+// pin runs secret pin: the organization form in the infrastructure repository, else the
+// application's.
+func (d deps) pin(cmd *cobra.Command, args []string, f *pinFlags) error {
+	root, p, err := d.orgRepository(f.dir)
+	if err != nil {
+		return err
+	}
+	if p != nil {
+		return d.pinOrgSecret(cmd, args, f, root, p)
+	}
+	if err := refuseOrgSecret(args, pinVerb); err != nil {
+		return err
+	}
+	req, err := d.resolvePin(cmd, args, f)
+	if err != nil {
+		return err
+	}
+	r, err := secret.Pin(cmd.Context(), d.secrets, req)
+	if err != nil {
+		return err
+	}
+	r.Write(cmd.OutOrStdout())
+
+	return nil
 }
 
 // pinPlace is where a pin goes: the infrastructure root, the application, its layer
@@ -215,7 +250,7 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 	if err != nil {
 		return nil, err
 	}
-	version, err := d.resolveVersion(ctx, args, ask, project, container)
+	version, err := d.resolveVersion(ctx, args, 2, ask, project, container, "the environment could not mount it")
 	if err != nil {
 		return nil, err
 	}
@@ -254,12 +289,14 @@ func (d deps) resolveContainer(ctx context.Context, flag, project, application, 
 	return where.ContainerByLabels(ctx, d.secrets, project, map[string]string{sourcePathLabel: appSourcePath + application}, secret.ContainerSuffix(variable))
 }
 
-// resolveVersion is the version: the third argument as given, else the one chosen at
-// the terminal among the container's versions, newest first, each with its state. A
-// version chosen that is not enabled is refused: the environment could not mount it.
-func (d deps) resolveVersion(ctx context.Context, args []string, ask *prompt.Prompter, project, container string) (string, error) {
+// resolveVersion is the version: the argument at index i as given (the third, in an
+// application's repository), else the one chosen at the terminal among the container's
+// versions, newest first, each with its state. A version chosen that is not enabled is
+// refused, saying why it could not serve (unreadable: the environment could not mount
+// it, for an application's secret).
+func (d deps) resolveVersion(ctx context.Context, args []string, i int, ask *prompt.Prompter, project, container, unreadable string) (string, error) {
 	states := map[string]string{}
-	version, err := argument(args, 2, ask, "version", "Which version of "+container+"?", func() ([]prompt.Choice, error) {
+	version, err := argument(args, i, ask, "version", "Which version of "+container+"?", func() ([]prompt.Choice, error) {
 		versions, err := where.Versions(ctx, d.secrets, project, container)
 		if err != nil {
 			return nil, err
@@ -279,7 +316,7 @@ func (d deps) resolveVersion(ctx context.Context, args []string, ask *prompt.Pro
 		return "", err
 	}
 	if state, chosen := states[version]; chosen && state != secret.Enabled {
-		return "", errors.Newf("version %s of %s in project %s is %s, not %s: the environment could not mount it; choose an enabled version", version, container, project, state, secret.Enabled)
+		return "", errors.Newf("version %s of %s in project %s is %s, not %s: %s; choose an enabled version", version, container, project, state, secret.Enabled, unreadable)
 	}
 
 	return version, nil
@@ -389,9 +426,26 @@ value is empty. Creating a container needs secretmanager.secrets.create in the e
 project and adding a version secretmanager.versions.add, beside the project's read and the
 use of its services: the secretOperator role 1-org defines, which nobody holds standing. A
 member of the environment's team group asks for the secret operator entitlement (2-env's
-team-group.tf) and holds the role for the time asked.`,
+team-group.tf) and holds the role for the time asked.
+
+In the organization's infrastructure repository (the one whose placement.json at the root
+names the organization, organizationId), add takes one of the organization's secrets in
+place of [env] [VARIABLE]: github-infrastructure-key, the infrastructure GitHub App's private
+key, into <prefix>-boot-gbl-github-infrastructure-key in the boot project (projects.boot),
+or github-deployer-key <env>, the deployer GitHub App's private key, into
+<prefix>-<env>-gbl-github-deployer-key in the environment's project (projects.<env>).
+--project and --container override; --app and --layer are refused, and so is an
+application's [env] [VARIABLE]. The value is read as above; a .pem file is stored as given.
+The container is the layer's own resource (0-bootstrap's, or 2-env's in the environment),
+so a project without it is refused: apply the layer first. Adding to the boot project's
+container is the bootstrap administrator's; adding to an environment's is the secret
+operator entitlement's, as for an application's secret. The command prints the pin to
+make.`,
 		Args: cobra.MaximumNArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+			if _, p, err := d.orgRepository(f.dir); err == nil && p != nil {
+				return d.completeOrgSecret(cmd.Context(), args, &f.pinFlags, p, false), cobra.ShellCompDirectiveNoFileComp
+			}
 			if len(args) >= 2 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
@@ -399,17 +453,7 @@ team-group.tf) and holds the role for the time asked.`,
 			return d.completePin(cmd.Context(), args, &f.pinFlags), cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := d.resolveAdd(cmd, args, &f)
-			if err != nil {
-				return err
-			}
-			r, err := secret.Add(cmd.Context(), d.secrets, req)
-			if err != nil {
-				return err
-			}
-			r.Write(cmd.OutOrStdout())
-
-			return nil
+			return d.add(cmd, args, &f)
 		},
 	}
 
@@ -423,6 +467,32 @@ team-group.tf) and holds the role for the time asked.`,
 	_ = cmd.MarkFlagFilename("from-file")
 
 	return cmd
+}
+
+// add runs secret add: the organization form in the infrastructure repository, else the
+// application's.
+func (d deps) add(cmd *cobra.Command, args []string, f *addFlags) error {
+	_, p, err := d.orgRepository(f.dir)
+	if err != nil {
+		return err
+	}
+	if p != nil {
+		return d.addOrgSecret(cmd, args, f, p)
+	}
+	if err := refuseOrgSecret(args, addVerb); err != nil {
+		return err
+	}
+	req, err := d.resolveAdd(cmd, args, f)
+	if err != nil {
+		return err
+	}
+	r, err := secret.Add(cmd.Context(), d.secrets, req)
+	if err != nil {
+		return err
+	}
+	r.Write(cmd.OutOrStdout())
+
+	return nil
 }
 
 // resolveAdd fills the request from the arguments, the flags and what is found, asking

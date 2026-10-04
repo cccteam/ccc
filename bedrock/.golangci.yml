@@ -94,6 +94,10 @@ linters:
             - cloud.google.com/go/iam/apiv1/iampb
             - cloud.google.com/go/resourcemanager
             - google.golang.org/api/iterator
+            # org preflight asks which of the bootstrap administrator's permissions the
+            # caller holds: on the organization through the Cloud Resource Manager client
+            # above, on the billing account through Cloud Billing's REST client.
+            - google.golang.org/api/cloudbilling
             # In the application layout the application is named by the module at the
             # repository root, read from its go.mod with the same parser impulse's
             # reader uses.

@@ -268,12 +268,6 @@ func (*view) MappedPurpose() string {
 	return mappedPurpose
 }
 
-// InfrastructureKeySecret is the Secret Manager container in the boot project that holds
-// the infrastructure GitHub App's private key, as 0-bootstrap names it.
-func (v *view) InfrastructureKeySecret() string {
-	return v.Prefix + "-boot-gbl-github-infrastructure-key"
-}
-
 // InfrastructureRepository is this repository under its GitHub organization, the one
 // repository whose tokens the boot project's provider trusts.
 func (v *view) InfrastructureRepository() string {

@@ -4,9 +4,10 @@
 # The pipeline talks back on a pull request as the organization's deployer
 # GitHub App: a deployment carrying the environment's URL, a comment, the
 # guard's refusals. The app's private key is a secret version in this
-# environment's project, held in the container this layer creates, added by
-# an operator and pinned by resource name in
-# var.github_deployer_key_secret_versions (never latest). Every application's
+# environment's project, held in the container this layer creates, added with
+# bedrock secret add github-deployer-key <env> and pinned by resource name in
+# var.github_deployer_key_secret_versions with bedrock secret pin
+# github-deployer-key <env> <version> (never latest). Every application's
 # deploy identity reads it; no runtime identity does. The App ID
 # (var.github_deployer_app_id) is not a secret. Until both are set for an
 # environment, the application stacks pass empty substitutions and the

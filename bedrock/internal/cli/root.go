@@ -55,12 +55,11 @@ func Main(args []string) int {
 // to be asked. newRoot wires the real ones; tests pass fakes.
 type deps struct {
 	// domains opens Cloud Domains, secrets Secret Manager, projects Cloud Resource
-	// Manager's project search, and policies its IAM policy read (org check's owner
-	// report).
+	// Manager's project search, and org what the org commands ask Google.
 	domains  domain.ClientFunc
 	secrets  secret.ClientFunc
 	projects where.ProjectClientFunc
-	policies org.PolicyReaderFunc
+	org      *orgClients
 	// github opens the GitHub API client with the token found for the account.
 	github github.ClientFunc
 	// cwd is where the repository is looked for when --dir is not given; empty means
@@ -90,12 +89,20 @@ type deps struct {
 	lookups *domain.Lookups
 }
 
+// orgClients are what the org commands open in Google Cloud: Cloud Resource Manager's
+// IAM policy read (org check's owner report), and the permission tests on the
+// organization and the billing account (org preflight).
+type orgClients struct {
+	policies    org.PolicyReaderFunc
+	permissions org.PermissionTesterFunc
+}
+
 func newRoot() *cobra.Command {
 	return newRootWith(deps{
 		domains:     domain.NewCloudDomains,
 		secrets:     secret.NewSecretManager,
 		projects:    where.NewProjects,
-		policies:    org.NewPolicyReader,
+		org:         &orgClients{policies: org.NewPolicyReader, permissions: org.NewPermissionTester},
 		github:      github.Open,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,

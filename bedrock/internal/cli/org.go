@@ -30,9 +30,10 @@ func newOrg(d deps) *cobra.Command {
 the six layers of the CCC provisioning model (0-bootstrap, 1-org, 2-shr, 2-spn, 2-net, 2-env)
 and the layers workflow that plans them on a pull request and applies them on its merge,
 rendered from the organization placement, placement.json at the repository root, the way an
-application's stack is rendered from its code.`,
+application's stack is rendered from its code; and the check, before the seed, that the
+bootstrap administrator holds the roles the seed and the first applies need (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d))
 
 	return cmd
 }
@@ -137,6 +138,57 @@ environment and the applications' registrations go through it; a person applies 
 for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
 After the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.
 `, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, p.GithubMachineAccount, org.WorkflowFile)
+}
+
+func newOrgPreflight(d deps) *cobra.Command {
+	var (
+		dir       string
+		placement string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "preflight",
+		Short: "Check, before the seed, that these credentials hold the roles the seed and the first applies need",
+		Long: `preflight asks Google which of the permissions the seed and the first applies of 0-bootstrap
+and 1-org need the caller holds, with the run's Application Default Credentials (gcloud auth
+application-default login, as the bootstrap administrator): on the organization the
+placement names (organizationId, through Cloud Resource Manager's testIamPermissions) and on
+its billing account (billingAccount, through Cloud Billing's). It prints one line per role,
+holds or missing, naming the permissions tested: Folder Creator, Project Creator,
+Organization Administrator, Organization Policy Administrator, Organization Role
+Administrator and Tag Administrator at the organization, and Billing Account User on the
+billing account. It exits 1 when any is missing, saying who grants it where, and when the
+permissions could not be checked (no credentials, or an API that refused to answer). Run
+from the repository root, or name it with --dir.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			p, err := orgPlacement(dir, placement)
+			if err != nil {
+				return err
+			}
+			if !org.Preflight(cmd.Context(), p, d.permissionTester(), cmd.OutOrStdout()) {
+				return exitError{code: 1}
+			}
+
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
+	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
+
+	return cmd
+}
+
+// permissionTester is what opens org preflight's permission tests, or, when none is wired,
+// an open that says so.
+func (d deps) permissionTester() org.PermissionTesterFunc {
+	if d.org == nil || d.org.permissions == nil {
+		return func(context.Context) (org.PermissionTester, error) {
+			return nil, errors.New("no permission tester is wired")
+		}
+	}
+
+	return d.org.permissions
 }
 
 // workflowNotice says what the layers workflow still lacks in the placement, or nothing.
@@ -261,12 +313,12 @@ fails the check.`,
 // the repository is the check's verdict, and the grants are a person's to remove.
 func ownerReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
 	const does = "org check lists each person (a user: member) holding roles/owner on an environment project, the creator's temporary grant, when it runs with Google credentials that read the projects' IAM policies (gcloud auth application-default login)"
-	if d.policies == nil {
+	if d.org == nil || d.org.policies == nil {
 		fmt.Fprintf(out, "Owners not checked: no IAM policy reader is wired; %s.\n", does)
 
 		return
 	}
-	reader, err := d.policies(ctx)
+	reader, err := d.org.policies(ctx)
 	if err != nil {
 		fmt.Fprintf(out, "Owners not checked (%v): %s.\n", errors.Cause(err), does)
 

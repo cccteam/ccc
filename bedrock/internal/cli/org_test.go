@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func orgRepo(t *testing.T) string {
 // report runs without credentials, and the running bedrock is a commit installed with go
 // install, which an application's first placement can pin.
 func orgDeps(dir string) deps {
-	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, policies: noPolicies, cwd: dir, interactive: never, version: installedHead}
+	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, org: &orgClients{policies: noPolicies, permissions: noPermissions}, cwd: dir, interactive: never, version: installedHead}
 }
 
 // installedHead is the running bedrock as go install builds the head commit.
@@ -48,6 +49,11 @@ func installedHead() build {
 
 // noPolicies refuses to open an IAM policy reader, as a run without Google credentials.
 func noPolicies(context.Context) (org.PolicyReader, error) {
+	return nil, errors.New("no Google credentials in this test")
+}
+
+// noPermissions refuses to open a permission tester, as a run without Google credentials.
+func noPermissions(context.Context) (org.PermissionTester, error) {
 	return nil, errors.New("no Google credentials in this test")
 }
 
@@ -145,10 +151,107 @@ func TestOrgCheckOwners(t *testing.T) {
 				t.Fatalf("org new: %d %s", code, out)
 			}
 			d := orgDeps(dir)
-			d.policies = tt.policies
+			d.org = &orgClients{policies: tt.policies, permissions: noPermissions}
 			out, err := execute(d, "", "org", "check", "--dir", dir)
 			if err != nil {
 				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+// grantedTester holds every permission asked about except those it lacks.
+type grantedTester struct {
+	lacks []string
+}
+
+func (g grantedTester) held(permissions []string) []string {
+	var held []string
+	for _, p := range permissions {
+		if !slices.Contains(g.lacks, p) {
+			held = append(held, p)
+		}
+	}
+
+	return held
+}
+
+func (g grantedTester) OrganizationPermissions(_ context.Context, _ string, permissions []string) ([]string, error) {
+	return g.held(permissions), nil
+}
+
+func (g grantedTester) BillingAccountPermissions(_ context.Context, _ string, permissions []string) ([]string, error) {
+	return g.held(permissions), nil
+}
+
+func (grantedTester) Close() error {
+	return nil
+}
+
+// TestOrgPreflight: org preflight reads the organization and the billing account from
+// the placement at the repository root, prints one line per role and exits 1 when a role
+// is missing or the permissions could not be checked.
+func TestOrgPreflight(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		permissions org.PermissionTesterFunc
+		wantCode    int
+		wantOut     []string
+	}{
+		{
+			name: "every role held",
+			permissions: func(context.Context) (org.PermissionTester, error) {
+				return grantedTester{}, nil
+			},
+			wantOut: []string{
+				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create",
+				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: holds billing.resourceAssociations.create",
+				"These credentials hold every permission",
+			},
+		},
+		{
+			name: "a role missing exits 1",
+			permissions: func(context.Context) (org.PermissionTester, error) {
+				return grantedTester{lacks: []string{"resourcemanager.tagValues.setIamPolicy"}}, nil
+			},
+			wantCode: 1,
+			wantOut: []string{
+				"Tag Administrator (roles/resourcemanager.tagAdmin), on organization 123456789012: missing resourcemanager.tagValues.setIamPolicy",
+				"1 of 7 role(s) missing",
+			},
+		},
+		{
+			name:        "no credentials exits 1 and says so",
+			permissions: noPermissions,
+			wantCode:    1,
+			wantOut:     []string{"Permissions not checked (no Google credentials in this test): org preflight asks Google"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			d := orgDeps(dir)
+			d.org = &orgClients{policies: noPolicies, permissions: tt.permissions}
+			out, err := execute(d, "", "org", "preflight", "--dir", dir)
+			code := 0
+			if err != nil {
+				var exit exitError
+				if !asExit(err, &exit) {
+					t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+				}
+				code = exit.code
+			}
+			if code != tt.wantCode {
+				t.Errorf("exit = %d, want %d; output:\n%s", code, tt.wantCode, out)
 			}
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {

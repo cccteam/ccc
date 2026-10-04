@@ -125,9 +125,10 @@ variable "github_deployer_key_secret_versions" {
     holding the deployer GitHub App's private key, in the container this layer
     creates in that environment's project
     (projects/<project>/secrets/<prefix>-<env>-gbl-github-deployer-key/versions/<n>),
-    a numbered version and never latest. An operator adds the version once the
-    container exists (README); an environment without an entry talks back
-    through nothing.
+    a numbered version and never latest. bedrock secret add
+    github-deployer-key <env> adds the key as a version once the container
+    exists, and bedrock secret pin github-deployer-key <env> <version> writes
+    the entry here; an environment without one talks back through nothing.
   EOT
   type        = map(string)
   default     = {}

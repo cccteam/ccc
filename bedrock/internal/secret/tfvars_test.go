@@ -251,3 +251,83 @@ func TestBuildSecretNames(t *testing.T) {
 		})
 	}
 }
+
+// TestSetMapEntry: an entry is set in a map attribute, added beside the others or
+// replacing its own value, the attribute added at the file's end when absent; comments
+// stay; an attribute that is not a map written out, and a file that does not parse, are
+// refused.
+func TestSetMapEntry(t *testing.T) {
+	t.Parallel()
+
+	const value = "projects/p-tst/secrets/k/versions/2"
+	tests := []struct {
+		name    string
+		src     string
+		key     string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "the attribute absent is added at the end, the commented example kept",
+			src:  "# keys = { tst = \"projects/<number>/secrets/k/versions/1\" }\nother = 1\n",
+			key:  "tst",
+			want: "# keys = { tst = \"projects/<number>/secrets/k/versions/1\" }\nother = 1\nkeys = {\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n}\n",
+		},
+		{
+			name: "an empty map takes the entry",
+			src:  "keys = {}\n",
+			key:  "tst",
+			want: "keys = {\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n}\n",
+		},
+		{
+			name: "an entry joins the others, which stay",
+			src:  "keys = {\n  stg = \"projects/p-stg/secrets/k/versions/1\" # the first key\n}\n",
+			key:  "tst",
+			want: "keys = {\n  stg = \"projects/p-stg/secrets/k/versions/1\" # the first key\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n}\n",
+		},
+		{
+			name: "the entry's own value is replaced in place",
+			src:  "keys = {\n  tst = \"projects/p-tst/secrets/k/versions/1\"\n  stg = \"projects/p-stg/secrets/k/versions/1\"\n}\n",
+			key:  "tst",
+			want: "keys = {\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n  stg = \"projects/p-stg/secrets/k/versions/1\"\n}\n",
+		},
+		{
+			name: "a map on one line takes the entry after a comma",
+			src:  "keys = { stg = \"projects/p-stg/secrets/k/versions/1\" }\n",
+			key:  "tst",
+			want: "keys = { stg = \"projects/p-stg/secrets/k/versions/1\", tst = \"projects/p-tst/secrets/k/versions/2\" }\n",
+		},
+		{
+			name:    "an attribute that is not a map written out is refused",
+			src:     "keys = var.keys\n",
+			key:     "tst",
+			wantErr: "keys in values.tfvars is not a map written out ({ ... })",
+		},
+		{
+			name:    "a file that does not parse is refused",
+			src:     "keys = {\n",
+			key:     "tst",
+			wantErr: "hclsyntax.ParseConfig()",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := SetMapEntry([]byte(tt.src), "values.tfvars", "keys", tt.key, value)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("SetMapEntry() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("SetMapEntry() error = %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("SetMapEntry() =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}
