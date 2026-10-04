@@ -582,8 +582,9 @@ until then:
      2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
      database admins, on identities that exist now.
   4. %s's own stack, rendered in its repository (bedrock render) from its first
-     placement.json (below), applied per environment by its pipeline with the first
-     release.
+     placement.json (below): its first apply in each environment is by hand, as the
+     stack's README says under Applying (the triggers are part of the stack, so no
+     build runs before it); every later apply is its pipeline's, with each release.
   5. 2-net/applications.auto.tfvars: the hostnames, onto the backends the stack created.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.
 `, p.GithubDefaultBranch, app, app)
