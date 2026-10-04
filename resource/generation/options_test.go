@@ -47,6 +47,13 @@ func TestApplicationName(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewResourceGenerator() error = %v, want no error", err)
 			}
+			// The generator holds the package's cache lock until it is closed, and the
+			// next case opens a generator over the same package.
+			t.Cleanup(func() {
+				if err := r.Close(); err != nil {
+					t.Errorf("Generator.Close() error = %v", err)
+				}
+			})
 
 			rg, ok := r.(*resourceGenerator)
 			if !ok {

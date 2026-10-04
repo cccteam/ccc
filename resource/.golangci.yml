@@ -187,6 +187,12 @@ linters:
           - paralleltest
         path: options_test\.go
         text: TestApplicationName
+      # The generation cache tests run the generator, which changes the process's working
+      # directory to the root of the module it runs in, so they set it with t.Chdir, which
+      # a parallel test may not call.
+      - linters:
+          - paralleltest
+        path: generation/cache_test\.go
       # The live tests' harness starts the Firestore emulator in a container: the
       # executable is the podman LookPath found, the rules file is copied into the
       # harness's own temporary directory and mounted from there, and the container

@@ -167,6 +167,11 @@ func Test_tableMap_cacheRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cache.New() error = %v", err)
 	}
+	t.Cleanup(func() {
+		if err := genCache.Close(); err != nil {
+			t.Errorf("cache.Cache.Close() error = %v", err)
+		}
+	})
 	if err := genCache.Store("spanner/test", tableMapCache, cascadeFixtureTables()); err != nil {
 		t.Fatalf("cache.Store() error = %v", err)
 	}

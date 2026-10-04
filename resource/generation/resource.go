@@ -186,7 +186,7 @@ func (r *resourceGenerator) validateAnnotatedOutlets() error {
 // directory. A qualifier the generator cannot resolve is a generation error naming the
 // file, the template and the qualifier; WithImports names a path beyond the derived set
 // until the gap it covers is fixed in the generator.
-func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, options ...ResourceOption) (Generator, error) {
+func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, options ...ResourceOption) (_ Generator, err error) {
 	r := &resourceGenerator{}
 
 	opts := make([]option, 0, len(options))
@@ -198,6 +198,13 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 	if err != nil {
 		return nil, err
 	}
+	// A caller never closes a generator it was not given, so a construction that fails
+	// from here closes the client and the cache lock it holds.
+	defer func() {
+		if err != nil {
+			closeAfterFailure(c.Close, "client.Close()")
+		}
+	}()
 
 	r.client = c
 

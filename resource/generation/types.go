@@ -52,6 +52,9 @@ type Generator interface {
 	// framework handles under a stated limitation, which a normal generation never
 	// prints and a runner prints on demand (see Finding). Nil before Generate runs.
 	Audit() []Finding
+	// Close releases the generator's cache. The cache is locked from the generator's
+	// construction until Close, and another generator over the same package waits for
+	// the lock, so Close must be called when the generator is done.
 	Close() error
 }
 

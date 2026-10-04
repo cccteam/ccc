@@ -88,7 +88,7 @@ type client struct {
 	genCache *cache.Cache
 }
 
-func newClient(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, opts []option) (*client, error) {
+func newClient(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, opts []option) (_ *client, err error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -98,10 +98,17 @@ func newClient(ctx context.Context, resourcePackageDir string, migrationSourceUR
 		return nil, errors.Wrap(err, "os.Chdir()")
 	}
 
+	// The cache holds a lock on the package's cache until it is closed, and other
+	// generators over the package wait for it, so a client that fails here closes it.
 	gCache, err := cache.New(genCacheDir)
 	if err != nil {
 		return nil, errors.Wrap(err, "cache.New()")
 	}
+	defer func() {
+		if err != nil {
+			closeAfterFailure(gCache.Close, "cache.Cache.Close()")
+		}
+	}()
 
 	c := &client{
 		migrationSourceURLs: migrationSourceURL,
@@ -156,6 +163,14 @@ func (c *client) Close() error {
 	}
 
 	return nil
+}
+
+// closeAfterFailure closes what a constructor opened when the construction failed. The
+// construction's failure is the one answered, so a failure to close is logged.
+func closeAfterFailure(closeFn func() error, name string) {
+	if err := closeFn(); err != nil {
+		log.Print(errors.Wrap(err, name))
+	}
 }
 
 func (c *client) HasNullBoolean() bool {
