@@ -110,7 +110,9 @@ and a `shared_vpc_id` that is null.
   browser presents the application's web API key (its stack's) to exchange
   it; the configuration is the project's, which is why it is here and not in
   a stack (two applications in one project, or a pull-request stack beside
-  the environment's, cannot each own it).
+  the environment's, cannot each own it). Initializing it makes Firebase
+  create an API key, which the layers workflow restricts after each apply
+  ("Identity Platform" below).
 - The cross-project load balancer grants: `roles/compute.loadBalancerServiceUser`
   on the environment project for the net layer identity and the net
   project's Compute Engine service agent, so `2-net`'s URL map can reference
@@ -345,6 +347,44 @@ there is a setup-grade event (`0-bootstrap/README.md`, "Recovery, by hand").
 Creating the entitlements needs `roles/privilegedaccessmanager.admin` on the
 project, in `1-org`'s `app` role set, with the Privileged Access Manager API
 in its `app` API set; the set is completed by refusal.
+
+### Identity Platform
+
+Identity Platform is Google's sign-in service behind Firebase Authentication,
+and `identity-platform.tf` initializes it once per environment project
+("What it creates" above). Initializing it makes Firebase create an API key in
+the project, named "Browser key (auto created by Firebase)", with no restriction
+of any kind. An API key is a public value (a browser presents it, and anyone
+can copy it from a page), so what keeps one harmless is its API restriction:
+the list of APIs that accept it. A key with none is accepted by every API in
+the project that takes an API key. Nothing presents this one: each
+application's browsers present the application's own web API key, which its
+stack makes and restricts to the two sign-in APIs,
+`identitytoolkit.googleapis.com` and `securetoken.googleapis.com`. Left alone, it would
+be a standing credential with no owner.
+
+No layer can declare it. OpenTofu adopts a key that already exists only by
+its id, which Firebase assigns, and the Google provider has no data source
+that finds a key by its name. So the layers workflow restricts it: after each
+apply of this layer, as the layer identity, a step lists the keys of that
+name in the environment project and restricts each to the same two sign-in
+APIs, which leaves it no more capable than the applications' keys. The layer
+identity holds `roles/serviceusage.apiKeysAdmin` for this, in `1-org`'s `app`
+role set. A restriction rather than a deletion, because Firebase may make a
+deleted key again when the Firebase console is used on the project; a key
+Firebase makes after a run is restricted by the next one. Until then
+`bedrock org check` names every key in an environment project that carries
+no API restriction, this one or any other, and Run workflow with `2-env`
+restricts it at once.
+
+After an apply by hand ("Applying" above), the same restriction by hand, for
+the environment's project:
+
+```bash
+for key in $(gcloud services api-keys list --project <env project> --filter 'displayName="Browser key (auto created by Firebase)"' --format 'value(name)'); do
+  gcloud services api-keys update "$key" --api-target=service=identitytoolkit.googleapis.com --api-target=service=securetoken.googleapis.com
+done
+```
 
 ## The GitHub authorization, before the first application
 

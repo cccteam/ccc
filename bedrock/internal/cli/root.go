@@ -90,10 +90,12 @@ type deps struct {
 }
 
 // orgClients are what the org commands open in Google Cloud: Cloud Resource Manager's
-// IAM policy read (org check's owner report), and the permission tests on the
-// organization and the billing account (org preflight).
+// IAM policy read (org check's owner report), the API Keys API's list (org check's API
+// key report), and the permission tests on the organization and the billing account (org
+// preflight).
 type orgClients struct {
 	policies    org.PolicyReaderFunc
+	keys        org.KeyListerFunc
 	permissions org.PermissionTesterFunc
 }
 
@@ -102,7 +104,7 @@ func newRoot() *cobra.Command {
 		domains:     domain.NewCloudDomains,
 		secrets:     secret.NewSecretManager,
 		projects:    where.NewProjects,
-		org:         &orgClients{policies: org.NewPolicyReader, permissions: org.NewPermissionTester},
+		org:         &orgClients{policies: org.NewPolicyReader, keys: org.NewKeyLister, permissions: org.NewPermissionTester},
 		github:      github.Open,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,

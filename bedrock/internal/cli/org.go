@@ -296,7 +296,12 @@ receives, which the first apply of 1-org by hand leaves the bootstrap administra
 every project it creates, temporary by design and removed by hand once the layers workflow
 applies the layers. That listing reads the projects' IAM policies with the run's Google
 credentials (gcloud auth application-default login); without any it says so, and it never
-fails the check.`,
+fails the check. Last it lists each API key in an environment project that carries no API
+restriction, which answers every API in the project that accepts an API key: Firebase's
+browser key, which initializing Identity Platform creates and the layers workflow
+restricts after each apply of 2-env, when Firebase has made it again since, or any other.
+That listing reads the projects' API keys with the same credentials, says so without any,
+and never fails the check either.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
@@ -319,6 +324,7 @@ fails the check.`,
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: not seeded yet (org render writes it)\n", path)
 			}
 			ownerReport(cmd.Context(), d, p, cmd.OutOrStdout())
+			keyReport(cmd.Context(), d, p, cmd.OutOrStdout())
 			if !r.Clean() {
 				fmt.Fprintf(cmd.OutOrStdout(), "%d of %d owned file(s) differ from what the placement renders\n", len(r.Findings), r.Checked)
 
@@ -374,6 +380,55 @@ func ownerReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
 	}
 	for _, o := range owners {
 		fmt.Fprintf(out, "%s (%s): %s holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the layers workflow applies the layers (1-org/README.md, Applying).\n", o.Environment, o.Project, o.Member)
+	}
+}
+
+// keyReport lists each API key in an environment project that carries no API
+// restriction: such a key answers every API in the project that accepts an API key. The
+// one expected is Firebase's browser key, which initializing Identity Platform creates
+// (2-env's identity-platform.tf) and the layers workflow restricts to the sign-in APIs
+// after each apply of 2-env, when Firebase has made it again since; any other is a
+// person's to restrict or delete. The read needs Google credentials; without any the
+// report says so and what it would have done. Nothing here fails the check, as with the
+// owners: the repository's drift is the check's verdict, and a key is live state no
+// commit changes.
+func keyReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
+	const does = "org check lists each API key in an environment project that carries no API restriction, when it runs with Google credentials that list the projects' API keys (gcloud auth application-default login)"
+	if d.org == nil || d.org.keys == nil {
+		fmt.Fprintf(out, "API keys not checked: no API key lister is wired; %s.\n", does)
+
+		return
+	}
+	lister, err := d.org.keys(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "API keys not checked (%v): %s.\n", errors.Cause(err), does)
+
+		return
+	}
+	defer lister.Close()
+	keys, unrecorded, err := org.UnrestrictedKeys(ctx, p, lister)
+	if err != nil {
+		fmt.Fprintf(out, "API keys not checked (%v): %s.\n", errors.Cause(err), does)
+
+		return
+	}
+	if len(unrecorded) > 0 {
+		fmt.Fprintf(out, "API keys not checked in %s: the placement records no project there (projects).\n", strings.Join(unrecorded, ", "))
+	}
+	if len(keys) == 0 {
+		if len(unrecorded) < len(org.Environments) {
+			fmt.Fprintln(out, "Every API key in the environment projects carries an API restriction.")
+		}
+
+		return
+	}
+	for _, k := range keys {
+		if k.Key.DisplayName == org.FirebaseBrowserKey {
+			fmt.Fprintf(out, "%s (%s): the API key %q (%s) carries no API restriction, so it answers every API in the project that accepts an API key; the layers workflow restricts it to %s after each apply of 2-env: run the workflow for 2-env (Run workflow, on the Actions tab) to restrict it now (2-env/README.md, Identity Platform).\n", k.Environment, k.Project, k.Key.DisplayName, k.Key.Name, strings.Join(org.SignInAPIs, " and "))
+
+			continue
+		}
+		fmt.Fprintf(out, "%s (%s): the API key %q (%s) carries no API restriction, so it answers every API in the project that accepts an API key; no layer declares it: restrict it to the APIs it is for, or delete it.\n", k.Environment, k.Project, k.Key.DisplayName, k.Key.Name)
 	}
 }
 

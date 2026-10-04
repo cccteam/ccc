@@ -1256,12 +1256,23 @@ leaves the bootstrap administrator with on every project it creates, temporary b
 and removed by hand once the workflow applies the layers (`1-org/README.md`, "Applying").
 The listing reads the projects' IAM policies with the run's Google credentials (`gcloud
 auth application-default login`); without any it says so, and it never fails the check.
+Last it lists each API key in an environment project that carries no API restriction (the
+list of APIs that accept the key; a key with none is accepted by every API in the project
+that takes an API key), with the same credentials and on the same terms: Firebase's browser
+key, which initializing Identity Platform creates in each environment project, when
+Firebase has made it again since the workflow restricted it, or any other key
+(`2-env/README.md`, "Identity Platform").
 
 The layers workflow plans every layer a pull request changes, as that layer's plan
 identity, and posts each plan on the pull request; the merge applies those layers as their
 apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env
 for tst, stg and prd), one at a time, stopping at the first failure; Run workflow on the
-Actions tab applies one layer again with no change to it. No key exists anywhere: a run
+Actions tab applies one layer again with no change to it. After each apply of 2-env it
+restricts Firebase's browser key ("Browser key (auto created by Firebase)") in the
+environment project to the two sign-in APIs, identitytoolkit.googleapis.com and
+securetoken.googleapis.com, as the layer identity: no layer can declare the key, since
+OpenTofu adopts a key only by the id Firebase assigns it and the Google provider finds no
+key by its name. No key exists anywhere: a run
 signs in through a workload identity pool in the boot project (0-bootstrap's `github.tf`)
 whose provider trusts tokens of the infrastructure repository from that workflow file
 alone and maps each token's event and ref to plan or apply, and each identity's binding

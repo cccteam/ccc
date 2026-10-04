@@ -126,6 +126,11 @@ variable "layer_roles" {
       "roles/privilegedaccessmanager.admin",
       "roles/resourcemanager.projectIamAdmin",
       "roles/run.admin",
+      # The layers workflow restricts Firebase's browser key, which initializing
+      # Identity Platform creates in the environment project, to the sign-in
+      # APIs after each apply of 2-env, as this identity: the list and the
+      # update of the project's API keys.
+      "roles/serviceusage.apiKeysAdmin",
       "roles/serviceusage.serviceUsageAdmin",
       "roles/spanner.admin",
       "secretContainerAdmin",

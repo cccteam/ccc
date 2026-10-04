@@ -35,11 +35,11 @@ func orgRepo(t *testing.T) string {
 	return dir
 }
 
-// orgDeps are the org commands' seams in tests: no cloud client answers, the owner
-// report runs without credentials, and the running bedrock is a commit installed with go
-// install, which an application's first placement can pin.
+// orgDeps are the org commands' seams in tests: no cloud client answers, the owner and
+// API key reports run without credentials, and the running bedrock is a commit installed
+// with go install, which an application's first placement can pin.
 func orgDeps(dir string) deps {
-	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, org: &orgClients{policies: noPolicies, permissions: noPermissions}, cwd: dir, interactive: never, version: installedHead}
+	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, org: &orgClients{policies: noPolicies, keys: noKeys, permissions: noPermissions}, cwd: dir, interactive: never, version: installedHead}
 }
 
 // installedHead is the running bedrock as go install builds the head commit.
@@ -49,6 +49,11 @@ func installedHead() build {
 
 // noPolicies refuses to open an IAM policy reader, as a run without Google credentials.
 func noPolicies(context.Context) (org.PolicyReader, error) {
+	return nil, errors.New("no Google credentials in this test")
+}
+
+// noKeys refuses to open an API key lister, as a run without Google credentials.
+func noKeys(context.Context) (org.KeyLister, error) {
 	return nil, errors.New("no Google credentials in this test")
 }
 
@@ -151,7 +156,7 @@ func TestOrgCheckOwners(t *testing.T) {
 				t.Fatalf("org new: %d %s", code, out)
 			}
 			d := orgDeps(dir)
-			d.org = &orgClients{policies: tt.policies, permissions: noPermissions}
+			d.org = &orgClients{policies: tt.policies, keys: noKeys, permissions: noPermissions}
 			out, err := execute(d, "", "org", "check", "--dir", dir)
 			if err != nil {
 				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
@@ -159,6 +164,111 @@ func TestOrgCheckOwners(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+// fakeKeyLister answers every project's API keys from one map; a project it lacks has
+// none.
+type fakeKeyLister struct {
+	byProject map[string][]org.APIKey
+}
+
+func (f *fakeKeyLister) ProjectKeys(_ context.Context, project string) ([]org.APIKey, error) {
+	return f.byProject[project], nil
+}
+
+func (*fakeKeyLister) Close() error {
+	return nil
+}
+
+// TestOrgCheckAPIKeys: org check lists each API key in an environment project that
+// carries no API restriction, with the project and what to do (Firebase's browser key is
+// the layers workflow's to restrict; any other key is a person's), names none when every
+// key is restricted or there are none, and says what it does when it has no credentials;
+// none of it fails the check.
+func TestOrgCheckAPIKeys(t *testing.T) {
+	t.Parallel()
+
+	const (
+		tst = "imp-tst-gbl-core-1a2b"
+		prd = "imp-prd-gbl-core-5e6f"
+	)
+	lister := func(byProject map[string][]org.APIKey) org.KeyListerFunc {
+		return func(context.Context) (org.KeyLister, error) {
+			return &fakeKeyLister{byProject: byProject}, nil
+		}
+	}
+	tests := []struct {
+		name    string
+		keys    org.KeyListerFunc
+		wantOut []string
+		absent  []string
+	}{
+		{
+			name: "the browser key restricted to the sign-in APIs",
+			keys: lister(map[string][]org.APIKey{tst: {{Name: "projects/" + tst + "/locations/global/keys/0f1e", DisplayName: org.FirebaseBrowserKey, APITargets: org.SignInAPIs}}}),
+			wantOut: []string{
+				"Every API key in the environment projects carries an API restriction.",
+				"owned file(s) match the placement",
+			},
+			absent: []string{"carries no API restriction, so"},
+		},
+		{
+			name: "the browser key unrestricted",
+			keys: lister(map[string][]org.APIKey{prd: {{Name: "projects/" + prd + "/locations/global/keys/0f1e", DisplayName: org.FirebaseBrowserKey}}}),
+			wantOut: []string{
+				`prd (imp-prd-gbl-core-5e6f): the API key "Browser key (auto created by Firebase)" (projects/imp-prd-gbl-core-5e6f/locations/global/keys/0f1e) carries no API restriction, so it answers every API in the project that accepts an API key; the layers workflow restricts it to identitytoolkit.googleapis.com and securetoken.googleapis.com after each apply of 2-env: run the workflow for 2-env (Run workflow, on the Actions tab) to restrict it now (2-env/README.md, Identity Platform).`,
+				"owned file(s) match the placement",
+			},
+			absent: []string{"Every API key in the environment projects carries an API restriction."},
+		},
+		{
+			name: "another key unrestricted",
+			keys: lister(map[string][]org.APIKey{tst: {{Name: "projects/" + tst + "/locations/global/keys/9a8b", DisplayName: "a key made by hand"}}}),
+			wantOut: []string{
+				`tst (imp-tst-gbl-core-1a2b): the API key "a key made by hand" (projects/imp-tst-gbl-core-1a2b/locations/global/keys/9a8b) carries no API restriction, so it answers every API in the project that accepts an API key; no layer declares it: restrict it to the APIs it is for, or delete it.`,
+				"owned file(s) match the placement",
+			},
+		},
+		{
+			name:    "no keys",
+			keys:    lister(nil),
+			wantOut: []string{"Every API key in the environment projects carries an API restriction.", "owned file(s) match the placement"},
+		},
+		{
+			name: "without credentials the check says what it would do",
+			keys: noKeys,
+			wantOut: []string{
+				"API keys not checked (no Google credentials in this test): org check lists each API key in an environment project that carries no API restriction, when it runs with Google credentials that list the projects' API keys (gcloud auth application-default login).",
+				"owned file(s) match the placement",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			d := orgDeps(dir)
+			d.org = &orgClients{policies: noPolicies, keys: tt.keys, permissions: noPermissions}
+			out, err := execute(d, "", "org", "check", "--dir", dir)
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(out, a) {
+					t.Errorf("output carries %q:\n%s", a, out)
 				}
 			}
 		})
@@ -240,7 +350,7 @@ func TestOrgPreflight(t *testing.T) {
 
 			dir := orgRepo(t)
 			d := orgDeps(dir)
-			d.org = &orgClients{policies: noPolicies, permissions: tt.permissions}
+			d.org = &orgClients{policies: noPolicies, keys: noKeys, permissions: tt.permissions}
 			out, err := execute(d, "", "org", "preflight", "--dir", dir)
 			code := 0
 			if err != nil {

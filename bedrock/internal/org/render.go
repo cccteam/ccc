@@ -94,6 +94,34 @@ func (*view) Environments() []string {
 	return Environments
 }
 
+// FirebaseBrowserKey is the display name of the API key Firebase creates when Identity
+// Platform is initialized, which the layers workflow restricts after each apply of 2-env.
+func (*view) FirebaseBrowserKey() string {
+	return FirebaseBrowserKey
+}
+
+// SignInAPITargets is the API restriction the layers workflow sets on Firebase's browser
+// key, as gcloud services api-keys update takes it: one --api-target per sign-in API.
+func (*view) SignInAPITargets() string {
+	targets := make([]string, 0, len(SignInAPIs))
+	for _, api := range SignInAPIs {
+		targets = append(targets, "--api-target=service="+api)
+	}
+
+	return strings.Join(targets, " ")
+}
+
+// SignInAPIsProse names the sign-in APIs, joined with "and".
+func (*view) SignInAPIsProse() string {
+	return prose(SignInAPIs)
+}
+
+// SignInAPIsCode names the sign-in APIs as SignInAPIsProse does, each in backticks, for
+// Markdown.
+func (*view) SignInAPIsCode() string {
+	return prose(backticked(SignInAPIs))
+}
+
 // Production is the last environment: the one a hotfix is based on, and the one whose
 // backups the other environments restore from.
 func (*view) Production() string {

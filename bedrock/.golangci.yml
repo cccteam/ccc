@@ -98,6 +98,9 @@ linters:
             # caller holds: on the organization through the Cloud Resource Manager client
             # above, on the billing account through Cloud Billing's REST client.
             - google.golang.org/api/cloudbilling
+            # org check lists the API keys of the environment projects through the API
+            # Keys REST client, naming each key that carries no API restriction.
+            - google.golang.org/api/apikeys
             # In the application layout the application is named by the module at the
             # repository root, read from its go.mod with the same parser impulse's
             # reader uses.

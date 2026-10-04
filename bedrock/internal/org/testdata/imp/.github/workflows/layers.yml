@@ -7,7 +7,9 @@
 # comment per layer, kept current with the pull request's pushes. A push to master
 # (a merge) applies every layer changed since the last push run that applied everything it touched,
 # as that layer's apply identity, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time, and stops at
-# the first failure; the next push applies the failed layer again beside whatever it touches. Run
+# the first failure; the next push applies the failed layer again beside whatever it touches. After
+# each apply of 2-env it restricts Firebase's browser key in the environment project to the sign-in
+# APIs (2-env/README.md, Identity Platform). Run
 # workflow (the Actions tab) applies one layer again with no change to it, from
 # master alone: 2-env in every environment, tst first, which a registration's
 # second pass needs. A change to .opentofu-version or to this file touches every layer, and the
@@ -305,8 +307,10 @@ jobs:
         with:
           workload_identity_provider: ${{ env.PROVIDER }}
           service_account: ${{ env.IDENTITY }}
+      # gcloud reads the infrastructure app's key for 1-org and restricts Firebase's browser key
+      # after 2-env's apply.
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-        if: matrix.layer == '1-org'
+        if: matrix.layer == '1-org' || matrix.layer == '2-env'
       - name: The infrastructure GitHub App's key, from the boot project
         if: matrix.layer == '1-org'
         id: key
@@ -378,3 +382,29 @@ jobs:
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+      # 2-env alone, after its apply: initializing Identity Platform (2-env/identity-platform.tf)
+      # makes Firebase create an API key in the environment project with no restriction,
+      # "Browser key (auto created by Firebase)", so every API in the project that accepts an API key
+      # answers it. No layer can declare it: OpenTofu adopts a key only by the id Firebase assigns
+      # it, and the Google provider finds no key by its name. Each key of that name is restricted
+      # to the two sign-in APIs the applications' web API keys admit, as the layer identity
+      # (roles/serviceusage.apiKeysAdmin, 1-org's app role set), in the identity's own project, the
+      # environment project. A restriction outlives Firebase making the key again: the next run of
+      # 2-env restricts the new one, and bedrock org check names it meanwhile (2-env/README.md,
+      # Identity Platform).
+      - name: Restrict Firebase's browser key to the sign-in APIs
+        if: matrix.layer == '2-env'
+        env:
+          KEY_NAME: "Browser key (auto created by Firebase)"
+        run: |
+          project=${IDENTITY#*@}
+          project=${project%.iam.gserviceaccount.com}
+          keys=$(gcloud services api-keys list --project "$project" --filter "displayName=\"$KEY_NAME\"" --format 'value(name)')
+          if [ -z "$keys" ]; then
+            echo "No API key named \"$KEY_NAME\" in $project."
+            exit 0
+          fi
+          for key in $keys; do
+            gcloud services api-keys update "$key" --api-target=service=identitytoolkit.googleapis.com --api-target=service=securetoken.googleapis.com
+            echo "Restricted $key (\"$KEY_NAME\") to identitytoolkit.googleapis.com and securetoken.googleapis.com."
+          done
