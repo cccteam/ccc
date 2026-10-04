@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"maps"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -96,12 +97,12 @@ type Placement struct {
 	// default, and a breaking release to it is refused until its setting is written.
 	Maintenance map[string]MaintenanceWindow `json:"maintenance,omitempty"`
 	// Projects are the environment projects by environment, as the organization's
-	// apply chose them: the id and the number (bedrock org register prints the block
-	// once the organization's placement records both). The operations workflow, which
-	// starts a restore or a rerun of an environment from GitHub, names the environment's
-	// workload identity provider and operations identity by them; an environment without
-	// an entry is not wired for it. Production's serves the rerun alone: it is never
-	// restored by a run.
+	// apply chose them: the id and the number (bedrock org register writes them into the
+	// first placement from the organization's, and org render prints the block). The
+	// operations workflow, which starts a restore or a rerun of an environment from
+	// GitHub, names the environment's workload identity provider and operations identity
+	// by them; an environment without an entry is not wired for it. Production's serves
+	// the rerun alone: it is never restored by a run.
 	Projects map[string]Project `json:"projects,omitempty"`
 }
 
@@ -145,6 +146,11 @@ func Machines() []Machine {
 		{Name: MachineE2HighCPU32, CPUs: 32},
 	}
 }
+
+// PlaceholderImage is the image an application's first placement names for every service
+// and job to be created with before the first deploy (placeholderImage): Cloud Run's
+// public sample, which serves on the port Cloud Run gives it and reads nothing.
+const PlaceholderImage = "us-docker.pkg.dev/cloudrun/container/hello"
 
 var (
 	prefixRE = regexp.MustCompile(`^[a-z][a-z0-9]{0,7}$`)
@@ -320,18 +326,46 @@ func (p *Placement) Pinned() bool {
 	return p.BedrockVersion != ""
 }
 
+// MarshalPlacement is the placement as its JSON file holds it: the fields in their
+// order, indented the way a person reads it, ending in a newline.
+func MarshalPlacement(p *Placement) ([]byte, error) {
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return nil, errors.Wrap(err, "json.MarshalIndent()")
+	}
+
+	return append(data, '\n'), nil
+}
+
 // WritePlacement writes the placement to its JSON file, in the fields' order, as
 // bedrock upgrade rewrites it after moving the pin.
 func WritePlacement(file string, p *Placement) error {
-	data, err := json.MarshalIndent(p, "", "  ")
+	data, err := MarshalPlacement(p)
 	if err != nil {
-		return errors.Wrap(err, "json.MarshalIndent()")
+		return err
 	}
-	if err := os.WriteFile(file, append(data, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(file, data, 0o644); err != nil {
 		return errors.Wrapf(err, "os.WriteFile(): %s", file)
 	}
 
 	return nil
+}
+
+// CreatePlacement writes an application's first placement to its JSON file, creating the
+// file's directory when absent, and refuses a file that exists: a placement is the
+// application's from its first write, and nothing overwrites it.
+func CreatePlacement(file string, p *Placement) error {
+	switch _, err := os.Lstat(file); {
+	case err == nil:
+		return errors.Newf("%s exists: an application's first placement is written once and never overwritten", file)
+	case !errors.Is(err, os.ErrNotExist):
+		return errors.Wrap(err, "os.Lstat()")
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
+
+	return WritePlacement(file, p)
 }
 
 // SeedEnvironments are the environments whose database is seeded at a release build:

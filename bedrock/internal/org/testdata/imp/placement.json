@@ -7,6 +7,7 @@
   "githubOrganization": "imp-example",
   "githubMachineAccount": "imp-machine",
   "githubReleaseAppId": "5080645",
+  "githubReleaseAppSlug": "imp-release",
   "githubDefaultBranch": "master",
   "githubInfrastructureAppId": "5080700",
   "githubInfrastructureKeyVersion": "1",
@@ -35,6 +36,6 @@
     "stg": "imp-stg-gbl-core-3c4d",
     "prd": "imp-prd-gbl-core-5e6f"
   },
-  "projectNumbers": {"boot": "100000000001"},
+  "projectNumbers": {"boot": "100000000001", "tst": "100000000002", "stg": "100000000003", "prd": "100000000004"},
   "labels": {"bedrock-lab": "true"}
 }

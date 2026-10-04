@@ -16,11 +16,15 @@ and fails on drift. It renders the pipeline the same way, `cloudbuild.yaml` and
 `cloudbuild-sweep.yaml` at the repository root where Cloud Build reads them, and
 its generate-time step, `cmd/generate/bedrock.go`, beside the
 directive that runs the application's generators.
-Three files are seeded once and then yours: `terraform.tfvars` here, the
+Other files are seeded once and then yours: `terraform.tfvars` here, the
 placement values per environment; `.gitignore` here, keeping the
-per-environment backend caches and saved plans out of the repository; and the
+per-environment backend caches and saved plans out of the repository; the
 `Dockerfile` at the root, the image build in its first shape ("Customizing the
-pipeline").
+pipeline"), with its `.dockerignore`; and release-please's two files at the
+root, which the release workflow reads: `release-please-config.json`, starting
+the releases at 0.1.0 (`initial-version`) with a feature on the minor below
+1.0, and `.release-please-manifest.json`, at 0.0.0 until release-please moves
+it with each release. `bedrock check` refuses the root without either.
 
 ## Applying
 

@@ -270,8 +270,9 @@ workflow, in the environment's GitHub Environment, from the default branch);
 a release a rerun starts waits for its approval in Cloud Build as any
 release does, and no person holds the role anywhere. The application's
 placement records the environment project's id and number (`projects`,
-printed by `bedrock org register` once `placement.json` here records
-`projects` and `projectNumbers`; production's for the rerun), and bedrock
+production's for the rerun: `bedrock org register` writes them into the
+application's first placement from `projects` and `projectNumbers` in
+`placement.json` here, and `bedrock org render` prints them), and bedrock
 renders the workflow with the provider's name (`github_identity_provider`)
 and the identity's email from them.
 

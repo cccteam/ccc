@@ -14,6 +14,8 @@ import (
 	"sort"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
 // ReleaseLineFinding is a release-please setting under which a feature release does not
@@ -26,8 +28,8 @@ type ReleaseLineFinding struct {
 }
 
 // releasePleaseConfig is release-please's configuration file at the application root,
-// the one the rendered release workflow names.
-const releasePleaseConfig = "release-please-config.json"
+// the one the rendered release workflow names and render seeds.
+const releasePleaseConfig = render.ReleasePleaseConfig
 
 // patchForFeature is the setting that puts a feature on the patch below 1.0.
 const patchForFeature = "bump-patch-for-minor-pre-major"
@@ -39,7 +41,7 @@ const patchForFeatureProblem = patchForFeature + " is true: below 1.0 a feature 
 // reports bump-patch-for-minor-pre-major set to true, at the top level or for a package
 // (a package's setting overrides the top level's for it). The file is read by key, as
 // release-please names them. An application without the file has nothing to check here:
-// the release workflow needs the file and says so itself.
+// Run refuses its absence on its own (ReleaseFiles).
 func scanReleaseLines(appDir string) ([]ReleaseLineFinding, error) {
 	src, err := os.ReadFile(filepath.Join(appDir, releasePleaseConfig))
 	if err != nil {

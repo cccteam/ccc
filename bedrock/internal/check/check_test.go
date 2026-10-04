@@ -58,7 +58,9 @@ func TestRun(t *testing.T) {
 		wantFindings []Finding
 		wantUnseeded []string
 		wantRefused  []Authoritative
-		wantOutput   []string
+		// wantReleaseFiles are release-please's files the report refuses as missing.
+		wantReleaseFiles []string
+		wantOutput       []string
 	}{
 		{
 			name:      "the committed stack matches, its file store's bucket policy admitted, with the maintenance warnings the fixture earns",
@@ -124,6 +126,41 @@ func TestRun(t *testing.T) {
 			wantClean:    true,
 			wantUnseeded: []string{"terraform.tfvars"},
 			wantOutput:   []string{"unseeded terraform.tfvars"},
+		},
+		{
+			name: "release-please's configuration missing is refused, not an unseeded line",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				if err := os.Remove(filepath.Join(dir, "root", "release-please-config.json")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantReleaseFiles: []string{"release-please-config.json"},
+			wantOutput:       []string{"refused  release-please-config.json is missing at the application root: the release workflow reads it, and without it no release is cut and nothing reaches an environment; bedrock render seeds it when absent"},
+		},
+		{
+			name: "release-please's manifest missing is refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				if err := os.Remove(filepath.Join(dir, "root", ".release-please-manifest.json")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantReleaseFiles: []string{".release-please-manifest.json"},
+			wantOutput:       []string{"refused  .release-please-manifest.json is missing at the application root"},
+		},
+		{
+			name: "release-please's files edited are the application's",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				if err := os.WriteFile(filepath.Join(dir, "root", ".release-please-manifest.json"), []byte("{\".\": \"0.3.1\"}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantClean: true,
 		},
 		{
 			name: "an authoritative IAM resource anywhere in the stack is refused",
@@ -228,6 +265,9 @@ func TestRun(t *testing.T) {
 			}
 			if strings.Join(report.Unseeded, ",") != strings.Join(tt.wantUnseeded, ",") {
 				t.Errorf("Unseeded = %v, want %v", report.Unseeded, tt.wantUnseeded)
+			}
+			if strings.Join(report.ReleaseFiles, ",") != strings.Join(tt.wantReleaseFiles, ",") {
+				t.Errorf("ReleaseFiles = %v, want %v", report.ReleaseFiles, tt.wantReleaseFiles)
 			}
 			if len(report.Authoritative) != len(tt.wantRefused) {
 				t.Fatalf("Authoritative = %+v, want %+v", report.Authoritative, tt.wantRefused)

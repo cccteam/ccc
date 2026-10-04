@@ -1,15 +1,19 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/org"
+	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
 const orgFixture = "../org/testdata/imp"
@@ -30,10 +34,16 @@ func orgRepo(t *testing.T) string {
 	return dir
 }
 
-// orgDeps are the org commands' seams in tests: no cloud client answers, and the owner
-// report runs without credentials.
+// orgDeps are the org commands' seams in tests: no cloud client answers, the owner
+// report runs without credentials, and the running bedrock is a commit installed with go
+// install, which an application's first placement can pin.
 func orgDeps(dir string) deps {
-	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, policies: noPolicies, cwd: dir, interactive: never}
+	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, policies: noPolicies, cwd: dir, interactive: never, version: installedHead}
+}
+
+// installedHead is the running bedrock as go install builds the head commit.
+func installedHead() build {
+	return build{version: headVersion, kind: buildInstalled}
 }
 
 // noPolicies refuses to open an IAM policy reader, as a run without Google credentials.
@@ -261,7 +271,7 @@ func TestOrgCommands(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				edited := strings.Replace(string(data), `"projectNumbers": {"boot": "100000000001"},`, "", 1)
+				edited := strings.Replace(string(data), `"projectNumbers": {"boot": "100000000001", "tst": "100000000002", "stg": "100000000003", "prd": "100000000004"},`, "", 1)
 				edited = strings.Replace(edited, `    "boot": "imp-boot-gbl-core-a1b2",`, "", 1)
 				if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
 					t.Fatal(err)
@@ -352,6 +362,253 @@ func TestOrgCommands(t *testing.T) {
 				if !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
 				}
+			}
+		})
+	}
+}
+
+// TestOrgRegisterPlacement: register makes the application's first placement from the
+// organization's placement and the running bedrock, writing it into the checkout given
+// or printing it, and reads back through derive as render reads it; it refuses, changing
+// nothing, a checkout that already holds one, an organization whose projects are not all
+// recorded, and a bedrock no placement can pin.
+func TestOrgRegisterPlacement(t *testing.T) {
+	t.Parallel()
+
+	src, sum := releaseServer(t)
+	tests := []struct {
+		name string
+		// running is the bedrock running register; edit changes the organization's
+		// placement before it; checkout is the second argument: "" for none, "new" for an
+		// empty directory, "held" for one already holding a placement, "absent" for a
+		// path that does not exist.
+		running  build
+		edit     func(p *org.Placement)
+		checkout string
+		wantPin  [2]string
+		wantOut  []string
+		wantErr  string
+	}{
+		{
+			name:    "printed, pinned to an installed commit",
+			running: build{version: headVersion, kind: buildInstalled},
+			wantPin: [2]string{headVersion, ""},
+			wantOut: []string{"quill's first placement, pinned to bedrock " + headVersion + ": commit it in the application's repository as infrastructure/placement.json"},
+		},
+		{
+			name:     "written into the checkout, pinned to a release with its checksum",
+			running:  build{version: "v0.4.0", kind: buildStamped},
+			checkout: "new",
+			wantPin:  [2]string{"v0.4.0", sum},
+			wantOut:  []string{"Wrote ", "quill's first placement, pinned to bedrock v0.4.0: commit it in the application's repository"},
+		},
+		{
+			name:     "a checkout that holds a placement already",
+			running:  build{version: headVersion, kind: buildInstalled},
+			checkout: "held",
+			wantErr:  "exists: register writes an application's first placement and never overwrites one; leave the checkout out to print the file instead",
+		},
+		{
+			name:     "a checkout that is not there",
+			running:  build{version: headVersion, kind: buildInstalled},
+			checkout: "absent",
+			wantErr:  "the second argument is the application's checkout, where register writes its first placement (infrastructure/placement.json)",
+		},
+		{
+			name:    "the environments' project numbers not recorded",
+			running: build{version: headVersion, kind: buildInstalled},
+			edit: func(p *org.Placement) {
+				p.ProjectNumbers = map[string]string{"boot": "100000000001", "tst": "100000000002"}
+			},
+			wantErr: "placement.json records no project id and number for stg and prd yet: record 1-org's project_ids and project_numbers outputs there (projects, projectNumbers)",
+		},
+		{
+			name:    "no state bucket recorded",
+			running: build{version: headVersion, kind: buildInstalled},
+			edit: func(p *org.Placement) {
+				p.StateBucket = ""
+			},
+			wantErr: "placement.json records no stateBucket yet",
+		},
+		{
+			name:    "a build from a checkout",
+			running: build{version: headVersion + "+dirty", kind: buildCheckout},
+			wantErr: "this bedrock is " + headVersion + "+dirty, which no placement can pin, and an application's first placement pins the bedrock that writes it: register with a released bedrock",
+		},
+		{
+			name:    "a devel build",
+			running: build{version: develVersion, kind: buildDevel},
+			wantErr: "this bedrock is (devel), which no placement can pin",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			authorizeConnection(t, dir)
+			orgFile := filepath.Join(dir, "placement.json")
+			if tt.edit != nil {
+				p, err := org.ReadPlacement(orgFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				tt.edit(p)
+				if err := p.Write(orgFile); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := os.ReadFile(orgFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"org", "register", "quill", "--dir", dir}
+			var checkout string
+			switch tt.checkout {
+			case "new", "held":
+				checkout = t.TempDir()
+				args = append(args, checkout)
+			case "absent":
+				checkout = filepath.Join(t.TempDir(), "quill")
+				args = append(args, checkout)
+			}
+			held := []byte("{\"prefix\": \"mine\"}\n")
+			if tt.checkout == "held" {
+				if err := os.MkdirAll(filepath.Join(checkout, "infrastructure"), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(checkout, "infrastructure", "placement.json"), held, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			d := orgDeps(dir)
+			d.version = func() build {
+				return tt.running
+			}
+			d.releases = func() *release.Source {
+				return src
+			}
+			out, err := execute(d, "", args...)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+				after, err := os.ReadFile(orgFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(before, after) {
+					t.Errorf("placement.json changed on a refusal:\n%s", after)
+				}
+				if tt.checkout == "held" {
+					if got, err := os.ReadFile(filepath.Join(checkout, "infrastructure", "placement.json")); err != nil || !bytes.Equal(got, held) {
+						t.Errorf("the checkout's placement changed on a refusal: %s %v", got, err)
+					}
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			file := filepath.Join(t.TempDir(), "placement.json")
+			if checkout != "" {
+				file = filepath.Join(checkout, "infrastructure", "placement.json")
+			} else {
+				start := strings.Index(out, "\n{\n")
+				if start < 0 || !strings.HasSuffix(out, "}\n") {
+					t.Fatalf("output ends with no placement:\n%s", out)
+				}
+				if err := os.WriteFile(file, []byte(out[start+1:]), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p, err := derive.ReadPlacement(file)
+			if err != nil {
+				t.Fatalf("derive.ReadPlacement() error = %v", err)
+			}
+			want := &derive.Placement{
+				Prefix: "imp", Environments: []string{"tst", "stg", "prd"},
+				Regions:    []derive.Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}},
+				AppsDomain: "apps.imp.example", HostedDomain: "imp.example", StateBucket: "imp-boot-gbl-state-a1b2",
+				PlaceholderImage: derive.PlaceholderImage, DefaultBranch: "master", Repository: "quill", ReleaseApp: "imp-release",
+				BedrockVersion: tt.wantPin[0], BedrockSHA256: tt.wantPin[1],
+				Labels: map[string]string{"bedrock-lab": "true"}, Seed: []string{"tst"},
+				Projects: map[string]derive.Project{
+					"tst": {ID: "imp-tst-gbl-core-1a2b", Number: "100000000002"},
+					"stg": {ID: "imp-stg-gbl-core-3c4d", Number: "100000000003"},
+					"prd": {ID: "imp-prd-gbl-core-5e6f", Number: "100000000004"},
+				},
+			}
+			if !reflect.DeepEqual(p, want) {
+				t.Errorf("the first placement =\n%+v\nwant\n%+v", p, want)
+			}
+		})
+	}
+}
+
+// TestOrgRegisterThenRender: an application registered into its checkout renders from the
+// placement register wrote and passes bedrock check, with no file copied from another
+// application: render seeds release-please's files, the manifest at 0.0.0.
+func TestOrgRegisterThenRender(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// app is the application registered, a fixture under ../derive/testdata; others
+		// are the applications the organization holds before it.
+		app    string
+		others []string
+	}{
+		{name: "harbor, a Google directory auth", app: "harbor", others: []string{"beacon"}},
+		{name: "beacon, a password auth, the organization's first", app: "beacon"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			authorizeConnection(t, dir)
+			orgFile := filepath.Join(dir, "placement.json")
+			p, err := org.ReadPlacement(orgFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.Applications = tt.others
+			if err := p.Write(orgFile); err != nil {
+				t.Fatal(err)
+			}
+			app := copyRepo(t, filepath.Join("..", "derive", "testdata", tt.app))
+			if out, err := execute(orgDeps(dir), "", "org", "register", tt.app, "--dir", dir, app); err != nil {
+				t.Fatalf("org register error = %v; output:\n%s", err, out)
+			}
+			d := deps{interactive: never, version: installedHead, cwd: app}
+			out, err := execute(d, "", renderCommand)
+			if err != nil {
+				t.Fatalf("render error = %v; output:\n%s", err, out)
+			}
+			for _, want := range []string{"Rendered the " + tt.app + " stack into ", "Seeded release-please-config.json into ", "Seeded .release-please-manifest.json into "} {
+				if !strings.Contains(out, want) {
+					t.Errorf("render output lacks %q:\n%s", want, out)
+				}
+			}
+			if out, err := execute(d, "", checkCommand); err != nil || !strings.Contains(out, "owned file(s) match the code") {
+				t.Errorf("check error = %v; output:\n%s", err, out)
+			}
+			manifest, err := os.ReadFile(filepath.Join(app, ".release-please-manifest.json"))
+			if err != nil || string(manifest) != "{\n  \".\": \"0.0.0\"\n}\n" {
+				t.Errorf("the manifest = %q (%v), want 0.0.0", manifest, err)
 			}
 		})
 	}

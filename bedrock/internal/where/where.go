@@ -269,6 +269,13 @@ func LayerEnvironments(layerDir string) ([]string, error) {
 	return secret.PlacementEnvironments(filepath.Join(layerDir, tfvarsFile))
 }
 
+// PlacementFile is where an application repository keeps its placement in the
+// application layout: placement.json in its infrastructure directory, the application's
+// stack, where render reads it.
+func PlacementFile(repoRoot string) string {
+	return filepath.Join(repoRoot, infrastructureDir, placementFile)
+}
+
 // Placement is the placement beside the layer (placement.json in the layer's directory),
 // the one render derived the stack from: nil, without an error, when the layer has none.
 func Placement(layerDir string) (*derive.Placement, error) {

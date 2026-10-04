@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -516,6 +517,58 @@ func TestPlacementMachine(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("Machine() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCreatePlacement: an application's first placement is written, its directory made,
+// and reads back as written; a placement already there is refused and left as it was.
+func TestCreatePlacement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		held    string
+		wantErr string
+	}{
+		{name: "no placement yet, nor its directory"},
+		{name: "a placement there already", held: "{\"prefix\": \"mine\"}\n", wantErr: "exists: an application's first placement is written once and never overwritten"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			file := filepath.Join(t.TempDir(), "infrastructure", "placement.json")
+			if tt.held != "" {
+				if err := os.MkdirAll(filepath.Dir(file), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(file, []byte(tt.held), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := testPlacement(t)
+			err := CreatePlacement(file, p)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("CreatePlacement() error = %v, wantErr %q", err, tt.wantErr)
+				}
+				if got, err := os.ReadFile(file); err != nil || string(got) != tt.held {
+					t.Errorf("the placement there changed: %q %v", got, err)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("CreatePlacement() error = %v", err)
+			}
+			back, err := ReadPlacement(file)
+			if err != nil {
+				t.Fatalf("ReadPlacement() error = %v", err)
+			}
+			if !reflect.DeepEqual(back, p) {
+				t.Errorf("read back\n%+v\nwant\n%+v", back, p)
 			}
 		})
 	}

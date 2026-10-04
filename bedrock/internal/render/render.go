@@ -7,10 +7,11 @@
 // cloudbuild-sweep.yaml). A seeded file is written once, when absent, and never again:
 // terraform.tfvars holds the placement values a person fills in per environment, the
 // stack's .gitignore keeps the per-environment backend caches and saved plans out of
-// the repository, and the Dockerfile at the application root is the image build a
-// person takes over from its first shape, with the .dockerignore beside it that keeps a
-// local build's context small. Files the tool never writes (the lock file, the
-// placement) have no tier here.
+// the repository, the Dockerfile at the application root is the image build a person
+// takes over from its first shape, with the .dockerignore beside it that keeps a local
+// build's context small, and release-please's configuration and manifest at the root
+// start the application's releases at 0.1.0. Files the tool never writes (the lock
+// file, the placement) have no tier here.
 package render
 
 import (
@@ -91,12 +92,28 @@ const (
 	rulesFile = derive.FirestoreRulesFile
 )
 
+// release-please's two files at the application root, which the rendered release
+// workflow reads: its configuration, and the manifest holding the last released version.
+// Both are seeded, the configuration with initial-version 0.1.0 and the manifest at
+// 0.0.0, so the first release pull request proposes 0.1.0; from then on release-please
+// moves the manifest and the configuration is the application's.
+const (
+	ReleasePleaseConfig   = "release-please-config.json"
+	ReleasePleaseManifest = ".release-please-manifest.json"
+)
+
+// ReleaseFiles are release-please's files, which bedrock check refuses an application
+// without: without them no release is cut, and nothing reaches an environment.
+var ReleaseFiles = []string{ReleasePleaseConfig, ReleasePleaseManifest}
+
 // seeded are the files the tool writes once.
 var seeded = map[string]bool{
-	tfvarsFile:       true,
-	ignoreFile:       true,
-	dockerfileFile:   true,
-	dockerignoreFile: true,
+	tfvarsFile:            true,
+	ignoreFile:            true,
+	dockerfileFile:        true,
+	dockerignoreFile:      true,
+	ReleasePleaseConfig:   true,
+	ReleasePleaseManifest: true,
 }
 
 // placed are the files whose place depends on the application: the generate-time step

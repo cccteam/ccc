@@ -3,6 +3,7 @@ package org
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -66,6 +67,9 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseAppID = "" }, wantErr: "githubReleaseAppId is empty"},
 		{name: "a release app named by slug", mutate: func(p *Placement) { p.GithubReleaseAppID = "imp-release" }, wantErr: "githubReleaseAppId \"imp-release\" is not an App ID"},
 		{name: "no default branch", mutate: func(p *Placement) { p.GithubDefaultBranch = " " }, wantErr: "githubDefaultBranch is empty"},
+		{name: "no release app slug", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "" }, wantErr: `githubReleaseAppSlug "" is not a GitHub App's slug (lowercase letters, digits and single hyphens, as in github.com/apps/<slug>)`},
+		{name: "a release app slug in capitals", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "Imp-Release" }, wantErr: `githubReleaseAppSlug "Imp-Release" is not a GitHub App's slug`},
+		{name: "a release app slug with its bot suffix", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "imp-release[bot]" }, wantErr: `githubReleaseAppSlug "imp-release[bot]" is not a GitHub App's slug`},
 		{name: "no machine account", mutate: func(p *Placement) { p.GithubMachineAccount = "" }, wantErr: "githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it"},
 		{name: "a machine account with a space", mutate: func(p *Placement) { p.GithubMachineAccount = "imp machine" }, wantErr: `githubMachineAccount "imp machine" is not a GitHub login (letters, digits and single hyphens, at most 39 characters)`},
 		{name: "a machine account starting with a hyphen", mutate: func(p *Placement) { p.GithubMachineAccount = "-imp" }, wantErr: `githubMachineAccount "-imp" is not a GitHub login`},
@@ -1382,15 +1386,13 @@ func TestPlacementProjects(t *testing.T) {
 		name     string
 		projects map[string]string
 		wantErr  string
-		// wantMissing are the environments ProjectsMissing names.
-		wantMissing string
 	}{
-		{name: "none recorded yet", wantMissing: "tst,stg,prd"},
+		{name: "none recorded yet"},
 		{name: "all three recorded", projects: map[string]string{"tst": "imp-tst-gbl-core-1a2b", "stg": "imp-stg-gbl-core-3c4d", "prd": "imp-prd-gbl-core-5e6f"}},
-		{name: "one recorded", projects: map[string]string{"tst": "imp-tst-gbl-core-1a2b"}, wantMissing: "stg,prd"},
+		{name: "one recorded", projects: map[string]string{"tst": "imp-tst-gbl-core-1a2b"}},
 		{name: "an environment the model lacks is refused", projects: map[string]string{"qa": "imp-qa-gbl-core-1a2b"}, wantErr: `projects names "qa", which is not one of boot, shr, net, spn, tst, stg, prd`},
 		{name: "an empty project is refused", projects: map[string]string{"tst": " "}, wantErr: "projects.tst is empty"},
-		{name: "the boot and shared projects are not environments", projects: map[string]string{"boot": "imp-boot-gbl-core-1a2b", "shr": "imp-shr-gbl-core-7a8b"}, wantMissing: "tst,stg,prd"},
+		{name: "the boot and shared projects", projects: map[string]string{"boot": "imp-boot-gbl-core-1a2b", "shr": "imp-shr-gbl-core-7a8b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1399,18 +1401,15 @@ func TestPlacementProjects(t *testing.T) {
 			p := testPlacement(t)
 			p.Projects = tt.projects
 			err := p.Validate()
-			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("Validate() error = %v, wantErr %q", err, tt.wantErr)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() error = %v", err)
 				}
 
 				return
 			}
-			if err != nil {
-				t.Fatalf("Validate() error = %v", err)
-			}
-			if got := strings.Join(p.ProjectsMissing(), ","); got != tt.wantMissing {
-				t.Errorf("ProjectsMissing() = %q, want %q", got, tt.wantMissing)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %v, wantErr %q", err, tt.wantErr)
 			}
 		})
 	}
@@ -1496,6 +1495,71 @@ func TestApplicationProjects(t *testing.T) {
 			}
 			if got := strings.Join(missing, ","); got != tt.wantMissing {
 				t.Errorf("missing = %q, want %q", got, tt.wantMissing)
+			}
+		})
+	}
+}
+
+// TestApplicationPlacement: an application's first placement takes every field from the
+// organization's placement and the pin given, and is refused while the organization's
+// placement lacks what it names, or for a pin derive would refuse.
+func TestApplicationPlacement(t *testing.T) {
+	t.Parallel()
+
+	const (
+		commitPin = "v0.0.0-20260928182105-6f6f7795969d"
+		sum       = "0000000000000000000000000000000000000000000000000000000000000000"
+	)
+	tests := []struct {
+		name    string
+		mutate  func(p *Placement)
+		version string
+		sha256  string
+		wantErr string
+	}{
+		{name: "a commit pin", mutate: func(*Placement) {}, version: commitPin},
+		{name: "a release pin with its checksum", mutate: func(*Placement) {}, version: "v0.4.0", sha256: sum},
+		{name: "no labels of the organization's", mutate: func(p *Placement) { p.Labels = nil }, version: commitPin},
+		{name: "a release pin without its checksum", mutate: func(*Placement) {}, version: "v0.4.0", wantErr: "bedrockVersion v0.4.0 is a release, and a release pin carries its bedrockSha256"},
+		{name: "no state bucket", mutate: func(p *Placement) { p.StateBucket = "" }, version: commitPin, wantErr: "placement.json records no stateBucket yet: the seed's state bucket goes there"},
+		{name: "no environment project numbers", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"boot": "1"} }, version: commitPin, wantErr: "placement.json records no project id and number for tst, stg and prd yet"},
+		{name: "no production project", mutate: func(p *Placement) { delete(p.Projects, "prd") }, version: commitPin, wantErr: "placement.json records no project id and number for prd yet"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			tt.mutate(p)
+			got, err := p.ApplicationPlacement("quill", tt.version, tt.sha256)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ApplicationPlacement() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("ApplicationPlacement() error = %v", err)
+			}
+			var labels map[string]string
+			if len(p.Labels) > 0 {
+				labels = p.Labels
+			}
+			want := &derive.Placement{
+				Prefix: "imp", Environments: []string{"tst", "stg", "prd"},
+				Regions:    []derive.Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}},
+				AppsDomain: "apps.imp.example", HostedDomain: "imp.example", StateBucket: "imp-boot-gbl-state-a1b2",
+				PlaceholderImage: derive.PlaceholderImage, DefaultBranch: "master", Repository: "quill", ReleaseApp: "imp-release",
+				BedrockVersion: tt.version, BedrockSHA256: tt.sha256, Labels: labels, Seed: []string{"tst"},
+				Projects: map[string]derive.Project{
+					"tst": {ID: "imp-tst-gbl-core-1a2b", Number: "100000000002"},
+					"stg": {ID: "imp-stg-gbl-core-3c4d", Number: "100000000003"},
+					"prd": {ID: "imp-prd-gbl-core-5e6f", Number: "100000000004"},
+				},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("ApplicationPlacement() =\n%+v\nwant\n%+v", got, want)
 			}
 		})
 	}

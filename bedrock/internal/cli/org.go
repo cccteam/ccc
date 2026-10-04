@@ -7,13 +7,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/org"
+	"github.com/cccteam/ccc/bedrock/internal/release"
+	"github.com/cccteam/ccc/bedrock/internal/where"
 )
 
 const orgPlacementFile = "placement.json"
@@ -97,10 +101,11 @@ By hand, before the layers workflow can run (the commands are in 0-bootstrap/REA
      organization, its machine account (%s, an owner of the organization, named in
      placement.json as githubMachineAccount), this infrastructure repository (never
      managed by the layers; default branch %s), the release, deployer and infrastructure
-     apps with their keys, installed on the organization (the release app's App ID goes
-     into placement.json, githubReleaseAppId; the infrastructure app's App ID and the
-     version of its key in the boot project's container, githubInfrastructureAppId and
-     githubInfrastructureKeyVersion, once 0-bootstrap has made the container), the
+     apps with their keys, installed on the organization (the release app's App ID and
+     slug go into placement.json, githubReleaseAppId and githubReleaseAppSlug; the
+     infrastructure app's App ID and the version of its key in the boot project's
+     container, githubInfrastructureAppId and githubInfrastructureKeyVersion, once
+     0-bootstrap has made the container), the
      organization secrets, the Cloud Build app, and, if a team is to approve changes to
      the applications' check files, that team (githubInfrastructureTeam).
   1. Seed, as %s: the terraform folder at the organization root (%s), the boot
@@ -195,7 +200,7 @@ func newOrgCheck(d deps) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "check",
+		Use:   checkCommand,
 		Short: "Compare the organization's committed layers with what the placement renders",
 		Long: `check renders the organization's layers and the layers workflow afresh and compares every
 owned file with the one in the repository. It exits 1 when any differs or is missing, listing
@@ -288,15 +293,15 @@ func ownerReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
 	}
 }
 
-func newOrgRegister(_ deps) *cobra.Command {
+func newOrgRegister(d deps) *cobra.Command {
 	var (
 		dir       string
 		placement string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "register <app>",
-		Short: "Register an application in the foundation",
+		Use:   "register <app> [<application checkout>]",
+		Short: "Register an application in the foundation and write its first placement",
 		Long: `register adds an application to the organization: its code goes into placement.json's
 applications, the layers' values are rendered from it (1-org's repositories and its
 public-invoker grants, 2-env's list, 2-shr's pushers and pullers, 2-spn's database admins,
@@ -309,15 +314,30 @@ with 2-shr and 2-spn (the grants, on identities that exist now), then the applic
 stack per environment, then 2-net (the hostnames, onto backends that exist now). The files a
 later pull request carries stay in the working tree until then. An application code is 1 to 6
 lowercase alphanumeric characters starting with a letter, registered once. Run from the
-repository root, or name it with --dir. Before 1-org has run, the placement records no
-environment projects and the rendered values carry REPLACEME; record 1-org's project_ids in
-placement.json (projects) and run org render. The Cloud Build GitHub App's browser
-authorization comes before the first application: register refuses while 2-env's
-terraform.tfvars leaves github_app_installation_id or github_oauth_token_secret_version
-unset (2-env/README.md, "The GitHub authorization, before the first application"), since
-the applications' triggers exist once 2-env holds the connection and nothing is built by
-hand before them.`,
-		Args: cobra.ExactArgs(1),
+repository root, or name it with --dir.
+
+It also makes the application's first placement.json, the file bedrock render reads in the
+application's repository (infrastructure/placement.json), from this placement and nothing
+asked: the prefix, the environments, the regions, the domains, the state bucket, the default
+branch, the release app's slug, the labels and the environment projects' ids and numbers,
+with Cloud Run's sample image to create the services with, the application's code as its
+repository's name, the first environment's database seeded, and the bedrock running
+register as the pin (a release with its pipeline binary's checksum from the release's
+checksums.txt, or a commit installed with go install; a build from a checkout is nobody's
+pin and is refused). Given the application's checkout as the second argument (typically a
+sibling of this repository), register writes the file there and refuses to overwrite one
+that exists; without it, register prints the file. The approvals, the maintenance windows,
+the build machine and the instance caps take their defaults; production's maintenance
+window is the team's to write before its first breaking release.
+
+The placement must record 1-org's project ids and numbers for every environment (projects,
+projectNumbers) and the seed's state bucket, which the application's placement names. The
+Cloud Build GitHub App's browser authorization comes before the first application: register
+refuses while 2-env's terraform.tfvars leaves github_app_installation_id or
+github_oauth_token_secret_version unset (2-env/README.md, "The GitHub authorization, before
+the first application"), since the applications' triggers exist once 2-env holds the
+connection and nothing is built by hand before them. A refusal changes nothing.`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := args[0]
 			if placement == "" {
@@ -337,6 +357,16 @@ hand before them.`,
 			if len(unset) > 0 {
 				return errors.Newf("%s leaves %s unset: the Cloud Build GitHub App's browser authorization comes before the first application (2-env/README.md, \"The GitHub authorization, before the first application\"); set both and register again", org.EnvTfvars, strings.Join(unset, " and "))
 			}
+			first, err := d.firstPlacement(cmd.Context(), p, app)
+			if err != nil {
+				return err
+			}
+			target := ""
+			if len(args) == 2 {
+				if target, err = firstPlacementFile(args[1]); err != nil {
+					return err
+				}
+			}
 			if err := p.Write(placement); err != nil {
 				return err
 			}
@@ -350,20 +380,88 @@ hand before them.`,
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", app, placement, written.Owned)
-			if missing := p.ProjectsMissing(); len(missing) > 0 {
-				fmt.Fprintf(out, "The placement records no project for %s: the rendered values carry REPLACEME there until 1-org's project_ids are recorded in placement.json (projects) and org render runs.\n", strings.Join(missing, ", "))
-			}
 			fmt.Fprint(out, workflowNotice(p))
 			fmt.Fprint(out, applySequence(p, app))
-			fmt.Fprint(out, applicationProjects(p, app))
 
-			return nil
+			return writeFirstPlacement(out, first, app, target)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// firstPlacement is the application's first placement: every field from the
+// organization's placement, the pin the bedrock running register.
+func (d deps) firstPlacement(ctx context.Context, p *org.Placement, app string) (*derive.Placement, error) {
+	version, sum, err := d.firstPin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return p.ApplicationPlacement(app, version, sum)
+}
+
+// firstPin is the bedrock pin an application's first placement carries: the bedrock
+// running register, so the application renders with the bedrock that registered it. A
+// release carries its pipeline binary's checksum, read from the release's checksums.txt
+// as bedrock upgrade reads it; a commit installed with go install carries none. Any other
+// build, one from a checkout or (devel), is nobody's pin and is refused.
+func (d deps) firstPin(ctx context.Context) (version, sum string, err error) {
+	running := d.running()
+	if !running.heldToPin() {
+		return "", "", errors.Newf("this bedrock is %s, which no placement can pin, and an application's first placement pins the bedrock that writes it: register with a released bedrock (a binary from its GitHub Release) or one installed at a pushed commit (go install %s@<commit>)", running.version, release.Module)
+	}
+	if release.IsCommitPin(running.version) {
+		return running.version, "", nil
+	}
+	_, sum, err = releaseChecksums(ctx, d.releases(), running.version)
+	if err != nil {
+		return "", "", err
+	}
+
+	return running.version, sum, nil
+}
+
+// firstPlacementFile is where register writes the application's first placement in its
+// checkout: infrastructure/placement.json, where bedrock render reads it. The checkout
+// is a directory, and a placement already there is never overwritten.
+func firstPlacementFile(checkout string) (string, error) {
+	info, err := os.Stat(checkout)
+	if err != nil || !info.IsDir() {
+		return "", errors.Newf("no directory at %s: the second argument is the application's checkout, where register writes its first placement (infrastructure/placement.json)", checkout)
+	}
+	file := where.PlacementFile(checkout)
+	switch _, err := os.Stat(file); {
+	case err == nil:
+		return "", errors.Newf("%s exists: register writes an application's first placement and never overwrites one; leave the checkout out to print the file instead", file)
+	case !errors.Is(err, os.ErrNotExist):
+		return "", errors.Wrap(err, "os.Stat()")
+	}
+
+	return file, nil
+}
+
+// writeFirstPlacement writes the application's first placement to the file, or prints it
+// when there is none, last, so it is copied whole.
+func writeFirstPlacement(out io.Writer, first *derive.Placement, app, file string) error {
+	defaults := "Approvals, maintenance windows, the build machine and instance caps are left to their defaults; production's maintenance window is the team's to write before its first breaking release."
+	if file != "" {
+		if err := derive.CreatePlacement(file, first); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "\nWrote %s, %s's first placement, pinned to bedrock %s: commit it in the application's repository, where bedrock render writes the stack beside it. %s\n", file, app, first.BedrockVersion, defaults)
+
+		return nil
+	}
+	data, err := derive.MarshalPlacement(first)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "\n%s's first placement, pinned to bedrock %s: commit it in the application's repository as infrastructure/placement.json, where bedrock render reads it (bedrock org register %s <checkout> writes it there instead). %s\n%s", app, first.BedrockVersion, app, defaults, data)
+
+	return nil
 }
 
 // applicationProjects is the block the application's placement records for the
@@ -377,7 +475,7 @@ func applicationProjects(p *org.Placement, app string) string {
 		fmt.Fprintf(&b, "\nRecord in %s's placement.json (infrastructure/placement.json), for the operations workflow that starts a restore or a rerun of an environment from GitHub (production's for the rerun alone):\n%s\n", app, block)
 	}
 	if len(missing) > 0 {
-		fmt.Fprintf(&b, "\nThe operations workflow cannot be wired for %s yet: record 1-org's project_ids and project_numbers in placement.json (projects, projectNumbers), then run org register's print again with org render.\n", strings.Join(missing, ", "))
+		fmt.Fprintf(&b, "\nThe operations workflow cannot be wired for %s yet: record 1-org's project_ids and project_numbers in placement.json (projects, projectNumbers) and run org render again, which prints the block; org register writes it into a new application's first placement.\n", strings.Join(missing, ", "))
 	}
 
 	return b.String()
@@ -399,8 +497,9 @@ until then:
   3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and
      2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
      database admins, on identities that exist now.
-  4. %s's own stack, rendered in its repository (bedrock render), applied per environment
-     by its pipeline with the first release.
+  4. %s's own stack, rendered in its repository (bedrock render) from its first
+     placement.json (below), applied per environment by its pipeline with the first
+     release.
   5. 2-net/applications.auto.tfvars: the hostnames, onto the backends the stack created.
 `, p.GithubDefaultBranch, app, app)
 }

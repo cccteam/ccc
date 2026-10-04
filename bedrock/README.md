@@ -105,8 +105,9 @@ again does not, because its pull request is already labeled as tagged.
   the file is rendered again.
 - **Seeded file**: a file bedrock writes once when it is absent and then leaves to a
   person: `terraform.tfvars` (the placement values per environment: the pins, the build
-  secrets, the substitutions), the stack's `.gitignore` and the Dockerfile at the
-  application root.
+  secrets, the substitutions), the stack's `.gitignore`, and at the application root the
+  Dockerfile with its `.dockerignore` and release-please's two files,
+  `release-please-config.json` and `.release-please-manifest.json`.
 - **Pipeline**: `cloudbuild.yaml`, the deploy sequence Cloud Build runs on a pull request's
   `/gcbrun` comment and on a release tag. Every step but the image build is a `bedrock
   deploy` command run by the pinned bedrock release; the application customizes it
@@ -136,6 +137,67 @@ again does not, because its pull request is already labeled as tagged.
   below 1.0 too (release-please's `bump-patch-for-minor-pre-major` off; `check` refuses
   it on), so a feature production does not run yet opens a new line; a fix is a patch on
   the line, a breaking change advances the minor.
+
+## The application's placement
+
+An application's `placement.json`, in its repository's `infrastructure` directory beside
+the stack, records what the code cannot know. `bedrock org register <app> <checkout>`
+writes the first one from the organization's placement (`bedrock org`, below), and the
+application's team owns it from then on: `bedrock upgrade` moves the pin, and a person
+writes the optional fields. A field the file does not know is refused, and so is a value
+of the wrong shape. Each field, what it means, where the first placement takes it from,
+and what its absence means:
+
+- `prefix`: the organization's naming prefix; every resource name starts with
+  `<prefix>-<env>`. From the organization's `prefix`. Required.
+- `environments`: the environments in promotion order; pull requests deploy to the first,
+  and the last is production. The model's three, `tst`, `stg` and `prd`. Required.
+- `regions`: the Cloud Run regions, each a `name` and the `code` regional resources are
+  named by; the first is the primary. From the organization's `regions`. Required.
+- `appsDomain`: the domain the application's hostnames are under: `<app>-<env>.<domain>`,
+  and `<app>.<domain>` in production. From the organization's `appsDomain`. Required.
+- `hostedDomain`: the Google Workspace domain a directory sign-in limits logins to. From
+  the organization's `organizationDomain`. Required.
+- `stateBucket`: the Cloud Storage bucket holding every layer's state, which the stack's
+  backend writes to and its reads of the organization's layers read from. From the
+  organization's `stateBucket`. Required.
+- `placeholderImage`: the image the services and the job are created with before the
+  first deploy, after which the pipeline owns the image. Cloud Run's public sample,
+  `us-docker.pkg.dev/cloudrun/container/hello`. Required.
+- `defaultBranch`: the branch pull requests target and releases are cut on. From the
+  organization's `githubDefaultBranch`. Required.
+- `repository`: the application repository's name, the `source_repo` label every
+  resource carries. The application's code, the name `1-org` gives its repository.
+  Required.
+- `releaseApp`: the slug of the GitHub App release-please runs as; the pipeline accepts
+  a release tag only from a GitHub Release that app authored. From the organization's
+  `githubReleaseAppSlug`. Required.
+- `bedrockVersion` and `bedrockSha256`: the bedrock the pipeline and the infrastructure
+  check run (Install, above): a release with the SHA-256 of its linux/amd64 binary, or a
+  commit pin with none. The bedrock that ran `org register`; `bedrock upgrade` moves it.
+  Both absent, the placement is unpinned, and `render` and `check` refuse it.
+- `labels`: labels on every resource beside the ones the stack derives. From the
+  organization's `labels`. Absent, none.
+- `seed`: the environments whose database takes the development seed (`schema/devseed`)
+  at a release build. The first environment. Absent, none; production is never seeded.
+- `projects`: each environment project's `id` and `number`, by which the operations
+  workflow, started from GitHub (`bedrock restore`, `bedrock rerun`), names the
+  environment's identity provider and operations identity. From the organization's
+  `projects` and `projectNumbers`, 1-org's outputs. An environment without an entry
+  cannot be operated from GitHub.
+- `approvals`: the environments whose release waits for a person's approval in Cloud
+  Build. Not written. Absent, every environment but the first.
+- `maintenance`: each environment's maintenance window, the time it may take a release
+  that interrupts service (Maintenance windows, below). Not written. Absent, every
+  environment but production is `anytime`; production has none, and a breaking release
+  to it is refused until the team writes its window, which is done before the first
+  breaking release.
+- `buildMachine`: the Cloud Build machine the pipeline's builds run on, one of
+  `E2_MEDIUM`, `E2_STANDARD_2`, `E2_HIGHCPU_8` and `E2_HIGHCPU_32`. Not written. Absent,
+  Cloud Build's default machine.
+- `maxInstances`: the most Cloud Run instances the service may run per region, by
+  environment (`{"prd": 10}`), at least 1 each (bedrock render, below). Not written.
+  Absent, or for an environment it leaves out, no cap: Cloud Run's default maximum.
 
 ## bedrock render
 
@@ -241,6 +303,13 @@ It also refuses:
   directory staying one sequence; a changed seed applies from the start by recreating
   the database: a pull request's on its next build, a seeded environment's by the next
   release, as a restore run the release asks for itself.
+- an application root without release-please's configuration
+  (`release-please-config.json`) or its manifest (`.release-please-manifest.json`),
+  naming the file: the release workflow reads both, and without them no release is cut
+  and nothing reaches an environment. `bedrock render` seeds both when absent, the
+  configuration with `initial-version` 0.1.0 and the manifest at 0.0.0, so the first
+  release pull request proposes 0.1.0; release-please moves the manifest from then on,
+  and both are the application's to edit.
 - a release-please configuration (`release-please-config.json`) with
   `bump-patch-for-minor-pre-major` true, at the top level or for a package: below 1.0 a
   feature release would bump the patch and stay on production's hotfix line
@@ -328,8 +397,9 @@ Push the commit before pinning it: the proxy knows only pushed commits, and when
 asked about one too soon it remembers for about 30 minutes that it did not know it.
 `upgrade` then says to push first and retry.
 
-`render` and `check` refuse a placement with no pin at all (a new application runs
-`upgrade` first), and a placement pinned to another bedrock than the one running them
+`render` and `check` refuse a placement with no pin at all (an application's first
+placement, which `bedrock org register` writes, carries the pin of the bedrock that wrote
+it), and a placement pinned to another bedrock than the one running them
 when that one is held to its pin: a release, however it was built, and a commit installed
 with `go install`. The refusal names how to install the pinned one: its release page, or
 `go install github.com/cccteam/ccc/bedrock@<pin>`. A build from a checkout, at any
@@ -947,7 +1017,8 @@ anywhere: `bedrock rerun` is its door.
 developers authenticate to GitHub and nowhere else, and nobody sets up a cloud tool to
 operate an environment. The command checks that the environment is not production, that
 the release exists, and that the placement records the environment's project
-(`projects`, the id and the number, which `bedrock org register` prints), then
+(`projects`, the id and the number, which `bedrock org register` writes into the
+application's first placement), then
 dispatches the repository's operations workflow (`.github/workflows/operations.yml`,
 rendered and owned by bedrock) as the person signed in to gh, and prints where to watch
 it; the Run workflow button on the Actions tab starts the same job. The job runs in the
@@ -1003,7 +1074,7 @@ where the layer's `domains.tf` registers it through Cloud Domains.
 bedrock org new ../infrastructure --placement placement.json   # a foundation for an organization that has none
 bedrock org render                                              # after a placement change
 bedrock org check                                               # the committed layers against the placement
-bedrock org register quill                                      # an application joins the foundation
+bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
 ```
 
 `org new` renders the six layers, each with its `.tf` files, its README and its seeded
@@ -1064,6 +1135,20 @@ have), then 1-org's public-invoker grants with 2-shr and 2-spn (grants on identi
 exist now), then the application's own stack per environment, then 2-net. A file a later
 pull request carries stays in the working tree until then.
 
+`org register` also makes the application's first `placement.json` (The application's
+placement, above), every field from the organization's placement and none asked of the
+person, pinned to the bedrock running it: a release with its linux/amd64 binary's
+checksum, read from the release's `checksums.txt` as `bedrock upgrade` reads it, or a
+commit installed with `go install`; a build from a checkout or a `(devel)` build is
+nobody's pin, and register refuses to run on one. The optional second argument is the
+application's checkout (`bedrock org register quill ../quill`, typically a sibling of the
+infrastructure repository's checkout): register writes the file there as
+`infrastructure/placement.json`, where `bedrock render` reads it, and refuses when one is
+there already, since a placement is never overwritten. Without it, register prints the
+file to be committed there. Register refuses, changing nothing, while the organization's
+placement lacks the state bucket (`stateBucket`) or an environment project's id or number
+(`projects`, `projectNumbers`), which the application's placement names.
+
 The application's GitHub repository is configured by `1-org`, with the GitHub provider,
 never by a bedrock command: the repository itself (private; squash the only merge method,
 the squashed commit titled from the pull request; the head branch deleted on merge; never
@@ -1081,17 +1166,19 @@ infrastructure GitHub App's
 installation token, minted in the run; a person applying by hand uses their own sign-in,
 `GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
 App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
-by its slug), the default branch (`githubDefaultBranch`) and the team
+by its slug) and also records the slug (`githubReleaseAppSlug`, the name in the app's
+address, `github.com/apps/<slug>`), which each application's placement names as the
+author of its releases, the default branch (`githubDefaultBranch`) and the team
 (`githubInfrastructureTeam`, empty for none). A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
 `hotfix` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
 decides. Once `placement.json` records the environment projects' ids and numbers
 (`projects` and `projectNumbers`, from 1-org's `project_ids` and `project_numbers`
-outputs), `org register` and `org render` print the `projects` block an application's
-placement records for the operations workflow, which starts a restore or a rerun of an
-environment from GitHub (`bedrock restore`, `bedrock rerun`); production's entry serves
-the rerun alone.
+outputs), `org render` prints the `projects` block an application's placement records
+for the operations workflow, which starts a restore or a rerun of an environment from
+GitHub (`bedrock restore`, `bedrock rerun`), and `org register` writes it into a new
+application's first placement; production's entry serves the rerun alone.
 
 ## The application's pipeline
 

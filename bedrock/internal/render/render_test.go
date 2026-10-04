@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	goversion "go/version"
@@ -432,6 +433,98 @@ func TestWrite(t *testing.T) {
 				}
 				if string(got) != want {
 					t.Errorf("%s = %q, want %q", path, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestReleaseFiles: render seeds release-please's configuration and manifest at the
+// application root, the configuration starting the releases at 0.1.0 (initial-version)
+// with a feature on the minor below 1.0, the manifest at 0.0.0, and keeps either once the
+// application has it.
+func TestReleaseFiles(t *testing.T) {
+	t.Parallel()
+
+	files, err := Render(deriveFixture(t, "harbor", "placement.json"))
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	rendered := map[string]File{}
+	for _, f := range files {
+		if f.Root {
+			rendered[f.Path] = f
+		}
+	}
+	var config map[string]any
+	if err := json.Unmarshal(rendered[ReleasePleaseConfig].Content, &config); err != nil {
+		t.Fatalf("%s does not read: %v", ReleasePleaseConfig, err)
+	}
+	var manifest map[string]string
+	if err := json.Unmarshal(rendered[ReleasePleaseManifest].Content, &manifest); err != nil {
+		t.Fatalf("%s does not read: %v", ReleasePleaseManifest, err)
+	}
+	tests := []struct {
+		name string
+		got  any
+		want any
+	}{
+		{name: "the configuration is seeded at the root", got: rendered[ReleasePleaseConfig].Tier == Seeded && rendered[ReleasePleaseConfig].Root, want: true},
+		{name: "the manifest is seeded at the root", got: rendered[ReleasePleaseManifest].Tier == Seeded && rendered[ReleasePleaseManifest].Root, want: true},
+		{name: "the first release is 0.1.0", got: config["initial-version"], want: "0.1.0"},
+		{name: "a feature advances the minor below 1.0", got: config["bump-patch-for-minor-pre-major"], want: false},
+		{name: "a breaking change advances the minor below 1.0", got: config["bump-minor-pre-major"], want: true},
+		{name: "the tags are v<version>, as the pipeline reads them", got: config["include-v-in-tag"], want: true},
+		{name: "one package, the repository", got: fmt.Sprint(config["packages"]), want: "map[.:map[]]"},
+		{name: "the manifest starts at 0.0.0", got: manifest["."], want: "0.0.0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.got != tt.want {
+				t.Errorf("got %v, want %v", tt.got, tt.want)
+			}
+		})
+	}
+
+	seeding := []struct {
+		name       string
+		existing   map[string]string
+		wantSeeded []string
+		wantKept   []string
+	}{
+		{name: "an application without them gets both", wantSeeded: []string{ReleasePleaseConfig, ReleasePleaseManifest}},
+		{
+			name:       "a manifest release-please moved is kept",
+			existing:   map[string]string{ReleasePleaseManifest: "{\".\": \"0.3.1\"}\n"},
+			wantSeeded: []string{ReleasePleaseConfig},
+			wantKept:   []string{ReleasePleaseManifest},
+		},
+	}
+	for _, tt := range seeding {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			appDir := t.TempDir()
+			for name, content := range tt.existing {
+				if err := os.WriteFile(filepath.Join(appDir, name), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			written, err := Write([]File{rendered[ReleasePleaseConfig], rendered[ReleasePleaseManifest]}, filepath.Join(t.TempDir(), "stack"), appDir)
+			if err != nil {
+				t.Fatalf("Write() error = %v", err)
+			}
+			if strings.Join(written.Seeded, ",") != strings.Join(tt.wantSeeded, ",") {
+				t.Errorf("Write() seeded = %v, want %v", written.Seeded, tt.wantSeeded)
+			}
+			if strings.Join(written.Kept, ",") != strings.Join(tt.wantKept, ",") {
+				t.Errorf("Write() kept = %v, want %v", written.Kept, tt.wantKept)
+			}
+			for name, content := range tt.existing {
+				if got, err := os.ReadFile(filepath.Join(appDir, name)); err != nil || string(got) != content {
+					t.Errorf("%s = %q (%v), want %q kept", name, got, err, content)
 				}
 			}
 		})

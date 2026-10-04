@@ -124,7 +124,9 @@ First-time setup, by hand, before any identity can run:
    triggers exist once `2-env` holds the connection and nothing is built by
    hand before them.
 
-`bedrock org register <app>` prints the pull requests a registration takes.
+`bedrock org register <app> [<application checkout>]` prints the pull requests
+a registration takes, and writes the application's first `placement.json`
+into its checkout (`infrastructure/placement.json`), or prints it.
 
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.

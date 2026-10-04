@@ -111,7 +111,7 @@ jobs:
           esac
           project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
           if [ -z "$project" ]; then
-            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
             exit 1
           fi
           for name in project provider identity trigger restore; do
@@ -170,7 +170,7 @@ jobs:
           esac
           project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
           if [ -z "$project" ]; then
-            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
             exit 1
           fi
           for name in project provider identity trigger; do
@@ -246,7 +246,7 @@ jobs:
           fi
           project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
           if [ -z "$project" ]; then
-            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org register prints) in infrastructure/placement.json and render again"
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
             exit 1
           fi
           for name in project provider identity trigger logs; do

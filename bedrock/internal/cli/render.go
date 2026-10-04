@@ -42,9 +42,12 @@ the deploy sequence is bedrock's, and an application customizes it through hooks
 (infrastructure/hooks/<stage>.sh) and the substitutions declared in its placement values,
 never by editing the file. terraform.tfvars is seeded: written when absent, then a person's,
 holding the placement values filled in per environment; so are the stack's .gitignore, which
-keeps the per-environment backend caches and saved plans out of the repository, and the
-Dockerfile at the application root, the image build in its first shape. The placement is
-read from --placement, or from placement.json in the stack directory.`,
+keeps the per-environment backend caches and saved plans out of the repository, the
+Dockerfile at the application root, the image build in its first shape, with its
+.dockerignore, and release-please's two files there, release-please-config.json (the
+first release 0.1.0, a feature on the minor below 1.0) and .release-please-manifest.json
+(at 0.0.0, which release-please then moves), which the release workflow reads. The
+placement is read from --placement, or from placement.json in the stack directory.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appDir, outDir, err := d.stack(appFlag, outFlag)
@@ -71,8 +74,14 @@ read from --placement, or from placement.json in the stack directory.`,
 				switch name {
 				case "Dockerfile":
 					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s into %s; the image build is yours from here.\n", name, appDir)
+				case ".dockerignore":
+					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s into %s; what a local image build leaves out of its context.\n", name, appDir)
 				case ".gitignore":
 					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s; the backend caches and saved plans stay out of the repository.\n", name)
+				case render.ReleasePleaseConfig:
+					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s into %s; release-please's configuration, yours from here.\n", name, appDir)
+				case render.ReleasePleaseManifest:
+					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s into %s at 0.0.0, so the first release pull request proposes 0.1.0; release-please moves it from then on.\n", name, appDir)
 				default:
 					fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s; fill in the placement per environment there.\n", name)
 				}

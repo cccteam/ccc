@@ -96,6 +96,11 @@ type Report struct {
 	// ReleaseLines are the release-please settings under which a feature release would
 	// not open a new hotfix line (a feature on the patch below 1.0).
 	ReleaseLines []ReleaseLineFinding
+	// ReleaseFiles are release-please's files the application root lacks (its
+	// configuration, its manifest): seeded files like the Dockerfile, but without them
+	// the release workflow cuts no release and nothing reaches an environment, so their
+	// absence is refused where another seeded file's is a line of the report.
+	ReleaseFiles []string
 	// Maintenance are the warnings about the maintenance windows: production without a
 	// setting, a release file the checkout lacks, a dated slot that has passed. Warnings,
 	// not drift: the check stays clean, so the refusal at run start is never the first
@@ -111,9 +116,10 @@ type MaintenanceFinding struct {
 
 // Clean reports no drift, no refused resource, a sound migration sequence, every
 // required build secret declared, every job's binary built, reserved stages holding
-// their install alone, and release lines that a feature release opens.
+// their install alone, release lines that a feature release opens, and release-please's
+// files in place.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.JobNames) == 0 && len(r.Stages) == 0 && len(r.ReleaseLines) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.JobNames) == 0 && len(r.Stages) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseFiles) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -136,7 +142,10 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 			return nil, errors.Wrapf(err, "os.ReadFile(): %s", f.Path)
 		}
 		if f.Tier == render.Seeded {
-			if err != nil {
+			switch {
+			case err != nil && f.Root && slices.Contains(render.ReleaseFiles, f.Path):
+				r.ReleaseFiles = append(r.ReleaseFiles, f.Path)
+			case err != nil:
 				r.Unseeded = append(r.Unseeded, f.Path)
 			}
 
@@ -372,6 +381,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, rl := range r.ReleaseLines {
 		fmt.Fprintf(w, "  refused  %s: %s\n", rl.Path, rl.Problem)
+	}
+	for _, path := range r.ReleaseFiles {
+		fmt.Fprintf(w, "  refused  %s is missing at the application root: the release workflow reads it, and without it no release is cut and nothing reaches an environment; bedrock render seeds it when absent\n", path)
 	}
 	for _, name := range r.MissingStages {
 		fmt.Fprintf(w, "  warning  Dockerfile has no %s stage: the image build caches nothing for %s, and every environment's build repeats it; the seeded Dockerfile (bedrock render into an empty directory) shows the stage\n", name, reserved[name].what)

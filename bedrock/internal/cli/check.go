@@ -8,6 +8,9 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/check"
 )
 
+// checkCommand is the name of the check commands, the application's and the organization's.
+const checkCommand = "check"
+
 func newCheck(d deps) *cobra.Command {
 	var (
 		appFlag   string
@@ -16,13 +19,14 @@ func newCheck(d deps) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "check [--app <dir>] [--dir <dir>]",
+		Use:   checkCommand + " [--app <dir>] [--dir <dir>]",
 		Short: "Compare a committed stack with what the code declares",
 		Long: `check renders the application stack afresh and compares every owned file with the one in
 the stack directory, and the files it owns at the application root (cloudbuild.yaml,
 cloudbuild-sweep.yaml, and the generate-time step cmd/generate/bedrock.go) with the ones there. It exits 1 when any differs or is missing, listing each with
 the first line that differs: the drift between the code and the committed infrastructure.
-Seeded files (terraform.tfvars, .gitignore, the Dockerfile) are a person's and are not compared.
+Seeded files (terraform.tfvars, .gitignore, the Dockerfile, release-please's files) are a
+person's and are not compared.
 
 It also refuses a schema migrations directory, or the seed directory beside it
 (schema/devseed), whose files do not form the sequence the migrate command applies:
@@ -31,6 +35,11 @@ present (a history consolidated above 000001 passes; a skipped number does not).
 pipeline repeats that rule on every build and, in a pull-request build, also refuses a
 migration modified, renamed or removed against the default branch, and an index the
 default branch has taken since the branch was cut.
+
+It refuses an application root without release-please's configuration or its manifest
+(release-please-config.json, .release-please-manifest.json): the release workflow reads both,
+and without them no release is cut and nothing reaches an environment. bedrock render seeds
+both when absent; edited, they are the application's.
 
 The build secrets: a secret the Dockerfile mounts as required (--mount=type=secret,
 id=NAME,required=true) must be declared in every environment's build_secrets in

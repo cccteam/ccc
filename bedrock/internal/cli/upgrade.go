@@ -111,13 +111,9 @@ func (d deps) upgrade(cmd *cobra.Command, args []string, appDir, dir, placement 
 func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, p *derive.Placement, version, appDir, dir, placement string) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
-	sums, err := src.Checksums(ctx, version)
+	sums, pipelineSum, err := releaseChecksums(ctx, src, version)
 	if err != nil {
 		return err
-	}
-	pipelineSum, ok := sums[release.PipelineAsset()]
-	if !ok {
-		return errors.Newf("bedrock %s publishes no %s, the binary the pipeline runs: its %s does not list it", version, release.PipelineAsset(), release.ChecksumsFile)
 	}
 	asset := release.Asset(runtime.GOOS, runtime.GOARCH)
 	sum, ok := sums[asset]
@@ -145,6 +141,22 @@ func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, p *deriv
 	fmt.Fprintf(out, "Commit %s with the rendered files: from that commit the pipeline and the infrastructure check run bedrock %s.\n", placement, version)
 
 	return nil
+}
+
+// releaseChecksums reads a release's checksums file, and in it the checksum of the
+// binary the pipeline runs, which a release pin carries (bedrockSha256); a release whose
+// file does not list that binary is refused.
+func releaseChecksums(ctx context.Context, src *release.Source, version string) (sums release.Checksums, pipelineSum string, err error) {
+	sums, err = src.Checksums(ctx, version)
+	if err != nil {
+		return nil, "", err
+	}
+	pipelineSum, ok := sums[release.PipelineAsset()]
+	if !ok {
+		return nil, "", errors.Newf("bedrock %s publishes no %s, the binary the pipeline runs: its %s does not list it", version, release.PipelineAsset(), release.ChecksumsFile)
+	}
+
+	return sums, pipelineSum, nil
 }
 
 // upgradeToCommit moves the pin to a commit: its pseudo-version and no checksum, which also

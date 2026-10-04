@@ -63,19 +63,19 @@ func TestRenderThenCheck(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		afterFunc func(t *testing.T, dir string)
+		afterFunc func(t *testing.T, dir, app string)
 		wantCode  int
 		wantOut   []string
 	}{
 		{
 			name:      "a fresh render checks clean",
-			afterFunc: func(*testing.T, string) {},
+			afterFunc: func(*testing.T, string, string) {},
 			wantCode:  0,
 			wantOut:   []string{"22 owned file(s) match the code"},
 		},
 		{
 			name: "an edited owned file fails the check",
-			afterFunc: func(t *testing.T, dir string) {
+			afterFunc: func(t *testing.T, dir, _ string) {
 				t.Helper()
 
 				if err := os.WriteFile(filepath.Join(dir, "outputs.tf"), []byte("# nothing\n"), 0o600); err != nil {
@@ -86,8 +86,20 @@ func TestRenderThenCheck(t *testing.T) {
 			wantOut:  []string{"differs  outputs.tf:1"},
 		},
 		{
+			name: "release-please's configuration removed fails the check, naming the file",
+			afterFunc: func(t *testing.T, _, app string) {
+				t.Helper()
+
+				if err := os.Remove(filepath.Join(app, "release-please-config.json")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantCode: 1,
+			wantOut:  []string{"22 owned file(s) match the code", "refused  release-please-config.json is missing at the application root", "bedrock render seeds it when absent"},
+		},
+		{
 			name: "an edited seeded file is left alone",
-			afterFunc: func(t *testing.T, dir string) {
+			afterFunc: func(t *testing.T, dir, _ string) {
 				t.Helper()
 
 				if err := os.WriteFile(filepath.Join(dir, "terraform.tfvars"), []byte("state_bucket = \"mine\"\n"), 0o600); err != nil {
@@ -107,7 +119,15 @@ func TestRenderThenCheck(t *testing.T) {
 			if code != 0 || !strings.Contains(out, "Rendered the harbor stack") || !strings.Contains(out, "Seeded terraform.tfvars") || !strings.Contains(out, "Rendered the pipeline into "+app+": .github/workflows/infrastructure.yml, .github/workflows/operations.yml, .github/workflows/release-please.yml, cloudbuild-sweep.yaml, cloudbuild.yaml, cmd/generate/bedrock.go.") {
 				t.Fatalf("render exit = %d, output:\n%s", code, out)
 			}
-			tt.afterFunc(t, dir)
+			for _, seeded := range []string{
+				"Seeded release-please-config.json into " + app + "; release-please's configuration, yours from here.",
+				"Seeded .release-please-manifest.json into " + app + " at 0.0.0, so the first release pull request proposes 0.1.0",
+			} {
+				if !strings.Contains(out, seeded) {
+					t.Errorf("render output lacks %q:\n%s", seeded, out)
+				}
+			}
+			tt.afterFunc(t, dir, app)
 			code, out = run(t, "check", "--app", app, "--dir", dir, "--placement", placement)
 			if code != tt.wantCode {
 				t.Errorf("check exit = %d, want %d; output:\n%s", code, tt.wantCode, out)

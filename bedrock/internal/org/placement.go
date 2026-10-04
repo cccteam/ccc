@@ -9,6 +9,7 @@ package org
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -18,6 +19,8 @@ import (
 	"time"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 const (
@@ -40,6 +43,8 @@ var (
 	groupAddressRE = regexp.MustCompile(`^[^@\s:/]+@[^@\s:/]+\.[^@\s:/]+$`)
 	// githubLoginRE is a GitHub login: letters and digits, single hyphens between them.
 	githubLoginRE = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
+	// appSlugRE is a GitHub App's slug: lowercase letters and digits, hyphens between.
+	appSlugRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 )
 
 // The environments' entitlements, by the key placement.json names each under
@@ -100,6 +105,11 @@ type Placement struct {
 	// from the app's settings page. The id, not the slug: a private app cannot be
 	// read by its slug with the operator's token.
 	GithubReleaseAppID string `json:"githubReleaseAppId"`
+	// GithubReleaseAppSlug is the same app's slug, the name in its page's address
+	// (github.com/apps/<slug>): the releases it cuts carry <slug>[bot] as their author,
+	// and an application's pipeline accepts a release from that author alone, so each
+	// application's placement records it (releaseApp), from here.
+	GithubReleaseAppSlug string `json:"githubReleaseAppSlug"`
 	// GithubDefaultBranch is the default branch of every application repository, from
 	// which alone the operations workflow's Environments deploy, and of this repository,
 	// from which alone the layers workflow applies.
@@ -156,8 +166,9 @@ type Placement struct {
 	// ProjectNumbers are the projects' numbers by the same keys: boot from the seed (the
 	// layers workflow names the boot project's identity provider by it), the rest from
 	// 1-org's project_numbers output, recorded beside Projects. An application's placement
-	// records its environments' ids and numbers together (bedrock org register prints
-	// the block), for the operations workflow that starts a restore from GitHub.
+	// records its environments' ids and numbers together (bedrock org register writes
+	// them into its first placement, org render prints the block), for the operations
+	// workflow that starts a restore from GitHub.
 	ProjectNumbers map[string]string `json:"projectNumbers,omitempty"`
 	// Labels are the labels every project and bucket carries beyond the model's own.
 	Labels map[string]string `json:"labels"`
@@ -272,8 +283,8 @@ func (p *Placement) Validate() error {
 }
 
 // validateGithubApps refuses a GitHub App named by its slug instead of its App ID, a
-// key version that is not a version's number (latest among them), and a machine account
-// that is not named or not a GitHub login.
+// release app's slug that is not one, a key version that is not a version's number
+// (latest among them), and a machine account that is not named or not a GitHub login.
 func (p *Placement) validateGithubApps() error {
 	if strings.TrimSpace(p.GithubMachineAccount) == "" {
 		return errors.New("githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it")
@@ -283,6 +294,9 @@ func (p *Placement) validateGithubApps() error {
 	}
 	if !projectNumberRE.MatchString(p.GithubReleaseAppID) {
 		return errors.Newf("githubReleaseAppId %q is not an App ID (digits)", p.GithubReleaseAppID)
+	}
+	if !appSlugRE.MatchString(p.GithubReleaseAppSlug) {
+		return errors.Newf("githubReleaseAppSlug %q is not a GitHub App's slug (lowercase letters, digits and single hyphens, as in github.com/apps/<slug>): the release app's slug, which every application's placement records as the author of its releases", p.GithubReleaseAppSlug)
 	}
 	if p.GithubInfrastructureAppID != "" && !projectNumberRE.MatchString(p.GithubInfrastructureAppID) {
 		return errors.Newf("githubInfrastructureAppId %q is not an App ID (digits)", p.GithubInfrastructureAppID)
@@ -443,18 +457,6 @@ func (p *Placement) Project(key string) string {
 	return p.Prefix + "-" + key + "-gbl-core-" + replaceMe
 }
 
-// ProjectsMissing names the environments whose project the placement does not record.
-func (p *Placement) ProjectsMissing() []string {
-	var missing []string
-	for _, env := range Environments {
-		if _, ok := p.Projects[env]; !ok {
-			missing = append(missing, env)
-		}
-	}
-
-	return missing
-}
-
 // WorkflowUnwired names the placement values the layers workflow still lacks, as the
 // keys a person records: projectNumbers.boot (the identity provider is named by the
 // boot project's number) and projects.<key> for every project whose layer identities
@@ -494,6 +496,59 @@ func (p *Placement) ApplicationProjects() (block string, missing []string) {
 	}
 
 	return "  \"projects\": {\n" + strings.Join(lines, ",\n") + "\n  }", missing
+}
+
+// ApplicationPlacement is the first placement of a registered application, every field
+// from this placement but the bedrock pin, which is the bedrock writing it (a release with
+// its pipeline binary's checksum, or a commit pin with none): the prefix, the model's
+// environments, the regions, the domains, the state bucket, the default branch, the
+// release app's slug, the labels and the environment projects' ids and numbers, with
+// Cloud Run's sample image to create the services with, the application's code as its
+// repository's name, and the first environment's database seeded. Approvals, the
+// maintenance windows, the build machine and the instance caps are left to their
+// defaults, the team's to write. It is refused while this placement records no state
+// bucket or lacks an environment project's id or number, which 1-org's outputs give.
+func (p *Placement) ApplicationPlacement(app, bedrockVersion, bedrockSHA256 string) (*derive.Placement, error) {
+	if p.StateBucket == "" {
+		return nil, errors.New("placement.json records no stateBucket yet: the seed's state bucket goes there (step 2 of the hand steps, 0-bootstrap/README.md) before an application's placement can name it")
+	}
+	if _, missing := p.ApplicationProjects(); len(missing) > 0 {
+		return nil, errors.Newf("placement.json records no project id and number for %s yet: record 1-org's project_ids and project_numbers outputs there (projects, projectNumbers), since an application's placement names its environments' projects, then register again", prose(missing))
+	}
+	regions := make([]derive.Region, 0, len(p.Regions))
+	for _, r := range p.Regions {
+		regions = append(regions, derive.Region{Name: r.Name, Code: r.Code})
+	}
+	projects := make(map[string]derive.Project, len(Environments))
+	for _, env := range Environments {
+		projects[env] = derive.Project{ID: p.Projects[env], Number: p.ProjectNumbers[env]}
+	}
+	var labels map[string]string
+	if len(p.Labels) > 0 {
+		labels = maps.Clone(p.Labels)
+	}
+	a := &derive.Placement{
+		Prefix:           p.Prefix,
+		Environments:     slices.Clone(Environments),
+		Regions:          regions,
+		AppsDomain:       p.AppsDomain,
+		HostedDomain:     p.OrganizationDomain,
+		StateBucket:      p.StateBucket,
+		PlaceholderImage: derive.PlaceholderImage,
+		DefaultBranch:    p.GithubDefaultBranch,
+		Repository:       app,
+		ReleaseApp:       p.GithubReleaseAppSlug,
+		BedrockVersion:   bedrockVersion,
+		BedrockSHA256:    bedrockSHA256,
+		Labels:           labels,
+		Seed:             []string{Environments[0]},
+		Projects:         projects,
+	}
+	if err := a.Validate(); err != nil {
+		return nil, errors.Wrapf(err, "%s's placement", app)
+	}
+
+	return a, nil
 }
 
 // Register adds an application to the placement: a code of one to six lowercase
