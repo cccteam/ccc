@@ -24,7 +24,8 @@ identities from the next environment's state, which the first pass did not
 have yet, so a registration applies this layer twice; `bedrock org register
 <app>` prints that sequence. The first `init` writes `.terraform.lock.hcl`;
 commit it. `terraform.tfvars` is committed and holds the boot project, the
-bucket, and the two GitHub values; `environment` is never in it; the
+bucket, the connection's two GitHub values and the deployer app's;
+`environment` is never in it; the
 applications are in `applications.auto.tfvars`, rendered from
 `placement.json`.
 
@@ -380,6 +381,38 @@ that skips the console is a fine-grained personal access token of
 `imp-machine` (contents, metadata, pull requests) added by hand as a version
 of a container created here, with the same variable pointing at it.
 
+## The deployer GitHub App's key, after each environment's first apply
+
+The pipeline talks back on a pull request as the organization's deployer
+GitHub App (`github-apps.tf`): a deployment carrying the environment's URL, a
+comment, the guard's refusals. The app itself, its permissions and its
+installation are made once on GitHub (the root `README.md`, "The two GitHub
+Apps"). What this layer needs from it:
+
+1. In `terraform.tfvars`: the app's App ID, from its settings page, as
+   `github_deployer_app_id`, one value for the organization.
+2. In a terminal, in this repository, per environment once this layer has
+   applied there and made the container
+   `imp-<env>-gbl-github-deployer-key`, as a member of the environment's
+   team group under its secret operator entitlement ("The team group" above):
+
+   ```bash
+   bedrock secret add github-deployer-key <env> --from-file <the .pem file>
+   bedrock secret pin github-deployer-key <env> <version>
+   ```
+
+   `add` puts the key into the environment's container and prints the
+   version; `pin` checks with Secret Manager that the version is enabled and
+   writes its resource name into `terraform.tfvars`, under the environment in
+   `github_deployer_key_secret_versions`. Pinned, never `latest`, and never
+   edited by hand.
+3. On GitHub, the pull request that carries the two values: its merge
+   applies this layer through the workflow, and each application's stack in
+   the environment passes the key to its pipeline at its next apply.
+
+Until an environment has both values, its pipeline talks back through
+nothing; the rest of the layer and the deployments are unaffected.
+
 ## Prerequisites this layer does not create
 
 - On the state bucket, for each environment layer identity, from `1-org`
@@ -411,8 +444,8 @@ of a container created here, with the same variable pointing at it.
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `github_app_installation_id` | Cloud Build GitHub App installation on the organization. | `number` | n/a | yes |
 | `github_oauth_token_secret_version` | `projects/<tst project>/secrets/<name>/versions/<n>`. | `string` | n/a | yes |
-| `github_deployer_app_id` | App ID of the deployer GitHub App the pipeline talks back as. | `number` | `null` | no |
-| `github_deployer_key_secret_versions` | Per environment, the pinned Secret Manager version of the deployer app's private key, in the container this layer creates. | `map(string)` | `{}` | no |
+| `github_deployer_app_id` | App ID of the deployer GitHub App the pipeline talks back as, from the app's settings page ("The deployer GitHub App's key" above). | `number` | `null` | no |
+| `github_deployer_key_secret_versions` | Per environment, the pinned Secret Manager version of the deployer app's private key, in the container this layer creates: added with `bedrock secret add github-deployer-key <env>` and written here by `bedrock secret pin github-deployer-key <env> <version>`. | `map(string)` | `{}` | no |
 | `github_organization` | GitHub organization of the application repositories. | `string` | `"imp-example"` | no |
 | `team_groups` | The environments' team groups by code, a group's address each, from `placement.json` (`teamGroups`). | `map(string)` | rendered | no |
 | `spanner_config` | tst instance configuration. | `string` | `"nam10"` | no |

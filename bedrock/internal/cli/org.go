@@ -48,11 +48,15 @@ func newOrgNew(_ deps) *cobra.Command {
 its placement: the six layers of the CCC provisioning model, each with its .tf files, its
 README and its seeded terraform.tfvars, the layers workflow under .github/workflows, and at
 the root the README, the journal, the ignore rules and the OpenTofu version. It then prints
-the hand steps the model needs before the workflow can run: the seed (the terraform folder,
-the boot project, the boot identity and the state bucket, as the bootstrap administrator), the
-bootstrap apply on local state and its migration into the bucket, the billing grants and the
-first apply of 1-org, all spelled out in 0-bootstrap/README.md; from then on the workflow
-plans every layer on a pull request and applies it on the merge, as the layer's own identity.
+the hand steps the model needs before the workflow can run, each opening with the place it
+happens: the team and role groups, the GitHub organization with its apps, their keys and
+the release app's organization secrets, org preflight's check of the bootstrap
+administrator's roles and the seed (the terraform folder, the boot project, the boot
+identity and the state bucket, as the bootstrap administrator), the bootstrap apply on local
+state and its migration into the bucket, the billing grants and the spend budget, the first
+apply of 1-org, the Cloud Build GitHub authorization and the consent screen, spelled out in
+0-bootstrap/README.md and the root README; from then on the workflow plans every layer on a
+pull request and applies it on the merge, as the layer's own identity.
 
 The placement is read from --placement, or from placement.json in the directory. The .tf
 files, the READMEs and the workflow are owned: org render rewrites them, and org check
@@ -92,52 +96,79 @@ folder) is REPLACEME in the seeded values until the seed has run.`,
 }
 
 // handSteps says what a person does before the workflow can run, and where the commands are.
+// Each step opens with the place it happens; the bootstrap roles are org preflight's
+// table, one line each, so the steps name what the check checks.
 func handSteps(p *org.Placement) string {
+	var roles strings.Builder
+	for _, role := range org.BootstrapRoles {
+		fmt.Fprintf(&roles, "       - %s (%s), on the %s\n", role.Title, role.Role, role.On)
+	}
+
 	return fmt.Sprintf(`
 By hand, before the layers workflow can run (the commands are in 0-bootstrap/README.md):
   0. In the Workspace Admin console: one team group per environment, named in
      placement.json (teamGroups: a group's address each; production's is not the first
      environment's), whose members approve the environment's releases and ask for its
-     entitlements; nothing else names a person. On GitHub, in a browser: the
-     organization, its machine account (%s, an owner of the organization, named in
-     placement.json as githubMachineAccount), this infrastructure repository (never
-     managed by the layers; default branch %s), the release, deployer and infrastructure
-     apps with their keys, installed on the organization (the release app's App ID and
-     slug go into placement.json, githubReleaseAppId and githubReleaseAppSlug; the
-     infrastructure app's App ID and the version of its key in the boot project's
-     container, githubInfrastructureAppId and githubInfrastructureKeyVersion, once
-     0-bootstrap has made the container), the
-     organization secrets, the Cloud Build app, and, if a team is to approve changes to
-     the applications' check files, that team (githubInfrastructureTeam).
-  1. Seed, as %s: the terraform folder at the organization root (%s), the boot
+     entitlements; nothing else names a person. For each application, before its
+     first sign-in, its role groups (<group prefix><role>@%s), each created with
+     "Who can view members" set so that its members can: the sign-in reads a person's
+     groups with the person's own token, and Google leaves out a group whose member
+     list the person may not view.
+     On GitHub, as an organization owner: the organization, its machine account
+     (%s, an owner of the organization, named in placement.json as
+     githubMachineAccount), this infrastructure repository (never managed by the
+     layers; default branch %s), the release, deployer and infrastructure apps, each
+     installed on all repositories, with their private keys (README.md, "The two GitHub
+     Apps", and 0-bootstrap/README.md, "The infrastructure GitHub App"; the release
+     app's App ID and slug go into placement.json, githubReleaseAppId and
+     githubReleaseAppSlug, the deployer app's App ID into 2-env/terraform.tfvars,
+     github_deployer_app_id, and the infrastructure app's into placement.json,
+     githubInfrastructureAppId), the release app's two organization secrets
+     RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY, set once by an owner for all
+     repositories, and, if a team is to approve changes to the applications' check
+     files, that team (githubInfrastructureTeam).
+     In a terminal, in this repository, the apps' keys, never by hand: bedrock secret
+     add github-infrastructure-key and bedrock secret pin github-infrastructure-key
+     <version> once 0-bootstrap has made its container; bedrock secret add
+     github-deployer-key <env> and bedrock secret pin github-deployer-key <env>
+     <version> per environment once 2-env has made its container there.
+  1. In a terminal, as %s, after gcloud auth application-default login:
+     bedrock org preflight, which must find each of these roles held:
+%s     then the seed: the terraform folder at the organization root (%s), the boot
      project %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its
      organization roles, and the state bucket %s-boot-gbl-state-<suffix>.
-  2. Put the seed's values in place: boot_project_id and terraform_folder_id in
+  2. In this repository, the seed's values: boot_project_id and terraform_folder_id in
      0-bootstrap/terraform.tfvars, boot_project_id in 1-org and 2-env, and in
      placement.json the bucket (stateBucket) and the boot project's id and number
      (projects.boot, projectNumbers.boot); then bedrock org render, for the backend
      blocks, the bucket's grants and the workflow.
-  3. Apply 0-bootstrap on local state, then migrate its state into the bucket.
-  4. A billing administrator grants roles/billing.user on %s to the two identities.
-  5. Apply 1-org, with GITHUB_TOKEN set to an organization owner's token, and record its
-     project_ids and project_numbers in placement.json (projects, projectNumbers); then
-     bedrock org render, so the workflow names every layer's identities. The apply leaves
-     you Owner on each project it creates, as the seed left you Folder Admin and Folder
-     Editor on the folder: a creator's grants, temporary, removed by hand once the
-     workflow applies the layers (bedrock org check lists each person still holding
-     roles/owner on an environment project).
+  3. In a terminal, in 0-bootstrap: the apply on local state, then the migration of its
+     state into the bucket.
+  4. In a terminal, as a billing administrator of %s: roles/billing.user on
+     it for the two identities. In the Billing console, as the same administrator: the
+     spend budget on the account (0-bootstrap/README.md, step 4); nothing renders it.
+  5. In a terminal, in 1-org: the apply, with GITHUB_TOKEN set to an organization
+     owner's token; then its project_ids and project_numbers recorded in placement.json
+     (projects, projectNumbers), and bedrock org render, so the workflow names every
+     layer's identities. The apply leaves you Owner on each project it creates, as the
+     seed left you Folder Admin and Folder Editor on the folder: a creator's grants,
+     temporary, removed by hand once the workflow applies the layers (bedrock org check
+     lists each person still holding roles/owner on an environment project).
   6. In the tst project's Cloud Build console, signed in to GitHub as the organization's
      machine account (%s): the Cloud Build GitHub App's authorization (2-env/README.md, "The
      GitHub authorization, before the first application"); its installation id and the
      token secret's version go into 2-env/terraform.tfvars, applied through the workflow.
      bedrock org register refuses the first application until both are set.
+  7. In each environment project's Google Cloud console, before the first application's
+     OAuth client is made there: the consent screen (APIs & Services, OAuth consent
+     screen), with the audience Internal, the organization's own users.
 From then on the layers workflow (%s) applies every layer, these two included: a pull
 request plans the layers it touches as their plan identities and posts the plans, the
 merge applies them as their apply identities, in layer order. The shared layers, 2-env per
 environment and the applications' registrations go through it; a person applies by hand
 for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
 After the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.
-`, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, p.GithubMachineAccount, org.WorkflowFile)
+`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, p.GithubMachineAccount, org.WorkflowFile)
 }
 
 func newOrgPreflight(d deps) *cobra.Command {

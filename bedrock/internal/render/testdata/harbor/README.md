@@ -591,14 +591,26 @@ never an edit to the rendered file.
 
 Per environment, after the first apply:
 
-1. In the Google Cloud console, in the environment project, APIs & Services >
-   Credentials > Create credentials > OAuth client ID, type Web application,
-   authorized redirect URI = output `staff_oidc_redirect_url`. Put the client
+1. In the Google Cloud console, in the environment project: first the
+   project's consent screen, if the organization has not configured it there
+   yet (APIs & Services > OAuth consent screen, audience **Internal**, so only
+   the organization's own users sign in; one per project, shared by every
+   application's client in it). Then APIs & Services > Credentials > Create
+   credentials > OAuth client ID, type Web application, authorized redirect
+   URI = output `staff_oidc_redirect_url`. Put the client
    ID in `terraform.tfvars` (`staff_oidc_client_id`) and add the client secret
    as version 1 of `imp-<env>-gbl-harbor-staff-oidc-client-secret`.
+   In tst, each pull request's environment signs in through the same
+   client: add its callback,
+   `https://harbor-pr<N>.impulseframework.dev/api/user/callback`, to the client's
+   authorized redirect URIs before signing in there, until the organization
+   runs a test identity gateway.
    The role-groups read needs no step of its own: the sign-in reads a person's
    groups through the Cloud Identity Groups API with their own sign-in token,
-   and 1-org enables that API in the environment project. If the role groups
+   and 1-org enables that API in the environment project. The groups
+   themselves are made in the Workspace Admin console, each set so that its
+   members can view its member list (the infrastructure repository's README,
+   "The role groups"). If the role groups
    are nested, set `staff_oidc_group_lookup = "nested"` in `terraform.tfvars`.
 2. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
    of `imp-<env>-gbl-harbor-cookie-key`.

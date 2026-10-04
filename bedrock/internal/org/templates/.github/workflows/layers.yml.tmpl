@@ -188,7 +188,7 @@ jobs:
           BOOT_PROJECT: {{.BootProject}}
         run: |
           if [ -z "$APP_ID" ] || [ -z "$KEY_VERSION" ]; then
-            echo "::error::1-org's GitHub provider needs the infrastructure GitHub App: create it and add its key to $KEY_SECRET in $BOOT_PROJECT (0-bootstrap/README.md, The infrastructure GitHub App), record githubInfrastructureAppId and githubInfrastructureKeyVersion in placement.json and run bedrock org render"
+            echo "::error::1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, The infrastructure GitHub App): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to $KEY_SECRET in $BOOT_PROJECT with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render"
             exit 1
           fi
           key=$(gcloud secrets versions access "$KEY_VERSION" --secret "$KEY_SECRET" --project "$BOOT_PROJECT")
@@ -309,7 +309,7 @@ jobs:
           BOOT_PROJECT: {{.BootProject}}
         run: |
           if [ -z "$APP_ID" ] || [ -z "$KEY_VERSION" ]; then
-            echo "::error::1-org's GitHub provider needs the infrastructure GitHub App: create it and add its key to $KEY_SECRET in $BOOT_PROJECT (0-bootstrap/README.md, The infrastructure GitHub App), record githubInfrastructureAppId and githubInfrastructureKeyVersion in placement.json and run bedrock org render"
+            echo "::error::1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, The infrastructure GitHub App): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to $KEY_SECRET in $BOOT_PROJECT with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render"
             exit 1
           fi
           key=$(gcloud secrets versions access "$KEY_VERSION" --secret "$KEY_SECRET" --project "$BOOT_PROJECT")

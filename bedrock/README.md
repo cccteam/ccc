@@ -1172,10 +1172,43 @@ bedrock org register quill ../quill                             # an application
 `org new` renders the six layers, each with its `.tf` files, its README and its seeded
 `terraform.tfvars`, the layers workflow (`.github/workflows/layers.yml`), and at the root
 the README, the journal, the ignore rules and the OpenTofu version, then prints the hand
-steps the model needs before the workflow can run (the seed, the bootstrap apply on local
-state and its migration into the bucket, the billing grants, the first apply of 1-org),
-and `bedrock domain check` after the first apply of 2-net. Everything the seed decides is
+steps the model needs before the workflow can run. Everything the seed decides is
 `REPLACEME` in the seeded values until it has run.
+
+A new organization is set up in this order. Each step opens with the place it happens,
+and the rendered root README ("How the layers are applied", "The two GitHub Apps") and
+`0-bootstrap/README.md` carry the commands:
+
+1. In the Workspace Admin console: one team group per environment (`teamGroups`). On
+   GitHub, as an organization owner: the organization, its machine account, the
+   infrastructure repository, the release and deployer apps installed on all
+   repositories, and the release app's two organization secrets (GitHub prerequisites,
+   below). The team groups, the machine account and the release app's App ID and slug go
+   into the placement, and `org new` renders.
+2. In a terminal, as the bootstrap administrator: `gcloud auth application-default
+   login`, then `bedrock org preflight`, which must find every role held, then the seed.
+3. In this repository: the seed's values in the placement and `org render`; then, in a
+   terminal, the first apply of 0-bootstrap on local state and its migration into the
+   bucket.
+4. In a terminal, as a billing administrator: the two billing grants. In the Billing
+   console, as the same administrator: the spend budget, which nothing renders.
+5. In a terminal: the first apply of 1-org, then its projects in the placement and
+   `org render`.
+6. In a terminal, in this repository: the infrastructure app's key, `bedrock secret add
+   github-infrastructure-key` and `bedrock secret pin github-infrastructure-key
+   <version>`, with its App ID in the placement.
+7. In the first environment's Cloud Build console, signed in to GitHub as the machine
+   account: the Cloud Build GitHub authorization, before the first application.
+8. In a terminal, in this repository, per environment once 2-env has applied there: the
+   deployer app's key, `bedrock secret add github-deployer-key <env>` and `bedrock secret
+   pin github-deployer-key <env> <version>`.
+9. In each environment project's Google Cloud console: the consent screen, with the
+   audience Internal, before the first application's OAuth client is made there.
+10. In the Workspace Admin console, for each application before its first sign-in: its
+    role groups, `<group prefix><role>@<domain>`, each set so that its members can view
+    its member list, since the sign-in reads a person's groups with the person's own
+    token and Google leaves out a group whose member list the person may not view.
+11. After the first apply of 2-net: `bedrock domain check`.
 
 The organization's placement names its GitHub machine account (`githubMachineAccount`):
 the login of a GitHub user that belongs to the organization as an owner and acts for no
@@ -1284,6 +1317,36 @@ outputs), `org render` prints the `projects` block an application's placement re
 for the operations workflow, which starts a restore or a rerun of an environment from
 GitHub (`bedrock restore`, `bedrock rerun`), and `org register` writes it into a new
 application's first placement; production's entry serves the rerun alone.
+
+## GitHub prerequisites
+
+Every repository the layers make is private, so the GitHub organization that holds the
+infrastructure repository and the applications' repositories must offer the four features
+below on private repositories. Which of them a private repository gets depends on the
+organization's GitHub plan, so its plan must include all four.
+
+- **Rulesets that GitHub enforces on private repositories.** `1-org` gives each
+  application's repository three rulesets. The tag ruleset lets the release app alone
+  create, move or delete a release tag, which is what makes the pipeline's tag check
+  sound; a ruleset GitHub shows but does not enforce leaves the check unsound.
+- **Environments on private repositories.** The operations workflow runs a restore or a
+  rerun in a GitHub Environment per environment, each deploying from the default branch
+  alone.
+- **Organization secrets that reach private repositories.** The release app's
+  `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` are set once for the organization,
+  visible to all repositories, and each application's release workflow makes the app's
+  token from them. Writing an organization secret takes an organization owner signed in,
+  or an owner's token carrying the organization-administration scope; a token without
+  that scope is refused.
+- **GitHub Apps owned by the organization.** The release app (Contents, Issues and Pull
+  requests, read and write), the deployer app (Checks, Deployments, Issues and Pull
+  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`), each
+  installed on all repositories, and the Google Cloud Build GitHub App, installed when
+  the connection is authorized.
+
+And one account: the machine account (`githubMachineAccount`, under bedrock org above), a
+GitHub user that is an owner of the organization and acts for no person, which authorizes
+the Cloud Build GitHub connection.
 
 ## The application's pipeline
 

@@ -622,14 +622,26 @@ never an edit to the rendered file.
 Per environment, after the first apply:
 
 {{if .Directory -}}
-1. In the Google Cloud console, in the environment project, APIs & Services >
-   Credentials > Create credentials > OAuth client ID, type Web application,
-   authorized redirect URI = output `{{.AuthVar}}_redirect_url`. Put the client
+1. In the Google Cloud console, in the environment project: first the
+   project's consent screen, if the organization has not configured it there
+   yet (APIs & Services > OAuth consent screen, audience **Internal**, so only
+   the organization's own users sign in; one per project, shared by every
+   application's client in it). Then APIs & Services > Credentials > Create
+   credentials > OAuth client ID, type Web application, authorized redirect
+   URI = output `{{.AuthVar}}_redirect_url`. Put the client
    ID in `terraform.tfvars` (`{{.AuthVar}}_client_id`) and add the client secret
    as version 1 of `{{.Prefix}}-<env>-gbl-{{.App}}-{{.ClientSecretSecret.Name}}`.
+   In {{.Integration}}, each pull request's environment signs in through the same
+   client: add its callback,
+   `https://{{.App}}-pr<N>.{{.P.AppsDomain}}{{.Auth.Callback.Path}}`, to the client's
+   authorized redirect URIs before signing in there, until the organization
+   runs a test identity gateway.
    The role-groups read needs no step of its own: the sign-in reads a person's
    groups through the Cloud Identity Groups API with their own sign-in token,
-   and 1-org enables that API in the environment project. If the role groups
+   and 1-org enables that API in the environment project. The groups
+   themselves are made in the Workspace Admin console, each set so that its
+   members can view its member list (the infrastructure repository's README,
+   "The role groups"). If the role groups
    are nested, set `{{.AuthVar}}_group_lookup = "nested"` in `terraform.tfvars`.
 {{end -}}
 {{if .Directory}}2{{else}}1{{end}}. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1

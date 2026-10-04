@@ -305,9 +305,23 @@ func TestOrgCommands(t *testing.T) {
 			wantOut: []string{
 				"Rendered the imp foundation", "68 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
 				"By hand, before the layers workflow can run", "0. In the Workspace Admin console: one team group per environment, named in\n     placement.json (teamGroups",
-				"Seed, as seed@imp.example", "imp-boot-gbl-tofu",
-				"projects.boot, projectNumbers.boot", "5. Apply 1-org, with GITHUB_TOKEN", "a creator's grants, temporary, removed by hand once the",
-				"its machine account (imp-machine, an owner of the organization, named in\n     placement.json as githubMachineAccount)",
+				"its role groups (<group prefix><role>@imp.example), each created with\n     \"Who can view members\" set so that its members can",
+				"On GitHub, as an organization owner: the organization, its machine account\n     (imp-machine, an owner of the organization, named in placement.json as\n     githubMachineAccount)",
+				"the release app's two organization secrets\n     RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY, set once by an owner for all\n     repositories",
+				"In a terminal, in this repository, the apps' keys, never by hand: bedrock secret\n     add github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version> once 0-bootstrap has made its container; bedrock secret add\n     github-deployer-key <env> and bedrock secret pin github-deployer-key <env>\n     <version> per environment once 2-env has made its container there.",
+				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
+					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
+					"       - Project Creator (roles/resourcemanager.projectCreator), on the organization\n" +
+					"       - Organization Administrator (roles/resourcemanager.organizationAdmin), on the organization\n" +
+					"       - Organization Policy Administrator (roles/orgpolicy.policyAdmin), on the organization\n" +
+					"       - Organization Role Administrator (roles/iam.organizationRoleAdmin), on the organization\n" +
+					"       - Tag Administrator (roles/resourcemanager.tagAdmin), on the organization\n" +
+					"       - Billing Account User (roles/billing.user), on the billing account\n" +
+					"     then the seed: the terraform folder at the organization root (123456789012)",
+				"imp-boot-gbl-tofu", "projects.boot, projectNumbers.boot",
+				"4. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the two identities. In the Billing console, as the same administrator: the\n     spend budget on the account",
+				"5. In a terminal, in 1-org: the apply, with GITHUB_TOKEN", "a creator's grants,\n     temporary, removed by hand once the workflow applies the layers",
+				"7. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
 				"6. In the tst project's Cloud Build console, signed in to GitHub as the organization's\n     machine account (imp-machine): the Cloud Build GitHub App's authorization", "bedrock org register refuses the first application until both are set.",
 				"the layers workflow (.github/workflows/layers.yml) applies every layer",
 				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.\n",

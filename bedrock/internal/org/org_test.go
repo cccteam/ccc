@@ -264,6 +264,134 @@ func TestMachineAccount(t *testing.T) {
 	}
 }
 
+// TestBootstrapRolesNamed reads the READMEs that tell the bootstrap administrator what to
+// hold: each names every role of org preflight's table, by title and id, and the
+// preflight command, so a role added to the check cannot be missing from the steps; the
+// four-role list the check replaced is gone.
+func TestBootstrapRolesNamed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "0-bootstrap's seed step: the role table, then preflight before the seed",
+			path: "0-bootstrap/README.md",
+			want: []string{
+				"| Role | Granted on | Needed for |\n",
+				"gcloud auth application-default login\nbedrock org preflight\n\nexport ORG_ID=123456789012\n",
+			},
+			absent: []string{"who holds\nOrganization Administrator, Project Creator, and Organization Policy\nAdministrator"},
+		},
+		{
+			name: "the root README's seed step",
+			path: "README.md",
+			want: []string{"3. **Seed.** In a terminal, as the bootstrap administrator: `bedrock org\n   preflight` first, which checks that the person holds each of these roles:\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := renderedFile(t, tt.path)
+			want := slices.Clone(tt.want)
+			for _, role := range BootstrapRoles {
+				want = append(want, role.Title+" (`"+role.Role+"`)")
+			}
+			for _, w := range want {
+				if !strings.Contains(got, w) {
+					t.Errorf("%s lacks %q", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(got, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
+			}
+		})
+	}
+}
+
+// TestGithubAppSteps reads the steps for the organization's GitHub Apps: the root README
+// gives the release and deployer apps' permissions, their installation, the release
+// app's two organization secrets and the deployer key's commands; 0-bootstrap's README
+// and 2-env's add and pin each key with bedrock secret, never by a gcloud command or an
+// edit of the pin by hand.
+func TestGithubAppSteps(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the root README: the two apps' permissions, installation and secrets",
+			path: "README.md",
+			want: []string{
+				"## The two GitHub Apps\n",
+				"   - the release app: Contents, Issues and Pull requests, each read and\n     write;\n",
+				"   - the deployer app: Checks, Deployments, Issues and Pull requests, each\n     read and write.\n",
+				"Install App, on the organization,\n   for all repositories",
+				"`RELEASE_APP_ID` holds the release app's App ID and\n   `RELEASE_APP_PRIVATE_KEY` the whole of its `.pem` file",
+				"   bedrock secret add github-deployer-key <env> --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <env> <version>\n",
+				"([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites))",
+			},
+		},
+		{
+			name: "the root README: the consent screen and the role groups",
+			path: "README.md",
+			want: []string{
+				"9. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
+				"with the audience **Internal**",
+				"`<group prefix><role>@imp.example`",
+				"set \"Who can view members\" so that the group's members can",
+			},
+		},
+		{
+			name: "0-bootstrap: the infrastructure key added and pinned with bedrock secret, the budget beside the billing grants",
+			path: "0-bootstrap/README.md",
+			want: []string{
+				"   bedrock secret add github-infrastructure-key --from-file <the .pem file>\n   bedrock secret pin github-infrastructure-key <version>\n",
+				"### 4. Billing grants and the budget, by a billing administrator\n",
+				"In the Billing console, as the same billing administrator, set the spend\nbudget",
+			},
+			absent: []string{"gcloud secrets versions add"},
+		},
+		{
+			name: "2-env: the deployer key added and pinned with bedrock secret",
+			path: "2-env/README.md",
+			want: []string{
+				"## The deployer GitHub App's key, after each environment's first apply\n",
+				"   bedrock secret add github-deployer-key <env> --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <env> <version>\n",
+				"written here by `bedrock secret pin github-deployer-key <env> <version>`",
+			},
+			absent: []string{"gcloud secrets versions add"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := renderedFile(t, tt.path)
+			for _, w := range tt.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("%s lacks %q", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(got, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
+			}
+		})
+	}
+}
+
 func TestRenderTiers(t *testing.T) {
 	t.Parallel()
 
@@ -1733,8 +1861,9 @@ func TestWorkflow(t *testing.T) {
 				"          APP_ID: \"\"\n          KEY_VERSION: \"\"\n",
 				"          app-id: \"\"\n",
 				"if printf '%s' \"$selected\" | grep -q REPLACEME; then",
-				"record githubInfrastructureAppId and githubInfrastructureKeyVersion in placement.json and run bedrock org render",
+				"record its App ID as githubInfrastructureAppId in placement.json, add its key to $KEY_SECRET in $BOOT_PROJECT with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render",
 			},
+			absent: []string{"gcloud secrets versions add"},
 		},
 	}
 	for _, tt := range tests {

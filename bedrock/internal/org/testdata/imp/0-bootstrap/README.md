@@ -47,8 +47,9 @@ OpenTofu because this layer's own state lives in it.
 ## First-time setup
 
 Steps 1 and 4 happen once, by hand. Everything step 1 creates is adopted by an
-`import` block in step 2, so nothing stays outside OpenTofu except the bucket
-and, while `manage_billing_iam` is false, the two billing grants.
+`import` block in step 2, so nothing stays outside OpenTofu except the bucket,
+the spend budget (step 4) and, while `manage_billing_iam` is false, the two
+billing grants.
 
 The person who runs them is left with what Google gives a creator: Owner on
 the boot project, and Folder Admin and Folder Editor on the `terraform`
@@ -57,20 +58,37 @@ creates. Those grants are temporary. The layers run as their identities, and
 a person's access to an environment comes from its team group; once the
 layers workflow applies the layers, a hand step removes them
 (`1-org/README.md`, "Applying"), and `bedrock org check` lists each person
-still holding `roles/owner` on an environment project until then. The
-organization-level roles the seed names stay with the bootstrap
-administrator for recovery ("Recovery, by hand", below).
+still holding `roles/owner` on an environment project until then. The roles
+step 1 lists stay with the bootstrap administrator for recovery ("Recovery,
+by hand", below).
 
 ### 1. Seed with gcloud
 
-In a terminal, as the bootstrap administrator (`seed@imp.example`), who holds
-Organization Administrator, Project Creator, and Organization Policy
-Administrator on the organization and Billing Account User on the billing
-account:
+In a terminal, as the bootstrap administrator (`seed@imp.example`). The seed,
+the first apply of this layer and the first apply of `1-org` run as that
+person, before any layer identity exists, so the person holds these roles:
+
+| Role | Granted on | Needed for |
+|---|---|---|
+| Folder Creator (`roles/resourcemanager.folderCreator`) | the organization | the seed's terraform folder and 1-org's folders, at the organization root |
+| Project Creator (`roles/resourcemanager.projectCreator`) | the organization | the seed's boot project and 1-org's projects |
+| Organization Administrator (`roles/resourcemanager.organizationAdmin`) | the organization | the organization roles the seed grants the boot identity, and those 0-bootstrap and 1-org grant the layer identities |
+| Organization Policy Administrator (`roles/orgpolicy.policyAdmin`) | the organization | 1-org's organization policies on its folders |
+| Organization Role Administrator (`roles/iam.organizationRoleAdmin`) | the organization | the custom roles 0-bootstrap and 1-org define at the organization |
+| Tag Administrator (`roles/resourcemanager.tagAdmin`) | the organization | 1-org's public-invoker tag, its value and the grants on the value |
+| Billing Account User (`roles/billing.user`) | the billing account | linking the boot project and 1-org's projects to the billing account |
+
+Sign in, then check the roles before anything is created: `bedrock org
+preflight`, run at this repository's root, asks Google which of the permissions
+behind each role these credentials hold, on the organization and the billing
+account `placement.json` names. It prints one line per role, `holds` or
+`missing` with the permissions tested, and exits 1 naming each missing role
+and who grants it. Seed only once it passes:
 
 ```bash
 gcloud auth login
 gcloud auth application-default login
+bedrock org preflight
 
 export ORG_ID=123456789012
 export BILLING_ACCOUNT_ID=012345-6789AB-CDEF01
@@ -219,7 +237,7 @@ backup. From here on every run inits against the bucket directly.
 Record `boot_project_id` in `1-org/terraform.tfvars` and add a line to
 `JOURNAL.md`.
 
-### 4. Billing grants, by a billing administrator
+### 4. Billing grants and the budget, by a billing administrator
 
 The bootstrap administrator holds Billing Account User on the billing account. That role
 links projects to the account but cannot change the account's IAM policy, so
@@ -244,6 +262,15 @@ which links the projects it creates to the account; the bootstrap
 administrator's own Billing Account User role covers the first apply of
 1-org. Set `manage_billing_iam = true` once the identity applying this layer
 can manage billing IAM; the resources then assert the same two members.
+
+In the Billing console, as the same billing administrator, set the spend
+budget: Billing, the billing account `012345-6789AB-CDEF01`, Budgets & alerts,
+Create budget. Scope it to every project of the billing account, give it a
+monthly amount, and keep the alert thresholds (50%, 90% and 100% of the actual
+spend) and the email to the billing account's administrators and users. A
+budget sends alerts and stops nothing. Nothing in the layers renders it: it
+belongs to the billing account, where no layer identity holds a role that
+manages budgets.
 
 ## Inputs
 
@@ -304,7 +331,7 @@ Who grants what, and why the first time works in order:
   `1-org` gives each environment layer identity.
 - The first apply of this layer and the first apply of `1-org` are the
   bootstrap administrator's (steps 2 and 3 above, and `1-org/README.md`),
-  with the organization-level roles the seed names. The bucket exists from
+  with the roles step 1 lists. The bucket exists from
   step 1, so this layer's grants on it apply in step 2; `1-org`'s grants
   apply in its first apply as the same person, and from then on as the org
   identity, which holds the bucket's policy authority from here.
@@ -340,19 +367,22 @@ pipeline those rights. Once, by a person:
 2. On the app's settings page: Private keys, Generate a private key. The
    browser downloads a `.pem` file.
 3. On the same page: Install App, on the organization, for all repositories.
-4. In a terminal, as the bootstrap administrator, put the key in the
-   container this layer created and record the version:
+4. In a terminal, in this repository, as the bootstrap administrator, once
+   this layer has made the container: record the App ID in `placement.json`
+   as `githubInfrastructureAppId`, then add the key to the container and pin
+   the version `add` prints (1 for the first):
 
    ```bash
-   gcloud secrets versions add imp-boot-gbl-github-infrastructure-key \
-     --project=<boot project> --data-file=<the .pem file>
+   bedrock secret add github-infrastructure-key --from-file <the .pem file>
+   bedrock secret pin github-infrastructure-key <version>
    ```
 
-   The command prints the version's name; its number (1 for the first) is
-   `githubInfrastructureKeyVersion` in `placement.json`, beside the App ID as
-   `githubInfrastructureAppId`. Run `bedrock org render`, commit, and delete
-   the `.pem` file. Pinned, never `latest`: a new key is a new version and a
-   change to `placement.json`.
+   `add` puts the key into `imp-boot-gbl-github-infrastructure-key` in the boot project.
+   `pin` checks with Secret Manager that the version is enabled, records it as
+   `githubInfrastructureKeyVersion` in `placement.json` and runs `bedrock org
+   render`. Commit what they changed and delete the `.pem` file. Pinned, never
+   `latest`: a new key is a new version and a new pin, and nobody edits the
+   version in `placement.json` by hand.
 
 Until both values are recorded, a run of `1-org` through the workflow says
 so and stops; the Google side of the layer is unaffected. A person applying
@@ -368,6 +398,6 @@ for a short time, and `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` set to that
 identity makes the Google provider and the state backend act as it; the
 person then runs with exactly the identity's roles, on the same code as the
 workflow (`2-env/README.md`). This layer and `1-org` have no entitlement:
-their recovery is the bootstrap administrator's, with the organization-level
-roles the seed names and their own sign-in, the way the first applies ran
-(step 2 above, without the local state).
+their recovery is the bootstrap administrator's, with the roles step 1 lists
+and their own sign-in, the way the first applies ran (step 2 above, without
+the local state).

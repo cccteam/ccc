@@ -324,6 +324,13 @@ func (*view) ImpulseChecksProseQuoted() string {
 	return prose(backticked(ci.FixedChecks))
 }
 
+// BootstrapRoles are the roles the bootstrap administrator holds for the seed and the
+// first applies, org preflight's table, which 0-bootstrap's README and the root README
+// list, so the READMEs name what org preflight checks.
+func (*view) BootstrapRoles() []BootstrapRole {
+	return BootstrapRoles
+}
+
 // EnvironmentsList is the environments as an HCL list, and EnvironmentsProse the same
 // as prose, backticked: `tst`, `stg` and `prd`.
 func (*view) EnvironmentsList() string {

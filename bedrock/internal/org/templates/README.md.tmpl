@@ -79,9 +79,10 @@ hand"): for `2-env` under the Layer administrator entitlement, acting as the
 environment's apply identity through `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`;
 for the other layers as the bootstrap administrator.
 
-First-time setup, by hand, before any identity can run:
+First-time setup, by hand, before any identity can run. Each step opens with
+the place it happens.
 
-1. **The team groups**, in the Workspace Admin console: one group per
+1. **The team groups.** In the Workspace Admin console: one group per
    environment, named in `placement.json` (`teamGroups`, a group's address
    each; the same group may serve several environments, but production's is
    not the first environment's). Each person's access to an environment comes
@@ -89,40 +90,88 @@ First-time setup, by hand, before any identity can run:
    release waits for an approval, and its members ask for its entitlements
    (`2-env/README.md`, "The team group"). Every render names them, and `2-env`
    grants to them, so they exist before anything else.
-2. **Seed**, by hand with gcloud, as the bootstrap administrator: the `terraform` folder, the
-   boot project, the boot layer identity and its org-level roles, and the state
-   bucket. The commands are in [`0-bootstrap/README.md`](0-bootstrap/README.md).
-   A billing administrator separately grants `roles/billing.user` on the
-   billing account to the two layer identities.
-3. **`0-bootstrap`**, by the bootstrap administrator. The first apply runs on local state,
-   with the backend block commented out, and adopts the seeded resources
-   through `import` blocks. The seed's values go into `placement.json`
-   (`stateBucket`, `projects.boot`, `projectNumbers.boot`) and `bedrock org
-   render` names the bucket in every backend block; the state is then moved
-   in with `tofu init -migrate-state`.
-4. **`1-org`**, by the same person, against the bucket directly, with their
-   own GitHub token. Its `project_ids` and `project_numbers` outputs go into
-   `placement.json` (`projects`, `projectNumbers`), and `bedrock org render`
-   names every layer's identities in the workflow. From here on the workflow
-   applies every layer, these two included. The creator's grants that steps 2
-   to 4 leave behind (Owner on each project made, Folder Admin and Folder
-   Editor on each folder, which Google gives whoever creates them) are
-   temporary: once the workflow applies the layers, a hand step removes them
-   (`1-org/README.md`, "Applying"), and `bedrock org check` lists each person
-   still holding `roles/owner` on an environment project until then.
-5. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
-   infrastructure GitHub App"): created on GitHub, its key added to the boot
-   project's container, its App ID and the key's version recorded in
-   `placement.json`. Until then a run of `1-org` through the workflow says so
-   and stops.
-6. **The Cloud Build GitHub App's browser authorization**, in the tst
-   project's console, before the first application is registered
-   (`2-env/README.md`, "The GitHub authorization, before the first
-   application"): its installation ID and the token secret's version go into
-   `2-env/terraform.tfvars` and through the workflow. `bedrock org register`
-   refuses the first application until both are set, since the applications'
-   triggers exist once `2-env` holds the connection and nothing is built by
-   hand before them.
+2. **GitHub.** On GitHub, as an owner of the `{{.GithubOrganization}}` organization
+   (whoever creates it is its first owner): the organization itself, its
+   machine account `{{.GithubMachineAccount}}` (`githubMachineAccount`, a GitHub
+   user that is an owner of the organization and acts for no person), this
+   repository (never managed by the layers), and the release and deployer apps
+   with the release app's two organization secrets ("The two GitHub Apps",
+   below). The release app's App ID and slug are in `placement.json` before
+   the first render. Nothing more is done by hand on GitHub: `1-org`
+   configures every application's repository.
+3. **Seed.** In a terminal, as the bootstrap administrator: `bedrock org
+   preflight` first, which checks that the person holds each of these roles:
+{{range .BootstrapRoles}}   - {{.Title}} (`{{.Role}}`), on the {{.On}}
+{{end}}
+   Then the gcloud commands that make the `terraform` folder, the boot
+   project, the boot layer identity and its org-level roles, and the state
+   bucket. Both are in [`0-bootstrap/README.md`](0-bootstrap/README.md), "1.
+   Seed with gcloud". In a terminal, a billing administrator separately
+   grants `roles/billing.user` on the billing account to the two layer
+   identities; in the Billing console, the same administrator sets the spend
+   budget (`0-bootstrap/README.md`, "4. Billing grants and the budget").
+4. **`0-bootstrap`.** In a terminal, in `0-bootstrap/`, as the bootstrap
+   administrator. The first apply runs on local state, with the backend block
+   commented out, and adopts the seeded resources through `import` blocks.
+   The seed's values go into `placement.json` (`stateBucket`,
+   `projects.boot`, `projectNumbers.boot`) and `bedrock org render` names the
+   bucket in every backend block; the state is then moved in with `tofu init
+   -migrate-state`.
+5. **`1-org`.** In a terminal, in `1-org/`, as the same person, against the
+   bucket directly, with their own GitHub token. Its `project_ids` and
+   `project_numbers` outputs go into `placement.json` (`projects`,
+   `projectNumbers`), and `bedrock org render` names every layer's identities
+   in the workflow. From here on the workflow applies every layer, these two
+   included. The creator's grants that steps 3 to 5 leave behind (Owner on
+   each project made, Folder Admin and Folder Editor on each folder, which
+   Google gives whoever creates them) are temporary: once the workflow
+   applies the layers, a hand step removes them (`1-org/README.md`,
+   "Applying"), and `bedrock org check` lists each person still holding
+   `roles/owner` on an environment project until then.
+6. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
+   infrastructure GitHub App"). On GitHub, as an organization owner: the app,
+   its private key and its installation. Then in a terminal, in this
+   repository: its App ID recorded in `placement.json`
+   (`githubInfrastructureAppId`), and its key added to the boot project's
+   container and pinned with `bedrock secret add github-infrastructure-key`
+   and `bedrock secret pin github-infrastructure-key <version>`, which records
+   the version and renders. Until then a run of `1-org` through the workflow
+   says so and stops.
+7. **The Cloud Build GitHub App's browser authorization.** In the
+   `{{.FirstEnvironment}}` project's Cloud Build console, signed in to GitHub
+   as the machine account `{{.GithubMachineAccount}}`, before the first
+   application is registered (`2-env/README.md`, "The GitHub authorization,
+   before the first application"): its installation ID and the token
+   secret's version go into `2-env/terraform.tfvars` and through the
+   workflow. `bedrock org register` refuses the first application until both
+   are set, since the applications' triggers exist once `2-env` holds the
+   connection and nothing is built by hand before them.
+8. **The deployer app's key.** In a terminal, in this repository, per
+   environment once `2-env` has applied there: `bedrock secret add
+   github-deployer-key <env>` and `bedrock secret pin github-deployer-key
+   <env> <version>` ("The two GitHub Apps", below).
+9. **The consent screen.** In each environment project's Google Cloud
+   console, before the first application's OAuth client is made there: APIs &
+   Services, OAuth consent screen, with the audience **Internal**, so only the
+   organization's own users sign in. The project has one consent screen, which
+   every application's client in it shares, so it carries the organization's
+   name, not an application's. Each application's README ("Hand steps") then
+   makes its client.
+10. **The role groups.** In the Workspace Admin console, for each application
+    before its first sign-in: one group per role its sign-in grants, named
+    `<group prefix><role>@{{.OrganizationDomain}}`, where the group prefix is the
+    application's own (its stack's `<sign-in>_oidc_group_prefix` variable,
+    under "Inputs" in its infrastructure README). When the group is
+    created, set "Who can view members" so that the group's members can: the
+    sign-in reads a person's groups with the person's own token, and Google
+    leaves out a group whose member list the person may not view, so that
+    membership, and the role it grants, is lost.
+
+GitHub prerequisites: the organization's private repositories need rulesets
+that GitHub enforces, environments and organization secrets; the organization
+holds GitHub Apps; and its machine account (`githubMachineAccount`) is an
+owner of it. bedrock's README lists each with what needs it
+([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites)).
 
 `bedrock org register <app> [<application checkout>]` prints the pull requests
 a registration takes, and writes the application's first `placement.json`
@@ -130,6 +179,67 @@ into its checkout (`infrastructure/placement.json`), or prints it.
 
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.
+
+## The two GitHub Apps
+
+Besides the infrastructure app `1-org` acts as (`0-bootstrap/README.md`), the
+organization holds two GitHub Apps that every application uses: the release
+app, which cuts each release (the tag and the GitHub Release carry it as their
+author, and each repository's tag ruleset lets it alone make a release tag),
+and the deployer app, which the pipeline talks back on a pull request as (a
+deployment carrying the environment's URL, a comment, the guard's refusals).
+Once, by a person:
+
+1. On GitHub, as an owner of the `{{.GithubOrganization}}` organization: the
+   organization's Settings, Developer settings, GitHub Apps, New GitHub App,
+   once for each app. Give it any homepage URL, turn Webhook off, and choose
+   only this account under Where can this app be installed. Repository
+   permissions, with Metadata (read), which GitHub requires of every app:
+   - the release app: Contents, Issues and Pull requests, each read and
+     write;
+   - the deployer app: Checks, Deployments, Issues and Pull requests, each
+     read and write.
+
+   Create it and note the App ID on its settings page.
+2. On GitHub, on each app's settings page: Install App, on the organization,
+   for all repositories, so a new application's repository is covered with no
+   step of its own. Then Private keys, Generate a private key: the browser
+   downloads a `.pem` file.
+3. On GitHub, as an organization owner, in the organization's Settings,
+   Secrets and variables, Actions: two organization secrets, visible to all
+   repositories. `RELEASE_APP_ID` holds the release app's App ID and
+   `RELEASE_APP_PRIVATE_KEY` the whole of its `.pem` file; each
+   application's release workflow makes the app's token from them. They are
+   set once, here and not on each repository, and nothing in OpenTofu holds
+   them. Writing an organization secret takes an owner signed in, or an
+   owner's token carrying the organization-administration scope; a token
+   without that scope is refused. Delete the release app's `.pem` file once
+   both are saved.
+4. In `placement.json`: the release app's App ID as `githubReleaseAppId` and
+   its slug, the name in its address `github.com/apps/<slug>`, as
+   `githubReleaseAppSlug`; then `bedrock org render`. `1-org` names the app in
+   each repository's tag ruleset, and every application's placement names the
+   slug as the author of its releases.
+5. In `2-env/terraform.tfvars`: the deployer app's App ID as
+   `github_deployer_app_id`, one value for the organization.
+6. In a terminal, in this repository, per environment once `2-env` has
+   applied there and made the key's container, as a member of the
+   environment's team group under its secret operator entitlement
+   (`2-env/README.md`, "The team group"):
+
+   ```bash
+   bedrock secret add github-deployer-key <env> --from-file <the .pem file>
+   bedrock secret pin github-deployer-key <env> <version>
+   ```
+
+   `add` puts the key into `{{.Prefix}}-<env>-gbl-github-deployer-key` in the
+   environment's project and prints the version; `pin` checks that it is
+   enabled and writes its resource name into `2-env/terraform.tfvars`
+   (`github_deployer_key_secret_versions`). The pull request that carries it
+   applies `2-env`, and each application's stack passes the key to its
+   pipeline at its next apply. Delete the deployer app's `.pem` file once
+   every environment has it. Until an environment has both values, its
+   pipeline talks back through nothing.
 
 ## Deviations from tf-gcp-setup
 
