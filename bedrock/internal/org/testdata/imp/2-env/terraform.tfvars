@@ -8,7 +8,7 @@ boot_project_id = "imp-boot-gbl-core-REPLACEME"
 state_bucket    = "imp-boot-gbl-state-a1b2"
 
 # From the browser authorization described in the README: the Cloud Build
-# GitHub App installed on github.com/impulseframework for all
+# GitHub App installed on github.com/imp-example for all
 # repositories, and the tst host connection authorized. One value each for the
 # organization; every environment's connection reuses them. Until they are
 # set, the connection and the repository links wait; the rest of the layer

@@ -84,9 +84,12 @@ again does not, because its pull request is already labeled as tagged.
   organization's facts the stack needs, the bedrock the pipeline runs
   (`bedrockVersion`, and `bedrockSha256` for a release) and, when the organization
   sets one, the Cloud Build machine the pipeline's builds run on (`buildMachine`, one
-  of Cloud Build's machine names; absent, Cloud Build's default); for an organization it records
-  the prefix, the domains, the organization and billing ids, the regions, the Spanner
-  configuration, the GitHub organization, the applications, the environment projects and
+  of Cloud Build's machine names; absent, Cloud Build's default) and the most Cloud Run
+  instances the service may run per region in an environment (`maxInstances`, by
+  environment name; an environment it leaves out has no cap, and Cloud Run's default
+  applies); for an organization it records the prefix, the domains, the organization
+  and billing ids, the regions, the Spanner configuration, the GitHub organization and
+  its machine account, the applications, the environment projects and
   each environment's team group (`teamGroups`: the group whose members approve the
   environment's releases and ask for its entitlements, with `entitlementDurations` for
   the longest grants).
@@ -151,6 +154,14 @@ application repository's `infrastructure` directory, or the one application laye
 `3-app` of an infrastructure root; `--out` overrides. The application is read from the
 repository root when the stack is in its infrastructure directory, else from the working
 directory; `--app` overrides.
+
+The service scales from zero instances. Where the placement caps an environment
+(`"maxInstances": {"prd": 10}`, the most instances per region, at least 1), the
+service there runs at most that many: a cap bounds what the environment can cost when
+traffic rises. An environment the placement leaves out, and every environment of a
+placement without `maxInstances`, has no cap of bedrock's, and Cloud Run's own default
+maximum applies. The stack reads the cap of the environment it is applied in from a
+local, `max_instances` in `locals.tf`, so one rendered stack serves every environment.
 
 What the stack carries comes from declarations in the code: a config variable tagged as
 a secret becomes a Secret Manager container mounted at a pinned version; a directory auth
@@ -1001,6 +1012,15 @@ the README, the journal, the ignore rules and the OpenTofu version, then prints 
 steps the model needs before the workflow can run (the seed, the bootstrap apply on local
 state and its migration into the bucket, the billing grants, the first apply of 1-org).
 Everything the seed decides is `REPLACEME` in the seeded values until it has run.
+
+The organization's placement names its GitHub machine account (`githubMachineAccount`):
+the login of a GitHub user that belongs to the organization as an owner and acts for no
+person. In the browser step that authorizes the Cloud Build GitHub connection, before the
+first application (`2-env/README.md`, "The GitHub authorization, before the first
+application"), a person signs in to GitHub as that account, so the connection's token is
+the account's and nobody's leaving breaks it; a personal access token of the same
+account is the alternative to that step. `2-env` renders the login where it names the
+account. The field is required: a placement without it is refused.
 
 `org render` rewrites the owned files from the placement, seeds the absent ones and says
 what the workflow still lacks in the placement; `org check` compares the owned files, the

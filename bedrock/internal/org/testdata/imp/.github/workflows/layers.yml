@@ -1,4 +1,4 @@
-# The layers of the impulseframework.com organization, planned on every pull request and applied
+# The layers of the imp.example organization, planned on every pull request and applied
 # on its merge, each as its own identity with no key. Rendered by bedrock and owned by it (bedrock
 # org render rewrites this file, bedrock org check compares it).
 #
@@ -215,7 +215,7 @@ jobs:
         with:
           app-id: 5080700
           private-key: ${{ steps.key.outputs.key }}
-          owner: impulseframework
+          owner: imp-example
       # The plan runs without the state lock: the plan identity reads the state and writes nothing.
       - name: tofu plan
         id: plan
@@ -336,7 +336,7 @@ jobs:
         with:
           app-id: 5080700
           private-key: ${{ steps.key.outputs.key }}
-          owner: impulseframework
+          owner: imp-example
       # The plan this run makes is the one it applies; the run's summary carries both.
       - name: tofu apply
         working-directory: ${{ matrix.layer }}

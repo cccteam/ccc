@@ -108,9 +108,10 @@ from `2-env`'s state.
   back to an ephemeral one), which a migration never does, so the deploy
   identity that runs it holds no accessor, and the command runs without them.
 - **Cloud Run**: the service `imp-<env>-<region>-beacon-app` in both regions (`uc1|uw3`)
-  (ingress internal and load balancer, 0 to 2 instances, CPU only during
-  requests, `allUsers` invoker so the load balancer can forward),
-  created with a placeholder image. The migration (`cmd/deployment/migrate`) is no Cloud
+  (ingress internal and load balancer, CPU only during requests, `allUsers`
+  invoker so the load balancer can forward), created with a
+  placeholder image. It scales from zero to Cloud Run's default maximum instances per region, the placement capping no environment (`maxInstances`).
+  The migration (`cmd/deployment/migrate`) is no Cloud
   Run resource: the pipeline takes the migrate command out of the release's
   image and runs it on the build worker as the deploy identity, with the
   variables `locals.tf` derives for it (`migrate_env`, which `cloud-build.tf`

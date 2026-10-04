@@ -354,7 +354,7 @@ required checks, the rulesets' names.
 
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
-| `allowed_contact_domains` | Domains permitted as Essential Contacts. | `list(string)` | `["@impulseframework.com", "@cloud-team.com"]` | no |
+| `allowed_contact_domains` | Domains permitted as Essential Contacts. | `list(string)` | `["@imp.example"]` | no |
 | `audit_log_retention_days` | Retention for the audit log bucket; only with `central_logging`. | `number` | `400` | no |
 | `billing_account_id` | Billing account to link projects to. | `string` | n/a | yes |
 | `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | nine roles, see `variables.tf` | no |

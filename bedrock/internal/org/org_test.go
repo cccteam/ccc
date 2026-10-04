@@ -3,6 +3,8 @@ package org
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +66,12 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseAppID = "" }, wantErr: "githubReleaseAppId is empty"},
 		{name: "a release app named by slug", mutate: func(p *Placement) { p.GithubReleaseAppID = "imp-release" }, wantErr: "githubReleaseAppId \"imp-release\" is not an App ID"},
 		{name: "no default branch", mutate: func(p *Placement) { p.GithubDefaultBranch = " " }, wantErr: "githubDefaultBranch is empty"},
+		{name: "no machine account", mutate: func(p *Placement) { p.GithubMachineAccount = "" }, wantErr: "githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it"},
+		{name: "a machine account with a space", mutate: func(p *Placement) { p.GithubMachineAccount = "imp machine" }, wantErr: `githubMachineAccount "imp machine" is not a GitHub login (letters, digits and single hyphens, at most 39 characters)`},
+		{name: "a machine account starting with a hyphen", mutate: func(p *Placement) { p.GithubMachineAccount = "-imp" }, wantErr: `githubMachineAccount "-imp" is not a GitHub login`},
+		{name: "a machine account with two hyphens in a row", mutate: func(p *Placement) { p.GithubMachineAccount = "imp--machine" }, wantErr: `githubMachineAccount "imp--machine" is not a GitHub login`},
+		{name: "a machine account longer than GitHub allows", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 40) }, wantErr: "is not a GitHub login"},
+		{name: "a machine account of 39 characters", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 39) }},
 		{name: "no infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "" }},
 		{name: "project numbers for the environments", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "123456789012"} }},
 		{name: "a project number in an unknown environment", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"qa": "1"} }, wantErr: `projectNumbers names "qa", which is not one of boot, shr, net, spn, tst, stg, prd`},
@@ -77,11 +85,11 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a key version of latest", mutate: func(p *Placement) { p.GithubInfrastructureKeyVersion = "latest" }, wantErr: `githubInfrastructureKeyVersion "latest" is not a secret version's number (digits, never latest)`},
 		{name: "no team groups at all", mutate: func(p *Placement) { p.TeamGroups = nil }, wantErr: "teamGroups.tst is empty: each environment names the group"},
 		{name: "no team group for one environment", mutate: func(p *Placement) { delete(p.TeamGroups, "stg") }, wantErr: "teamGroups.stg is empty"},
-		{name: "a team group that is a person", mutate: func(p *Placement) { p.TeamGroups["prd"] = "user:someone@impulseframework.com" }, wantErr: `teamGroups.prd "user:someone@impulseframework.com" is a person (user:): an environment's team is a group`},
-		{name: "a team group with a member prefix", mutate: func(p *Placement) { p.TeamGroups["tst"] = "group:team-tst@impulseframework.com" }, wantErr: `teamGroups.tst "group:team-tst@impulseframework.com" is not a group's address (name@domain, with no member prefix`},
+		{name: "a team group that is a person", mutate: func(p *Placement) { p.TeamGroups["prd"] = "user:someone@imp.example" }, wantErr: `teamGroups.prd "user:someone@imp.example" is a person (user:): an environment's team is a group`},
+		{name: "a team group with a member prefix", mutate: func(p *Placement) { p.TeamGroups["tst"] = "group:team-tst@imp.example" }, wantErr: `teamGroups.tst "group:team-tst@imp.example" is not a group's address (name@domain, with no member prefix`},
 		{name: "a team group that is not an address", mutate: func(p *Placement) { p.TeamGroups["tst"] = "team-tst" }, wantErr: `teamGroups.tst "team-tst" is not a group's address`},
-		{name: "a team group under an environment the model lacks", mutate: func(p *Placement) { p.TeamGroups["qa"] = "team-qa@impulseframework.com" }, wantErr: `teamGroups names "qa", which is not one of tst, stg, prd`},
-		{name: "production's group the first environment's", mutate: func(p *Placement) { p.TeamGroups["prd"] = p.TeamGroups["tst"] }, wantErr: "teamGroups.prd is teamGroups.tst (team-tst@impulseframework.com): production's team group is not the first environment's"},
+		{name: "a team group under an environment the model lacks", mutate: func(p *Placement) { p.TeamGroups["qa"] = "team-qa@imp.example" }, wantErr: `teamGroups names "qa", which is not one of tst, stg, prd`},
+		{name: "production's group the first environment's", mutate: func(p *Placement) { p.TeamGroups["prd"] = p.TeamGroups["tst"] }, wantErr: "teamGroups.prd is teamGroups.tst (team-tst@imp.example): production's team group is not the first environment's"},
 		{name: "one group for tst and stg", mutate: func(p *Placement) { p.TeamGroups["stg"] = p.TeamGroups["tst"] }},
 		{name: "no entitlement durations", mutate: func(p *Placement) { p.EntitlementDurations = nil }},
 		{name: "every entitlement's duration set", mutate: func(p *Placement) {
@@ -152,6 +160,103 @@ func TestRenderGolden(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("WalkDir() error = %v", err)
+	}
+}
+
+// TestNamesFromPlacement renders the fixture organization and reads back every name a
+// rendered file gives an account or an address, which must come from the placement: an
+// address is at the organization's domain, at a contact domain, or a service account's;
+// a machine account named anywhere is the placement's. A name a template carried as fixed
+// text, the account or the domains of the deployment bedrock was first tried in, would be
+// none of these.
+func TestNamesFromPlacement(t *testing.T) {
+	t.Parallel()
+
+	p := testPlacement(t)
+	files, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	tests := []struct {
+		name string
+		// pattern captures the name in its first group; fromPlacement reports whether
+		// the placement gives it; atLeast is how many the render carries.
+		pattern       *regexp.Regexp
+		fromPlacement func(name string) bool
+		atLeast       int
+	}{
+		{
+			name:    "every address is the organization's, a contact domain's or a service account's",
+			pattern: regexp.MustCompile(`@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)`),
+			fromPlacement: func(domain string) bool {
+				return domain == p.OrganizationDomain || slices.Contains(p.ContactDomains, "@"+domain) || strings.HasSuffix(domain, ".iam.gserviceaccount.com")
+			},
+			atLeast: 10,
+		},
+		{
+			name:    "every machine account named is the placement's",
+			pattern: regexp.MustCompile("machine account,?\\s+`?([A-Za-z0-9][A-Za-z0-9-]*)"),
+			fromPlacement: func(login string) bool {
+				return login == p.GithubMachineAccount
+			},
+			atLeast: 4,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			found := 0
+			for _, f := range files {
+				for _, m := range tt.pattern.FindAllStringSubmatch(string(f.Content), -1) {
+					found++
+					if !tt.fromPlacement(m[1]) {
+						t.Errorf("%s names %q, which the placement does not give", f.Path, m[1])
+					}
+				}
+			}
+			if found < tt.atLeast {
+				t.Errorf("the render names %d, want at least %d", found, tt.atLeast)
+			}
+		})
+	}
+}
+
+// TestMachineAccount pins the organization's machine account where the GitHub
+// authorization names it: the browser step and the personal access token in 2-env's
+// README, the connection's comment and the token variable's description.
+func TestMachineAccount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path string
+		want []string
+	}{
+		{
+			name: "the README's browser step, its requirements and the token",
+			path: "2-env/README.md",
+			want: []string{
+				"The browser step signs in to GitHub as the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
+				"It must belong to the `imp-example` organization and be an\nowner of it",
+				"Sign in to GitHub\n   as the machine account `imp-machine`, install or select",
+				"fine-grained personal access token of\n`imp-machine` (contents, metadata, pull requests)",
+			},
+		},
+		{name: "the connection's comment", path: "2-env/cloud-build.tf", want: []string{"# GitHub, authorize as the machine account imp-machine. The console writes"}},
+		{name: "the token variable's description", path: "2-env/variables.tf", want: []string{"classic token of the machine account imp-machine added by hand"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := renderedFile(t, tt.path)
+			for _, want := range tt.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("%s lacks %q", tt.path, want)
+				}
+			}
+		})
 	}
 }
 
@@ -834,7 +939,7 @@ func TestTeamGroup(t *testing.T) {
 		{
 			name:   "the groups are the variable's default, from the placement, and no person is seeded",
 			path:   "2-env/variables.tf",
-			want:   []string{"variable \"team_groups\" {", "  default = {\n    tst = \"team-tst@impulseframework.com\"\n    stg = \"team-stg@impulseframework.com\"\n    prd = \"team-prd@impulseframework.com\"\n  }\n"},
+			want:   []string{"variable \"team_groups\" {", "  default = {\n    tst = \"team-tst@imp.example\"\n    stg = \"team-stg@imp.example\"\n    prd = \"team-prd@imp.example\"\n  }\n"},
 			absent: []string{"secret_operators", "user:"},
 		},
 		{
@@ -852,7 +957,7 @@ func TestTeamGroup(t *testing.T) {
 			name: "the shared instance's entitlements, per environment on it, bounded to its databases and backups",
 			path: "2-spn/entitlements.tf",
 			want: []string{
-				"  entitled_environments = {\n    stg = { group = \"team-stg@impulseframework.com\", approval = true }\n    prd = { group = \"team-prd@impulseframework.com\", approval = true }\n  }\n",
+				"  entitled_environments = {\n    stg = { group = \"team-stg@imp.example\", approval = true }\n    prd = { group = \"team-prd@imp.example\", approval = true }\n  }\n",
 				"  entitlement_durations = {\n    spanner_admin  = \"7200s\"\n    spanner_viewer = \"28800s\"\n  }\n",
 				"  environment_databases = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/databases/${local.prefix}-${env}-gbl-\" }\n  environment_backups   = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/backups/${local.prefix}-${env}-gbl-\" }\n",
 				"    for env, e in local.entitled_environments : \"${env}-spanner-admin\" => {\n",
@@ -1034,7 +1139,9 @@ func TestViewPhrases(t *testing.T) {
 	}{
 		{name: "no applications", placement: Placement{}, check: func(v *view) string { return v.ApplicationsList() + " " + v.ExampleApp() }, want: "[] app"},
 		{name: "two applications", placement: Placement{Applications: []string{"harbor", "beacon"}}, check: func(v *view) string { return v.ApplicationsList() + " " + v.ExampleApp() }, want: `["harbor", "beacon"] harbor`},
-		{name: "no contact domains", placement: Placement{OrganizationDomain: "acme.com"}, check: func(v *view) string { return v.ContactDomainsList() }, want: `["@acme.com"]`},
+		{name: "no contact domains", placement: Placement{OrganizationDomain: "acme.com"}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.com\"] contact domain `@acme.com`"},
+		{name: "one contact domain", placement: Placement{OrganizationDomain: "acme.com", ContactDomains: []string{"@acme.org"}}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.org\"] contact domain `@acme.org`"},
+		{name: "two contact domains", placement: Placement{ContactDomains: []string{"@acme.com", "@partner.example"}}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.com\", \"@partner.example\"] contact domains `@acme.com` and `@partner.example`"},
 		{name: "seed labels", placement: Placement{SourceRepo: "acme-infrastructure", Labels: map[string]string{"team": "core"}}, check: func(v *view) string { return v.SeedLabels() }, want: "terraform=true,terraform_source_path=0-bootstrap,source_repo=acme-infrastructure,environment=boot,team=core"},
 		{name: "label prose", placement: Placement{Labels: map[string]string{"team": "core", "cost": "a"}}, check: func(v *view) string { return v.ExtraLabelsProse() + " / " + v.ExtraLabelKeys() }, want: "`cost = \"a\"`, `team = \"core\"` / `cost`, `team`"},
 		{name: "the environments, as a list and as prose", placement: Placement{}, check: func(v *view) string { return v.EnvironmentsList() + " " + v.EnvironmentsProse() }, want: "[\"tst\", \"stg\", \"prd\"] `tst`, `stg` and `prd`"},
@@ -1919,7 +2026,7 @@ func TestRepositoryRules(t *testing.T) {
 			want: []string{
 				`default     = 5080645`,
 				`default     = "master"`,
-				`default     = "impulseframework"`,
+				`default     = "imp-example"`,
 				"variable \"github_infrastructure_team\" {\n  description = \"Slug of the organization's infrastructure team, whose approval a change to an application's workflow and Cloud Build files needs, given after the last push. Empty for none.\"\n  type        = string\n  default     = \"\"",
 			},
 		},

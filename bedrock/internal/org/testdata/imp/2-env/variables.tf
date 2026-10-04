@@ -66,7 +66,7 @@ variable "environment" {
 variable "github_app_installation_id" {
   description = <<-EOT
     Installation ID of the Google Cloud Build GitHub App on the
-    impulseframework GitHub organization. One installation serves every
+    imp-example GitHub organization. One installation serves every
     environment's connection. Read it from the installation's settings URL
     (https://github.com/organizations/<org>/settings/installations/<id>).
     This is not the ID of the organization's own deployer or release apps.
@@ -92,7 +92,7 @@ variable "github_oauth_token_secret_version" {
     as the console writes it (a regional secret in the connection's region), or
     projects/<tst project>/secrets/<name>/versions/<n> for a global one. Created once by the
     browser authorization in the tst project's Cloud Build console (or a
-    classic token of the machine account bedrockbot-ccc added by hand) and
+    classic token of the machine account imp-machine added by hand) and
     reused by every environment's connection; see the README. The tst apply
     grants each environment's Cloud Build service agent accessor on it. Unset
     together with github_app_installation_id until the browser step has run.
@@ -136,7 +136,7 @@ variable "github_deployer_key_secret_versions" {
 variable "team_groups" {
   description = <<-EOT
     The environments' team groups by environment code, each a group's address
-    (team-tst@impulseframework.com; the layer writes group: in front), from
+    (team-tst@imp.example; the layer writes group: in front), from
     placement.json (teamGroups). Each person's access to an environment comes
     from its group: the group holds roles/cloudbuild.builds.approver where a
     release waits for an approval, and its members ask for the environment's
@@ -145,9 +145,9 @@ variable "team_groups" {
   EOT
   type        = map(string)
   default = {
-    tst = "team-tst@impulseframework.com"
-    stg = "team-stg@impulseframework.com"
-    prd = "team-prd@impulseframework.com"
+    tst = "team-tst@imp.example"
+    stg = "team-stg@imp.example"
+    prd = "team-prd@imp.example"
   }
 
   validation {
@@ -159,7 +159,7 @@ variable "team_groups" {
 variable "github_organization" {
   description = "GitHub organization the application repositories live in. A repository link is https://github.com/<organization>/<application code>.git."
   type        = string
-  default     = "impulseframework"
+  default     = "imp-example"
 }
 
 variable "spanner_instances" {

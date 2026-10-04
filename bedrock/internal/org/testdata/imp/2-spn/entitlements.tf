@@ -29,8 +29,8 @@ locals {
   # whether a grant there waits for an approval (every environment but the
   # first, as a release does), from placement.json.
   entitled_environments = {
-    stg = { group = "team-stg@impulseframework.com", approval = true }
-    prd = { group = "team-prd@impulseframework.com", approval = true }
+    stg = { group = "team-stg@imp.example", approval = true }
+    prd = { group = "team-prd@imp.example", approval = true }
   }
 
   # The longest grant of each entitlement, from placement.json.

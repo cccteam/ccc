@@ -26,7 +26,7 @@ layers workflow" below).
   `manage_billing_iam` is true. See step 4.
 - The layers workflow's sign-in (`github.tf`): the workload identity pool
   `imp-boot-github` in the boot project and its provider `github`, which
-  trusts tokens of this repository (impulseframework/imp-impulse-infrastructure) from
+  trusts tokens of this repository (imp-example/imp-impulse-infrastructure) from
   `.github/workflows/layers.yml` alone and maps each token's event and ref to
   `attribute.purpose` (`plan` for a pull request into `master`, `apply`
   for a push to it or a run started from it); the bindings that let a run that
@@ -63,7 +63,7 @@ administrator for recovery ("Recovery, by hand", below).
 
 ### 1. Seed with gcloud
 
-In a terminal, as the bootstrap administrator (`bedrock@impulseframework.com`), who holds
+In a terminal, as the bootstrap administrator (`seed@imp.example`), who holds
 Organization Administrator, Project Creator, and Organization Policy
 Administrator on the organization and Billing Account User on the billing
 account:
@@ -253,7 +253,7 @@ can manage billing IAM; the resources then assert the same two members.
 | `boot_layer_roles` | Org-level roles granted to the boot layer identity. The seed grants the same list; change both together. | `list(string)` | nine roles, see `variables.tf` | no |
 | `boot_project_id` | Project ID of the seeded boot project, suffix included. Adopted, not created. | `string` | n/a | yes |
 | `github_default_branch` | The infrastructure repository's default branch, from which alone the workflow applies. | `string` | `"master"` | no |
-| `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"impulseframework"` | no |
+| `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
 | `infrastructure_repository` | This repository's name, the one whose workflow tokens the provider trusts. | `string` | `"imp-impulse-infrastructure"` | no |
 | `manage_billing_iam` | Whether this layer manages the two `roles/billing.user` grants. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
 | `org_layer_roles` | Org-level roles granted to the org layer identity. | `list(string)` | eleven roles, see `variables.tf` | no |
@@ -326,9 +326,9 @@ the run from its private key. A third app beside the release and deployer
 apps, because widening the deployer app would give every application
 pipeline those rights. Once, by a person:
 
-1. On GitHub, as an owner of the `impulseframework` organization: the
+1. On GitHub, as an owner of the `imp-example` organization: the
    organization's Settings, Developer settings, GitHub Apps, New GitHub App.
-   Name it `impulseframework-infrastructure`, give it any homepage URL,
+   Name it `imp-example-infrastructure`, give it any homepage URL,
    turn Webhook off. Repository permissions: Actions (read), Administration
    (read and write), Metadata (read); the provider reads a repository's
    environments and their branch policies on the Actions permission and

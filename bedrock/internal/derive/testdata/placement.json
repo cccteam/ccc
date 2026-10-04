@@ -27,6 +27,11 @@
   "labels": {
     "bedrock-lab": "true"
   },
+  "maxInstances": {
+    "tst": 2,
+    "stg": 2,
+    "prd": 2
+  },
   "projects": {
     "tst": {
       "id": "imp-tst-gbl-core-b241",

@@ -72,12 +72,12 @@ and a `shared_vpc_id` that is null.
   schedule `NONE`. stg and prd share the instance `2-spn` creates.
 - The Cloud Build (2nd generation) GitHub connection
   `imp-<env>-uc1-github` for the environment project, from the Cloud Build
-  GitHub App installation on the impulseframework organization and the OAuth
+  GitHub App installation on the imp-example organization and the OAuth
   token secret version (below). Plus the Cloud Build service agent's identity,
   forced into existence.
 - Per application in `var.applications` (default `["harbor", "beacon"]`), a repository
   link `imp-<env>-uc1-<app>-repo` under the connection, pointing at
-  `https://github.com/impulseframework/<app>.git`. The application stack's
+  `https://github.com/imp-example/<app>.git`. The application stack's
   triggers reference it. It lives here because creating one takes
   `cloudbuild.repositories.create`, a connection administrator's permission,
   and the design brief puts the repository registration with the environment
@@ -348,14 +348,21 @@ the first application while either value below is unset, since the
 applications' triggers exist once this layer holds the connection and the
 repository's link, and nothing is built by hand before them.
 
+The browser step signs in to GitHub as the organization's machine account,
+`imp-machine` (`githubMachineAccount` in `placement.json`): a GitHub user that
+acts for no person. It must belong to the `imp-example` organization and be an
+owner of it, since installing a GitHub App on an organization takes an owner, and
+the connection's token is that account's, so a person leaving the organization
+breaks nothing.
+
 1. In the Google Cloud console, in the **tst** project, open Cloud Build >
    Repositories (2nd gen) > Create host connection > GitHub. Sign in to GitHub
-   as the machine account `bedrockbot-ccc`, install or select the Google Cloud
-   Build GitHub App on the `impulseframework` organization with access to all
+   as the machine account `imp-machine`, install or select the Google Cloud
+   Build GitHub App on the `imp-example` organization with access to all
    repositories, and finish. The console stores the token as a secret in the
    tst project.
 2. Read the installation ID from the app's settings page on GitHub
-   (`https://github.com/organizations/impulseframework/settings/installations/<id>`)
+   (`https://github.com/organizations/imp-example/settings/installations/<id>`)
    and the token secret's version name from Secret Manager in the tst project
    (`projects/<tst project>/secrets/<name>/versions/<n>`). Put both in
    `terraform.tfvars` as `github_app_installation_id` and
@@ -369,7 +376,7 @@ repository's link, and nothing is built by hand before them.
 If the console's connection is left in place, delete it after the apply, or
 import it: this layer's connection is the one that lives on. An alternative
 that skips the console is a fine-grained personal access token of
-`bedrockbot-ccc` (contents, metadata, pull requests) added by hand as a version
+`imp-machine` (contents, metadata, pull requests) added by hand as a version
 of a container created here, with the same variable pointing at it.
 
 ## Prerequisites this layer does not create
@@ -405,7 +412,7 @@ of a container created here, with the same variable pointing at it.
 | `github_oauth_token_secret_version` | `projects/<tst project>/secrets/<name>/versions/<n>`. | `string` | n/a | yes |
 | `github_deployer_app_id` | App ID of the deployer GitHub App the pipeline talks back as. | `number` | `null` | no |
 | `github_deployer_key_secret_versions` | Per environment, the pinned Secret Manager version of the deployer app's private key, in the container this layer creates. | `map(string)` | `{}` | no |
-| `github_organization` | GitHub organization of the application repositories. | `string` | `"impulseframework"` | no |
+| `github_organization` | GitHub organization of the application repositories. | `string` | `"imp-example"` | no |
 | `team_groups` | The environments' team groups by code, a group's address each, from `placement.json` (`teamGroups`). | `map(string)` | rendered | no |
 | `spanner_config` | tst instance configuration. | `string` | `"nam10"` | no |
 | `spanner_processing_units` | tst instance size; 100 or 200. | `number` | `100` | no |

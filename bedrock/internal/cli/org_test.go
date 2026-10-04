@@ -102,11 +102,11 @@ func TestOrgCheckOwners(t *testing.T) {
 			name: "a person on roles/owner is reported with the project; a service account is not",
 			policies: func(context.Context) (org.PolicyReader, error) {
 				return &fakePolicyReader{byProject: map[string][]org.Binding{
-					"imp-tst-gbl-core-1a2b": {{Role: "roles/owner", Members: []string{"user:bedrock@impulseframework.com", "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}}},
+					"imp-tst-gbl-core-1a2b": {{Role: "roles/owner", Members: []string{"user:seed@imp.example", "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}}},
 				}}, nil
 			},
 			wantOut: []string{
-				"tst (imp-tst-gbl-core-1a2b): user:bedrock@impulseframework.com holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the layers workflow applies the layers (1-org/README.md, Applying).",
+				"tst (imp-tst-gbl-core-1a2b): user:seed@imp.example holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the layers workflow applies the layers (1-org/README.md, Applying).",
 				"owned file(s) match the placement",
 			},
 		},
@@ -192,9 +192,10 @@ func TestOrgCommands(t *testing.T) {
 			wantOut: []string{
 				"Rendered the imp foundation", "68 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
 				"By hand, before the layers workflow can run", "0. In the Workspace Admin console: one team group per environment, named in\n     placement.json (teamGroups",
-				"Seed, as bedrock@impulseframework.com", "imp-boot-gbl-tofu",
+				"Seed, as seed@imp.example", "imp-boot-gbl-tofu",
 				"projects.boot, projectNumbers.boot", "5. Apply 1-org, with GITHUB_TOKEN", "a creator's grants, temporary, removed by hand once the",
-				"6. In the tst project's Cloud Build console, signed in to GitHub as the organization's\n     machine account: the Cloud Build GitHub App's authorization", "bedrock org register refuses the first application until both are set.",
+				"its machine account (imp-machine, an owner of the organization, named in\n     placement.json as githubMachineAccount)",
+				"6. In the tst project's Cloud Build console, signed in to GitHub as the organization's\n     machine account (imp-machine): the Cloud Build GitHub App's authorization", "bedrock org register refuses the first application until both are set.",
 				"the layers workflow (.github/workflows/layers.yml) applies every layer",
 			},
 		},
@@ -233,7 +234,7 @@ func TestOrgCommands(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !strings.Contains(string(hosts), `"quill-tst.impulseframework.dev"       = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-quill-backend"`) {
+				if !strings.Contains(string(hosts), `"quill-tst.apps.imp.example"       = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-quill-backend"`) {
 					t.Errorf("2-net/applications.auto.tfvars lacks quill's host:\n%s", hosts)
 				}
 				if code, out := runOrg(t, "org", "check", "--dir", dir); code != 0 {

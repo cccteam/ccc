@@ -92,7 +92,7 @@ variable "github_oauth_token_secret_version" {
     as the console writes it (a regional secret in the connection's region), or
     projects/<tst project>/secrets/<name>/versions/<n> for a global one. Created once by the
     browser authorization in the tst project's Cloud Build console (or a
-    classic token of the machine account bedrockbot-ccc added by hand) and
+    classic token of the machine account {{.GithubMachineAccount}} added by hand) and
     reused by every environment's connection; see the README. The tst apply
     grants each environment's Cloud Build service agent accessor on it. Unset
     together with github_app_installation_id until the browser step has run.

@@ -94,7 +94,8 @@ By hand, before the layers workflow can run (the commands are in 0-bootstrap/REA
      placement.json (teamGroups: a group's address each; production's is not the first
      environment's), whose members approve the environment's releases and ask for its
      entitlements; nothing else names a person. On GitHub, in a browser: the
-     organization, this infrastructure repository (never
+     organization, its machine account (%s, an owner of the organization, named in
+     placement.json as githubMachineAccount), this infrastructure repository (never
      managed by the layers; default branch %s), the release, deployer and infrastructure
      apps with their keys, installed on the organization (the release app's App ID goes
      into placement.json, githubReleaseAppId; the infrastructure app's App ID and the
@@ -120,7 +121,7 @@ By hand, before the layers workflow can run (the commands are in 0-bootstrap/REA
      workflow applies the layers (bedrock org check lists each person still holding
      roles/owner on an environment project).
   6. In the tst project's Cloud Build console, signed in to GitHub as the organization's
-     machine account: the Cloud Build GitHub App's authorization (2-env/README.md, "The
+     machine account (%s): the Cloud Build GitHub App's authorization (2-env/README.md, "The
      GitHub authorization, before the first application"); its installation id and the
      token secret's version go into 2-env/terraform.tfvars, applied through the workflow.
      bedrock org register refuses the first application until both are set.
@@ -129,7 +130,7 @@ request plans the layers it touches as their plan identities and posts the plans
 merge applies them as their apply identities, in layer order. The shared layers, 2-env per
 environment and the applications' registrations go through it; a person applies by hand
 for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
-`, p.GithubDefaultBranch, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, org.WorkflowFile)
+`, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, p.GithubMachineAccount, org.WorkflowFile)
 }
 
 // workflowNotice says what the layers workflow still lacks in the placement, or nothing.

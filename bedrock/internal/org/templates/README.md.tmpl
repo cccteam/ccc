@@ -145,7 +145,7 @@ Decided before writing:
    `0-bootstrap` is applied with local state first and migrated.
 3. **Organization values.** Domain {{.OrganizationDomain}}, organization {{.OrganizationID}},
    prefix `{{.Prefix}}`, billing account {{.BillingAccount}}, regions {{.Primary.Name}}
-   and {{.Secondary.Name}}, contact domains `@{{.OrganizationDomain}}` and `@cloud-team.com`,
+   and {{.Secondary.Name}}, {{.ContactDomainsProse}},
    no Essential Contact emails yet.
 4. **Billing.** The boot layer identity gets `roles/billing.user`, not
    `roles/billing.admin`. The org layer identity gets `roles/billing.user` as in

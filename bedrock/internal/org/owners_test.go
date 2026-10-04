@@ -36,14 +36,14 @@ func TestOwners(t *testing.T) {
 
 	policies := map[string][]Binding{
 		"imp-tst-gbl-core-1a2b": {
-			{Role: "roles/owner", Members: []string{"user:bedrock@impulseframework.com", "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}},
-			{Role: "roles/editor", Members: []string{"user:someone@impulseframework.com"}},
+			{Role: "roles/owner", Members: []string{"user:seed@imp.example", "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}},
+			{Role: "roles/editor", Members: []string{"user:someone@imp.example"}},
 		},
 		"imp-stg-gbl-core-3c4d": {
-			{Role: "roles/owner", Members: []string{"group:team-stg@impulseframework.com"}},
+			{Role: "roles/owner", Members: []string{"group:team-stg@imp.example"}},
 		},
 		"imp-prd-gbl-core-5e6f": {
-			{Role: "roles/owner", Members: []string{"user:bedrock@impulseframework.com", "user:other@impulseframework.com"}},
+			{Role: "roles/owner", Members: []string{"user:seed@imp.example", "user:other@imp.example"}},
 		},
 	}
 	tests := []struct {
@@ -57,9 +57,9 @@ func TestOwners(t *testing.T) {
 			name:     "every project recorded: the people on roles/owner, in promotion order",
 			projects: map[string]string{"tst": "imp-tst-gbl-core-1a2b", "stg": "imp-stg-gbl-core-3c4d", "prd": "imp-prd-gbl-core-5e6f"},
 			wantOwners: []Owner{
-				{Environment: "tst", Project: "imp-tst-gbl-core-1a2b", Member: "user:bedrock@impulseframework.com"},
-				{Environment: "prd", Project: "imp-prd-gbl-core-5e6f", Member: "user:bedrock@impulseframework.com"},
-				{Environment: "prd", Project: "imp-prd-gbl-core-5e6f", Member: "user:other@impulseframework.com"},
+				{Environment: "tst", Project: "imp-tst-gbl-core-1a2b", Member: "user:seed@imp.example"},
+				{Environment: "prd", Project: "imp-prd-gbl-core-5e6f", Member: "user:seed@imp.example"},
+				{Environment: "prd", Project: "imp-prd-gbl-core-5e6f", Member: "user:other@imp.example"},
 			},
 		},
 		{

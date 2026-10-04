@@ -1,7 +1,7 @@
 variable "allowed_contact_domains" {
   description = "Domains permitted as Essential Contacts, enforced by the essentialcontacts.managed.allowedContactDomains constraint."
   type        = list(string)
-  default     = ["@impulseframework.com", "@cloud-team.com"]
+  default     = ["@imp.example"]
 }
 
 variable "applications" {
@@ -81,7 +81,7 @@ variable "github_infrastructure_team" {
 variable "github_organization" {
   description = "The GitHub organization that holds the application repositories."
   type        = string
-  default     = "impulseframework"
+  default     = "imp-example"
 }
 
 variable "github_release_app_id" {

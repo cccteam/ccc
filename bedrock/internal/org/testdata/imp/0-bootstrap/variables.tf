@@ -33,7 +33,7 @@ variable "github_default_branch" {
 variable "github_organization" {
   description = "The GitHub organization that holds the infrastructure repository and the application repositories."
   type        = string
-  default     = "impulseframework"
+  default     = "imp-example"
 }
 
 variable "infrastructure_repository" {
@@ -77,7 +77,7 @@ variable "org_layer_roles" {
 }
 
 variable "organization_domain" {
-  description = "(Required) Domain name of the GCP Organization (e.g. \"impulseframework.com\")."
+  description = "(Required) Domain name of the GCP Organization (e.g. \"imp.example\")."
   type        = string
 }
 

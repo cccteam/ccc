@@ -165,10 +165,10 @@ resource "google_cloudbuild_trigger" "pr" {
 # pull_request label, asks GitHub whether each pull request is closed, and
 # destroys the stacks of the closed ones as the apply identity, the way
 # /gcbrun down does. The design brief gives the sweep an identity of its own;
-# the lab runs it as the deploy identity, which already holds the impersonation
-# the pull-request build uses. The scheduler runs the trigger as that identity
-# too, which needs Service Account User on the identity itself: 2-env grants it
-# in tst (deploy_runs_sweep).
+# this stack runs it as the deploy identity, which already holds the
+# impersonation the pull-request build uses. The scheduler runs the trigger as
+# that identity too, which needs Service Account User on the identity itself:
+# 2-env grants it in tst (deploy_runs_sweep).
 # ---------------------------------------------------------------------------
 
 resource "google_cloudbuild_trigger" "sweep" {

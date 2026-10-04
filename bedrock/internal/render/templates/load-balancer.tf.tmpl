@@ -6,9 +6,9 @@
 # routes this environment's hostnames to it lives in the net project (2-net)
 # and references the backend across projects; 2-env granted the net project's
 # principals compute.loadBalancerServiceUser here for that. Outlier detection
-# ejects a region whose service answers errors (JOURNAL.md: outlier detection
-# on), and request logging is on at full sample rate, which for a lab site is
-# the cheapest observability there is. No Cloud Armor (opt-in, off).
+# ejects a region whose service answers errors, and request logging is on at
+# full sample rate, the cheapest observability there is. No Cloud Armor
+# (opt-in, off).
 #
 # Modeled on CCC's reference deployment.
 # ---------------------------------------------------------------------------

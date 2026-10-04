@@ -443,13 +443,31 @@ func (v *view) ExampleApp() string {
 	return v.Applications[0]
 }
 
-// ContactDomainsList is the contact domains as an HCL list.
-func (v *view) ContactDomainsList() string {
+// contactDomains are the domains Essential Contacts may belong to: the placement's, or
+// the organization's own domain when it names none.
+func (v *view) contactDomains() []string {
 	if len(v.ContactDomains) == 0 {
-		return `["@` + v.OrganizationDomain + `"]`
+		return []string{"@" + v.OrganizationDomain}
 	}
 
-	return `["` + strings.Join(v.ContactDomains, `", "`) + `"]`
+	return v.ContactDomains
+}
+
+// ContactDomainsList is the contact domains as an HCL list.
+func (v *view) ContactDomainsList() string {
+	return hclList(v.contactDomains())
+}
+
+// ContactDomainsProse is the contact domains as the root README names them: contact
+// domain `@example.com`, or contact domains `@example.com` and `@example.org`.
+func (v *view) ContactDomainsProse() string {
+	domains := v.contactDomains()
+	noun := "contact domains "
+	if len(domains) == 1 {
+		noun = "contact domain "
+	}
+
+	return noun + prose(backticked(domains))
 }
 
 // ExtraLabels reports whether the placement adds labels of its own.

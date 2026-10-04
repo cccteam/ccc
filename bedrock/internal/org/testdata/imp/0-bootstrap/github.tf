@@ -5,7 +5,7 @@
 # on its merge by the workflow .github/workflows/layers.yml, each as its own identity and
 # with no key anywhere: a run presents GitHub's short-lived token to the pool
 # below, whose provider trusts tokens of this repository
-# (impulseframework/imp-impulse-infrastructure) from that workflow file alone, and Google
+# (imp-example/imp-impulse-infrastructure) from that workflow file alone, and Google
 # answers with a token for the identity the run asked for. The provider maps
 # the token's event and ref to attribute.purpose: plan for a pull request into
 # master, apply for a push to it or a run started from it,

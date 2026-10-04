@@ -23,6 +23,8 @@ import (
 const (
 	// regionCount is the number of regions the model runs in: a primary and a secondary.
 	regionCount = 2
+	// githubLoginLength is the longest login GitHub gives an account.
+	githubLoginLength = 39
 	// replaceMe marks a value only a seed step can supply.
 	replaceMe = "REPLACEME"
 )
@@ -36,6 +38,8 @@ var (
 	// groupAddressRE is a group's address as the Workspace Admin console names it: a
 	// mailbox at a domain, with no member prefix in front.
 	groupAddressRE = regexp.MustCompile(`^[^@\s:/]+@[^@\s:/]+\.[^@\s:/]+$`)
+	// githubLoginRE is a GitHub login: letters and digits, single hyphens between them.
+	githubLoginRE = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
 )
 
 // The environments' entitlements, by the key placement.json names each under
@@ -86,6 +90,11 @@ type Placement struct {
 	// GithubOrganization is the GitHub organization holding the application
 	// repositories and this one.
 	GithubOrganization string `json:"githubOrganization"`
+	// GithubMachineAccount is the GitHub login of the organization's machine account: a
+	// GitHub user that belongs to the organization as an owner and acts for no person. It
+	// signs in to GitHub in the browser step that authorizes the Cloud Build GitHub
+	// connection, and owns the personal access token that can stand in for that step.
+	GithubMachineAccount string `json:"githubMachineAccount"`
 	// GithubReleaseAppID is the App ID of the release GitHub App, the only actor that
 	// creates, moves or deletes a release tag of an application's repository: digits,
 	// from the app's settings page. The id, not the slug: a private app cannot be
@@ -262,9 +271,16 @@ func (p *Placement) Validate() error {
 	return nil
 }
 
-// validateGithubApps refuses a GitHub App named by its slug instead of its App ID, and a
-// key version that is not a version's number (latest among them).
+// validateGithubApps refuses a GitHub App named by its slug instead of its App ID, a
+// key version that is not a version's number (latest among them), and a machine account
+// that is not named or not a GitHub login.
 func (p *Placement) validateGithubApps() error {
+	if strings.TrimSpace(p.GithubMachineAccount) == "" {
+		return errors.New("githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it")
+	}
+	if len(p.GithubMachineAccount) > githubLoginLength || !githubLoginRE.MatchString(p.GithubMachineAccount) {
+		return errors.Newf("githubMachineAccount %q is not a GitHub login (letters, digits and single hyphens, at most %d characters)", p.GithubMachineAccount, githubLoginLength)
+	}
 	if !projectNumberRE.MatchString(p.GithubReleaseAppID) {
 		return errors.Newf("githubReleaseAppId %q is not an App ID (digits)", p.GithubReleaseAppID)
 	}

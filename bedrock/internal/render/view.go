@@ -75,6 +75,12 @@ type view struct {
 	BuildMachine      string
 	BuildMachineCPUs  int
 	BuildMachineNames string
+	// MaxInstancesMap is the HCL map of the placement's instance caps by environment
+	// ({ tst = 2, stg = 2, prd = 2 }), the environments it caps alone, in promotion
+	// order; empty when it caps none, and then the service has no max_instance_count.
+	// InstancesProse spells the service's scaling for the README.
+	MaxInstancesMap string
+	InstancesProse  string
 	// Operations are the environments the operations workflow acts on from GitHub, every
 	// one (a rerun of a release reaches production; a restore and the migration
 	// operations every environment but it), with what the workflow needs of each; an
@@ -1120,11 +1126,77 @@ func (v *view) order(envs []string) {
 		v.BuildMachine, v.BuildMachineCPUs = machine.Name, machine.CPUs
 	}
 	v.BuildMachineNames = machineNames()
+	v.MaxInstancesMap, v.InstancesProse = maxInstances(v.P)
 	previous := make([]string, 0, len(envs))
 	for _, env := range envs {
 		previous = append(previous, env+" = "+strconv.Quote(v.P.Previous(env)))
 	}
 	v.PreviousEnvMap = "{ " + strings.Join(previous, ", ") + " }"
+}
+
+// maxInstances spells the placement's instance caps: the HCL map of the environments it
+// caps, in promotion order (empty when it caps none), and the service's scaling as the
+// README says it, from zero instances per region up to the cap of each environment, or
+// to Cloud Run's default where it sets none.
+func maxInstances(p *derive.Placement) (hclMap, readme string) {
+	type capped struct {
+		n    int
+		envs []string
+	}
+	var (
+		entries  []string
+		caps     []capped
+		uncapped []string
+	)
+	for _, env := range p.Environments {
+		n, ok := p.MaxInstanceCount(env)
+		if !ok {
+			uncapped = append(uncapped, env)
+
+			continue
+		}
+		entries = append(entries, env+" = "+strconv.Itoa(n))
+		i := len(caps)
+		for j := range caps {
+			if caps[j].n == n {
+				i = j
+			}
+		}
+		if i == len(caps) {
+			caps = append(caps, capped{n: n})
+		}
+		caps[i].envs = append(caps[i].envs, env)
+	}
+	if len(caps) == 0 {
+		return "", "from zero to Cloud Run's default maximum instances per region, the placement capping no environment (`maxInstances`)"
+	}
+	hclMap = "{ " + strings.Join(entries, ", ") + " }"
+	if len(caps) == 1 && len(uncapped) == 0 {
+		return hclMap, fmt.Sprintf("from zero to at most %s per region in every environment, the placement's cap (`maxInstances`)", instances(caps[0].n))
+	}
+	parts := make([]string, 0, len(caps))
+	for i, c := range caps {
+		count := strconv.Itoa(c.n)
+		if i == 0 {
+			count = instances(c.n) + " per region"
+		}
+		parts = append(parts, count+" in "+joinAnd(c.envs))
+	}
+	readme = "from zero to at most " + strings.Join(parts, ", ") + ", the placement's caps (`maxInstances`)"
+	if len(uncapped) > 0 {
+		readme += ", and to Cloud Run's default maximum in " + joinAnd(uncapped)
+	}
+
+	return hclMap, readme
+}
+
+// instances counts instances: 1 instance, 2 instances.
+func instances(n int) string {
+	if n == 1 {
+		return "1 instance"
+	}
+
+	return strconv.Itoa(n) + " instances"
 }
 
 // repoFullName is owner/name from a GitHub repository URL, or the placeholder the

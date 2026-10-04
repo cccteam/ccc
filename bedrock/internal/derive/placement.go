@@ -6,6 +6,7 @@ package derive
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -81,6 +82,11 @@ type Placement struct {
 	// divided by the machine's vCPUs (Machines), a quota Cloud Build sets per project and
 	// never raises, so nothing here reads it.
 	BuildMachine string `json:"buildMachine,omitempty"`
+	// MaxInstances is the most Cloud Run instances the service may run per region, by
+	// environment name: a cap that bounds what the environment can cost when traffic
+	// rises. An environment it does not name has no cap of the placement's, and Cloud
+	// Run's own default applies there. Absent, none has a cap.
+	MaxInstances map[string]int `json:"maxInstances,omitempty"`
 	// Maintenance is each environment's maintenance window by environment name: the
 	// time the environment may take a release that interrupts service (a breaking
 	// release, whose oldest answered release is newer than the one the environment runs,
@@ -233,6 +239,9 @@ func (p *Placement) Validate() error {
 	if err := p.validateBuildMachine(); err != nil {
 		return err
 	}
+	if err := p.validateMaxInstances(); err != nil {
+		return err
+	}
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
 		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
@@ -261,6 +270,21 @@ func (p *Placement) validateBuildMachine() error {
 	}
 
 	return errors.Newf("buildMachine %q is not one of Cloud Build's machines (%s); absent, the builds run on Cloud Build's default", p.BuildMachine, strings.Join(names, ", "))
+}
+
+// validateMaxInstances checks that each cap names one of the environments and lets the
+// service run at least one instance.
+func (p *Placement) validateMaxInstances() error {
+	for _, env := range slices.Sorted(maps.Keys(p.MaxInstances)) {
+		if !slices.Contains(p.Environments, env) {
+			return errors.Newf("maxInstances names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
+		}
+		if n := p.MaxInstances[env]; n < 1 {
+			return errors.Newf("maxInstances.%s is %d: a cap lets the service run at least one instance; leave the environment out for no cap (Cloud Run's default)", env, n)
+		}
+	}
+
+	return nil
 }
 
 // validatePin checks the bedrock pin: none (both fields empty), a release with the
@@ -350,6 +374,14 @@ func (p *Placement) Machine() (Machine, bool) {
 	}
 
 	return Machine{}, false
+}
+
+// MaxInstanceCount is the most instances the service may run per region in env, and
+// whether the placement caps it there; uncapped, Cloud Run's default applies.
+func (p *Placement) MaxInstanceCount(env string) (int, bool) {
+	n, ok := p.MaxInstances[env]
+
+	return n, ok
 }
 
 // Project is the environment's project as the placement records it, and whether it

@@ -3,12 +3,12 @@
 # links
 #
 # One connection per environment project, authorized once. The Cloud Build
-# GitHub App is installed on the impulseframework organization (one
+# GitHub App is installed on the imp-example organization (one
 # installation ID for every environment), and the connection proves it may act
 # for that installation with a GitHub OAuth token held in Secret Manager. That
 # token is produced by a browser step that cannot be scripted: in the tst
 # project's Cloud Build console, Repositories > Create host connection >
-# GitHub, authorize as the machine account bedrockbot-ccc. The console writes
+# GitHub, authorize as the machine account imp-machine. The console writes
 # the token as a regional secret in the tst project, in the connection's
 # region, and points the connection at its latest version; the values file
 # pins version 1 instead, so a re-authorization is a visible change here

@@ -1,6 +1,6 @@
 # imp-impulse-infrastructure
 
-OpenTofu configurations for the impulseframework.com Google Cloud organization,
+OpenTofu configurations for the imp.example Google Cloud organization,
 rendered by bedrock. The name says whose and what: `imp` is the
 organization prefix every resource here carries, and this is the Impulse
 infrastructure, one repository per (organization, kind), so a GitHub
@@ -26,7 +26,7 @@ gets a line there first.
 | 2 | [`2-spn/`](2-spn/) | the workflow as `imp-spn-gbl-tofu` | the shared Spanner instance `imp-spn-gbl-spanner` (nam10, 100 processing units, capped at 200); instance-level database admin grants; the Spanner entitlements of the environments on it |
 | 2 | [`2-net/`](2-net/) | the workflow as `imp-net-gbl-tofu` | the global external Application Load Balancer, its address, SSL policy, managed certificate and map, the apps domain zone, and a URL map routed from `hosts`; no VPC |
 | 2 | [`2-env/`](2-env/) | the workflow as `imp-<env>-gbl-tofu`, once per environment (`-var environment=`) | what every application in an environment shares: the tst Spanner instance, the Cloud Build GitHub connection and repository links, the deployment-record bucket, the team group's release approval and entitlements, the per-application apply and deploy identities with their grants |
-| 3 | the application's own repository, `infrastructure/` (state slot `3-app/<app>/<env>` in this organization's bucket) | `imp-<env>-gbl-<app>-tofu`, once per environment | the application's stack, derived from its code by bedrock: runtime identities, database, secret containers, Cloud Run services and job, load balancer backend, Cloud Build triggers; harbor's is at impulseframework/harbor |
+| 3 | the application's own repository, `infrastructure/` (state slot `3-app/<app>/<env>` in this organization's bucket) | `imp-<env>-gbl-<app>-tofu`, once per environment | the application's stack, derived from its code by bedrock: runtime identities, database, secret containers, Cloud Run services and job, load balancer backend, Cloud Build triggers; harbor's is at imp-example/harbor |
 
 The three shared layers read `1-org`'s state and are independent of one
 another. `2-env` and the application stacks are one directory each, applied
@@ -143,9 +143,9 @@ Decided before writing:
    (`imp-boot-gbl-state-<suffix>`, created by the seed) with a prefix per
    layer. The bucket name is substituted into the backend blocks once.
    `0-bootstrap` is applied with local state first and migrated.
-3. **Organization values.** Domain impulseframework.com, organization 123456789012,
+3. **Organization values.** Domain imp.example, organization 123456789012,
    prefix `imp`, billing account 012345-6789AB-CDEF01, regions us-central1
-   and us-west3, contact domains `@impulseframework.com` and `@cloud-team.com`,
+   and us-west3, contact domain `@imp.example`,
    no Essential Contact emails yet.
 4. **Billing.** The boot layer identity gets `roles/billing.user`, not
    `roles/billing.admin`. The org layer identity gets `roles/billing.user` as in

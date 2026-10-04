@@ -54,15 +54,21 @@ locals {
   previous_environment    = { tst = "", stg = "tst", prd = "stg" }[var.environment]
   previous_records_bucket = try(data.terraform_remote_state.previous_env[0].outputs.records_bucket, "")
 
-  # The service runs in both lab regions; the job process's job in the primary
-  # only (a job runs once, from one place). Keyed by region code because the
-  # code is what names the regional resources.
+  # The service runs in the organization's two regions; the job process's
+  # job in the primary only (a job runs once, from one place). Keyed by
+  # region code because the code is what names the regional resources.
   regions = {
     (local.env.region_code)           = local.env.region
     (local.env.secondary_region_code) = local.env.secondary_region
   }
   primary_region_code = local.env.region_code
   primary_region      = local.env.region
+
+  # The most instances the service runs per region in this environment: the
+  # placement's cap (maxInstances), which bounds what the environment can cost
+  # when traffic rises; null in an environment the placement does not cap,
+  # which leaves Cloud Run's default.
+  max_instances = lookup({ tst = 2, stg = 2, prd = 2 }, var.environment, null)
 
   # What 2-env registered for this application.
   identities = local.env.applications[local.app]

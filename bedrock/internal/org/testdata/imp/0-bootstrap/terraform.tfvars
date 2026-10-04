@@ -7,7 +7,7 @@ billing_account_id = "012345-6789AB-CDEF01"
 # is organization 123456789012; terraform_folder_id is the bare numeric folder
 # ID from the seed step.
 boot_project_id     = "imp-boot-gbl-core-REPLACEME"
-organization_domain = "impulseframework.com"
+organization_domain = "imp.example"
 terraform_folder_id = "REPLACEME"
 
 # The two roles/billing.user grants need Billing Account Administrator. A

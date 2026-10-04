@@ -15,7 +15,7 @@ There is no VPC in this project. See "Cross-project backends" for why.
   Google-managed certificate for the apex and `*.apps_domain`, a certificate
   map with an entry for each of the two hostnames, no PRIMARY entry. The
   wildcard covers every hostname the naming convention produces:
-  `harbor.impulseframework.dev`, `harbor-stg.`, `harbor-tst.`, and
+  `harbor.apps.imp.example`, `harbor-stg.`, `harbor-tst.`, and
   `pr12-harbor-tst.`.
 - A Cloud DNS public zone for `apps_domain`, DNSSEC on, with A records for
   the apex and the wildcard pointing at the address, the authorization CNAME
@@ -103,7 +103,7 @@ How a host is added, in order:
 2. The environment layer has already granted `load_balancer_service_user`
    in that project.
 3. `hosts` in this layer's `applications.auto.tfvars` carries
-   `"harbor-tst.impulseframework.dev" = "projects/.../global/backendServices/..."`,
+   `"harbor-tst.apps.imp.example" = "projects/.../global/backendServices/..."`,
    rendered from `placement.json` when the application was registered
    (`bedrock org register`), and this layer is applied. DNS and the
    certificate already cover the hostname; nothing else changes.
@@ -115,7 +115,7 @@ backend service does not exist, or whose project
 has not made the grant, fails the apply here with a permission or not-found
 error on the URL map.
 
-Pull-request environments (`pr<N>-harbor-tst.impulseframework.dev`) follow
+Pull-request environments (`pr<N>-harbor-tst.apps.imp.example`) follow
 the same path, which means an entry here per open pull request. That is a
 cost of keeping the URL map in one place; the alternative, letting the tst
 environment write host rules into this URL map, would hand a pull-request
@@ -123,8 +123,8 @@ build write access to the shared load balancer. Left as is.
 
 ## Delegating the domain
 
-`apps_domain` defaults to `impulseframework.dev`, a domain of its own
-beside the Workspace identity domain `impulseframework.com`. The zone here
+`apps_domain` defaults to `apps.imp.example`, a domain of its own
+beside the Workspace identity domain `imp.example`. The zone here
 does not become authoritative until the registrar delegates the domain to the
 zone's name servers (`dns_zone_name_servers` output), or this layer registers
 it (`registrations`). A domain that already does something else, mail above
@@ -163,7 +163,7 @@ tofu apply
 
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
-| `apps_domain` | Domain the applications are served under. | `string` | `"impulseframework.dev"` | no |
+| `apps_domain` | Domain the applications are served under. | `string` | `"apps.imp.example"` | no |
 | `extra_records` | Further records in the zone (mail, verification). | `list(object)` | `[]` | no |
 | `hosts` | Hostname to backend service URI, one entry per served host. | `map(string)` | `{}` | no |
 | `ssl_policy_profile` | Cipher profile of the SSL policy. | `string` | `"MODERN"` | no |

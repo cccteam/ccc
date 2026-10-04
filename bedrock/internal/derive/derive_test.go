@@ -457,6 +457,12 @@ func TestPlacementValidate(t *testing.T) {
 		},
 		{name: "a deprecated N1 build machine", mutate: func(p *Placement) { p.BuildMachine = "N1_HIGHCPU_8" }, wantErr: `buildMachine "N1_HIGHCPU_8" is not one of Cloud Build's machines`},
 		{name: "the enum's default spelled out", mutate: func(p *Placement) { p.BuildMachine = "UNSPECIFIED" }, wantErr: `buildMachine "UNSPECIFIED" is not one of Cloud Build's machines`},
+		{name: "a cap in every environment", mutate: func(p *Placement) { p.MaxInstances = map[string]int{"tst": 2, "prd": 20} }},
+		{name: "a cap in one environment", mutate: func(p *Placement) { p.MaxInstances = map[string]int{"prd": 1} }},
+		{name: "no cap anywhere", mutate: func(p *Placement) { p.MaxInstances = map[string]int{} }},
+		{name: "a cap in an unknown environment", mutate: func(p *Placement) { p.MaxInstances = map[string]int{"stg": 2} }, wantErr: `maxInstances names "stg", which is not one of the environments (tst, prd)`},
+		{name: "a cap of zero", mutate: func(p *Placement) { p.MaxInstances = map[string]int{"tst": 0} }, wantErr: "maxInstances.tst is 0: a cap lets the service run at least one instance; leave the environment out for no cap (Cloud Run's default)"},
+		{name: "a negative cap", mutate: func(p *Placement) { p.MaxInstances = map[string]int{"prd": -1} }, wantErr: "maxInstances.prd is -1"},
 		{name: "projects for a known environment", mutate: func(p *Placement) {
 			p.Projects = map[string]Project{"tst": {ID: "imp-tst-gbl-core-b241", Number: "123456789012"}}
 		}},
@@ -510,6 +516,33 @@ func TestPlacementMachine(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("Machine() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPlacementMaxInstanceCount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		caps       map[string]int
+		env        string
+		want       int
+		wantCapped bool
+	}{
+		{name: "absent: no cap anywhere", caps: nil, env: "prd", want: 0, wantCapped: false},
+		{name: "a capped environment", caps: map[string]int{"tst": 2, "prd": 10}, env: "prd", want: 10, wantCapped: true},
+		{name: "an environment the placement leaves out", caps: map[string]int{"tst": 2}, env: "prd", want: 0, wantCapped: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := &Placement{MaxInstances: tt.caps}
+			got, capped := p.MaxInstanceCount(tt.env)
+			if got != tt.want || capped != tt.wantCapped {
+				t.Errorf("MaxInstanceCount(%s) = %d, %v, want %d, %v", tt.env, got, capped, tt.want, tt.wantCapped)
 			}
 		})
 	}

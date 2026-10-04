@@ -50,8 +50,8 @@ locals {
   previous_environment    = { tst = "", stg = "tst", prd = "stg" }[var.environment]
   previous_records_bucket = try(data.terraform_remote_state.previous_env[0].outputs.records_bucket, "")
 
-  # The service runs in both lab regions. Keyed by region code because the
-  # code is what names the regional resources.
+  # The service runs in the organization's two regions. Keyed by
+  # region code because the code is what names the regional resources.
   regions = {
     (local.env.region_code)           = local.env.region
     (local.env.secondary_region_code) = local.env.secondary_region

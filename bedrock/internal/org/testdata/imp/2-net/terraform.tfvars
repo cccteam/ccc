@@ -2,7 +2,7 @@
 # 1-org's state; the one REPLACEME is the tst environment project, for the
 # wildcard host below.
 
-apps_domain = "impulseframework.dev"
+apps_domain = "apps.imp.example"
 
 # Domains this layer registers through Cloud Domains, keyed by name, each with
 # the yearly price Cloud Domains quoted and the notices it asked to acknowledge

@@ -167,9 +167,10 @@ from `2-env`'s state.
   back to an ephemeral one), which a migration never does, so the deploy
   identity that runs it holds no accessor, and the command runs without them.
 - **Cloud Run**: the service `{{.Prefix}}-<env>-<region>-{{.App}}-app` in both regions (`{{.RegionCodes}}`)
-  (ingress internal and load balancer, 0 to 2 instances, CPU only during
-  requests, `allUsers` invoker so the load balancer can forward){{if not .Jobs}},
-  created with a placeholder image{{end}}. The migration (`{{.Migrate.Dir}}`) is no Cloud
+  (ingress internal and load balancer, CPU only during requests, `allUsers`
+  invoker so the load balancer can forward){{if not .Jobs}}, created with a
+  placeholder image{{end}}. It scales {{.InstancesProse}}.
+  The migration (`{{.Migrate.Dir}}`) is no Cloud
   Run resource: the pipeline takes the migrate command out of the release's
   image and runs it on the build worker as the deploy identity, with the
   variables `locals.tf` derives for it (`migrate_env`, which `cloud-build.tf`

@@ -1,7 +1,7 @@
 variable "apps_domain" {
   description = "Domain the applications are served under: app.domain for prd, app-stg.domain, app-tst.domain, and prN-app-tst.domain for pull requests. Never the identity domain (decided 2026-09-26); registered by this layer when it is listed in var.registrations."
   type        = string
-  default     = "impulseframework.dev"
+  default     = "apps.imp.example"
 
   validation {
     condition     = can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$", var.apps_domain))
@@ -61,8 +61,8 @@ variable "hosts" {
 
     Example:
       {
-        "harbor-tst.impulseframework.dev" = "projects/imp-tst-gbl-core-a1b2/global/backendServices/imp-tst-gbl-harbor-site"
-        "harbor.impulseframework.dev"     = "projects/imp-prd-gbl-core-a1b2/global/backendServices/imp-prd-gbl-harbor-site"
+        "harbor-tst.apps.imp.example" = "projects/imp-tst-gbl-core-a1b2/global/backendServices/imp-tst-gbl-harbor-site"
+        "harbor.apps.imp.example"     = "projects/imp-prd-gbl-core-a1b2/global/backendServices/imp-prd-gbl-harbor-site"
       }
   EOT
   type        = map(string)

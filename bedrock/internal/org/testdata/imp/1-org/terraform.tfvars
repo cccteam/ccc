@@ -4,4 +4,4 @@
 
 billing_account_id  = "012345-6789AB-CDEF01"
 boot_project_id     = "imp-boot-gbl-core-REPLACEME"
-organization_domain = "impulseframework.com"
+organization_domain = "imp.example"

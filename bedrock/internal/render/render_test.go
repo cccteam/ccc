@@ -742,6 +742,84 @@ func TestBuildMachine(t *testing.T) {
 	}
 }
 
+// TestMaxInstances pins the service's scaling for each shape of the placement's caps: no
+// cap anywhere (no max_instance_count, no local), the same cap everywhere, and caps in
+// some environments, where the others take Cloud Run's default through the lookup's null.
+func TestMaxInstances(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		caps       map[string]int
+		wantRun    []string
+		wantLocals []string
+		wantReadme string
+		absent     []string
+	}{
+		{
+			name: "no cap: Cloud Run's default, and no local",
+			caps: nil,
+			wantRun: []string{
+				"    # Scale to zero, and to Cloud Run's default maximum instances per region:\n    # the placement caps no environment (maxInstances).\n    scaling {\n      min_instance_count = 0\n    }\n",
+			},
+			wantReadme: "It scales from zero to Cloud Run's default maximum instances per region, the placement capping no environment (`maxInstances`).",
+			absent:     []string{"max_instance_count", "max_instances"},
+		},
+		{
+			name:       "the same cap in every environment",
+			caps:       map[string]int{"tst": 2, "stg": 2, "prd": 2},
+			wantRun:    []string{"    scaling {\n      min_instance_count = 0\n      max_instance_count = local.max_instances\n    }\n"},
+			wantLocals: []string{"  max_instances = lookup({ tst = 2, stg = 2, prd = 2 }, var.environment, null)\n"},
+			wantReadme: "It scales from zero to at most 2 instances per region in every environment, the placement's cap (`maxInstances`).",
+		},
+		{
+			name:       "caps in some environments, the rest uncapped",
+			caps:       map[string]int{"tst": 1, "prd": 20},
+			wantRun:    []string{"      max_instance_count = local.max_instances\n"},
+			wantLocals: []string{"  max_instances = lookup({ tst = 1, prd = 20 }, var.environment, null)\n"},
+			wantReadme: "It scales from zero to at most 1 instance per region in tst, 20 in prd, the placement's caps (`maxInstances`), and to Cloud Run's default maximum in stg.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			m.Placement.MaxInstances = tt.caps
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			text := map[string]string{}
+			for _, f := range files {
+				if !f.Root {
+					text[f.Path] = string(f.Content)
+				}
+			}
+			for _, w := range tt.wantRun {
+				if !strings.Contains(text["cloud-run.tf"], w) {
+					t.Errorf("cloud-run.tf lacks:\n%s", w)
+				}
+			}
+			for _, w := range tt.wantLocals {
+				if !strings.Contains(text["locals.tf"], w) {
+					t.Errorf("locals.tf lacks:\n%s", w)
+				}
+			}
+			if !strings.Contains(text["README.md"], tt.wantReadme) {
+				t.Errorf("README.md lacks:\n%s", tt.wantReadme)
+			}
+			for _, a := range tt.absent {
+				for _, path := range []string{"cloud-run.tf", "locals.tf"} {
+					if strings.Contains(text[path], a) {
+						t.Errorf("%s carries %q", path, a)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestAligned(t *testing.T) {
 	t.Parallel()
 

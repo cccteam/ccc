@@ -1,8 +1,9 @@
 # ---------------------------------------------------------------------------
 # Cloud Run
 #
-# The site (main.go) as a service in both lab regions, and the job
-# process (cmd/jobs) as a job in the primary region. All are created
+# The site (main.go) as a service in the organization's two
+# regions, and the job process (cmd/jobs) as a job in the primary
+# region. All are created
 # with a placeholder image: the pipeline owns the image from the first deploy
 # on, so the image and the labels and annotations a deploy stamps are ignored
 # here, and everything else about the revision template (identity, scaling,
@@ -11,8 +12,9 @@
 # release's image and runs it on the build worker as the deploy identity, with
 # the variables locals.tf derives for it (migrate_env).
 #
-# Modeled on CCC's reference deployment, without the VPC egress
-# (no connector, no NAT in the lab) and without IAP.
+# Modeled on CCC's reference deployment, without the VPC egress (no
+# connector and no NAT: the organization's network layer creates no network,
+# and Cloud Run needs none) and without IAP.
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_service" "app" {
@@ -37,11 +39,12 @@ resource "google_cloud_run_v2_service" "app" {
     timeout               = "300s"
     labels                = local.labels
 
-    # Scale to zero; two instances per region is plenty for a lab site, and it
-    # bounds the bill (JOURNAL.md: alerts only, cap $700/month).
+    # Scale to zero, and to at most local.max_instances per region: the
+    # placement's cap for this environment (maxInstances), or Cloud Run's
+    # default where it sets none.
     scaling {
       min_instance_count = 0
-      max_instance_count = 2
+      max_instance_count = local.max_instances
     }
 
     containers {
