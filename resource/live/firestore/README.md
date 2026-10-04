@@ -89,8 +89,9 @@ browser initializes the SDK with, and the emulator host (`FIRESTORE_EMULATOR_HOS
 ## Tests
 
 The package's tests run against the Firestore emulator from the Cloud SDK emulators
-image, started with podman beside the Spanner emulator the resource package's tests
-use, and skip under `-short` and when podman is absent. They prove the record's
+image, which db-initiator starts in a container with the package's rules
+(`NewFirestoreContainer` with `WithFirestoreRules`), as it starts the Spanner emulator
+the resource package's tests use; they skip under `-short`. They prove the record's
 lookups and expiry, the publisher's documents, coalescing and the bulk threshold, the
 emulator token, and, through the emulator's REST API with an unsigned token for a uid,
 that a user reads their own change set and nothing else. The signals tests run two

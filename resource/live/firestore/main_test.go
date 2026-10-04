@@ -1,12 +1,10 @@
 package firestore_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -15,16 +13,15 @@ import (
 
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
+	initiator "github.com/cccteam/db-initiator"
 	"github.com/go-playground/errors/v5"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// emulatorImage pins the Cloud SDK emulators image the package's tests start the
-// Firestore emulator from, by the SDK version as the Spanner emulator is pinned by
-// its version; its manifest at pinning was
-// sha256:806d1fc8b431d40955a5eb645436ff108f2291b7e59b6d83afe05f7d15ab2148.
-const emulatorImage = "gcr.io/google.com/cloudsdktool/google-cloud-cli:562.0.0-emulators"
+// emulatorVersion pins the Cloud SDK version whose emulators image
+// (google-cloud-cli:<version>-emulators) the package's tests start the Firestore
+// emulator from, as the Spanner emulator is pinned by its version; the image's manifest
+// at pinning was sha256:806d1fc8b431d40955a5eb645436ff108f2291b7e59b6d83afe05f7d15ab2148.
+const emulatorVersion = "562.0.0"
 
 // The database the tests use: any project id serves the emulator, and a named
 // database proves the service addresses one.
@@ -53,8 +50,8 @@ func TestMain(m *testing.M) {
 
 // firestoreEmulator returns the shared emulator's host:port, starting it on first
 // demand. Under -short the calling test skips instead, so the unit run never needs a
-// container runtime; the container is started through testcontainers, the way
-// db-initiator starts the Spanner emulator, so Docker and podman both serve.
+// container runtime; db-initiator starts the container through testcontainers, as it
+// starts the Spanner emulator, so Docker and podman both serve.
 func firestoreEmulator(t *testing.T) string {
 	t.Helper()
 
@@ -71,57 +68,23 @@ func firestoreEmulator(t *testing.T) string {
 	return sharedEmulator.host
 }
 
-// emulatorPort is the port the emulator listens on inside its container; the host side
-// is whatever the runtime maps it to.
-const emulatorPort = "8080/tcp"
-
-// startEmulator runs the emulator in a container on a mapped local port with the
-// package's rules copied in, waits until its root answers, and returns its host:port and
-// how to stop it.
+// startEmulator starts the emulator with the package's rules copied in, once it answers,
+// and returns its host:port and how to stop it.
 func startEmulator() (host string, stop func(), err error) {
-	rules, err := os.ReadFile("firestore.rules")
+	container, err := initiator.NewFirestoreContainer(context.Background(), emulatorVersion, initiator.WithFirestoreRules("firestore.rules"))
 	if err != nil {
-		return "", nil, errors.Wrap(err, "os.ReadFile()")
-	}
-
-	ctx := context.Background()
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		Started: true,
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        emulatorImage,
-			Cmd:          []string{"gcloud", "emulators", "firestore", "start", "--host-port=0.0.0.0:8080", "--rules=/firestore.rules"},
-			ExposedPorts: []string{emulatorPort},
-			Files: []testcontainers.ContainerFile{{
-				Reader:            bytes.NewReader(rules),
-				ContainerFilePath: "/firestore.rules",
-				FileMode:          0o644,
-			}},
-			WaitingFor: wait.ForHTTP("/").WithPort(emulatorPort).WithStartupTimeout(2 * time.Minute),
-		},
-	})
-	if err != nil {
-		return "", nil, errors.Wrap(err, "testcontainers.GenericContainer()")
+		return "", nil, errors.Wrap(err, "initiator.NewFirestoreContainer()")
 	}
 	stop = func() {
 		if err := container.Terminate(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "the Firestore emulator container was not terminated: %v\n", err)
 		}
+		if err := container.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "the Firestore emulator container was not closed: %v\n", err)
+		}
 	}
 
-	h, err := container.Host(ctx)
-	if err != nil {
-		stop()
-
-		return "", nil, errors.Wrap(err, "testcontainers.Container.Host()")
-	}
-	p, err := container.MappedPort(ctx, emulatorPort)
-	if err != nil {
-		stop()
-
-		return "", nil, errors.Wrap(err, "testcontainers.Container.MappedPort()")
-	}
-
-	return net.JoinHostPort(h, p.Port()), stop, nil
+	return container.Host(), stop, nil
 }
 
 // newService opens a service on the shared emulator's test database with the given

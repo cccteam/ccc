@@ -29,7 +29,7 @@ func (emulatorVersion) Describe() string {
 // firestoreMissing is the finding when nothing starts it.
 const (
 	firestoreEmulator = "Firestore"
-	firestoreMissing  = "no process file or test harness starts the Firestore emulator (the Cloud SDK emulators image, google-cloud-cli:<version>-emulators); development cannot start without it, since the data level refuses to start with neither APP_FIRESTORE_DATABASE nor FIRESTORE_EMULATOR_HOST set"
+	firestoreMissing  = "no process file or test harness starts the Firestore emulator (the Cloud SDK emulators image, google-cloud-cli:<version>-emulators, or db-initiator's NewFirestoreContainer); development cannot start without it, since the data level refuses to start with neither APP_FIRESTORE_DATABASE nor FIRESTORE_EMULATOR_HOST set"
 )
 
 // emulatorRefs is every place one emulator's version is named.

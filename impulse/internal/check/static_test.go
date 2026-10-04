@@ -157,7 +157,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "emulator-version flat", fixture: "flat", check: emulatorVersion{},
-			wantStatus: Pass, wantSummary: "Spanner: 3 reference(s) agree on 1.5.56; Firestore: 1 reference(s) agree on 562.0.0",
+			wantStatus: Pass, wantSummary: "Spanner: 3 reference(s) agree on 1.5.56; Firestore: 2 reference(s) agree on 562.0.0",
 		},
 		{
 			name: "emulator-version sites", fixture: "sites", check: emulatorVersion{},
@@ -167,7 +167,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 				"Spanner   1.5.44     cmd/generate/resourcegenerator_pilots/main.go",
 				"Spanner   1.5.44     cmd/generate/resourcegenerator_shared/main.go",
 				"Spanner   1.5.44     cmd/generate/resourcegenerator_tugs/main.go",
-				"no process file or test harness starts the Firestore emulator (the Cloud SDK emulators image, google-cloud-cli:<version>-emulators); development cannot start without it, since the data level refuses to start with neither APP_FIRESTORE_DATABASE nor FIRESTORE_EMULATOR_HOST set",
+				"no process file or test harness starts the Firestore emulator (the Cloud SDK emulators image, google-cloud-cli:<version>-emulators, or db-initiator's NewFirestoreContainer); development cannot start without it, since the data level refuses to start with neither APP_FIRESTORE_DATABASE nor FIRESTORE_EMULATOR_HOST set",
 			},
 		},
 		{

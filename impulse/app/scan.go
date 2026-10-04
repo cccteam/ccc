@@ -34,7 +34,10 @@ var (
 	// firestoreImageRE matches the Cloud SDK emulators image tag the Firestore emulator
 	// runs from, in a process file's command or a test harness's image constant.
 	firestoreImageRE = regexp.MustCompile(`cloudsdktool/google-cloud-cli:(\d[A-Za-z0-9.]*)-emulators`)
-	processFileRE    = regexp.MustCompile(`^(Procfile.*|process-compose.*\.ya?ml)$`)
+	// firestoreHarnessRE matches a test harness starting the Firestore emulator through
+	// db-initiator, which takes the Cloud SDK version and runs the same image.
+	firestoreHarnessRE = regexp.MustCompile(`NewFirestoreContainer\(\s*[^,()]+,\s*"([^"]+)"`)
+	processFileRE      = regexp.MustCompile(`^(Procfile.*|process-compose.*\.ya?ml)$`)
 )
 
 // scan walks the tree once and records every declaration the checks read.
@@ -83,6 +86,7 @@ func (a *App) scanFile(abs, name string) error {
 		}
 		a.EmulatorHarnesses = append(a.EmulatorHarnesses, findRefs(rel, data, emulatorHarnessRE)...)
 		a.FirestoreEmulatorImages = append(a.FirestoreEmulatorImages, findRefs(rel, data, firestoreImageRE)...)
+		a.FirestoreEmulatorImages = append(a.FirestoreEmulatorImages, findRefs(rel, data, firestoreHarnessRE)...)
 		if bytes.Contains(data, []byte(validateRolesFunc+"(")) {
 			validations, err := parseRoleValidations(rel, data)
 			if err != nil {

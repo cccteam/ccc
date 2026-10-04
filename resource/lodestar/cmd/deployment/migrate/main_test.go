@@ -25,12 +25,28 @@ const (
 	containerInstanceID = "test-instance"
 	versionsTable       = "SchemaMigrations"
 	migrationsDir       = "schema/migrations"
+	seedDir             = "schema/devseed"
 )
 
-var container *initiator.SpannerContainer
+// serviceName is the service name the migration run's core level reads
+// (APP_SERVICE_NAME); any name serves the emulators.
+const serviceName = "migrate-test"
 
-// TestMain starts one Spanner emulator for the package; the cases publish it in the
-// environment, which is how the deployment's job finds its database.
+// The package's emulators: the Spanner container the cases create their databases on,
+// and the Firestore emulator the migration run's live service opens. The data level
+// requires the live service, and a migration run finds its Firestore database as the
+// deployment's job does (APP_FIRESTORE_DATABASE) or as the development stack does
+// (FIRESTORE_EMULATOR_HOST), which is how the cases hand it the emulator.
+var (
+	container         *initiator.SpannerContainer
+	firestoreEmulator *initiator.FirestoreContainer
+)
+
+// TestMain starts one Spanner emulator and one Firestore emulator for the package; the
+// cases publish them in the environment, which is how the deployment's job finds its
+// databases. The Firestore emulator runs from the Cloud SDK emulators image the Procfile
+// starts, by the SDK version, and without rules, since the live service writes with the
+// emulator's owner credential, which rules never apply to.
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
@@ -40,23 +56,48 @@ func TestMain(m *testing.M) {
 	}
 	container = c
 
+	f, err := initiator.NewFirestoreContainer(ctx, "562.0.0")
+	if err != nil {
+		stopSpanner(ctx, c)
+		log.Fatal(err)
+	}
+	firestoreEmulator = f
+
 	exitCode := m.Run()
 
+	stopFirestore(ctx, f)
+	stopSpanner(ctx, c)
+
+	os.Exit(exitCode)
+}
+
+// stopSpanner terminates the Spanner emulator's container and closes the handle on it.
+func stopSpanner(ctx context.Context, c *initiator.SpannerContainer) {
 	if err := c.Terminate(ctx); err != nil {
 		fmt.Println(err)
 	}
 	if err := c.Close(); err != nil {
 		fmt.Println(err)
 	}
-
-	os.Exit(exitCode)
 }
 
-// TestExecute runs the command's flags against the emulator, each case on a database of
-// its own: the report on a fresh, a migrated and a dirty database, the forces with the row
-// before and after, the refusals before the database is touched, and the exit codes. The
-// command reads its target from the environment, so the cases run one at a time, from the
-// module root, where the migrations are read from as they are in the image.
+// stopFirestore terminates the Firestore emulator's container and closes the handle on
+// it.
+func stopFirestore(ctx context.Context, f *initiator.FirestoreContainer) {
+	if err := f.Terminate(ctx); err != nil {
+		fmt.Println(err)
+	}
+	if err := f.Close(); err != nil {
+		fmt.Println(err)
+	}
+}
+
+// TestExecute runs the command's flags against the emulators, each case on a database of
+// its own: the migrations with the seed, the report on a fresh, a migrated and a dirty
+// database, the forces with the row before and after, the refusals before the database is
+// touched, and the exit codes. The command reads its target from the environment, so the
+// cases run one at a time, from the module root, where the migrations are read from as
+// they are in the image.
 func TestExecute(t *testing.T) {
 	ctx := context.Background()
 	t.Chdir(filepath.Join("..", "..", ".."))
@@ -71,6 +112,15 @@ func TestExecute(t *testing.T) {
 	t.Setenv("SPANNER_EMULATOR_HOST", host+":"+port.Port())
 	t.Setenv("GOOGLE_CLOUD_SPANNER_PROJECT", containerProjectID)
 	t.Setenv("GOOGLE_CLOUD_SPANNER_INSTANCE_ID", containerInstanceID)
+	// The migration run opens the data level, which reads the core level's service name
+	// and opens the live service, required, over the Firestore emulator.
+	t.Setenv("APP_SERVICE_NAME", serviceName)
+	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreEmulator.Host())
+	// The data level opens the members auth too, whose Google sign-in refuses to start
+	// without the Workspace domain logins are restricted to and the prefix of the groups
+	// that carry roles; nothing signs in here, so any values serve.
+	t.Setenv("APP_MEMBERS_OIDC_HOSTED_DOMAIN", "example.com")
+	t.Setenv("APP_MEMBERS_OIDC_GROUP_PREFIX", "members-")
 	last := lastMigration(t)
 
 	tests := []struct {
@@ -88,6 +138,11 @@ func TestExecute(t *testing.T) {
 		// wantAfter is what -version reports once the case has run; empty skips the check.
 		wantAfter string
 	}{
+		{
+			name:      "the migrations with the seed apply every schema and data migration",
+			args:      []string{"-seed"},
+			wantAfter: fmt.Sprintf("schema: version %d\ndata: %s\n", last, seededData(t)),
+		},
 		{
 			name:    "the report on a fresh database",
 			args:    []string{"-version"},
@@ -274,11 +329,37 @@ func dirty(t *testing.T, db *initiator.SpannerDB) {
 func lastMigration(t *testing.T) int {
 	t.Helper()
 
-	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.up.sql"))
-	if err != nil || len(files) == 0 {
-		t.Fatalf("no schema migrations under %s: %v", migrationsDir, err)
+	last, ok := lastIndex(t, migrationsDir)
+	if !ok {
+		t.Fatalf("no schema migrations under %s", migrationsDir)
 	}
-	last := 0
+
+	return last
+}
+
+// seededData is what -version reports for the data table once the seed has run: the
+// highest version among the seed's files, or no version while the application has no
+// seed.
+func seededData(t *testing.T) string {
+	t.Helper()
+
+	last, ok := lastIndex(t, seedDir)
+	if !ok {
+		return "no version"
+	}
+
+	return "version " + strconv.Itoa(last)
+}
+
+// lastIndex is the highest index among a migrations directory's up files; ok is false
+// when the directory holds none or does not exist.
+func lastIndex(t *testing.T, dir string) (last int, ok bool) {
+	t.Helper()
+
+	files, err := filepath.Glob(filepath.Join(dir, "*.up.sql"))
+	if err != nil {
+		t.Fatalf("filepath.Glob() error = %v", err)
+	}
 	for _, file := range files {
 		index, _, _ := strings.Cut(filepath.Base(file), "_")
 		n, err := strconv.Atoi(index)
@@ -288,5 +369,5 @@ func lastMigration(t *testing.T) int {
 		last = max(last, n)
 	}
 
-	return last
+	return last, len(files) > 0
 }

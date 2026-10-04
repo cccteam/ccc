@@ -37,8 +37,9 @@ type App struct {
 	EmulatorHarnesses []EmulatorRef
 	// FirestoreEmulatorImages are the Firestore emulator versions named by process files
 	// and test harnesses through the Cloud SDK emulators image tag
-	// (google-cloud-cli:<version>-emulators): the emulator the live pages run on in
-	// development.
+	// (google-cloud-cli:<version>-emulators), and by test harnesses through
+	// initiator.NewFirestoreContainer, which takes the same version: the emulator the live
+	// pages run on in development.
 	FirestoreEmulatorImages []EmulatorRef
 	// EnvTags are the env struct tags declared by the application's Go code.
 	EnvTags []EnvTag

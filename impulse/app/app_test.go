@@ -37,7 +37,7 @@ func TestDiscover(t *testing.T) {
 			wantWebApps:     []WebApp{{Dir: "web/console"}, {Dir: "web/portal"}},
 			wantImages:      []EmulatorRef{{File: "Procfile", Line: 1, Version: "1.5.56"}},
 			wantHarnesses:   []EmulatorRef{{File: "test/integration/main_test.go", Line: 12, Version: "1.5.56"}},
-			wantFirestore:   []EmulatorRef{{File: "Procfile", Line: 2, Version: "562.0.0"}},
+			wantFirestore:   []EmulatorRef{{File: "Procfile", Line: 2, Version: "562.0.0"}, {File: "test/integration/main_test.go", Line: 14, Version: "562.0.0"}},
 			wantEnvTemplate: ".envrc.template",
 			wantEnvTagNames: []string{
 				"LIGHTHOUSE_PROJECT_ID", "LIGHTHOUSE_SPANNER_INSTANCE_ID", "LIGHTHOUSE_SPANNER_DATABASE",
