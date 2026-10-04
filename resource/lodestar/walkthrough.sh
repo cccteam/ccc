@@ -387,6 +387,12 @@ HERON=70000000-0000-4000-8000-000000000009
 HERON_REFIT=a0000000-0000-4000-8000-000000000008
 TAB=walkthrough-$(date +%s)   # the tab id a browser mints: 1 to 64 of [A-Za-z0-9_-]
 SEED=seed-$(date +%s%N)       # the version a page asks by before any change arrived
+uid() { # uid <persona>: a console persona's live principal id, the crew auth's name and the user name joined by | (live.PrincipalID): the uid of the persona's change set and browser identity
+  echo "crew|$1"
+}
+uid_path() { # uid_path <persona>: the persona's uid as a URL path segment, its | written %7C
+  echo "crew%7C$1"
+}
 fsdocs() { # fsdocs <collection path>: the emulator's documents under the path, read as the owner (an empty collection answers {})
   curl -s -H 'Authorization: Bearer owner' "http://$FS/v1/projects/$FS_PROJECT/databases/$FS_DB/documents/$1"
 }
@@ -398,8 +404,8 @@ assert_fs() { # assert_fs <label> <collection path> <python expression over rows
     echo "FAIL  $label: $(fsdocs "$path" | head -c 300)"; fails=$((fails + 1))
   fi
 }
-change_at() { # change_at <principal> <kind>: the server timestamp of the principal's change document of that kind, as unix microseconds, the _v the browser asks again by
-  fsdocs "users/$1/changes" | python3 -c "
+change_at() { # change_at <persona> <kind>: the server timestamp of the persona's change document of that kind, as unix microseconds, the _v the browser asks again by
+  fsdocs "users/$(uid_path "$1")/changes" | python3 -c "
 import json,sys,datetime
 docs=json.load(sys.stdin).get('documents',[])
 at=[d['fields']['at']['timestampValue'] for d in docs if d['fields']['kind']['stringValue']=='$2'][0]
@@ -414,7 +420,7 @@ cache_header() { # cache_header <label> <headers file> <want>: the response's Ca
 if [ -z "$FS" ]; then echo "SKIP  live pages: FIRESTORE_EMULATOR_HOST is unset, the stack serves none"; else
 login harbormaster
 r=$(req harbormaster GET "$API/live/token"); check "the token route hands Hollis her identity on the emulator" 200 "$r"
-assert_py "the payload names her uid and the emulator host, with no custom token" "$r" "rows['uid']=='harbormaster' and rows['emulator']=='$FS' and rows['token']=='' and rows['project']=='$FS_PROJECT'"
+assert_py "the payload names her uid and the emulator host, with no custom token" "$r" "rows['uid']=='$(uid harbormaster)' and rows['emulator']=='$FS' and rows['token']=='' and rows['project']=='$FS_PROJECT'"
 r=$(req harbormaster GET "$ANVIL/ships?_v=$SEED" "" -H "X-Subscribe: $TAB" -D "$S/live-list.h"); check "the fleet board at Anvil, live: X-Subscribe and _v" 200 "$r"
 cache_header "the live list is the browser's to cache for five minutes" "$S/live-list.h" "private, max-age=300"
 r=$(req harbormaster GET "$ANVIL/ships/$HERON?_v=$SEED" "" -H "X-Subscribe: $TAB" -D "$S/live-row.h"); check "the Patient Heron open on her board, live" 200 "$r"
@@ -422,28 +428,28 @@ HERON_BEFORE=$(body "$r" | py "print(rows['lastRefitAt'])")   # the seeded stamp
 cache_header "the live read is cacheable the same way" "$S/live-row.h" "private, max-age=300"
 r=$(req harbormaster GET "$ANVIL/ships" "" -D "$S/plain-list.h"); check "the same list asked plainly" 200 "$r"
 cache_header "a request without _v stays uncached" "$S/plain-list.h" "no-cache, no-store, must-revalidate"
-assert_fs "two subscriptions are on record for her tab: the Heron's row and the Anvil list" subscriptions "sorted((d['resource'],d['key'],d['domain']) for d in rows if d['principal']=='harbormaster' and d['tab']=='$TAB')==[('Ships','','anvil'),('Ships','$HERON','')]"
+assert_fs "two subscriptions are on record for her tab: the Heron's row and the Anvil list" subscriptions "sorted((d['resource'],d['key'],d['domain']) for d in rows if d['principal']=='$(uid harbormaster)' and d['tab']=='$TAB')==[('Ships','','anvil'),('Ships','$HERON','')]"
 r=$(req pilot GET "$API/sectors/bastion/ships?_v=$SEED" "" -H "X-Subscribe: $TAB-pilot"); check "the pilot's fleet board at Bastion, live" 200 "$r"
-assert_fs "the pilot's Bastion list is on record" subscriptions "any(d['principal']=='pilot' and d['tab']=='$TAB-pilot' and d['resource']=='Ships' and d['domain']=='bastion' for d in rows)"
+assert_fs "the pilot's Bastion list is on record" subscriptions "any(d['principal']=='$(uid pilot)' and d['tab']=='$TAB-pilot' and d['resource']=='Ships' and d['domain']=='bastion' for d in rows)"
 r=$(req cadet GET "$ANVIL/ships"); check "the cadet holds no List on Ships" 403 "$r"
 r=$(req cadet GET "$ANVIL/ships?_v=$SEED" "" -H "X-Subscribe: $TAB-cadet"); check "asking live changes nothing for her: refused as before" 403 "$r"
-assert_fs "no record was written for the refused request" subscriptions "not any(d['principal']=='cadet' for d in rows)"
+assert_fs "no record was written for the refused request" subscriptions "not any(d['principal']=='$(uid cadet)' for d in rows)"
 r=$(req engineer POST "$ANVIL/start-flight-test" "{\"refitId\":\"$HERON_REFIT\"}"); check "the engineer starts the Heron's flight test" 200 "$r"
 r=$(req engineer POST "$ANVIL/pass-flight-test" "{\"refitId\":\"$HERON_REFIT\"}"); check "the Heron passes: the commit stamps the ship and publishes" 200 "$r"
-assert_fs "Hollis's set holds exactly two documents, the row and the list, each with its server timestamp" users/harbormaster/changes "sorted((d['kind'],d['resource'],d.get('key',''),d.get('domain',''),d.get('deleted',False)) for d in rows)==[('list','Ships','','anvil',False),('row','Ships','$HERON','',False)] and all(d['_at'] for d in rows)"
+assert_fs "Hollis's set holds exactly two documents, the row and the list, each with its server timestamp" "users/$(uid_path harbormaster)/changes" "sorted((d['kind'],d['resource'],d.get('key',''),d.get('domain',''),d.get('deleted',False)) for d in rows)==[('list','Ships','','anvil',False),('row','Ships','$HERON','',False)] and all(d['_at'] for d in rows)"
 LIST_V=$(change_at harbormaster list); ROW_V=$(change_at harbormaster row)
 r=$(req harbormaster GET "$ANVIL/ships?_v=$LIST_V" "" -H "X-Subscribe: $TAB" -D "$S/refetch-list.h"); check "the fleet board asks again by the list document's timestamp (_v=$LIST_V)" 200 "$r"
 cache_header "the refetched list is cacheable under its new version" "$S/refetch-list.h" "private, max-age=300"
 r=$(req harbormaster GET "$ANVIL/ships/$HERON?_v=$ROW_V" "" -H "X-Subscribe: $TAB"); check "the ship's page asks again by the row document's timestamp (_v=$ROW_V)" 200 "$r"
 assert_py "the refetched Heron carries a new LastRefitAt, the pass's commit timestamp" "$r" "rows['lastRefitAt'] is not None and rows['lastRefitAt'] != '$HERON_BEFORE'"
-assert_fs "the pilot watching Bastion's fleet received nothing" users/pilot/changes "len(rows)==0"
-assert_fs "the cadet, never subscribed, received nothing" users/cadet/changes "len(rows)==0"
+assert_fs "the pilot watching Bastion's fleet received nothing" "users/$(uid_path pilot)/changes" "len(rows)==0"
+assert_fs "the cadet, never subscribed, received nothing" "users/$(uid_path cadet)/changes" "len(rows)==0"
 r=$(req harbormaster POST "$API/live/renew" "{\"tab\":\"$TAB\",\"subscriptions\":[{\"resource\":\"Ships\",\"domain\":\"anvil\"},{\"resource\":\"Ships\",\"key\":\"$HERON\",\"domain\":\"anvil\"},{\"resource\":\"Refits\",\"domain\":\"anvil\"}]}" -H "X-Subscribe: $TAB"); check "the tab renews its subscriptions" 200 "$r"
 assert_py "the two Ships subscriptions are kept and the Refits one, which her grants do not cover, is dropped" "$r" "[s['resource'] for s in rows['kept']]==['Ships','Ships'] and [s['resource'] for s in rows['dropped']]==['Refits'] and rows['expiresAt']"
 r=$(req harbormaster POST "$API/live/unsubscribe" "{\"tab\":\"$TAB\",\"all\":false}" -H "X-Subscribe: $TAB"); check "the tab leaves" 204 "$r"
-assert_fs "the tab's subscriptions are gone" subscriptions "not any(d['principal']=='harbormaster' and d['tab']=='$TAB' for d in rows)"
+assert_fs "the tab's subscriptions are gone" subscriptions "not any(d['principal']=='$(uid harbormaster)' and d['tab']=='$TAB' for d in rows)"
 r=$(req pilot POST "$API/live/unsubscribe" "{\"tab\":\"$TAB-pilot\",\"all\":true}"); check "the pilot logs out of live pages: everything of the principal's" 204 "$r"
-assert_fs "no subscription of the pilot's remains" subscriptions "not any(d['principal']=='pilot' for d in rows)"
+assert_fs "no subscription of the pilot's remains" subscriptions "not any(d['principal']=='$(uid pilot)' for d in rows)"
 fi
 
 # ---- feature flags: the commendations desk ----

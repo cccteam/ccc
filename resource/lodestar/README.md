@@ -200,13 +200,16 @@ the stack running and `.envrc` loaded
       "http://$FIRESTORE_EMULATOR_HOST/v1/projects/$GOOGLE_CLOUD_SPANNER_PROJECT/databases/(default)/documents/subscriptions"
 
 lists every live subscription (`principal`, `tab`, `resource`, `key` for a row or
-`domain` for a list, `expiry`), and `.../documents/users/harbormaster/changes` lists the
-documents written into Hollis's set: a `row` document for the ship she had open and a
-`list` document for the fleet board in Anvil, each with its server timestamp `at`, which
-is the version (`_v`) her page asks again by. The pilot watching Bastion's fleet gets no
-document for an Anvil refit, and a persona without List on Ships (the cadet) is never
-subscribed: the refused request answers 403 as it always did and writes no record. The
-walkthrough plays this scenario by curl (its "live pages" section), and
+`domain` for a list, `expiry`), and `.../documents/users/crew%7Charbormaster/changes`
+lists the documents written into Hollis's set: a `row` document for the ship she had open
+and a `list` document for the fleet board in Anvil, each with its server timestamp `at`,
+which is the version (`_v`) her page asks again by. The set's uid is `crew|harbormaster`,
+the crew auth's name and her user name joined by `|` (written `%7C` in the URL), so a
+person of the same name signing in through the portal's members auth has a set of their
+own. The pilot watching Bastion's fleet gets no document for an Anvil refit, and a
+persona without List on Ships (the cadet) is never subscribed: the refused request
+answers 403 as it always did and writes no record. The walkthrough plays this scenario
+by curl (its "live pages" section), and
 [`live_test.go`](test/integration/live_test.go) pins it over an in-memory live service.
 
 How it is wired:

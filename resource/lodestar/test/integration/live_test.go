@@ -19,6 +19,7 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -31,6 +32,13 @@ const (
 	liveTabBastion                    = "tab-bastion-1"
 	liveSeed                          = "seed-0001"
 )
+
+// principalID is a console user's live principal id: the console's sessions come from
+// the crew auth, so the id is the auth's name and the user name joined by the separator
+// (crew|live-harbormaster), the uid of the user's change set and browser identity.
+func principalID(user accesstypes.User) string {
+	return crew.Name + live.AuthSeparator + string(user)
+}
 
 // liveHeaders is what a live request carries: the tab in the subscribe header.
 func liveHeaders(tab string) map[string]string {
@@ -136,9 +144,9 @@ func TestLivePages_subscribeRefitPublish(t *testing.T) {
 	}
 
 	wantSubscriptions := []string{
-		fmt.Sprintf("%s|%s|Ships|%s|", liveHarbormaster, liveTabAnvil, shipPatientHeronID),
-		fmt.Sprintf("%s|%s|Ships||%s", liveHarbormaster, liveTabAnvil, anvil),
-		fmt.Sprintf("%s|%s|Ships||%s", liveBastionPilot, liveTabBastion, bastion),
+		fmt.Sprintf("%s|%s|Ships|%s|", principalID(liveHarbormaster), liveTabAnvil, shipPatientHeronID),
+		fmt.Sprintf("%s|%s|Ships||%s", principalID(liveHarbormaster), liveTabAnvil, anvil),
+		fmt.Sprintf("%s|%s|Ships||%s", principalID(liveBastionPilot), liveTabBastion, bastion),
 	}
 	slices.Sort(wantSubscriptions)
 	if got := subscriptionNames(fake.Subscriptions()); !slices.Equal(got, wantSubscriptions) {
@@ -180,7 +188,7 @@ func TestLivePages_subscribeRefitPublish(t *testing.T) {
 		},
 	}
 	for _, tt := range changeSets {
-		if got := changeNames(fake.Changes(string(tt.user))); !slices.Equal(got, tt.want) {
+		if got := changeNames(fake.Changes(principalID(tt.user))); !slices.Equal(got, tt.want) {
 			t.Errorf("%s: change set = %v, want %v", tt.name, got, tt.want)
 		}
 	}
@@ -231,8 +239,8 @@ func TestLivePages_leaveAndLogout(t *testing.T) {
 		wantIdentity bool
 	}{
 		{name: "the first tab leaves", body: `{"tab":"tab-one","all":false}`, wantSubs: 1, wantRevoked: nil},
-		{name: "the logout ends every subscription and the identity", body: `{"tab":"tab-two","all":true}`, wantSubs: 0, wantRevoked: []string{string(liveHarbormaster)}},
-		{name: "a logout with nothing left still answers", body: `{"tab":"tab-two","all":true}`, wantSubs: 0, wantRevoked: []string{string(liveHarbormaster), string(liveHarbormaster)}},
+		{name: "the logout ends every subscription and the identity", body: `{"tab":"tab-two","all":true}`, wantSubs: 0, wantRevoked: []string{principalID(liveHarbormaster)}},
+		{name: "a logout with nothing left still answers", body: `{"tab":"tab-two","all":true}`, wantSubs: 0, wantRevoked: []string{principalID(liveHarbormaster), principalID(liveHarbormaster)}},
 	}
 	for _, tt := range steps {
 		rr := doRequestRecordedWithHeaders(t, h, liveHarbormaster, http.MethodPost, consoleAPI+"/"+live.UnsubscribeRoute, tt.body, liveHeaders("tab-two"))
@@ -283,8 +291,8 @@ func TestLivePages_renewRechecksGrants(t *testing.T) {
 
 	// The record keeps the two, the row without its domain.
 	want := []string{
-		fmt.Sprintf("%s|%s|Ships|%s|", liveHarbormaster, liveTabAnvil, shipPatientHeronID),
-		fmt.Sprintf("%s|%s|Ships||%s", liveHarbormaster, liveTabAnvil, anvil),
+		fmt.Sprintf("%s|%s|Ships|%s|", principalID(liveHarbormaster), liveTabAnvil, shipPatientHeronID),
+		fmt.Sprintf("%s|%s|Ships||%s", principalID(liveHarbormaster), liveTabAnvil, anvil),
 	}
 	slices.Sort(want)
 	if got := subscriptionNames(fake.Subscriptions()); !slices.Equal(got, want) {

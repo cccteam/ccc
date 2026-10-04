@@ -8,6 +8,8 @@ import (
 
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
@@ -226,10 +228,12 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
-	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when its tab id is
-	// malformed.
-	r = r.With(live.Subscribing())
+	// Every route below runs under the subscribe middleware. It binds the name of the
+	// auth whose sessions the outlet serves to every request, so a live page's
+	// subscriptions and change set belong to <auth>|<user name> and two auths never
+	// share one; a request carrying X-Subscribe is noted on its request log line and
+	// refused when its tab id is malformed. The auth's name is crew.Name.
+	r = r.With(live.Subscribing(crew.Name))
 	domainGuard := h.DomainGuard()
 
 	featureGuard := h.FeatureGuard()
@@ -646,10 +650,12 @@ type GeneratedPortalHandlers interface {
 }
 
 func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
-	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when its tab id is
-	// malformed.
-	r = r.With(live.Subscribing())
+	// Every route below runs under the subscribe middleware. It binds the name of the
+	// auth whose sessions the outlet serves to every request, so a live page's
+	// subscriptions and change set belong to <auth>|<user name> and two auths never
+	// share one; a request carrying X-Subscribe is noted on its request log line and
+	// refused when its tab id is malformed. The auth's name is members.Name.
+	r = r.With(live.Subscribing(members.Name))
 	domainGuard := h.DomainGuard()
 
 	r.Get("/portal/api/permission-digest", h.PermissionDigest())
