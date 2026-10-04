@@ -123,30 +123,94 @@ build write access to the shared load balancer. Left as is.
 
 ## Delegating the domain
 
-`apps_domain` defaults to `{{.AppsDomain}}`{{if eq .AppsDomain .OrganizationDomain}}, which is also the Workspace
-identity domain. The zone here does not become authoritative until the
-registrar delegates the domain to the zone's name servers
-(`dns_zone_name_servers` output). Before that delegation, every record the
-domain already has must be in `extra_records`: Workspace's MX records, its
-verification and SPF TXT records at the apex, DKIM under `google._domainkey`,
-DMARC under `_dmarc`. Read them off the current DNS host first; delegating
-without them silently breaks mail to `@{{.OrganizationDomain}}`, the bootstrap administrator's
-mailbox included.{{else}}, a domain of its own
-beside the Workspace identity domain `{{.OrganizationDomain}}`. The zone here
-does not become authoritative until the registrar delegates the domain to the
-zone's name servers (`dns_zone_name_servers` output), or this layer registers
-it (`registrations`). A domain that already does something else, mail above
-all, needs every record it has in `extra_records` before the delegation, or
-the delegation silently breaks it.{{end}}
+The zone here answers for `apps_domain` once the domain is delegated to it:
+pointed at the zone's name servers (the `dns_zone_name_servers` output), the
+servers that answer for every name under the domain. `bedrock domain check`,
+run from the repository root once this layer is applied, says whether it
+does, and otherwise prints what is missing, where to add it, and each record
+on its own line as it is pasted. The shape of the domain is not configured;
+the check finds it:
+
+- **Registered here, the default for a new domain.** The domain is listed in
+  `registrations` (`bedrock domain add` writes the entry with the price
+  Cloud Domains quotes), and the apply registers it and points it at the
+  zone: no registrar step. Cloud Domains accepts no transfer in, so a domain
+  the organization already owns is delegated instead.
+- **Delegated at the apex.** A domain as it is registered (its apex, such
+  as `example.com`) with nothing else on it, registered anywhere: its name
+  servers at the registrar become the zone's. One step, once.
+- **Delegated as a label.** A domain that already carries other DNS (a
+  website, mail) is never delegated whole: the applications live under a
+  label of it (one more name in front, such as `apps.example.com`), which is
+  then `apps_domain`, and the DNS provider of `example.com` gets one NS
+  record set for the label. The records of `example.com` stay where they
+  are; everything under the label is this layer's, with no further records
+  by hand. Hostnames gain one label (`{{.ExampleApp}}.apps.example.com`).
+
+Application hostnames directly on a domain whose zone stays elsewhere are
+refused: every application and environment would need its own records at
+that domain's DNS provider, and the pull-request environments a wildcard on
+it. The check refuses an undelegated domain that answers records that are not
+the zone's, and names the label to use instead.{{if eq .AppsDomain .OrganizationDomain}}
+`{{.AppsDomain}}` is also the Workspace identity domain, whose mail is on it:
+serve the applications under a label of it, such as
+`apps.{{.OrganizationDomain}}`.{{end}}
+
+The steps by hand, each where it happens:
+
+1. In the registrant's mailbox (`registrant_contact.email` in
+   `terraform.tfvars`), for a domain registered here: the registrar's
+   verification mail arrives after the apply that registers the domain. Its
+   link must be followed within fifteen days, or the domain is suspended.
+2. At the registrar where the domain is registered, for a domain delegated
+   at the apex: set its name servers to the zone's four, as `bedrock domain
+   check` prints them, in place of the ones it has. At Squarespace Domains:
+   the domain's DNS settings, Domain Nameservers, Use Custom Nameservers (two
+   to thirteen servers); the change takes up to 48 hours to take effect.
+3. At the DNS provider that serves the client's domain, for a label: add the
+   NS records `bedrock domain check` prints, one per name server of the zone,
+   for the label.
+
+Then `bedrock domain check` again, until it passes. Cloud DNS assigns a zone
+its name servers, and a zone made again can land on others, so the
+delegation is made again whenever the zone is, and the check says so.
 
 Until the delegation, the certificate stays in PROVISIONING because the
-authorization CNAME is not resolvable. The `dns_authorization_record` output
-carries that CNAME, so it can be added at the current DNS host instead if the
-certificate should be issued before the delegation.
+authorization CNAME is not resolvable. `bedrock domain check` prints that
+CNAME (the `dns_authorization_record` output carries it too), so it can be
+added at the current DNS provider if the certificate should be issued before
+the delegation. `extra_records` holds what else the domain's zone needs here,
+such as a verification record.
 
-If another domain is registered for the applications, `apps_domain`
+If another domain is chosen for the applications, `apps_domain`
 changes and the zone, the authorization, the certificate, the map entries,
 and the records are recreated for it; every host in `hosts` changes with it.
+
+## A domain registered here
+
+The registrant contact (`registrant_contact`) is the client's, the
+organization that owns the domain, never that of a contractor who builds or
+runs the foundation, and its mailbox is one a person reads: the verification
+mail and every notice about the domain go there.
+
+The registration lives in the network project and cannot move to another
+project; deleting the project loses access to the domain (`1-org` puts a
+lien on the project for that reason). It renews automatically for as long as
+the billing account stays active, and it cannot be deleted before it expires
+or is transferred out.
+
+A transfer out, if the client wants the domain at another registrar:
+
+- It is possible sixty days after the registration, to any registrar but
+  Squarespace Domains, which already holds the domain at the registry on
+  Cloud Domains' behalf.
+- Cloud Domains unlocks the domain first, and the transfer adds a year of
+  registration at the new registrar's price.
+- The name servers do not change in a transfer, so the zone keeps answering
+  and nothing is delegated again.
+- Once the transfer is done, the registration leaves `registrations` and the
+  state, with `prevent_destroy` on the registration in `domains.tf` lifted for
+  that one apply.
 
 ## Applying
 

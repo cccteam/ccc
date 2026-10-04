@@ -198,6 +198,8 @@ Consequences of the above, not separately decided:
    layer's plan on it; the merge applies.
 
 A few things resist deletion on purpose. Projects carry
-`deletion_policy = "PREVENT"` and folders carry `deletion_protection`, so
-removing either takes a deliberate two-step change. Custom role IDs cannot be
+`deletion_policy = "PREVENT"` and a lien, and folders carry
+`deletion_protection`, so removing either takes a deliberate two-step change;
+a project's removal starts with removing its lien (`1-org/README.md`,
+"Removing a project"). Custom role IDs cannot be
 reused for a period after deletion, so rename rather than delete and recreate.

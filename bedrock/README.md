@@ -1064,7 +1064,70 @@ through this door.
 ## bedrock domain
 
 `domain add <domain>` puts a domain registration into the network layer's placement,
-where the layer's `domains.tf` registers it through Cloud Domains.
+where the layer's `domains.tf` registers it through Cloud Domains. `domain check` says
+whether the apps domain resolves to the network layer's zone and, where it does not,
+prints what is missing and where to add it.
+
+```sh
+bedrock domain add example.dev   # the default for a new domain: 2-net registers it
+bedrock domain check             # from the organization's infrastructure repository root
+```
+
+The applications' domain (`appsDomain` in the organization's placement) takes one of three
+shapes, and the check finds which one from the live answers; nothing in the placement says
+so:
+
+- **Registered by 2-net, the default.** A new organization buys its apps domain through
+  Cloud Domains in the network layer: one placement entry, registered and pointed at the
+  zone by the next apply, with no registrar step. Cloud Domains accepts no transfer in, so
+  a domain the client already owns takes one of the next two shapes.
+- **Delegated at the apex.** A domain as it is registered (its apex, such as
+  `example.com`) with nothing else on it, registered anywhere: its name servers at the
+  registrar are set to the zone's, once.
+- **Delegated as a label.** A domain that already carries a website or mail is never
+  delegated whole. The applications live under a label of it (one more name in front,
+  such as `apps.example.com`), and the client's DNS provider gets one NS record set for
+  the label; everything under it is then the network layer's.
+
+Application hostnames directly on a domain whose zone stays elsewhere are refused: every
+application and environment would need its own records at that domain's DNS provider.
+Pointing a label at the load balancer with static records, instead of delegating it, is
+not supported.
+
+`domain check` runs from the infrastructure repository's root (or `--dir`) once 2-net is
+applied. It reads the zone in the network project (`projects.net` in `placement.json`)
+through the Cloud DNS API with the run's Google credentials (`gcloud auth
+application-default login`, reading the project's zones), and resolves the domain as the
+world sees it. When the domain answers the zone's name servers, it passes. Otherwise it
+prints the step and the place, each record on its own line as it is pasted: for a domain
+2-net registers and whose registration is not active yet, the registrant's verification
+mail, followed within fifteen days or the domain is suspended; for an apex, the zone's
+name servers to set at the registrar where the domain is registered, as bare host names
+(`ns-cloud-c1.googledomains.com`, since a registrar takes host names; at Squarespace
+Domains: the domain's DNS settings, Domain Nameservers, Use Custom Nameservers, up to 48
+hours to take effect); for a label, the NS records to add at the DNS provider that serves
+the domain it belongs to, as zone-file lines with the trailing dot
+(`apps.example.com. NS ns-cloud-c1.googledomains.com.`), as is the authorization record. An apex that is not delegated and answers records that are not
+the zone's is refused, with a label of it named instead. The check also resolves the
+record that proves the domain to Certificate Manager and says when the certificate is
+still waiting on it. It exits 1 when anything is missing or refused.
+
+A domain 2-net registers has a registrant contact (`registrant_contact` in
+`2-net/terraform.tfvars`) that is the client's, never that of a contractor who builds or
+runs the foundation, with a mailbox a person reads: the verification mail and every notice
+about the domain go there. The registration lives in the network project and cannot move
+to another project; deleting the project loses access to the domain, which is one reason
+1-org puts a lien on every project it creates (a mark that refuses the project's deletion
+until it is removed). If the client wants the domain at another registrar, it transfers it
+out:
+
+- sixty days after the registration at the earliest, to any registrar but Squarespace
+  Domains, which already holds the domain at the registry on Cloud Domains' behalf;
+- after Cloud Domains unlocks the domain, adding a year of registration at the new
+  registrar's price;
+- the name servers do not change in a transfer, so the zone keeps answering;
+- once it is done, the registration leaves `registrations` and the state, with
+  `prevent_destroy` on the registration in 2-net's `domains.tf` lifted for that one apply.
 
 ## bedrock org
 
@@ -1081,8 +1144,9 @@ bedrock org register quill ../quill                             # an application
 `terraform.tfvars`, the layers workflow (`.github/workflows/layers.yml`), and at the root
 the README, the journal, the ignore rules and the OpenTofu version, then prints the hand
 steps the model needs before the workflow can run (the seed, the bootstrap apply on local
-state and its migration into the bucket, the billing grants, the first apply of 1-org).
-Everything the seed decides is `REPLACEME` in the seeded values until it has run.
+state and its migration into the bucket, the billing grants, the first apply of 1-org),
+and `bedrock domain check` after the first apply of 2-net. Everything the seed decides is
+`REPLACEME` in the seeded values until it has run.
 
 The organization's placement names its GitHub machine account (`githubMachineAccount`):
 the login of a GitHub user that belongs to the organization as an owner and acts for no

@@ -8,7 +8,8 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/check"
 )
 
-// checkCommand is the name of the check commands, the application's and the organization's.
+// checkCommand is the name of the check commands: the application's, the organization's and
+// the domain's.
 const checkCommand = "check"
 
 func newCheck(d deps) *cobra.Command {

@@ -1,11 +1,13 @@
 # ---------------------------------------------------------------------------
 # DNS
 #
-# The public zone for the apps domain. The domain itself is registered in
-# domains.tf and its name servers are set to this zone's by the same apply,
-# so the zone is visible as soon as the registration completes and the
-# certificate provisions without a hand step. (The first weeks ran on
-# a delegated subdomain of the identity domain instead; that is gone.)
+# The public zone for the apps domain. A domain listed in registrations is
+# registered in domains.tf and its name servers are set to this zone's by the
+# same apply, so the zone is visible as soon as the registration completes
+# and the certificate provisions without a hand step. A domain registered
+# elsewhere, or a label of a domain served elsewhere, is delegated to this
+# zone by hand, once; bedrock domain check prints the records and where they
+# go (README.md, "Delegating the domain").
 # ---------------------------------------------------------------------------
 
 resource "google_dns_managed_zone" "apps" {

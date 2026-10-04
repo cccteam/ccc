@@ -85,6 +85,9 @@ type deps struct {
 	version  func() build
 	cacheDir string
 	install  func(ctx context.Context, version, dir string) error
+	// lookups are what domain check reads through: Cloud DNS for the apps domain's zone,
+	// and the resolver for what the world sees.
+	lookups *domain.Lookups
 }
 
 func newRoot() *cobra.Command {
@@ -99,6 +102,7 @@ func newRoot() *cobra.Command {
 		deploy:      deploy.DefaultClients(),
 		releases:    release.GitHub,
 		version:     version,
+		lookups:     domain.DefaultLookups(),
 	})
 }
 

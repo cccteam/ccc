@@ -207,6 +207,7 @@ func TestOrgCommands(t *testing.T) {
 				"its machine account (imp-machine, an owner of the organization, named in\n     placement.json as githubMachineAccount)",
 				"6. In the tst project's Cloud Build console, signed in to GitHub as the organization's\n     machine account (imp-machine): the Cloud Build GitHub App's authorization", "bedrock org register refuses the first application until both are set.",
 				"the layers workflow (.github/workflows/layers.yml) applies every layer",
+				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.\n",
 			},
 		},
 		{
@@ -257,6 +258,7 @@ func TestOrgCommands(t *testing.T) {
 				"Registered quill in", "1-org/public-invokers.auto.tfvars among them", "Register through the layers workflow, as pull requests into master",
 				"1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars", "2. Run workflow (the Actions tab) with 2-env",
 				"3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and", "5. 2-net/applications.auto.tfvars: the hostnames",
+				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.\n",
 			},
 		},
 		{

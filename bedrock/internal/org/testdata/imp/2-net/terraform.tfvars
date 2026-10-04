@@ -18,4 +18,4 @@ registrations = {}
 
 # Records the apps domain needs beyond the load balancer's, such as mail or
 # verification records if the domain ever carries them.
-extra_records = {}
+extra_records = []

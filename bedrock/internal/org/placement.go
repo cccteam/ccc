@@ -457,6 +457,13 @@ func (p *Placement) Project(key string) string {
 	return p.Prefix + "-" + key + "-gbl-core-" + replaceMe
 }
 
+// AppsZone is where the apps domain's zone is: the network project, empty until the
+// placement records 1-org's project_ids (projects.net), and the name 2-net's dns.tf gives
+// the zone, <prefix>-net-gbl-dns-apps.
+func (p *Placement) AppsZone() (project, zone string) {
+	return p.Projects[netProject], p.Prefix + "-" + netProject + "-gbl-dns-apps"
+}
+
 // WorkflowUnwired names the placement values the layers workflow still lacks, as the
 // keys a person records: projectNumbers.boot (the identity provider is named by the
 // boot project's number) and projects.<key> for every project whose layer identities

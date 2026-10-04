@@ -2121,3 +2121,110 @@ func TestRepositoryRules(t *testing.T) {
 		})
 	}
 }
+
+// TestProjectLien pins the lien on every project 1-org creates, the role its apply
+// identity holds to place one, and the READMEs saying a project's removal starts with
+// removing it.
+func TestProjectLien(t *testing.T) {
+	t.Parallel()
+
+	files, err := Render(testPlacement(t))
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.Path] = string(f.Content)
+	}
+	tests := []struct {
+		name string
+		path string
+		want []string
+	}{
+		{
+			name: "the project module places the lien, unconditionally",
+			path: "1-org/projects.tf",
+			want: []string{"  deletion_policy            = \"PREVENT\"\n  lien                       = true\n"},
+		},
+		{
+			name: "the org layer identity holds the role that places and removes a lien",
+			path: "0-bootstrap/variables.tf",
+			want: []string{`"roles/resourcemanager.lienModifier",    # the lien on every project (1-org projects.tf)`},
+		},
+		{
+			name: "1-org's README starts a project's removal, and a clean-slate wipe, with the lien",
+			path: "1-org/README.md",
+			want: []string{
+				"## Removing a project\n\nA project's removal starts with removing its lien.",
+				"gcloud alpha resource-manager liens list --project=<project id>",
+				"project by project in `project_ids`: the lien first, as\nabove, then `gcloud projects delete <project id>`.",
+			},
+		},
+		{
+			name: "the root README names the lien among what resists deletion",
+			path: "README.md",
+			want: []string{"a project's removal starts with removing its lien (`1-org/README.md`,\n\"Removing a project\")."},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content, ok := byPath[tt.path]
+			if !ok {
+				t.Fatalf("%s is not rendered", tt.path)
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks %q", tt.path, w)
+				}
+			}
+		})
+	}
+}
+
+// TestAppsZone holds the zone domain check reads to the one 2-net's dns.tf names, in the
+// network project the placement records.
+func TestAppsZone(t *testing.T) {
+	t.Parallel()
+
+	unrecorded := testPlacement(t)
+	unrecorded.Projects = nil
+	tests := []struct {
+		name        string
+		placement   *Placement
+		wantProject string
+		wantZone    string
+	}{
+		{name: "the network project recorded", placement: testPlacement(t), wantProject: "imp-net-gbl-core-9c0d", wantZone: "imp-net-gbl-dns-apps"},
+		{name: "before 1-org's project_ids are recorded", placement: unrecorded, wantProject: "", wantZone: "imp-net-gbl-dns-apps"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			project, zone := tt.placement.AppsZone()
+			if project != tt.wantProject || zone != tt.wantZone {
+				t.Errorf("AppsZone() = %q, %q, want %q, %q", project, zone, tt.wantProject, tt.wantZone)
+			}
+		})
+	}
+	names := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "the zone is named after the layer's prefix", path: "2-net/dns.tf", want: `name        = "${local.name_prefix}-dns-apps"`},
+		{name: "the layer's prefix is the prefix, its environment and gbl", path: "2-net/locals.tf", want: `name_prefix = "${local.prefix}-${local.environment}-gbl"`},
+		{name: "the layer's environment is net", path: "2-net/locals.tf", want: `environment    = "net"`},
+	}
+	for _, tt := range names {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if !strings.Contains(renderedFile(t, tt.path), tt.want) {
+				t.Errorf("%s lacks %q: the zone domain check reads is not the one 2-net names", tt.path, tt.want)
+			}
+		})
+	}
+}

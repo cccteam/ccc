@@ -256,7 +256,7 @@ can manage billing IAM; the resources then assert the same two members.
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
 | `infrastructure_repository` | This repository's name, the one whose workflow tokens the provider trusts. | `string` | `"imp-impulse-infrastructure"` | no |
 | `manage_billing_iam` | Whether this layer manages the two `roles/billing.user` grants. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
-| `org_layer_roles` | Org-level roles granted to the org layer identity. | `list(string)` | eleven roles, see `variables.tf` | no |
+| `org_layer_roles` | Org-level roles granted to the org layer identity. | `list(string)` | twelve roles, see `variables.tf` | no |
 | `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `state_bucket` | The seeded state bucket, granted on here for the two identities. | `string` | the placement's `stateBucket` | no |

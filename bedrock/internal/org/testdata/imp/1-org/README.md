@@ -18,7 +18,8 @@ on a pull request as `imp-org-gbl-plan`.
 - Essential Contacts on each folder, from `var.essential_contact_emails`
   (empty for now).
 - Six projects from `var.projects`, `imp-<key>-gbl-core-<suffix>`, each with
-  its API set, labels (`bedrock-lab`, `environment = <key>`), and no default
+  its API set, labels (`bedrock-lab`, `environment = <key>`), a lien
+  that refuses its deletion (see "Removing a project"), and no default
   compute service account:
 
   | Key | Folder | Purpose | API set | Role set |
@@ -235,11 +236,11 @@ tofu apply
 ```
 
 Review the plan carefully. It creates folders, org policy, and projects with
-`deletion_policy = "PREVENT"`, which is hard to undo. The first `init` writes
-`.terraform.lock.hcl`; commit it. Then record the `project_ids` and
-`project_numbers` outputs in `placement.json` (`projects`, `projectNumbers`)
-and run `bedrock org render`: the layers workflow names every layer's
-identities by them.
+`deletion_policy = "PREVENT"` and a lien each, which are hard to undo. The
+first `init` writes `.terraform.lock.hcl`; commit it. Then record the
+`project_ids` and `project_numbers` outputs in `placement.json` (`projects`,
+`projectNumbers`) and run `bedrock org render`: the layers workflow names
+every layer's identities by them.
 
 The apply leaves the person with what Google gives a creator: `roles/owner`
 on each project it made, and Folder Admin and Folder Editor on each folder
@@ -275,6 +276,34 @@ layer.
 Set `essential_contact_emails` in `terraform.tfvars` before applying if you
 want Essential Contacts registered. Addresses must be in one of
 `allowed_contact_domains`.
+
+## Removing a project
+
+A project's removal starts with removing its lien. Every project this layer
+creates carries one (`lien = true` in `projects.tf`): a lien is a mark on the
+project that makes Resource Manager refuse its deletion, whoever asks, until
+the lien is removed. The layer identity holds
+`roles/resourcemanager.lienModifier` for it (`org_layer_roles` in
+`0-bootstrap`). The network project is the one whose loss costs most: a
+domain `2-net` registers through Cloud Domains lives in that project, cannot
+move to another one, and is lost with it, recovered only by restoring the
+project within its 30-day window or by the registrant asking Google Cloud
+support.
+
+In a terminal, as a person holding `roles/resourcemanager.lienModifier` or
+`roles/owner` on the project, list the project's liens and remove each:
+
+```bash
+gcloud alpha resource-manager liens list --project=<project id>
+gcloud alpha resource-manager liens delete <lien name, from the list>
+```
+
+Then the project goes the way it was meant to: a deliberate change to this
+layer for one project (its `deletion_policy` lifted for that apply), or, for
+a clean-slate wipe of a test organization before it is set up again from the
+seed, by hand, project by project in `project_ids`: the lien first, as
+above, then `gcloud projects delete <project id>`. A wipe that skips the
+lien is refused at the first project.
 
 ## The applications' repositories
 

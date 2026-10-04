@@ -108,6 +108,13 @@ linters:
             - google.golang.org/grpc/codes
             - google.golang.org/grpc/status
             - golang.org/x/term
+            # domain check reads the apps domain's zone and its records through the Cloud
+            # DNS API (a 404 from it, through googleapi's error, is a zone not made yet),
+            # and tells a domain that can be registered from a label of one by the public
+            # suffix list.
+            - google.golang.org/api/dns/v1
+            - google.golang.org/api/googleapi
+            - golang.org/x/net/publicsuffix
     exhaustive:
       default-signifies-exhaustive: true
     funlen:
@@ -128,8 +135,8 @@ linters:
       settings:
         hugeParam:
           # deps, the command tree's seams, is passed by value on purpose: one copy per
-          # command, never mutated. It holds eleven seams, 104 bytes.
-          sizeThreshold: 128
+          # command, never mutated. It holds fourteen fields, 128 bytes.
+          sizeThreshold: 160
     gocyclo:
       min-complexity: 25
     godox:

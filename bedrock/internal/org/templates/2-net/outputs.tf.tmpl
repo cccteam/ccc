@@ -43,7 +43,7 @@ output "dns_zone_name" {
 }
 
 output "dns_zone_name_servers" {
-  description = "Name servers of the zone. The domain's administrator delegates the apps domain to these at the registrar."
+  description = "Name servers of the zone. The domain's administrator delegates the apps domain to these: at the registrar for a domain as registered, at the parent domain's DNS provider for a label of it (bedrock domain check prints the records)."
   value       = google_dns_managed_zone.apps.name_servers
 }
 

@@ -135,6 +135,7 @@ request plans the layers it touches as their plan identities and posts the plans
 merge applies them as their apply identities, in layer order. The shared layers, 2-env per
 environment and the applications' registrations go through it; a person applies by hand
 for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
+After the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.
 `, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, p.GithubMachineAccount, org.WorkflowFile)
 }
 
@@ -501,6 +502,7 @@ until then:
      placement.json (below), applied per environment by its pipeline with the first
      release.
   5. 2-net/applications.auto.tfvars: the hostnames, onto the backends the stack created.
+  6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.
 `, p.GithubDefaultBranch, app, app)
 }
 

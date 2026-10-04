@@ -68,6 +68,7 @@ variable "org_layer_roles" {
     "roles/iam.serviceAccountUser",          # act as those service accounts
     "roles/orgpolicy.policyAdmin",           # folder-scoped org policy constraints
     "roles/resourcemanager.folderAdmin",     # environment folders
+    "roles/resourcemanager.lienModifier",    # the lien on every project (1-org projects.tf)
     "roles/resourcemanager.projectCreator",  # environment projects
     "roles/resourcemanager.projectDeleter",  # project lifecycle
     "roles/resourcemanager.projectIamAdmin", # IAM bindings inside those projects

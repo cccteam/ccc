@@ -1,4 +1,5 @@
-// domain.go is the domain command: the registrations a stack makes through its placement.
+// domain.go is the domain command: the registrations a stack makes through its placement,
+// and the check that the apps domain resolves to the network layer's zone.
 
 package cli
 
@@ -13,11 +14,71 @@ import (
 func newDomain(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "domain",
-		Short: "Register domains through the placement",
+		Short: "Register domains through the placement, and check the apps domain's delegation",
 		Long: `domain holds the commands that put a domain registration into the network layer's
-placement, where the layer's domains.tf registers it through Cloud Domains.`,
+placement, where the layer's domains.tf registers it through Cloud Domains, and the check
+that the apps domain resolves to the network layer's zone.`,
 	}
-	cmd.AddCommand(newDomainAdd(d))
+	cmd.AddCommand(newDomainAdd(d), newDomainCheck(d))
+
+	return cmd
+}
+
+func newDomainCheck(d deps) *cobra.Command {
+	var (
+		dir       string
+		placement string
+	)
+
+	cmd := &cobra.Command{
+		Use:   checkCommand,
+		Short: "Check that the apps domain resolves to the network layer's zone",
+		Long: `check reads the apps domain's zone in the network project (2-net's dns.tf: its name servers,
+the apex and wildcard addresses, and the record that proves the domain to Certificate
+Manager) through the Cloud DNS API, resolves the domain's delegation as the world sees it,
+and says what is in place and what is missing, naming where to act. It runs from the
+infrastructure repository's root, or names it with --dir, and reads the organization's
+placement (appsDomain, and projects.net, which 1-org's project_ids fill in).
+
+The shape of the domain is found, not configured. When the domain answers the zone's name
+servers it is delegated, whether 2-net registered it or a registrar elsewhere points at the
+zone. When 2-net registers it (registrations in 2-net/terraform.tfvars) and the registration
+is not active yet, the check says so and names the registrant's verification mail. A domain
+that can be registered (example.com) gets the registrar step, with the zone's name servers
+to set there; a label of a domain served elsewhere (apps.example.com) gets the NS records to
+add at the DNS provider that serves that domain. A registrable domain that is not delegated
+and already answers records that are not the zone's (a website, mail) is refused: such a
+domain is never delegated whole, and the check names a label of it to use instead. The
+check also resolves the authorization record and says when the certificate is still waiting
+on it. Every record is printed on its own line, as it is pasted.
+
+The zone is read with the run's Google credentials (gcloud auth application-default login),
+which need to read the network project's zones (roles/dns.reader). It exits 1 when anything
+is missing or refused.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			p, err := orgPlacement(dir, placement)
+			if err != nil {
+				return err
+			}
+			project, zone := p.AppsZone()
+			if project == "" {
+				return errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
+			}
+			r, err := domain.Check(cmd.Context(), d.lookups, domain.CheckRequest{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir})
+			if err != nil {
+				return err
+			}
+			r.Write(cmd.OutOrStdout())
+			if !r.Passed() {
+				return exitError{code: 1}
+			}
+
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
+	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
 }

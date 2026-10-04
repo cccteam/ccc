@@ -9,6 +9,12 @@
 # random_project_id is on because project IDs are globally unique and permanent:
 # a name collision with any other organization would otherwise block the apply,
 # and the ID can never be changed afterwards.
+#
+# Every project carries a lien, which refuses the project's deletion to anyone
+# until the lien is removed. Deleting the network project would also lose the
+# domains registered in it, which cannot move to another project. Removing a
+# project therefore starts with removing its lien (README.md, "Removing a
+# project").
 # ---------------------------------------------------------------------------
 
 module "project" {
@@ -30,6 +36,7 @@ module "project" {
 
   disable_dependent_services = true
   deletion_policy            = "PREVENT"
+  lien                       = true
   activate_apis              = var.required_apis[each.value.api_set]
 
   labels = merge(local.labels, { environment = each.key })
