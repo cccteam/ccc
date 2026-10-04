@@ -120,8 +120,13 @@ from `2-env`'s state.
   from it and no Owner, Editor or Viewer of the project reads an uploaded
   file through them. A grant added on the bucket by hand, for a day's
   debugging, is removed by the next release's apply; a grant added on the
-  project is not. The migrate command gets
-  neither the URL nor a grant.
+  project is not. A stack whose state still holds the member resources an
+  earlier bedrock granted the bucket with moves to the policy in one apply:
+  `storage.tf` takes them out of the state without destroying them
+  (`removed` blocks with `destroy = false`, carried for one bedrock release),
+  since a destroy would take a member out of the permission list the
+  policy has just set, until the next release's apply set it again. The
+  migrate command gets neither the URL nor a grant.
 - **The task queue** `imp-<env>-uc1-harbor-tasks`
   (`dataConfig.TasksQueue` names it to the processes that construct the
   data level), in the primary region, `var.tasks_max_concurrent` tasks

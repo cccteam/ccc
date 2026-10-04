@@ -702,8 +702,14 @@ func TestFileStorePolicy(t *testing.T) {
 				"resource \"google_storage_bucket_iam_policy\" \"files\" {\n  bucket      = google_storage_bucket.files.name\n  policy_data = data.google_iam_policy.files.policy_data\n\n  depends_on = [google_service_account.app, google_service_account.jobs]\n",
 				"  lifecycle {\n    replace_triggered_by = [google_storage_bucket.files]\n  }\n",
 				"the one authoritative IAM resource the stack\n# declares",
+				// The member resources the policy replaced leave the state without a
+				// destroy, which would take their members out of the live policy.
+				"removed {\n  from = google_storage_bucket_iam_member.files_app\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_storage_bucket_iam_member.files_jobs\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"# The member resources the policy above replaced, taken out of the state\n# without being destroyed.",
+				"Carried for one bedrock release, so a stack that moves to\n# the policy is applied once; dropped in the next release",
 			},
-			absent: []string{"google_storage_bucket_iam_member"},
+			absent: []string{"resource \"google_storage_bucket_iam_member\""},
 		},
 		{
 			name:  "a store at a level the job process does not construct: the site alone",
@@ -711,8 +717,10 @@ func TestFileStorePolicy(t *testing.T) {
 			want: []string{
 				"    members = [local.app_member]\n",
 				"  depends_on = [google_service_account.app]\n",
+				"# The member resource the policy above replaced,",
+				"removed {\n  from = google_storage_bucket_iam_member.files_app\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
 			},
-			absent: []string{"google_storage_bucket_iam_member", "local.jobs_member"},
+			absent: []string{"resource \"google_storage_bucket_iam_member\"", "local.jobs_member", "files_jobs"},
 		},
 	}
 	for _, tt := range tests {

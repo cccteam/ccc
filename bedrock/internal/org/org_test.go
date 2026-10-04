@@ -463,8 +463,15 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n    }\n  }\n}\n",
 				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
 				"default grants to the project's basic roles (projectOwner, projectEditor",
+				// The member resources the policy replaced leave the state without a destroy,
+				// which would take their members out of the live policy.
+				"removed {\n  from = google_storage_bucket_iam_member.deploy_records\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_storage_bucket_iam_member.deploy_records_viewer\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_storage_bucket_iam_member.plan_records\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_storage_bucket_iam_member.next_deploy_records_viewer\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"Carried for one bedrock release, so an organization that\n# moves to the policy applies this layer once; dropped in the next release",
 			},
-			absent: []string{"google_storage_bucket_iam_member", "builder role"},
+			absent: []string{"resource \"google_storage_bucket_iam_member\"", "builder role"},
 		},
 		{
 			name:   "no member resource on the bucket beside the policy",
@@ -478,6 +485,7 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			want: []string{
 				"the environment's team group (a person reads a record through\n  the group)",
 				"A grant added on the\n  bucket by hand, for a day's debugging, is removed by this layer's next\n  apply; a grant added on the project is not",
+				"applies this layer once to move to the policy",
 			},
 		},
 	}

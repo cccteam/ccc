@@ -78,3 +78,43 @@ resource "google_storage_bucket_iam_policy" "records" {
   bucket      = google_storage_bucket.records.name
   policy_data = data.google_iam_policy.records.policy_data
 }
+
+# The four member resources the policy above replaced, taken out of the state
+# without being destroyed. Destroying one would remove its member from the
+# bucket's live permission list, which the policy has just set whole, and the
+# member would stay missing until the next apply set the list again; taken out
+# of the state, the members stay, and the policy holds every one of them
+# after one apply. Carried for one bedrock release, so an organization that
+# moves to the policy applies this layer once; dropped in the next release,
+# when no state holds the four any more.
+removed {
+  from = google_storage_bucket_iam_member.deploy_records
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_storage_bucket_iam_member.deploy_records_viewer
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_storage_bucket_iam_member.plan_records
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_storage_bucket_iam_member.next_deploy_records_viewer
+
+  lifecycle {
+    destroy = false
+  }
+}

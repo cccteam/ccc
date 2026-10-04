@@ -98,7 +98,13 @@ and a `shared_vpc_id` that is null.
   or the organization reads no record through them. A grant added on the
   bucket by hand, for a day's debugging, is removed by this layer's next
   apply; a grant added on the project is not, so an Owner of the project can
-  still give itself a storage role there.
+  still give itself a storage role there. An organization whose state still
+  holds the four member resources an earlier bedrock granted the bucket with
+  applies this layer once to move to the policy: `records.tf` takes them out
+  of the state without destroying them (`removed` blocks with
+  `destroy = false`, carried for one bedrock release), since destroying one
+  would take its member out of the permission list the policy has just set,
+  until the next apply set it again.
 - The team group's grants (`team-group.tf`): `roles/cloudbuild.builds.approver`
   on the environment project for the environment's team group in
   `stg` and `prd`, and the Privileged Access Manager

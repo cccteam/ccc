@@ -59,3 +59,27 @@ resource "google_storage_bucket_iam_policy" "files" {
     replace_triggered_by = [google_storage_bucket.files]
   }
 }
+
+# The member resources the policy above replaced, taken out of the state
+# without being destroyed. Destroying one would remove its member from the
+# bucket's live permission list, which the policy has just set whole, and the
+# member would stay missing until the next release's apply set the list again;
+# taken out of the state, the member stays, and the policy holds every member
+# after one apply. Carried for one bedrock release, so a stack that moves to
+# the policy is applied once; dropped in the next release, when no state holds
+# them any more.
+removed {
+  from = google_storage_bucket_iam_member.files_app
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_storage_bucket_iam_member.files_jobs
+
+  lifecycle {
+    destroy = false
+  }
+}
