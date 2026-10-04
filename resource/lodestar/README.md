@@ -219,7 +219,9 @@ How it is wired:
   package's security rules (`resource/live/firestore/firestore.rules`) mounted;
   `.envrc.template` sets `FIRESTORE_EMULATOR_HOST`. A fresh emulator per start means an
   empty record. In production `APP_FIRESTORE_DATABASE` names the database,
-  `GOOGLE_CLOUD_FIRESTORE_PROJECT` its project (the Spanner project when unset) and
+  `GOOGLE_CLOUD_FIRESTORE_PROJECT` its project (required with the database: the data
+  level refuses to start naming both when it is empty, since the database is not assumed
+  to be in the Spanner project; against the emulator it may stay unset) and
   `APP_FIREBASE_API_KEY` the browser's key; the composite indexes and the time-to-live
   policies the live package's README lists are the infrastructure's to apply.
 - The server. `pkg/config/data.go` reads the Firestore settings at the data level and

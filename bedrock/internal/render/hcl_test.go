@@ -3,10 +3,13 @@ package render
 import (
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 // TestRenderedStackParsesAsHCL parses every rendered .tf file under testdata, so a template whose rendering
@@ -59,4 +62,182 @@ func tfFiles(t *testing.T, dir string) []string {
 	}
 
 	return files
+}
+
+// TestFirestoreProjectEnv holds every process that constructs the Firestore database's
+// level to the database's project, set to the environment project and never left to the
+// application, which refuses a database named without its project: firestore_env sets
+// GOOGLE_CLOUD_FIRESTORE_PROJECT to local.project_id beside the database's id; the
+// service's, the job process's and the migrate command's environments merge it; and
+// cloud-run.tf gives the service and the job theirs, cloud-build.tf the migrate command
+// its own (_MIGRATE_ENV). The Spanner project is the shared instance's where one is
+// shared, so it is never the database's. An application without a database has no
+// firestore_env at all.
+func TestFirestoreProjectEnv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		dir  string
+		// wantEnvs are the environments that merge firestore_env; none means the
+		// stack has no firestore_env.
+		wantEnvs []string
+	}{
+		{
+			name:     "a Firestore database: the service, the job process and the migrate command construct its level",
+			dir:      filepath.Join("testdata", "harbor"),
+			wantEnvs: []string{"service_env", "migrate_env", "jobs_env"},
+		},
+		{name: "no Firestore database", dir: filepath.Join("testdata", "beacon")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			locals := localsOf(t, parseBody(t, filepath.Join(tt.dir, "locals.tf")))
+			firestoreEnv, ok := locals["firestore_env"]
+			if len(tt.wantEnvs) == 0 {
+				if ok {
+					t.Errorf("locals.tf declares firestore_env, for an application without a Firestore database")
+				}
+
+				return
+			}
+			if !ok {
+				t.Fatalf("locals.tf declares no firestore_env")
+			}
+			if got := objectValue(t, firestoreEnv.Expr, "GOOGLE_CLOUD_FIRESTORE_PROJECT"); got != "local.project_id" {
+				t.Errorf("firestore_env sets GOOGLE_CLOUD_FIRESTORE_PROJECT to %q, want local.project_id", got)
+			}
+			for _, env := range tt.wantEnvs {
+				attr, ok := locals[env]
+				if !ok {
+					t.Errorf("locals.tf declares no %s", env)
+
+					continue
+				}
+				if !slices.Contains(localsReferenced(attr.Expr), "firestore_env") {
+					t.Errorf("%s does not merge firestore_env", env)
+				}
+			}
+			uses := []struct {
+				file, block, env string
+			}{
+				{file: "cloud-run.tf", block: "google_cloud_run_v2_service.app", env: "service_env"},
+				{file: "cloud-run.tf", block: "google_cloud_run_v2_job.jobs", env: "jobs_env"},
+				{file: "cloud-build.tf", env: "migrate_env"},
+			}
+			for _, u := range uses {
+				body := parseBody(t, filepath.Join(tt.dir, u.file))
+				var node hclsyntax.Node = body
+				if u.block != "" {
+					node = resourceBody(t, body, u.block)
+				}
+				if !slices.Contains(localsReferenced(node), u.env) {
+					t.Errorf("%s %s does not read local.%s", u.file, u.block, u.env)
+				}
+			}
+		})
+	}
+}
+
+// parseBody parses one rendered .tf file.
+func parseBody(t *testing.T, file string) *hclsyntax.Body {
+	t.Helper()
+
+	f, diags := hclparse.NewParser().ParseHCLFile(file)
+	if diags.HasErrors() {
+		t.Fatalf("%s: %s", file, diags.Error())
+	}
+	body, ok := f.Body.(*hclsyntax.Body)
+	if !ok {
+		t.Fatalf("%s: not native syntax", file)
+	}
+
+	return body
+}
+
+// localsOf collects the attributes of every locals block, by name.
+func localsOf(t *testing.T, body *hclsyntax.Body) map[string]*hclsyntax.Attribute {
+	t.Helper()
+
+	locals := map[string]*hclsyntax.Attribute{}
+	for _, b := range body.Blocks {
+		if b.Type != "locals" {
+			continue
+		}
+		for name, attr := range b.Body.Attributes {
+			locals[name] = attr
+		}
+	}
+
+	return locals
+}
+
+// resourceBody is the body of the resource named type.name.
+func resourceBody(t *testing.T, body *hclsyntax.Body, address string) *hclsyntax.Body {
+	t.Helper()
+
+	for _, b := range body.Blocks {
+		if b.Type == "resource" && len(b.Labels) == 2 && b.Labels[0]+"."+b.Labels[1] == address {
+			return b.Body
+		}
+	}
+	t.Fatalf("no resource %s", address)
+
+	return nil
+}
+
+// objectValue is the value an object constructor gives the key, as the traversal it is
+// (local.project_id), or empty when the key is absent or its value is no traversal.
+func objectValue(t *testing.T, expr hclsyntax.Expression, key string) string {
+	t.Helper()
+
+	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
+	if !ok {
+		t.Fatalf("not an object constructor")
+	}
+	for _, item := range obj.Items {
+		if hcl.ExprAsKeyword(item.KeyExpr) != key {
+			continue
+		}
+		traversal, diags := hcl.AbsTraversalForExpr(item.ValueExpr)
+		if diags.HasErrors() {
+			return ""
+		}
+
+		return traversalString(traversal)
+	}
+
+	return ""
+}
+
+// localsReferenced lists the locals the node refers to, by name, in the order met.
+func localsReferenced(node hclsyntax.Node) []string {
+	var names []string
+	_ = hclsyntax.VisitAll(node, func(n hclsyntax.Node) hcl.Diagnostics {
+		expr, ok := n.(*hclsyntax.ScopeTraversalExpr)
+		if !ok || expr.Traversal.RootName() != "local" || len(expr.Traversal) < 2 {
+			return nil
+		}
+		if attr, ok := expr.Traversal[1].(hcl.TraverseAttr); ok {
+			names = append(names, attr.Name)
+		}
+
+		return nil
+	})
+
+	return names
+}
+
+// traversalString writes a traversal of attributes as it is written: local.project_id.
+func traversalString(traversal hcl.Traversal) string {
+	parts := []string{traversal.RootName()}
+	for _, step := range traversal[1:] {
+		if attr, ok := step.(hcl.TraverseAttr); ok {
+			parts = append(parts, attr.Name)
+		}
+	}
+
+	return strings.Join(parts, ".")
 }

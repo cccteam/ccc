@@ -127,7 +127,7 @@ from `2-env`'s state.
   that introduces it binds only once that stack is applied (the same order a
   new secret container takes).
 - **The Firestore database** `imp-<env>-gbl-harbor-fs`
-  (`dataConfig.FirestoreDatabase` names it to the processes that construct
+  (`FirestoreSettings.DatabaseID` names it to the processes that construct
   the data level), Native mode, in the primary region, beside the
   Spanner database; prd keeps point-in-time recovery on and resists deletion.
   The site, the deploy identity, for the migrate command it runs
@@ -147,7 +147,7 @@ from `2-env`'s state.
   Credentials API; and the web API key `imp-<env>-gbl-harbor-firebase`
   the browser presents to sign in with one, restricted to the Identity Toolkit
   and Secure Token APIs, handed to the processes that construct the data
-  level as `APP_FIREBASE_API_KEY` (`dataConfig.FirebaseAPIKey`). Firebase
+  level as `APP_FIREBASE_API_KEY` (`FirestoreSettings.APIKey`). Firebase
   Authentication on the environment project is `2-env`'s.
 - **Secret containers**, no versions, one per secret the code declares in
   `pkg/config/data.go`, named `imp-<env>-gbl-harbor-<name>`:

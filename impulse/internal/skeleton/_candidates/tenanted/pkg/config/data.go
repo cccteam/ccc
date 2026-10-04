@@ -50,13 +50,17 @@ func (s SpannerSettings) DatabasePath() string {
 // the Spanner database: the subscriptions the generated handlers register, the change
 // sets the browser listens to, and the one signals document the application's instances
 // tell each other through (a feature flag flip, a policy write). The database id is how
-// a deployment hands the database to the application (APP_FIRESTORE_DATABASE); the
-// emulator host is how the development stack does. The live service is required, so
-// with neither set the data level refuses to start.
+// a deployment hands the database to the application (APP_FIRESTORE_DATABASE), with its
+// project (GOOGLE_CLOUD_FIRESTORE_PROJECT); the emulator host is how the development
+// stack does. The live service is required, so with neither the database nor the
+// emulator set the data level refuses to start.
 type FirestoreSettings struct {
-	// ProjectID is the Google Cloud project the database belongs to. Empty, the Spanner
-	// project is used: the database lives beside the Spanner database in the
-	// application's project unless this says otherwise.
+	// ProjectID is the Google Cloud project the database belongs to. A deployment that
+	// names the database names its project too, or the data level refuses to start: the
+	// database is not assumed to be in the Spanner project, which, where environments
+	// share a Spanner instance, is the shared instance's and not the environment's.
+	// Against the emulator it may stay empty, and the Spanner project stands in, since
+	// the emulator takes any project id.
 	ProjectID string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
 	// DatabaseID is the Firestore database, by id.
 	DatabaseID string `env:"APP_FIRESTORE_DATABASE"`
@@ -71,6 +75,24 @@ type FirestoreSettings struct {
 // named, or the emulator is.
 func (s FirestoreSettings) Configured() bool {
 	return s.DatabaseID != "" || s.EmulatorHost != ""
+}
+
+// Project is the project the live service opens the database in: ProjectID, or, against
+// the emulator with ProjectID empty, the Spanner project, which the emulator takes as it
+// takes any project id. A database named without its project is refused, naming both
+// variables, as is a configuration naming neither a database nor the emulator, since the
+// live service is required.
+func (s FirestoreSettings) Project(spannerProject string) (string, error) {
+	switch {
+	case !s.Configured():
+		return "", errors.New("no Firestore database and no emulator is configured: set APP_FIRESTORE_DATABASE (a deployment) or FIRESTORE_EMULATOR_HOST (development), since the live service is required")
+	case s.ProjectID != "":
+		return s.ProjectID, nil
+	case s.EmulatorHost != "":
+		return spannerProject, nil
+	default:
+		return "", errors.New("APP_FIRESTORE_DATABASE names a Firestore database and GOOGLE_CLOUD_FIRESTORE_PROJECT names no project for it: set GOOGLE_CLOUD_FIRESTORE_PROJECT to the project the database is in, which is not assumed to be the Spanner project")
+	}
 }
 
 // firebaseOrigins are the hosts the Firebase JS SDK reaches in production: Firestore's
@@ -176,15 +198,11 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 // or the emulator. The live service is required: the generated handlers serve the live
 // pages through it, and the application's instances signal each other through its
 // signals document (a feature flag flip, a policy write), so a configuration naming
-// neither fails the start here.
+// neither, or naming the database without its project, fails the start here.
 func openLive(ctx context.Context, env *dataConfig) (*livefirestore.Service, error) {
-	if !env.Firestore.Configured() {
-		return nil, errors.New("no Firestore database and no emulator is configured: set APP_FIRESTORE_DATABASE (a deployment) or FIRESTORE_EMULATOR_HOST (development), since the live service is required")
-	}
-
-	project := env.Firestore.ProjectID
-	if project == "" {
-		project = env.Spanner.ProjectID
+	project, err := env.Firestore.Project(env.Spanner.ProjectID)
+	if err != nil {
+		return nil, err
 	}
 	service, err := livefirestore.New(ctx, livefirestore.Config{
 		ProjectID:    project,

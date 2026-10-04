@@ -22,11 +22,14 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=outlets
 # The Firestore database the live service runs on, beside the Spanner database (pkg/config,
 # FirestoreSettings): the subscriptions the server registers, the change sets the browser
 # listens to, and the signals document the application's instances tell each other through.
-# A deployment supplies APP_FIRESTORE_DATABASE (the database id) and APP_FIREBASE_API_KEY
-# (the web API key the browser initializes the SDK with); in development the emulator below
-# stands in and both stay unset. GOOGLE_CLOUD_FIRESTORE_PROJECT names the database's project
-# when it is not the Spanner project. The live service is required: with none of these and
-# no emulator, the process refuses to start.
+# A deployment supplies APP_FIRESTORE_DATABASE (the database id), GOOGLE_CLOUD_FIRESTORE_PROJECT
+# (the project the database is in) and APP_FIREBASE_API_KEY (the web API key the browser
+# initializes the SDK with). A process given the database without its project refuses to
+# start, naming both variables: the database is not assumed to be in the Spanner project,
+# which is the shared instance's where environments share one. In development
+# the emulator below stands in, all three stay unset, and the emulator takes the Spanner
+# project. The live service is required: with neither a database nor the emulator, the
+# process refuses to start.
 # export APP_FIRESTORE_DATABASE=
 # export APP_FIREBASE_API_KEY=
 # export GOOGLE_CLOUD_FIRESTORE_PROJECT=

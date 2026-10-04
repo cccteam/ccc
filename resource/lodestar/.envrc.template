@@ -23,11 +23,13 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=lodestar
 # between instances"): the subscription record, the per-user change sets, and the signals
 # document the instances notify each other through. APP_FIRESTORE_DATABASE is the database
 # id, the way the infrastructure hands a database to an application;
-# GOOGLE_CLOUD_FIRESTORE_PROJECT is its project, the Spanner project when unset;
-# APP_FIREBASE_API_KEY is the Firebase web API key the browser initializes the SDK with in
-# production. A database or the emulator below is required: every process that opens the
-# database refuses to start naming both when neither is set. In development the emulator
-# below stands in for all three.
+# GOOGLE_CLOUD_FIRESTORE_PROJECT is its project, required with the database (a process
+# given the database without its project refuses to start, naming both variables, since
+# the database is not assumed to be in the Spanner project); APP_FIREBASE_API_KEY is the
+# Firebase web API key the browser initializes the SDK with in production. A database or
+# the emulator below is required: every process that opens the database refuses to start
+# naming both when neither is set. In development the emulator below stands in for all
+# three and takes the Spanner project.
 # export GOOGLE_CLOUD_FIRESTORE_PROJECT=
 # export APP_FIRESTORE_DATABASE=
 # export APP_FIREBASE_API_KEY=

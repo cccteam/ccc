@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Firestore
 #
-# The document database: dataConfig.FirestoreDatabase (pkg/config/data.go) names it
+# The document database: FirestoreSettings.DatabaseID (pkg/config/data.go) names it
 # to the processes that construct the data level, and the site and the
 # job process read and write it as their own identities, on this database alone:
 # the project's Firestore role is granted under a condition naming it, so an
@@ -212,7 +212,7 @@ resource "google_service_account_iam_member" "app_signs_as_itself" {
   depends_on = [google_service_account.app]
 }
 
-# The browser's web API key (dataConfig.FirebaseAPIKey): the Firebase SDK presents
+# The browser's web API key (FirestoreSettings.APIKey): the Firebase SDK presents
 # it to the Identity Toolkit API to sign in with the custom token and to the
 # Secure Token API to refresh the ID token that yields, and the key is good
 # for those two APIs and nothing else. A public value by design, set on the

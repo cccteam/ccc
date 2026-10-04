@@ -104,10 +104,10 @@ locals {
   tasks_queue_name = "${local.name}-${local.primary_region_code}-${local.app}-tasks"
   tasks_queue      = "projects/${local.project_id}/locations/${local.primary_region}/queues/${local.tasks_queue_name}"
 
-  # The Firestore database (dataConfig.FirestoreDatabase), by id; a pull-request
+  # The Firestore database (FirestoreSettings.DatabaseID), by id; a pull-request
   # stack has its own.
   firestore_database_id = local.is_pr ? "${local.pr_name}-fs" : "${local.name}-gbl-${local.app}-fs"
-  # The browser's web API key (dataConfig.FirebaseAPIKey), by name (firestore.tf); a
+  # The browser's web API key (FirestoreSettings.APIKey), by name (firestore.tf); a
   # pull-request stack has its own.
   firebase_key_name = local.is_pr ? "${local.pr_name}-firebase" : "${local.name}-gbl-${local.app}-firebase"
 
@@ -231,13 +231,13 @@ locals {
     APP_TASKS_QUEUE = local.tasks_queue
   }
 
-  # dataConfig.FirestoreDatabase: the Firestore database (firestore.tf), for every
+  # FirestoreSettings.DatabaseID: the Firestore database (firestore.tf), for every
   # process that constructs the data level, the migrate command too:
   # the level opens the database when it is constructed, and the release's role
   # migration signals the running instances through it.
-  # dataConfig.FirebaseAPIKey: the web API key the browser presents to sign in
+  # FirestoreSettings.APIKey: the web API key the browser presents to sign in
   # (firestore.tf), a public value by design, beside it.
-  # dataConfig.FirestoreProject: the database's project, this environment's; the
+  # FirestoreSettings.ProjectID: the database's project, this environment's; the
   # Spanner project is the shared instance's in an environment that shares one.
   firestore_env = {
     GOOGLE_CLOUD_FIRESTORE_PROJECT = local.project_id

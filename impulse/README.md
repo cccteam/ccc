@@ -143,11 +143,14 @@ a Go keyword, a package the application imports, or a directory it has.
 
 `.envrc.template` carries the development ports (the server's, the Spanner emulator's,
 and the Firestore emulator's, which the render report states) and, commented out, the
-Firestore variables the live pages read: `APP_FIRESTORE_DATABASE` and
-`APP_FIREBASE_API_KEY`, which a deployment supplies, and `GOOGLE_CLOUD_FIRESTORE_PROJECT`
-when the database is not in the Spanner project. In development the emulator stands in
-through `FIRESTORE_EMULATOR_HOST`; with none of them set the application serves no live
-pages.
+Firestore variables the live pages read, which a deployment supplies:
+`APP_FIRESTORE_DATABASE`, `GOOGLE_CLOUD_FIRESTORE_PROJECT` (the database's project) and
+`APP_FIREBASE_API_KEY`. A process given the database without its project refuses to start
+and names both variables, since the database is not assumed to be in the Spanner project
+(where environments share a Spanner instance, that project is the shared instance's). In
+development the emulator stands in through `FIRESTORE_EMULATOR_HOST` and takes the Spanner
+project; with neither a database nor the emulator set the process refuses to start, since
+the live service is required.
 
 The application's `go.mod` pins its impulse tool (the `tool github.com/cccteam/ccc/impulse`
 directive and its require, which CI's `go tool impulse check` runs) at the impulse that

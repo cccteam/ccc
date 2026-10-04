@@ -41,16 +41,61 @@ func (s SpannerSettings) DatabasePath() string {
 	return fmt.Sprintf("projects/%s/instances/%s/databases/%s", s.ProjectID, s.InstanceID, s.DatabaseName)
 }
 
+// FirestoreSettings identifies the Firestore database the application keeps documents in,
+// beside the Spanner database. The database id is how a deployment hands the database to
+// the application (APP_FIRESTORE_DATABASE), with its project
+// (GOOGLE_CLOUD_FIRESTORE_PROJECT); the emulator host is how the development stack does.
+type FirestoreSettings struct {
+	// ProjectID is the Google Cloud project the database belongs to. A deployment that
+	// names the database names its project too, or the data level refuses to start: the
+	// database is not assumed to be in the Spanner project, which, where environments
+	// share a Spanner instance, is the shared instance's and not the environment's.
+	// Against the emulator it may stay empty, and the Spanner project stands in, since
+	// the emulator takes any project id.
+	ProjectID string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
+	// DatabaseID is the Firestore database, by id.
+	DatabaseID string `env:"APP_FIRESTORE_DATABASE"`
+	// APIKey is the Firebase web API key the browser initializes the SDK with; unused
+	// against the emulator.
+	APIKey string `env:"APP_FIREBASE_API_KEY"`
+	// EmulatorHost is the Firestore emulator's host:port, the development stack's.
+	EmulatorHost string `env:"FIRESTORE_EMULATOR_HOST"`
+}
+
+// Configured reports whether there is a database to open: a database is named, or the
+// emulator is.
+func (s FirestoreSettings) Configured() bool {
+	return s.DatabaseID != "" || s.EmulatorHost != ""
+}
+
+// Project is the project the database is opened in: ProjectID, or, against the emulator
+// with ProjectID empty, the Spanner project, which the emulator takes as it takes any
+// project id. A database named without its project is refused, naming both variables, as
+// is a configuration naming neither a database nor the emulator.
+func (s FirestoreSettings) Project(spannerProject string) (string, error) {
+	switch {
+	case !s.Configured():
+		return "", errors.New("no Firestore database and no emulator is configured: set APP_FIRESTORE_DATABASE (a deployment) or FIRESTORE_EMULATOR_HOST (development)")
+	case s.ProjectID != "":
+		return s.ProjectID, nil
+	case s.EmulatorHost != "":
+		return spannerProject, nil
+	default:
+		return "", errors.New("APP_FIRESTORE_DATABASE names a Firestore database and GOOGLE_CLOUD_FIRESTORE_PROJECT names no project for it: set GOOGLE_CLOUD_FIRESTORE_PROJECT to the project the database is in, which is not assumed to be the Spanner project")
+	}
+}
+
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the resource client over it, and the staff auth (its
-// permission engine and session manager).
+// owns the Spanner client, the resource client over it, the staff auth (its permission
+// engine and session manager), and the Firestore database's project.
 type DataConfiguration struct {
 	*coreConfiguration
-	env            *dataConfig
-	spannerClient  *cloudspanner.Client
-	resourceClient *resource.SpannerClient
-	cursorKey      *resource.CursorKey
-	staff          *staff.Auth
+	env              *dataConfig
+	spannerClient    *cloudspanner.Client
+	resourceClient   *resource.SpannerClient
+	cursorKey        *resource.CursorKey
+	staff            *staff.Auth
+	firestoreProject string
 }
 
 // NewDataConfiguration loads the core and data levels and opens their clients. The
@@ -64,6 +109,11 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	env := &dataConfig{}
 	if err := envconfig.ProcessWith(ctx, &envconfig.Config{Target: env, Lookuper: envconfig.OsLookuper()}); err != nil {
 		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
+	}
+
+	firestoreProject, err := env.Firestore.Project(env.Spanner.ProjectID)
+	if err != nil {
+		return nil, err
 	}
 
 	spannerClient, err := cloudspanner.NewClient(ctx, env.Spanner.DatabasePath())
@@ -107,6 +157,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		resourceClient:    resource.NewSpannerClient(spannerClient),
 		cursorKey:         cursorKey,
 		staff:             staffAuth,
+		firestoreProject:  firestoreProject,
 	}, nil
 }
 
@@ -151,6 +202,11 @@ func (c *DataConfiguration) Staff() *staff.Auth {
 	return c.staff
 }
 
+// FirestoreProject returns the project the Firestore database is opened in.
+func (c *DataConfiguration) FirestoreProject() string {
+	return c.firestoreProject
+}
+
 // cookieKey returns the configured session cookie key, or an ephemeral one when none is
 // configured. An ephemeral key means sessions do not survive a restart.
 func cookieKey(configured string) (string, error) {
@@ -168,7 +224,8 @@ func cookieKey(configured string) (string, error) {
 
 // dataConfig holds the environment every database-opening process reads.
 type dataConfig struct {
-	Spanner SpannerSettings
+	Spanner   SpannerSettings
+	Firestore FirestoreSettings
 
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration `env:"APP_DEFAULT_SESSION_TIMEOUT,default=10m"`
@@ -196,11 +253,4 @@ type dataConfig struct {
 	// TasksQueue is the Cloud Tasks queue the application enqueues its deferred work on,
 	// as the Cloud Tasks API names it (projects/<project>/locations/<region>/queues/<name>).
 	TasksQueue string `env:"APP_TASKS_QUEUE"`
-
-	// FirestoreProject is the project the Firestore database belongs to.
-	FirestoreProject string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
-	// FirestoreDatabase is the Firestore database the application keeps documents in, by id.
-	FirestoreDatabase string `env:"APP_FIRESTORE_DATABASE"`
-	// FirebaseAPIKey is the Firebase web API key the browser initializes the SDK with.
-	FirebaseAPIKey string `env:"APP_FIREBASE_API_KEY"`
 }

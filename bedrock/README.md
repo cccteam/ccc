@@ -257,8 +257,10 @@ the queue and Service Account User on its own account for the site and, when it
 constructs that level, the job process, so a task calls the application back with the
 enqueuer's OIDC token; a config variable `APP_FIRESTORE_DATABASE` becomes a Firestore
 database in Native mode beside the Spanner database, the variable set to its id and
-`GOOGLE_CLOUD_FIRESTORE_PROJECT` to the environment project (the Spanner project is the
-shared instance's where one is shared, so the database's project is told on its own), with
+`GOOGLE_CLOUD_FIRESTORE_PROJECT` to the environment project on every process that
+constructs the variable's level (the site, the job process and the migrate command; the
+Spanner project is the shared instance's where one is shared, so the database's project is
+told on its own, and the skeleton's data level refuses a database named without it), with
 `datastore.user` under a condition naming that database alone for the site and, when they
 construct that level, the migrate command (the data level opens the database's live
 service when it is constructed, and the release's role migration signals the running

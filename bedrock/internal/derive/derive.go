@@ -308,9 +308,10 @@ const (
 	varFirestoreDatabase = "APP_FIRESTORE_DATABASE"
 	// varFirestoreProject is the variable an application with a Firestore database
 	// declares for the database's project: the stack sets it to the environment project,
-	// where the database is; empty, the application falls back to the Spanner project,
-	// which is the shared instance's in an environment that shares one, so the stack
-	// never leaves it empty.
+	// where the database is, on every process that constructs the database's level. The
+	// skeleton's data level refuses to start with the database named and this empty,
+	// since the Spanner project is the shared instance's in an environment that shares
+	// one, so the stack never leaves it empty.
 	varFirestoreProject = "GOOGLE_CLOUD_FIRESTORE_PROJECT"
 	// varFirebaseAPIKey is the variable an application with a Firestore database declares
 	// to serve live pages to a browser: the stack creates a web API key restricted to the

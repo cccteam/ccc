@@ -73,10 +73,11 @@ func TestDerive(t *testing.T) {
 			wantCore: []string{varVersion, varServiceName, varLoggingProject},
 			wantData: []string{
 				varDatabaseProject, varDatabaseInstance, varDatabaseName,
+				varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey, "FIRESTORE_EMULATOR_HOST",
 				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
 				"APP_STAFF_OIDC_CLIENT_ID", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_REDIRECT_URL", "APP_STAFF_OIDC_HOSTED_DOMAIN",
 				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_GROUP_LOOKUP",
-				varFileStore, varTasksQueue, varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey,
+				varFileStore, varTasksQueue,
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", varJobsJob},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
