@@ -62,7 +62,9 @@ type UnsubscribeRequest struct {
 // expiry in one batch, and the answer says which were kept and which dropped. A
 // subscription the grants no longer cover, or one naming a resource the grants do not
 // know, is dropped, never refused. The application's permission accessor is the one
-// every generated handler checks through.
+// every generated handler checks through. The subscriptions are written for the
+// request's principal id (PrincipalID); an id over Firebase's uid limit is refused with
+// 403, the reason logged, and nothing is written.
 func RenewHandler(svc Service, userPermissions func(r *http.Request) resource.UserPermissions) http.HandlerFunc {
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -84,12 +86,15 @@ func RenewHandler(svc Service, userPermissions func(r *http.Request) resource.Us
 			}
 		}
 
+		principal, err := PrincipalID(ctx)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
 		kept, dropped, err := recheck(ctx, userPermissions(r), req.Subscriptions)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		principal := PrincipalID(ctx)
 		expiry := time.Now().Add(SubscriptionTTL)
 		subs := make([]Subscription, 0, len(kept))
 		for _, sub := range kept {
@@ -167,8 +172,11 @@ func recheck(ctx context.Context, perms resource.UserPermissions, subs []Subscri
 
 // UnsubscribeHandler serves POST <prefix>/live/unsubscribe: the tab's subscriptions are
 // deleted, or with all every subscription of the principal and the browser's identity is
-// revoked, the logout path. The answer is 204 whether or not anything was there: the
-// client sends it best effort as the page leaves.
+// revoked, the logout path. Both key by the principal id (PrincipalID), so a logout
+// through one auth leaves a person of the same name in another auth subscribed and
+// signed in. The answer is 204 whether or not anything was there: the client sends it
+// best effort as the page leaves. An id over Firebase's uid limit is refused with 403,
+// as the token route refused it, so nothing was ever registered or minted for it.
 func UnsubscribeHandler(svc Service) http.HandlerFunc {
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -178,7 +186,10 @@ func UnsubscribeHandler(svc Service) http.HandlerFunc {
 		if err := decodeBody(w, r, &req); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		principal := PrincipalID(ctx)
+		principal, err := PrincipalID(ctx)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
 		ctx, cancel := context.WithTimeout(ctx, RecordTimeout)
 		defer cancel()
 		switch {
@@ -203,15 +214,21 @@ func UnsubscribeHandler(svc Service) http.HandlerFunc {
 }
 
 // TokenHandler serves GET <prefix>/live/token: how the browser connects to the session
-// principal's change set.
+// principal's change set, as the principal id (PrincipalID) its uid carries. An id over
+// Firebase's uid limit is refused with 403 and the reason logged, before anything is
+// minted: the person uses the application while its live pages refuse.
 func TokenHandler(svc Service) http.HandlerFunc {
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
+		principal, err := PrincipalID(ctx)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
 		ctx, cancel := context.WithTimeout(ctx, RecordTimeout)
 		defer cancel()
-		payload, err := svc.Token(ctx, PrincipalID(ctx))
+		payload, err := svc.Token(ctx, principal)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

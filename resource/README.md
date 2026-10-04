@@ -496,6 +496,17 @@ user/logout`, the directory's front-channel logout. An API-key outlet's group is
 `NoCaching`, `CompressionMiddleware`, `<Outlet>Auth`, then the hook and the routes: no
 session handling and no XSRF guard.
 
+**The auth in the route tables.** Each session outlet's routes function binds the name of
+its auth for the live pages (section 14): `generatedRoutes` opens with
+`live.Subscribing(crew.Name)`, so the routes file imports every declared auth package,
+whether one auth is declared or several, and `NewTestRouter` binds the same names. Where
+the application writes its own router, the generator does not know the auths, so each
+session outlet's routes function takes the name as its last parameter,
+`generatedRoutes(r, h, staff.Name)`, and `NewTestRouter` takes one per session outlet in
+outlet order, `NewTestRouter(h, staff.Name)`; a router that passes none does not
+compile. An API-key outlet binds none: its routes refuse a request carrying
+`X-Subscribe`, and so do the default outlet's when it is declared `APIKey()`.
+
 **Release versions.** A browser application and the server each carry the release they
 were built from, and the server refuses an application it no longer answers. The
 application sends its release in `X-Api-Version` with every request. The server's is
@@ -573,7 +584,8 @@ application's own hooks are the application's suite's to exercise.
 router.AppHooks(app))`. An application whose router is exactly the base passes
 `router.Hooks{}`. The escape hatch stays: an application that needs something the shape
 cannot carry removes the option and hand-writes its router on the generated route
-tables, losing only the boilerplate and the generated chain test.
+tables, losing only the boilerplate and the generated chain test, and passes each
+session outlet's auth name to its routes function.
 
 **The generated authorization matrix.** `GenerateHandlerTests(dir)` emits, beside the
 emulator bootstrap, a test that drives every generated route through `NewTestRouter`:
@@ -1345,14 +1357,30 @@ therefore ends a subscription at the next renewal, and the refetch is refused me
 the publisher never checks permission. A page sends `unsubscribe {tab}` best effort as it
 leaves; a logout sends `{tab, all: true}`, which deletes every subscription of the
 principal and revokes the browser's identity. The token route answers the session
-principal's id (the user name, or `role:<role>` for a session established as a role), how
-to reach the change set, and the identity: in production a Firebase custom token the
-browser signs in with, against the emulator an empty token and the emulator host, which
-the browser connects to with the SDK's mock user token. A request carrying `X-Subscribe`
-on an API-key outlet answers 400 naming the header: machine clients wanting change
-notification are a different consumer on a topic. Every subscribing request, the live
-routes included, carries `subscribe=<tab>` on its request log line
-(`AddRequestAttribute`).
+principal's id (below), how to reach the change set, and the identity: in production a
+Firebase custom token the browser signs in with, against the emulator an empty token and
+the emulator host, which the browser connects to with the SDK's mock user token. A
+request carrying `X-Subscribe` on an API-key outlet answers 400 naming the header:
+machine clients wanting change notification are a different consumer on a topic. Every
+subscribing request, the live routes included, carries `subscribe=<tab>` on its request
+log line (`AddRequestAttribute`).
+
+**The principal id.** Every subscription, change set and browser identity belongs to a
+principal id (`live.PrincipalID`): the name of the auth the request came through, `|`,
+and the session's user name, or `role:<role>` for a session established as a role, so
+`crew|alice`, `members|alice@example.com` and `crew|role:Auditor`. The auth's name is the
+one the outlet's routes bind (section 8), so two auths over one database never share an
+id: a password user name equal to a directory user's email is two ids and two change
+sets, and a logout through one auth ends that person's subscriptions and identity alone.
+The id is the Firebase user id (uid) the browser signs in as, and Firebase allows a uid
+of at most 128 bytes (`live.MaxPrincipalIDLength`). Nothing is truncated or hashed: a
+person whose id is longer uses the application as always while the live pages refuse
+them. The token, renew and unsubscribe routes answer 403 naming the length and the
+limit, and a subscribing list or read registers nothing, each with the reason logged.
+The refusal sits in the live routes because the sign-in belongs to the session library
+and the auth package, which the generated code does not configure. The session library
+sets no length on a user name (its username columns are `STRING(MAX)`), so nothing is
+checked when the server starts.
 
 **The seams** are in `resource/live`: `SubscriptionRecord` (register and renew in one
 batch, unsubscribe a tab or a principal, the subscribers of a row, of a list in a domain,

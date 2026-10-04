@@ -15,7 +15,9 @@ Fields: `principal`, `tab`, `resource`, `key` (empty for a list), `domain` (empt
 a row and for a global list), `expiry` (timestamp). No client reads it; the rules deny
 everything outside the change sets.
 
-`users/{uid}/changes/{id}` is a user's change set. The id is
+`users/{uid}/changes/{id}` is a user's change set; `uid` is the principal id
+(`live.PrincipalID`), the auth's name and the user name joined by `|`, such as
+`crew|alice`. The id is
 `row|<resource>|<key>|<unix second>`, `list|<resource>|<domain>|<unix second>` or
 `resource|<resource>|<unix second>` (a compound key's `/` is written `%2F`), set with
 merge, so writes to one target within one second coalesce into one document. Fields:
@@ -73,11 +75,12 @@ goes through the rules.
 ## Identity
 
 In production the token route answers a Firebase custom token for the session
-principal's id, minted by the Admin SDK and signed through the IAM credentials API with
-the service account the metadata server names (no key file); the browser signs in with
-`signInWithCustomToken`. A logout revokes the uid's refresh tokens. Against the
-emulator (`EmulatorHost` set) the token is empty and the payload carries the emulator
-host; the browser connects with the SDK's `mockUserToken: {sub: uid, user_id: uid}`.
+principal's id (`crew|alice`), minted by the Admin SDK and signed through the IAM
+credentials API with the service account the metadata server names (no key file); the
+browser signs in with `signInWithCustomToken`. A logout revokes the uid's refresh
+tokens. Against the emulator (`EmulatorHost` set) the token is empty and the payload
+carries the emulator host; the browser connects with the SDK's
+`mockUserToken: {sub: uid, user_id: uid}`.
 
 ## Configuration
 

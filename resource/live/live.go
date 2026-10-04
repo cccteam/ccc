@@ -16,6 +16,14 @@
 // grants; a tab unsubscribes when it leaves, and a logout unsubscribes everything and
 // revokes the browser's identity.
 //
+// A subscription and a change set belong to a principal id (PrincipalID): the name of the
+// auth the request came through, the separator "|", and the session principal's user name
+// or its role marked "role:" (crew|alice, members|alice@example.com, crew|role:Auditor).
+// The auth's name is what the outlet's generated routes bind (Subscribing), so two auths
+// over one database never share a change set when a password user name equals a
+// directory's email; the id is the Firebase uid the browser signs in as, so one longer
+// than Firebase's limit is refused, never shortened.
+//
 // A row is named by its key as the read route spells it (resource.RowKey): a single
 // key is its value's string form, a compound key is its parts joined with "/" in route
 // order, the order the generated routes take them. The subscription record's key
@@ -64,6 +72,20 @@ const (
 	TokenRoute       = "live/token"
 	// LogAttribute is the request-log attribute every subscribing request carries.
 	LogAttribute = "subscribe"
+)
+
+// The principal id: what joins the auth's name to the principal, and how long it may be.
+const (
+	// AuthSeparator joins the auth's name to the principal in a principal id
+	// (PrincipalID). It is legal in a Firestore document id and a Firebase uid, and an
+	// auth's name never carries it (Subscribing refuses one that does), so the first
+	// separator ends the auth's name whatever the user name holds.
+	AuthSeparator = "|"
+	// MaxPrincipalIDLength is Firebase's limit on a uid, 128, counted in bytes as the
+	// Admin SDK counts it. A longer principal id is refused, never truncated or hashed.
+	MaxPrincipalIDLength = 128
+	// rolePrefix marks a session established as a role in its principal id.
+	rolePrefix = "role:"
 )
 
 // The numbers.

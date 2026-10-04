@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -10,6 +11,7 @@ import (
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session/sessioninfo"
+	"github.com/go-playground/errors/v5"
 )
 
 // The refusals a subscribing request can meet before any handler runs.
@@ -32,13 +34,25 @@ func Tab(r *http.Request) (string, error) {
 	return tab, nil
 }
 
-// Subscribing is the middleware a session-serving outlet's generated routes run under:
-// a request carrying the subscribe header has the tab noted on its request log line
-// and is refused when the tab is malformed. A request without the header passes
-// untouched.
-func Subscribing() func(http.Handler) http.Handler {
+// authKey is the request context key Subscribing binds the auth's name under.
+type authKey struct{}
+
+// Subscribing is the middleware a session-serving outlet's generated routes run under.
+// auth is the name of the auth whose sessions the outlet serves (the auth package's
+// Name); every request has it bound, so the live layer keys the session principal by
+// it (PrincipalID). A request carrying the subscribe header has the tab noted on its
+// request log line and is refused when the tab is malformed; a request without the
+// header passes on with nothing else done. An auth name that is empty, or that carries
+// AuthSeparator or a "/", panics as the routes are registered, so a server never
+// starts with a name that cannot begin a principal id.
+func Subscribing(auth string) func(http.Handler) http.Handler {
+	if err := checkAuthName(auth); err != nil {
+		panic(err.Error())
+	}
+
 	return func(next http.Handler) http.Handler {
 		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+			r = r.WithContext(context.WithValue(r.Context(), authKey{}, auth))
 			if r.Header.Get(SubscribeHeader) == "" {
 				next.ServeHTTP(w, r)
 
@@ -54,6 +68,22 @@ func Subscribing() func(http.Handler) http.Handler {
 			return nil
 		})
 	}
+}
+
+// checkAuthName refuses an auth name that cannot begin a principal id: an empty one, one
+// carrying AuthSeparator, which would make the boundary between the auth and the user
+// name ambiguous, and one carrying "/", which no Firestore document id holds.
+func checkAuthName(auth string) error {
+	switch {
+	case auth == "":
+		return errors.New("live.Subscribing(): the auth's name is empty; pass the name of the auth whose sessions the outlet serves, the auth package's Name")
+	case strings.Contains(auth, AuthSeparator):
+		return errors.Newf("live.Subscribing(%q): an auth's name cannot carry %q, which separates it from the user name in a principal id", auth, AuthSeparator)
+	case strings.Contains(auth, "/"):
+		return errors.Newf("live.Subscribing(%q): an auth's name cannot carry \"/\", which no Firestore document id holds", auth)
+	}
+
+	return nil
 }
 
 // Refusing is the middleware an API-key outlet's generated routes run under: the
@@ -103,8 +133,14 @@ func Subscribe(ctx context.Context, r *http.Request, svc Service, gate Gate, sub
 	if !permitted {
 		return
 	}
+	principal, err := PrincipalID(ctx)
+	if err != nil {
+		logger.FromCtx(ctx).Errorf("live: the %s subscription of tab %s is not registered; the page is served without it: %v", sub.Resource, tab, err)
+
+		return
+	}
 	registered := sub.Normalized()
-	registered.Principal = PrincipalID(ctx)
+	registered.Principal = principal
 	registered.Tab = tab
 	registered.Expiry = time.Now().Add(SubscriptionTTL)
 	ctx, cancel := context.WithTimeout(ctx, RecordTimeout)
@@ -147,14 +183,41 @@ func Publish(ctx context.Context, svc Service, domain accesstypes.Domain, touche
 	}
 }
 
-// PrincipalID is the session principal's id as the change set and the browser's
-// identity carry it: the user name for a user principal (an ordinary session, or an
-// impersonated user), and the role prefixed with "role:" for a session established as a
-// role.
-func PrincipalID(ctx context.Context) string {
+// PrincipalID is the session principal's id as the subscription record, the change set
+// and the browser's identity carry it: the name of the auth the request came through
+// (bound by Subscribing), AuthSeparator, and the user name for a user principal (an
+// ordinary session, or an impersonated user) or the role prefixed with "role:" for a
+// session established as a role. A password user alice of the crew auth is crew|alice,
+// a directory user of the members auth is members|alice@example.com, and a session
+// established as the Auditor role through the crew auth is crew|role:Auditor, so two
+// auths over one database never share an id.
+//
+// Nothing is truncated or hashed. An id longer than MaxPrincipalIDLength, Firebase's
+// uid limit, fails with a 403 client message whose cause names the id, its length and
+// the limit, so the person uses the application while live pages refuse; a request no
+// auth was bound to fails as a server error, since its principal could not be told from
+// another auth's.
+func PrincipalID(ctx context.Context) (string, error) {
+	auth, ok := ctx.Value(authKey{}).(string)
+	if !ok {
+		return "", errors.New("live.PrincipalID(): no auth is bound to the request; the outlet's generated routes bind it (live.Subscribing)")
+	}
+	id := auth + AuthSeparator + principalName(ctx)
+	if len(id) > MaxPrincipalIDLength {
+		cause := errors.Newf("live.PrincipalID(): the principal id %q is %d bytes, over Firebase's uid limit of %d", id, len(id), MaxPrincipalIDLength)
+
+		return "", httpio.NewForbiddenMessageWithErrorf(cause, "live pages are not served to this sign-in: its principal id is %d bytes, over the limit of %d", len(id), MaxPrincipalIDLength)
+	}
+
+	return id, nil
+}
+
+// principalName is the session principal as its id names it after the auth: the user
+// name for a user principal, the role marked "role:" for a session established as a role.
+func principalName(ctx context.Context) string {
 	principal := sessioninfo.PrincipalFromCtx(ctx)
 	if role, ok := principal.Role(); ok {
-		return "role:" + string(role)
+		return rolePrefix + string(role)
 	}
 	user, _ := principal.User()
 

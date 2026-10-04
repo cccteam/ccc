@@ -268,6 +268,8 @@ func (f outletOption) applyToOutlet(o *routerOutlet) error { return f(o) }
 // a GenerateTypescript target may only name a session-serving outlet (ForOutlet).
 // Under GenerateRouter a session Auth declares the same, so ServesSessions is for
 // applications that keep a hand-written router.
+// The generator then does not know the outlet's auth, so the outlet's routes function
+// and NewTestRouter take the auth's name, which keys each person's live pages.
 func ServesSessions() OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		o.servesSessions = true
@@ -306,7 +308,10 @@ const (
 //
 // When more than one session auth is declared the generated router binds every request
 // in the outlet's group to its auth, BindAuth(<pkg>.Name), so a misspelled or removed
-// auth package is a compile error; with one session auth the package is not imported.
+// auth package is a compile error; with one session auth the router does not import
+// the package. The route tables import it whatever the count: the outlet's routes bind
+// its Name for the live pages (live.Subscribing(<pkg>.Name)), which key each person's
+// subscriptions and change set by it.
 func Auth(importPath string, flavor AuthFlavor) OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		if importPath == "" || strings.ContainsAny(importPath, " \t\n\"") || strings.Trim(importPath, "/") != importPath {

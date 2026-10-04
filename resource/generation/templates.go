@@ -2837,6 +2837,9 @@ import (
 	"net/http"
 
 	{{ .LocalPackageImports }}
+{{- range .AuthImports }}
+	"{{ . }}"
+{{- end }}
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
@@ -2902,11 +2905,15 @@ type GeneratedHandlers interface {
 	{{ end -}}
 }
 
-func generatedRoutes(r chi.Router, h GeneratedHandlers) {
-	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when its tab id is
-	// malformed.
-	r = r.With(live.Subscribing())
+func generatedRoutes(r chi.Router, h GeneratedHandlers{{ if .AuthParam }}, auth string{{ end }}) {
+{{- if .AuthName }}
+	{{- template "subscribingComment" . }}
+	r = r.With(live.Subscribing({{ .AuthName }}))
+{{- else }}
+	// The outlet serves machine clients behind an API key, so it serves no live pages: a
+	// request carrying X-Subscribe is refused naming the header.
+	r = r.With(live.Refusing())
+{{- end }}
 {{- if .HasDomainScopedRoutes }}
 	domainGuard := h.DomainGuard()
 {{ end }}
@@ -2979,12 +2986,10 @@ type Generated{{ $outlet.Suffix }}Handlers interface {
 	{{ end -}}
 }
 
-func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suffix }}Handlers) {
+func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suffix }}Handlers{{ if $outlet.AuthParam }}, auth string{{ end }}) {
 {{- if $outlet.ServesSessions }}
-	// Every route below runs under the subscribe middleware: a request carrying
-	// X-Subscribe is noted on its request log line and refused when its tab id is
-	// malformed.
-	r = r.With(live.Subscribing())
+	{{- template "subscribingComment" $outlet }}
+	r = r.With(live.Subscribing({{ $outlet.AuthName }}))
 {{- else }}
 	// The outlet serves no browser sessions, so it serves no live pages: a request
 	// carrying X-Subscribe is refused naming the header.
@@ -3039,12 +3044,13 @@ type AllGeneratedHandlers interface {
 // capture the handlers require. The outlets' route prefixes are disjoint, so their
 // surfaces compose on one mux. Production traffic is served through the application's
 // router, which nests each outlet's routes inside its own middleware group.
-func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {
+{{- template "testRouterAuthComment" . }}
+func NewTestRouter(h AllGeneratedHandlers{{ template "testRouterAuthParams" . }}) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
-	generatedRoutes(r, h)
+	generatedRoutes(r, h{{ if .AuthParam }}, auth{{ end }})
 	{{- range .ExtraOutlets }}
-	generated{{ .Suffix }}Routes(r, h)
+	generated{{ .Suffix }}Routes(r, h{{ if .AuthParam }}, {{ .TestRouterParam }}{{ end }})
 	{{- end }}
 
 	return r
@@ -3054,13 +3060,39 @@ func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {
 // session guard, no application middleware beyond the route-parameter capture the
 // handlers require. Production traffic is served through the application's router,
 // which nests these routes inside its authentication group.
-func NewTestRouter(h GeneratedHandlers) *chi.Mux {
+{{- template "testRouterAuthComment" . }}
+func NewTestRouter(h GeneratedHandlers{{ template "testRouterAuthParams" . }}) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
-	generatedRoutes(r, h)
+	generatedRoutes(r, h{{ if .AuthParam }}, auth{{ end }})
 
 	return r
 }
+{{- end }}
+{{- /* subscribingComment opens a session outlet's routes function: what the subscribe middleware binds and does. */ -}}
+{{- define "subscribingComment" }}
+	// Every route below runs under the subscribe middleware. It binds the name of the
+	// auth whose sessions the outlet serves to every request, so a live page's
+	// subscriptions and change set belong to <auth>|<user name> and two auths never
+	// share one; a request carrying X-Subscribe is noted on its request log line and
+	// refused when its tab id is malformed. The auth's name is {{ if .AuthParam }}the auth parameter,
+	// passed by the router that composes the outlet, since the program declares no Auth{{ else }}{{ .AuthName }}{{ end }}.
+{{- end }}
+{{- /* testRouterAuthParams renders NewTestRouter's auth parameters, one per session outlet that declares no Auth. */ -}}
+{{- define "testRouterAuthParams" }}{{ range .TestRouterAuthParams }}, {{ . }}{{ end }}{{ if .TestRouterAuthParams }} string{{ end }}{{ end }}
+{{- /* testRouterAuthComment says why NewTestRouter takes the auths' names, when it does. */ -}}
+{{- define "testRouterAuthComment" }}
+{{- if eq (len .TestRouterAuthParams) 1 }}
+//
+// The program declares no Auth, so the name of the auth whose sessions the outlet
+// serves is a parameter, {{ index .TestRouterAuthParams 0 }}: pass the name the application's router passes,
+// which keys each person's live pages.
+{{- else if .TestRouterAuthParams }}
+//
+// The program declares no Auth, so the names of the auths whose sessions the outlets
+// serve are parameters, in outlet order ({{ range $i, $p := .TestRouterAuthParams }}{{ if $i }}, {{ end }}{{ $p }}{{ end }}): pass the names the
+// application's router passes, which key each person's live pages.
+{{- end }}
 {{- end }}
 {{- /* routeHandler renders one route's handler expression: the handler, under the domain guard when the route is domain-scoped, under the feature guard when it is gated. */ -}}
 {{- define "routeHandler" -}}
@@ -3093,7 +3125,7 @@ func TestGeneratedRoutes(t *testing.T) {
 			t.Parallel()
 
 			rec := newGeneratedCallRecorder()
-			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall){{ range .TestRouterAuthArgs }}, {{ . }}{{ end }})
 
 			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)
 			rr := httptest.NewRecorder()
@@ -3139,7 +3171,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 			t.Parallel()
 
 			rec := newGeneratedCallRecorder()
-			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall){{ range .TestRouterAuthArgs }}, {{ . }}{{ end }})
 
 			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)
 			rr := httptest.NewRecorder()

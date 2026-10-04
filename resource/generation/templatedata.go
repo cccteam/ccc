@@ -234,6 +234,18 @@ type routerFileData struct {
 	StubFeatureGuard bool
 	// ResourcePackage qualifies the feature constants the gated routes name.
 	ResourcePackage string
+	// AuthName and AuthParam are the default outlet's auth binding (see
+	// outletRouteData). AuthImports are the auth packages the session outlets declare,
+	// sorted and once each, whose Name the routes functions bind.
+	AuthName    string
+	AuthParam   bool
+	AuthImports []string
+	// TestRouterAuthParams are NewTestRouter's auth parameters, one per session outlet
+	// that declares no Auth, in declaration order; TestRouterAuthArgs are the quoted
+	// names the generated router test passes for them, each outlet's own name, since its
+	// stub handlers never reach the live pages.
+	TestRouterAuthParams []string
+	TestRouterAuthArgs   []string
 }
 
 // routeHandlerData feeds the routes template's handler expression for one route: the
@@ -269,6 +281,18 @@ type outletRouteData struct {
 	HasConsolidatedHandler  bool
 	ConsolidatedHandlerFunc string
 	ConsolidatedPath        string
+	// AuthName is the Go expression naming the auth whose sessions a session outlet
+	// serves, which its routes function binds for the live pages (live.Subscribing):
+	// <pkg>.Name for the auth the outlet declares (Auth), or the routes function's auth
+	// parameter where it declares none (AuthParam). Empty for an outlet without sessions
+	// and for an API-key outlet, whose routes refuse a subscribing request.
+	AuthName string
+	// AuthParam marks a session outlet that declares no Auth, as when the application
+	// writes its own router: the generator does not know its auth, so the routes
+	// function takes the auth's name from the router composing it, and NewTestRouter
+	// takes it as TestRouterParam.
+	AuthParam       bool
+	TestRouterParam string
 }
 
 // negativeRouterTest is one outlet-isolation case: Method is the net/http constant

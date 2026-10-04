@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/cccteam/ccc/resource/live"
@@ -32,7 +33,9 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			ConsolidatedHandlerFunc: fmt.Sprintf("Patch%sResources", outlet.suffix()),
 			ConsolidatedPath:        fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
 		}
+		outletRoutes[i].AuthName, outletRoutes[i].AuthParam, outletRoutes[i].TestRouterParam = authBinding(&outlets[i])
 	}
+	authImports, testRouterParams, testRouterArgs := authBindings(outlets, outletRoutes)
 
 	constResources, routerTestRoutes, err := r.accumulateResourceRoutes(outlets, outletRoutes)
 	if err != nil {
@@ -96,6 +99,11 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		HasGatedRoutes:         defaultOutlet.HasGatedRoutes,
 		StubFeatureGuard:       stubFeatureGuard,
 		ResourcePackage:        r.resource.Package(),
+		AuthName:               defaultOutlet.AuthName,
+		AuthParam:              defaultOutlet.AuthParam,
+		AuthImports:            authImports,
+		TestRouterAuthParams:   testRouterParams,
+		TestRouterAuthArgs:     testRouterArgs,
 	}
 
 	routesDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routesOutputName))
@@ -118,6 +126,50 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	return nil
+}
+
+// authParam is the auth parameter of a session outlet's routes function where the
+// program declares no Auth, and the default outlet's in NewTestRouter.
+const authParam = "auth"
+
+// authBinding names the auth a session outlet's routes bind for the live pages, which
+// key each person's subscriptions and change set by it: the declared auth package's
+// Name, or, where the outlet declares no Auth because the application's own router
+// composes it, the routes function's auth parameter, which NewTestRouter takes as
+// testParam. An outlet without sessions binds nothing, and neither does an API-key
+// outlet, whose routes refuse a subscribing request: the default outlet is one under
+// APIKey, though it serves sessions otherwise.
+func authBinding(o *routerOutlet) (name string, param bool, testParam string) {
+	switch {
+	case !o.servesSessions || o.apiKey:
+		return "", false, ""
+	case o.auth != nil:
+		return o.auth.packageName() + ".Name", false, ""
+	}
+	testParam = authParam
+	if o.name != defaultOutletName {
+		testParam = caser.ToCamel(o.name) + "Auth"
+	}
+
+	return authParam, true, testParam
+}
+
+// authBindings gathers the routes file's side of the session outlets' auth bindings:
+// the declared auth packages it imports, sorted and once each, and NewTestRouter's auth
+// parameters with the names the generated router test passes for them.
+func authBindings(outlets []routerOutlet, outletRoutes []*outletRouteData) (imports, testParams, testArgs []string) {
+	for i, outlet := range outlets {
+		switch {
+		case outletRoutes[i].AuthParam:
+			testParams = append(testParams, outletRoutes[i].TestRouterParam)
+			testArgs = append(testArgs, strconv.Quote(outlet.name))
+		case outletRoutes[i].AuthName != "" && !slices.Contains(imports, outlet.auth.importPath):
+			imports = append(imports, outlet.auth.importPath)
+		}
+	}
+	slices.Sort(imports)
+
+	return imports, testParams, testArgs
 }
 
 // fileRoutesByOutlet collects each outlet's stored-file routes by outlet name: the

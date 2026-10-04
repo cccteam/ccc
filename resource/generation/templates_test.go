@@ -330,9 +330,9 @@ func Test_routesTemplate_testRouter(t *testing.T) {
 	t.Parallel()
 
 	for _, want := range []string{
-		"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
+		`func NewTestRouter(h GeneratedHandlers{{ template "testRouterAuthParams" . }}) *chi.Mux {`,
 		"r.Use(httpio.WithParams)",
-		"generatedRoutes(r, h)",
+		"generatedRoutes(r, h{{ if .AuthParam }}, auth{{ end }})",
 	} {
 		if !strings.Contains(routesTemplate, want) {
 			t.Errorf("routesTemplate missing %q", want)
@@ -391,6 +391,21 @@ func Test_routerTestTemplate_selfContained(t *testing.T) {
 			wantContains:    []string{"func (s *generatedHandlersStub) Widgets() http.HandlerFunc {"},
 			wantNotContains: []string{"DomainGuard", "PatchResources", "mock_router"},
 		},
+		{
+			name: "under the application's own router the test names each session outlet's auth after the outlet",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets"}},
+				},
+				NegativeRouterTests: []negativeRouterTest{{Method: "http.MethodGet", URL: "/portal/api/widgets"}},
+				TestRouterAuthArgs:  []string{`"default"`, `"portal"`},
+			},
+			wantContains: []string{
+				"router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall), \"default\", \"portal\")\n\n\t\t\treq := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)\n\t\t\trr := httptest.NewRecorder()\n\t\t\trouter.ServeHTTP(rr, req)\n\n\t\t\tif got := rr.Code; got != http.StatusOK {",
+				"router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall), \"default\", \"portal\")\n\n\t\t\treq := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)\n\t\t\trr := httptest.NewRecorder()\n\t\t\trouter.ServeHTTP(rr, req)\n\n\t\t\tif got := rr.Code; got != http.StatusNotFound {",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -437,6 +452,7 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
+				AuthName: "crew.Name",
 				ExtraOutlets: []*outletRouteData{{
 					Name:   "automation",
 					Suffix: "Automation",
@@ -483,11 +499,13 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
+				AuthName: "crew.Name",
 				ExtraOutlets: []*outletRouteData{{
 					Name:           "portal",
 					Suffix:         "Portal",
 					Prefix:         "portal",
 					ServesSessions: true,
+					AuthName:       "members.Name",
 					RoutesMap: map[string][]*generatedRoute{
 						"Widget": {{Method: "GET", Path: "/portal/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 					},
@@ -498,12 +516,128 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				`r.Get("/portal/permission-digest", h.PermissionDigest())`,
 				`r.Get("/portal/user-domains", h.UserDomains())`,
 				// A session outlet serves the live routes under its prefix, behind the
-				// subscribe middleware, and requires the live surface of its own.
+				// subscribe middleware bound to its auth, and requires the live surface of
+				// its own.
 				`r.Post("/portal/live/renew", h.LiveRenew())`,
 				`r.Post("/portal/live/unsubscribe", h.LiveUnsubscribe())`,
 				`r.Get("/portal/live/token", h.LiveToken())`,
-				"r = r.With(live.Subscribing())",
+				"func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {",
+				"r = r.With(live.Subscribing(members.Name))",
 			},
+		},
+		{
+			name: "declared auths bind their packages' Name, which the routes file imports",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+				AuthName:    "crew.Name",
+				AuthImports: []string{"example.com/app/pkg/auth/crew", "example.com/app/pkg/auth/members"},
+				ExtraOutlets: []*outletRouteData{{
+					Name:           "portal",
+					Suffix:         "Portal",
+					Prefix:         "portal/api",
+					ServesSessions: true,
+					AuthName:       "members.Name",
+					RoutesMap: map[string][]*generatedRoute{
+						"Widget": {{Method: "GET", Path: "/portal/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+					},
+				}},
+			},
+			wantContains: []string{
+				"\t\"example.com/app/pkg/auth/crew\"\n",
+				"\t\"example.com/app/pkg/auth/members\"\n",
+				"func generatedRoutes(r chi.Router, h GeneratedHandlers) {",
+				"The auth's name is crew.Name.\n\tr = r.With(live.Subscribing(crew.Name))",
+				"func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {",
+				"The auth's name is members.Name.\n\tr = r.With(live.Subscribing(members.Name))",
+				// The test router binds the same auths, so a test through it sees the
+				// principal ids production does.
+				"func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {",
+				"\tgeneratedRoutes(r, h)\n\tgeneratedPortalRoutes(r, h)\n",
+			},
+			wantNotContains: []string{"auth string", "The program declares no Auth"},
+		},
+		{
+			name: "under the application's own router each session outlet's routes take its auth's name",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+				AuthName:             "auth",
+				AuthParam:            true,
+				TestRouterAuthParams: []string{"auth", "portalAuth"},
+				TestRouterAuthArgs:   []string{`"default"`, `"portal"`},
+				ExtraOutlets: []*outletRouteData{
+					{
+						Name:            "portal",
+						Suffix:          "Portal",
+						Prefix:          "portal/api",
+						ServesSessions:  true,
+						AuthName:        "auth",
+						AuthParam:       true,
+						TestRouterParam: "portalAuth",
+						RoutesMap: map[string][]*generatedRoute{
+							"Widget": {{Method: "GET", Path: "/portal/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+						},
+					},
+					{
+						Name:   "automation",
+						Suffix: "Automation",
+						Prefix: "automation",
+						RoutesMap: map[string][]*generatedRoute{
+							"Widget": {{Method: "GET", Path: "/automation/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+						},
+					},
+				},
+			},
+			wantContains: []string{
+				"func generatedRoutes(r chi.Router, h GeneratedHandlers, auth string) {",
+				"The auth's name is the auth parameter,\n\t// passed by the router that composes the outlet, since the program declares no Auth.\n\tr = r.With(live.Subscribing(auth))",
+				"func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers, auth string) {",
+				// An outlet without sessions takes no auth.
+				"func generatedAutomationRoutes(r chi.Router, h GeneratedAutomationHandlers) {\n\t// The outlet serves no browser sessions",
+				"serve are parameters, in outlet order (auth, portalAuth)",
+				"func NewTestRouter(h AllGeneratedHandlers, auth, portalAuth string) *chi.Mux {",
+				"\tgeneratedRoutes(r, h, auth)\n\tgeneratedPortalRoutes(r, h, portalAuth)\n\tgeneratedAutomationRoutes(r, h)\n",
+			},
+		},
+		{
+			name: "the application's own router's single outlet takes one auth's name",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+				AuthName:             "auth",
+				AuthParam:            true,
+				TestRouterAuthParams: []string{"auth"},
+				TestRouterAuthArgs:   []string{`"default"`},
+			},
+			wantContains: []string{
+				"func generatedRoutes(r chi.Router, h GeneratedHandlers, auth string) {",
+				"serves is a parameter, auth: pass the name the application's router passes,",
+				"func NewTestRouter(h GeneratedHandlers, auth string) *chi.Mux {",
+				"\tgeneratedRoutes(r, h, auth)\n",
+			},
+			wantNotContains: []string{"in outlet order"},
+		},
+		{
+			name: "an API-key default outlet binds no auth and refuses a subscribing request",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+			},
+			wantContains: []string{
+				"func generatedRoutes(r chi.Router, h GeneratedHandlers) {\n\t// The outlet serves machine clients behind an API key, so it serves no live pages",
+				"r = r.With(live.Refusing())",
+				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
+			},
+			wantNotContains: []string{"live.Subscribing("},
 		},
 		{
 			name: "no extra outlets renders the single-outlet file",
@@ -512,6 +646,7 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
+				AuthName: "crew.Name",
 			},
 			wantContains: []string{
 				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",

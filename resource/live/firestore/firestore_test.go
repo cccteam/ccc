@@ -1,7 +1,13 @@
 package firestore_test
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +15,8 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
+	"github.com/cccteam/session/sessioninfo"
+	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -431,5 +439,180 @@ func TestNew_requiresProject(t *testing.T) {
 
 	if _, err := livefirestore.New(t.Context(), livefirestore.Config{EmulatorHost: "127.0.0.1:1"}); err == nil {
 		t.Fatal("New() error = nil, want a refusal without a project")
+	}
+}
+
+// revokeRecorder is the Firestore service with the uids it revoked recorded: against the
+// emulator Revoke has no tokens to end, so the uid a logout hands it is what the logout
+// proves.
+type revokeRecorder struct {
+	*livefirestore.Service
+
+	mu      sync.Mutex
+	revoked []string
+}
+
+func (r *revokeRecorder) Revoke(ctx context.Context, uid string) error {
+	r.mu.Lock()
+	r.revoked = append(r.revoked, uid)
+	r.mu.Unlock()
+
+	if err := r.Service.Revoke(ctx, uid); err != nil {
+		return errors.Wrap(err, "firestore.Service.Revoke()")
+	}
+
+	return nil
+}
+
+// Revoked returns the uids revoked so far, in order.
+func (r *revokeRecorder) Revoked() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return slices.Clone(r.revoked)
+}
+
+// admitted is the gate of a request the grants admit.
+type admitted struct{}
+
+func (admitted) Permitted(context.Context) (bool, error) {
+	return true, nil
+}
+
+// serveAs runs one request through an outlet bound to auth (live.Subscribing in front of
+// handler, as the generated routes compose it), signed in as user, carrying the tab in
+// the subscribe header as the browser's live requests do.
+func serveAs(t *testing.T, auth, user string, handler http.Handler, method, target, body string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
+		SessionInfo: &sessioninfo.SessionInfo{Username: user},
+	})
+	req := httptest.NewRequestWithContext(ctx, method, target, strings.NewReader(body))
+	req.Header.Set(live.SubscribeHeader, "tab-1")
+	rr := httptest.NewRecorder()
+	live.Subscribing(auth)(handler).ServeHTTP(rr, req)
+
+	return rr
+}
+
+// TestService_twoAuthsOneName plays two people of one name through two auths over one
+// database, a password user of the crew auth and a directory user of the members auth
+// whose email the password user name equals: they hold two uids and two change sets, a
+// commit writes into each only what that person watches, each browser identity reads its
+// own set alone, and one's logout ends that person's subscriptions and identity and
+// leaves the other's.
+func TestService_twoAuthsOneName(t *testing.T) {
+	t.Parallel()
+
+	svc := &revokeRecorder{Service: newService(t, time.Now)}
+	res := resourceFor(t)
+	shared := principalFor(t, "alice") + "@example.com"
+
+	people := []struct {
+		name    string
+		auth    string
+		watches *live.Subscription
+		wantUID string
+		want    []live.ChangeDocument
+	}{
+		{
+			name:    "the password user watching the anvil list",
+			auth:    "crew",
+			watches: live.ListSubscription(res, "anvil"),
+			wantUID: "crew|" + shared,
+			want:    []live.ChangeDocument{{Kind: live.ListChange, Resource: res, Domain: "anvil"}},
+		},
+		{
+			name:    "the directory user watching one row",
+			auth:    "members",
+			watches: live.RowSubscription(res, "k2"),
+			wantUID: "members|" + shared,
+			want:    []live.ChangeDocument{{Kind: live.RowChange, Resource: res, Key: "k2"}},
+		},
+	}
+
+	// Each opens a live page through its own outlet, as a generated list or read handler
+	// registers it, and asks for its identity.
+	for _, p := range people {
+		watch := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			live.Subscribe(r.Context(), r, svc, admitted{}, p.watches)
+			w.WriteHeader(http.StatusOK)
+		})
+		if rr := serveAs(t, p.auth, shared, watch, http.MethodGet, "/api/ships", ""); rr.Code != http.StatusOK {
+			t.Fatalf("%s: the live page answered %d: %s", p.name, rr.Code, rr.Body.String())
+		}
+		rr := serveAs(t, p.auth, shared, live.TokenHandler(svc), http.MethodGet, "/api/live/token", "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s: the token route answered %d: %s", p.name, rr.Code, rr.Body.String())
+		}
+		var payload live.TokenPayload
+		if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("%s: json.Unmarshal() error = %v", p.name, err)
+		}
+		if payload.UID != p.wantUID {
+			t.Errorf("%s: uid = %q, want %q", p.name, payload.UID, p.wantUID)
+		}
+	}
+
+	// One commit writes row k2 in anvil: the list's watcher and the row's watcher each
+	// get their own document in their own set.
+	if err := svc.Publish(t.Context(), "anvil", map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k2"}}}); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	for _, p := range people {
+		changes, err := svc.Changes(t.Context(), p.wantUID, time.Time{})
+		if err != nil {
+			t.Fatalf("%s: Changes() error = %v", p.name, err)
+		}
+		got := make([]live.ChangeDocument, 0, len(changes))
+		for _, change := range changes {
+			got = append(got, change.ChangeDocument)
+		}
+		if diff := cmp.Diff(p.want, got); diff != "" {
+			t.Errorf("%s: change set mismatch (-want +got):\n%s", p.name, diff)
+		}
+	}
+
+	// Each browser identity reads its own change set, its document there, and is refused
+	// the other's.
+	reads := []struct {
+		name       string
+		reader     string
+		set        string
+		wantStatus int
+		wantBody   string
+	}{
+		{name: "the password user reads their own set", reader: people[0].wantUID, set: people[0].wantUID, wantStatus: http.StatusOK, wantBody: `"list"`},
+		{name: "the password user cannot read the directory user's set", reader: people[0].wantUID, set: people[1].wantUID, wantStatus: http.StatusForbidden},
+		{name: "the directory user reads their own set", reader: people[1].wantUID, set: people[1].wantUID, wantStatus: http.StatusOK, wantBody: `"row"`},
+		{name: "the directory user cannot read the password user's set", reader: people[1].wantUID, set: people[0].wantUID, wantStatus: http.StatusForbidden},
+	}
+	for _, tt := range reads {
+		status, body := restCall(t, http.MethodGet, "users/"+tt.set+"/changes", unsignedToken(tt.reader), "")
+		if status != tt.wantStatus {
+			t.Errorf("%s: status = %d, want %d: %s", tt.name, status, tt.wantStatus, body)
+		}
+		if !strings.Contains(body, tt.wantBody) {
+			t.Errorf("%s: body = %s, want it to contain %s", tt.name, body, tt.wantBody)
+		}
+	}
+
+	// The password user logs out: their subscriptions and identity end, the directory
+	// user's stay.
+	logout := serveAs(t, "crew", shared, live.UnsubscribeHandler(svc), http.MethodPost, "/api/live/unsubscribe", `{"tab":"tab-1","all":true}`)
+	if logout.Code != http.StatusNoContent {
+		t.Fatalf("the logout answered %d: %s", logout.Code, logout.Body.String())
+	}
+	left, err := svc.SubscribersOfResource(t.Context(), res)
+	if err != nil {
+		t.Fatalf("SubscribersOfResource() error = %v", err)
+	}
+	want := []live.Subscription{{Principal: people[1].wantUID, Tab: "tab-1", Resource: res, Key: "k2"}}
+	if diff := cmp.Diff(want, left, ignoreExpiry); diff != "" {
+		t.Errorf("subscriptions left after the logout mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{people[0].wantUID}, svc.Revoked()); diff != "" {
+		t.Errorf("Revoked() mismatch (-want +got):\n%s", diff)
 	}
 }
