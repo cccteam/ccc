@@ -312,15 +312,18 @@ themselves. A pull request into `{{.GithubDefaultBranch}}` plans each layer whos
 `.tf`, `.tfvars` or lock file it changes, as that layer's plan identity, and
 posts the plan on the pull request; the merge applies those layers as their
 apply identities, in layer order ({{.LayerOrderProse}}), one at a time,
-stopping at the first failure. Run workflow on the Actions tab applies one
-layer again with no change to it. Each layer's apply has a concurrency group
-of its own (`layers-apply-<layer>`; GitHub runs one job of a concurrency
-group at a time): an apply waits for another apply of the same layer and for
-no other layer. GitHub keeps one job of a group waiting behind the running
-one, and a third that arrives cancels the one waiting, so where several
-layers go by Run workflow, start each when the previous has finished. No key
-exists anywhere: a run presents GitHub's token to the pool this layer makes,
-and Google answers with a token for the identity.
+stopping at the first failure. A plan that fails only because it reads
+outputs the plan of an earlier layer in the same pull request creates passes,
+"planned after" that layer applies, since the merge applies that layer first
+(the root README, "How the layers are applied"). Run workflow on the Actions
+tab applies one layer again with no change to it. Each layer's apply has a
+concurrency group of its own (`layers-apply-<layer>`; GitHub runs one job of
+a concurrency group at a time): an apply waits for another apply of the same
+layer and for no other layer. GitHub keeps one job of a group waiting behind
+the running one, and a third that arrives cancels the one waiting, so where
+several layers go by Run workflow, start each when the previous has
+finished. No key exists anywhere: a run presents GitHub's token to the pool
+this layer makes, and Google answers with a token for the identity.
 
 Who grants what, and why the first time works in order:
 

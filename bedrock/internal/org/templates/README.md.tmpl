@@ -64,21 +64,33 @@ random four-hex suffix.{{if .ExtraLabels}} Every project and bucket carries the 
 ## How the layers are applied
 
 Routine changes go through pull requests. The workflow
-[`{{.WorkflowPath}}`]({{.WorkflowPath}}), rendered by bedrock like the
-layers, plans every layer a pull request changes as that layer's plan
-identity and posts the plan on the pull request; the merge applies those
-layers as their apply identities, in layer order ({{.LayerOrderProse}}), one
-at a time, stopping at the first failure. No key exists anywhere: a run
-presents GitHub's short-lived token to the boot project's workload identity
-pool (`0-bootstrap/github.tf`), and Google answers with a token for the
-identity; a plan identity may be used from a pull request's run and an apply
-identity from the default branch alone. Run workflow on the Actions tab
-applies one layer again with no change to it, which a registration's second
-pass of `2-env` needs. An apply waits for another apply of the same layer
-and for no other layer, so where several layers go by Run workflow, start
-each when the previous has finished: GitHub keeps one apply of a layer
-waiting behind the running one, and a third that arrives cancels the one
-waiting. Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"):
+[`{{.WorkflowPath}}`]({{.WorkflowPath}}), rendered by bedrock like the layers,
+plans every layer a pull request changes as that layer's plan identity and
+posts the plan on the pull request; the merge applies those layers as their
+apply identities, in layer order ({{.LayerOrderProse}}), one at a time,
+stopping at the first failure.
+
+A pull request may add an output to one layer and read it in a later one, as
+a bedrock upgrade does when `2-env` starts reading a new output of `1-org`.
+The later layer's plan cannot see the output yet: it exists once the earlier
+layer is applied, so that plan fails with tofu's "Unsupported attribute"
+error. The workflow plans the layers side by side, then judges each plan once all of
+them have finished: a plan that fails only because it reads outputs the plan
+of an earlier layer in the same pull request creates passes, and its comment
+on the pull request says it is "planned after" that layer applies. The merge
+applies the earlier layer first, so the later one reads the new output when
+its turn comes. Any other failure fails the pull request.
+
+No key exists anywhere: a run presents
+GitHub's short-lived token to the boot project's workload identity pool
+(`0-bootstrap/github.tf`), and Google answers with a token for the identity;
+a plan identity may be used from a pull request's run and an apply identity
+from the default branch alone. Run workflow on the Actions tab applies one
+layer again with no change to it, which a registration's second pass of
+`2-env` needs. An apply waits for another apply of the same layer and for
+no other layer, so where several layers go by Run workflow, start each when
+the previous has finished: GitHub keeps one apply of a layer waiting behind
+the running one, and a third that arrives cancels the one waiting. Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"):
 for `2-env` as a member of the environment's team group under the
 layer administrator and layer state entitlements, which grant the
 environment layer identity's roles for a short time, so the person runs the

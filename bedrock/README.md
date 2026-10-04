@@ -1286,7 +1286,13 @@ Firebase has made it again since the workflow restricted it, or any other key
 The layers workflow plans every layer a pull request changes, as that layer's plan
 identity, and posts each plan on the pull request; the merge applies those layers as their
 apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env
-for tst, stg and prd), one at a time, stopping at the first failure; Run workflow on the
+for tst, stg and prd), one at a time, stopping at the first failure. The plans run side by
+side (`tofu plan <layer>`) and each is judged once all have finished (`plan <layer>`): a
+plan that fails only because it reads outputs the plan of an earlier layer in the same pull
+request creates (an unsupported attribute that plan shows as a new output) passes, its
+comment saying it is planned after that layer applies, since the merge applies that layer
+first; any other failure fails. The judgment is a script bedrock renders into the workflow
+(`internal/org/planverdict.sh`, run by its tests over both outcomes). Run workflow on the
 Actions tab applies one layer again with no change to it. Each layer's apply holds a
 concurrency group of its own (`layers-apply-<layer>`; GitHub runs one job of a concurrency
 group at a time), so an apply waits for another apply of the same layer and for no other
