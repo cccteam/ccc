@@ -161,6 +161,13 @@ func tagSubs() map[string]string {
 	return map[string]string{appSub: "quill", envSub: stgEnvironment, projectSub: "p-stg", applyIdentitySub: "quill-apply@p-stg.iam.gserviceaccount.com", commitSub: "c9", repoFullNameSub: "acme/quill", fileStoresSub: "google_storage_bucket.files"}
 }
 
+// withSub is the substitutions with one more set.
+func withSub(subs map[string]string, name, value string) map[string]string {
+	subs[name] = value
+
+	return subs
+}
+
 // tstSubs are a tag build's substitutions in tst, with stg's identity and project, so
 // the lines a test expects differ from tagSubs's in the environment alone.
 func tstSubs() map[string]string {
@@ -178,10 +185,11 @@ func promotedSubs() map[string]string {
 	return subs
 }
 
-// seededSubs is tst on the placement's seed list: _SEED is true.
+// seededSubs is tst whose trigger still says _SEED=false, from its stack's last apply,
+// while the facts seed (SEED, the checkout's placement): the facts decide.
 func seededSubs() map[string]string {
 	subs := tstSubs()
-	subs[seedSub] = trueValue
+	subs[seedSub] = "false"
 
 	return subs
 }
@@ -293,7 +301,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			name:         "a restore run in a seeded environment says the seed applies afresh too",
 			subs:         seededSubs(),
 			pins:         enabledPins(),
-			env:          restoreEnv,
+			env:          restoreEnv + "export SEED=\"true\"\n",
 			state:        stateList,
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations and the seed then apply afresh ===", "Tests passed"},
 			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
@@ -535,9 +543,11 @@ func TestApplyEnvironmentStack(t *testing.T) {
 		wantOut  []string
 		wantTofu []string
 		// wantSettings are the migrate command's settings the step left (MIGRATE_ENV);
-		// wantCleared is the Firestore database whose documents a restore run deleted.
+		// wantCleared is the Firestore database whose documents a restore run deleted;
+		// wantHostname the hostname read back (CANONICAL_HOSTNAME).
 		wantSettings string
 		wantCleared  string
+		wantHostname string
 		wantErr      string
 	}{
 		{
@@ -570,6 +580,26 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			wantOut:      []string{"Applied stg's stack: 2 added, 1 changed, 1 destroyed.", settingsRead},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+		},
+		{
+			name:         "the environment's hostname is read back from the applied stack, where the trigger still names its last apply's",
+			subs:         withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"),
+			planJSON:     stackPlanJSON,
+			outputs:      map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill.stg.example.dev", `, 1)},
+			wantOut:      []string{"The environment's hostname is read from the stack as applied (_HOSTNAME): quill.stg.example.dev, where the trigger (its stack's last apply) says \"quill-stg.example.dev\".", settingsRead},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantHostname: "quill.stg.example.dev",
+		},
+		{
+			name:         "a hostname the trigger names alike is read back without a word",
+			subs:         withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"),
+			planJSON:     stackPlanJSON,
+			outputs:      map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill-stg.example.dev", `, 1)},
+			wantOut:      []string{settingsRead},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantHostname: "quill-stg.example.dev",
 		},
 		{
 			name:         "a plan with no change applies nothing, and still reads the settings",
@@ -651,6 +681,12 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			}
 			if store.database != tt.wantCleared {
 				t.Errorf("cleared %q, want %q", store.database, tt.wantCleared)
+			}
+			if env[canonicalHostnameFact] != tt.wantHostname {
+				t.Errorf("%s = %q, want %q", canonicalHostnameFact, env[canonicalHostnameFact], tt.wantHostname)
+			}
+			if tt.wantHostname == tt.subs[hostnameSub] && strings.Contains(out.String(), "The environment's hostname is read") {
+				t.Errorf("a hostname the trigger names alike is said:\n%s", out.String())
 			}
 			if tt.wantCleared != "" && env[clearedFact] != firestoreAddress {
 				t.Errorf("%s = %q, want %q", clearedFact, env[clearedFact], firestoreAddress)

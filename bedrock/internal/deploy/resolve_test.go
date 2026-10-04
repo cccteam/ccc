@@ -105,7 +105,7 @@ func prBuild(overrides map[string]string) map[string]string {
 }
 
 // known is the stack's contract in these tests.
-var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_ENV", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_SEED", "_RESTORE", "_REQUESTER", "_MIGRATE_ACTION", "_MIGRATE_TABLE", "_MIGRATE_VERSION"}
+var known = []string{"_ENV", "_APP", "_PROJECT", "_REGISTRY", "_SERVICES", "_MIGRATE_ENV", "_REPO_CONNECTION_NAME", "_REPO_NAME", "_RECORDS_BUCKET", "_MIGRATIONS_DIR", "_SEED", "_RESTORE", "_REQUESTER", "_MIGRATE_ACTION", "_MIGRATE_TABLE", "_MIGRATE_VERSION", "_BUILD_SECRETS"}
 
 func buildFor(t *testing.T, subs map[string]string) string {
 	t.Helper()
@@ -121,18 +121,23 @@ func buildFor(t *testing.T, subs map[string]string) string {
 // outcome is what a test compares of the facts.
 type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token string
-	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic        bool
+	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Seed  bool
 	ReloadReason, Restore, Requester, RestoreReason              string
 	// Migration is the migration operation in words, empty for none.
 	Migration string
-	Declared  []string
+	// Declared are the declared substitutions' names and Values their values, as the
+	// checkout declares them; BuildSecrets the build secrets the image build reads.
+	Declared     []string
+	Values       map[string]string
+	BuildSecrets string
 }
 
 func summarize(f *Facts) outcome {
 	o := outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
-		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic,
+		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Seed: f.Seed,
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
+		Values: f.declared, BuildSecrets: f.BuildSecrets,
 	}
 	if f.Migration != nil {
 		o.Migration = f.Migration.String()
@@ -195,6 +200,50 @@ func seededTag(overrides map[string]string) map[string]string {
 	return subs
 }
 
+// placementPath is the placement's path in the checkout, beside the stack.
+var placementPath = stackDir + "/" + placementFile
+
+// placementSeeding is the checkout's placement with the seed list given, as JSON: what a
+// release build reads whether it seeds from.
+func placementSeeding(seed string) string {
+	return strings.TrimSuffix(testPlacement(""), "}\n") + `, "seed": ` + seed + "}\n"
+}
+
+// tfvarsPath is the stack's terraform.tfvars in the checkout.
+var tfvarsPath = stackDir + "/terraform.tfvars"
+
+// stackTfvarsWith is the checkout's terraform.tfvars declaring, in every environment, the
+// substitutions and the build secrets' pins given (each an HCL object).
+func stackTfvarsWith(substitutions, buildSecrets string) string {
+	var b strings.Builder
+	for _, key := range []string{"substitutions", "build_secrets"} {
+		body := substitutions
+		if key == "build_secrets" {
+			body = buildSecrets
+		}
+		b.WriteString(key + " = {\n")
+		for _, env := range environments {
+			b.WriteString("  " + env + " = " + body + "\n")
+		}
+		b.WriteString("}\n")
+	}
+
+	return b.String()
+}
+
+// widgetMode is the declared substitution tagBuild's trigger carries, as the checkout
+// declares it (the shell's quotes in HCL's); declaringWidgetMode the checkout declaring it.
+var (
+	widgetMode          = `{ _WIDGET_MODE = "it's \"on\" $now` + "`" + `" }`
+	declaringWidgetMode = stackTfvarsWith(widgetMode, "{}")
+)
+
+// seedingTst is a placement whose seed list names tst; seedingNone one whose list is empty.
+var (
+	seedingTst  = placementSeeding(`["tst"]`)
+	seedingNone = placementSeeding(`[]`)
+)
+
 // liveSeeded is tst's live record of v1.2.2 with the seed applied.
 var liveSeeded = map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})}
 
@@ -202,22 +251,32 @@ func TestResolve(t *testing.T) {
 	t.Parallel()
 
 	const image = "us-central1-docker.pkg.dev/shr/reg/harbor"
-	tag := outcome{Version: "v1.2.3", Release: "v1.2.3", Image: image, ImageTag: "v1.2.3-tst", CommitTag: "deadbeefcafe-tst", Token: "tok", RunMigrations: true, ShiftTraffic: true, Declared: []string{"_WIDGET_MODE"}}
-	pr := outcome{Version: "pr7@deadbee", Release: "pr7-deadbee", Image: image, ImageTag: "pr7-deadbee-tst", CommitTag: "deadbeefcafe-tst", Token: "tok", RunMigrations: true, ShiftTraffic: true, Declared: []string{"_WIDGET_MODE"}}
+	widget := map[string]string{"_WIDGET_MODE": trickyValue}
+	tag := outcome{Version: "v1.2.3", Release: "v1.2.3", Image: image, ImageTag: "v1.2.3-tst", CommitTag: "deadbeefcafe-tst", Token: "tok", RunMigrations: true, ShiftTraffic: true, Declared: []string{"_WIDGET_MODE"}, Values: widget}
+	pr := outcome{Version: "pr7@deadbee", Release: "pr7-deadbee", Image: image, ImageTag: "pr7-deadbee-tst", CommitTag: "deadbeefcafe-tst", Token: "tok", RunMigrations: true, ShiftTraffic: true, Seed: true, Declared: []string{"_WIDGET_MODE"}, Values: widget}
+	// npmContainer is a build secret's container as the trigger names it.
+	const npmContainer = "projects/tst-project/secrets/imp-tst-gbl-harbor-npm-token"
 	withComment := func(o outcome, comment string, set func(o *outcome)) outcome {
 		o.Comment = comment
 		set(&o)
 
 		return o
 	}
+	// seeded is a tag build's outcome where the placement in the checkout seeds tst.
+	seeded := withComment(tag, "", func(o *outcome) { o.Seed = true })
 	tests := []struct {
 		name     string
 		subs     map[string]string
 		comments []string
 		// records are the records bucket's objects by gs:// path; tree the migration
-		// files in the checkout.
-		records map[string]string
-		tree    map[string]string
+		// files in the checkout. placement is the checkout's placement, one whose seed
+		// list is empty when not given; noPlacement leaves the checkout without one.
+		// tfvars is the checkout's terraform.tfvars, declaringWidgetMode when not given.
+		records     map[string]string
+		tree        map[string]string
+		placement   string
+		noPlacement bool
+		tfvars      string
 		// commentsErr fails the comment read; mintErr fails the token.
 		commentsErr error
 		mintErr     error
@@ -232,8 +291,90 @@ func TestResolve(t *testing.T) {
 			name:      "a tag build names its release and the environment's tags",
 			subs:      tagBuild(nil),
 			want:      tag,
-			wantOut:   []string{"Triggered by tag v1.2.3", "IMAGE=" + image + " IMAGE_TAG=v1.2.3-tst VERSION=v1.2.3 RELEASE=v1.2.3", "RUN_MIGRATIONS=true SHIFT_TRAFFIC=true REVISION_TAG=", "Declared substitutions for the hooks and the image build: _WIDGET_MODE"},
+			wantOut:   []string{"Triggered by tag v1.2.3", "Seed: tst is not on the seed list of the placement in the checkout (infrastructure/placement.json).", "IMAGE=" + image + " IMAGE_TAG=v1.2.3-tst VERSION=v1.2.3 RELEASE=v1.2.3", "RUN_MIGRATIONS=true SHIFT_TRAFFIC=true REVISION_TAG=", "Declared substitutions for the hooks and the image build: _WIDGET_MODE"},
 			wantAsked: "projects/tst-project/locations/us-central1/connections/imp-tst-github/repositories/harbor",
+		},
+		{
+			name:    "a declared substitution is passed as the checkout declares it, where the trigger still carries its stack's last apply",
+			subs:    tagBuild(nil),
+			tfvars:  stackTfvarsWith(`{ _WIDGET_MODE = "dawn" }`, "{}"),
+			want:    withComment(tag, "", func(o *outcome) { o.Values = map[string]string{"_WIDGET_MODE": "dawn"} }),
+			wantOut: []string{"infrastructure/terraform.tfvars declares another value for _WIDGET_MODE than the trigger carries (its stack's last apply): this build passes the checkout's."},
+		},
+		{
+			name:   "a substitution the checkout declares that the trigger does not carry yet is passed in the release that declares it",
+			subs:   tagBuild(nil),
+			tfvars: stackTfvarsWith(`{ _THEME = "dusk", _WIDGET_MODE = "it's \"on\" $now`+"`"+`" }`, "{}"),
+			want: withComment(tag, "", func(o *outcome) {
+				o.Declared, o.Values = []string{"_THEME", "_WIDGET_MODE"}, map[string]string{"_THEME": "dusk", "_WIDGET_MODE": trickyValue}
+			}),
+			wantOut: []string{"infrastructure/terraform.tfvars declares _THEME, which the trigger does not carry yet (its stack's last apply): this build passes it."},
+		},
+		{
+			name:    "a substitution the trigger carries that the checkout no longer declares is left out in the release that drops it",
+			subs:    tagBuild(nil),
+			tfvars:  stackTfvarsWith("{}", "{}"),
+			want:    withComment(tag, "", func(o *outcome) { o.Declared, o.Values = nil, map[string]string{} }),
+			wantOut: []string{"The trigger carries _WIDGET_MODE, which infrastructure/terraform.tfvars no longer declares for tst: this build leaves it out."},
+		},
+		{
+			name:    "a declared substitution the pipeline's contract carries is refused before anything is built",
+			subs:    tagBuild(nil),
+			tfvars:  stackTfvarsWith(`{ _SEED = "true" }`, "{}"),
+			wantErr: "infrastructure/terraform.tfvars declares _SEED for tst, a substitution the pipeline's contract carries; rename it",
+		},
+		{
+			name:    "a declared substitution that is not upper snake case is refused",
+			subs:    tagBuild(nil),
+			tfvars:  stackTfvarsWith(`{ _theme = "dusk" }`, "{}"),
+			wantErr: `infrastructure/terraform.tfvars declares "_theme" for tst: a declared substitution starts with an underscore and is upper snake case (_NAME)`,
+		},
+		{
+			name:    "a build secret is read at the checkout's pin, in the container the trigger names, where the trigger still pins its stack's last apply",
+			subs:    tagBuild(map[string]string{buildSecretsSub: "NPM_TOKEN=" + npmContainer + "/versions/3"}),
+			tfvars:  stackTfvarsWith(widgetMode, `{ NPM_TOKEN = "4" }`),
+			want:    withComment(tag, "", func(o *outcome) { o.BuildSecrets = "NPM_TOKEN=" + npmContainer + "/versions/4" }),
+			wantOut: []string{"infrastructure/terraform.tfvars pins build secret NPM_TOKEN at version 4, where the trigger (its stack's last apply) pins 3: the image build reads 4."},
+		},
+		{
+			name:   "a build secret the checkout pins as the trigger does is read there",
+			subs:   tagBuild(map[string]string{buildSecretsSub: "NPM_TOKEN=" + npmContainer + "/versions/3"}),
+			tfvars: stackTfvarsWith(widgetMode, `{ NPM_TOKEN = "3" }`),
+			want:   withComment(tag, "", func(o *outcome) { o.BuildSecrets = "NPM_TOKEN=" + npmContainer + "/versions/3" }),
+		},
+		{
+			name:    "a build secret the checkout declares that the trigger does not carry yet is read from the next release on: its container comes with this build's apply",
+			subs:    tagBuild(nil),
+			tfvars:  stackTfvarsWith(widgetMode, `{ NPM_TOKEN = "1" }`),
+			want:    tag,
+			wantOut: []string{"infrastructure/terraform.tfvars declares build secret NPM_TOKEN, which the trigger does not carry yet: its container and the deploy identity's access come with this build's stack apply, after the image build, so the image build reads it from the next release on."},
+		},
+		{
+			name:    "a build secret the trigger carries that the checkout no longer declares is left out",
+			subs:    tagBuild(map[string]string{buildSecretsSub: "NPM_TOKEN=" + npmContainer + "/versions/3"}),
+			want:    tag,
+			wantOut: []string{"The trigger carries build secret NPM_TOKEN, which infrastructure/terraform.tfvars no longer declares for tst: the image build leaves it out."},
+		},
+		{
+			name:    "a build secret pinned at latest is refused: a build reads one version",
+			subs:    tagBuild(map[string]string{buildSecretsSub: "NPM_TOKEN=" + npmContainer + "/versions/3"}),
+			tfvars:  stackTfvarsWith(widgetMode, `{ NPM_TOKEN = "latest" }`),
+			wantErr: `infrastructure/terraform.tfvars pins build secret NPM_TOKEN at "latest" for tst: a build reads one version, a number, never latest`,
+		},
+		{
+			name:    "a build secret whose name is not upper snake case is refused",
+			subs:    tagBuild(nil),
+			tfvars:  stackTfvarsWith(widgetMode, `{ npm_token = "1" }`),
+			wantErr: `build secret "npm_token": a name in upper snake case`,
+		},
+		{
+			name:     "a pull-request build reads the first environment's declarations and pins from its own tree",
+			subs:     prBuild(map[string]string{buildSecretsSub: "NPM_TOKEN=" + npmContainer + "/versions/3"}),
+			comments: []string{"/gcbrun"},
+			tfvars:   stackTfvarsWith(`{ _WIDGET_MODE = "the pull request's" }`, `{ NPM_TOKEN = "5" }`),
+			want: withComment(pr, "/gcbrun", func(o *outcome) {
+				o.Values, o.BuildSecrets = map[string]string{"_WIDGET_MODE": "the pull request's"}, "NPM_TOKEN="+npmContainer+"/versions/5"
+			}),
 		},
 		{
 			name:    "a restore run names what replaces the database and who asked",
@@ -368,7 +509,8 @@ func TestResolve(t *testing.T) {
 		{
 			name:      "a build with nothing declared says so",
 			subs:      tagBuild(map[string]string{"_WIDGET_MODE": ""}),
-			want:      withComment(tag, "", func(o *outcome) { o.Declared = nil }),
+			tfvars:    stackTfvarsWith("{}", "{}"),
+			want:      withComment(tag, "", func(o *outcome) { o.Declared, o.Values = nil, map[string]string{} }),
 			wantOut:   []string{"Declared substitutions for the hooks and the image build: none"},
 			wantAsked: "projects/tst-project/locations/us-central1/connections/imp-tst-github/repositories/harbor",
 		},
@@ -439,86 +581,123 @@ func TestResolve(t *testing.T) {
 			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
 		},
 		{
-			name:    "a seed file the environment's live release applied changed: the release restores the database so the seed applies from the start",
-			subs:    seededTag(nil),
-			records: liveSeeded,
-			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
-			want: withComment(tag, "", func(o *outcome) {
+			name:      "a seed file the environment's live release applied changed: the release restores the database so the seed applies from the start",
+			subs:      seededTag(nil),
+			placement: seedingTst,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want: withComment(seeded, "", func(o *outcome) {
 				o.Restore, o.Requester, o.RestoreReason = restoreEmpty, "release v1.2.3", seedChangedReason
 			}),
 			wantOut: []string{"Restore run: tst's database is replaced (empty) before v1.2.3 deploys, " + seedChangedReason + "."},
 		},
 		{
-			name:    "a seed file the live release applied is gone from the tree: the same case",
-			subs:    seededTag(nil),
-			records: liveSeeded,
-			tree:    map[string]string{sitesUp: sitesContent},
-			want: withComment(tag, "", func(o *outcome) {
+			name:      "a seed file the live release applied is gone from the tree: the same case",
+			subs:      seededTag(nil),
+			placement: seedingTst,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent},
+			want: withComment(seeded, "", func(o *outcome) {
 				o.Restore, o.Requester, o.RestoreReason = restoreEmpty, "release v1.2.3", seedChangedReason
 			}),
 		},
 		{
-			name:    "the tree carries the seed as the live release applied it: nothing is restored",
-			subs:    seededTag(nil),
-			records: liveSeeded,
-			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent},
-			want:    tag,
+			name:      "the tree carries the seed as the live release applied it: nothing is restored",
+			subs:      seededTag(nil),
+			placement: seedingTst,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent},
+			want:      seeded,
+			wantOut:   []string{"Seed: tst is on the seed list of the placement in the checkout (infrastructure/placement.json)."},
 		},
 		{
-			name:    "a new seed file beside the applied ones is a data migration the migrate command applies: nothing is restored",
-			subs:    seededTag(nil),
-			records: liveSeeded,
-			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent, "schema/devseed/000002_More.up.sql": "insert b"},
-			want:    tag,
+			name:      "a new seed file beside the applied ones is a data migration the migrate command applies: nothing is restored",
+			subs:      seededTag(nil),
+			placement: seedingTst,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent, "schema/devseed/000002_More.up.sql": "insert b"},
+			want:      seeded,
 		},
 		{
-			name:    "a changed schema migration is the hotfix check's concern, not the seed comparison's",
-			subs:    seededTag(nil),
-			records: liveSeeded,
-			tree:    map[string]string{sitesUp: sitesContent + ", edited", seedUp: seedContent},
-			want:    tag,
+			name:      "a changed schema migration is the hotfix check's concern, not the seed comparison's",
+			subs:      seededTag(nil),
+			placement: seedingTst,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent + ", edited", seedUp: seedContent},
+			want:      seeded,
 		},
 		{
-			name:    "an environment off the seed list never applied the seed: a changed seed is nothing to it",
-			subs:    seededTag(map[string]string{seedSub: "false"}),
-			records: liveSeeded,
-			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
-			want:    tag,
+			name:      "the release that puts the environment on the placement's seed list seeds in that release, though the trigger's _SEED still says false",
+			subs:      seededTag(map[string]string{seedSub: "false"}),
+			placement: seedingTst,
+			records:   map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent},
+			want:      seeded,
+			wantOut:   []string{"Seed: tst is on the seed list of the placement in the checkout (infrastructure/placement.json).", "The trigger's _SEED=false is what the stack said at its last apply; the placement in the checkout decides for this release."},
 		},
 		{
-			name:    "a restore asked for already replaces the database: the seed comparison yields to it",
-			subs:    seededTag(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat"}),
-			records: liveSeeded,
-			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
-			want:    withComment(tag, "", func(o *outcome) { o.Restore, o.Requester = restoreEmpty, "octocat" }),
-			wantOut: []string{"Restore run: tst's database is replaced (empty) before v1.2.3 deploys, asked for by octocat."},
+			name:      "the placement's seed list decides the restore too: a changed seed restores where the trigger's _SEED still says false",
+			subs:      seededTag(map[string]string{seedSub: "false"}),
+			placement: seedingTst,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want: withComment(seeded, "", func(o *outcome) {
+				o.Restore, o.Requester, o.RestoreReason = restoreEmpty, "release v1.2.3", seedChangedReason
+			}),
 		},
 		{
-			name:    "only a live record counts: a preview is a build whose traffic never shifted",
-			subs:    seededTag(nil),
-			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
-			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
-			want:    tag,
+			name:      "the release that takes the environment off the placement's seed list stops seeding in that release, though the trigger's _SEED still says true: a changed seed is nothing to it",
+			subs:      seededTag(nil),
+			placement: seedingNone,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want:      tag,
+			wantOut:   []string{"Seed: tst is not on the seed list of the placement in the checkout (infrastructure/placement.json).", "The trigger's _SEED=true is what the stack said at its last apply; the placement in the checkout decides for this release."},
 		},
 		{
-			name: "the newest live record decides: the seed as the latest release applied it",
-			subs: seededTag(nil),
+			name:        "a tag build reads the seed list from the checkout's placement: a checkout without one is refused",
+			subs:        seededTag(nil),
+			noPlacement: true,
+			wantErr:     "the checkout's placement (infrastructure/placement.json), where the seed list is written",
+		},
+		{
+			name:      "a restore asked for already replaces the database: the seed comparison yields to it",
+			subs:      seededTag(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat"}),
+			placement: seedingTst,
+			records:   liveSeeded,
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want:      withComment(seeded, "", func(o *outcome) { o.Restore, o.Requester = restoreEmpty, "octocat" }),
+			wantOut:   []string{"Restore run: tst's database is replaced (empty) before v1.2.3 deploys, asked for by octocat."},
+		},
+		{
+			name:      "only a live record counts: a preview is a build whose traffic never shifted",
+			subs:      seededTag(nil),
+			placement: seedingTst,
+			records:   map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
+			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
+			want:      seeded,
+		},
+		{
+			name:      "the newest live record decides: the seed as the latest release applied it",
+			subs:      seededTag(nil),
+			placement: seedingTst,
 			records: map[string]string{
 				"gs://records/harbor/tst/v1.2.1/b-9.json": liveRecordWith("tst", "v1.2.1", "b-9", "2026-09-26T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, old")}),
 				"gs://records/harbor/tst/v1.2.2/b-0.json": liveSeeded["gs://records/harbor/tst/v1.2.2/b-0.json"],
 			},
 			tree: map[string]string{sitesUp: sitesContent, seedUp: seedContent},
-			want: tag,
+			want: seeded,
 		},
 		{
-			name: "a pull request's live record under the environment is its own environment's, not the release the environment runs",
-			subs: seededTag(nil),
+			name:      "a pull request's live record under the environment is its own environment's, not the release the environment runs",
+			subs:      seededTag(nil),
+			placement: seedingTst,
 			records: map[string]string{
 				"gs://records/harbor/tst/v1.2.2/b-0.json":      liveSeeded["gs://records/harbor/tst/v1.2.2/b-0.json"],
 				"gs://records/harbor/tst/pr9-abc0123/b-8.json": liveRecordWith("tst", "pr9@abc0123", "b-8", "2026-09-28T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, the pull request's")}),
 			},
 			tree: map[string]string{sitesUp: sitesContent, seedUp: seedContent},
-			want: tag,
+			want: seeded,
 		},
 		{
 			name:    "production is never restored by a run: its seed is not compared",
@@ -648,7 +827,21 @@ func TestResolve(t *testing.T) {
 			comments := &fakeComments{bodies: tt.comments, err: tt.commentsErr}
 			store := &memoryStore{objects: tt.records}
 			clients := &Clients{Builds: builds.open, Comments: comments.read, Storage: store.open}
-			req := &ResolveRequest{BuildID: "b-1", Project: "tst-project", Location: "us-central1", Known: known, Source: string(workspaceFiles(t, tt.tree))}
+			tree := maps.Clone(tt.tree)
+			if tree == nil {
+				tree = map[string]string{}
+			}
+			if !tt.noPlacement {
+				tree[placementPath] = tt.placement
+				if tt.placement == "" {
+					tree[placementPath] = seedingNone
+				}
+			}
+			tree[tfvarsPath] = tt.tfvars
+			if tt.tfvars == "" {
+				tree[tfvarsPath] = declaringWidgetMode
+			}
+			req := &ResolveRequest{BuildID: "b-1", Project: "tst-project", Location: "us-central1", Known: known, Source: string(workspaceFiles(t, tree))}
 			var out strings.Builder
 			facts, err := Resolve(t.Context(), clients, req, &out)
 			if tt.wantErr != "" {
@@ -716,27 +909,43 @@ func TestResolveRequest(t *testing.T) {
 func TestFactsWrite(t *testing.T) {
 	t.Parallel()
 
+	const npmContainer = "projects/p/secrets/imp-tst-gbl-harbor-npm-token"
 	tests := []struct {
 		name     string
 		subs     map[string]string
 		comments []string
-		wantEnv  map[string]string
-		wantArgs string
+		// tfvars is the checkout's terraform.tfvars.
+		tfvars  string
+		wantEnv map[string]string
+		// wantAbsent are substitutions the environment file leaves out.
+		wantAbsent []string
+		wantArgs   string
 		// wantShell is what bash prints for the declared value, sourced from the environment file.
 		wantShell string
 	}{
 		{
 			name:      "a tag build with a declared substitution",
 			subs:      tagBuild(nil),
-			wantEnv:   map[string]string{"GITHUB_TOKEN": "tok", "SERVICES": "us-central1=harbor-app", sharedDBFact: "", "SKIP_DEPLOY": "", "IMAGE_TAG": "v1.2.3-tst", "COMMIT_TAG": "deadbeefcafe-tst", "RELEASE": "v1.2.3", runMigrationsFact: "true", "SHIFT_TRAFFIC": "true", "_ENV": "tst", "_MIGRATE_ENV": `{"APP_SERVICE_NAME":"harbor-migrate"}`, "_WIDGET_MODE": trickyValue},
+			tfvars:    declaringWidgetMode,
+			wantEnv:   map[string]string{"GITHUB_TOKEN": "tok", "SERVICES": "us-central1=harbor-app", sharedDBFact: "", "SKIP_DEPLOY": "", "IMAGE_TAG": "v1.2.3-tst", "COMMIT_TAG": "deadbeefcafe-tst", "RELEASE": "v1.2.3", runMigrationsFact: "true", "SHIFT_TRAFFIC": "true", seedFact: "true", "_ENV": "tst", "_MIGRATE_ENV": `{"APP_SERVICE_NAME":"harbor-migrate"}`, "_WIDGET_MODE": trickyValue},
 			wantArgs:  "_WIDGET_MODE=" + trickyValue + "\n",
 			wantShell: trickyValue + "\n",
 		},
 		{
+			name:       "the checkout's declarations and pins are what the files carry: a changed value, a dropped declaration left out, a moved pin",
+			subs:       tagBuild(map[string]string{"_STALE": "old", buildSecretsSub: "NPM_TOKEN=" + npmContainer + "/versions/3"}),
+			tfvars:     stackTfvarsWith(`{ _WIDGET_MODE = "dawn" }`, `{ NPM_TOKEN = "4" }`),
+			wantEnv:    map[string]string{"_WIDGET_MODE": "dawn", buildSecretsFact: "NPM_TOKEN=" + npmContainer + "/versions/4", buildSecretsSub: "NPM_TOKEN=" + npmContainer + "/versions/3", seedFact: "true"},
+			wantAbsent: []string{"_STALE"},
+			wantArgs:   "_WIDGET_MODE=dawn\n",
+			wantShell:  "dawn\n",
+		},
+		{
 			name:      "a pull request in shared mode",
 			subs:      prBuild(map[string]string{"_WIDGET_MODE": ""}),
+			tfvars:    stackTfvarsWith("{}", "{}"),
 			comments:  []string{"/gcbrun shared-db"},
-			wantEnv:   map[string]string{sharedDBFact: "true", "RELOAD_DB": "", "DOWN": "", runMigrationsFact: "false", "VERSION": "pr7@deadbee", prNumberSub: "7"},
+			wantEnv:   map[string]string{sharedDBFact: "true", "RELOAD_DB": "", "DOWN": "", runMigrationsFact: "false", seedFact: "true", "VERSION": "pr7@deadbee", prNumberSub: "7"},
 			wantArgs:  "",
 			wantShell: "\n",
 		},
@@ -747,7 +956,8 @@ func TestFactsWrite(t *testing.T) {
 
 			builds := &fakeBuilds{build: buildFor(t, tt.subs), token: "tok"}
 			comments := &fakeComments{bodies: tt.comments}
-			facts, err := Resolve(t.Context(), &Clients{Builds: builds.open, Comments: comments.read}, &ResolveRequest{BuildID: "b-1", Project: "p", Location: "l", Known: known}, &strings.Builder{})
+			source := workspaceFiles(t, map[string]string{placementPath: seedingTst, tfvarsPath: tt.tfvars})
+			facts, err := Resolve(t.Context(), &Clients{Builds: builds.open, Comments: comments.read}, &ResolveRequest{BuildID: "b-1", Project: "p", Location: "l", Known: known, Source: string(source)}, &strings.Builder{})
 			if err != nil {
 				t.Fatalf("Resolve() error = %v", err)
 			}
@@ -762,6 +972,11 @@ func TestFactsWrite(t *testing.T) {
 			for name, want := range tt.wantEnv {
 				if got, ok := env[name]; !ok || got != want {
 					t.Errorf("%s = %q (present %t), want %q", name, got, ok, want)
+				}
+			}
+			for _, name := range tt.wantAbsent {
+				if got, ok := env[name]; ok {
+					t.Errorf("%s = %q, want it left out", name, got)
 				}
 			}
 			environment, err := os.ReadFile(filepath.Join(dir, EnvironmentFile))

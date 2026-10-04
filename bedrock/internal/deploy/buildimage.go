@@ -25,8 +25,10 @@ const (
 	// MetadataFile is what docker buildx writes about the image it pushed; its
 	// containerimage.digest is the image's digest.
 	MetadataFile = "image-metadata.json"
-	// buildSecretsSub lists the declared build secrets: NAME=<secret version>, comma
-	// separated.
+	// buildSecretsSub is the trigger's list of the declared build secrets, NAME=<secret
+	// version>, comma separated, as its stack's last apply set it: resolve takes the
+	// containers from it and the pins from the checkout (BUILD_SECRETS), which the image
+	// build reads.
 	buildSecretsSub = "_BUILD_SECRETS"
 )
 
@@ -68,10 +70,11 @@ var cacheStages = []cacheStage{
 // application with a job process JOBS_JOB (the resource name of the job this build makes
 // for its revision, which the Dockerfile sets as the site's APP_JOBS_JOB, so the image
 // names the job of its own build), the declared substitutions and what a hook before the
-// build added (the build arguments file, NAME=value lines). Each declared build secret is read as the deploy identity by
-// its pinned version into secretDir (memory-backed in Cloud Build, gone with the step,
-// never in the workspace) and passed to docker as a BuildKit secret the Dockerfile
-// mounts; it is never a build argument, which the image would keep. The digest the push
+// build added (the build arguments file, NAME=value lines). Each build secret resolve
+// found declared (BUILD_SECRETS: the checkout's pins in the stack's containers) is read as
+// the deploy identity by its pinned version into secretDir (memory-backed in Cloud Build,
+// gone with the step, never in the workspace) and passed to docker as a BuildKit secret
+// the Dockerfile mounts; it is never a build argument, which the image would keep. The digest the push
 // answered goes to the environment file (IMAGE_DIGEST).
 //
 // The migrate command the image carries (/migrate) is taken out of the image, built or
@@ -112,7 +115,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, m
 	for _, arg := range buildArgs {
 		args = append(args, "--build-arg", arg)
 	}
-	secretArgs, cleanup, err := buildSecrets(ctx, clients, build.Substitutions[buildSecretsSub], secretDir, out)
+	secretArgs, cleanup, err := buildSecrets(ctx, clients, env[buildSecretsFact], secretDir, out)
 	defer cleanup()
 	if err != nil {
 		return err
@@ -577,7 +580,7 @@ func buildSecrets(ctx context.Context, clients *Clients, declared, dir string, o
 	for _, entry := range strings.Split(declared, ",") {
 		name, version, ok := strings.Cut(entry, "=")
 		if !ok || secret.ValidateBuildSecret(name) != nil {
-			return nil, cleanup, errors.Newf("%s entry %q is not NAME=<secret version>", buildSecretsSub, entry)
+			return nil, cleanup, errors.Newf("%s entry %q is not NAME=<secret version>", buildSecretsFact, entry)
 		}
 		payload, err := secrets.Access(ctx, version)
 		if err != nil {

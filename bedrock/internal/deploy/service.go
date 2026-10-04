@@ -101,7 +101,7 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 	// balancer (none for a pull request, whose environment is its own), and the tagged
 	// run.app URL per region, which the services' ingress answers from inside alone.
 	facts := map[string]string{
-		nextURLFact:      nextURL(build.Substitutions[hostnameSub], build.Substitutions[prNumberSub]),
+		nextURLFact:      nextURL(canonicalHostname(env, build), build.Substitutions[prNumberSub]),
 		revisionURLsFact: strings.Join(urls, ","),
 	}
 	if err := w.Append(facts); err != nil {
@@ -119,7 +119,22 @@ const (
 	nextURLFact      = "NEXT_URL"
 	revisionURLsFact = "REVISION_URLS"
 	hostnameSub      = "_HOSTNAME"
+	// canonicalHostnameFact is the environment's canonical hostname as the stack this
+	// build applied names it (deploy stack apply reads it back), where the trigger's
+	// _HOSTNAME is its stack's last apply.
+	canonicalHostnameFact = "CANONICAL_HOSTNAME"
 )
+
+// canonicalHostname is the environment's hostname the next revision's URL is named by: the
+// stack's as this build applied it, else the trigger's (a build that applied no stack: a
+// pull request's, whose environment is its own and has no next URL).
+func canonicalHostname(env map[string]string, build *Build) string {
+	if hostname := env[canonicalHostnameFact]; hostname != "" {
+		return hostname
+	}
+
+	return build.Substitutions[hostnameSub]
+}
 
 // taggedURL is the revision's own URL under its tag: the service's run.app URL with the
 // tag and three dashes before its host. Empty when the service reports no URL.

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -19,6 +21,7 @@ import (
 	"golang.org/x/oauth2/google"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
 const (
@@ -66,6 +69,16 @@ const (
 	// without being asked: the seed changed since the environment's live release applied
 	// it (seedChanged). The record carries it beside the restore.
 	restoreReasonFact = "RESTORE_REASON"
+	// seedFact says the migrate command applies the development seed in this build: every
+	// pull request, and a release build where the placement in the checkout names the
+	// environment on its seed list (seed). The steps after resolve read it, never the
+	// trigger's _SEED.
+	seedFact = "SEED"
+	// buildSecretsFact lists the build secrets the image build reads, NAME=<secret version
+	// resource name>, comma-separated: the pins the stack's placement in the checkout
+	// states, in the containers the trigger names (buildSecrets). The image build reads it,
+	// never the trigger's _BUILD_SECRETS.
+	buildSecretsFact = "BUILD_SECRETS"
 	// The two restores: an empty database the migrations then fill, and the seed where
 	// the placement's seed list names the environment (tst,
 	// and an environment on the seed list), and production's most recent backup (stg).
@@ -255,7 +268,8 @@ type ResolveRequest struct {
 	Location string
 	Known    []string
 	// Source is the checkout the build runs in (the workspace): where the migration
-	// files are read when a pull request's records are compared with the tree.
+	// files are read when a pull request's records are compared with the tree, and the
+	// placement whose seed list a release build follows.
 	Source string
 }
 
@@ -305,6 +319,10 @@ type Facts struct {
 	// seed changed in an environment on the placement's seed list); empty for a restore
 	// a person asked for.
 	RestoreReason string
+	// Seed says the migrate command applies the development seed: a pull request's
+	// database is new and always seeded; a release build seeds where the placement in the
+	// checkout names the environment on its seed list.
+	Seed bool
 	// Migration is the migration operation a release build carries (the operations
 	// workflow's version, rerun or force), which the migrate step does; nil for none.
 	Migration     *MigrateAction
@@ -319,10 +337,20 @@ type Facts struct {
 	// Project and Location are where the build runs, for the steps that link to its log.
 	Project  string
 	Location string
-	// Substitutions are every substitution of the build; Declared are the ones the
-	// placement added beyond the contract, sorted.
+	// Substitutions are every substitution of the build, as the trigger passed them;
+	// Declared are the substitutions the application declares for the environment beyond
+	// the contract, sorted, as the stack's placement in the checkout states them
+	// (declared holds their values; declare).
 	Substitutions map[string]string
 	Declared      []string
+	declared      map[string]string
+	// contract are the substitutions the trigger passes by the pipeline's contract and its
+	// own (the stack's map, the pull request's); what the trigger carries beyond them and
+	// the checkout no longer declares is left out of the environment file.
+	contract []string
+	// BuildSecrets are the build secrets the image build reads, NAME=<secret version
+	// resource name>, comma-separated (buildSecrets).
+	BuildSecrets string
 	// build is the build as the API described it, kept for the build file.
 	build []byte
 }
@@ -359,10 +387,19 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 	if err := f.staleDatabase(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
+	if err := f.seed(req.Source, out); err != nil {
+		return nil, err
+	}
+	if err := f.declare(req.Known, req.Source, out); err != nil {
+		return nil, err
+	}
+	if err := f.buildSecrets(req.Source, out); err != nil {
+		return nil, err
+	}
 	if err := f.seedChanged(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
-	f.tags(req.Known)
+	f.tags()
 	f.report(out)
 
 	return f, nil
@@ -593,16 +630,48 @@ func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string
 	return nil
 }
 
+// seed decides whether the build applies the development seed. A pull request's database
+// is new and always seeded. A release build seeds where the placement in the checkout
+// (infrastructure/placement.json at the commit the build runs) names the environment on
+// its seed list; production is never on it, which the placement refuses. The list is read
+// from the source and not from the trigger's _SEED: the trigger's substitutions are what
+// the stack said at its last apply, and this build applies the stack only later, so a
+// release that puts the environment on the list seeds in that release, and one that takes
+// it off stops seeding in that release. The trigger's _SEED stays in the build's
+// substitutions as what the trigger said, and the log says when the two differ.
+func (f *Facts) seed(source string, out io.Writer) error {
+	if f.Tag == "" {
+		f.Seed = true
+
+		return nil
+	}
+	placement, err := checkoutPlacement(Workspace(source), "the seed list is written")
+	if err != nil {
+		return err
+	}
+	f.Seed = slices.Contains(placement.SeedEnvironments(), f.Environment)
+	listed := "is not on"
+	if f.Seed {
+		listed = "is on"
+	}
+	fmt.Fprintf(out, "Seed: %s %s the seed list of the placement in the checkout (%s).\n", f.Environment, listed, path.Join(stackDir, placementFile))
+	if said, ok := f.Substitutions[seedSub]; ok && said != strconv.FormatBool(f.Seed) {
+		fmt.Fprintf(out, "The trigger's %s=%s is what the stack said at its last apply; the placement in the checkout decides for this release.\n", seedSub, said)
+	}
+
+	return nil
+}
+
 // seedChanged decides whether a release build restores the environment's database
 // without being asked, because the seed changed. An environment on the placement's seed
-// list (_SEED is true on its version trigger) holds the development seed its live release
-// applied, and that release's record lists the seed files by name and content; when the
-// tree no longer carries one of them as it was applied (edited, renumbered or removed
-// since), the database holds data the seed no longer describes, and the migrate command
-// would apply none of it again (a seeded database takes nothing twice). So the build restores
-// the environment to an empty database, as a restore run asked for by the release itself
-// (RESTORE=empty), and the migrations and the seed apply from the start; the reason goes
-// on the record. A seed file added beside the applied ones is a new data migration the
+// list (Seed: the list as the checkout's placement states it) holds the development seed
+// its live release applied, and that release's record lists the seed files by name and
+// content; when the tree no longer carries one of them as it was applied (edited,
+// renumbered or removed since), the database holds data the seed no longer describes,
+// and the migrate command would apply none of it again (a seeded database takes nothing
+// twice). So the build restores the environment to an empty database, as a restore run
+// asked for by the release itself (RESTORE=empty), and the migrations and the seed apply
+// from the start; the reason goes on the record. A seed file added beside the applied ones is a new data migration the
 // migrate command applies, and recreates nothing. A pull-request build has its own rule
 // (staleDatabase); a restore asked for already replaces the database; an environment off
 // the seed list never applied the seed, so a changed seed is nothing to it; production is
@@ -611,7 +680,7 @@ func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string
 // its own environment's. The hotfix preview reads the same list against a pull request's
 // tree (hotfixPreviewer), so what it promises is what this decides.
 func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
-	if f.Tag == "" || f.Restore != "" || !f.RunMigrations || f.Environment == prdEnvironment || f.Substitutions[seedSub] != trueValue {
+	if f.Tag == "" || f.Restore != "" || !f.RunMigrations || f.Environment == prdEnvironment || !f.Seed {
 		return nil
 	}
 	bucket, app, dir := f.Substitutions[recordsBucket], f.Substitutions[appSub], f.Substitutions[migrationsSub]
@@ -731,20 +800,116 @@ func (f *Facts) instruction(all []github.Comment) error {
 	return nil
 }
 
-// tags names the image and its tags and sorts out the declared substitutions. One
-// registry serves every environment and each environment is a fresh build of the tag
-// (nothing is promoted), so the image tags carry the environment: <release>-<env> and
-// <commit>-<env>; the release check compares those.
-func (f *Facts) tags(known []string) {
+// tags names the image and its tags. One registry serves every environment and each
+// environment is a fresh build of the tag (nothing is promoted), so the image tags carry
+// the environment: <release>-<env> and <commit>-<env>; the release check compares those.
+func (f *Facts) tags() {
 	f.Image = f.Substitutions["_REGISTRY"] + "/" + f.Substitutions["_APP"]
 	f.ImageTag = f.Release + "-" + f.Environment
 	f.CommitTag = f.Substitutions["COMMIT_SHA"] + "-" + f.Environment
-	for _, name := range f.substitutionNames() {
-		if !slices.Contains(known, name) && !slices.Contains(triggerSubstitutions, name) {
-			f.Declared = append(f.Declared, name)
+}
+
+// declaredNameRE is a declared substitution's name, as the stack's var.substitutions
+// validates it: an underscore, then upper snake case.
+var declaredNameRE = regexp.MustCompile(`^_[A-Z][A-Z0-9_]*$`)
+
+// stackTfvars is the stack's placement in the checkout, for messages: the per-environment
+// values the stack's variables take (terraform.tfvars beside the stack).
+var stackTfvars = path.Join(stackDir, "terraform.tfvars")
+
+// declare reads the substitutions the application declares for its hooks and its image
+// build from the stack's placement in the checkout (substitutions.<env> in
+// infrastructure/terraform.tfvars, which the stack takes with lookup(var.substitutions,
+// env, {})), not from the trigger: the trigger carries them as its stack's last apply set
+// them, and this build applies the stack only later, so a release that declares, changes
+// or drops one builds and runs its hooks with its own. A name that is not _UPPER_SNAKE or
+// that the pipeline's contract carries is refused here, before anything is built, as the
+// stack refuses it at the apply. The trigger's values stay in the build's substitutions
+// as what the trigger said, and the log names each the checkout changes.
+func (f *Facts) declare(known []string, source string, out io.Writer) error {
+	values, err := secret.EnvironmentValues(filepath.Join(source, stackDir), secret.SubstitutionsKey, f.Environment)
+	if err != nil {
+		return errors.Wrap(err, "the checkout's declared substitutions")
+	}
+	f.contract = slices.Concat(known, triggerSubstitutions)
+	f.declared = values
+	f.Declared = slices.Sorted(maps.Keys(values))
+	for _, name := range f.Declared {
+		if !declaredNameRE.MatchString(name) {
+			return errors.Newf("%s declares %q for %s: a declared substitution starts with an underscore and is upper snake case (_NAME)", stackTfvars, name, f.Environment)
+		}
+		if slices.Contains(f.contract, name) {
+			return errors.Newf("%s declares %s for %s, a substitution the pipeline's contract carries; rename it", stackTfvars, name, f.Environment)
+		}
+		if said, ok := f.Substitutions[name]; !ok {
+			fmt.Fprintf(out, "%s declares %s, which the trigger does not carry yet (its stack's last apply): this build passes it.\n", stackTfvars, name)
+		} else if said != values[name] {
+			fmt.Fprintf(out, "%s declares another value for %s than the trigger carries (its stack's last apply): this build passes the checkout's.\n", stackTfvars, name)
 		}
 	}
+	for _, name := range f.substitutionNames() {
+		if _, ok := values[name]; !ok && !slices.Contains(f.contract, name) {
+			fmt.Fprintf(out, "The trigger carries %s, which %s no longer declares for %s: this build leaves it out.\n", name, stackTfvars, f.Environment)
+		}
+	}
+
+	return nil
 }
+
+// buildSecrets reads the build secrets the image build reads from the stack's placement
+// in the checkout (build_secrets.<env> in infrastructure/terraform.tfvars: each name with
+// its pinned version), not from the trigger's _BUILD_SECRETS, so a release that pins
+// another version builds with it. The containers are the stack's (it makes each and grants
+// the deploy identity access to it), named on the trigger: a name the trigger does not
+// carry yet is one this release declares, whose container and access come with this
+// build's stack apply, after the image build, so the image build reads it from the next
+// release on, and the log says so. A name that is not upper snake case and a pin that is
+// not a version number are refused, as the stack refuses them.
+func (f *Facts) buildSecrets(source string, out io.Writer) error {
+	pins, err := secret.EnvironmentValues(filepath.Join(source, stackDir), secret.BuildSecretsKey, f.Environment)
+	if err != nil {
+		return errors.Wrap(err, "the checkout's build secrets")
+	}
+	containers, versions := map[string]string{}, map[string]string{}
+	if said := f.Substitutions[buildSecretsSub]; said != "" {
+		for _, entry := range strings.Split(said, ",") {
+			name, resource, _ := strings.Cut(entry, "=")
+			container, version, _ := strings.Cut(resource, "/versions/")
+			containers[name], versions[name] = container, version
+		}
+	}
+	var entries []string
+	for _, name := range slices.Sorted(maps.Keys(pins)) {
+		if err := secret.ValidateBuildSecret(name); err != nil {
+			return errors.Wrapf(err, "%s, build_secrets.%s", stackTfvars, f.Environment)
+		}
+		pin := pins[name]
+		if !buildPinRE.MatchString(pin) {
+			return errors.Newf("%s pins build secret %s at %q for %s: a build reads one version, a number, never latest", stackTfvars, name, pin, f.Environment)
+		}
+		container, ok := containers[name]
+		if !ok || container == "" {
+			fmt.Fprintf(out, "%s declares build secret %s, which the trigger does not carry yet: its container and the deploy identity's access come with this build's stack apply, after the image build, so the image build reads it from the next release on.\n", stackTfvars, name)
+
+			continue
+		}
+		if versions[name] != pin {
+			fmt.Fprintf(out, "%s pins build secret %s at version %s, where the trigger (its stack's last apply) pins %s: the image build reads %s.\n", stackTfvars, name, pin, versions[name], pin)
+		}
+		entries = append(entries, name+"="+container+"/versions/"+pin)
+	}
+	for _, name := range slices.Sorted(maps.Keys(containers)) {
+		if _, ok := pins[name]; !ok {
+			fmt.Fprintf(out, "The trigger carries build secret %s, which %s no longer declares for %s: the image build leaves it out.\n", name, stackTfvars, f.Environment)
+		}
+	}
+	f.BuildSecrets = strings.Join(entries, ",")
+
+	return nil
+}
+
+// buildPinRE is a build secret's pin, as the stack's var.build_secrets validates it.
+var buildPinRE = regexp.MustCompile(`^\d+$`)
 
 // substitutionNames are the build's substitutions that are not Cloud Build's own, sorted.
 func (f *Facts) substitutionNames() []string {
@@ -801,6 +966,8 @@ func (f *Facts) environment() string {
 		{restoreFact, f.Restore},
 		{requesterFact, f.Requester},
 		{restoreReasonFact, f.RestoreReason},
+		{seedFact, flag(f.Seed)},
+		{buildSecretsFact, f.BuildSecrets},
 		{skipDeploy, ""},
 		{imageFact, f.Image},
 		{imageTagFact, f.ImageTag},
@@ -816,18 +983,36 @@ func (f *Facts) environment() string {
 	for _, kv := range facts {
 		b.WriteString("export " + kv[0] + "=" + doubleQuote(kv[1]) + "\n")
 	}
-	for _, name := range f.substitutionNames() {
-		b.WriteString("export " + name + "=" + singleQuote(f.Substitutions[name]) + "\n")
+	subs := f.exported()
+	for _, name := range slices.Sorted(maps.Keys(subs)) {
+		b.WriteString("export " + name + "=" + singleQuote(subs[name]) + "\n")
 	}
 
 	return b.String()
 }
 
-// buildArgs is the build arguments file: one _NAME=value line per declared substitution.
+// exported are the substitutions the environment file exports for the hooks: the
+// contract's and the trigger's own as the trigger passed them, and the declared ones as
+// the checkout declares them; what the trigger carries beyond those is a declaration the
+// checkout no longer makes, and is left out.
+func (f *Facts) exported() map[string]string {
+	subs := map[string]string{}
+	for _, name := range f.substitutionNames() {
+		if slices.Contains(f.contract, name) {
+			subs[name] = f.Substitutions[name]
+		}
+	}
+	maps.Copy(subs, f.declared)
+
+	return subs
+}
+
+// buildArgs is the build arguments file: one _NAME=value line per declared substitution,
+// as the checkout declares it.
 func (f *Facts) buildArgs() string {
 	var b strings.Builder
 	for _, name := range f.Declared {
-		b.WriteString(name + "=" + f.Substitutions[name] + "\n")
+		b.WriteString(name + "=" + f.declared[name] + "\n")
 	}
 
 	return b.String()

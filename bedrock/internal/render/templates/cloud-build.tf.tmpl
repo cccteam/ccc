@@ -69,17 +69,23 @@ locals {
     # The schema migrations, root-relative: /gcbrun shared-db is refused when a
     # pull request changes anything under it. The repository as GitHub names it
     # (owner/name, from the module path): the sweep asks GitHub about each pull
-    # request by it. _SEED says whether the migrate command applies the
-    # development seed to this environment's database at a release build: the
-    # placement's seed environments, none by default, never production. The
-    # pull-request trigger overrides it: a pull request's database is new and
-    # always seeded.
+    # request by it. _SEED is what this stack says about the development seed
+    # in this environment: true where the placement's seed list names it (none
+    # by default, never production), and always on the pull-request trigger, a
+    # pull request's database being new. The pipeline does not act on it: a
+    # build reads the seed list from the placement in the checkout it runs, so
+    # a release that changes the list seeds with its own, where this value is
+    # the last apply's. It stays in the build's substitutions as what the
+    # trigger said, and the build's log says when the two differ.
     _MIGRATIONS_DIR = "{{.Schema.MigrationsDir}}"
     _REPO_FULL_NAME = "{{.RepoFullName}}"
     _HOSTNAME       = local.hostnames[0]
     _SEED           = contains({{.SeedList}}, var.environment) ? "true" : "false"
     # The build-time secrets the image build reads (var.build_secrets), as
     # NAME=<secret version resource name>, comma-separated; empty when none.
+    # The pipeline takes the containers from here and the pins from
+    # terraform.tfvars in the commit it builds, so a release that moves a pin
+    # builds with it; these pins are the last apply's.
     _BUILD_SECRETS = join(",", [for name, v in local.build_secrets : "${name}=projects/${local.project_id}/secrets/${local.build_secret_ids[name]}/versions/${v}"])
     # The deployer GitHub App the pipeline talks back on a pull request as (a
     # deployment carrying the environment's URL, a comment, the guard's
@@ -92,7 +98,10 @@ locals {
   }
 
   # What the placement adds for this environment (var.substitutions): the
-  # application's own, for its hooks and its image build.
+  # application's own, for its hooks and its image build. The pipeline reads
+  # them from terraform.tfvars in the commit it builds, so a release that
+  # changes them builds with its own; the triggers carry this apply's copy,
+  # which the build's log compares.
   custom_substitutions = lookup(var.substitutions, var.environment, {})
   # A name the contract carries may not be redefined; the triggers refuse it.
   redefined_substitutions = setintersection(keys(local.custom_substitutions), keys(local.substitutions))

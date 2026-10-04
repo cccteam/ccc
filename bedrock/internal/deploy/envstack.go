@@ -159,7 +159,7 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 			return err
 		}
 	default:
-		replace, err := s.replaceForRestore(ctx, subs, env, subs[seedSub] == trueValue, w)
+		replace, err := s.replaceForRestore(ctx, subs, env, env[seedFact] == trueValue, w)
 		if err != nil {
 			return err
 		}
@@ -361,7 +361,7 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 		}
 		fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
 	}
-	if err := s.migrateSettings(ctx, w); err != nil {
+	if err := s.migrateSettings(ctx, w, subs); err != nil {
 		return err
 	}
 	env, err := w.Environment()
@@ -380,11 +380,22 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 // constructs, for this environment), and leaves them for the migrate step (MIGRATE_ENV).
 // The trigger's copy is the last apply's: a release that declares a new variable of those
 // levels changes them in this very apply, and the first release after the stack began to
-// carry them finds them nowhere else.
-func (s *stack) migrateSettings(ctx context.Context, w Workspace) error {
+// carry them finds them nowhere else. The environment's canonical hostname is read back
+// the same way (_HOSTNAME, left as CANONICAL_HOSTNAME for deploy service, which names the
+// next revision's URL by it): the stack takes it from the placement's apps domain, or from
+// terraform.tfvars where hostnames names it, so a release that changes it is deployed
+// under its own.
+func (s *stack) migrateSettings(ctx context.Context, w Workspace, subs map[string]string) error {
 	facts, err := s.facts(ctx)
 	if err != nil {
 		return err
+	}
+	read := map[string]string{}
+	if hostname := facts[prHostnameFact]; hostname != "" {
+		read[canonicalHostnameFact] = hostname
+		if said := subs[hostnameSub]; said != hostname {
+			fmt.Fprintf(s.out, "The environment's hostname is read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", hostnameSub, hostname, said)
+		}
 	}
 	settings := facts[migrateEnvFact]
 	if settings == "" {
@@ -395,8 +406,9 @@ func (s *stack) migrateSettings(ctx context.Context, w Workspace) error {
 		return errors.Newf("the stack's substitutions output names no %s, the databases the migrate command reaches: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateDatabasesSub)
 	}
 	fmt.Fprintf(s.out, "The migrate command's settings and databases are read from the stack as applied (%s, %s).\n", migrateEnvSub, migrateDatabasesSub)
+	read[migrateEnvFact], read[migrateDatabasesFact] = settings, databases
 
-	return w.Append(map[string]string{migrateEnvFact: settings, migrateDatabasesFact: databases})
+	return w.Append(read)
 }
 
 // clearFirestore deletes every document of the environment's Firestore database in a

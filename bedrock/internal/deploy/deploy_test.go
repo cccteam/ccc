@@ -183,9 +183,9 @@ func TestNewRecordRequest(t *testing.T) {
 			wantRestore: &Restore{Kind: "empty", Requester: "release v1.2.3", Reason: "the seed changed since v1.2.2 applied it (build b-0): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start", Replaced: []string{"google_spanner_database.harbor[0]"}},
 		},
 		{
-			name: "a build that ran migrations lists what it applied, the seed included when it ran",
+			name: "a build that ran migrations lists what it applied, the seed included when it ran (the SEED fact), whatever the trigger's _SEED said",
 			files: map[string]string{
-				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "true"}}`, RevisionsFile: revisionsLines,
+				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport SEED=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "false"}}`, RevisionsFile: revisionsLines,
 				"schema/migrations/000001_Init.up.sql": "create table a", "schema/migrations/000001_Init.down.sql": "drop table a", "schema/migrations/notes.txt": "not a migration", "schema/devseed/000001_Marker.up.sql": "insert marker",
 			},
 			wantObject:  "harbor/tst/v1.2.3/b-1.json",
@@ -198,8 +198,8 @@ func TestNewRecordRequest(t *testing.T) {
 			},
 		},
 		{
-			name:           "a build that ran the schema migrations alone leaves the seed out",
-			files:          map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "false"}}`, RevisionsFile: revisionsLines, "schema/migrations/000001_Init.up.sql": "create table a", "schema/devseed/000001_Marker.up.sql": "insert marker"},
+			name:           "a build that ran the schema migrations alone leaves the seed out, though the trigger's _SEED said true",
+			files:          map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "true"}}`, RevisionsFile: revisionsLines, "schema/migrations/000001_Init.up.sql": "create table a", "schema/devseed/000001_Marker.up.sql": "insert marker"},
 			wantObject:     "harbor/tst/v1.2.3/b-1.json",
 			wantStatus:     Live,
 			wantRegions:    "us-central1,us-west3",

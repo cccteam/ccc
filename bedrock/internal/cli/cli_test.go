@@ -1400,9 +1400,9 @@ func TestDeployResolve(t *testing.T) {
 		wantErr   string
 	}{
 		{
-			name:    "the facts are worked out from the build and written to the workspace",
+			name:    "the facts are worked out from the build and the checkout's placement and written to the workspace",
 			env:     map[string]string{"BUILD_ID": "b-1", "PROJECT_ID": "tst-project", "LOCATION": "us-central1"},
-			wantOut: []string{"Triggered by tag v1.2.3", "IMAGE=reg/quill IMAGE_TAG=v1.2.3-tst VERSION=v1.2.3 RELEASE=v1.2.3", "Declared substitutions for the hooks and the image build: _THEME"},
+			wantOut: []string{"Triggered by tag v1.2.3", "Seed: tst is not on the seed list of the placement in the checkout (infrastructure/placement.json).", "IMAGE=reg/quill IMAGE_TAG=v1.2.3-tst VERSION=v1.2.3 RELEASE=v1.2.3", "Declared substitutions for the hooks and the image build: _THEME"},
 			wantFiles: map[string]string{
 				"environment.sh": "export IMAGE_TAG=\"v1.2.3-tst\"\n",
 				"build-args.txt": "_THEME=dusk\n",
@@ -1420,7 +1420,24 @@ func TestDeployResolve(t *testing.T) {
 			for _, name := range []string{"BUILD_ID", "PROJECT_ID", "LOCATION"} {
 				t.Setenv(name, tt.env[name])
 			}
+			// The workspace is the checkout: the build reads its seed list from the
+			// placement there, and the substitutions the application declares from the
+			// stack's terraform.tfvars.
 			workspace := t.TempDir()
+			data, err := os.ReadFile(placement)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(workspace, "infrastructure"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(workspace, "infrastructure", placementFile), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			tfvars := "substitutions = {\n  tst = { _THEME = \"dusk\" }\n}\n"
+			if err := os.WriteFile(filepath.Join(workspace, "infrastructure", "terraform.tfvars"), []byte(tfvars), 0o600); err != nil {
+				t.Fatal(err)
+			}
 			builds := &fakeBuilds{build: build, token: "tok"}
 			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, deploy: &deploy.Clients{Builds: builds.open, Comments: noComments}, interactive: never}
 			out, err := execute(d, "", "deploy", "resolve", "--workspace", workspace)

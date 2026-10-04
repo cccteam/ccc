@@ -125,6 +125,63 @@ func BuildSecretNames(layerDir, env string) ([]string, error) {
 	return names, nil
 }
 
+// The placement's maps EnvironmentValues reads for the pipeline: the substitutions the
+// application declares for its hooks and its image build (the stack's var.substitutions),
+// and the build secrets' pins (var.build_secrets).
+const (
+	SubstitutionsKey = "substitutions"
+	BuildSecretsKey  = buildKey
+)
+
+// EnvironmentValues is the environment's map of strings under key in the layer's
+// placement (terraform.tfvars in layerDir), as the file writes it: what the stack takes
+// for the environment with lookup(var.<key>, env, {}). No file, no map under key and no
+// map for the environment all hold none. A map that is not written out, a key that is not
+// a string and a value that is not a literal string are refused.
+func EnvironmentValues(layerDir, key, env string) (map[string]string, error) {
+	values := map[string]string{}
+	file := filepath.Join(layerDir, tfvarsFile)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return values, nil
+		}
+
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	p, err := parsePlacement(src, file)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := p.body.Attributes[key]; !ok {
+		return values, nil
+	}
+	inner, err := p.versions(key, env)
+	if err != nil {
+		if errors.Is(err, errNoEnvironment) {
+			return values, nil
+		}
+
+		return nil, err
+	}
+	for _, item := range inner.Items {
+		name, err := ObjectKey(item.KeyExpr)
+		if err != nil {
+			return nil, errors.Wrap(err, p.at(key+"."+env))
+		}
+		v, diags := item.ValueExpr.Value(nil)
+		if diags.HasErrors() {
+			return nil, errors.Wrap(diags, p.at(key+"."+env+"."+name))
+		}
+		if v.IsNull() || !v.Type().Equals(cty.String) {
+			return nil, errors.Newf("%s is not a string", p.at(key+"."+env+"."+name))
+		}
+		values[name] = v.AsString()
+	}
+
+	return values, nil
+}
+
 // errNoEnvironment marks a map that lacks the environment asked for.
 var errNoEnvironment = errors.New("no map for the environment")
 

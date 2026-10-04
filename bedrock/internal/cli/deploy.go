@@ -81,22 +81,30 @@ restore instruction (_RESTORE: empty, or production-backup for the environment o
 instance; _REQUESTER names who asked): the environment's database is replaced before the release
 deploys, which the facts carry on (RESTORE, RESTORE_REQUESTER); a pull-request build carries none,
 and production is never restored by a run. A requester alone is a rerun (bedrock rerun: the
-release's tag build again, production included), which the record names. In an environment on the placement's seed list (_SEED
-true) a tag build decides a restore itself when the tree no longer carries a seed file as the
-environment's live release applied it (the release's record lists the seed files with their
+release's tag build again, production included), which the record names. Whether the build seeds
+(SEED) is read from the placement in the checkout (infrastructure/placement.json): every pull
+request seeds, and a tag build seeds where the placement's seed list names the environment, so a
+release that changes the list seeds with its own; the trigger's _SEED, from its stack's last
+apply, stays among the substitutions as what the trigger said, and the log says when the two
+differ. In an environment on the seed list a tag build decides a restore itself when the tree no
+longer carries a seed file as the environment's live release applied it (the release's record lists the seed files with their
 hashes): the release is the requester and the reason is a fact of its own (RESTORE_REASON), on the
 record; a restore asked for takes precedence, and a seed file added beside the applied ones
-recreates nothing. It writes environment.sh (the
-facts, then every substitution of the build), build-args.txt (the declared substitutions as the
-image build's arguments, NAME=value lines) and build.json (the build as Cloud Build describes it) to
-the workspace.`,
+recreates nothing. The substitutions the application declares for its hooks and its image build
+and its build secrets' pins are read from the checkout the same way (substitutions and
+build_secrets in infrastructure/terraform.tfvars; the build secrets' containers alone from the
+trigger), so a release that changes them builds with its own; a declared name the contract
+carries is refused. It writes environment.sh (the facts, BUILD_SECRETS among them, then the
+contract's substitutions as the trigger passed them and the declared ones as the checkout declares
+them), build-args.txt (the declared substitutions as the image build's arguments, NAME=value lines)
+and build.json (the build as Cloud Build describes it) to the workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			known, err := render.SubstitutionNames()
 			if err != nil {
 				return err
 			}
-			req := &deploy.ResolveRequest{BuildID: os.Getenv("BUILD_ID"), Project: os.Getenv("PROJECT_ID"), Location: os.Getenv("LOCATION"), Known: known}
+			req := &deploy.ResolveRequest{BuildID: os.Getenv("BUILD_ID"), Project: os.Getenv("PROJECT_ID"), Location: os.Getenv("LOCATION"), Known: known, Source: workspace}
 			facts, err := deploy.Resolve(cmd.Context(), d.deploy, req, cmd.OutOrStdout())
 			if err != nil {
 				return err
@@ -227,8 +235,9 @@ took out of the environment's image (/migrate), run in the checkout as the deplo
 variables the stack derived for it (MIGRATE_ENV, which the stack steps read from the applied stack's
 substitutions output: the levels the command constructs, and no secret) and the variable the image
 sets to the release (--version-variable) set to the build's version, with the seed (schema/devseed as
-data migrations after the schema) where _SEED is true: every pull request, its database being new,
-and a release build only in the environments the placement's seed list names. A seeded database
+data migrations after the schema) where resolve's SEED fact is true: every pull request, its
+database being new, and a release build only in the environments the seed list of the placement in
+the checkout names, so a release that changes the list migrates with its own. A seeded database
 takes nothing twice. The command reaches Spanner and Firestore through their APIs as the deploy
 identity, which the stack grants database admin on the application's own database; its lines go
 straight into the build log, and the deployment record lists the migrations applied. A build that
@@ -516,7 +525,11 @@ func newDeployEnvStackApply(d deps) *cobra.Command {
 		Use:   "apply",
 		Short: "Apply the saved plan of the environment's stack in a tag build",
 		Long: `apply applies, in a tag build, exactly the plan stack plan saved, as the apply identity, and says
-what it did; a plan with no change applies nothing. In a restore run it then deletes every document
+what it did; a plan with no change applies nothing. It then reads back, from the stack's
+substitutions output as the stack now stands, the migrate command's settings and databases
+(MIGRATE_ENV, MIGRATE_DATABASES) and the environment's hostname (CANONICAL_HOSTNAME, which deploy
+service names the next revision's URL by), so a release that changes them deploys with its own,
+where the trigger carries the last apply's. In a restore run it then deletes every document
 of the environment's Firestore database (the stack's firestore_database output), as the apply
 identity, since they refer to rows the restore replaced; what it cleared is appended
 (RESTORE_CLEARED) for the record. It runs in the OpenTofu image.`,
@@ -549,7 +562,7 @@ func newDeployHook(d deps) *cobra.Command {
 		Short:     "Run the application's hook for a stage",
 		ValidArgs: stages,
 		Long: `hook runs the application's hook for the stage in the checkout as the build's deploy identity, with
-every fact of environment.sh and every substitution of the build in its environment: the script
+every fact of environment.sh and every substitution it exports in its environment: the script
 infrastructure/hooks/<stage>.sh, or with --program the application's hooks program
 (cmd/deployment/hooks, built on impulse's deployhook package), which build-image took out of the
 image. The stages, in the pipeline's order: after-down (only on a teardown), before-build,
@@ -587,7 +600,8 @@ func newDeployBuildImage(d deps) *cobra.Command {
 two tags (<release>-<env> and <commit>-<env>), unless check-release found this commit's build to
 reuse. The build arguments are VERSION and COMMIT, the declared substitutions and what a hook
 before the build added (build-args.txt, NAME=value lines). Each declared build secret
-(_BUILD_SECRETS) is read as the deploy identity by its pinned version into --secret-dir (memory
+(BUILD_SECRETS, which resolve read from the checkout's pins) is read as the deploy identity by its
+pinned version into --secret-dir (memory
 backed, gone with the step) and passed as a BuildKit secret the Dockerfile mounts; it is never a
 build argument, which the image would keep. The build runs in a BuildKit container (buildx's
 docker-container driver, created for the build: the one driver that exports a cache) and pushes a

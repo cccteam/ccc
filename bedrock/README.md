@@ -434,13 +434,30 @@ thing one step hands the next. In order:
   production's instance, with `_REQUESTER` naming who asked): the environment's database
   is replaced before the release deploys. A pull-request build carries none, and
   production is never restored by a run. `_REQUESTER` alone is a rerun (`bedrock rerun`:
-  the release's tag build again, production included), which the record names. In an
-  environment on the placement's seed list
-  (`_SEED` true), a tag build decides a restore itself when the tree no longer carries a
-  seed file as the environment's live release applied it (its record lists the seed files
-  with their hashes; edited, renumbered or removed since): the release is the requester,
-  the reason goes on the record (`RESTORE_REASON`), and a restore asked for takes
-  precedence. A seed file added beside the applied ones recreates nothing.
+  the release's tag build again, production included), which the record names. Whether
+  the build applies the development seed (`SEED`) is read from the placement in the
+  checkout: every pull request seeds, and a tag build seeds where the placement's `seed`
+  list names the environment, so a release that changes the list seeds with its own. The
+  trigger's `_SEED` is what the stack said at its last apply; it stays among the
+  substitutions as what the trigger said, and the log says when the two differ. In an
+  environment on the seed list, a tag build decides a restore itself when the tree no
+  longer carries a seed file as the environment's live release applied it (its record
+  lists the seed files with their hashes; edited, renumbered or removed since): the
+  release is the requester, the reason goes on the record (`RESTORE_REASON`), and a
+  restore asked for takes precedence. A seed file added beside the applied ones
+  recreates nothing. The substitutions the application declares for its hooks and its
+  image build (`substitutions` in the stack's `terraform.tfvars`) and its build secrets'
+  pins (`build_secrets` there) are read from the checkout the same way, the build
+  secrets' containers alone from the trigger (`BUILD_SECRETS`), so a release that
+  changes them builds with its own; `environment.sh` exports the contract's
+  substitutions as the trigger passed them and the declared ones as the checkout
+  declares them, and a name the trigger carries that the checkout no longer declares is
+  left out. A declared name the contract carries is refused here. What the trigger
+  carries beyond these is what only the stack knows (the identities, the buckets, the
+  services, made by the stack or the organization's layers) or a gate's own record:
+  `_RELEASE_ACTORS` stays the trigger's, since a release must not name the actor that
+  admits it, and the promotion order (`_ENVIRONMENTS`, `_PREVIOUS_ENV`) stays the
+  trigger's beside the identities and buckets it is paired with.
 - `deploy validate-release`: for a tag build, the tag belongs to a GitHub Release cut by
   an accepted release actor, the tagged commit is on the default branch or at the tip of
   a hotfix line, and the record gate holds: the release is live in the previous
@@ -561,8 +578,8 @@ thing one step hands the next. In order:
   steps read from the applied stack's `_MIGRATE_ENV` output, so a release that changes
   them migrates with its own) and the release in the version variable the pipeline names
   (`--version-variable`); with the seed (`schema/devseed` as data migrations after the
-  schema) where `_SEED` is true: every pull request, and a release build only in the
-  environments the placement's seed list names. Before the command runs, the step reads
+  schema) where resolve's `SEED` fact is true: every pull request, and a release build
+  only in the environments the seed list of the placement in the checkout names. Before the command runs, the step reads
   each database the stack names (`_MIGRATE_DATABASES`, read back with the settings) as
   the deploy identity until it may, for up to three minutes: the stack's apply in the
   same build may have just created the identity's grants (an application's first
@@ -618,7 +635,10 @@ thing one step hands the next. In order:
   traffic yet, after repairing a service a failed earlier deploy left inconsistent. The
   new revision carries the tag `next` (or the pull request's tag), under which the
   stack's next backend serves it at `<app>-<env>-next`; `NEXT_URL` and the per-region
-  `REVISION_URLS` are left in the workspace for the hook before traffic. The template is
+  `REVISION_URLS` are left in the workspace for the hook before traffic. The hostname
+  `NEXT_URL` is named by is the one the stack this build applied names
+  (`CANONICAL_HOSTNAME`, read back after the apply), so a release that changes it is
+  reached under its own. The template is
   the live service's, so a maintenance revision's `APP_MAINTENANCE` is cleared on the new
   revision, which serves the application.
 - `deploy shift-traffic`: moves every region to 100 percent on its new revision, keeping
@@ -872,8 +892,8 @@ have run (the release check, the record gate, the image, the stack): `version` r
 migrate command once with `-version`, and the run stops before the service, the traffic
 shift and the record, so nothing in the environment changes; `rerun` is the release run
 again, the command running as it always does; `force` runs the command with `-force <n>`
-(or `-force-data <n>`), then runs it as it always does (with `-seed` where `_SEED` is
-true), and the release continues to the service, the traffic shift and the record, which
+(or `-force-data <n>`), then runs it as it always does (with `-seed` where the build
+seeds), and the release continues to the service, the traffic shift and the record, which
 carries the force (the table, the version, the requester). A version that is missing or
 not an integer, an unknown action or table, or a force without a requester is refused
 before the command runs; a force whose second run fails leaves the run failed like any

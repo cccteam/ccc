@@ -210,15 +210,22 @@ creates the container `imp-<env>-gbl-beacon-<kebab name>` (an operator adds
 the value with `bedrock secret add <env> NAME`, and `bedrock secret pin <env>
 NAME <version>` moves the pin here) and grants the deploy identity, and only
 it, accessor on it. The triggers carry the pins as `_BUILD_SECRETS`
-(`NAME=<version resource>`, comma-separated); the pipeline's BuildImage step
-reads each as the deploy identity and passes it to the build as a BuildKit
-secret, never a build argument, which would land in the image's history. The
-Dockerfile mounts it in the one step that needs it:
+(`NAME=<version resource>`, comma-separated), as this stack's last apply set
+them; a build reads the pins from `terraform.tfvars` in the commit it builds
+and takes only the containers from the trigger, so a release that moves a pin
+builds with the new version. A name the trigger does not carry yet is one the
+release declares: its container and its grant come with that release's apply,
+after the image build, so the image build reads it from the next release on.
+The pipeline's BuildImage step reads each as the deploy identity and passes it
+to the build as a BuildKit secret, never a build argument, which would land
+in the image's history. The Dockerfile mounts it in the one step that needs
+it:
 
     RUN --mount=type=secret,id=NAME,required=true \
         NAME="$(cat /run/secrets/NAME)" bun run build
 
-A pull-request build reads tst's build secrets at tst's pins. A
+A pull-request build reads tst's build secrets at the pins its own
+`terraform.tfvars` states for tst. A
 secret the deploy identity must read that is not the application's own (a
 hook fetching a shared configuration) is granted in 2-env
 (`build_time_secrets`) instead.
@@ -262,15 +269,21 @@ substitutions and this stack's outputs:
   schema migrations directory, which decides whether `/gcbrun shared-db` is
   allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep;
   `_HOSTNAME`, the environment's canonical hostname (a pull-request stack's
-  own, which the pipeline talks back with); `_DEPLOYER_APP_ID` and
+  own, which the pipeline talks back with; a release build reads it back from
+  the `substitutions` output after it applies the stack, so a release that
+  changes the hostnames names its next revision's URL by its own);
+  `_DEPLOYER_APP_ID` and
   `_DEPLOYER_KEY_SECRET`, the deployer GitHub App the pipeline talks back on a
   pull request as and the pinned secret version of its key, empty until 2-env
-  holds them; `_SEED`, true where the migrate command applies the development seed
+  holds them; `_SEED`, what this stack says about the development seed
   (`schema/devseed`, as data migrations tracked apart from the schema, so a
-  seeded database takes nothing twice): always on the pull-request trigger, a
-  pull request's database being new; on a release build only in the
+  seeded database takes nothing twice): true on the pull-request trigger, a
+  pull request's database being new, and on the version trigger only in the
   placement's `seed` environments, none by default and never production, so a
-  database holding data is seeded only where the placement says so. Every
+  database holding data is seeded only where the placement says so. The
+  pipeline keeps `_SEED` as what the trigger said and decides from the
+  placement in the checkout it builds, so a release that changes the `seed`
+  list seeds with its own list in that release. Every
   build starts from a trigger: the triggers exist once 2-env holds the
   environment's GitHub connection and the repository's link, and the pipeline
   refuses a build whose connection or repository name is empty, so nothing is
@@ -481,10 +494,13 @@ bounds). What an application adds is declared in files of its own:
   and reaches the build as a BuildKit secret the Dockerfile mounts ("Build
   secrets" above); never a build argument.
 - **Declared substitutions.** `substitutions` in `terraform.tfvars`, per
-  environment, `_NAME = value`: the triggers carry them, the pipeline exports
-  them to the hooks and passes them to the image build as build arguments
-  (`ARG _NAME` in the Dockerfile). A name the pipeline's contract already
-  carries is refused by the triggers' plan.
+  environment, `_NAME = value`: the pipeline reads them from the commit it
+  builds, exports them to the hooks and passes them to the image build as
+  build arguments (`ARG _NAME` in the Dockerfile), so a release that declares,
+  changes or drops one builds with its own. The triggers carry them too, as
+  this stack's last apply set them, and the build's log names each the commit
+  changes. A name the pipeline's contract already carries is refused by the
+  build before anything is built, and by the triggers' plan.
 - **The Dockerfile.** Seeded from the code's shape (the site and the migrate
   command, the browser workspace and its bundles, the schema
   directory) and then yours: extra stages, build arguments, private assets.

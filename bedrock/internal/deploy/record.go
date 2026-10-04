@@ -243,7 +243,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 	var applied []Migration
 	if env[runMigrationsFact] == trueValue {
 		dirs := []string{build.Substitutions[migrationsSub]}
-		if build.Substitutions[seedSub] == trueValue {
+		if env[seedFact] == trueValue {
 			dirs = append(dirs, path.Join(path.Dir(dirs[0]), derive.SeedDir))
 		}
 		if applied, err = listMigrations(string(w), dirs); err != nil {

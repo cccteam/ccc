@@ -57,8 +57,10 @@ func TestBuildImage(t *testing.T) {
 	pulled := map[string]string{"_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst", prNumberSub: "7"}
 	live := map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")}
 	tests := []struct {
-		name      string
-		env       string
+		name string
+		env  string
+		// declared are the build secrets resolve left (BUILD_SECRETS); the trigger's
+		// _BUILD_SECRETS names another, which the step never reads.
 		declared  string
 		buildArgs string
 		secrets   map[string]string
@@ -227,17 +229,24 @@ func TestBuildImage(t *testing.T) {
 			wantTaken: []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
 		},
 	}
+	// triggerBuildList is the trigger's list of build secrets, as its stack's last apply
+	// set it: the step reads the facts' list (BUILD_SECRETS) and never this one.
+	const triggerBuildList = "NPM_OLD=projects/p/secrets/old/versions/1"
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			subs := map[string]string{commitSub: "c9", buildSecretsSub: tt.declared, projectSub: "p"}
+			subs := map[string]string{commitSub: "c9", buildSecretsSub: triggerBuildList, projectSub: "p"}
 			maps.Copy(subs, tt.subs)
 			dockerfile := tt.dockerfile
 			if dockerfile == "" {
 				dockerfile = seededDockerfile
 			}
-			files := map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, subs), BuildArgsFile: tt.buildArgs, dockerfileName: dockerfile}
+			environment := tt.env
+			if tt.declared != "" {
+				environment += "export " + buildSecretsFact + "=" + doubleQuote(tt.declared) + "\n"
+			}
+			files := map[string]string{EnvironmentFile: environment, BuildFile: buildFor(t, subs), BuildArgsFile: tt.buildArgs, dockerfileName: dockerfile}
 			maps.Copy(files, tt.files)
 			w := workspaceFiles(t, files)
 			secretDir := t.TempDir()

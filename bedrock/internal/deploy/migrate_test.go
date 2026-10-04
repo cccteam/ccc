@@ -207,6 +207,9 @@ const (
 
 var (
 	migrateEnvironment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport VERSION=\"v1.2.3\"\nexport MIGRATE_ENV=" + doubleQuote(migrateSettingsJSON) + "\nexport MIGRATE_DATABASES=" + doubleQuote(migrateDatabasesJSON) + "\n"
+	// seededEnvironment is that environment file where resolve decided the build seeds
+	// (SEED): every pull request, and a release where the checkout's placement says so.
+	seededEnvironment = migrateEnvironment + "export SEED=\"true\"\n"
 	// The databases the stack names for the command: its Spanner database and its
 	// Firestore one.
 	migrateDatabasesJSON = `["projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db","projects/tst-project/databases/imp-tst-gbl-harbor-fs"]`
@@ -242,8 +245,9 @@ func commandRuns(run *fakeRunner, program string) [][]string {
 func TestMigrate(t *testing.T) {
 	t.Parallel()
 
-	// build is the build file with the seed, the pull request's number and any other
-	// substitutions (the migration operation's).
+	// build is the build file with the trigger's _SEED, the pull request's number and any
+	// other substitutions (the migration operation's). The step reads the seed from the
+	// facts (SEED), never from _SEED, which is what the trigger said.
 	build := func(seed, pr string, extra map[string]string) string {
 		subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_SEED": seed, "_PR_NUMBER": pr}
 		for name, value := range extra {
@@ -343,7 +347,7 @@ func TestMigrate(t *testing.T) {
 		},
 		{
 			name:            "a pull request's build seeds its new database, the command run in the checkout with the stack's variables and the build's version",
-			env:             migrateEnvironment,
+			env:             seededEnvironment,
 			build:           build("true", "7", nil),
 			versionVariable: versionVariable,
 			wantOut:         []string{"runs on this worker as the deploy identity with 4 variables from the stack.", "Seeding: the migrate command applies schema/devseed as data migrations.", "=== Running the migrate command with -seed ===", "Migrate command done in"},
@@ -358,6 +362,20 @@ func TestMigrate(t *testing.T) {
 			wantOut:         []string{"=== Running the migrate command ===", "Migrate command done in"},
 			wantRuns:        [][]string{{}},
 			wantVars:        migrateVars,
+		},
+		{
+			name:     "a release build seeds where the facts say so (the checkout's placement put the environment on its seed list), though the trigger's _SEED says false",
+			env:      seededEnvironment,
+			build:    build("false", "", nil),
+			wantOut:  []string{"Seeding: the migrate command applies schema/devseed as data migrations.", "=== Running the migrate command with -seed ===", "Migrate command done in"},
+			wantRuns: [][]string{{seedArg}},
+		},
+		{
+			name:     "a release build runs the schema alone where the facts do not seed (the checkout's placement took the environment off its seed list), though the trigger's _SEED says true",
+			env:      migrateEnvironment,
+			build:    build("true", "", nil),
+			wantOut:  []string{"=== Running the migrate command ===", "Migrate command done in"},
+			wantRuns: [][]string{{}},
 		},
 		{
 			name:     "a pipeline that names no version variable sets none",
@@ -387,7 +405,7 @@ func TestMigrate(t *testing.T) {
 		},
 		{
 			name:      "a rerun runs the command as it always does",
-			env:       migrateEnvironment,
+			env:       seededEnvironment,
 			build:     build("true", "", map[string]string{migrateActionSub: actionRerun, requesterSub: "octocat"}),
 			wantOut:   []string{"Rerun, asked for by octocat: the migrate command runs as it always does, continuing a file that stopped from its failed statement, and the release continues.", "=== Running the migrate command with -seed ===", "Migrate command done in"},
 			wantRuns:  [][]string{{seedArg}},
@@ -395,7 +413,7 @@ func TestMigrate(t *testing.T) {
 		},
 		{
 			name:      "a force runs the force, then the migrations with the seed, and leaves the force for the record",
-			env:       migrateEnvironment,
+			env:       seededEnvironment,
 			build:     build("true", "", map[string]string{migrateActionSub: actionForce, migrateVersionSub: "40", requesterSub: "octocat"}),
 			lines:     "schema: version 41, dirty\nforced schema to version 40\nschema: version 40\n",
 			wantOut:   []string{"Force, asked for by octocat: the schema migrations table is set to version 40; the migrations run after it and the release continues.", "=== Running the migrate command with -force 40 ===", "forced schema to version 40", "Migrate command done in", "=== Running the migrate command with -seed ===", "Migrate command done in"},

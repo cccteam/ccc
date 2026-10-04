@@ -19,7 +19,10 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// The facts and substitutions the deploy steps read, beyond the earlier steps'.
+// The facts and substitutions the deploy steps read, beyond the earlier steps'. _SEED is
+// the trigger's word on the seed, from its stack's last apply: kept in the build's
+// substitutions as what the trigger said, and compared in the log with the placement in
+// the checkout, which decides (the SEED fact, resolve's seed).
 const (
 	projectSub   = "_PROJECT"
 	repoNameSub  = "REPO_NAME"
@@ -197,12 +200,13 @@ func (a *MigrateAction) versionWord() string {
 // identity, with the variables the stack derived for it (MIGRATE_ENV, the levels it
 // constructs; the version variable set to the build's version, as the image sets it for
 // the processes it runs) and the flags the facts decide: the seed (schema/devseed as data
-// migrations after the schema) where _SEED is true, every pull request, its database being
-// new, and a release build only in the environments the placement's seed list names. A
-// seeded database takes nothing twice. The command reaches Spanner and Firestore through
-// their APIs as the deploy identity, which the application stack grants database admin
-// on the application's own database and nothing wider; its lines go straight into the
-// build log. A build carrying a migration operation does what it asks first: version runs
+// migrations after the schema) where the SEED fact is true, every pull request, its
+// database being new, and a release build only in the environments the seed list of the
+// placement in the checkout names (resolve reads it there, so a release that changes the
+// list migrates with its own). A seeded database takes nothing twice. The command reaches
+// Spanner and Firestore through their APIs as the deploy identity, which the application
+// stack grants database admin on the application's own database and nothing wider; its
+// lines go straight into the build log. A build carrying a migration operation does what it asks first: version runs
 // the command with -version alone and the steps after do nothing; force runs it with
 // -force <n> (or -force-data <n>), leaves the force for the record, and then runs the
 // migrations as always; rerun is the migrations as always, by name. A build that runs no
@@ -256,7 +260,7 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, program, versio
 		return m.preflight(ctx)
 	}
 
-	return m.perform(ctx, w, build, action)
+	return m.perform(ctx, w, action, env[seedFact] == trueValue)
 }
 
 // migrateSettings are the variables the migrate command runs with, NAME=value sorted by
@@ -342,11 +346,12 @@ func (m *migrateRun) preflight(ctx context.Context) error {
 }
 
 // perform does what the operation asks: the version report alone, a force and then the
-// migrations, or the migrations, which a rerun is by name.
-func (m *migrateRun) perform(ctx context.Context, w Workspace, build *Build, action *MigrateAction) error {
+// migrations, or the migrations, which a rerun is by name; seeded says the migrations
+// take the seed.
+func (m *migrateRun) perform(ctx context.Context, w Workspace, action *MigrateAction, seeded bool) error {
 	switch {
 	case action == nil:
-		return m.migrations(ctx, build)
+		return m.migrations(ctx, seeded)
 	case action.Action == actionVersion:
 		return m.version(ctx, w)
 	case action.Action == actionForce:
@@ -354,11 +359,11 @@ func (m *migrateRun) perform(ctx context.Context, w Workspace, build *Build, act
 			return err
 		}
 
-		return m.migrations(ctx, build)
+		return m.migrations(ctx, seeded)
 	default:
 		fmt.Fprintf(m.out, "Rerun%s: the migrate command runs as it always does, continuing a file that stopped from its failed statement, and the release continues.\n", by(action.Requester))
 
-		return m.migrations(ctx, build)
+		return m.migrations(ctx, seeded)
 	}
 }
 
@@ -372,10 +377,10 @@ func by(requester string) string {
 }
 
 // migrations runs the command as it always runs: the schema migrations, and the seed
-// where _SEED is true.
-func (m *migrateRun) migrations(ctx context.Context, build *Build) error {
+// where the build seeds (the SEED fact).
+func (m *migrateRun) migrations(ctx context.Context, seeded bool) error {
 	var args []string
-	if build.Substitutions[seedSub] == trueValue {
+	if seeded {
 		args = []string{seedArg}
 		fmt.Fprintln(m.out, "Seeding: the migrate command applies schema/devseed as data migrations.")
 	}

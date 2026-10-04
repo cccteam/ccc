@@ -247,7 +247,7 @@ steps:
   # The release's migrate command, taken out of the image by BuildImage, run once on this
   # worker as the deploy identity with the variables the stack derives for it (its lines
   # are this build's log); with the seed in a pull request and in the environments the
-  # placement's seed list names.
+  # seed list of the placement in this checkout names.
   - id: RunMigrations
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock

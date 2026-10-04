@@ -86,6 +86,15 @@ func TestDeploy(t *testing.T) {
 			wantEnv:       []string{"export NEXT_URL=\"https://harbor-tst-next.example.dev/\"\n"},
 		},
 		{
+			name:          "the next URL is named by the hostname the stack this build applied names, where the trigger still names its last apply's",
+			env:           environment + "export CANONICAL_HOSTNAME=\"harbor.tst.example.dev\"\n",
+			build:         `{"id": "b-1", "substitutions": {"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev"}}`,
+			wantRevisions: "us-central1,harbor-app,harbor-app-00008-new\nus-west3,harbor-app,harbor-app-00008-new\n",
+			wantTraffic:   append(append([]any{}, pinned...), map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"}),
+			wantFields:    [][]string{nil},
+			wantEnv:       []string{"export NEXT_URL=\"https://harbor-next.tst.example.dev/\"\n"},
+		},
+		{
 			name:          "an inconsistent service is repaired first",
 			env:           environment,
 			broken:        true,

@@ -2,6 +2,7 @@ package secret
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -247,6 +248,61 @@ func TestBuildSecretNames(t *testing.T) {
 			}
 			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
 				t.Errorf("BuildSecretNames() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEnvironmentValues: the environment's map under a key of the placement, as the stack
+// looks it up; none where the file, the map or the environment's map is absent; a map not
+// written out and a value that is not a literal string refused.
+func TestEnvironmentValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		key     string
+		env     string
+		want    map[string]string
+		wantErr string
+	}{
+		{name: "the environment's substitutions, quoted and bare keys alike", tfvars: "substitutions = {\n  tst = {\n    _THEME = \"dusk\"\n    \"_MODE\" = \"it's \\\"on\\\" $now\"\n  }\n  stg = {}\n}\n", key: SubstitutionsKey, env: "tst", want: map[string]string{"_THEME": "dusk", "_MODE": `it's "on" $now`}},
+		{name: "the environment's build secrets' pins", tfvars: "build_secrets = {\n  tst = {\n    UI_LICENSE = \"2\"\n  }\n}\n", key: BuildSecretsKey, env: "tst", want: map[string]string{"UI_LICENSE": "2"}},
+		{name: "an empty map for the environment holds none", tfvars: "substitutions = {\n  tst = {}\n}\n", key: SubstitutionsKey, env: "tst", want: map[string]string{}},
+		{name: "an environment the map lacks holds none", tfvars: "substitutions = {\n  tst = { _THEME = \"dusk\" }\n}\n", key: SubstitutionsKey, env: "prd", want: map[string]string{}},
+		{name: "a placement without the map holds none", tfvars: "secret_versions = {\n  tst = {}\n}\n", key: SubstitutionsKey, env: "tst", want: map[string]string{}},
+		{name: "no placement holds none", missing: true, key: SubstitutionsKey, env: "tst", want: map[string]string{}},
+		{name: "a map that is not written out is refused", tfvars: "substitutions = var.x\n", key: SubstitutionsKey, env: "tst", wantErr: "substitutions in"},
+		{name: "an environment that is not a map written out is refused", tfvars: "substitutions = {\n  tst = var.x\n}\n", key: SubstitutionsKey, env: "tst", wantErr: "substitutions.tst in"},
+		{name: "a value that is not a string is refused", tfvars: "build_secrets = {\n  tst = { UI_LICENSE = 2 }\n}\n", key: BuildSecretsKey, env: "tst", wantErr: "build_secrets.tst.UI_LICENSE in"},
+		{name: "a value that is not a literal is refused", tfvars: "substitutions = {\n  tst = { _THEME = upper(\"dusk\") }\n}\n", key: SubstitutionsKey, env: "tst", wantErr: "substitutions.tst._THEME in"},
+		{name: "a file that does not parse is refused", tfvars: "substitutions = {\n", key: SubstitutionsKey, env: "tst", wantErr: "hclsyntax.ParseConfig()"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := EnvironmentValues(dir, tt.key, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("EnvironmentValues() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("EnvironmentValues() error = %v", err)
+			}
+			if !maps.Equal(got, tt.want) {
+				t.Errorf("EnvironmentValues() = %q, want %q", got, tt.want)
 			}
 		})
 	}
