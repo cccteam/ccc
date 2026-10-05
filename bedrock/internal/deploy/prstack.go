@@ -13,11 +13,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 // The files the stack's steps leave in the workspace, and what they read.
@@ -150,9 +154,11 @@ func (s *stack) replaceDatabase(ctx context.Context, app, reason string, w Works
 // ApplyStack applies the saved plan, unless it holds no change (a build after another of
 // the same tree): then there is nothing to apply and the state is read as it is. After a
 // destroy nothing deploys (SKIP_DEPLOY); else the stack's substitutions output names the
-// pull request's services, its job process's job, its hostname and the variables its
-// migrate command runs with, which go to the environment file for the steps after, and a
-// database the build recreated without being asked is said on the pull request.
+// pull request's services, its job process's job, its hostname, the variables its migrate
+// command runs with and the build arguments the placement declares (_BUILD_ARG_<NAME>, the
+// pull request's own values, which the image build passes), which go to the environment
+// file for the steps after, and a database the build recreated without being asked is said
+// on the pull request.
 func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, build, ok, err := pullRequestStep(w, out)
 	if err != nil || !ok {
@@ -195,6 +201,9 @@ func ApplyStack(ctx context.Context, clients *Clients, w Workspace, out io.Write
 		fmt.Fprintf(out, " %s=%s", jobsJobFact, facts[jobsJobFact])
 	}
 	fmt.Fprintf(out, " %s=%s, and the migrate command's settings (%s).\n", prHostnameFact, facts[prHostnameFact], migrateEnvFact)
+	if names := stackArgumentNames(facts); len(names) > 0 {
+		fmt.Fprintf(out, "The image build passes the pull request's own build arguments: %s.\n", strings.Join(names, ", "))
+	}
 	if env[replaceDatabaseFact] != trueValue || env[reloadReasonFact] == gcbrun+" reload-db" {
 		return nil
 	}
@@ -219,10 +228,12 @@ func (s *stack) facts(ctx context.Context) (map[string]string, error) {
 
 // stackFacts reads the stack's substitutions output (a map of the trigger's
 // substitutions as the stack now stands) into the facts the deploy steps read: the
-// services, the job process's job when the application has one, the hostname, and the
+// services, the job process's job when the application has one, the hostname, the
 // variables the migrate command runs with (MIGRATE_ENV, from _MIGRATE_ENV) and the
 // databases it reaches (MIGRATE_DATABASES, from _MIGRATE_DATABASES), which the migrate
-// step requires and a stack applied by an older bedrock lacks.
+// step requires and a stack applied by an older bedrock lacks, and the build arguments
+// the placement declares (_BUILD_ARG_<NAME>, by their substitutions' names), which a
+// pull-request build's image build reads as the pull request's own.
 func stackFacts(data []byte) (map[string]string, error) {
 	var subs map[string]string
 	if err := json.Unmarshal(data, &subs); err != nil {
@@ -244,8 +255,26 @@ func stackFacts(data []byte) (map[string]string, error) {
 	if databases := subs[migrateDatabasesSub]; databases != "" {
 		facts[migrateDatabasesFact] = databases
 	}
+	for name, value := range subs {
+		if strings.HasPrefix(name, derive.BuildArgumentPrefix) {
+			facts[name] = value
+		}
+	}
 
 	return facts, nil
+}
+
+// stackArgumentNames are the build arguments the facts carry (_BUILD_ARG_<NAME>), by the
+// argument's name, sorted: what the log names, never their values.
+func stackArgumentNames(facts map[string]string) []string {
+	var names []string
+	for _, key := range slices.Sorted(maps.Keys(facts)) {
+		if name, ok := strings.CutPrefix(key, derive.BuildArgumentPrefix); ok && name != "" {
+			names = append(names, name)
+		}
+	}
+
+	return names
 }
 
 // pullRequestStep reads the workspace for a step that runs only in a pull-request build;

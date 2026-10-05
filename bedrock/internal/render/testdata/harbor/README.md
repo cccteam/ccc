@@ -383,7 +383,12 @@ substitutions and this stack's outputs:
   database holding data is seeded only where the placement says so. The
   pipeline keeps `_SEED` as what the trigger said and decides from the
   placement in the checkout it builds, so a release that changes the `seed`
-  list seeds with its own list in that release. Every
+  list seeds with its own list in that release; `_BUILD_ARG_<NAME>`, one per
+  build argument `placement.json` declares (`buildArguments`), each the value
+  of this stack's it names (`_BUILD_ARG_FIREBASE_API_KEY` and `_BUILD_ARG_PROJECT_ID`),
+  which the image build passes as `--build-arg NAME=value`, a pull-request
+  build reading the pull request's own from its stack's `substitutions`
+  output once that stack is applied. Every
   build starts from a trigger: the triggers exist once 2-env holds the
   environment's GitHub connection and the repository's link, and the pipeline
   refuses a build whose connection or repository name is empty, so nothing is
@@ -603,7 +608,32 @@ bounds). What an application adds is declared in files of its own:
   changes or drops one builds with its own. The triggers carry them too, as
   this stack's last apply set them, and the build's log names each the commit
   changes. A name the pipeline's contract already carries is refused by the
-  build before anything is built, and by the triggers' plan.
+  build before anything is built, and by the triggers' plan, and so is a name
+  starting with `_BUILD_ARG_`, which the next item's substitutions use.
+- **Values the stack makes.** `buildArguments` in `placement.json` maps a
+  build argument's name to a value this stack makes in each environment (the
+  values are listed below), such as the Firebase web API key, which exists
+  only once the stack is applied, so no person writes it as a declared
+  substitution. The triggers carry each as `_BUILD_ARG_<NAME>` from the
+  stack's own resources (`cloud-build.tf`), and the image build passes it as
+  `--build-arg NAME=value`; the Dockerfile's stage that builds with it declares `ARG NAME`
+  and reads it as an environment variable, and `bedrock check` refuses a
+  declared argument no stage declares. A release build passes what its
+  trigger carries, as this stack's last apply set it, so an argument a release
+  declares first reaches the image from the next release on, and the build's
+  log says so; a pull-request build waits for the pull request's own stack and
+  passes its values. A build argument is part of the layer cache key, so a
+  layer that sees one is built per environment, and a dependency stage that
+  sees one writes its cache under a digest of the values; a build secret never
+  carries such a value, since a secret is not part of the cache key and
+  another environment's layer would be served. This application declares
+  `FIREBASE_API_KEY` (`firebaseApiKey`) and `PROJECT_ID` (`projectId`). The
+  values a build argument may take:
+  - `firebaseApiKey`: the key string of the Firebase web API key the stack makes for the application, which the browser presents to sign in (made when the code declares APP_FIREBASE_API_KEY).
+  - `firestoreDatabase`: the id of the application's Firestore database (made when the code declares APP_FIRESTORE_DATABASE).
+  - `projectId`: the environment project's id.
+  - `environment`: the environment's name.
+  - `hostname`: the service's canonical hostname in the environment.
 - **The Dockerfile.** Seeded from the code's shape (the site and the migrate
   command, the job process, the browser workspace and its bundles, the schema
   directory) and then yours: extra stages, build arguments, private assets.

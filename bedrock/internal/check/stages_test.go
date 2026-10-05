@@ -144,6 +144,78 @@ func TestStages(t *testing.T) {
 	}
 }
 
+func TestStageArgs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		dockerfile string
+		want       []string
+	}{
+		{name: "one ARG a line, a default or none", dockerfile: "FROM a\nARG VERSION\nARG MODE=dark\nRUN x\n", want: []string{"VERSION", "MODE"}},
+		{name: "several names on one ARG, repeated once", dockerfile: "FROM a\nARG A B=2 C\narg A\n", want: []string{"A", "B", "C"}},
+		{name: "a global ARG belongs to no stage", dockerfile: "ARG G\nFROM a\nRUN x\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			stages := Stages([]byte(tt.dockerfile))
+			if got := stages[len(stages)-1].Args(); !slices.Equal(got, tt.want) {
+				t.Errorf("Args() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSees proves which build arguments a stage can see: those it declares, those its
+// FROM line reads, and those of every stage it is built on (its FROM, a COPY --from by
+// name or number), never those of a later stage or of one it does not touch.
+func TestSees(t *testing.T) {
+	t.Parallel()
+
+	const chain = `ARG TAG
+FROM node AS config
+ARG PROJECT_ID
+RUN echo "$PROJECT_ID" > /p
+FROM config AS go-modules
+RUN go mod download
+FROM node AS web-packages
+COPY --from=0 /p /p
+RUN bun install --frozen-lockfile
+FROM node:${TAG} AS tagged
+FROM node:${OTHER:-1} AS other
+FROM node AS browser
+ARG FIREBASE_API_KEY
+RUN bun run build
+FROM go AS loop
+COPY --from=loop /x /x
+`
+	args := []string{"FIREBASE_API_KEY", "PROJECT_ID", "TAG", "OTHER"}
+	tests := []struct {
+		name  string
+		stage string
+		want  []string
+	}{
+		{name: "a stage sees what it declares", stage: "browser", want: []string{"FIREBASE_API_KEY"}},
+		{name: "a stage sees what the stage its FROM names declares", stage: "go-modules", want: []string{"PROJECT_ID"}},
+		{name: "a stage sees what a stage it copies from by number declares", stage: "web-packages", want: []string{"PROJECT_ID"}},
+		{name: "a stage sees a global argument its FROM line reads", stage: "tagged", want: []string{"TAG"}},
+		{name: "a FROM line's modifier form is read too", stage: "other", want: []string{"OTHER"}},
+		{name: "a stage copying from itself sees nothing, and ends", stage: "loop"},
+		{name: "a stage the Dockerfile lacks sees nothing", stage: "absent"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := Sees(Stages([]byte(chain)), tt.stage, args); !slices.Equal(got, tt.want) {
+				t.Errorf("Sees(%s) = %q, want %q", tt.stage, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCopies(t *testing.T) {
 	t.Parallel()
 

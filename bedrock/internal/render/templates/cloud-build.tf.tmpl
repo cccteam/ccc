@@ -95,6 +95,17 @@ locals {
     # through nothing.
     _DEPLOYER_APP_ID     = try(coalesce(tostring(local.env.github_deployer_app_id)), "")
     _DEPLOYER_KEY_SECRET = try(coalesce(local.env.github_deployer_key_secret_version), "")
+{{- if .BuildArguments}}
+    # The build arguments placement.json declares (buildArguments), each a
+    # value this stack makes, as _BUILD_ARG_<NAME>: the image build passes
+    # every one as --build-arg NAME=value, NAME being the argument the
+    # Dockerfile declares with ARG. A pull-request build reads them from the
+    # pull request's own stack (its substitutions output) once that stack is
+    # applied, so its image carries the pull request's own values. A build
+    # argument is part of the layer cache key, so a layer that sees one is
+    # built per environment; a build secret never carries such a value.
+{{.BuildArgumentLines}}
+{{- end}}
   }
 
   # What the placement adds for this environment (var.substitutions): the

@@ -180,12 +180,17 @@ steps:
   # built fresh in every environment and never exported. The migrate command (/migrate) is
   # taken out of the image for the migration steps after it{{if .HookProgram}}, and the hooks
   # program (/hooks) for the hook steps{{end}}.
+{{- if .BuildArguments}}
+  # The build arguments placement.json declares are values the stack makes, and a pull
+  # request's own stack makes its own: in a pull-request build the image waits for that
+  # stack's apply and carries its values ({{.BuildArgumentList}}).
+{{- end}}
   - id: BuildImage
     name: {{.DockerImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, build-image{{if .HookProgram}}, --hooks{{end}}]
     timeout: 1800s
-    waitFor: [{{if .HasHook "before-build"}}HookBeforeBuild{{else}}CheckRelease{{end}}]
+    waitFor: [{{if .HasHook "before-build"}}HookBeforeBuild{{else}}CheckRelease{{end}}{{if .BuildArguments}}, ApplyPullRequestStack{{end}}]
 
   # A run that replaces the database (a restore run) puts the application into maintenance
   # first: the release's image starts as a revision with the maintenance variable set, in

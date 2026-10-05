@@ -218,6 +218,44 @@ and what its absence means:
   - `baseEjectionSeconds`: how long, in seconds, a group stays out the first time; each
     further time, that multiplied by the number of times it was taken out. At least 1;
     default 30.
+- `buildArguments`: values the stack makes in each environment that the image build
+  takes as build arguments (a build argument is a `NAME=value` the image build is given
+  and a Dockerfile stage reads after it declares `ARG NAME`), as a map from the argument's
+  name to the value's name: `{"FIREBASE_API_KEY": "firebaseApiKey", "PROJECT_ID":
+  "projectId"}`. Not written. Absent, none. A name is an uppercase identifier, other than
+  `VERSION`, `COMMIT` and `JOBS_JOB`, which the pipeline passes itself. A value is one of
+  the values bedrock knows:
+  - `firebaseApiKey`: the key string of the Firebase web API key the stack makes for the
+    application, which the browser presents to sign in (made when the code declares
+    `APP_FIREBASE_API_KEY`; `render` refuses it otherwise);
+  - `firestoreDatabase`: the id of the application's Firestore database (made when the
+    code declares `APP_FIRESTORE_DATABASE`; `render` refuses it otherwise);
+  - `projectId`: the environment project's id;
+  - `environment`: the environment's name;
+  - `hostname`: the service's canonical hostname in the environment.
+
+  Such a value exists only once the stack is applied (the Firebase key is made by the
+  apply), so it cannot be written per environment the way a declared substitution in
+  `terraform.tfvars` is. The stack carries each on its triggers as `_BUILD_ARG_<NAME>`,
+  read from its own resources, and the image build passes it as `--build-arg NAME=value`
+  (`bedrock deploy`, below). The Dockerfile consumes it in the stage that builds with it:
+
+  ```dockerfile
+  FROM node AS web-build-env
+  ARG FIREBASE_API_KEY
+  RUN bun run build    # the build script reads FIREBASE_API_KEY from its environment
+  ```
+
+  `bedrock check` refuses a declared argument no stage of the Dockerfile declares. A build
+  argument is part of the layer cache key: every layer after the `ARG` is built again
+  when the value differs, so each environment builds those layers with its own value and
+  never takes another environment's. A dependency stage that sees an argument (through
+  the stage its `FROM` names) caches under a digest of the value. A build secret never
+  carries such a value: a secret is not part of the cache key, and a layer built with
+  one environment's value would be served to another. A release build passes what its
+  trigger carries, as the stack's last apply set it, so an argument a release declares
+  first reaches the image from the next release on, and the build's log says so; a
+  pull-request build passes the pull request's own stack's values.
 
 ## bedrock render
 
@@ -357,6 +395,12 @@ It also refuses:
   that some environment's `build_secrets` in `terraform.tfvars` does not declare, naming
   the environments: a release that passed the earlier environments would fail in the
   image build of the one lacking it. An optional mount passes with nothing said.
+- a build argument `placement.json` declares (`buildArguments`) that no stage of the
+  Dockerfile declares with `ARG`, naming the line to add (`ARG FIREBASE_API_KEY`) to the
+  stage that builds with it: the image build would be given the value and drop it. An
+  `ARG` before the first `FROM` does not count, since it reaches the `FROM` lines alone.
+  `render` refuses a value the stack does not make for the code (`firebaseApiKey`
+  without `APP_FIREBASE_API_KEY`, `firestoreDatabase` without `APP_FIRESTORE_DATABASE`).
 - a Firestore database (`APP_FIRESTORE_DATABASE`) without its project variable
   (`GOOGLE_CLOUD_FIRESTORE_PROJECT`), which the stack sets to the environment project,
   or without `schema/firestore/firestore.indexes.json`
@@ -480,8 +524,16 @@ thing one step hands the next. In order:
   changes them builds with its own; `environment.sh` exports the contract's
   substitutions as the trigger passed them and the declared ones as the checkout
   declares them, and a name the trigger carries that the checkout no longer declares is
-  left out. A declared name the contract carries is refused here. What the trigger
-  carries beyond these is what only the stack knows (the identities, the buckets, the
+  left out. A declared name the contract carries is refused here, and so is one starting
+  with `_BUILD_ARG_`. The build arguments `placement.json` in the checkout declares
+  (`buildArguments`) are values of the stack's, so they come from the stack and never the
+  checkout: a tag build exports the trigger's `_BUILD_ARG_<NAME>` for each name the
+  checkout declares, says when the trigger does not carry one yet (it comes with the
+  build's stack apply, after the image build, and reaches the image from the next
+  release on) and leaves out one the checkout no longer declares; a pull-request build
+  exports none, and `deploy pr-stack apply` appends the pull request's own stack's. The
+  log names the arguments, never their values. What the trigger carries beyond these is
+  what only the stack knows (the identities, the buckets, the
   services, made by the stack or the organization's layers) or a gate's own record:
   `_RELEASE_ACTORS` stays the trigger's, since a release must not name the actor that
   admits it, and the promotion order (`_ENVIRONMENTS`, `_PREVIOUS_ENV`) stays the
@@ -524,16 +576,22 @@ thing one step hands the next. In order:
 - `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
   applied into its own state prefix as the apply identity. The plan is saved, the guard
   lets only the pull request's own resources through, the apply applies exactly that
-  plan and leaves the pull request's services, jobs and hostname for the steps after (a
-  destroy on `/gcbrun down`). A tag build skips all three.
+  plan and leaves the pull request's services, jobs, hostname and build arguments
+  (`_BUILD_ARG_<NAME>`, its own values of the stack's) for the steps after (a destroy on
+  `/gcbrun down`). A tag build skips all three.
 - `deploy check-release`: reads the registry before the image build. Neither tag exists,
   the build runs; the commit is built and the release tag is not, the release name is
   added to that build; both exist and agree, the build is reused; the release tag names
   another build, the run is refused.
 - `deploy build-image`: builds the checkout's Dockerfile with docker and pushes the image
-  under its two tags, with the build arguments and the declared build secrets (read as
-  the deploy identity into memory and passed as BuildKit secrets, never build
-  arguments); the digest goes to `environment.sh`. The build runs in a BuildKit container
+  under its two tags, with the build arguments (`VERSION`, `COMMIT`, the job of the
+  build, the stack's values `placement.json` declares as `_BUILD_ARG_<NAME>` in
+  `environment.sh`, passed as `NAME=value` and named in the log without their values,
+  then `build-args.txt`) and the declared build secrets (read as the deploy identity
+  into memory and passed as BuildKit secrets, never build arguments); the digest goes to
+  `environment.sh`. In a pull-request build of an application that declares build
+  arguments, the step waits for the pull request's stack to be applied, so the image
+  carries the pull request's own values. The build runs in a BuildKit container
   (buildx's docker-container driver, created for the build: the one driver that
   exports a cache) and pushes a plain image. Three builds: the Dockerfile's two reserved
   stages, `go-modules` and `web-packages`, each exporting its layers alone to the registry
@@ -550,8 +608,13 @@ thing one step hands the next. In order:
   export the registry refuses; its "Layer cache:" line names what was read, by the commit
   it belongs to, and whether this commit's caches were written or were held already. A
   workspace whose package.json lists trustedDependencies has its install stage built with
-  no cache in or out, and the log says why. Every environment still builds its own image
-  from the commit; nothing is promoted between environments.
+  no cache in or out, and the log says why. A build argument is part of a layer's key, so
+  a layer that sees one of the stack's per-environment values is never served to another
+  environment; a reserved stage declares no `ARG` (`bedrock check` refuses one), and one
+  that sees an argument through the stage its `FROM` names or a stage it copies from is
+  built with it and caches under a digest of its value (`cache-<commit>-go-<digest>`), so
+  each environment reads and writes a cache of its own. Every environment still builds
+  its own image from the commit; nothing is promoted between environments.
 - `deploy maintenance on`: puts the application into maintenance when the run needs it,
   at one of two places. Before the stack is applied, a run that replaces the database (a
   restore run); after the wait for the maintenance window (`--window`), a breaking

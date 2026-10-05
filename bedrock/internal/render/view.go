@@ -230,6 +230,72 @@ type view struct {
 	HostnamesProse string
 	// IntegrationHost is the integration environment's canonical hostname.
 	IntegrationHost string
+	// BuildArguments are the build arguments the placement declares (buildArguments), in
+	// name order: each a value the stack makes, carried on the triggers as
+	// _BUILD_ARG_<NAME>; none when it declares none. BuildArgumentLines is their block of
+	// cloud-build.tf's substitutions map, BuildArgumentList names them ("FIREBASE_API_KEY
+	// and PROJECT_ID"), BuildArgumentSubs names their substitutions for the README, and
+	// BuildArgumentsProse each with the value it takes. BuildValueItems lists the
+	// catalog a placement may name as the README's nested items, from the table derive
+	// validates against.
+	BuildArguments      []buildArgument
+	BuildArgumentLines  string
+	BuildArgumentList   string
+	BuildArgumentSubs   string
+	BuildArgumentsProse string
+	BuildValueItems     string
+}
+
+// buildArgument is one declared build argument as the templates name it: the name the
+// Dockerfile declares with ARG, the substitution that carries it, the catalog's value it
+// takes, and the OpenTofu expression the stack reads it from.
+type buildArgument struct {
+	Name         string
+	Substitution string
+	Value        string
+	Expr         string
+}
+
+// buildValueExprs are the catalog's values as the stack reads them, from its own
+// resources and locals. The Firebase key's string is marked sensitive by the provider; it
+// is the public value every browser receives, and marked it would make the triggers'
+// substitutions and the substitutions output sensitive whole.
+var buildValueExprs = map[string]string{
+	derive.BuildValueFirebaseAPIKey:    "nonsensitive(google_apikeys_key.firebase.key_string)",
+	derive.BuildValueFirestoreDatabase: "google_firestore_database.firestore.name",
+	derive.BuildValueProjectID:         "local.project_id",
+	derive.BuildValueEnvironment:       "var.environment",
+	derive.BuildValueHostname:          "local.hostnames[0]",
+}
+
+// buildArguments prepares the declared build arguments for the templates, refusing a
+// catalog value the stack has no expression for.
+func (v *view) buildArguments() error {
+	catalog := make([]string, 0, len(derive.BuildValues()))
+	for _, value := range derive.BuildValues() {
+		catalog = append(catalog, "  - `"+value.Name+"`: "+value.What+".")
+	}
+	v.BuildValueItems = strings.Join(catalog, "\n")
+	var lines, names, subs, prose []string
+	for _, name := range v.P.BuildArgumentNames() {
+		value := v.P.BuildArguments[name]
+		expr, ok := buildValueExprs[value]
+		if !ok {
+			return errors.Newf("buildArguments.%s names %s, which the stack has no expression for", name, value)
+		}
+		arg := buildArgument{Name: name, Substitution: derive.BuildArgumentSubstitution(name), Value: value, Expr: expr}
+		v.BuildArguments = append(v.BuildArguments, arg)
+		lines = append(lines, "    "+arg.Substitution+" = "+arg.Expr+" # "+arg.Value)
+		names = append(names, arg.Name)
+		subs = append(subs, "`"+arg.Substitution+"`")
+		prose = append(prose, "`"+arg.Name+"` (`"+arg.Value+"`)")
+	}
+	v.BuildArgumentLines = strings.Join(lines, "\n")
+	v.BuildArgumentList = joinAnd(names)
+	v.BuildArgumentSubs = joinAnd(subs)
+	v.BuildArgumentsProse = joinAnd(prose)
+
+	return nil
 }
 
 // fileStore is one file store as the templates name it: the derived store, the value
@@ -607,6 +673,9 @@ func newView(m *derive.Model) (*view, error) {
 	v.secrets()
 	v.blocks()
 	v.operations()
+	if err := v.buildArguments(); err != nil {
+		return nil, err
+	}
 
 	names, err := SubstitutionNames()
 	if err != nil {

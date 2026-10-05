@@ -29,6 +29,32 @@ COPY . ./
 RUN go build -o /build/app .
 `
 
+// argBaseDockerfile is the seeded shape with go-modules built on a stage of its own that
+// declares a build argument the stack carries: the reserved stage sees PROJECT_ID through
+// its FROM, and web-packages sees nothing.
+const argBaseDockerfile = `FROM go AS go-base
+ARG PROJECT_ID
+RUN echo "$PROJECT_ID" > /etc/project
+FROM go-base AS go-modules
+WORKDIR /go/src/app
+COPY go.mod go.sum ./
+RUN go mod download
+FROM bun AS bun-binary
+FROM node AS web-packages
+COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
+WORKDIR /src/web
+COPY web/package.json web/bun.lock ./
+RUN bun install --frozen-lockfile
+FROM node AS web-build-env
+ARG FIREBASE_API_KEY
+COPY --from=web-packages /src/web/node_modules ./node_modules
+RUN bun run build
+`
+
+// stackArgsEnv is the environment file's build arguments of the stack, as resolve exports a
+// release build's from its trigger (or deploy pr-stack apply appends a pull request's).
+const stackArgsEnv = "export _BUILD_ARG_FIREBASE_API_KEY='AIzaTstKey'\nexport _BUILD_ARG_PROJECT_ID='tst-project'\n"
+
 // recordJSON is one deployment record as the records bucket holds it.
 func recordJSON(version, commit, build, status, timestamp string) string {
 	return `{"app":"harbor","env":"tst","version":"` + version + `","commit":"` + commit + `","status":"` + status + `","build":"` + build + `","timestamp":"` + timestamp + `"}`
@@ -50,6 +76,8 @@ func TestBuildImage(t *testing.T) {
 		fromC7W  = " --cache-from type=registry,ref=reg/quill:cache-c7-web"
 		toC9Go   = " --cache-to type=registry,ref=reg/quill:cache-c9-go,mode=max"
 		toC9W    = " --cache-to type=registry,ref=reg/quill:cache-c9-web,mode=max"
+		// toC9GoTst is go-modules' export under the digest of tst's PROJECT_ID.
+		toC9GoTst = " --cache-to type=registry,ref=reg/quill:cache-c9-go-5930b08fead0,mode=max"
 	)
 	// firstBuild is the stage builds of a commit's first build: both caches written, none read.
 	firstBuild := []string{goStage + toC9Go + tail, webStage + toC9W + tail}
@@ -80,6 +108,8 @@ func TestBuildImage(t *testing.T) {
 		wantArgs   []string
 		wantNoArgs []string
 		wantOut    []string
+		// wantNotOut is what the log must not carry: a build argument's value among it.
+		wantNotOut []string
 		wantErr    string
 		wantBuilt  bool
 		// hooks takes the hooks program out of the image beside the migrate command, which
@@ -110,6 +140,44 @@ func TestBuildImage(t *testing.T) {
 			wantOut:    []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Layer cache: read nothing; written cache-c9-go, cache-c9-web.", "Built and pushed reg/quill@sha256:new"},
 			wantBuilt:  true,
 			wantTaken:  []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
+		},
+		{
+			name:       "the stack's build arguments are passed and named, never their values, and a dependency stage that sees none is cached as ever",
+			env:        env + stackArgsEnv,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			buildArgs:  "_WIDGET_MODE=on\n",
+			wantArgs:   []string{"--build-arg COMMIT=c9 --build-arg FIREBASE_API_KEY=AIzaTstKey --build-arg PROJECT_ID=tst-project --build-arg _WIDGET_MODE=on"},
+			wantOut:    []string{"Build arguments from the stack (placement.json, buildArguments): FIREBASE_API_KEY, PROJECT_ID.", "Layer cache: read nothing; written cache-c9-go, cache-c9-web."},
+			wantNotOut: []string{"AIzaTstKey", "tst-project", " sees the build arguments"},
+			wantBuilt:  true,
+		},
+		{
+			name:       "a dependency stage built on a stage that declares a build argument is passed it and caches under a digest of its value",
+			env:        env + stackArgsEnv,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			dockerfile: argBaseDockerfile,
+			wantStages: []string{goStage + " --build-arg PROJECT_ID=tst-project" + toC9GoTst + tail, webStage + toC9W + tail},
+			wantArgs:   []string{"--build-arg FIREBASE_API_KEY=AIzaTstKey --build-arg PROJECT_ID=tst-project"},
+			wantOut: []string{
+				"go-modules sees the build arguments PROJECT_ID (its FROM line, or a stage it is built on, reads them): its build is passed them, and its cache tags carry a digest of their values (5930b08fead0), so each environment's values read and write a cache of their own.",
+				"Layer cache: read nothing; written cache-c9-go-5930b08fead0, cache-c9-web.",
+			},
+			wantNotOut: []string{"AIzaTstKey", "web-packages sees"},
+			wantBuilt:  true,
+		},
+		{
+			name:       "another environment's values never serve the stage: its digest's tags are not read, and this environment's own are written",
+			env:        env + stackArgsEnv,
+			metadata:   `{"containerimage.digest": "sha256:new"}`,
+			dockerfile: argBaseDockerfile,
+			subs:       tagged,
+			records:    live,
+			held:       []string{"cache-c9-go-7e95161484f2", "cache-c8-go-7e95161484f2", "cache-c8-go-5930b08fead0", "cache-c9-web"},
+			wantStages: []string{goStage + " --build-arg PROJECT_ID=tst-project --cache-from type=registry,ref=reg/quill:cache-c8-go-5930b08fead0" + toC9GoTst + tail, webStage + fromC9W + tail},
+			wantArgs:   []string{"--cache-from type=registry,ref=reg/quill:cache-c8-go-5930b08fead0 --cache-from type=registry,ref=reg/quill:cache-c9-web --tag"},
+			wantNoArgs: []string{"7e95161484f2", "--cache-to"},
+			wantOut:    []string{"Layer cache: read cache-c9-web (this commit), cache-c8-go-5930b08fead0 (the live release v1.2.2, build b-0); written cache-c9-go-5930b08fead0; the registry holds cache-c9-web."},
+			wantBuilt:  true,
 		},
 		{
 			name:      "an application with a job process bakes its build's job into the image",
@@ -309,6 +377,11 @@ func TestBuildImage(t *testing.T) {
 				taken = append(taken, placeholders(line, migrate, hooks))
 			}
 			containsAll(t, placeholders(out.String(), migrate, hooks), tt.wantOut...)
+			for _, unwanted := range tt.wantNotOut {
+				if strings.Contains(out.String(), unwanted) {
+					t.Errorf("output carries %q:\n%s", unwanted, out.String())
+				}
+			}
 			if built != tt.wantBuilt || builder != tt.wantBuilt {
 				t.Fatalf("ran %v, want a build %t with a docker-container builder created before it", run.lines(), tt.wantBuilt)
 			}

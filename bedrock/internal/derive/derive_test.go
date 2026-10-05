@@ -17,7 +17,14 @@ import (
 func testPlacement(t *testing.T) *Placement {
 	t.Helper()
 
-	p, err := ReadPlacement(filepath.Join("testdata", "placement.json"))
+	return fixturePlacement(t, "placement.json")
+}
+
+// fixturePlacement reads a placement of the fixtures by its file name under testdata.
+func fixturePlacement(t *testing.T, name string) *Placement {
+	t.Helper()
+
+	p, err := ReadPlacement(filepath.Join("testdata", name))
 	if err != nil {
 		t.Fatalf("ReadPlacement() error = %v", err)
 	}
@@ -34,8 +41,10 @@ func TestDerive(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		fixture       string
+		name    string
+		fixture string
+		// placement is the fixture's placement under testdata, placement.json when empty.
+		placement     string
 		wantErr       string
 		wantApp       string
 		wantSecrets   []string
@@ -117,9 +126,10 @@ func TestDerive(t *testing.T) {
 			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files"},
 		},
 		{
-			name:    "beacon, a password auth: no registration, no callback",
-			fixture: "beacon",
-			wantApp: "beacon",
+			name:      "beacon, a password auth: no registration, no callback",
+			fixture:   "beacon",
+			placement: "placement-beacon.json",
+			wantApp:   "beacon",
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
 			},
@@ -166,7 +176,11 @@ func TestDerive(t *testing.T) {
 
 				return
 			}
-			m, err := Derive(a, testPlacement(t))
+			p := testPlacement(t)
+			if tt.placement != "" {
+				p = fixturePlacement(t, tt.placement)
+			}
+			m, err := Derive(a, p)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Derive() error = %v, wantErr %q", err, tt.wantErr)
@@ -471,6 +485,34 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "projects in an unknown environment", mutate: func(p *Placement) { p.Projects = map[string]Project{"qa": {ID: "p", Number: "1"}} }, wantErr: `projects names "qa", which is not one of the environments (tst, prd)`},
 		{name: "a project without an id", mutate: func(p *Placement) { p.Projects = map[string]Project{"tst": {Number: "1"}} }, wantErr: "projects.tst.id is empty"},
 		{name: "a project number that is not a number", mutate: func(p *Placement) { p.Projects = map[string]Project{"tst": {ID: "p", Number: "p-123"}} }, wantErr: `projects.tst.number "p-123" is not a project number (digits)`},
+		{name: "a build argument of each value of the catalog", mutate: func(p *Placement) {
+			p.BuildArguments = map[string]string{"FIREBASE_API_KEY": "firebaseApiKey", "FIRESTORE_DATABASE": "firestoreDatabase", "PROJECT_ID": "projectId", "ENV_NAME": "environment", "HOST2": "hostname"}
+		}},
+		{name: "no build argument", mutate: func(p *Placement) { p.BuildArguments = map[string]string{} }},
+		{
+			name:    "a build argument naming a value outside the catalog",
+			mutate:  func(p *Placement) { p.BuildArguments = map[string]string{"API_URL": "apiUrl"} },
+			wantErr: `buildArguments.API_URL is "apiUrl", which is not one of the values the stack makes: firebaseApiKey, firestoreDatabase, projectId, environment, hostname`,
+		},
+		{
+			name:    "a build argument naming a value in another case",
+			mutate:  func(p *Placement) { p.BuildArguments = map[string]string{"PROJECT_ID": "projectID"} },
+			wantErr: `buildArguments.PROJECT_ID is "projectID", which is not one of the values the stack makes`,
+		},
+		{
+			name:    "a build argument in lower case",
+			mutate:  func(p *Placement) { p.BuildArguments = map[string]string{"firebase_api_key": "firebaseApiKey"} },
+			wantErr: `buildArguments names "firebase_api_key": a build argument's name is an uppercase identifier (FIREBASE_API_KEY), the name the Dockerfile declares with ARG`,
+		},
+		{name: "a build argument starting with a digit", mutate: func(p *Placement) { p.BuildArguments = map[string]string{"1KEY": "projectId"} }, wantErr: `buildArguments names "1KEY"`},
+		{name: "a build argument starting with an underscore", mutate: func(p *Placement) { p.BuildArguments = map[string]string{"_PROJECT": "projectId"} }, wantErr: `buildArguments names "_PROJECT"`},
+		{name: "a build argument with a hyphen", mutate: func(p *Placement) { p.BuildArguments = map[string]string{"PROJECT-ID": "projectId"} }, wantErr: `buildArguments names "PROJECT-ID"`},
+		{
+			name:    "a build argument the pipeline passes itself",
+			mutate:  func(p *Placement) { p.BuildArguments = map[string]string{"VERSION": "environment"} },
+			wantErr: "buildArguments names VERSION, a build argument the pipeline passes itself (VERSION, COMMIT, JOBS_JOB): give the value another name",
+		},
+		{name: "the build's job as a build argument", mutate: func(p *Placement) { p.BuildArguments = map[string]string{"JOBS_JOB": "hostname"} }, wantErr: "buildArguments names JOBS_JOB, a build argument the pipeline passes itself"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1069,6 +1111,79 @@ func TestFirestore(t *testing.T) {
 			}
 			if !slices.Equal(fields, tt.wantFields) {
 				t.Errorf("Fields = %v, want %v", fields, tt.wantFields)
+			}
+		})
+	}
+}
+
+// TestBuildArguments proves the build arguments that name a value the stack makes only
+// for code declaring it: the Firebase web API key needs APP_FIREBASE_API_KEY and the
+// Firestore database APP_FIRESTORE_DATABASE, and the values every stack has need nothing.
+func TestBuildArguments(t *testing.T) {
+	t.Parallel()
+
+	database := Variable{Name: varFirestoreDatabase, Role: RoleFirestoreDatabase, Level: LevelData}
+	key := Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, Level: LevelData}
+	tests := []struct {
+		name      string
+		variables []Variable
+		args      map[string]string
+		wantErr   string
+	}{
+		{name: "none declared", variables: nil},
+		{name: "the key and the database where the code declares both", variables: []Variable{database, key}, args: map[string]string{"FIREBASE_API_KEY": BuildValueFirebaseAPIKey, "FIRESTORE_DB": BuildValueFirestoreDatabase}},
+		{name: "the project, the environment and the hostname in any stack", args: map[string]string{"PROJECT_ID": BuildValueProjectID, "ENVIRONMENT": BuildValueEnvironment, "HOSTNAME": BuildValueHostname}},
+		{
+			name:      "the key where the code declares none",
+			variables: []Variable{database},
+			args:      map[string]string{"FIREBASE_API_KEY": BuildValueFirebaseAPIKey},
+			wantErr:   "buildArguments.FIREBASE_API_KEY names firebaseApiKey, the Firebase web API key the stack makes only when the config package declares APP_FIREBASE_API_KEY, which it does not",
+		},
+		{
+			name:    "the database where the code declares none",
+			args:    map[string]string{"FIRESTORE_DB": BuildValueFirestoreDatabase},
+			wantErr: "buildArguments.FIRESTORE_DB names firestoreDatabase, the Firestore database the stack makes only when the config package declares APP_FIRESTORE_DATABASE, which it does not",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := &Model{Variables: tt.variables, Placement: &Placement{BuildArguments: tt.args}}
+			err := m.buildArguments()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("buildArguments() error = %v, want none", err)
+				}
+
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("buildArguments() error = %v, wantErr %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestBuildArgumentSubstitution pins the trigger substitution a build argument rides on,
+// which the stack renders and the image build reads by the prefix.
+func TestBuildArgumentSubstitution(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		arg  string
+		want string
+	}{
+		{name: "the Firebase key's argument", arg: "FIREBASE_API_KEY", want: "_BUILD_ARG_FIREBASE_API_KEY"},
+		{name: "a one-letter argument", arg: "X", want: "_BUILD_ARG_X"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := BuildArgumentSubstitution(tt.arg); got != tt.want || !strings.HasPrefix(got, BuildArgumentPrefix) {
+				t.Errorf("BuildArgumentSubstitution(%q) = %q, want %q", tt.arg, got, tt.want)
 			}
 		})
 	}

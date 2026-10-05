@@ -256,6 +256,8 @@ func TestApplyStack(t *testing.T) {
 		wantDeleted []string
 		wantComment string
 		wantOut     []string
+		// wantNotOut is what the log must not carry: a build argument's value among it.
+		wantNotOut  []string
 		wantApplied bool
 		wantErr     string
 	}{
@@ -264,6 +266,16 @@ func TestApplyStack(t *testing.T) {
 			output:      substitutions,
 			wantFacts:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: `{"APP_SERVICE_NAME":"quill-migrate"}`, jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev"},
 			wantOut:     []string{"The pull request's stack names SERVICES=us-central1=quill-pr7 JOBS_JOB=us-central1=quill-pr7-jobs PR_HOSTNAME=quill-pr7.example.dev, and the migrate command's settings (MIGRATE_ENV)."},
+			wantNotOut:  []string{"build arguments"},
+			wantApplied: true,
+		},
+		{
+			name:        "the pull request's own build arguments go to the environment file for the image build, named in the log without their values",
+			output:      `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{}", "_HOSTNAME": "quill-pr7.example.dev", "_BUILD_ARG_FIREBASE_API_KEY": "AIzaPr7Key", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"}`,
+			env:         "export _BUILD_ARG_FIREBASE_API_KEY=\"AIzaTstKey\"\n",
+			wantFacts:   map[string]string{services: "us-central1=quill-pr7", "_BUILD_ARG_FIREBASE_API_KEY": "AIzaPr7Key", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"},
+			wantOut:     []string{"The image build passes the pull request's own build arguments: FIREBASE_API_KEY, SITE_HOST."},
+			wantNotOut:  []string{"AIzaPr7Key"},
 			wantApplied: true,
 		},
 		{
@@ -364,6 +376,11 @@ func TestApplyStack(t *testing.T) {
 				t.Errorf("applied %t, want %t:\n%s", applied, tt.wantApplied, strings.Join(run.lines(), "\n"))
 			}
 			containsAll(t, out.String(), tt.wantOut...)
+			for _, unwanted := range tt.wantNotOut {
+				if strings.Contains(out.String(), unwanted) {
+					t.Errorf("output carries %q:\n%s", unwanted, out.String())
+				}
+			}
 			env, err := w.Environment()
 			if err != nil {
 				t.Fatal(err)

@@ -25,6 +25,18 @@
 #
 # A local build passes it the same way: podman build --secret id=NAME,src=<file> ...
 #
+# Values the stack makes: placement.json's buildArguments names a value the stack makes in
+# each environment (the Firebase web API key, the Firestore database's id, the environment
+# project's id, the environment's name, the canonical hostname) under a build argument's
+# name, and the pipeline passes it as --build-arg NAME=value. The stage that builds with it
+# declares it, and the build reads it as an environment variable:
+#
+#     ARG FIREBASE_API_KEY
+#     RUN bun run build
+#
+# bedrock check refuses a declared argument no stage declares. A local build passes it by
+# hand: podman build --build-arg FIREBASE_API_KEY=<key> ...
+#
 # The pipeline's build is cloudbuild.yaml's BuildImage step. It builds the two dependency
 # stages below first and exports their layers alone to the registry's cache, one tag per
 # commit, then builds the rest fresh in every environment, reading those caches and

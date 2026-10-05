@@ -647,6 +647,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.firestore(a); err != nil {
 		return nil, err
 	}
+	if err := m.buildArguments(); err != nil {
+		return nil, err
+	}
 	if err := m.hooks(a); err != nil {
 		return nil, err
 	}

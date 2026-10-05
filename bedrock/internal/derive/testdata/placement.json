@@ -27,6 +27,10 @@
   "labels": {
     "bedrock-lab": "true"
   },
+  "buildArguments": {
+    "FIREBASE_API_KEY": "firebaseApiKey",
+    "PROJECT_ID": "projectId"
+  },
   "maxInstances": {
     "tst": 2,
     "stg": 2,

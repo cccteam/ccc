@@ -130,6 +130,9 @@ type outcome struct {
 	Declared     []string
 	Values       map[string]string
 	BuildSecrets string
+	// BuildArguments are the build arguments the environment file exports from the
+	// trigger, by name.
+	BuildArguments []string
 }
 
 func summarize(f *Facts) outcome {
@@ -137,7 +140,7 @@ func summarize(f *Facts) outcome {
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Seed: f.Seed,
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
-		Values: f.declared, BuildSecrets: f.BuildSecrets,
+		Values: f.declared, BuildSecrets: f.BuildSecrets, BuildArguments: f.BuildArguments,
 	}
 	if f.Migration != nil {
 		o.Migration = f.Migration.String()
@@ -244,6 +247,10 @@ var (
 	seedingNone = placementSeeding(`[]`)
 )
 
+// declaringArguments is a placement declaring the build arguments harbor's does: the
+// Firebase web API key and the environment project.
+var declaringArguments = strings.TrimSuffix(testPlacement(""), "}\n") + `, "buildArguments": {"FIREBASE_API_KEY": "firebaseApiKey", "PROJECT_ID": "projectId"}}` + "\n"
+
 // liveSeeded is tst's live record of v1.2.2 with the seed applied.
 var liveSeeded = map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})}
 
@@ -282,6 +289,8 @@ func TestResolve(t *testing.T) {
 		mintErr     error
 		want        outcome
 		wantOut     []string
+		// wantNotOut is what the log must not carry: a build argument's value among it.
+		wantNotOut []string
 		// wantAsked is the repository the token was minted for; wantCalled the comment read.
 		wantAsked  string
 		wantCalled string
@@ -375,6 +384,41 @@ func TestResolve(t *testing.T) {
 			want: withComment(pr, "/gcbrun", func(o *outcome) {
 				o.Values, o.BuildSecrets = map[string]string{"_WIDGET_MODE": "the pull request's"}, "NPM_TOKEN="+npmContainer+"/versions/5"
 			}),
+		},
+		{
+			name:      "a tag build exports the build arguments the checkout declares as the trigger carries them; one not carried yet comes from the next release on, one no longer declared is left out, and no value is logged",
+			subs:      tagBuild(map[string]string{"_BUILD_ARG_FIREBASE_API_KEY": "AIzaTstKey", "_BUILD_ARG_OLD_ARG": "gone"}),
+			placement: declaringArguments,
+			want:      withComment(tag, "", func(o *outcome) { o.BuildArguments = []string{"FIREBASE_API_KEY"} }),
+			wantOut: []string{
+				"infrastructure/placement.json declares build argument PROJECT_ID (projectId), which the trigger does not carry yet: _BUILD_ARG_PROJECT_ID comes with this build's stack apply, after the image build, so the image build passes it from the next release on.",
+				"The trigger carries _BUILD_ARG_OLD_ARG, which infrastructure/placement.json no longer declares (buildArguments): the image build leaves it out.",
+				"Build arguments infrastructure/placement.json declares (buildArguments), as the trigger carries them: FIREBASE_API_KEY.",
+			},
+			wantNotOut: []string{"AIzaTstKey", "The trigger carries _BUILD_ARG_OLD_ARG, which infrastructure/terraform.tfvars"},
+		},
+		{
+			name:       "a tag build whose trigger carries every declared build argument exports them all",
+			subs:       tagBuild(map[string]string{"_BUILD_ARG_FIREBASE_API_KEY": "AIzaTstKey", "_BUILD_ARG_PROJECT_ID": "tst-project"}),
+			placement:  declaringArguments,
+			want:       withComment(tag, "", func(o *outcome) { o.BuildArguments = []string{"FIREBASE_API_KEY", "PROJECT_ID"} }),
+			wantOut:    []string{"Build arguments infrastructure/placement.json declares (buildArguments), as the trigger carries them: FIREBASE_API_KEY, PROJECT_ID."},
+			wantNotOut: []string{"does not carry yet", "no longer declares"},
+		},
+		{
+			name:       "a pull-request build exports none of the trigger's build arguments: its image passes the pull request's own stack's",
+			subs:       prBuild(map[string]string{"_BUILD_ARG_FIREBASE_API_KEY": "AIzaTstKey", "_BUILD_ARG_PROJECT_ID": "tst-project"}),
+			comments:   []string{"/gcbrun"},
+			placement:  declaringArguments,
+			want:       withComment(pr, "/gcbrun", func(*outcome) {}),
+			wantOut:    []string{"Build arguments infrastructure/placement.json declares (buildArguments): FIREBASE_API_KEY, PROJECT_ID; the image build passes the pull request's own, from its stack once applied (deploy pr-stack apply)."},
+			wantNotOut: []string{"AIzaTstKey", "does not carry yet"},
+		},
+		{
+			name:    "a declared substitution on the build arguments' prefix is refused before anything is built",
+			subs:    tagBuild(nil),
+			tfvars:  stackTfvarsWith(`{ _BUILD_ARG_FIREBASE_API_KEY = "AIzaByHand" }`, "{}"),
+			wantErr: "infrastructure/terraform.tfvars declares _BUILD_ARG_FIREBASE_API_KEY for tst: a substitution starting with _BUILD_ARG_ carries a build argument infrastructure/placement.json declares (buildArguments), from the stack's own values; rename it",
 		},
 		{
 			name:    "a restore run names what replaces the database and who asked",
@@ -871,6 +915,11 @@ func TestResolve(t *testing.T) {
 					t.Errorf("output lacks %q:\n%s", want, out.String())
 				}
 			}
+			for _, unwanted := range tt.wantNotOut {
+				if strings.Contains(out.String(), unwanted) {
+					t.Errorf("output carries %q:\n%s", unwanted, out.String())
+				}
+			}
 		})
 	}
 }
@@ -914,9 +963,11 @@ func TestFactsWrite(t *testing.T) {
 		name     string
 		subs     map[string]string
 		comments []string
-		// tfvars is the checkout's terraform.tfvars.
-		tfvars  string
-		wantEnv map[string]string
+		// tfvars is the checkout's terraform.tfvars, placement its placement (seedingTst
+		// when empty).
+		tfvars    string
+		placement string
+		wantEnv   map[string]string
 		// wantAbsent are substitutions the environment file leaves out.
 		wantAbsent []string
 		wantArgs   string
@@ -941,6 +992,27 @@ func TestFactsWrite(t *testing.T) {
 			wantShell:  "dawn\n",
 		},
 		{
+			name:       "a tag build exports the build arguments the checkout declares as the trigger carries them, and leaves out one it no longer declares",
+			subs:       tagBuild(map[string]string{"_BUILD_ARG_FIREBASE_API_KEY": "AIza'Tst", "_BUILD_ARG_PROJECT_ID": "tst-project", "_BUILD_ARG_OLD_ARG": "gone"}),
+			tfvars:     declaringWidgetMode,
+			placement:  declaringArguments,
+			wantEnv:    map[string]string{"_BUILD_ARG_FIREBASE_API_KEY": "AIza'Tst", "_BUILD_ARG_PROJECT_ID": "tst-project"},
+			wantAbsent: []string{"_BUILD_ARG_OLD_ARG"},
+			wantArgs:   "_WIDGET_MODE=" + trickyValue + "\n",
+			wantShell:  trickyValue + "\n",
+		},
+		{
+			name:       "a pull-request build exports none of the trigger's build arguments",
+			subs:       prBuild(map[string]string{"_WIDGET_MODE": "", "_BUILD_ARG_FIREBASE_API_KEY": "AIzaTst"}),
+			tfvars:     stackTfvarsWith("{}", "{}"),
+			placement:  declaringArguments,
+			comments:   []string{"/gcbrun"},
+			wantEnv:    map[string]string{prNumberSub: "7"},
+			wantAbsent: []string{"_BUILD_ARG_FIREBASE_API_KEY"},
+			wantArgs:   "",
+			wantShell:  "\n",
+		},
+		{
 			name:      "a pull request in shared mode",
 			subs:      prBuild(map[string]string{"_WIDGET_MODE": ""}),
 			tfvars:    stackTfvarsWith("{}", "{}"),
@@ -956,7 +1028,11 @@ func TestFactsWrite(t *testing.T) {
 
 			builds := &fakeBuilds{build: buildFor(t, tt.subs), token: "tok"}
 			comments := &fakeComments{bodies: tt.comments}
-			source := workspaceFiles(t, map[string]string{placementPath: seedingTst, tfvarsPath: tt.tfvars})
+			placement := tt.placement
+			if placement == "" {
+				placement = seedingTst
+			}
+			source := workspaceFiles(t, map[string]string{placementPath: placement, tfvarsPath: tt.tfvars})
 			facts, err := Resolve(t.Context(), &Clients{Builds: builds.open, Comments: comments.read}, &ResolveRequest{BuildID: "b-1", Project: "p", Location: "l", Known: known, Source: string(source)}, &strings.Builder{})
 			if err != nil {
 				t.Fatalf("Resolve() error = %v", err)

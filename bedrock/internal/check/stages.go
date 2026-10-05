@@ -14,7 +14,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -37,13 +39,16 @@ const (
 	keywordAdd     = "ADD"
 	keywordRun     = "RUN"
 	keywordWorkdir = "WORKDIR"
+	keywordArg     = "ARG"
 )
 
 // Stage is one build stage of a Dockerfile: its name (empty for a stage without AS), the
-// line of its FROM, and the instructions after it.
+// line of its FROM, the image or earlier stage its FROM names (Base), and the
+// instructions after it.
 type Stage struct {
 	Name         string
 	Line         int
+	Base         string
 	Instructions []Instruction
 }
 
@@ -82,7 +87,7 @@ func Stages(src []byte) []Stage {
 	var stages []Stage
 	for _, in := range instructions(src) {
 		if in.Keyword == keywordFrom {
-			stages = append(stages, Stage{Name: stageName(in.Args), Line: in.Line})
+			stages = append(stages, Stage{Name: stageName(in.Args), Line: in.Line, Base: stageBase(in.Args)})
 
 			continue
 		}
@@ -106,6 +111,89 @@ func Named(stages []Stage, name string) *Stage {
 	}
 
 	return nil
+}
+
+// Args are the build arguments the stage declares with ARG, in order: each name of an
+// ARG instruction, with or without a default (ARG NAME, ARG NAME=value, several on one
+// line). A build argument reaches a stage's instructions only once the stage declares it.
+func (s *Stage) Args() []string {
+	var names []string
+	for _, in := range s.Instructions {
+		if in.Keyword != keywordArg {
+			continue
+		}
+		for _, field := range fields(in.Args) {
+			name, _, _ := strings.Cut(field, "=")
+			if name != "" && !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
+
+	return names
+}
+
+// Sees lists the build arguments among args that the named stage can see, in the order
+// args gives them: those it declares with ARG, those its FROM line reads (an ARG before
+// the first FROM reaches the FROM lines alone), and those any stage it is built on can
+// see, the stage its FROM names and every stage it copies from (COPY --from), since what
+// such a stage holds depends on their values. None for a stage the Dockerfile lacks.
+func Sees(stages []Stage, name string, args []string) []string {
+	visited := map[int]bool{}
+	seen := map[string]bool{}
+	var walk func(at int)
+	walk = func(at int) {
+		if at < 0 || visited[at] {
+			return
+		}
+		visited[at] = true
+		stage := &stages[at]
+		declared := stage.Args()
+		for _, arg := range args {
+			if slices.Contains(declared, arg) || readsArg(stage.Base, arg) {
+				seen[arg] = true
+			}
+		}
+		walk(stageIndex(stages[:at], stage.Base))
+		for _, in := range stage.Instructions {
+			if from, _ := in.Copies(); from != "" {
+				walk(stageIndex(stages[:at], from))
+			}
+		}
+	}
+	walk(stageIndex(stages, name))
+	var names []string
+	for _, arg := range args {
+		if seen[arg] && !slices.Contains(names, arg) {
+			names = append(names, arg)
+		}
+	}
+
+	return names
+}
+
+// stageIndex is the index of the stage a FROM or a COPY --from names among stages: by its
+// AS name, or by its number; -1 for an image.
+func stageIndex(stages []Stage, ref string) int {
+	if ref == "" {
+		return -1
+	}
+	for i := range stages {
+		if stages[i].Name != "" && strings.EqualFold(stages[i].Name, ref) {
+			return i
+		}
+	}
+	if n, err := strconv.Atoi(ref); err == nil && n >= 0 && n < len(stages) {
+		return n
+	}
+
+	return -1
+}
+
+// readsArg reports whether the text reads the build argument: $NAME or ${NAME}, the
+// braces' form with a modifier (${NAME:-default}, ${NAME#prefix}) included.
+func readsArg(text, name string) bool {
+	return regexp.MustCompile(`\$(?:` + regexp.QuoteMeta(name) + `\b|\{` + regexp.QuoteMeta(name) + `[}:+#%-])`).MatchString(text)
 }
 
 // Copies reads a COPY or ADD instruction: the stage or image it copies from (--from, empty
@@ -145,6 +233,18 @@ func fields(args string) []string {
 	}
 
 	return strings.Fields(trimmed)
+}
+
+// stageBase is the image or earlier stage a FROM instruction's arguments name: the first
+// operand after its flags (--platform).
+func stageBase(args string) string {
+	for _, field := range strings.Fields(args) {
+		if !strings.HasPrefix(field, "--") {
+			return field
+		}
+	}
+
+	return ""
 }
 
 // stageName is the AS name of a FROM instruction's arguments, or empty.

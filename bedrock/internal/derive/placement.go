@@ -83,6 +83,15 @@ type Placement struct {
 	// divided by the machine's vCPUs (Machines), a quota Cloud Build sets per project and
 	// never raises, so nothing here reads it.
 	BuildMachine string `json:"buildMachine,omitempty"`
+	// BuildArguments are the values the stack makes that the image build takes as build
+	// arguments, by the argument's name as the application's Dockerfile declares it with
+	// ARG (FIREBASE_API_KEY), each naming one value of the catalog bedrock knows
+	// (BuildValues: the Firebase web API key, the Firestore database's id, the environment
+	// project's id, the environment's name, the canonical hostname). The stack carries
+	// each on its triggers as _BUILD_ARG_<NAME>, from its own resources, and the image
+	// build passes it as --build-arg NAME=value: a value that exists only once the stack
+	// is applied, which no person can write per environment. Absent, none.
+	BuildArguments map[string]string `json:"buildArguments,omitempty"`
 	// MaxInstances is the most Cloud Run instances the service may run per region, by
 	// environment name: a cap that bounds what the environment can cost when traffic
 	// rises. An environment it does not name has no cap of the placement's, and Cloud
@@ -219,6 +228,41 @@ func (p *Placement) Validate() error {
 			return errors.Newf("region %q with code %q: a region name and a code of two to four lowercase characters", r.Name, r.Code)
 		}
 	}
+	if err := p.validateEnvironmentNames(); err != nil {
+		return err
+	}
+	if err := p.validateMaintenance(); err != nil {
+		return err
+	}
+	if err := p.validateBuildMachine(); err != nil {
+		return err
+	}
+	if err := p.validateMaxInstances(); err != nil {
+		return err
+	}
+	if err := p.OutlierDetection.Validate(); err != nil {
+		return err
+	}
+	if err := p.validateBuildArguments(); err != nil {
+		return err
+	}
+	for name, value := range map[string]string{
+		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
+		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
+		"releaseApp": p.ReleaseApp,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return errors.Newf("%s is empty", name)
+		}
+	}
+
+	return p.validatePin()
+}
+
+// validateEnvironmentNames checks that approvals, seed and projects name the placement's
+// environments, that seed never names production, and that each project has an id and a
+// number.
+func (p *Placement) validateEnvironmentNames() error {
 	for _, env := range p.Approvals {
 		if !slices.Contains(p.Environments, env) {
 			return errors.Newf("approvals names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
@@ -243,29 +287,8 @@ func (p *Placement) Validate() error {
 			return errors.Newf("projects.%s.number %q is not a project number (digits)", env, project.Number)
 		}
 	}
-	if err := p.validateMaintenance(); err != nil {
-		return err
-	}
-	if err := p.validateBuildMachine(); err != nil {
-		return err
-	}
-	if err := p.validateMaxInstances(); err != nil {
-		return err
-	}
-	if err := p.OutlierDetection.Validate(); err != nil {
-		return err
-	}
-	for name, value := range map[string]string{
-		"appsDomain": p.AppsDomain, "hostedDomain": p.HostedDomain, "stateBucket": p.StateBucket,
-		"placeholderImage": p.PlaceholderImage, "defaultBranch": p.DefaultBranch, "repository": p.Repository,
-		"releaseApp": p.ReleaseApp,
-	} {
-		if strings.TrimSpace(value) == "" {
-			return errors.Newf("%s is empty", name)
-		}
-	}
 
-	return p.validatePin()
+	return nil
 }
 
 // validateBuildMachine checks that buildMachine, when written, is one of Cloud Build's

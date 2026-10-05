@@ -94,7 +94,9 @@ variable "substitutions" {
     application commits them) and passes the ones declared here to the image
     build as build arguments (ARG _NAME in the Dockerfile). A name starts with
     an underscore and is upper snake case, and may not be one the pipeline's
-    contract already carries (the triggers refuse that).
+    contract already carries (the triggers refuse that) nor start with
+    _BUILD_ARG_, the substitutions of the build arguments placement.json
+    declares (buildArguments), which this stack renders from its own values.
 
       substitutions = {
         tst = { _FIREBASE_PROJECT = "acme-tst" }
@@ -106,6 +108,11 @@ variable "substitutions" {
   validation {
     condition     = alltrue([for env, subs in var.substitutions : alltrue([for k in keys(subs) : can(regex("^_[A-Z][A-Z0-9_]*$", k))])])
     error_message = "Every substitution name starts with an underscore and is upper snake case: _NAME."
+  }
+
+  validation {
+    condition     = alltrue([for env, subs in var.substitutions : alltrue([for k in keys(subs) : !startswith(k, "_BUILD_ARG_")])])
+    error_message = "A substitution name may not start with _BUILD_ARG_: those carry the build arguments placement.json declares (buildArguments), from this stack's own values."
   }
 }
 

@@ -94,7 +94,12 @@ recreates nothing. The substitutions the application declares for its hooks and 
 and its build secrets' pins are read from the checkout the same way (substitutions and
 build_secrets in infrastructure/terraform.tfvars; the build secrets' containers alone from the
 trigger), so a release that changes them builds with its own; a declared name the contract
-carries is refused. It writes environment.sh (the facts, BUILD_SECRETS among them, then the
+carries, or one starting with _BUILD_ARG_, is refused. The build arguments the placement in the
+checkout declares (buildArguments) are values of the stack's, so a tag build exports the trigger's
+_BUILD_ARG_<NAME> for each name the checkout declares, saying when the trigger does not carry one
+yet (it comes with this build's stack apply, and reaches the image from the next release on), and
+a pull-request build exports none, its image taking the pull request's own stack's values (deploy
+pr-stack apply). It writes environment.sh (the facts, BUILD_SECRETS among them, then the
 contract's substitutions as the trigger passed them and the declared ones as the checkout declares
 them), build-args.txt (the declared substitutions as the image build's arguments, NAME=value lines)
 and build.json (the build as Cloud Build describes it) to the workspace.`,
@@ -445,8 +450,9 @@ func newDeployStackApply(d deps) *cobra.Command {
 		Short: "Apply the saved plan of the pull request's stack",
 		Long: `apply applies exactly the plan the guard passed. After a destroy nothing deploys (SKIP_DEPLOY is
 appended to environment.sh); else the stack's substitutions output names the pull request's
-services, job process's job, hostname and the migrate command's variables, which are appended
-for the steps after. A database recreated without being asked (resolve found the migrations the
+services, job process's job, hostname, the migrate command's variables and the build arguments
+the placement declares (_BUILD_ARG_<NAME>, the pull request's own values, which the image build
+passes), which are appended for the steps after. A database recreated without being asked (resolve found the migrations the
 last build applied no longer in the tree) is said on the pull request. It runs in the OpenTofu
 image.`,
 		Args: cobra.NoArgs,
@@ -598,8 +604,10 @@ func newDeployBuildImage(d deps) *cobra.Command {
 		Short: "Build the image from the checkout's Dockerfile and push it",
 		Long: `build-image runs docker buildx build over the checkout's Dockerfile and pushes the image under its
 two tags (<release>-<env> and <commit>-<env>), unless check-release found this commit's build to
-reuse. The build arguments are VERSION and COMMIT, the declared substitutions and what a hook
-before the build added (build-args.txt, NAME=value lines). Each declared build secret
+reuse. The build arguments are VERSION and COMMIT, the build arguments the placement declares
+(every _BUILD_ARG_<NAME> environment.sh carries, passed as NAME=value and named in the log
+without their values), the declared substitutions and what a hook before the build added
+(build-args.txt, NAME=value lines). Each declared build secret
 (BUILD_SECRETS, which resolve read from the checkout's pins) is read as the deploy identity by its
 pinned version into --secret-dir (memory
 backed, gone with the step) and passed as a BuildKit secret the Dockerfile mounts; it is never a
@@ -607,7 +615,10 @@ build argument, which the image would keep. The build runs in a BuildKit contain
 docker-container driver, created for the build: the one driver that exports a cache) and pushes a
 plain image. It reads a layer cache from the registry and writes its own there (cache-<commit>): this commit's, the commit the environment runs live, and in a
 pull-request build the pull request's last build; layers are content-addressed, so the cache changes
-nothing in what the build produces. The digest the push answered is appended to
+nothing in what the build produces. A build argument is part of a layer's key, and a dependency
+stage that sees one of the placement's (through the stage its FROM names or one it copies from) is
+built with it and caches under a digest of its values (cache-<commit>-go-<digest>), so each
+environment reads and writes its own. The digest the push answered is appended to
 environment.sh (IMAGE_DIGEST). The migrate command (/migrate in the image) is copied out of the
 image, built or reused, into the home directory the steps share, for the migration steps after it,
 which run it on the worker; with --hooks, the application's hooks program (/hooks) is copied out the

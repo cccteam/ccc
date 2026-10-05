@@ -228,14 +228,31 @@ func TestRun(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantOutput: []string{"22 owned file(s) match the code", "refused  Dockerfile:56 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
+			wantOutput: []string{"22 owned file(s) match the code", "refused  Dockerfile:68 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
+		},
+		{
+			name: "a build argument the placement declares that the Dockerfile does not is refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				path := filepath.Join(dir, "root", "Dockerfile")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = bytes.ReplaceAll(data, []byte("ARG PROJECT_ID\n"), nil)
+				if err := os.WriteFile(path, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantOutput: []string{"refused  placement.json declares build argument PROJECT_ID (projectId), which the Dockerfile does not declare: add the line \"ARG PROJECT_ID\" to the stage that builds with it"},
 		},
 		{
 			name: "a Dockerfile without the reserved stages is warned about, not refused",
 			mutate: func(t *testing.T, dir string) {
 				t.Helper()
 
-				if err := os.WriteFile(filepath.Join(dir, "root", "Dockerfile"), []byte("FROM golang AS build-env\nRUN go build -o /build/app . && go build -o /build/migrate ./cmd/deployment/migrate && go build -o /build/jobs ./cmd/jobs\nFROM scratch\nARG JOBS_JOB\nENV APP_VERSION=1 APP_CONSOLE_DIST=/c APP_PORTAL_DIST=/p APP_JOBS_JOB=\"${JOBS_JOB}\"\n"), 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, "root", "Dockerfile"), []byte("FROM golang AS build-env\nARG FIREBASE_API_KEY PROJECT_ID\nRUN go build -o /build/app . && go build -o /build/migrate ./cmd/deployment/migrate && go build -o /build/jobs ./cmd/jobs\nFROM scratch\nARG JOBS_JOB\nENV APP_VERSION=1 APP_CONSOLE_DIST=/c APP_PORTAL_DIST=/p APP_JOBS_JOB=\"${JOBS_JOB}\"\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			},

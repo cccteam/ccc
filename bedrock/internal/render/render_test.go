@@ -997,6 +997,122 @@ func TestOutlierThresholds(t *testing.T) {
 	}
 }
 
+// TestBuildArguments pins what a placement's build arguments render: each as a trigger
+// substitution _BUILD_ARG_<NAME> in cloud-build.tf's substitutions map, from the stack's
+// own resource or local, which both triggers and the substitutions output carry; the
+// pipeline's image build waiting for a pull request's stack; the seeded Dockerfile
+// declaring each in the browser stages; and the README naming them. A placement with none
+// (beacon's) renders none of it.
+func TestBuildArguments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fixture   string
+		placement string
+		// args replaces the placement's build arguments when set.
+		args         map[string]string
+		wantStack    []string
+		wantPipeline []string
+		wantDocker   []string
+		wantReadme   []string
+		absent       []string
+	}{
+		{
+			name:      "harbor's two: the Firebase web API key and the project",
+			fixture:   "harbor",
+			placement: "placement.json",
+			wantStack: []string{
+				"    _BUILD_ARG_FIREBASE_API_KEY = nonsensitive(google_apikeys_key.firebase.key_string) # firebaseApiKey\n",
+				"    _BUILD_ARG_PROJECT_ID       = local.project_id                                     # projectId\n  }\n",
+				"substitutions = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = \"\" })",
+				"substitutions      = merge(local.substitutions, local.custom_substitutions, { _SEED = \"true\" })",
+			},
+			wantPipeline: []string{"    waitFor: [CheckRelease, ApplyPullRequestStack]\n", "carries its values (FIREBASE_API_KEY and PROJECT_ID)."},
+			wantDocker:   []string{"ARG VERSION\n# The values the stack makes that placement.json's buildArguments declares, which the\n# build script reads the same way: FIREBASE_API_KEY and PROJECT_ID.\nARG FIREBASE_API_KEY\nARG PROJECT_ID\nENV CI=true\n"},
+			wantReadme:   []string{"(`_BUILD_ARG_FIREBASE_API_KEY` and `_BUILD_ARG_PROJECT_ID`)", "This application declares\n  `FIREBASE_API_KEY` (`firebaseApiKey`) and `PROJECT_ID` (`projectId`).", "  - `hostname`: the service's canonical hostname in the environment.\n"},
+		},
+		{
+			name:      "the database, the environment and the hostname, from the stack's own",
+			fixture:   "harbor",
+			placement: "placement.json",
+			args:      map[string]string{"FIRESTORE_DB": "firestoreDatabase", "APP_ENV": "environment", "SITE_HOST": "hostname"},
+			wantStack: []string{
+				"    _BUILD_ARG_APP_ENV      = var.environment                          # environment\n",
+				"    _BUILD_ARG_FIRESTORE_DB = google_firestore_database.firestore.name # firestoreDatabase\n",
+				"    _BUILD_ARG_SITE_HOST    = local.hostnames[0]                       # hostname\n",
+			},
+			wantPipeline: []string{"    waitFor: [CheckRelease, ApplyPullRequestStack]\n"},
+			wantDocker:   []string{"ARG APP_ENV\nARG FIRESTORE_DB\nARG SITE_HOST\nENV CI=true\n"},
+			absent:       []string{"_BUILD_ARG_FIREBASE_API_KEY", "_BUILD_ARG_PROJECT_ID"},
+		},
+		{
+			name:         "beacon's none: no substitution, no wait, no ARG",
+			fixture:      "beacon",
+			placement:    "placement-beacon.json",
+			wantPipeline: []string{"    waitFor: [CheckRelease]\n"},
+			wantReadme:   []string{"(none: the placement declares no build argument)", "This application declares none."},
+			absent:       []string{"_BUILD_ARG_FIREBASE", "\nARG FIREBASE_API_KEY\n", "CheckRelease, ApplyPullRequestStack"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, tt.fixture, tt.placement)
+			if tt.args != nil {
+				m.Placement.BuildArguments = tt.args
+			}
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			text := map[string]string{}
+			for _, f := range files {
+				key := f.Path
+				if f.Root {
+					key = "root/" + f.Path
+				}
+				text[key] = string(f.Content)
+			}
+			for file, wants := range map[string][]string{"cloud-build.tf": tt.wantStack, "root/cloudbuild.yaml": tt.wantPipeline, "root/Dockerfile": tt.wantDocker, "README.md": tt.wantReadme} {
+				for _, w := range wants {
+					if !strings.Contains(text[file], w) {
+						t.Errorf("%s lacks:\n%s", file, w)
+					}
+				}
+			}
+			for _, a := range tt.absent {
+				for _, file := range []string{"cloud-build.tf", "root/cloudbuild.yaml", "root/Dockerfile"} {
+					if strings.Contains(text[file], a) {
+						t.Errorf("%s carries %q", file, a)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestBuildValueExprs holds the stack's expressions to the catalog: every value a
+// placement may name has the expression the stack reads it from, and nothing else does.
+func TestBuildValueExprs(t *testing.T) {
+	t.Parallel()
+
+	tests := derive.BuildValues()
+	if len(tests) != len(buildValueExprs) {
+		t.Errorf("the catalog has %d values and the stack %d expressions", len(tests), len(buildValueExprs))
+	}
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			t.Parallel()
+
+			if buildValueExprs[tt.Name] == "" {
+				t.Errorf("no expression for %s", tt.Name)
+			}
+		})
+	}
+}
+
 func TestAligned(t *testing.T) {
 	t.Parallel()
 

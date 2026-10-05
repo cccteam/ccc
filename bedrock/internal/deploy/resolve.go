@@ -20,6 +20,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/oauth2/google"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
@@ -351,6 +352,12 @@ type Facts struct {
 	// BuildSecrets are the build secrets the image build reads, NAME=<secret version
 	// resource name>, comma-separated (buildSecrets).
 	BuildSecrets string
+	// BuildArguments are the build arguments the placement in the checkout declares
+	// (buildArguments) whose values a release build's trigger carries (_BUILD_ARG_<NAME>):
+	// the environment file exports those substitutions for the image build, sorted. A
+	// pull-request build exports none, its values coming from the pull request's own
+	// stack (stackFacts).
+	BuildArguments []string
 	// build is the build as the API described it, kept for the build file.
 	build []byte
 }
@@ -394,6 +401,9 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 		return nil, err
 	}
 	if err := f.buildSecrets(req.Source, out); err != nil {
+		return nil, err
+	}
+	if err := f.stackArguments(req.Source, out); err != nil {
 		return nil, err
 	}
 	if err := f.seedChanged(ctx, clients.Storage, req.Source, out); err != nil {
@@ -841,6 +851,9 @@ func (f *Facts) declare(known []string, source string, out io.Writer) error {
 		if slices.Contains(f.contract, name) {
 			return errors.Newf("%s declares %s for %s, a substitution the pipeline's contract carries; rename it", stackTfvars, name, f.Environment)
 		}
+		if strings.HasPrefix(name, derive.BuildArgumentPrefix) {
+			return errors.Newf("%s declares %s for %s: a substitution starting with %s carries a build argument %s declares (buildArguments), from the stack's own values; rename it", stackTfvars, name, f.Environment, derive.BuildArgumentPrefix, checkoutPlacementPath)
+		}
 		if said, ok := f.Substitutions[name]; !ok {
 			fmt.Fprintf(out, "%s declares %s, which the trigger does not carry yet (its stack's last apply): this build passes it.\n", stackTfvars, name)
 		} else if said != values[name] {
@@ -848,9 +861,60 @@ func (f *Facts) declare(known []string, source string, out io.Writer) error {
 		}
 	}
 	for _, name := range f.substitutionNames() {
-		if _, ok := values[name]; !ok && !slices.Contains(f.contract, name) {
+		if _, ok := values[name]; !ok && !slices.Contains(f.contract, name) && !strings.HasPrefix(name, derive.BuildArgumentPrefix) {
 			fmt.Fprintf(out, "The trigger carries %s, which %s no longer declares for %s: this build leaves it out.\n", name, stackTfvars, f.Environment)
 		}
+	}
+
+	return nil
+}
+
+// checkoutPlacementPath is the placement in the checkout, for messages.
+var checkoutPlacementPath = path.Join(stackDir, placementFile)
+
+// stackArguments reads the build arguments the placement in the checkout declares
+// (buildArguments: a build argument's name and the value of the stack's it takes). Their
+// values are the stack's own (the Firebase web API key, the Firestore database's id), which
+// exist only once it is applied, so they come from the stack and never from the checkout:
+// a release build passes what its trigger carries (_BUILD_ARG_<NAME>, as its stack's last
+// apply set it), for the names the checkout declares, and the environment file exports
+// them for the image build; a pull-request build passes the pull request's own stack's,
+// which deploy pr-stack apply reads from that stack's substitutions output before the
+// image build. A name the checkout declares that a release build's trigger does not carry
+// yet comes with this build's stack apply, after the image build, so the image build
+// passes it from the next release on; one the trigger carries that the checkout no longer
+// declares is left out. The log names the arguments and never their values.
+func (f *Facts) stackArguments(source string, out io.Writer) error {
+	placement, err := checkoutPlacement(Workspace(source), "the build arguments are declared")
+	if err != nil {
+		return err
+	}
+	declared := placement.BuildArgumentNames()
+	for _, sub := range f.substitutionNames() {
+		name, ok := strings.CutPrefix(sub, derive.BuildArgumentPrefix)
+		if ok && !slices.Contains(declared, name) {
+			fmt.Fprintf(out, "The trigger carries %s, which %s no longer declares (buildArguments): the image build leaves it out.\n", sub, checkoutPlacementPath)
+		}
+	}
+	if len(declared) == 0 {
+		return nil
+	}
+	if f.Tag == "" {
+		fmt.Fprintf(out, "Build arguments %s declares (buildArguments): %s; the image build passes the pull request's own, from its stack once applied (deploy pr-stack apply).\n", checkoutPlacementPath, strings.Join(declared, ", "))
+
+		return nil
+	}
+	for _, name := range declared {
+		sub := derive.BuildArgumentSubstitution(name)
+		if _, ok := f.Substitutions[sub]; !ok {
+			fmt.Fprintf(out, "%s declares build argument %s (%s), which the trigger does not carry yet: %s comes with this build's stack apply, after the image build, so the image build passes it from the next release on.\n", checkoutPlacementPath, name, placement.BuildArguments[name], sub)
+
+			continue
+		}
+		f.BuildArguments = append(f.BuildArguments, name)
+	}
+	if len(f.BuildArguments) > 0 {
+		fmt.Fprintf(out, "Build arguments %s declares (buildArguments), as the trigger carries them: %s.\n", checkoutPlacementPath, strings.Join(f.BuildArguments, ", "))
 	}
 
 	return nil
@@ -992,15 +1056,20 @@ func (f *Facts) environment() string {
 }
 
 // exported are the substitutions the environment file exports for the hooks: the
-// contract's and the trigger's own as the trigger passed them, and the declared ones as
-// the checkout declares them; what the trigger carries beyond those is a declaration the
-// checkout no longer makes, and is left out.
+// contract's and the trigger's own as the trigger passed them, the build arguments the
+// checkout declares as the trigger carries them (a release build's; stackArguments), and
+// the declared ones as the checkout declares them; what the trigger carries beyond those
+// is a declaration the checkout no longer makes, and is left out.
 func (f *Facts) exported() map[string]string {
 	subs := map[string]string{}
 	for _, name := range f.substitutionNames() {
 		if slices.Contains(f.contract, name) {
 			subs[name] = f.Substitutions[name]
 		}
+	}
+	for _, name := range f.BuildArguments {
+		sub := derive.BuildArgumentSubstitution(name)
+		subs[sub] = f.Substitutions[sub]
 	}
 	maps.Copy(subs, f.declared)
 

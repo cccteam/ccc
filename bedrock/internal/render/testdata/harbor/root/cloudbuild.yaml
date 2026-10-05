@@ -158,12 +158,15 @@ steps:
   # builds after: this commit's and the live release's); the compile and the bundles are
   # built fresh in every environment and never exported. The migrate command (/migrate) is
   # taken out of the image for the migration steps after it.
+  # The build arguments placement.json declares are values the stack makes, and a pull
+  # request's own stack makes its own: in a pull-request build the image waits for that
+  # stack's apply and carries its values (FIREBASE_API_KEY and PROJECT_ID).
   - id: BuildImage
     name: gcr.io/cloud-builders/docker
     entrypoint: /builder/home/bedrock
     args: [deploy, build-image]
     timeout: 1800s
-    waitFor: [CheckRelease]
+    waitFor: [CheckRelease, ApplyPullRequestStack]
 
   # A run that replaces the database (a restore run) puts the application into maintenance
   # first: the release's image starts as a revision with the maintenance variable set, in

@@ -5,9 +5,12 @@ package deploy
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +20,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/check"
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
@@ -40,10 +44,22 @@ const (
 // built fresh in every environment, and no per-build file of the pipeline leaves the
 // worker. A tag is written once, by the first build of the commit that finds it absent,
 // and never updated: the registry's tags are immutable.
+//
+// A build argument is part of BuildKit's key for every layer after the ARG that declares
+// it, so a layer that sees a per-environment value (a build argument the placement
+// declares, from the stack) is never served to another environment. A reserved stage
+// declares no ARG (bedrock check refuses one), but it can see an argument through the
+// stage its FROM names or a stage it copies from; such a stage's tags carry a digest of
+// the values it sees (cache-<commit>-go-<digest>), so each environment's values read and
+// write a cache of their own, and its build is passed those arguments, so the full build
+// finds the stage as it was built.
 const (
 	cacheTagPrefix = "cache-"
 	goCacheSuffix  = "-go"
 	webCacheSuffix = "-web"
+	// argsDigestLength is how many hex digits of the SHA-256 of the seen arguments a
+	// stage's tags carry.
+	argsDigestLength = 12
 	// cacheOnlyOutput keeps a dependency stage's result in the builder alone: its layers
 	// reach the registry through --cache-to, never as an image.
 	cacheOnlyOutput = "type=cacheonly"
@@ -69,8 +85,12 @@ var cacheStages = []cacheStage{
 // found this commit's build to reuse. The build arguments are VERSION and COMMIT, for an
 // application with a job process JOBS_JOB (the resource name of the job this build makes
 // for its revision, which the Dockerfile sets as the site's APP_JOBS_JOB, so the image
-// names the job of its own build), the declared substitutions and what a hook before the
-// build added (the build arguments file, NAME=value lines). Each build secret resolve
+// names the job of its own build), the build arguments the placement declares, values of
+// the stack's (every _BUILD_ARG_<NAME> the environment file carries, as NAME=value: a
+// release build's trigger's, which resolve exported, or a pull request's own stack's, which
+// deploy pr-stack apply appended; the log names them and never their values), the declared
+// substitutions and what a hook before the build added (the build arguments file,
+// NAME=value lines). Each build secret resolve
 // found declared (BUILD_SECRETS: the checkout's pins in the stack's containers) is read as
 // the deploy identity by its pinned version into secretDir (memory-backed in Cloud Build,
 // gone with the step, never in the workspace) and passed to docker as a BuildKit secret
@@ -112,6 +132,13 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, m
 		}
 		args = append(args, "--build-arg", "JOBS_JOB="+job)
 	}
+	stackArgs := stackBuildArguments(env)
+	if len(stackArgs) > 0 {
+		fmt.Fprintf(out, "Build arguments from the stack (placement.json, buildArguments): %s.\n", strings.Join(slices.Sorted(maps.Keys(stackArgs)), ", "))
+	}
+	for _, name := range slices.Sorted(maps.Keys(stackArgs)) {
+		args = append(args, "--build-arg", name+"="+stackArgs[name])
+	}
 	for _, arg := range buildArgs {
 		args = append(args, "--build-arg", arg)
 	}
@@ -122,7 +149,7 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, m
 	}
 	metadata := filepath.Join(string(w), MetadataFile)
 	args = append(args, secretArgs...)
-	plan, err := planCache(ctx, clients, w, build, env[imageFact], out)
+	plan, err := planCache(ctx, clients, w, build, env[imageFact], stackArgs, out)
 	if err != nil {
 		return err
 	}
@@ -187,6 +214,19 @@ func (s cacheSource) String() string {
 	return s.Commit + " (" + strings.Join(s.Why, ", ") + ")"
 }
 
+// stackBuildArguments are the build arguments of the stack the environment file carries:
+// every _BUILD_ARG_<NAME> substitution, by the argument's name.
+func stackBuildArguments(env map[string]string) map[string]string {
+	args := map[string]string{}
+	for key, value := range env {
+		if name, ok := strings.CutPrefix(key, derive.BuildArgumentPrefix); ok && name != "" {
+			args[name] = value
+		}
+	}
+
+	return args
+}
+
 // cachePlan is the build's layer cache: the reserved stages the Dockerfile has, the
 // commits whose caches may be read, which of their tags the registry holds, and the
 // stage built with no cache at all.
@@ -196,6 +236,11 @@ type cachePlan struct {
 	sources []cacheSource
 	// stages are the reserved stages the Dockerfile has, in build order.
 	stages []cacheStage
+	// seen are the stack's build arguments each reserved stage sees, by stage, as
+	// NAME=value; keys the digest of those values its tags carry ("-<digest>", empty for a
+	// stage that sees none).
+	seen map[string][]string
+	keys map[string]string
 	// held says, by tag, whether the registry holds it.
 	held map[string]bool
 	// uncached is the package.json listing trustedDependencies, when one does, which
@@ -212,13 +257,14 @@ type cachePlan struct {
 // exist and writes only tags that are absent: docker prints an ERROR line for an import
 // it cannot find and for an export the registry's immutable tags refuse, and neither
 // belongs in a build log.
-func planCache(ctx context.Context, clients *Clients, w Workspace, build *Build, image string, out io.Writer) (*cachePlan, error) {
+func planCache(ctx context.Context, clients *Clients, w Workspace, build *Build, image string, stackArgs map[string]string, out io.Writer) (*cachePlan, error) {
 	src, err := os.ReadFile(filepath.Join(string(w), dockerfileName))
 	if err != nil {
 		return nil, errors.Wrap(err, "os.ReadFile(): Dockerfile")
 	}
 	stages := check.Stages(src)
-	plan := &cachePlan{image: image, commit: build.Substitutions[commitSub], held: map[string]bool{}}
+	plan := &cachePlan{image: image, commit: build.Substitutions[commitSub], held: map[string]bool{}, seen: map[string][]string{}, keys: map[string]string{}}
+	names := slices.Sorted(maps.Keys(stackArgs))
 	for _, s := range cacheStages {
 		stage := check.Named(stages, s.name)
 		if stage == nil {
@@ -227,6 +273,10 @@ func planCache(ctx context.Context, clients *Clients, w Workspace, build *Build,
 			continue
 		}
 		plan.stages = append(plan.stages, s)
+		if seen := check.Sees(stages, s.name, names); len(seen) > 0 {
+			plan.see(s, seen, stackArgs)
+			fmt.Fprintf(out, "%s sees the build arguments %s (its FROM line, or a stage it is built on, reads them): its build is passed them, and its cache tags carry a digest of their values (%s), so each environment's values read and write a cache of their own.\n", s.name, strings.Join(seen, ", "), strings.TrimPrefix(plan.keys[s.name], "-"))
+		}
 		if s.name != check.WebPackagesStage {
 			continue
 		}
@@ -311,9 +361,22 @@ func trustedScripts(root string, stage *check.Stage) (string, error) {
 	return "", nil
 }
 
-// tag is the cache tag of a commit's stage.
+// see records the stack's build arguments the stage sees: their NAME=value pairs, which
+// its build is passed, and the digest of them its tags carry.
+func (p *cachePlan) see(s cacheStage, names []string, values map[string]string) {
+	sum := sha256.New()
+	for _, name := range names {
+		pair := name + "=" + values[name]
+		p.seen[s.name] = append(p.seen[s.name], pair)
+		sum.Write([]byte(pair + "\n"))
+	}
+	p.keys[s.name] = "-" + hex.EncodeToString(sum.Sum(nil))[:argsDigestLength]
+}
+
+// tag is the cache tag of a commit's stage: cache-<commit>-<suffix>, then the digest of the
+// build arguments the stage sees, when it sees any.
 func (p *cachePlan) tag(commit string, s cacheStage) string {
-	return cacheTagPrefix + commit + s.suffix
+	return cacheTagPrefix + commit + s.suffix + p.keys[s.name]
 }
 
 // cacheable reports whether the stage reads and writes a cache at all.
@@ -340,10 +403,13 @@ func (p *cachePlan) writes(s cacheStage) bool {
 }
 
 // stageArgs are the docker arguments of one reserved stage's build: the stage as the
-// target, the caches it reads, its own cache exported when absent, every layer of the
-// stage (mode=max), and no image.
+// target, the stack's build arguments it sees, the caches it reads, its own cache exported
+// when absent, every layer of the stage (mode=max), and no image.
 func (p *cachePlan) stageArgs(s cacheStage) []string {
 	args := []string{dockerBuildx, dockerBuild, "--target", s.name}
+	for _, pair := range p.seen[s.name] {
+		args = append(args, "--build-arg", pair)
+	}
 	if !p.cacheable(s) {
 		args = append(args, "--no-cache")
 	}

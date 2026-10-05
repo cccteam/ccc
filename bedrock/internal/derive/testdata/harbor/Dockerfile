@@ -61,8 +61,12 @@ COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
 
 # VERSION reaches this stage as an environment variable of the build, so the workspace's
 # build script can stamp the release into each bundle and the browser can send it with
-# its requests; a local build without the argument stamps dev.
+# its requests; a local build without the argument stamps dev. The Firebase web API key
+# and the environment project, values the stack makes that placement.json's
+# buildArguments declares, reach it the same way.
 ARG VERSION
+ARG FIREBASE_API_KEY
+ARG PROJECT_ID
 ENV CI=true
 
 WORKDIR /src/web
