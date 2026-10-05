@@ -261,6 +261,7 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     # The load balancer's backend services and serverless network endpoint groups.
     "compute.backendServices.get",
     "compute.regionNetworkEndpointGroups.get",
+    "compute.securityPolicies.get",
     # Firestore: the database's metadata (what its read checks; databases.get is not),
     # and its composite indexes and field settings (the time-to-live policies).
     "datastore.databases.getMetadata",

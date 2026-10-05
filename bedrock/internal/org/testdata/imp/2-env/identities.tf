@@ -133,13 +133,15 @@ resource "google_spanner_instance_iam_member" "apply_restore_admin" {
 }
 
 # Cloud Storage: the application's own buckets. Its stack names its file
-# stores "<prefix>-<env>-gbl-<app>-files-<project number>" (files-<name> for
-# a named store) and a pull-request stack's
-# "<prefix>-<env>-gbl-<app>-pr<N>-files-<project number>" (the stack's
-# locals.tf), so storage admin is held under a condition admitting every
-# bucket whose name starts with the application's segment, with the objects
-# in it: nothing of another application's buckets, and nothing of the
-# records bucket, whose policy (records.tf) names no apply identity.
+# stores "<prefix>-<env>-<where the database is>-<app>-files-<project number>"
+# (files-<name> for a named store; the location's code is locals.tf's
+# files_location_code, and gbl where an older bedrock rendered the stack) and
+# a pull-request stack's "<prefix>-<env>-<location>-<app>-pr<N>-files-<project
+# number>" (the stack's locals.tf), so storage admin is held under a condition
+# admitting every bucket whose name starts with the application's segment
+# under either location name, with the objects in it: nothing of another
+# application's buckets, and nothing of the records bucket, whose policy
+# (records.tf) names no apply identity.
 # Creating a bucket is checked on the project (storage.buckets.create: the
 # bucket does not exist yet), as is listing the project's buckets, so no
 # bucket's name can admit them: the organization's storageBucketCreator role
@@ -162,7 +164,28 @@ resource "google_project_iam_member" "apply_storage_admin" {
   condition {
     title       = "${each.key} ${var.environment} buckets"
     description = "The application's own buckets in this environment: its file stores and its pull-request stacks' file stores, with their objects."
-    expression  = "resource.name.startsWith(\"projects/_/buckets/${local.name}-gbl-${each.key}-\")"
+    expression  = join(" || ", [for code in local.files_bucket_codes : "resource.name.startsWith(\"projects/_/buckets/${local.name}-${code}-${each.key}-\")"])
+  }
+}
+
+# Cloud Armor: the application's own security policy, which its stack makes
+# when the placement turns Cloud Armor on (its cloud-armor.tf,
+# "<prefix>-<env>-gbl-<app>-armor") and attaches to its backend services.
+# Compute checks a policy's create on the policy's own name, so security admin
+# is held under a condition admitting the application's segment: nothing of
+# another application's policies, and nothing else the role reaches (the
+# project's firewall rules, SSL policies).
+resource "google_project_iam_member" "apply_security_policy_admin" {
+  for_each = local.apps
+
+  project = local.project_id
+  role    = "roles/compute.securityAdmin"
+  member  = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} security policies"
+    description = "The application's own Cloud Armor security policies in this environment."
+    expression  = "resource.name.startsWith(\"projects/${local.project_id}/global/securityPolicies/${local.name}-gbl-${each.key}-\")"
   }
 }
 

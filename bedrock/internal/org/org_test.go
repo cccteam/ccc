@@ -546,7 +546,17 @@ func TestStorageAdminBounds(t *testing.T) {
 			want: []string{
 				"resource \"google_project_iam_member\" \"apply_bucket_creator\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = local.org.storage_bucket_creator_role\n  member  = google_service_account.apply[each.key].member\n}\n",
 				"resource \"google_project_iam_member\" \"apply_storage_admin\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = \"roles/storage.admin\"\n  member  = google_service_account.apply[each.key].member\n\n  condition {\n    title       = \"${each.key} ${var.environment} buckets\"\n",
-				`expression  = "resource.name.startsWith(\"projects/_/buckets/${local.name}-gbl-${each.key}-\")"`,
+				`expression  = join(" || ", [for code in local.files_bucket_codes : "resource.name.startsWith(\"projects/_/buckets/${local.name}-${code}-${each.key}-\")"])`,
+				"resource \"google_project_iam_member\" \"apply_security_policy_admin\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = \"roles/compute.securityAdmin\"\n  member  = google_service_account.apply[each.key].member\n\n  condition {\n    title       = \"${each.key} ${var.environment} security policies\"\n",
+				`expression  = "resource.name.startsWith(\"projects/${local.project_id}/global/securityPolicies/${local.name}-gbl-${each.key}-\")"`,
+			},
+		},
+		{
+			name: "the location names the bucket grant admits",
+			path: "2-env/locals.tf",
+			want: []string{
+				`files_location_code = local.instance_config == null ? null : (startswith(local.instance_config, "regional-") ? lookup({ (local.region) = local.region_code, (local.secondary_region) = local.secondary_region_code }, trimprefix(local.instance_config, "regional-"), null) : local.instance_config)`,
+				`files_bucket_codes  = distinct(compact(["gbl", local.files_location_code]))`,
 			},
 		},
 		{
@@ -596,7 +606,7 @@ func TestStorageAdminBounds(t *testing.T) {
 		{
 			name: "the 2-env README says which buckets the condition admits",
 			path: "2-env/README.md",
-			want: []string{"`imp-<env>-gbl-<app>-`, which is the application's file stores", "Without the condition, any application's\napply identity, and so its pipeline and its pull-request builds, would read\nand delete every other application's files and every record."},
+			want: []string{"`imp-<env>-<location>-<app>-`, where the location is where the\ndatabase is", "which is the application's file stores", "Without the condition, any application's\napply identity, and so its pipeline and its pull-request builds, would read\nand delete every other application's files and every record."},
 		},
 	}
 	for _, tt := range tests {
@@ -771,7 +781,7 @@ func TestCustomRolePermissions(t *testing.T) {
 			roleID:   "applicationPlanReader",
 			permissions: []string{
 				"cloudbuild.builds.get", "cloudscheduler.jobs.get", "cloudtasks.queues.get",
-				"compute.backendServices.get", "compute.regionNetworkEndpointGroups.get",
+				"compute.backendServices.get", "compute.regionNetworkEndpointGroups.get", "compute.securityPolicies.get",
 				"datastore.databases.getMetadata", "datastore.indexes.get",
 				"firebaserules.releases.get", "firebaserules.rulesets.get",
 				"logging.buckets.get", "logging.sinks.get",

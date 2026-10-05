@@ -155,9 +155,12 @@ database, with the indexes and time-to-live policies on it),
 `secretContainerAdmin` from `1-org` (secrets as containers, never payloads). Cloud Storage
 is two bounded grants on the environment project: `roles/storage.admin` under
 a condition admitting every bucket whose name starts with
-`imp-<env>-gbl-<app>-`, which is the application's file stores
-(`imp-<env>-gbl-<app>-files-<project number>`, `files-<name>` for a
-named store) and its pull-request stacks' (`imp-<env>-gbl-<app>-pr<N>-files-<project number>`)
+`imp-<env>-<location>-<app>-`, where the location is where the
+database is (the region's code, or the multi-region configuration's name;
+`locals.tf`'s `files_location_code`) or `gbl`, the name an older bedrock gave
+them, which is the application's file stores
+(`imp-<env>-<location>-<app>-files-<project number>`, `files-<name>` for a
+named store) and its pull-request stacks' (`imp-<env>-<location>-<app>-pr<N>-files-<project number>`)
 with their objects, and nothing of another application's buckets or of the
 records bucket; and the organization's `storageBucketCreator` role without
 condition, since creating a bucket (`storage.buckets.create`) and listing the

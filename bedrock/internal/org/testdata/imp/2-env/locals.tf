@@ -65,6 +65,14 @@ locals {
   # multi-region such as nam10): an application stack puts its file stores
   # where the database is, from this.
   instance_config = local.own_instance ? local.spanner_config : try(data.terraform_remote_state.spn.outputs.spanner_config, null)
+  # Where an application stack puts its file stores: with the database, named
+  # by the location's code as the stack's locals.tf derives it (the region's
+  # code for a regional instance, the configuration's own name for a
+  # multi-region one), so the apply identity's bucket grant (identities.tf)
+  # admits that name beside gbl, the name a stack rendered by an older bedrock
+  # gave them.
+  files_location_code = local.instance_config == null ? null : (startswith(local.instance_config, "regional-") ? lookup({ (local.region) = local.region_code, (local.secondary_region) = local.secondary_region_code }, trimprefix(local.instance_config, "regional-"), null) : local.instance_config)
+  files_bucket_codes  = distinct(compact(["gbl", local.files_location_code]))
 
   # Container images live in the shr project, one repository per application
   # (2-shr output repository_names: application code => repository ID). The
