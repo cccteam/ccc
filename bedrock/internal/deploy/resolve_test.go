@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1293,6 +1294,63 @@ func TestGitHubComments(t *testing.T) {
 			_, err := GitHubComments(t.Context(), "tok", tt.repo, 7)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("GitHubComments() error = %v, wantErr %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestFactsApproval: a build that waited for its approval in Cloud Build names who approved
+// it, when and with what comment, exported for the record; a build that needed none, or
+// whose approval is not decided, names nobody.
+func TestFactsApproval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		approval     string
+		wantApprover string
+		wantAt       string
+		wantComment  string
+	}{
+		{
+			name:         "an approved build names its approver, the moment and the comment",
+			approval:     `{"state":"APPROVED","result":{"approverAccount":"approver@example.com","approvalTime":"2026-10-05T03:05:00Z","decision":"APPROVED","comment":"go"}}`,
+			wantApprover: "approver@example.com",
+			wantAt:       "2026-10-05T03:05:00Z",
+			wantComment:  "go",
+		},
+		{name: "a build that needed no approval names nobody"},
+		{name: "an approval not yet decided names nobody", approval: `{"state":"PENDING","config":{"approvalRequired":true}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			subs, err := json.Marshal(tagBuild(nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			doc := `{"id":"b-1","substitutions":` + string(subs)
+			if tt.approval != "" {
+				doc += `,"approval":` + tt.approval
+			}
+			doc += "}"
+			f, err := newFacts([]byte(doc))
+			if err != nil {
+				t.Fatalf("newFacts() error = %v", err)
+			}
+			if f.Approver != tt.wantApprover || f.ApprovedAt != tt.wantAt || f.ApprovalComment != tt.wantComment {
+				t.Errorf("approval = %q at %q (%q), want %q at %q (%q)", f.Approver, f.ApprovedAt, f.ApprovalComment, tt.wantApprover, tt.wantAt, tt.wantComment)
+			}
+			for name, want := range map[string]string{"APPROVER": tt.wantApprover, "APPROVED_AT": tt.wantAt, "APPROVAL_COMMENT": tt.wantComment} {
+				if line := "export " + name + "=" + strconv.Quote(want) + "\n"; !strings.Contains(f.environment(), line) {
+					t.Errorf("environment() lacks %q", line)
+				}
+			}
+			var out strings.Builder
+			f.report(&out)
+			if got, want := strings.Contains(out.String(), "Approved in Cloud Build by approver@example.com at 2026-10-05T03:05:00Z"), tt.wantApprover != ""; got != want {
+				t.Errorf("report names the approver: %v, want %v:\n%s", got, want, out.String())
 			}
 		})
 	}

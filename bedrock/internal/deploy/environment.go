@@ -145,6 +145,40 @@ type Build struct {
 	// maintenance window knows how long the run may still take.
 	StartTime string `json:"startTime,omitempty"`
 	Timeout   string `json:"timeout,omitempty"`
+	// Approval is the build's approval as Cloud Build describes it, where the trigger
+	// requires one (placement.json's approvals): decided before the build ran, so the
+	// run knows who approved it and writes them into the record. Nil where none is
+	// required.
+	Approval *BuildApproval `json:"approval,omitempty"`
+}
+
+// BuildApproval is a build's approval: its state (PENDING, APPROVED, REJECTED) and, once
+// decided, the result.
+type BuildApproval struct {
+	State  string               `json:"state,omitempty"`
+	Result *BuildApprovalResult `json:"result,omitempty"`
+}
+
+// BuildApprovalResult is who decided a build's approval, when, which way and with what
+// comment, as Cloud Build records it.
+type BuildApprovalResult struct {
+	ApproverAccount string `json:"approverAccount,omitempty"`
+	ApprovalTime    string `json:"approvalTime,omitempty"`
+	Decision        string `json:"decision,omitempty"`
+	Comment         string `json:"comment,omitempty"`
+}
+
+// approvedDecision is the decision of an approval that let the build run.
+const approvedDecision = "APPROVED"
+
+// approver is who approved the build and when, with their comment; empty where the build
+// needed no approval.
+func (b *Build) approver() (account, at, comment string) {
+	if b.Approval == nil || b.Approval.Result == nil || b.Approval.Result.Decision != approvedDecision {
+		return "", "", ""
+	}
+
+	return b.Approval.Result.ApproverAccount, b.Approval.Result.ApprovalTime, b.Approval.Result.Comment
 }
 
 // parseBuild reads a build as Cloud Build describes it.

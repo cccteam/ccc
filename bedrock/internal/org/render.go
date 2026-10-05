@@ -359,17 +359,6 @@ func (*view) BootstrapRoles() []BootstrapRole {
 	return BootstrapRoles
 }
 
-// ProductionReviewersList is the placement's production reviewers as an HCL list of
-// logins, [] when it names none.
-func (v *view) ProductionReviewersList() string {
-	quoted := make([]string, 0, len(v.GithubProductionReviewers))
-	for _, login := range v.GithubProductionReviewers {
-		quoted = append(quoted, strconv.Quote(login))
-	}
-
-	return "[" + strings.Join(quoted, ", ") + "]"
-}
-
 // EnvironmentsList is the environments as an HCL list, and EnvironmentsProse the same
 // as prose, backticked: `tst`, `stg` and `prd`.
 func (*view) EnvironmentsList() string {

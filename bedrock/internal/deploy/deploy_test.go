@@ -117,12 +117,14 @@ func TestNewRecordRequest(t *testing.T) {
 		wantDatabase      *DatabaseRef
 		// wantRollback is the rollback a rollback run records.
 		wantRollback *Rollback
+		// wantApproval is the approval a build that waited for one records.
+		wantApproval *Approval
 		wantErr      string
 	}{
 		{
 			name: "a rollback run records who asked and why, the release left, the backups, the database restored into and the one kept",
 			files: map[string]string{
-				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport ROLLBACK=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport ROLLBACK_FROM=\"v1.2.4\"\nexport ROLLBACK_REASON=\"v1.2.4 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport ROLLBACK_BACKUP=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport ROLLBACK_BACKUP_TIME=\"2026-10-05T03:00:00Z\"\nexport ROLLBACK_FORENSIC=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-forensic-20261005-0430\"\nexport ROLLBACK_DATABASE=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"\nexport ROLLBACK_KEPT=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db\"\nexport DATABASE_GENERATION=\"2\"\nexport DATABASE_PREVIOUS_GENERATION=\"1\"\nexport MIGRATE_DATABASES='[\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"]'\n",
+				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport ROLLBACK=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport ROLLBACK_FROM=\"v1.2.4\"\nexport APPROVER=\"approver@example.com\"\nexport APPROVED_AT=\"2026-10-05T03:05:00Z\"\nexport APPROVAL_COMMENT=\"go\"\nexport ROLLBACK_REASON=\"v1.2.4 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport ROLLBACK_BACKUP=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport ROLLBACK_BACKUP_TIME=\"2026-10-05T03:00:00Z\"\nexport ROLLBACK_FORENSIC=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-forensic-20261005-0430\"\nexport ROLLBACK_DATABASE=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"\nexport ROLLBACK_KEPT=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db\"\nexport DATABASE_GENERATION=\"2\"\nexport DATABASE_PREVIOUS_GENERATION=\"1\"\nexport MIGRATE_DATABASES='[\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"]'\n",
 				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`,
 				RevisionsFile:   revisionsLines,
 			},
@@ -131,6 +133,7 @@ func TestNewRecordRequest(t *testing.T) {
 			wantRegions:   "us-central1,us-west3",
 			wantRequester: "octocat",
 			wantDatabase:  &DatabaseRef{Name: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2", Generation: 2},
+			wantApproval:  &Approval{Approver: "approver@example.com", At: "2026-10-05T03:05:00Z", Comment: "go"},
 			wantRollback: &Rollback{
 				Requester: "octocat", Reason: "v1.2.4 mangled the invoices", From: "v1.2.4",
 				Backup: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", BackupTime: "2026-10-05T03:00:00Z", Forensic: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-forensic-20261005-0430",
@@ -356,6 +359,9 @@ func TestNewRecordRequest(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantDatabase, r.Database); diff != "" {
 				t.Errorf("Database mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantApproval, r.Approval); diff != "" {
+				t.Errorf("Approval mismatch (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantRollback, r.Rollback); diff != "" {
 				t.Errorf("Rollback mismatch (-want +got):\n%s", diff)

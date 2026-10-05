@@ -1156,7 +1156,7 @@ operations identity there serves one action: `run`, which `bedrock rerun prd <re
 dispatches (bedrock rerun, below). That is the release's tag build again, from the start,
 with no instruction, and it waits for its approval in Cloud Build as every production
 release does; so a migration that stopped at a statement continues from it once the
-cause is fixed, and the record names who asked. The version and the force do not reach
+cause is fixed, and the record names who asked and who approved. The version and the force do not reach
 production, whose logs are read in the console: the platform operator runs those two with
 their own credential, through the environment's version trigger, since that is where the
 release's migrate command runs, on the build worker as the deploy identity. The trigger
@@ -1243,9 +1243,10 @@ repository's operations workflow as the person signed in to gh with the action
 `rollback`, the reason, the release (`--to`, or none) and the backup (`@<moment>` for
 `--at`, or none). The command changes nothing itself.
 
-**The workflow's job** runs in the GitHub Environment named after the environment. Where
-the organization's placement names production reviewers (`githubProductionReviewers`),
-production's Environment waits for one of them before the job starts. The job refuses
+**The workflow's job** runs in the GitHub Environment named after the environment; no
+Environment waits for a reviewer, since the build the job starts waits for its approval
+in Cloud Build where the environment requires one, as a release does, and the record the
+run writes names the approver. The job refuses
 an environment that keeps no release backup, reads the environment's newest deployment
 records (through the version trigger's `_RECORDS_BUCKET`; the operations identity reads
 the bucket) for the live release, which the environment leaves, and, unless named, the
@@ -1269,7 +1270,7 @@ records (`<app>/database/<env>/<n>.json`), imports the restored database into th
 and plans with `database_generation = <n>`; the apply points the service at it; the
 release's migrations run on it (nothing applies when the backup is at the release's
 schema); the release deploys and takes the traffic; the record names the requester, the
-reason, the release left, both backups and both databases, the forensic backup standing
+approver, the reason, the release left, both backups and both databases, the forensic backup standing
 as the run's release backup so a later rollback from this release finds its last data.
 The live database stays, drop-protected, as the forensic copy: writes made after the
 backup's moment are in it alone. A release backup's name ends in the build's first
@@ -1289,7 +1290,7 @@ GitHub Environment, as a restore does, and runs the version trigger for the rele
 build again, from the start, as the deploy identity: the image is built, the stack
 applied, the migrations run (a migration that stopped at a statement continues from it
 once the cause is fixed), the revision deploys, traffic moves, and the record names who
-asked. Nothing of a rerun is a restore, so production is reached like any environment:
+asked and, where the build waited for an approval, who approved it. Nothing of a rerun is a restore, so production is reached like any environment:
 its operations identity exists for this action alone, the workflow and the pipeline
 refuse the restore instruction and the migration operations there, and a rerun in
 production waits for its approval in Cloud Build as every production release does. The
@@ -1580,20 +1581,15 @@ parentheses) and the infrastructure workflow's `bedrock check` passing on its la
 squash the only merge and, when the placement names an infrastructure team, that team's
 approval of a change to the workflow and Cloud Build files), and the GitHub Environments
 the operations workflow runs in (every environment, production's for the rerun of a
-release and the rollback, each deploying from the default branch alone, production's
-waiting for one of the production reviewers when the placement names them). The workflow applies it with the
+release and the rollback, each deploying from the default branch alone). The workflow applies it with the
 infrastructure GitHub App's
 installation token, minted in the run; a person applying by hand uses their own sign-in,
 `GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
 App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
 by its slug) and also records the slug (`githubReleaseAppSlug`, the name in the app's
 address, `github.com/apps/<slug>`), which each application's placement names as the
-author of its releases, the default branch (`githubDefaultBranch`), the team
-(`githubInfrastructureTeam`, empty for none) and the production reviewers
-(`githubProductionReviewers`, GitHub logins: `1-org` makes the team
-`<prefix>-production-reviewers` of them and names it production's GitHub Environment's
-reviewer, so a rollback or a rerun there waits for one of them first; empty for no gate,
-which `bedrock org check` says). A repository that existed before the layer
+author of its releases, the default branch (`githubDefaultBranch`) and the team
+(`githubInfrastructureTeam`, empty for none). A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
 `hotfix` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
@@ -1617,8 +1613,8 @@ organization's GitHub plan, so its plan must include all four.
   sound; a ruleset GitHub shows but does not enforce leaves the check unsound.
 - **Environments on private repositories.** The operations workflow runs a restore, a
   rerun or a rollback in a GitHub Environment per environment, each deploying from the
-  default branch alone, production's waiting for a production reviewer when the
-  placement names them (required reviewers on Environments).
+  default branch alone. No Environment requires reviewers: that rule needs GitHub
+  Enterprise on a private repository, and the approval is Cloud Build's instead.
 - **Organization secrets that reach private repositories.** The release app's
   `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` are set once for the organization,
   visible to all repositories, and each application's release workflow makes the app's
@@ -1627,8 +1623,7 @@ organization's GitHub plan, so its plan must include all four.
   that scope is refused.
 - **GitHub Apps owned by the organization.** The release app (Contents, Issues and Pull
   requests, read and write), the deployer app (Checks, Deployments, Issues and Pull
-  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`; on the
-  organization, Members read and write, for the production reviewers' team), each
+  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`), each
   installed on all repositories, and the Google Cloud Build GitHub App, installed when
   the connection is authorized.
 

@@ -100,7 +100,11 @@ func (f *Facts) statement(out io.Writer) {
 	if moment, ok := strings.CutPrefix(f.Rollback, rollbackMomentPrefix); ok {
 		data = "a backup made as of " + moment
 	}
-	fmt.Fprintf(out, "=== ROLLBACK of %s: %s returns to %s from %s, asked for by %s: %s ===\n", f.Environment, f.Substitutions[appSub], f.Tag, f.RollbackFrom, f.Requester, f.RollbackReason)
+	approved := ""
+	if f.Approver != "" {
+		approved = ", approved by " + f.Approver
+	}
+	fmt.Fprintf(out, "=== ROLLBACK of %s: %s returns to %s from %s, asked for by %s%s: %s ===\n", f.Environment, f.Substitutions[appSub], f.Tag, f.RollbackFrom, f.Requester, approved, f.RollbackReason)
 	fmt.Fprintf(out, "The application goes into maintenance. The live database is kept as the forensic copy and a backup of it is taken as of now. %s is restored into the database's next generation; %s's migrations run on it (nothing applies when the backup is at %s's schema); %s deploys and takes the traffic; the record names all of it. Writes made after the backup's moment are in the forensic copy alone.\n", data, f.Tag, f.Tag, f.Tag)
 }
 
@@ -175,6 +179,7 @@ type generationNote struct {
 	Release    string `json:"release"`
 	From       string `json:"from"`
 	Requester  string `json:"requester"`
+	Approver   string `json:"approver,omitempty"`
 	Reason     string `json:"reason"`
 	At         string `json:"at"`
 }
@@ -227,8 +232,8 @@ func (s *stack) rollback(ctx context.Context, subs, facts map[string]string, w W
 		return 0, errors.Wrapf(err, "restoring %s from %s", restored, backup.Name)
 	}
 	fmt.Fprintf(s.out, "Restored %s from %s; Spanner optimizes it in the background and it serves meanwhile.\n", restored, path.Base(backup.Name))
-	note := generationNote{Generation: next, Database: instance + databaseDatabaseSegment + restored, Backup: backup.Name, Kept: database, Build: b.ID, Release: subs[tagSub], From: facts[rollbackFromFact], Requester: facts[requesterFact], Reason: facts[rollbackReasonFact], At: now.UTC().Format(time.RFC3339)}
-	if err := s.writeGeneration(ctx, subs[recordsBucket], app, env, note); err != nil {
+	note := generationNote{Generation: next, Database: instance + databaseDatabaseSegment + restored, Backup: backup.Name, Kept: database, Build: b.ID, Release: subs[tagSub], From: facts[rollbackFromFact], Requester: facts[requesterFact], Approver: facts[approverFact], Reason: facts[rollbackReasonFact], At: now.UTC().Format(time.RFC3339)}
+	if err := s.writeGeneration(ctx, subs[recordsBucket], app, env, &note); err != nil {
 		return 0, err
 	}
 	address := fmt.Sprintf("google_spanner_database.restored[%q]", strconv.Itoa(next))
@@ -308,7 +313,7 @@ func (s *stack) readyBackup(ctx context.Context, store Spanner, backup *Backup) 
 
 // writeGeneration leaves the generation note beside the deployment records, as the deploy
 // identity, which may create objects there and nothing else.
-func (s *stack) writeGeneration(ctx context.Context, bucket, app, env string, note generationNote) error {
+func (s *stack) writeGeneration(ctx context.Context, bucket, app, env string, note *generationNote) error {
 	if bucket == "" {
 		return errors.Newf("%s carries no %s: the generation is written beside the deployment records", BuildFile, recordsBucket)
 	}

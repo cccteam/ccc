@@ -56,6 +56,10 @@ type Record struct {
 	// rerun of the release (bedrock rerun) or a migration operation. Absent for a tag's
 	// own build.
 	Requester string `json:"requester,omitempty"`
+	// Approval is who approved the build in Cloud Build, when and with what comment,
+	// where its trigger required an approval (a release, a rerun or a rollback in an
+	// environment on placement.json's approvals). Absent where none was required.
+	Approval *Approval `json:"approval,omitempty"`
 	// Restore says the build was a restore run: what the environment's database was
 	// replaced with, who asked, and what the stack replaced. Absent otherwise.
 	Restore *Restore `json:"restore,omitempty"`
@@ -105,6 +109,25 @@ type DatabaseRef struct {
 	// Generation is 1 for the database the stack created and the number a rollback
 	// restored a backup into otherwise.
 	Generation int `json:"generation"`
+}
+
+// Approval is a build's approval as the record keeps it.
+type Approval struct {
+	// Approver is the account that approved the build in Cloud Build and At when, as
+	// Cloud Build recorded them; Comment is what the approver wrote, if anything.
+	Approver string `json:"approver"`
+	At       string `json:"at"`
+	Comment  string `json:"comment,omitempty"`
+}
+
+// approvalOf reads the build's approval from the facts the resolve step exported; nil for
+// a build that needed none.
+func approvalOf(env map[string]string) *Approval {
+	if env[approverFact] == "" {
+		return nil
+	}
+
+	return &Approval{Approver: env[approverFact], At: env[approvedAtFact], Comment: env[approvalCommentFact]}
 }
 
 // releaseBackupOf reads the release backup the run started from the facts the backup step
@@ -336,6 +359,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Migrations:    applied,
 		Stack:         stack,
 		Requester:     build.Substitutions[requesterSub],
+		Approval:      approvalOf(env),
 		Restore:       restore,
 		Maintenance:   maintenance,
 		Force:         forceOf(env, build),

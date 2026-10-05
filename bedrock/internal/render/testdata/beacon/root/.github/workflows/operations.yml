@@ -38,9 +38,7 @@
 # Build and the job cancels the build, so a rollback nobody approved is not left waiting. The build
 # puts the application into maintenance whatever the window, keeps the live database as the
 # forensic copy with a backup of it, restores the chosen backup into the database's next generation,
-# runs the release's migrations on it, deploys, and records all of it. Where the organization's
-# placement names production reviewers, production's GitHub Environment waits for one of them
-# before the job starts.
+# runs the release's migrations on it, deploys, and records all of it, the approver included.
 #
 # run (tst, stg, or prd): the release's tag build runs again from the start with no
 # instruction, as its tag ran it: the image is built, the stack applied, the migrations run (a

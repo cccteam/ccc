@@ -66,6 +66,11 @@ const (
 	requesterSub  = "_REQUESTER"
 	restoreFact   = "RESTORE"
 	requesterFact = "RESTORE_REQUESTER"
+	// The build's approval, where its trigger required one: who approved it in Cloud
+	// Build, when, and their comment. The record carries them.
+	approverFact        = "APPROVER"
+	approvedAtFact      = "APPROVED_AT"
+	approvalCommentFact = "APPROVAL_COMMENT"
 	// rollbackSub, rollbackFromSub and reasonSub are a rollback run's instruction, which
 	// bedrock rollback sets on the rollback trigger alone: the backup to restore (a name,
 	// @<moment>, or empty for the live release's pre-release backup), the release the
@@ -341,6 +346,13 @@ type Facts struct {
 	Rollback       string
 	RollbackFrom   string
 	RollbackReason string
+	// Approver is who approved the build in Cloud Build where its trigger required an
+	// approval (a release, a rerun or a rollback in an environment on placement.json's
+	// approvals), ApprovedAt when, and ApprovalComment what they wrote; the record names
+	// them. All empty where no approval was required.
+	Approver        string
+	ApprovedAt      string
+	ApprovalComment string
 	// Seed says the migrate command applies the development seed: a pull request's
 	// database is new and always seeded; a release build seeds where the placement in the
 	// checkout names the environment on its seed list.
@@ -458,6 +470,7 @@ func newFacts(data []byte) (*Facts, error) {
 		subs = map[string]string{}
 	}
 	f := &Facts{Tag: subs["TAG_NAME"], PullRequest: subs[prNumberSub], Substitutions: subs, build: data, RunMigrations: true, ShiftTraffic: true}
+	f.Approver, f.ApprovedAt, f.ApprovalComment = build.approver()
 	if f.Tag == "" && f.PullRequest == "" {
 		return nil, errors.New("neither TAG_NAME nor _PR_NUMBER is set; a build is a tag's or a pull request's")
 	}
@@ -1047,6 +1060,9 @@ func (f *Facts) substitutionNames() []string {
 
 // report prints the facts the way the build's log has always shown them.
 func (f *Facts) report(out io.Writer) {
+	if f.Approver != "" {
+		fmt.Fprintf(out, "Approved in Cloud Build by %s at %s; the record names them.\n", f.Approver, f.ApprovedAt)
+	}
 	f.statement(out)
 	fmt.Fprintf(out, "IMAGE=%s IMAGE_TAG=%s VERSION=%s RELEASE=%s\n", f.Image, f.ImageTag, f.Version, f.Release)
 	fmt.Fprintf(out, "RUN_MIGRATIONS=%t SHIFT_TRAFFIC=%t REVISION_TAG=%s\n", f.RunMigrations, f.ShiftTraffic, f.RevisionTag)
@@ -1091,6 +1107,9 @@ func (f *Facts) environment() string {
 		{rollbackFact, f.Rollback},
 		{rollbackFromFact, f.RollbackFrom},
 		{rollbackReasonFact, f.RollbackReason},
+		{approverFact, f.Approver},
+		{approvedAtFact, f.ApprovedAt},
+		{approvalCommentFact, f.ApprovalComment},
 		{seedFact, flag(f.Seed)},
 		{keepsReleaseBackupsFact, flag(f.KeepsReleaseBackups)},
 		{buildSecretsFact, f.BuildSecrets},

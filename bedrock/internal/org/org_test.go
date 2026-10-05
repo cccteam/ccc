@@ -83,8 +83,6 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a machine account longer than GitHub allows", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 40) }, wantErr: "is not a GitHub login"},
 		{name: "a machine account of 39 characters", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 39) }},
 		{name: "no infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "" }},
-		{name: "production reviewers", mutate: func(p *Placement) { p.GithubProductionReviewers = []string{"octocat", "hubot"} }},
-		{name: "a production reviewer that is not a login", mutate: func(p *Placement) { p.GithubProductionReviewers = []string{"octocat", "octo cat"} }, wantErr: `githubProductionReviewers names "octo cat", which is not a GitHub login (letters, digits and single hyphens, at most 39 characters)`},
 		{name: "project numbers for the environments", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "123456789012"} }},
 		{name: "a project number in an unknown environment", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"qa": "1"} }, wantErr: `projectNumbers names "qa", which is not one of boot, shr, net, spn, tst, stg, prd`},
 		{name: "a project number that is not a number", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "imp-tst"} }, wantErr: `projectNumbers.tst "imp-tst" is not a project number (digits)`},
@@ -2513,61 +2511,6 @@ func TestAppsZone(t *testing.T) {
 
 			if !strings.Contains(renderedFile(t, tt.path), tt.want) {
 				t.Errorf("%s lacks %q: the zone domain check reads is not the one 2-net names", tt.path, tt.want)
-			}
-		})
-	}
-}
-
-// TestProductionReviewers: the placement's production reviewers become 1-org's team and
-// production's Environment's reviewer, with the admins' bypass off; nobody named means no
-// team, no reviewer and no bypass change.
-func TestProductionReviewers(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		reviewers []string
-		want      map[string][]string
-	}{
-		{
-			name:      "two reviewers: the variable's default, the team, its members and production's reviewer",
-			reviewers: []string{"octocat", "hubot"},
-			want: map[string][]string{
-				"1-org/variables.tf": {"variable \"github_production_reviewers\" {\n  description = \"GitHub logins of the people whose review an operations job in production (a rollback, a release run again) waits for: this layer makes a team of them and names it production's GitHub Environment's reviewer. Empty for no reviewer gate, which bedrock org check says.\"\n  type        = list(string)\n  default     = [\"octocat\", \"hubot\"]\n}\n"},
-				"1-org/github.tf": {
-					"resource \"github_team\" \"production_reviewers\" {\n  count = length(var.github_production_reviewers) == 0 ? 0 : 1\n\n  name        = \"${var.prefix}-production-reviewers\"\n",
-					"resource \"github_team_membership\" \"production_reviewers\" {\n  for_each = toset(var.github_production_reviewers)\n\n  team_id  = github_team.production_reviewers[0].id\n  username = each.value\n  role     = \"member\"\n}\n",
-					"  production_reviewed = length(github_team.production_reviewers) > 0\n",
-					"  can_admins_bypass = !(each.value.environment == \"prd\" && local.production_reviewed)\n\n  dynamic \"reviewers\" {\n    for_each = each.value.environment == \"prd\" && local.production_reviewed ? [1] : []\n    content {\n      teams = [tonumber(github_team.production_reviewers[0].id)]\n    }\n  }\n",
-				},
-				"1-org/README.md": {"this layer makes the team `imp-production-reviewers` of them", "With nobody named there is no team and no wait, and\n`bedrock org check` says so."},
-			},
-		},
-		{
-			name: "nobody named: an empty default",
-			want: map[string][]string{"1-org/variables.tf": {"  type        = list(string)\n  default     = []\n"}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			p := testPlacement(t)
-			p.GithubProductionReviewers = tt.reviewers
-			files, err := Render(p)
-			if err != nil {
-				t.Fatalf("Render() error = %v", err)
-			}
-			byPath := map[string]string{}
-			for _, f := range files {
-				byPath[f.Path] = string(f.Content)
-			}
-			for path, wants := range tt.want {
-				for _, w := range wants {
-					if !strings.Contains(byPath[path], w) {
-						t.Errorf("%s lacks:\n%s", path, w)
-					}
-				}
 			}
 		})
 	}

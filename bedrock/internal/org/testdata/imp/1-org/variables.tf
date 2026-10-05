@@ -78,12 +78,6 @@ variable "github_infrastructure_team" {
   default     = ""
 }
 
-variable "github_production_reviewers" {
-  description = "GitHub logins of the people whose review an operations job in production (a rollback, a release run again) waits for: this layer makes a team of them and names it production's GitHub Environment's reviewer. Empty for no reviewer gate, which bedrock org check says."
-  type        = list(string)
-  default     = []
-}
-
 variable "github_organization" {
   description = "The GitHub organization that holds the application repositories."
   type        = string

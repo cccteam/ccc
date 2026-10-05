@@ -21,12 +21,12 @@
 # after the last push), and the GitHub Environments the operations workflow
 # runs in (one per environment, production included, since a release is run
 # again and a rollback is run there from GitHub, each deploying from the
-# default branch alone). Production's Environment waits for one of the
-# production reviewers, a team this layer makes from the placement's
-# githubProductionReviewers, before an operations job runs there, and its
-# admins cannot bypass the wait; with nobody named there is no team and no
-# wait, which bedrock org check says. Making the team is why the
-# infrastructure app holds Members (read and write) on the organization.
+# default branch alone). No Environment waits for a reviewer: a rollback or a
+# rerun waits for its approval in Cloud Build where the environment requires
+# one (placement.json's approvals), as a release does, and the approver is
+# written into the deployment record. GitHub's required reviewers on an
+# Environment of a private repository need GitHub Enterprise, which bedrock
+# does not require of an organization.
 #
 # The required checks are the infrastructure workflow's job, bedrock check,
 # which GitHub Actions reports, and the jobs of the application's own CI
@@ -69,25 +69,6 @@ data "github_team" "infrastructure" {
   count = var.github_infrastructure_team == "" ? 0 : 1
 
   slug = var.github_infrastructure_team
-}
-
-# The production reviewers, from the placement: one of them reviews an
-# operations job before it runs in production. The team is closed (visible to
-# the organization's members) and holds the logins named, as members.
-resource "github_team" "production_reviewers" {
-  count = length(var.github_production_reviewers) == 0 ? 0 : 1
-
-  name        = "${var.prefix}-production-reviewers"
-  description = "Reviews what the operations workflow runs in production: a rollback, a release run again."
-  privacy     = "closed"
-}
-
-resource "github_team_membership" "production_reviewers" {
-  for_each = toset(var.github_production_reviewers)
-
-  team_id  = github_team.production_reviewers[0].id
-  username = each.value
-  role     = "member"
 }
 
 locals {
@@ -149,10 +130,6 @@ locals {
     for pair in setproduct(var.applications, local.operations_environments) :
     "${pair[0]}-${pair[1]}" => { app = pair[0], environment = pair[1] }
   }
-
-  # Production's Environment waits for a production reviewer when the
-  # placement names one.
-  production_reviewed = length(github_team.production_reviewers) > 0
 }
 
 resource "github_repository" "app" {
@@ -276,19 +253,6 @@ resource "github_repository_environment" "operations" {
 
   repository  = github_repository.app[each.value.app].name
   environment = each.value.environment
-
-  # In production, one of the production reviewers approves the job before it
-  # runs, and the repository's admins cannot bypass the wait; the requester
-  # may be the reviewer (a team of one approves its own ask), which the
-  # Environment's own setting would forbid. Elsewhere nobody reviews.
-  can_admins_bypass = !(each.value.environment == "prd" && local.production_reviewed)
-
-  dynamic "reviewers" {
-    for_each = each.value.environment == "prd" && local.production_reviewed ? [1] : []
-    content {
-      teams = [tonumber(github_team.production_reviewers[0].id)]
-    }
-  }
 
   deployment_branch_policy {
     protected_branches     = false
