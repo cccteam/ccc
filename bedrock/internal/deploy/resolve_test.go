@@ -126,6 +126,8 @@ type outcome struct {
 	// KeepsReleaseBackups says the environment is on the checkout placement's
 	// releaseBackups list (production alone unless it says otherwise).
 	KeepsReleaseBackups bool
+	// Rollback, RollbackFrom and RollbackReason are a rollback run's instruction.
+	Rollback, RollbackFrom, RollbackReason string
 	// Migration is the migration operation in words, empty for none.
 	Migration string
 	// Declared are the declared substitutions' names and Values their values, as the
@@ -142,6 +144,7 @@ func summarize(f *Facts) outcome {
 	o := outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Seed: f.Seed, KeepsReleaseBackups: f.KeepsReleaseBackups,
+		Rollback: f.Rollback, RollbackFrom: f.RollbackFrom, RollbackReason: f.RollbackReason,
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
 		Values: f.declared, BuildSecrets: f.BuildSecrets, BuildArguments: f.BuildArguments,
 	}
@@ -754,6 +757,72 @@ func TestResolve(t *testing.T) {
 			want: withComment(tag, "", func(o *outcome) {
 				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
 			}),
+		},
+		{
+			name: "a rollback in production names the backup, the release it leaves, who asked and why, and prints the statement first",
+			subs: tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", rollbackFromSub: "v1.2.4", reasonSub: "v1.2.4 mangled the invoices", requesterSub: "octocat", "_ENV": "prd"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
+				o.Rollback, o.RollbackFrom, o.RollbackReason, o.Requester = "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", "v1.2.4", "v1.2.4 mangled the invoices", "octocat"
+			}),
+			wantOut: []string{
+				"=== ROLLBACK of prd: harbor returns to v1.2.3 from v1.2.4, asked for by octocat: v1.2.4 mangled the invoices ===",
+				"The application goes into maintenance. The live database is kept as the forensic copy and a backup of it is taken as of now. the backup imp-prd-gbl-harbor-db-pre-v1-2-4 is restored into the database's next generation; v1.2.3's migrations run on it (nothing applies when the backup is at v1.2.3's schema); v1.2.3 deploys and takes the traffic; the record names all of it. Writes made after the backup's moment are in the forensic copy alone.",
+			},
+		},
+		{
+			name: "a rollback to a moment names it",
+			subs: tagBuild(map[string]string{rollbackSub: "@2026-10-05T04:00:00Z", rollbackFromSub: "v1.2.4", reasonSub: "bad data since four", requesterSub: "octocat", "_ENV": "prd"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
+				o.Rollback, o.RollbackFrom, o.RollbackReason, o.Requester = "@2026-10-05T04:00:00Z", "v1.2.4", "bad data since four", "octocat"
+			}),
+			wantOut: []string{"a backup made as of 2026-10-05T04:00:00Z is restored into the database's next generation"},
+		},
+		{
+			name:    "a rollback in an environment off the releaseBackups list is refused, naming bedrock restore",
+			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat"}),
+			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b in tst: the placement's releaseBackups list (prd) does not name it, so no release backup exists there to return to; bedrock restore serves it",
+		},
+		{
+			name:    "a rollback on a pull-request build is refused",
+			subs:    prBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why"}),
+			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b on a pull-request build: a rollback is a release build's instruction",
+		},
+		{
+			name:    "a rollback with a restore is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat", restoreSub: restoreEmpty}),
+			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b with _RESTORE=empty: a rollback restores a backup into the database's next generation and a restore replaces the database; a run does one",
+		},
+		{
+			name:    "a rollback without a reason is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b gives no reason (_REASON): a rollback says why it was asked for",
+		},
+		{
+			name:    "a rollback without a requester is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b names no requester (_REQUESTER): a rollback says who asked for it",
+		},
+		{
+			name:    "a rollback that names no release it leaves is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b names no release it leaves (_ROLLBACK_FROM)",
+		},
+		{
+			name:    "a rollback moment that is not RFC 3339 is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "@yesterday", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK=@yesterday: the moment after @ is not RFC 3339 (2026-10-05T04:30:00Z)",
+		},
+		{
+			name:    "a rollback instruction that is neither a backup nor a moment is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "last-week", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: `_ROLLBACK="last-week" is neither a backup's resource name (projects/<p>/instances/<i>/backups/<b>) nor @<moment>`,
+		},
+		{
+			name:    "a reason or a release left without a rollback is refused",
+			subs:    tagBuild(map[string]string{reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK_FROM or _REASON without _ROLLBACK: a rollback names the backup it restores",
 		},
 		{
 			name:      "an environment the placement's releaseBackups list names keeps a backup as of the cut, production or not",

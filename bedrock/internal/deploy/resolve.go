@@ -334,6 +334,13 @@ type Facts struct {
 	// seed changed in an environment on the placement's seed list); empty for a restore
 	// a person asked for.
 	RestoreReason string
+	// Rollback is a rollback run's instruction (rollback.go): the backup restored into the
+	// database's next generation, by resource name or as @<moment>; RollbackFrom the
+	// release the environment leaves and RollbackReason why, with Requester saying who
+	// asked. All empty for any other run.
+	Rollback       string
+	RollbackFrom   string
+	RollbackReason string
 	// Seed says the migrate command applies the development seed: a pull request's
 	// database is new and always seeded; a release build seeds where the placement in the
 	// checkout names the environment on its seed list.
@@ -466,6 +473,9 @@ func newFacts(data []byte) (*Facts, error) {
 		return nil, errors.New("_SERVICES names the Cloud Run services this build updates; it is empty")
 	}
 	if err := f.restore(); err != nil {
+		return nil, err
+	}
+	if err := f.rollback(); err != nil {
 		return nil, err
 	}
 	if err := f.migration(); err != nil {
@@ -707,6 +717,9 @@ func (f *Facts) releaseBackups(source string, out io.Writer) error {
 		return err
 	}
 	f.KeepsReleaseBackups = placement.KeepsReleaseBackups(f.Environment)
+	if f.Rollback != "" && !f.KeepsReleaseBackups {
+		return errors.Newf("%s=%s in %s: the placement's releaseBackups list (%s) does not name it, so no release backup exists there to return to; bedrock restore serves it", rollbackSub, f.Rollback, f.Environment, strings.Join(placement.ReleaseBackupEnvironments(), ", "))
+	}
 	if f.KeepsReleaseBackups {
 		fmt.Fprintf(out, "Release backup: %s keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock rollback restores it.\n", f.Environment)
 	} else {
@@ -1034,6 +1047,7 @@ func (f *Facts) substitutionNames() []string {
 
 // report prints the facts the way the build's log has always shown them.
 func (f *Facts) report(out io.Writer) {
+	f.statement(out)
 	fmt.Fprintf(out, "IMAGE=%s IMAGE_TAG=%s VERSION=%s RELEASE=%s\n", f.Image, f.ImageTag, f.Version, f.Release)
 	fmt.Fprintf(out, "RUN_MIGRATIONS=%t SHIFT_TRAFFIC=%t REVISION_TAG=%s\n", f.RunMigrations, f.ShiftTraffic, f.RevisionTag)
 	declared := "none"
@@ -1074,6 +1088,9 @@ func (f *Facts) environment() string {
 		{restoreFact, f.Restore},
 		{requesterFact, f.Requester},
 		{restoreReasonFact, f.RestoreReason},
+		{rollbackFact, f.Rollback},
+		{rollbackFromFact, f.RollbackFrom},
+		{rollbackReasonFact, f.RollbackReason},
 		{seedFact, flag(f.Seed)},
 		{keepsReleaseBackupsFact, flag(f.KeepsReleaseBackups)},
 		{buildSecretsFact, f.BuildSecrets},

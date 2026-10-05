@@ -193,6 +193,11 @@ func windowCheck(ctx context.Context, clients *Clients, w Workspace, build *Buil
 
 		return nil
 	}
+	if env[rollbackFact] != "" {
+		fmt.Fprintf(out, "The gate is open to a rollback run: %s returns to %s behind the maintenance page whatever the window says.\n", environment, tag)
+
+		return nil
+	}
 	now := clients.now()
 	o, err := setting.Opening(now)
 	if err != nil {

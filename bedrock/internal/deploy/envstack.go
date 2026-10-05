@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -128,11 +129,15 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 		return err
 	}
 	plan := filepath.Join(string(w), StackPlanFile)
-	args := []string{"plan", "-input=false", "-no-color", "-out=" + plan, varFlag, "environment=" + subs[envSub]}
 	env, err := w.Environment()
 	if err != nil {
 		return err
 	}
+	generation, err := s.planGeneration(ctx, clients, subs, env, w)
+	if err != nil {
+		return err
+	}
+	args := []string{"plan", "-input=false", "-no-color", "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
 	// The plan is told the maintenance variable's live value, so that declared and live
 	// agree and the apply never starts an application revision from the template while
 	// the application is in maintenance: in this run (a restore run, after deploy
@@ -368,11 +373,60 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 	if err != nil {
 		return err
 	}
-	if env[restoreFact] == "" {
+	if env[restoreFact] == "" && env[rollbackFact] == "" {
 		return nil
 	}
 
 	return s.clearFirestore(ctx, subs, w)
+}
+
+// planGeneration is the generation of the database the plan is told, left as a fact for
+// the record: what the last rollback wrote, or 1; a rollback run restores its backup into
+// the next one first, so the plan points the stack at the restored database.
+func (s *stack) planGeneration(ctx context.Context, clients *Clients, subs, env map[string]string, w Workspace) (int, error) {
+	generation, err := s.generation(ctx, clients.Storage, subs, subs[envSub])
+	if err != nil {
+		return 0, err
+	}
+	if env[rollbackFact] != "" {
+		if generation, err = s.rollback(ctx, subs, env, w, generation, clients.now()); err != nil {
+			return 0, err
+		}
+	}
+	if err := w.Append(map[string]string{databaseGenerationFact: strconv.Itoa(generation)}); err != nil {
+		return 0, err
+	}
+
+	return generation, nil
+}
+
+// generation is the generation of env's database the plan is told: what a rollback last
+// wrote beside the deployment records (the bucket the triggers name for env, read through
+// open), or 1; said on out when it is not the first.
+func (s *stack) generation(ctx context.Context, open StoreFunc, subs map[string]string, env string) (int, error) {
+	bucket := subs[recordsBucket]
+	if env != subs[envSub] {
+		bucket = pairs(subs[recordsBucketsSub])[env]
+	}
+	if bucket == "" {
+		fmt.Fprintf(s.out, "Generation: no records bucket is named for %s; the plan is told generation 1.\n", env)
+
+		return 1, nil
+	}
+	store, err := open(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer store.Close()
+	generation, err := databaseGeneration(ctx, store, bucket, subs[appSub], env)
+	if err != nil {
+		return 0, err
+	}
+	if generation > 1 {
+		fmt.Fprintf(s.out, "Generation %d: a rollback restored %s's database into its generation %d (gs://%s/%s); the plan points the stack at it.\n", generation, env, generation, bucket, generationObject(subs[appSub], env, generation))
+	}
+
+	return generation, nil
 }
 
 // migrateSettings reads the variables the migrate command runs with off the stack's
@@ -473,8 +527,12 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 		if err := s.initEnvironment(ctx, subs[appSub], e, identity); err != nil {
 			return err
 		}
+		generation, err := s.generation(ctx, func(ctx context.Context) (Store, error) { return clients.StorageAs(ctx, identity) }, subs, e)
+		if err != nil {
+			return err
+		}
 		plan := filepath.Join(string(w), "environment-"+e+".plan")
-		if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-lock=false", "-out="+plan, varFlag, "environment="+e); err != nil {
+		if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation)); err != nil {
 			return refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed; the build log says why (build %s).", e, build.ID), err, out)
 		}
 		shown, err := s.tofuOutput(ctx, "show", "-json", plan)

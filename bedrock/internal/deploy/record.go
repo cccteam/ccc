@@ -82,6 +82,10 @@ type Record struct {
 	// generation (1 for the stack's own, the number a rollback restored into otherwise).
 	// Absent when the run touched no stack.
 	Database *DatabaseRef `json:"database,omitempty"`
+	// Rollback says the run was a rollback: who asked and why, the release left, the
+	// backup restored and the forensic one taken, the database restored into and the one
+	// kept. Absent otherwise.
+	Rollback *Rollback `json:"rollback,omitempty"`
 }
 
 // ReleaseBackup is the backup a release build took as of its cut, as the record keeps it.
@@ -339,6 +343,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Cut:           env[cutFact],
 		ReleaseBackup: releaseBackupOf(env),
 		Database:      databaseOf(env),
+		Rollback:      rollbackOf(env),
 	}
 
 	return &RecordRequest{

@@ -175,6 +175,8 @@ func maintenanceCause(env map[string]string, window bool, environment string, ou
 	switch {
 	case !window && env[restoreFact] != "":
 		return fmt.Sprintf("%s's database is replaced (%s) before %s deploys, so the application serves its maintenance page meanwhile", environment, env[restoreFact], version), true
+	case !window && env[rollbackFact] != "":
+		return fmt.Sprintf("%s is rolled back to %s from %s (a backup restored into the database's next generation), so the application serves its maintenance page meanwhile", environment, version, env[rollbackFromFact]), true
 	case !window:
 		fmt.Fprintln(out, "No maintenance: this run keeps the application serving (a restore run starts its maintenance revision here, and a breaking release starts its own once its window is open).")
 
@@ -201,7 +203,7 @@ func maintenanceCause(env map[string]string, window bool, environment string, ou
 // build's running job executions are canceled, and the old revisions' requests in flight
 // are let finish. What it did goes into the facts.
 func (m *maintenance) quiesce(ctx context.Context, facts map[string]string, previous []Revision, moved time.Time) error {
-	restore := m.env[restoreFact] != ""
+	restore := m.env[restoreFact] != "" || m.env[rollbackFact] != ""
 	if queue := m.build.Substitutions[tasksQueueSub]; queue != "" {
 		if err := m.pauseQueue(ctx, queue, restore); err != nil {
 			return err
