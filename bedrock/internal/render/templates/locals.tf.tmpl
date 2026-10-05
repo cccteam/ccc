@@ -168,7 +168,8 @@ locals {
 
   # The job process's template job ({{.Jobs.Dir}}), in the primary region, by name
   # and as the Cloud Run API names it; each build's job is named after it with the
-  # build's version{{if .JobsJob}}, and the image names that job to the site as {{.JobsJob.Name}}{{end}}.
+  # build's version, and the service carries this name as {{.JobsTemplateVariable}}
+  # (jobs_template_env below), which the framework names that job from.
   jobs_job_name = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-${local.primary_region_code}-${local.app}-jobs"
   jobs_job      = "projects/${local.project_id}/locations/${local.primary_region}/jobs/${local.jobs_job_name}"
 {{- end}}
@@ -272,10 +273,17 @@ locals {
   }
 {{- end}}
 
-{{- if .JobsJob}}
+{{- if .Jobs}}
 
-  # {{.JobsJob.Declaration}} is not set here: the image build bakes it in as the job
-  # of that build (Dockerfile, ARG JOBS_JOB), so each revision starts its own.
+  # {{.JobsTemplateVariable}}: the job process's template job (cloud-run.tf), which the
+  # pipeline copies per build into <template>-<version key> on that build's image. No
+  # configuration level declares it: the framework (resource/jobs) reads it, with the
+  # version the image bakes in, and names the job of its own build from the two, so
+  # each revision starts the job of its build, and a traffic rollback to an earlier
+  # revision starts that revision's. A pull-request stack's is its own template.
+  jobs_template_env = {
+    {{.JobsTemplateVariable}} = local.jobs_job
+  }
 {{- end}}
 {{- if .FileStores}}
 
@@ -341,7 +349,7 @@ locals {
   # {{.SiteLevel.FileBase}}: {{.Port.Name}} is set by Cloud Run itself (reserved; setting it is an
   # error) and {{.SiteImageVars}} is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}}{{if .Scheduled}}, local.scheduler_env{{end}})
+  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}}{{if .Scheduled}}, local.scheduler_env{{end}}{{if .Jobs}}, local.jobs_template_env{{end}})
 
   # {{.Migrate.Dir}} reads {{.MigrateLevels}} and nothing above them: what the pipeline
   # runs the migrate command with on the build worker (cloud-build.tf,

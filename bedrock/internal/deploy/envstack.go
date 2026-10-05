@@ -366,7 +366,7 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 		}
 		fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
 	}
-	if err := s.migrateSettings(ctx, w, subs); err != nil {
+	if err := s.appliedFacts(ctx, w, subs); err != nil {
 		return err
 	}
 	env, err := w.Environment()
@@ -429,22 +429,44 @@ func (s *stack) generation(ctx context.Context, open StoreFunc, subs map[string]
 	return generation, nil
 }
 
-// migrateSettings reads the variables the migrate command runs with off the stack's
-// substitutions output as the stack now stands (_MIGRATE_ENV: the levels the command
-// constructs, for this environment), and leaves them for the migrate step (MIGRATE_ENV).
-// The trigger's copy is the last apply's: a release that declares a new variable of those
-// levels changes them in this very apply, and the first release after the stack began to
-// carry them finds them nowhere else. The environment's canonical hostname is read back
-// the same way (_HOSTNAME, left as CANONICAL_HOSTNAME for deploy service, which names the
-// next revision's URL by it): the stack takes it from the placement's apps domain, or from
-// terraform.tfvars where hostnames names it, so a release that changes it is deployed
-// under its own.
-func (s *stack) migrateSettings(ctx context.Context, w Workspace, subs map[string]string) error {
+// appliedFacts reads the stack's substitutions output as the stack now stands, after
+// the apply, and leaves for the steps after it what the trigger carries only as of its
+// stack's last apply: the variables the migrate command runs with (_MIGRATE_ENV: the
+// levels the command constructs, for this environment, left as MIGRATE_ENV) and the
+// databases it reaches; the services (_SERVICES: a release that adds a browser
+// application deploys to it in this very run); the job process's template job (_JOBS_JOB:
+// the first release that adds a job process makes this build's job from it, where the
+// trigger names none yet); and the build arguments the stack makes (_BUILD_ARG_<NAME>,
+// for the hooks after the image build, which passed what the trigger carried). The
+// environment's canonical hostname is read back the same way (_HOSTNAME, left as
+// CANONICAL_HOSTNAME for deploy service, which names the next revision's URL by it): the
+// stack takes it from the placement's apps domain, or from terraform.tfvars where
+// hostnames names it, so a release that changes it is deployed under its own. Each value
+// the trigger says otherwise is said in the log.
+func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]string) error {
 	facts, err := s.facts(ctx)
 	if err != nil {
 		return err
 	}
 	read := map[string]string{}
+	for _, f := range [][3]string{{services, servicesSub, "the services"}, {jobsJobFact, jobsJobSub, "the job process's template job"}} {
+		fact, sub, what := f[0], f[1], f[2]
+		value := facts[fact]
+		if value == "" {
+			continue
+		}
+		read[fact] = value
+		if said := subs[sub]; said != value {
+			fmt.Fprintf(s.out, "%s read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", capitalize(what), sub, value, said)
+		}
+	}
+	for _, name := range stackArgumentNames(facts) {
+		sub := derive.BuildArgumentSubstitution(name)
+		read[sub] = facts[sub]
+		if said, ok := subs[sub]; !ok || said != facts[sub] {
+			fmt.Fprintf(s.out, "The build argument %s is read from the stack as applied (%s), for the steps after the image build, which passed what the trigger carried.\n", name, sub)
+		}
+	}
 	if hostname := facts[prHostnameFact]; hostname != "" {
 		read[canonicalHostnameFact] = hostname
 		if said := subs[hostnameSub]; said != hostname {
@@ -858,4 +880,13 @@ func secretRefs(v any) []map[string]any {
 	}
 
 	return refs
+}
+
+// capitalize is the phrase with its first letter in upper case, for the start of a line.
+func capitalize(phrase string) string {
+	if phrase == "" {
+		return ""
+	}
+
+	return strings.ToUpper(phrase[:1]) + phrase[1:]
 }

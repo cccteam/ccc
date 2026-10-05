@@ -147,7 +147,8 @@ locals {
 
   # The job process's template job (cmd/jobs), in the primary region, by name
   # and as the Cloud Run API names it; each build's job is named after it with the
-  # build's version, and the image names that job to the site as APP_JOBS_JOB.
+  # build's version, and the service carries this name as APP_JOBS_TEMPLATE
+  # (jobs_template_env below), which the framework names that job from.
   jobs_job_name = local.is_pr ? "${local.pr_name}-jobs" : "${local.name}-${local.primary_region_code}-${local.app}-jobs"
   jobs_job      = "projects/${local.project_id}/locations/${local.primary_region}/jobs/${local.jobs_job_name}"
 
@@ -249,8 +250,15 @@ locals {
     APP_STAFF_OIDC_GROUP_LOOKUP = var.staff_oidc_group_lookup
   }
 
-  # siteConfig.JobsJob is not set here: the image build bakes it in as the job
-  # of that build (Dockerfile, ARG JOBS_JOB), so each revision starts its own.
+  # APP_JOBS_TEMPLATE: the job process's template job (cloud-run.tf), which the
+  # pipeline copies per build into <template>-<version key> on that build's image. No
+  # configuration level declares it: the framework (resource/jobs) reads it, with the
+  # version the image bakes in, and names the job of its own build from the two, so
+  # each revision starts the job of its build, and a traffic rollback to an earlier
+  # revision starts that revision's. A pull-request stack's is its own template.
+  jobs_template_env = {
+    APP_JOBS_TEMPLATE = local.jobs_job
+  }
 
   # The file stores (storage.tf), each as the gs:// URL of its bucket, for the
   # processes that construct its level and run the application's own code:
@@ -293,7 +301,7 @@ locals {
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
   # error) and APP_CONSOLE_DIST and APP_PORTAL_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.files_env, local.tasks_env, local.firestore_env, local.scheduler_env)
+  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.files_env, local.tasks_env, local.firestore_env, local.scheduler_env, local.jobs_template_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them: what the pipeline
   # runs the migrate command with on the build worker (cloud-build.tf,

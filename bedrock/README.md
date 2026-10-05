@@ -271,7 +271,7 @@ and what its absence means:
   and a Dockerfile stage reads after it declares `ARG NAME`), as a map from the argument's
   name to the value's name: `{"FIREBASE_API_KEY": "firebaseApiKey", "PROJECT_ID":
   "projectId"}`. Not written. Absent, none. A name is an uppercase identifier, other than
-  `VERSION`, `COMMIT` and `JOBS_JOB`, which the pipeline passes itself. A value is one of
+  `VERSION` and `COMMIT`, which the pipeline passes itself. A value is one of
   the values bedrock knows:
   - `firebaseApiKey`: the key string of the Firebase web API key the stack makes for the
     application, which the browser presents to sign in (made when the code declares
@@ -342,10 +342,11 @@ region (never run, never deployed to; each build copies it into a job of its own
 after it with the build's version, on the build's image), its runtime identity with the
 site's project roles and, when it constructs the data level, the database user grant and
 accessor on that level's secrets, its timeout, retries and resources as stack variables,
-and, when the site's config declares `APP_JOBS_JOB`, that variable baked into each
-build's image as the name of that build's job, with `run.invoker` for the site's
-identity on the template job, copied by the pipeline onto each build's job, so the
-running service, and only it, starts the job of its own build through the Cloud Run API
+and the template job's name on the service as `APP_JOBS_TEMPLATE`, which the framework
+(resource/jobs) names the job of its own build from with the version the image bakes in,
+with `run.invoker` for the site's identity on the template job, copied by the pipeline onto
+each build's job, so the running service, and only it, starts the job of its own build
+through the Cloud Run API
 (a schedule calls an endpoint on the service; the pipeline never runs it); a method the
 code marks `@schedule("<cron>", zone: "<IANA zone>")` on an `@rpc` struct, which the
 generated router serves at `POST /_scheduled/<method>` and lists in its release file,
@@ -757,13 +758,16 @@ thing one step hands the next. In order:
   command as it always does. An operation that cannot run (an unknown action or table, a
   force whose version is missing or not an integer, a force without a requester) is
   refused by `deploy resolve` and again here, before the command runs.
-- `deploy jobs`: makes this build's job for the job process (`cmd/jobs`) right after the
-  image build, before the migrations, as a copy of the stack's template job (`_JOBS_JOB`)
-  named after it with the build's version, on this build's image with the pipeline's
-  labels and the template's IAM policy (the site's `run.invoker`). It does not run it; the
-  image the build made names the job to the site (`APP_JOBS_JOB`), so the revision starts
-  the job of its own build and a traffic rollback starts the earlier one. Made before the
-  migrations so that a failure here leaves the database untouched. The step is rendered
+- `deploy jobs`: makes this build's job for the job process (`cmd/jobs`) after the
+  stack's apply, before the migrations, as a copy of the stack's template job (`_JOBS_JOB`,
+  read from the stack as this build applied it, so the first release with a job process
+  makes one) named after it with the build's version, on this build's image with the
+  pipeline's labels and the template's IAM policy (the site's `run.invoker`). It does not
+  run it; the service carries the template's name (`APP_JOBS_TEMPLATE`, set by the stack)
+  and the image its version, and the framework names the job of its own build from the
+  two, so the revision starts the job of its own build and a traffic rollback starts the
+  earlier one. Made before the migrations so that a failure here leaves the database
+  untouched. The step is rendered
   only for an application with a job process.
 - `deploy migrate --preflight`: in a run that waits for the maintenance window and
   replaces no database, runs the release's migrate command once with `-version` before

@@ -95,7 +95,7 @@ func TestDerive(t *testing.T) {
 				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_GROUP_LOOKUP",
 				varFileStore, varTasksQueue,
 			},
-			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", varJobsJob},
+			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST"},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
 			wantMigrate:  []string{LevelCore, LevelData},
 			wantJobs:     []string{LevelCore, LevelData},
@@ -120,7 +120,6 @@ func TestDerive(t *testing.T) {
 				varPort:                        SupplyPlatform,
 				"APP_CONSOLE_DIST":             SupplyImage,
 				"APP_PORTAL_DIST":              SupplyImage,
-				varJobsJob:                     SupplyImage,
 				varFileStore:                   SupplyDerived,
 				varTasksQueue:                  SupplyDerived,
 				varFirestoreProject:            SupplyDerived,
@@ -633,9 +632,9 @@ func TestPlacementValidate(t *testing.T) {
 		{
 			name:    "a build argument the pipeline passes itself",
 			mutate:  func(p *Placement) { p.BuildArguments = map[string]string{"VERSION": "environment"} },
-			wantErr: "buildArguments names VERSION, a build argument the pipeline passes itself (VERSION, COMMIT, JOBS_JOB): give the value another name",
+			wantErr: "buildArguments names VERSION, a build argument the pipeline passes itself (VERSION, COMMIT): give the value another name",
 		},
-		{name: "the build's job as a build argument", mutate: func(p *Placement) { p.BuildArguments = map[string]string{"JOBS_JOB": "hostname"} }, wantErr: "buildArguments names JOBS_JOB, a build argument the pipeline passes itself"},
+		{name: "the commit as a build argument", mutate: func(p *Placement) { p.BuildArguments = map[string]string{"COMMIT": "hostname"} }, wantErr: "buildArguments names COMMIT, a build argument the pipeline passes itself"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -975,6 +974,8 @@ func TestPlacementSeedEnvironments(t *testing.T) {
 	}
 }
 
+// TestJobsJob refuses the retired variable, which the framework reads no more, and
+// nothing else.
 func TestJobsJob(t *testing.T) {
 	t.Parallel()
 
@@ -984,27 +985,12 @@ func TestJobsJob(t *testing.T) {
 		model   Model
 		wantErr string
 	}{
+		{name: "no variable, no process: nothing to check", model: Model{}},
+		{name: "a job process the site does not name is fine", model: Model{Jobs: jobs}},
 		{
-			name:  "a site variable naming an existing job process passes",
-			model: Model{Jobs: jobs, Variables: []Variable{{Name: varJobsJob, Role: RoleJobsJob, Level: LevelSite, Struct: "siteConfig", Field: "JobsJob"}}},
-		},
-		{
-			name:  "no variable, no process: nothing to check",
-			model: Model{},
-		},
-		{
-			name:  "a job process the site does not name is fine",
-			model: Model{Jobs: jobs},
-		},
-		{
-			name:    "the variable without the process is refused",
-			model:   Model{Variables: []Variable{{Name: varJobsJob, Role: RoleJobsJob, Level: LevelSite, Struct: "siteConfig", Field: "JobsJob"}}},
-			wantErr: "APP_JOBS_JOB (siteConfig.JobsJob) names the job process's Cloud Run job, but there is no main package at cmd/jobs",
-		},
-		{
-			name:    "the variable at the data level is refused",
-			model:   Model{Jobs: jobs, Variables: []Variable{{Name: varJobsJob, Role: RoleJobsJob, Level: LevelData, Struct: "dataConfig", Field: "JobsJob"}}},
-			wantErr: "APP_JOBS_JOB (dataConfig.JobsJob) is declared at the data level; the site alone runs the job process, so it belongs at the site level",
+			name:    "the retired variable is refused, with the field to delete",
+			model:   Model{Jobs: jobs, Variables: []Variable{{Name: retiredJobsJob, Level: LevelSite, Struct: "siteConfig", Field: "JobsJob"}}},
+			wantErr: "APP_JOBS_JOB (siteConfig.JobsJob) is retired: the framework (resource/jobs) names the job of the build itself, from APP_JOBS_TEMPLATE, which the stack sets on the service, and the version the image bakes in; delete the field",
 		},
 	}
 	for _, tt := range tests {
@@ -1021,46 +1007,6 @@ func TestJobsJob(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("jobsJob() error = %v, want %q", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestFrameworkJobsJob(t *testing.T) {
-	t.Parallel()
-
-	jobs := &Process{Name: jobsProcess, Dir: jobsDir}
-	declared := Variable{Name: varJobsJob, Role: RoleJobsJob, Level: LevelSite, Struct: "siteConfig", Field: "JobsJob"}
-	tests := []struct {
-		name  string
-		model Model
-		want  []Variable
-	}{
-		{name: "no job process: no variable", model: Model{}},
-		{name: "a declared variable is kept as it is", model: Model{Jobs: jobs, Variables: []Variable{declared}}, want: []Variable{declared}},
-		{
-			name:  "the framework reads it: the site's variable, named by the framework's reader",
-			model: Model{Jobs: jobs, Levels: []Level{{Name: LevelSite, File: "pkg/config/site.go"}}},
-			want: []Variable{{
-				Name: varJobsJob, Level: LevelSite, Struct: "jobs", Field: "FromEnvironment", File: "pkg/config/site.go", Type: "string",
-				Doc:  "the job process's Cloud Run job, read by the framework (resource/jobs) where the site builds its starter",
-				Role: RoleJobsJob,
-			}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			tt.model.frameworkJobsJob()
-			if !slices.Equal(tt.want, tt.model.Variables) {
-				t.Errorf("Variables = %+v, want %+v", tt.model.Variables, tt.want)
-			}
-			if err := tt.model.jobsJob(); err != nil {
-				t.Errorf("jobsJob() after frameworkJobsJob() error = %v", err)
-			}
-			if v := tt.model.ByRoleAtLevel(RoleJobsJob, LevelSite); tt.model.Jobs != nil && (v == nil || v.Declaration() == "") {
-				t.Errorf("ByRoleAtLevel(RoleJobsJob, site) = %v, want the variable with a declaration", v)
 			}
 		})
 	}

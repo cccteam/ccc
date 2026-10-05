@@ -271,14 +271,15 @@ func newDeployJobs(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "jobs",
 		Short: "Make this build's job of the job process from the stack's template job, without running it",
-		Long: `jobs makes this build's job of the job process (cmd/jobs) right after the image build, for an
+		Long: `jobs makes this build's job of the job process (cmd/jobs) after the stack's apply, for an
 application with one: a copy of the template job the stack owns (named by the stack's _JOBS_JOB;
 never run, never deployed to), named <template>-<version key> (v0.1.15 gives v0-1-15) and put on
 this build's image with the pipeline's labels through the Cloud Run API, with the template's IAM
 policy (the stack grants the site's identity run.invoker on the template; the copy is what lets the
-site start this job): the image the build made names it to the site (APP_JOBS_JOB), so the revision
-this build deploys starts a job of its own code, and a traffic rollback to an earlier revision starts
-that revision's job. Only the running service starts the job process: the pipeline never runs it, a
+site start this job): the service carries the template's name (APP_JOBS_TEMPLATE, set by the stack)
+and the image its version, and the framework names the job of its own build from the two, so the
+revision this build deploys starts a job of its own code, and a traffic rollback to an earlier
+revision starts that revision's job. Only the running service starts the job process: the pipeline never runs it, a
 hook never starts it, and a schedule calls an endpoint on the service, which starts it. The job's
 variables, identity, timeout, retries and resources are the template's, the application layer's. A
 build of a version this environment deployed before updates the job it made then. The step runs

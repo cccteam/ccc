@@ -175,8 +175,9 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
 # in the primary region. This is the template: never run, never deployed to.
 # Each build copies it (bedrock deploy jobs) into a job of its own, named
 # after this one with the build's version (<name>-v0-1-15), on the build's
-# image, and bakes that job's name into the image as the site's
-# APP_JOBS_JOB: a revision starts the job of its own build, and a
+# image; the service carries this template's name as APP_JOBS_TEMPLATE
+# and the image its version, and the framework names the job of its own build
+# from the two: a revision starts the job of its own build, and a
 # traffic rollback starts the earlier one. Only the running service starts
 # the job process; the pipeline never runs it and a schedule calls an endpoint
 # on the service. The stack keeps the jobs' variables, secrets, identity,
@@ -259,7 +260,8 @@ resource "google_cloud_run_v2_job" "jobs" {
 }
 
 # The site starts the job of its own build through the Cloud Run API as its
-# own identity (APP_JOBS_JOB names it from the image). The grant sits on
+# own identity (named from the template, which APP_JOBS_TEMPLATE carries,
+# and the version the image bakes in). The grant sits on
 # the template, which is never run: bedrock deploy jobs copies the template's
 # IAM policy onto each build's job with its settings, so who may start the job
 # process is decided here and nowhere else. (Cloud Run does not evaluate IAM

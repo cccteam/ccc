@@ -58,56 +58,31 @@ func (m *Model) processes(a *app.App, cfg *config) error {
 		}
 		m.Jobs = &jobs
 	}
-	m.frameworkJobsJob()
 
 	return m.jobsJob()
 }
 
-// frameworkJobsJob gives the site the job's variable when the framework reads it. An
-// application whose site builds its starter with jobs.FromEnvironment (resource/jobs,
-// what impulse add files writes) declares no env tag for APP_JOBS_JOB: the framework
-// reads the variable itself. The stack, the pipeline and the image treat it as a
-// declared one, baked into the image from the build argument JOBS_JOB, the job of that
-// build, which is why bedrock check asks the Dockerfile for the argument whenever the
-// job process exists.
-func (m *Model) frameworkJobsJob() {
-	if m.Jobs == nil {
-		return
-	}
-	for i := range m.Variables {
-		if m.Variables[i].Role == RoleJobsJob {
-			return
-		}
-	}
-	v := Variable{
-		Name:   varJobsJob,
-		Level:  LevelSite,
-		Struct: "jobs",
-		Field:  "FromEnvironment",
-		Type:   "string",
-		Doc:    "the job process's Cloud Run job, read by the framework (resource/jobs) where the site builds its starter",
-		Role:   RoleJobsJob,
-	}
-	if level, ok := m.Level(LevelSite); ok {
-		v.File = level.File
-	}
-	m.Variables = append(m.Variables, v)
-}
+// JobsTemplateVariable is the variable the stack sets on the service to the job process's
+// template job, as the Cloud Run API names it (projects/<p>/locations/<l>/jobs/<j>): the
+// framework (resource/jobs) reads it, with the version the image bakes in, and names the
+// job of this build from the two, the template's name with the version's key, which the
+// pipeline made on this build's image. No configuration level declares it, as none
+// declares the scheduler's invoker.
+const JobsTemplateVariable = "APP_JOBS_TEMPLATE"
 
-// jobsJob checks the variable that names the job process to the site, when the code
-// declares one: the application has the process, and the variable is the site's (the
-// site alone runs the job; the migrate command and the job itself have no use for it).
+// retiredJobsJob is the variable a site once declared for the job of its build, which the
+// pipeline baked into the image from the trigger's substitutions: the first release that
+// added a job process built an image naming no job, since the trigger carries the last
+// apply's. The framework names the job itself now (JobsTemplateVariable).
+const retiredJobsJob = "APP_JOBS_JOB"
+
+// jobsJob refuses a configuration that still declares the retired variable, naming the
+// field to delete.
 func (m *Model) jobsJob() error {
 	for i := range m.Variables {
 		v := &m.Variables[i]
-		if v.Role != RoleJobsJob {
-			continue
-		}
-		if m.Jobs == nil {
-			return errors.Newf("%s (%s) names the job process's Cloud Run job, but there is no main package at %s", v.Name, v.Declaration(), jobsDir)
-		}
-		if v.Level != LevelSite {
-			return errors.Newf("%s (%s) is declared at the %s level; the site alone runs the job process, so it belongs at the %s level", v.Name, v.Declaration(), v.Level, LevelSite)
+		if v.Name == retiredJobsJob {
+			return errors.Newf("%s (%s) is retired: the framework (resource/jobs) names the job of the build itself, from %s, which the stack sets on the service, and the version the image bakes in; delete the field", v.Name, v.Declaration(), JobsTemplateVariable)
 		}
 	}
 

@@ -142,17 +142,20 @@ type view struct {
 	MaintenanceVariable string
 	// SchedulerVariable is the variable that names the invoker identity of the scheduled
 	// routes to the service (scheduler.tf); ScheduledPrefix the path they are served
-	// under; ReleaseFileName the generated file that lists them.
-	SchedulerVariable string
-	ScheduledPrefix   string
-	ReleaseFileName   string
-	Port              *derive.Variable
-	ClientID          *derive.Variable
-	ClientSecret      *derive.Variable
-	RedirectURL       *derive.Variable
-	HostedDomain      *derive.Variable
-	GroupPrefix       *derive.Variable
-	GroupLookup       *derive.Variable
+	// under; ReleaseFileName the generated file that lists them. JobsTemplateVariable is
+	// the variable that names the job process's template job to the service, which the
+	// framework names the job of its own build from (locals.tf, jobs_template_env).
+	SchedulerVariable    string
+	JobsTemplateVariable string
+	ScheduledPrefix      string
+	ReleaseFileName      string
+	Port                 *derive.Variable
+	ClientID             *derive.Variable
+	ClientSecret         *derive.Variable
+	RedirectURL          *derive.Variable
+	HostedDomain         *derive.Variable
+	GroupPrefix          *derive.Variable
+	GroupLookup          *derive.Variable
 	// CookieKeySecret and ClientSecretSecret are the secrets by role.
 	CookieKeySecret    *derive.Secret
 	ClientSecretSecret *derive.Secret
@@ -188,9 +191,6 @@ type view struct {
 	JobsLevels    string
 	JobsLevelList string
 	JobsReadsData bool
-	// JobsJob is the site's variable naming the job process's Cloud Run job, or nil
-	// when the site declares none.
-	JobsJob *derive.Variable
 	// FileStores are the file stores the code declares, prepared for the templates, in
 	// declaration order (this field stands in front of the model's list of the same
 	// name); none when the code declares no store. FileStoreEnv is their aligned
@@ -388,9 +388,6 @@ type imageView struct {
 	// bundle across them. An application without a browser has none.
 	Workspaces []workspace
 	Bundles    []bundle
-	// JobsJobVar is the site's variable the image sets to the job of its build, empty
-	// when the site declares none.
-	JobsJobVar string
 	// VersionVar is the variable the image sets to the release, empty when the code
 	// declares none.
 	VersionVar string
@@ -455,9 +452,6 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 	}
 	if m.Jobs != nil {
 		iv.JobsPkg = pkgPath(m.Jobs.Dir)
-		if v := m.ByRoleAtLevel(derive.RoleJobsJob, derive.LevelSite); v != nil {
-			iv.JobsJobVar = v.Name
-		}
 	}
 	if m.HookProgram != nil {
 		iv.HooksPkg = pkgPath(m.HookProgram.Dir)
@@ -676,6 +670,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.Auth = &m.Auths[0]
 	v.MaintenanceVariable = derive.MaintenanceVariable
 	v.SchedulerVariable, v.ScheduledPrefix, v.ReleaseFileName = derive.SchedulerInvokerVariable, derive.ScheduledPrefix, derive.ReleaseFileName
+	v.JobsTemplateVariable = derive.JobsTemplateVariable
 	v.Directory = v.Auth.OIDC()
 	v.AuthVar = v.Auth.VariablePrefix()
 	if v.Directory {
@@ -955,7 +950,7 @@ func (v *view) blocks() {
 	v.CodeDefaultsCell = strings.Join(defaults, ", ")
 	var image []string
 	for _, x := range v.ByLevel(v.SiteLevel.Name) {
-		if x.Image && x.Role != derive.RoleJobsJob {
+		if x.Image {
 			image = append(image, x.Name)
 		}
 	}
@@ -970,7 +965,6 @@ func (v *view) blocks() {
 		v.JobsLevels = joinAnd(v.Jobs.Levels)
 		v.JobsLevelList = `["` + strings.Join(v.Jobs.Levels, `", "`) + `"]`
 		v.JobsReadsData = v.Jobs.Reads(v.DataLevel.Name)
-		v.JobsJob = v.byRole(derive.RoleJobsJob)
 		identities = append(identities, [2]string{stem + v.Jobs.Name, v.Jobs.Dir + ", the job process (Cloud Run job)"})
 	}
 	v.IdentityLines = aligned("#   ", identities, "  ")

@@ -724,7 +724,13 @@ func TestApplyEnvironmentStack(t *testing.T) {
 		wantSettings string
 		wantCleared  string
 		wantHostname string
-		wantErr      string
+		// wantServices, wantJobsJob and wantArguments are the services, the job process's
+		// template job and the build arguments read back from the applied stack, when a
+		// case checks them.
+		wantServices  string
+		wantJobsJob   string
+		wantArguments map[string]string
+		wantErr       string
 	}{
 		{
 			name:         "a restore run deletes the Firestore database's documents after the apply, as the apply identity",
@@ -776,6 +782,30 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
 			wantHostname: "quill-stg.example.dev",
+		},
+		{
+			name:          "the services, the job process's template job and a build argument the trigger lacks are read from the applied stack",
+			subs:          withSub(tagSubs(), servicesSub, "us-central1=quill-app"),
+			planJSON:      stackPlanJSON,
+			outputs:       map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app,us-central1=quill-portal", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1)},
+			wantOut:       []string{"The services read from the stack as applied (_SERVICES): us-central1=quill-app,us-central1=quill-portal, where the trigger (its stack's last apply) says \"us-central1=quill-app\".", "The job process's template job read from the stack as applied (_JOBS_JOB): us-central1=quill-jobs, where the trigger (its stack's last apply) says \"\".", "The build argument THEME is read from the stack as applied (_BUILD_ARG_THEME), for the steps after the image build, which passed what the trigger carried.", settingsRead},
+			wantTofu:      []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings:  `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantServices:  "us-central1=quill-app,us-central1=quill-portal",
+			wantJobsJob:   "us-central1=quill-jobs",
+			wantArguments: map[string]string{"_BUILD_ARG_THEME": "dark"},
+		},
+		{
+			name:          "values the trigger names alike are read back without a word",
+			subs:          withSub(withSub(withSub(tagSubs(), servicesSub, "us-central1=quill-app"), jobsJobSub, "us-central1=quill-jobs"), "_BUILD_ARG_THEME", "dark"),
+			planJSON:      stackPlanJSON,
+			outputs:       map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1)},
+			wantOut:       []string{settingsRead},
+			wantTofu:      []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings:  `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantServices:  "us-central1=quill-app",
+			wantJobsJob:   "us-central1=quill-jobs",
+			wantArguments: map[string]string{"_BUILD_ARG_THEME": "dark"},
 		},
 		{
 			name:         "a plan with no change applies nothing, and still reads the settings",
@@ -863,6 +893,20 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			}
 			if tt.wantHostname == tt.subs[hostnameSub] && strings.Contains(out.String(), "The environment's hostname is read") {
 				t.Errorf("a hostname the trigger names alike is said:\n%s", out.String())
+			}
+			if tt.wantServices != "" && env[services] != tt.wantServices {
+				t.Errorf("%s = %q, want %q", services, env[services], tt.wantServices)
+			}
+			if tt.wantJobsJob != "" && env[jobsJobFact] != tt.wantJobsJob {
+				t.Errorf("%s = %q, want %q", jobsJobFact, env[jobsJobFact], tt.wantJobsJob)
+			}
+			for name, want := range tt.wantArguments {
+				if env[name] != want {
+					t.Errorf("%s = %q, want %q", name, env[name], want)
+				}
+			}
+			if tt.wantServices != "" && tt.wantServices == tt.subs[servicesSub] && tt.wantJobsJob == tt.subs[jobsJobSub] && (strings.Contains(out.String(), "(_SERVICES)") || strings.Contains(out.String(), "(_JOBS_JOB)") || strings.Contains(out.String(), "(_BUILD_ARG_")) {
+				t.Errorf("a value the trigger names alike is said:\n%s", out.String())
 			}
 			if tt.wantCleared != "" && env[clearedFact] != firestoreAddress {
 				t.Errorf("%s = %q, want %q", clearedFact, env[clearedFact], firestoreAddress)

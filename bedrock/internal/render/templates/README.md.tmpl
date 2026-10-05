@@ -213,11 +213,13 @@ from `2-env`'s state.
   (`{{.Jobs.Dir}}`; its timeout, retries and resources are `var.jobs_timeout`,
   `var.jobs_retries` and `var.jobs_resources`), never run and never deployed
   to: each build copies it into a job of its own, named after it with the
-  build's version (`…-jobs-v0-1-15`), on the build's image{{if .JobsJob}}, and bakes that
-  job's name into the image as the site's `{{.JobsJob.Name}}`, so a revision starts the
-  job of its own build and a traffic rollback starts the earlier one; the site
+  build's version (`…-jobs-v0-1-15`), on the build's image; the service carries
+  the template's name as `{{.JobsTemplateVariable}}`, and the framework
+  (resource/jobs) names the job of its own build from it and the version the
+  image bakes in, so a revision starts the job of its own build and a traffic
+  rollback starts the earlier one; the site
   holds `roles/run.invoker` on the template, a grant the pipeline copies onto
-  each build's job with the template's settings{{end}}.
+  each build's job with the template's settings.
   Only the running service starts the job process: the pipeline never runs
   it, a hook never starts it, and a schedule calls an endpoint on the service,
   which starts it. The job process ends what it is doing on SIGTERM within
@@ -323,8 +325,8 @@ above them.
 | `{{.RedirectURL.Name}}` | {{.RedirectURL.Level}} | `https://<first hostname>{{.Auth.Callback.Path}}` | yes | |{{if .Jobs}} |{{end}}
 | `{{.GroupLookup.Name}}` | {{.GroupLookup.Level}} | `var.{{.AuthVar}}_group_lookup` | yes | |{{if .Jobs}} |{{end}}
 {{- end}}
-{{- if .JobsJob}}
-| `{{.JobsJob.Name}}` | {{.JobsJob.Level}} | the job of the build, baked into the image (Dockerfile, `ARG JOBS_JOB`) | yes | | |
+{{- if .Jobs}}
+| `{{.JobsTemplateVariable}}` | none, the framework reads it | the job process's template job, which the site's own build's job is named from | yes | | |
 {{- end}}
 {{- if .Scheduled}}
 | `{{.SchedulerVariable}}` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | |{{if .Jobs}} |{{end}}
@@ -337,8 +339,7 @@ database because the {{.FirestoreDatabase.Level}} level opens its live service w
 the release's role migration signals the running instances through it{{if .FirebaseAPIKey}}; the web
 API key rides beside it, a public value{{end}}. {{end}}Not set: `{{.Version.Name}}` (the
 pipeline bakes it into the image, so a deploy never edits the template's
-variables),{{if .JobsJob}} `{{.JobsJob.Name}}` (baked into the image the same way, the job of
-that build),{{end}} {{.CodeDefaultsCell}}, `{{.Port.Name}}` (Cloud Run
+variables), {{.CodeDefaultsCell}}, `{{.Port.Name}}` (Cloud Run
 sets it), `{{.SiteImageVars}}` (where the image put the bundle).
 
 ### Secret versions
@@ -754,8 +755,7 @@ bounds). What an application adds is declared in files of its own:
   directory) and then yours: extra stages, build arguments, private assets.
   `bedrock check` refuses a Dockerfile that builds no binary the pipeline
   runs or deploys (`/migrate`, taken out of the image for the migration
-  steps{{if .Jobs}}; `/jobs`, the job process's{{end}}){{if .JobsJob}}, or that drops the lines carrying
-  the build's job to the site (`ARG JOBS_JOB`, `ENV {{.JobsJob.Name}}="${JOBS_JOB}"`){{end}}.
+  steps{{if .Jobs}}; `/jobs`, the job process's{{end}}).
 
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
 never an edit to the rendered file.

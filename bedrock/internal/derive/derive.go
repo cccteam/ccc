@@ -219,8 +219,6 @@ const (
 	RoleDatabaseName     Role = "database-name"
 	RolePort             Role = "port"
 	RoleCookieKey        Role = "cookie-key"
-	// RoleJobsJob names the job process's Cloud Run job to the site, which runs it.
-	RoleJobsJob Role = "jobs-job"
 	// RoleFileStore hands a file store, a Cloud Storage bucket of the application's own,
 	// to the processes that construct its level as a gs:// URL.
 	RoleFileStore Role = "file-store"
@@ -255,7 +253,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleJobsJob, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey:
 		return true
 	default:
 		return false
@@ -307,9 +305,6 @@ const (
 	varDatabaseInstance = "GOOGLE_CLOUD_SPANNER_INSTANCE_ID"
 	varDatabaseName     = "GOOGLE_CLOUD_SPANNER_DATABASE_NAME"
 	varPort             = "PORT"
-	// varJobsJob is the variable a site declares to run the job process: the stack sets
-	// it to the job's resource name and grants the site's identity on the job.
-	varJobsJob = "APP_JOBS_JOB"
 	// varFileStore is the variable an application declares to keep files in Cloud
 	// Storage, its default file store; a named store is varFileStore, an underscore and
 	// the store's name in upper snake case (APP_FILE_STORE_DOCUMENTS). The stack creates
@@ -354,7 +349,6 @@ var wellKnown = map[string]Role{
 	varDatabaseInstance:  RoleDatabaseInstance,
 	varDatabaseName:      RoleDatabaseName,
 	varPort:              RolePort,
-	varJobsJob:           RoleJobsJob,
 	varTasksQueue:        RoleTasksQueue,
 	varFirestoreDatabase: RoleFirestoreDatabase,
 	varFirestoreProject:  RoleFirestoreProject,

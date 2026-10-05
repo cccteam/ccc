@@ -72,9 +72,8 @@ func BuildArgumentSubstitution(name string) string {
 }
 
 // pipelineBuildArguments are the build arguments the pipeline passes on its own: the
-// release, the commit, and the job of the build. A declared argument may not take one of
-// their names.
-var pipelineBuildArguments = []string{"VERSION", "COMMIT", "JOBS_JOB"}
+// release and the commit. A declared argument may not take one of their names.
+var pipelineBuildArguments = []string{"VERSION", "COMMIT"}
 
 // buildArgumentRE is a build argument's name: an uppercase identifier, as a Dockerfile's
 // ARG declares it and a trigger substitution's key admits it.

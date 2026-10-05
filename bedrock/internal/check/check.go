@@ -82,12 +82,10 @@ type Report struct {
 	// BuildSecrets are the build secrets the Dockerfile mounts as required that some
 	// environment's placement does not declare.
 	BuildSecrets []BuildSecretFinding
-	// Binaries are the jobs whose command the Dockerfile does not build, Bundles the
-	// browser bundles whose variable it does not set, and JobNames the instructions it
-	// lacks for carrying the build's job to the site.
+	// Binaries are the jobs whose command the Dockerfile does not build, and Bundles the
+	// browser bundles whose variable it does not set.
 	Binaries []BinaryFinding
 	Bundles  []BundleFinding
-	JobNames []JobNameFinding
 	// Stages are the instructions the Dockerfile's reserved stages hold beyond their
 	// install, which the image build would export to the registry's cache for every
 	// environment; MissingStages are the reserved stages the Dockerfile lacks, whose
@@ -137,7 +135,7 @@ type MaintenanceFinding struct {
 // their install alone, every declared build argument declared by the Dockerfile, release
 // lines that a feature release opens, and release-please's files in place.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.JobNames) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseFiles) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseFiles) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -241,11 +239,6 @@ func (r *Report) scanImage(appDir string, m *derive.Model) error {
 	}
 	r.Binaries = binaries
 	r.Bundles = scanBundles(m)
-	jobNames, err := scanJobName(appDir, m)
-	if err != nil {
-		return err
-	}
-	r.JobNames = jobNames
 	stages, missing, err := scanReservedStages(appDir)
 	if err != nil {
 		return err
@@ -424,9 +417,6 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, b := range r.Bundles {
 		fmt.Fprintf(w, "  refused  Dockerfile sets no %s: the bundle %s is built in a browser stage of its workspace, copied under the working directory and named by an ENV %s=<path>, as the seeded Dockerfile does\n", b.Var, b.Path, b.Var)
-	}
-	for _, j := range r.JobNames {
-		fmt.Fprintf(w, "  refused  Dockerfile lacks %s: the pipeline passes the job of each build as the build argument JOBS_JOB, and the runtime stage sets %s from it (ARG JOBS_JOB, then ENV %s=\"${JOBS_JOB}\"), as the seeded Dockerfile does, so the site starts the job of its own build\n", j.Missing, j.Var, j.Var)
 	}
 	for _, s := range r.Stages {
 		fmt.Fprintf(w, "  refused  Dockerfile:%d stage %s %s (%q): the image build exports this stage's layers to the registry's cache, which every environment's build reads, so the stage holds its install and nothing else\n", s.Line, s.Stage, s.Problem, s.Instruction)

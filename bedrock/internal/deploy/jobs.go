@@ -15,13 +15,15 @@ import (
 )
 
 // Jobs creates this build's job for the job process (cmd/jobs), when the application has
-// one: a copy of the template job the stack owns (named by the substitution _JOBS_JOB;
-// never run, never deployed to), named <template>-<version key>, put on this build's image
-// with the pipeline's labels and given the template's IAM policy: the image the build made
-// names it to the site (APP_JOBS_JOB), so the revision this build deploys starts a job of
+// one: a copy of the template job the stack owns (named by the substitution _JOBS_JOB, read
+// from the stack as this build applied it; never run, never deployed to), named
+// <template>-<version key>, put on this build's image with the pipeline's labels and given
+// the template's IAM policy: the service carries the template's name (APP_JOBS_TEMPLATE,
+// set by the stack) and the image its version, and the framework names the job of its own
+// build from the two (resource/jobs), so the revision this build deploys starts a job of
 // its own code, and a traffic rollback to an earlier revision starts that revision's job;
-// only the running service starts it, the pipeline never does. The step runs right after
-// the image build, before the migrations and before anything the run waits for: making a
+// only the running service starts it, the pipeline never does. The step runs after the
+// stack's apply, before the migrations and before anything the run waits for: making a
 // job touches no data, so a failure here stops the run with the database untouched. A
 // build of a version this environment deployed before updates the job it made then, the
 // same code. An application without a job process has nothing to make, and the pipeline

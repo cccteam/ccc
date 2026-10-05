@@ -205,9 +205,11 @@ from `2-env`'s state.
   (`cmd/jobs`; its timeout, retries and resources are `var.jobs_timeout`,
   `var.jobs_retries` and `var.jobs_resources`), never run and never deployed
   to: each build copies it into a job of its own, named after it with the
-  build's version (`…-jobs-v0-1-15`), on the build's image, and bakes that
-  job's name into the image as the site's `APP_JOBS_JOB`, so a revision starts the
-  job of its own build and a traffic rollback starts the earlier one; the site
+  build's version (`…-jobs-v0-1-15`), on the build's image; the service carries
+  the template's name as `APP_JOBS_TEMPLATE`, and the framework
+  (resource/jobs) names the job of its own build from it and the version the
+  image bakes in, so a revision starts the job of its own build and a traffic
+  rollback starts the earlier one; the site
   holds `roles/run.invoker` on the template, a grant the pipeline copies onto
   each build's job with the template's settings.
   Only the running service starts the job process: the pipeline never runs
@@ -299,7 +301,7 @@ above them.
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
 | `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | | |
 | `APP_STAFF_OIDC_GROUP_LOOKUP` | data | `var.staff_oidc_group_lookup` | yes | | |
-| `APP_JOBS_JOB` | site | the job of the build, baked into the image (Dockerfile, `ARG JOBS_JOB`) | yes | | |
+| `APP_JOBS_TEMPLATE` | none, the framework reads it | the job process's template job, which the site's own build's job is named from | yes | | |
 | `APP_SCHEDULER_INVOKER` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | | |
 | `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
@@ -309,8 +311,7 @@ database because the data level opens its live service when it is constructed, a
 the release's role migration signals the running instances through it; the web
 API key rides beside it, a public value. Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
-variables), `APP_JOBS_JOB` (baked into the image the same way, the job of
-that build), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
+variables), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
 sets it), `APP_CONSOLE_DIST and APP_PORTAL_DIST` (where the image put the bundle).
 
 ### Secret versions
@@ -722,8 +723,7 @@ bounds). What an application adds is declared in files of its own:
   directory) and then yours: extra stages, build arguments, private assets.
   `bedrock check` refuses a Dockerfile that builds no binary the pipeline
   runs or deploys (`/migrate`, taken out of the image for the migration
-  steps; `/jobs`, the job process's), or that drops the lines carrying
-  the build's job to the site (`ARG JOBS_JOB`, `ENV APP_JOBS_JOB="${JOBS_JOB}"`).
+  steps; `/jobs`, the job process's).
 
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
 never an edit to the rendered file.

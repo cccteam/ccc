@@ -82,10 +82,9 @@ var cacheStages = []cacheStage{
 
 // BuildImage builds the application's image from the checkout's Dockerfile and pushes
 // it under its two tags (<release>-<env> and <commit>-<env>), unless the release check
-// found this commit's build to reuse. The build arguments are VERSION and COMMIT, for an
-// application with a job process JOBS_JOB (the resource name of the job this build makes
-// for its revision, which the Dockerfile sets as the site's APP_JOBS_JOB, so the image
-// names the job of its own build), the build arguments the placement declares, values of
+// found this commit's build to reuse. The build arguments are VERSION and COMMIT (the
+// image bakes the version in, and the framework names the job of its build from it and
+// the template job the stack sets on the service), the build arguments the placement declares, values of
 // the stack's (every _BUILD_ARG_<NAME> the environment file carries, as NAME=value: a
 // release build's trigger's, which resolve exported, or a pull request's own stack's, which
 // deploy pr-stack apply appended; the log names them and never their values), the declared
@@ -125,13 +124,6 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, m
 		return err
 	}
 	args := []string{dockerBuildx, dockerBuild, "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
-	if env[jobsJobFact] != "" {
-		_, job, err := buildJob(build.Substitutions[projectSub], env, jobsJobFact)
-		if err != nil {
-			return err
-		}
-		args = append(args, "--build-arg", "JOBS_JOB="+job)
-	}
 	stackArgs := stackBuildArguments(env)
 	if len(stackArgs) > 0 {
 		fmt.Fprintf(out, "Build arguments from the stack (placement.json, buildArguments): %s.\n", strings.Join(slices.Sorted(maps.Keys(stackArgs)), ", "))

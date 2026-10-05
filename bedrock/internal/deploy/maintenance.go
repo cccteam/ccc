@@ -34,6 +34,7 @@ const (
 	tasksQueueSub = "_TASKS_QUEUE"
 	// servicesSub names the application's services per region (region=name, comma-separated).
 	servicesSub = "_SERVICES"
+	jobsJobSub  = "_JOBS_JOB"
 	// maintenanceOn is the value the maintenance variable takes on a maintenance revision.
 	maintenanceOn = "1"
 	// queuePaused is the state of a Cloud Tasks queue that holds its tasks.
@@ -429,7 +430,7 @@ func (m *maintenance) pauseQueue(ctx context.Context, queue string, purge bool) 
 // start, since the server that starts jobs now answers 503. An application without a job
 // process, or an environment with no live deployment, has nothing to cancel.
 func (m *maintenance) cancelExecutions(ctx context.Context) (int, error) {
-	template := m.build.Substitutions["_JOBS_JOB"]
+	template := m.build.Substitutions[jobsJobSub]
 	if template == "" {
 		fmt.Fprintln(m.out, "No job executions to cancel: the application has no job process (_JOBS_JOB).")
 
