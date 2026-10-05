@@ -1922,6 +1922,7 @@ func TestWorkflow(t *testing.T) {
 				"  plan:\n    name: plan ${{ matrix.name }}\n    needs: [layers, tofu]\n    if: ${{ (success() || failure()) && github.event_name == 'pull_request' && needs.layers.result == 'success' && needs.layers.outputs.count != '0' }}\n    runs-on: ubuntu-latest\n    permissions:\n      pull-requests: write\n    strategy:\n      fail-fast: false\n",
 				"      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1\n        continue-on-error: true\n        with:\n          pattern: plan-*\n",
 				"order=$(printf '%s' \"$MATRIX\" | jq -r 'map(.slug) | join(\" \")')",
+				"          if [ -f \"$plans/status\" ] && [ ! -d \"$plans/plan-$SLUG\" ]; then\n            mkdir \"$plans/plan-$SLUG\"\n",
 				"echo \"As \\`$IDENTITY\\` at $HEAD_SHA: ${summary:-no summary line}\"",
 				"gh api --method PATCH \"repos/$GITHUB_REPOSITORY/issues/comments/$id\"",
 				"          exit \"$verdict\"\n",

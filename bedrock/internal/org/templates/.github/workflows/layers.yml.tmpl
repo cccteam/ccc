@@ -294,6 +294,15 @@ jobs:
 {{.PlanVerdict}}
           VERDICT
           plans="$RUNNER_TEMP/plans"
+          # One matching artifact is extracted into the directory itself, not into a
+          # directory of its own as several are: a run that touches one layer gives its
+          # plan the place the others get, and that layer is this job's.
+          if [ -f "$plans/status" ] && [ ! -d "$plans/plan-$SLUG" ]; then
+            mkdir "$plans/plan-$SLUG"
+            for f in name status plan.txt errors.json outputs.json; do
+              [ -f "$plans/$f" ] && mv "$plans/$f" "$plans/plan-$SLUG/"
+            done
+          fi
           order=$(printf '%s' "$MATRIX" | jq -r 'map(.slug) | join(" ")')
           set +e
           summary=$(bash "$RUNNER_TEMP/plan-verdict.sh" "$plans" "$SLUG" $order)
