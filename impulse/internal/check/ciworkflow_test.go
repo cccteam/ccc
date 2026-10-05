@@ -32,7 +32,7 @@ func TestCIWorkflow(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			want: Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml matches what impulse renders from the code (6 job(s): title, go, angular-web, image, secrets, migrations)"},
+			want: Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml matches what impulse renders from the code (7 job(s): title, go, angular-web, web, image, secrets, migrations)"},
 		},
 		{
 			name:    "a missing file fails: no checks run",
@@ -58,7 +58,7 @@ func TestCIWorkflow(t *testing.T) {
 				}
 			},
 			want: Result{Name: ciWorkflow{}.Name(), Status: Fail, Summary: ".github/workflows/ci.yml differs from what impulse renders from the code", Details: []string{
-				`.github/workflows/ci.yml:138: the code renders "      - run: bun run test"; the file has ""`,
+				`.github/workflows/ci.yml:143: the code renders "      - run: bun run test"; the file has ""`,
 				"run impulse render (go tool impulse render) to rewrite it; the file is impulse's: change the code or impulse, not the file",
 			}},
 		},

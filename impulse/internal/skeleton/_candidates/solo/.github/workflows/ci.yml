@@ -4,8 +4,13 @@
 # the jobs read, or move the impulse pin (go get -tool github.com/cccteam/ccc/impulse@<version>,
 # then go tool impulse render); never this file. Every action is pinned by commit with its
 # tag in a comment, and the pins move with impulse releases, so dependabot must not run over
-# this file. The jobs' ids are the check names a repository rule requires: title, go, one
-# angular-<workspace> job per browser workspace, image, secrets and migrations.
+# this file. The jobs' ids are the check names a repository rule requires: title, go, web,
+# image, secrets and migrations; one angular-<workspace> job per browser workspace reports
+# beside them, and web fails when any of them did. The pins fix the engines, not what they
+# know: govulncheck reads vuln.go.dev, Grype downloads its vulnerability database and Semgrep
+# fetches its registry rules when the job runs, so this file at an old pin still finds a
+# vulnerability published after it; TruffleHog's detectors, golangci-lint's linters and the
+# actions move with impulse releases.
 name: CI
 
 on:
@@ -38,6 +43,9 @@ jobs:
             revert
             docs
             deps
+            upgrade
+            infra
+            config
             style
             chore
             refactor
@@ -45,9 +53,6 @@ jobs:
             test
             build
             ci
-            upgrade
-            infra
-            config
 
   # The Go module builds, vets and passes its tests under the race detector, without tags and with skipAuth (the tag that simulates the directory an OIDC auth signs in through); then, each reporting on its own, golangci-lint, govulncheck, Semgrep against the pull request's base, impulse check (which regenerates; the generators start the Spanner emulator in a container) and a tree the checks left clean.
   go:
@@ -136,6 +141,26 @@ jobs:
       - run: bun run build
       - run: bun run lint
       - run: bun run test
+
+  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs:
+      - angular-web
+    steps:
+      - name: Every browser workspace job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: |
+          if [ "$FAILED" = "true" ]; then
+            echo "A browser workspace job did not succeed:"
+            echo "$RESULTS"
+            exit 1
+          fi
+          echo "every browser workspace job succeeded"
 
   # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
   image:

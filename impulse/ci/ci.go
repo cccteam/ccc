@@ -47,9 +47,18 @@ const (
 )
 
 // FixedChecks are the job ids every application's workflow carries, in the file's order
-// with the browser jobs left out (they follow go and are per application). A
-// required-checks rule names these.
-var FixedChecks = []string{"title", "go", "image", "secrets", "migrations"}
+// with the browser jobs left out (they follow go and are per application; web, the gate
+// over them, follows them and is fixed). A required-checks rule names these.
+var FixedChecks = []string{"title", "go", "web", "image", "secrets", "migrations"}
+
+// TitleTypes are the conventional-commit types the title check accepts, in the order the
+// workflow lists them: first the types a merge of which releases (feat and feature a
+// minor version, the rest a patch), then the types release-please hides, a merge of
+// which alone opens no release pull request. bedrock seeds a changelog section per type
+// into release-please-config.json and its check refuses a configuration missing one,
+// since release-please drops a merge whose type has no section exactly as it drops a
+// hidden one, so a merge of only such titles would never deploy.
+var TitleTypes = []string{"feat", "feature", "fix", "perf", "revert", "docs", "deps", "upgrade", "infra", "config", "style", "chore", "refactor", "cleanup", "test", "build", "ci"}
 
 // Workspace is one browser workspace with the id of the job that installs, builds, lints
 // and tests it.
@@ -103,8 +112,8 @@ func jobID(dir string) string {
 }
 
 // Checks lists the job ids of the workflow Render produces for the application, in the
-// file's order: title, go, one job per browser workspace, image, secrets, migrations.
-// These are the check names the pull request reports.
+// file's order: title, go, one job per browser workspace, web, image, secrets,
+// migrations. These are the check names the pull request reports.
 func Checks(a *app.App) []string {
 	workspaces := Workspaces(a)
 	checks := make([]string, 0, len(FixedChecks)+len(workspaces))
@@ -130,6 +139,7 @@ var workflow = template.Must(template.New("ci.yml").Delims("[[", "]]").Parse(sou
 // data is what the template reads.
 type data struct {
 	Workspaces    []Workspace
+	TitleTypes    []string
 	GolangciLint  string
 	Bun           string
 	Govulncheck   string
@@ -144,6 +154,7 @@ func Render(a *app.App) ([]byte, error) {
 	var b bytes.Buffer
 	d := data{
 		Workspaces:    Workspaces(a),
+		TitleTypes:    TitleTypes,
 		GolangciLint:  GolangciLint,
 		Bun:           Bun,
 		Govulncheck:   Govulncheck,

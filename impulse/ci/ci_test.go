@@ -1,10 +1,12 @@
 package ci_test
 
 import (
+	"flag"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,6 +19,15 @@ import (
 
 // candidates are the embedded skeletons, each rendered once per test that needs the tree.
 var candidates = []string{"solo", "tenanted", "outlets", "sites"}
+
+// update rewrites the candidates' committed workflows from the render instead of
+// comparing: go test ./ci -update. The candidates are embedded, so the rewritten files
+// are read by the next run.
+var update = flag.Bool("update", false, "rewrite the candidates' .github/workflows/ci.yml under internal/skeleton/_candidates from the render")
+
+// candidatesDir is where the embedded candidates live in the source tree, relative to
+// this package, for -update.
+const candidatesDir = "../internal/skeleton/_candidates"
 
 // renderCandidate renders one embedded skeleton under its own placeholder module path and
 // discovers it.
@@ -88,10 +99,10 @@ func TestChecksAreTheRenderedJobs(t *testing.T) {
 		candidate string
 		want      []string
 	}{
-		{name: "solo", candidate: "solo", want: []string{"title", "go", "angular-web", "image", "secrets", "migrations"}},
-		{name: "tenanted", candidate: "tenanted", want: []string{"title", "go", "angular-web", "image", "secrets", "migrations"}},
-		{name: "outlets", candidate: "outlets", want: []string{"title", "go", "angular-web", "image", "secrets", "migrations"}},
-		{name: "sites", candidate: "sites", want: []string{"title", "go", "angular-console", "angular-portal", "image", "secrets", "migrations"}},
+		{name: "solo", candidate: "solo", want: []string{"title", "go", "angular-web", "web", "image", "secrets", "migrations"}},
+		{name: "tenanted", candidate: "tenanted", want: []string{"title", "go", "angular-web", "web", "image", "secrets", "migrations"}},
+		{name: "outlets", candidate: "outlets", want: []string{"title", "go", "angular-web", "web", "image", "secrets", "migrations"}},
+		{name: "sites", candidate: "sites", want: []string{"title", "go", "angular-console", "angular-portal", "web", "image", "secrets", "migrations"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -151,8 +162,15 @@ func TestRenderEqualsTheCandidates(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
+			if *update {
+				if err := os.WriteFile(filepath.Join(candidatesDir, candidate, filepath.FromSlash(ci.File)), rendered, 0o600); err != nil {
+					t.Fatalf("rewriting the %s candidate's %s: %v", candidate, ci.File, err)
+				}
+
+				return
+			}
 			if diff := cmp.Diff(string(committed), string(rendered)); diff != "" {
-				t.Errorf("%s: the committed %s differs from the rendering (-committed +rendered); run impulse render in a rendered candidate and copy the file back:\n%s", candidate, ci.File, diff)
+				t.Errorf("%s: the committed %s differs from the rendering (-committed +rendered); go test ./ci -update rewrites it:\n%s", candidate, ci.File, diff)
 			}
 			d, err := ci.Compare(a)
 			if err != nil {
@@ -162,6 +180,111 @@ func TestRenderEqualsTheCandidates(t *testing.T) {
 				t.Errorf("Compare() over the rendered candidate = %s, want nil", d)
 			}
 		})
+	}
+}
+
+// job returns one top-level job of a rendered workflow, from its id line to the line
+// before the next job's comment, or an empty string when the workflow has no such job.
+func job(workflow []byte, id string) string {
+	lines := strings.Split(string(workflow), "\n")
+	start := -1
+	for i, line := range lines {
+		if m := jobLine.FindStringSubmatch(line); len(m) > 1 && m[1] == id {
+			start = i
+
+			continue
+		}
+		if start >= 0 && (strings.HasPrefix(line, "  # ") || i == len(lines)-1) {
+			return strings.Join(lines[start:i], "\n")
+		}
+	}
+
+	return ""
+}
+
+// TestWebGate: the workflow carries one web job whatever the workspaces, fixed in name so
+// a repository rule can require it: it needs every browser workspace job, in the
+// workspaces' order, runs whether they passed or not, and fails on any result but
+// success; without a workspace it needs nothing and passes with nothing to check.
+func TestWebGate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		dirs      []string
+		wantNeeds string
+	}{
+		{name: "no browser workspace needs nothing", dirs: nil, wantNeeds: ""},
+		{name: "the flat workspace", dirs: []string{"web"}, wantNeeds: "    needs:\n      - angular-web\n"},
+		{name: "two sites, in the workspaces' order", dirs: []string{"apps/portal/web", "apps/console/web"}, wantNeeds: "    needs:\n      - angular-console\n      - angular-portal\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := &app.App{}
+			for _, d := range tt.dirs {
+				a.WebApps = append(a.WebApps, app.WebApp{Dir: d})
+			}
+			rendered, err := ci.Render(a)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			got := job(rendered, "web")
+			if got == "" {
+				t.Fatal("the rendered workflow has no web job")
+			}
+			head := "  web:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    if: ${{ always() }}\n" + tt.wantNeeds + "    steps:\n"
+			if !strings.HasPrefix(got, head) {
+				t.Errorf("the web job opens with\n%s\nwant\n%s", got, head)
+			}
+			for _, want := range []string{
+				"FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}",
+				`if [ "$FAILED" = "true" ]; then`,
+				"exit 1",
+			} {
+				if !strings.Contains(got, want) {
+					t.Errorf("the web job lacks %q:\n%s", want, got)
+				}
+			}
+			if strings.Count(got, "needs:") != min(len(tt.dirs), 1) {
+				t.Errorf("needs: appears %d times in the web job, want %d:\n%s", strings.Count(got, "needs:"), min(len(tt.dirs), 1), got)
+			}
+			if !strings.Contains(string(rendered), "\n  # The browser gate, one fixed name over the per-workspace jobs") {
+				t.Error("the web job carries no comment saying what it gates")
+			}
+		})
+	}
+}
+
+// TestTitleTypes: the title job accepts exactly TitleTypes, in their order, so the list
+// bedrock reads for release-please's sections is the list the check enforces.
+func TestTitleTypes(t *testing.T) {
+	t.Parallel()
+
+	rendered, err := ci.Render(&app.App{})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	title := job(rendered, "title")
+	_, after, found := strings.Cut(title, "          types: |\n")
+	if !found {
+		t.Fatalf("the title job lists no types:\n%s", title)
+	}
+	var got []string
+	for _, line := range strings.Split(after, "\n") {
+		if !strings.HasPrefix(line, "            ") {
+			break
+		}
+		got = append(got, strings.TrimSpace(line))
+	}
+	if diff := cmp.Diff(ci.TitleTypes, got); diff != "" {
+		t.Errorf("the title job's types and TitleTypes disagree (-TitleTypes +job):\n%s", diff)
+	}
+	for _, want := range []string{"feat", "feature", "fix", "upgrade", "infra", "config", "cleanup", "chore"} {
+		if !slices.Contains(ci.TitleTypes, want) {
+			t.Errorf("TitleTypes lacks %q", want)
+		}
 	}
 }
 
@@ -262,8 +385,8 @@ func TestCompare(t *testing.T) {
 
 				return a
 			},
-			want:     &ci.Difference{Line: 17, Want: "  cancel-in-progress: true", Got: "  cancel-in-progress: false"},
-			wantText: `.github/workflows/ci.yml:17: the code renders "  cancel-in-progress: true"; the file has "  cancel-in-progress: false"`,
+			want:     &ci.Difference{Line: 22, Want: "  cancel-in-progress: true", Got: "  cancel-in-progress: false"},
+			wantText: `.github/workflows/ci.yml:22: the code renders "  cancel-in-progress: true"; the file has "  cancel-in-progress: false"`,
 		},
 		{
 			name: "a workspace without its job",
@@ -276,11 +399,11 @@ func TestCompare(t *testing.T) {
 				return a
 			},
 			want: &ci.Difference{
-				Line: 140,
+				Line: 145,
 				Want: "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.",
-				Got:  "  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.",
+				Got:  "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace.",
 			},
-			wantText: `.github/workflows/ci.yml:140: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build."`,
+			wantText: `.github/workflows/ci.yml:145: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."`,
 		},
 		{
 			name: "a file that ends early",
@@ -292,14 +415,14 @@ func TestCompare(t *testing.T) {
 					t.Fatal(err)
 				}
 				lines := strings.Split(string(data), "\n")
-				if err := os.WriteFile(a.Abs(ci.File), []byte(strings.Join(lines[:10], "\n")+"\n"), 0o600); err != nil {
+				if err := os.WriteFile(a.Abs(ci.File), []byte(strings.Join(lines[:15], "\n")+"\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 
 				return a
 			},
-			want:     &ci.Difference{Line: 11, Want: "on:", Got: ""},
-			wantText: `.github/workflows/ci.yml:11: the code renders "on:"; the file has ""`,
+			want:     &ci.Difference{Line: 16, Want: "on:", Got: ""},
+			wantText: `.github/workflows/ci.yml:16: the code renders "on:"; the file has ""`,
 		},
 	}
 	for _, tt := range tests {

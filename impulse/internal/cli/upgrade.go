@@ -22,7 +22,7 @@ import (
 const (
 	goCommand        = "go"
 	gitCommand       = "git"
-	upgradeCommitTyp = "feat"
+	upgradeCommitTyp = "upgrade"
 )
 
 func newUpgrade() *cobra.Command {

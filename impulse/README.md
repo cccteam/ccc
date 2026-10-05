@@ -204,11 +204,22 @@ it as part of their change since the browser workspaces change, and `impulse che
 (`ci-workflow`) compares the committed file with the same rendering, so a hand edit fails
 the check. The file is one workflow of plain jobs on every pull request. No job calls a
 reusable workflow of another repository, and each job's id is the check name the pull
-request reports, so a repository rule can require them by name (bedrock reads the names
-from impulse's `ci` package):
+request reports, so a repository rule can require them by name: six are fixed (`title`,
+`go`, `web`, `image`, `secrets`, `migrations`; bedrock reads the list from impulse's `ci`
+package and its organization layer requires them), and the browser jobs between `go` and
+`web` are named per workspace and gated by `web`. The pull request is the one gate for
+every change, whoever opens it, so the gate covers every job:
 
 - `title`: the pull request's title is a conventional commit line, the one the squash
-  merge carries and release-please reads.
+  merge carries and release-please reads, and its type decides what the merge does. A
+  merge titled `feat` or `feature` releases a minor version; one titled `fix`, `perf`,
+  `revert`, `docs`, `deps`, `upgrade`, `infra` or `config` releases a patch; a merge of
+  only the hidden types (`style`, `chore`, `refactor`, `cleanup`, `test`, `build`, `ci`)
+  opens no release pull request and reaches no environment until a releasing merge
+  follows. The seeded `release-please-config.json` carries a changelog section per type
+  (bedrock's `check` refuses one without), since release-please drops a merge whose type
+  has no section exactly as it drops a hidden one; an application seeded before `upgrade`,
+  `infra`, `config` and `cleanup` had sections adds the four by hand.
 - `go`: the module builds, vets and passes its tests under the race detector, without tags
   and with `skipAuth` (the tag that simulates the directory an OIDC auth signs in through);
   then, each step reporting on its own, golangci-lint at the version the skeleton's
@@ -216,11 +227,20 @@ from impulse's `ci` package):
   findings the pull request introduces (its baseline is the pull request's base branch, so
   a hotfix-line pull request diffs against its own base), `go tool impulse check` with its
   regeneration (the generators start the Spanner emulator in a container, which the runner
-  has), and a tree the checks left clean.
+  has), and a tree the checks left clean. The pins fix the engines, not what they know:
+  govulncheck reads vuln.go.dev, Grype (in `image`) downloads its vulnerability database
+  and Semgrep fetches its registry rules when the job runs, so a workflow at an old pin
+  still finds a vulnerability published after it; TruffleHog's detectors, golangci-lint's
+  linters and the actions move with impulse releases.
 - `angular-<workspace>`, one per browser workspace (`angular-web` for the flat workspace,
   `angular-<site>` for a site's at `apps/<site>/web`): Bun at the version that wrote
   `bun.lock` installs from the lockfile exactly (`bun ci`), then the package scripts build,
   lint and test.
+- `web`: the gate over the browser jobs, one fixed name a repository rule can require
+  where the workspace jobs' names vary per application. It needs every `angular-<workspace>`
+  job, runs whether they passed or not, and fails when any of them did not succeed, so a
+  failed browser build, lint or test blocks the merge; an application without a browser
+  workspace gets a `web` that needs nothing and passes with nothing to check.
 - `image`: once the application has a Dockerfile (bedrock seeds it), hadolint over it, the
   build, and Grype over the built image, failing on a high or critical vulnerability.
   Without a Dockerfile the job passes with nothing to build, so the check exists on every
@@ -283,7 +303,7 @@ impulse check --list
 | `registry-pins` | Every browser app installs its packages from the registry: a committed `file:.yalc/<package>` spec (or a lockfile recording one) is a local yalc attachment that a clean checkout cannot install, so the pipeline's install fails. `ccclib.sh restore` puts the registry pins back. |
 | `test-runner` | Every browser application project runs its component specs on Angular's unit-test builder, the runner `ng new` scaffolds (`@angular/build:unit-test`: Vitest under jsdom in Node, no browser): a `test` target on that builder, the spec tsconfig it reads (named in the target, or `tsconfig.spec.json` in the project root), and a package script running `ng test <project>`, so `bun run test` runs every project's specs once. A project with no `*.spec.ts` under its source root warns: the runner is wired and nothing runs on it yet. |
 | `installable` | Every browser application bound to a session outlet installs as a progressive web app, and the server serves it through the resource package's served browser app. On the browser side: `@angular/service-worker` is a dependency at the workspace's Angular line (the line of `@angular/core`); the project's production configuration names a worker config (`"serviceWorker": "ngsw-config.json"`) that exists, whose `navigationUrls` exclude the outlet's API under the mount (`!/api/**`, relative to the mount, so the login, callback and stored-file navigations reach the server; an API prefix outside the mount is outside the worker's scope and needs none); the app config provides the worker (`provideServiceWorker`) and the library's update provider (`provideAppUpdate`); `index.html` links the web app manifest, which parses with `id` the mount path with a trailing slash and `scope` and `start_url` `./`; and every icon the manifest declares is there with PNG dimensions matching its `sizes`, read from the file's header. The release reaches the browser: the project's build defines `APP_VERSION` (`"define": { "APP_VERSION": "'dev'" }` in its build options) and the workspace's `build` script redefines it from the `VERSION` environment variable (`ng build console --define \"APP_VERSION='${VERSION:-dev}'\"`, which the image's browser stage sets), so a release build stamps its release and any other `dev`; the app config provides it as `API_VERSION` (`{ provide: API_VERSION, useValue: APP_VERSION }`) and registers `apiVersionInterceptor` through `provideHttpClient(withInterceptors([...]))`, so every request carries the release in `X-Api-Version` and the server can refuse a build it no longer answers. On the server side: the application's hand-written handlers build the asset handlers from `resource.NewBrowserApp(dir, "<mount>")`, `github.com/jtwatson/spaassets` is imported nowhere and gone from `go.mod`. A project with none of the browser side warns as not installable; a project with part of it fails, naming the first missing piece by file. |
-| `ci-workflow` | The committed `.github/workflows/ci.yml` equals what impulse renders from the code: one browser job per workspace, and the action and tool pins this impulse carries. A missing file fails: the pull requests run no checks at all. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
+| `ci-workflow` | The committed `.github/workflows/ci.yml` equals what impulse renders from the code: one browser job per workspace with the `web` gate over them, and the action and tool pins this impulse carries. A missing file fails: the pull requests run no checks at all. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it; tests and specs are not read, since a spec describes the server's answer (whose page state carries an `offset` field) as often as a request. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
 | `feature-flags` | The `FeatureFlags` and `FeatureFlagChanges` tables the generated feature flag routes and the deploy's `MigrateFeatures` read are created by a migration as the resource module the application pins declares them: the check reads `resource.FeatureFlagsDDL(resource.SpannerDBType)` from that module's source (found through `go list -m`, so the comparison is against the library the application builds with, a replace or a workspace included) and compares each statement with the migration's, whitespace aside; a table that differs is brought to the library's statement by a new migration. Every declared flag (`resource.Feature` constant) gates something (`@feature(<Constant>)` on a resource, a field or a method) or is read somewhere outside tests (`a.FeatureSet().Enabled(resources.<Constant>)` in Go, `Feature.<Constant>` in a browser application), or it is a switch wired to nothing and fails by name and position; a flag declared twice and an annotation naming no declared constant fail too. Skipped when the generator emits no feature flags (no `zz_gen_features.go` in a resources package) and none is declared. |
@@ -432,8 +452,10 @@ it finds it, so running it twice is safe, and so is running it on an application
 were bumped by hand ahead of its code. Then the pins move to the release's set and the
 impulse tool pin to the release (`go get`, then `go mod tidy`), the owned files are
 rendered again from the code (what `impulse render` writes), `go generate ./...` runs, and
-`impulse check` runs. A clean check is committed as `feat: upgrade to impulse <version>`
-with the release's note and recipes in the body. A failing check stops the walk with the
+`impulse check` runs. A clean check is committed as `upgrade: upgrade to impulse <version>`
+with the release's note and recipes in the body (the `upgrade` type releases a patch, as
+the `title` check's list says, since an upgrade moves the pins and re-renders the owned
+files and must not wait for a later releasing merge). A failing check stops the walk with the
 step's changes staged and the handoff brief written (`impulse handoff`, below): fix the
 obligations or hand them to the agent, commit, and run `upgrade` again; it resumes from
 whatever `go.mod` says, since the pin is the checkpoint and nothing else records progress.
