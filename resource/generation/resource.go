@@ -492,8 +492,8 @@ func (r *resourceGenerator) runWiringGeneration() error {
 	return nil
 }
 
-// extractAndGenerateRPC parses the RPC package into rpcMethods and runs the RPC
-// generation, when enabled.
+// extractAndGenerateRPC parses the RPC package into rpcMethods, the scheduled methods
+// apart, and runs the RPC generation, when enabled.
 func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*packages.Package, pkg *packages.Package) error {
 	if !r.genRPCMethods {
 		return nil
@@ -504,9 +504,12 @@ func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*package
 		log.Printf("(RPC Generation) No structs in package %q annotated with @rpc", r.rpc.Dir())
 	}
 
-	var err error
-	r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
+	methods, err := r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 	if err != nil {
+		return err
+	}
+	r.rpcMethods, r.scheduledMethods = splitScheduled(methods)
+	if err := r.requireRouterForSchedules(); err != nil {
 		return err
 	}
 	if err := r.validateRPCPickerSources(r.rpcMethods); err != nil {

@@ -13,6 +13,8 @@
 //	portal (/portal/api), Google directory sessions of the members auth:
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/login, GET /portal/api/user/callback, GET /portal/api/user/session, DELETE /portal/api/user/session
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Portal, generatedPortalRoutes
+//	scheduled (/_scheduled), Cloud Scheduler's token:
+//	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -33,11 +35,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, the API-key outlets' authentication, and the browser applications' handlers.
+// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, the API-key outlets' authentication, the scheduled methods' handlers and the scheduler's token check, and the browser applications' handlers.
 type Handlers interface {
 	GeneratedHandlers
 	GeneratedDroidsHandlers
 	GeneratedPortalHandlers
+	GeneratedScheduledHandlers
 	// ResourceClient is the client the generated handlers run against. The file
 	// stores the generated code reads and writes are wired on it, and New refuses to
 	// start without them (resource.RequireFileStores).
@@ -52,6 +55,11 @@ type Handlers interface {
 	// DroidsAuth authenticates the droids outlet's machine clients, binding each
 	// request to a service identity in place of a browser session.
 	DroidsAuth(next http.Handler) http.Handler
+	// SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes and refuses
+	// every other with 401: a token Google signed for the route's URL whose verified
+	// email is the invoker identity (scheduled.Guard's Middleware, built from the
+	// environment by scheduled.FromEnvironment).
+	SchedulerAuth(next http.Handler) http.Handler
 	// ServerVersion is the release this server was built from, the configuration's
 	// APP_VERSION: what each session outlet checks a browser application's
 	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
@@ -212,9 +220,20 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 
+	// The scheduled routes (/_scheduled): Cloud Scheduler's calls, each carrying a token
+	// of the invoker identity, so the group carries no session handling, no XSRF guard and
+	// no hook: SchedulerAuth is the one way in.
+	r.Group(func(r chi.Router) {
+		r.Use(h.NoCaching)
+		r.Use(h.CompressionMiddleware())
+		r.Use(h.SchedulerAuth)
+
+		generatedScheduledRoutes(r, h)
+	})
+
 	// Under an outlet's prefix nothing else answers: an unknown API path is 404, never a
 	// browser application's entry document.
-	for _, prefix := range []string{"/console/api/", "/droids/", "/portal/api/"} {
+	for _, prefix := range []string{"/console/api/", "/droids/", "/portal/api/", "/_scheduled/"} {
 		r.Route(prefix, func(r chi.Router) {
 			r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "Not Found", http.StatusNotFound)

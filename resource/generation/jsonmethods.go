@@ -195,7 +195,7 @@ func (r *resourceGenerator) fieldTypes() []fieldUse {
 			walk(field.GoType(), r.pluralize(res.Name())+"."+field.Name())
 		}
 	}
-	for _, method := range r.rpcMethods {
+	for _, method := range slices.Concat(r.rpcMethods, r.scheduledMethods) {
 		for _, field := range method.Fields {
 			walk(field.GoType(), method.Name()+"."+field.Name())
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
+	"github.com/cccteam/ccc/resource/scheduled"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session/sessioninfo"
@@ -131,6 +132,12 @@ func (c *testConfigurer) PortalDist() string { return "" }
 // DroidsAPIKey is unused by these suites: the matrix drives the bare test router, which
 // carries no outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return "authz-droids-key" }
+
+// Scheduler is none: the matrix drives the bare test router, which mounts no scheduled
+// route, and a missing guard refuses every scheduled call.
+func (c *testConfigurer) Scheduler() *scheduled.Guard {
+	return nil
+}
 
 // Live is an in-memory live service: the live service is required in every
 // application, so the matrix's App starts with a fake nothing subscribes through.

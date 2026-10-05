@@ -13,9 +13,10 @@ import (
 )
 
 // TestReadReleaseFile pins the reader over the shapes the generator writes (a release,
-// this release, no declaration and a machine outlet), a missing file, and the files it
-// refuses: malformed JSON, no outlets, and entries that are neither a machine outlet
-// nor a session outlet naming its oldest answered release.
+// this release, no declaration, a machine outlet, and the scheduled routes), a missing
+// file, and the files it refuses: malformed JSON, no outlets, entries that are neither a
+// machine outlet nor a session outlet naming its oldest answered release, and a
+// scheduled route outside the scheduled prefix or without its schedule or zone.
 func TestReadReleaseFile(t *testing.T) {
 	t.Parallel()
 
@@ -100,6 +101,39 @@ func TestReadReleaseFile(t *testing.T) {
 			name:    "an oldest answered release that is not a string",
 			content: `{"outlets": {"default": {"oldestAnswered": 1}}}`,
 			wantErr: "is not the shape the generator writes",
+		},
+		{
+			name: "scheduled routes",
+			content: `{
+  "outlets": {"default": {"oldestAnswered": ""}},
+  "scheduled": [
+    {"path": "/_scheduled/prune-droid-reports", "schedule": "30 3 * * *", "timeZone": "America/Denver"},
+    {"path": "/_scheduled/send-digest", "schedule": "0 6 * * MON-FRI", "timeZone": "UTC"}
+  ]
+}
+`,
+			want: ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				Scheduled: []ScheduledRoute{
+					{Path: "/_scheduled/prune-droid-reports", Schedule: "30 3 * * *", TimeZone: "America/Denver"},
+					{Path: "/_scheduled/send-digest", Schedule: "0 6 * * MON-FRI", TimeZone: "UTC"},
+				},
+			},
+		},
+		{
+			name:    "a scheduled route outside the scheduled prefix",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "scheduled": [{"path": "/api/prune", "schedule": "0 3 * * *", "timeZone": "UTC"}]}`,
+			wantErr: `the scheduled route "/api/prune" is not a path under /_scheduled/`,
+		},
+		{
+			name:    "a scheduled route with no schedule",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "scheduled": [{"path": "/_scheduled/prune", "timeZone": "UTC"}]}`,
+			wantErr: "the scheduled route /_scheduled/prune names no schedule",
+		},
+		{
+			name:    "a scheduled route with no time zone",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "scheduled": [{"path": "/_scheduled/prune", "schedule": "0 3 * * *"}]}`,
+			wantErr: "the scheduled route /_scheduled/prune names no time zone",
 		},
 	}
 	for _, tt := range tests {

@@ -18,7 +18,8 @@ const generationImportPath = "github.com/cccteam/ccc/resource/generation"
 // Lodestar shape, two browser applications under prefixes and a machine outlet, beside a
 // hand-written stand-in for the route tables and two auth packages, and runs the rendered
 // test with go test: the root redirect, every mount, every route and every refusal hold in
-// a compiled router, not only in the template text.
+// a compiled router, not only in the template text. A scheduled method rides along, so its
+// route under the scheduled prefix and its chain are proven the same way.
 //
 // The fixture is a package inside this module's testdata, built against the dependency
 // versions the module's go.mod declares, as an application would build the generated
@@ -72,7 +73,12 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 	fileRoutes := map[string][]*generatedRoute{
 		"default": {{Path: "/api/widgets/{widgetId}/content", TestURL: "/api/widgets/7/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler}},
 	}
-	r := &resourceGenerator{client: &client{}}
+	// One scheduled method, mounted under the scheduled prefix behind SchedulerAuth.
+	scheduledStruct := fixtureStructs(loadFixture(t, "schedulefixture"))["PruneLogs"]
+	r := &resourceGenerator{client: &client{
+		genRPCMethods:    true,
+		scheduledMethods: []*rpcMethodInfo{{Struct: scheduledStruct, Schedule: &rpcSchedule{Cron: "30 3 * * *", Zone: "America/Denver"}}},
+	}}
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
 	data := r.servedRouterData(outlets, nil, fileRoutes)
@@ -129,6 +135,9 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 		"--- PASS: TestGeneratedRouterAPIVersion/-portal-api-a_session_route_at_any_release_GET-user-callback",
 		"--- PASS: TestGeneratedRouterAPIVersion/droids_outlet_is_not_checked",
 		"--- PASS: TestGeneratedRouterAPIVersion/a_refused_request_never_reaches_the_hook",
+		"--- PASS: TestGeneratedRouterScheduled/POST-url-_scheduled-prune-logs",
+		"--- PASS: TestGeneratedRouterScheduled/GET-url-_scheduled-prune-logs",
+		"--- PASS: TestGeneratedRouterNotFound/GET-url-_scheduled-does-not-exist",
 	} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("go test output missing %q:\n%s", want, out)
@@ -200,6 +209,14 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	r.Get("/portal/api/permission-digest", h.PermissionDigest())
 	r.Get("/portal/api/user-domains", h.UserDomains())
 	r.Get("/portal/api/orders", h.Orders())
+}
+
+type GeneratedScheduledHandlers interface {
+	PruneLogs() http.HandlerFunc
+}
+
+func generatedScheduledRoutes(r chi.Router, h GeneratedScheduledHandlers) {
+	r.Post("/_scheduled/prune-logs", h.PruneLogs())
 }
 `
 

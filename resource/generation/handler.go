@@ -62,6 +62,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		if err := forEachGo(rpcMethods, r.generateRPCHandler); err != nil {
 			return err
 		}
+
+		if err := forEachGo(r.scheduledMethods, r.generateScheduledHandler); err != nil {
+			return err
+		}
 	}
 
 	if r.genComputedResources {

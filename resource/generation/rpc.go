@@ -70,6 +70,30 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	return nil
 }
 
+// generateScheduledHandler writes a scheduled method's handler beside the RPC handlers:
+// the frame Cloud Scheduler's verified call runs, with no session, no permission check
+// and no request body.
+func (r *resourceGenerator) generateScheduledHandler(method *rpcMethodInfo) error {
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(fileStem(method.Name())))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("scheduledHandlerTemplate:%q", method.Name()), scheduledHandlerTemplate, &rpcHandlerData{
+		Source:              r.rpc.Dir(),
+		LocalPackageImports: r.localPackageImports(),
+		RPCMethod:           method,
+		Package:             r.handler.Package(),
+		ApplicationName:     r.applicationName,
+		ReceiverName:        r.receiverName,
+		ResourcesPackage:    r.resource.Package(),
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+
+	log.Printf("Generated scheduled handler file in %s: %s", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
 func (r *resourceGenerator) generateRPCInterfaces() error {
 	destinationFile := filepath.Join(".", r.rpc.Dir(), generatedGoFileName("rpc_iface"))
 

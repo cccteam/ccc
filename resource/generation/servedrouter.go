@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/mod/semver"
 )
@@ -21,6 +22,9 @@ const (
 	passwordHandlersType = "session.PasswordAuthHandlers"
 	azureStubType        = "routerOIDCAzureStub"
 	bindAuthMethod       = "BindAuth"
+	// schedulerAuthMethod is the Handlers method that admits Cloud Scheduler's calls to
+	// the scheduled routes.
+	schedulerAuthMethod = "SchedulerAuth"
 )
 
 // flavorRoute is one route a session flavor mounts under its outlet's prefix.
@@ -126,15 +130,39 @@ func (r *resourceGenerator) validateRouterConfig() error {
 		case o.apiKey && o.declaredOldest:
 			return errors.Newf("outlet %q declares APIKey and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
 		}
-		if field := caser.ToPascal(o.name); slices.Contains(reservedHookFields, field) {
-			return errors.Newf("outlet %q would take the Hooks field %s, which the generated router reserves; choose another name", o.name, field)
-		}
-		if o.apiKey && caser.ToPascal(o.name)+"Auth" == bindAuthMethod {
-			return errors.Newf("outlet %q would take the Handlers method BindAuth, which the generated router reserves; choose another name", o.name)
+		if err := validateReservedNames(&o); err != nil {
+			return err
 		}
 	}
 
 	return validateWebAppMounts(outlets)
+}
+
+// validateReservedNames refuses an outlet that would take a name or a path the generated
+// router keeps for itself: a Hooks field, a Handlers method, or the scheduled prefix.
+func validateReservedNames(o *routerOutlet) error {
+	if field := caser.ToPascal(o.name); slices.Contains(reservedHookFields, field) {
+		return errors.Newf("outlet %q would take the Hooks field %s, which the generated router reserves; choose another name", o.name, field)
+	}
+	if o.apiKey && caser.ToPascal(o.name)+"Auth" == bindAuthMethod {
+		return errors.Newf("outlet %q would take the Handlers method BindAuth, which the generated router reserves; choose another name", o.name)
+	}
+	if o.apiKey && caser.ToPascal(o.name)+"Auth" == schedulerAuthMethod {
+		return errors.Newf("outlet %q would take the Handlers method %s, which the generated router reserves for the scheduled routes; choose another name", o.name, schedulerAuthMethod)
+	}
+	if underScheduledPrefix("/" + o.prefix) {
+		return errors.Newf("outlet %q has the route prefix /%s, under %s, which the generated router reserves for the scheduled routes (@%s); choose another prefix", o.name, o.prefix, scheduled.Prefix, scheduleKeyword)
+	}
+	if o.webApp != "" && underScheduledPrefix(o.webApp) {
+		return errors.Newf("outlet %q declares WebApp(%q), under %s, which the generated router reserves for the scheduled routes (@%s); mount the application elsewhere", o.name, o.webApp, scheduled.Prefix, scheduleKeyword)
+	}
+
+	return nil
+}
+
+// underScheduledPrefix reports whether a path is the scheduled prefix or sits under it.
+func underScheduledPrefix(p string) bool {
+	return p == scheduled.Prefix || strings.HasPrefix(p, scheduled.Prefix+"/")
 }
 
 // validateWebAppMounts checks the browser applications' mount paths: every application
@@ -221,6 +249,11 @@ type servedRouterData struct {
 	// packages the named stores' types are declared in.
 	FileStores   []servedFileStore
 	StoreImports []string
+	// ScheduledRoutes are the scheduled methods' routes, mounted under ScheduledPrefix
+	// behind SchedulerAuth; none without a scheduled method, and then the router carries
+	// no scheduled group.
+	ScheduledRoutes []*scheduledRoute
+	ScheduledPrefix string
 }
 
 // servedFileStore is one file store as the router requires it at start and the router
@@ -439,6 +472,8 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		Package:             r.router.Package(),
 		MultiAuth:           multiAuth,
 		NegativeRouterTests: negativeTests,
+		ScheduledRoutes:     r.scheduledRoutes(),
+		ScheduledPrefix:     scheduled.Prefix,
 	}
 	data.FileStores, data.StoreImports = r.servedFileStores()
 	if multiAuth {
@@ -470,6 +505,11 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		data.NotFoundPrefixes = append(data.NotFoundPrefixes, so.NotFoundPrefix)
 	}
 	data.ExtraOutlets = data.Outlets[1:]
+	if len(data.ScheduledRoutes) > 0 {
+		// Under the scheduled prefix nothing else answers either: an unknown path is
+		// 404, never a browser application's entry document.
+		data.NotFoundPrefixes = append(data.NotFoundPrefixes, scheduled.Prefix+"/")
+	}
 
 	// Longer mount paths first, so "/" is the catch-all; the paths are distinct.
 	sort.Slice(data.WebApps, func(i, j int) bool {
@@ -571,6 +611,9 @@ func handlersSummary(data *servedRouterData) string {
 	if len(data.APIKeyOutlets) > 0 {
 		parts = append(parts, "the API-key outlets' authentication")
 	}
+	if len(data.ScheduledRoutes) > 0 {
+		parts = append(parts, "the scheduled methods' handlers and the scheduler's token check")
+	}
 	if len(data.WebApps) > 0 {
 		parts = append(parts, "the browser applications' handlers")
 	}
@@ -599,6 +642,10 @@ var (
 //	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: {{ range $i, $route := .Routes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion{{ .OldestAnsweredNote }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- end }}
+{{- end }}
+{{- if .ScheduledRoutes }}
+//	scheduled ({{ .ScheduledPrefix }}), Cloud Scheduler's token:
+//	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
 {{- end }}
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
@@ -631,6 +678,9 @@ type Handlers interface {
 {{- range .ExtraOutlets }}
 	Generated{{ .Suffix }}Handlers
 {{- end }}
+{{- if .ScheduledRoutes }}
+	GeneratedScheduledHandlers
+{{- end }}
 {{- if .FileStores }}
 	// ResourceClient is the client the generated handlers run against. The file
 	// stores the generated code reads and writes are wired on it, and New refuses to
@@ -655,6 +705,13 @@ type Handlers interface {
 	// {{ .AuthMiddleware }} authenticates the {{ .Name }} outlet's machine clients, binding each
 	// request to a service identity in place of a browser session.
 	{{ .AuthMiddleware }}(next http.Handler) http.Handler
+{{- end }}
+{{- if .ScheduledRoutes }}
+	// SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes and refuses
+	// every other with 401: a token Google signed for the route's URL whose verified
+	// email is the invoker identity (scheduled.Guard's Middleware, built from the
+	// environment by scheduled.FromEnvironment).
+	SchedulerAuth(next http.Handler) http.Handler
 {{- end }}
 	// ServerVersion is the release this server was built from, the configuration's
 	// APP_VERSION: what each session outlet checks a browser application's
@@ -792,6 +849,20 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 {{- end }}
+{{- end }}
+
+{{- if .ScheduledRoutes }}
+
+	// The scheduled routes ({{ .ScheduledPrefix }}): Cloud Scheduler's calls, each carrying a token
+	// of the invoker identity, so the group carries no session handling, no XSRF guard and
+	// no hook: SchedulerAuth is the one way in.
+	r.Group(func(r chi.Router) {
+		r.Use(h.NoCaching)
+		r.Use(h.CompressionMiddleware())
+		r.Use(h.SchedulerAuth)
+
+		generatedScheduledRoutes(r, h)
+	})
 {{- end }}
 
 	// Under an outlet's prefix nothing else answers: an unknown API path is 404, never a
@@ -1181,6 +1252,56 @@ func TestGeneratedRouterRoot(t *testing.T) {
 			}
 			if !slices.Equal(rec.chain, routerRootChain) {
 				t.Errorf("middleware chain = %v, want %v", rec.chain, routerRootChain)
+			}
+		})
+	}
+}
+{{ end }}
+{{- if .ScheduledRoutes }}
+// TestGeneratedRouterScheduled proves each scheduled route answers POST under the
+// scheduled prefix from exactly its own handler, behind the every-request chain,
+// NoCaching, CompressionMiddleware and SchedulerAuth and nothing else, so no session,
+// outlet guard or hook stands in front of it, and that another method reaches no handler.
+func TestGeneratedRouterScheduled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url     string
+		handler string
+	}{
+{{- range .ScheduledRoutes }}
+		{url: "{{ .Path }}", handler: "{{ .HandlerFunc }}"},
+{{- end }}
+	}
+	for _, tt := range tests {
+		t.Run("POST-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			rr := serveGeneratedRouter(t, rec, Hooks{}, http.MethodPost, tt.url)
+
+			if got := rr.Code; got != http.StatusOK {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusOK)
+			}
+			if cnt := rec.handlers[tt.handler]; cnt != 1 || len(rec.handlers) != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %v", tt.handler, rec.handlers)
+			}
+			want := slices.Concat(routerRootChain, []string{"NoCaching", "CompressionMiddleware", "SchedulerAuth"})
+			if !slices.Equal(rec.chain, want) {
+				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
+			}
+		})
+		t.Run("GET-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			rr := serveGeneratedRouter(t, rec, Hooks{}, http.MethodGet, tt.url)
+
+			if got := rr.Code; got == http.StatusOK {
+				t.Errorf("response.Code = %v, want a refusal", got)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Fatalf("expected no handler called, got: %v", rec.handlers)
 			}
 		})
 	}
@@ -1591,6 +1712,16 @@ func (s *routerHandlersStub) {{ .AuthMiddleware }}(next http.Handler) http.Handl
 	return s.rec.Middleware("{{ .AuthMiddleware }}")(next)
 }
 {{ end }}
+{{- if .ScheduledRoutes }}
+func (s *routerHandlersStub) SchedulerAuth(next http.Handler) http.Handler {
+	return s.rec.Middleware("SchedulerAuth")(next)
+}
+{{ range .ScheduledRoutes }}
+func (s *routerHandlersStub) {{ .HandlerFunc }}() http.HandlerFunc {
+	return s.rec.RecordHandlerCall("{{ .HandlerFunc }}")
+}
+{{ end }}
+{{- end }}
 func (s *routerHandlersStub) LoggerMiddleware() func(http.Handler) http.Handler {
 	return s.rec.Middleware("LoggerMiddleware")
 }

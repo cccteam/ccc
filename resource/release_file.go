@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -15,6 +17,8 @@ import (
 // the browser application the outlet still answers (OldestAnswered in the generator
 // program), so a deploy reads from the checkout, never from a binary, whether a release
 // needs a maintenance window: a release whose outlet answers only the server's own does.
+// It also lists the scheduled routes (@schedule) with their schedules, which the
+// application's stack reads to create a Cloud Scheduler job for each.
 const ReleaseFileName = "zz_gen_release.json"
 
 // How the release file spells its values: ThisRelease as an outlet's oldest answered
@@ -26,9 +30,25 @@ const (
 
 // ReleaseFile is the generated release file: one entry per outlet, keyed by the outlet's
 // name (default for the outlet GenerateRoutes declares, the name given to
-// WithRouterOutlet otherwise).
+// WithRouterOutlet otherwise), and the scheduled routes in path order, absent when the
+// application declares none.
 type ReleaseFile struct {
-	Outlets map[string]ReleaseOutlet `json:"outlets"`
+	Outlets   map[string]ReleaseOutlet `json:"outlets"`
+	Scheduled []ScheduledRoute         `json:"scheduled,omitempty"`
+}
+
+// ScheduledRoute is one scheduled route in the release file: the method declared with
+// @schedule, as the generated router mounts it and Cloud Scheduler calls it.
+type ScheduledRoute struct {
+	// Path is the route's path, under the scheduled prefix: /_scheduled/<method in kebab
+	// case>.
+	Path string `json:"path"`
+	// Schedule is the cron expression as declared: five fields, minute, hour, day of the
+	// month, month and day of the week.
+	Schedule string `json:"schedule"`
+	// TimeZone is the zone the schedule is read in, an IANA zone name as declared, or
+	// UTC when the declaration names none.
+	TimeZone string `json:"timeZone"`
 }
 
 // ReleaseOutlet is one outlet's entry in the release file. A session outlet carries its
@@ -135,6 +155,27 @@ func ReadReleaseFile(dir string) (ReleaseFile, error) {
 	if len(file.Outlets) == 0 {
 		return ReleaseFile{}, errors.Newf("the release file %s names no outlet; a generated router has at least its default outlet", path)
 	}
+	for _, route := range file.Scheduled {
+		if err := route.validate(); err != nil {
+			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
+		}
+	}
 
 	return file, nil
+}
+
+// validate refuses a scheduled route the generator would not write: a path outside the
+// scheduled prefix, or no schedule or zone.
+func (s ScheduledRoute) validate() error {
+	name, ok := strings.CutPrefix(s.Path, scheduled.Prefix+"/")
+	switch {
+	case !ok || name == "" || strings.Contains(name, "/"):
+		return errors.Newf("the scheduled route %q is not a path under %s/", s.Path, scheduled.Prefix)
+	case s.Schedule == "":
+		return errors.Newf("the scheduled route %s names no schedule", s.Path)
+	case s.TimeZone == "":
+		return errors.Newf("the scheduled route %s names no time zone", s.Path)
+	}
+
+	return nil
 }

@@ -549,6 +549,22 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Patch("/console/api/resources", h.PatchResources())
 }
 
+// GeneratedScheduledHandlers is the scheduled methods' generated handler surface: the
+// methods declared with @schedule, which Cloud Scheduler calls under /_scheduled.
+type GeneratedScheduledHandlers interface {
+	PruneDroidReports() http.HandlerFunc
+}
+
+// generatedScheduledRoutes registers each scheduled method at POST
+// /_scheduled/<method in kebab case>. The generated router mounts them behind the
+// scheduler's token check (SchedulerAuth) and no outlet's guards: a scheduled call
+// carries no session, so it serves no live pages, and a request carrying X-Subscribe is
+// refused naming the header.
+func generatedScheduledRoutes(r chi.Router, h GeneratedScheduledHandlers) {
+	r = r.With(live.Refusing())
+	r.Post("/_scheduled/prune-droid-reports", h.PruneDroidReports())
+}
+
 // GeneratedDroidsHandlers is the droids outlet's generated
 // handler surface: the handlers of the resources attached to the outlet via @outlet.
 type GeneratedDroidsHandlers interface {

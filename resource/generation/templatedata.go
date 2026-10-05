@@ -227,6 +227,10 @@ type routerFileData struct {
 	// NegativeRouterTests are the outlet-isolation cases: URLs that must fall through
 	// to 404 because the addressed outlet does not carry the resource.
 	NegativeRouterTests []negativeRouterTest
+	// ScheduledRoutes are the scheduled methods' routes under the scheduled prefix,
+	// which GeneratedScheduledHandlers and generatedScheduledRoutes carry; none without
+	// a scheduled method, and then the file carries neither.
+	ScheduledRoutes []*scheduledRoute
 	// HasGatedRoutes emits the FeatureGuard requirement on GeneratedHandlers and the
 	// wrapping in generatedRoutes for the default outlet; StubFeatureGuard emits the
 	// router-test stub's pass-through when any outlet has a gated route.

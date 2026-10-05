@@ -42,6 +42,10 @@ type client struct {
 	resources         []*resourceInfo
 	computedResources []*computedResource
 	rpcMethods        []*rpcMethodInfo
+	// scheduledMethods are the @schedule methods, apart from rpcMethods: Cloud Scheduler
+	// calls them under the scheduled prefix, and nothing that reads the methods a person
+	// calls (an outlet, a permission, a browser client) sees them.
+	scheduledMethods []*rpcMethodInfo
 	// imports are the import paths WithImports names beyond what the run derives: the
 	// escape hatch, each use of it a generator gap.
 	imports []string

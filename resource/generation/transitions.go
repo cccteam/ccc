@@ -311,12 +311,15 @@ func targetRootKey(pStruct *parser.Struct, rootName string, root *resourceInfo, 
 }
 
 // rejectRPCOnlyAnnotations fails a struct of another kind that carries an annotation
-// only an @rpc struct may: @transition on the struct, and @target on a field. A
-// resource declares no handler to frame.
+// only an @rpc struct may: @transition and @schedule on the struct, and @target on a
+// field. A resource declares no handler to frame and no method to call.
 func rejectRPCOnlyAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations, kind string) error {
 	var errs []error
 	if annotations.Struct.Has(transitionKeyword) {
 		errs = append(errs, errors.Newf("struct %s: @%s is only valid on @%s structs; a %s declares no handler to frame", pStruct.Name(), transitionKeyword, rpcKeyword, kind))
+	}
+	if annotations.Struct.Has(scheduleKeyword) {
+		errs = append(errs, errors.Newf("struct %s: @%s is only valid on @%s structs; a %s declares no method for Cloud Scheduler to call", pStruct.Name(), scheduleKeyword, rpcKeyword, kind))
 	}
 	for i, field := range pStruct.Fields() {
 		if annotations.Fields[i].Has(targetKeyword) {

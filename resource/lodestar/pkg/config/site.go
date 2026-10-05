@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 
+	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/sethvargo/go-envconfig"
@@ -15,6 +16,7 @@ type SiteConfiguration struct {
 	env          *siteConfig
 	validator    *validator.Validate
 	droidsAPIKey string
+	scheduler    *scheduled.Guard
 }
 
 // NewSiteConfiguration loads every level and constructs the served site's
@@ -40,11 +42,19 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 		}
 	}
 
+	// The scheduled routes' guard reads the invoker identity the stack names in
+	// APP_SCHEDULER_INVOKER; without one it logs that the scheduled routes are off.
+	scheduler, err := scheduled.FromEnvironment(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "scheduled.FromEnvironment()")
+	}
+
 	return &SiteConfiguration{
 		DataConfiguration: data,
 		env:               env,
 		validator:         validator.New(),
 		droidsAPIKey:      droidsAPIKey,
+		scheduler:         scheduler,
 	}, nil
 }
 
@@ -77,6 +87,12 @@ func (c *SiteConfiguration) PortalDist() string {
 // droid clients against.
 func (c *SiteConfiguration) DroidsAPIKey() string {
 	return c.droidsAPIKey
+}
+
+// Scheduler returns the guard the scheduled routes sit behind: Cloud Scheduler's tokens
+// of the invoker identity APP_SCHEDULER_INVOKER names, and nothing else.
+func (c *SiteConfiguration) Scheduler() *scheduled.Guard {
+	return c.scheduler
 }
 
 // siteConfig holds the environment only the served site reads.

@@ -80,6 +80,7 @@ type Ship struct { ... }
 | `@target` | field of an `@rpc` struct | none, or `RootStructName` | Marks the field carrying the target row's key — exactly one per method, its type matching the target's single-column primary key. With `@transition` it is bare (the declared root is the target); without one, `@target(Root)` names the row resource directly and the method gets the plain located-row form (ABAC design plan §12): the generated handler locates the row inside its transaction (absent or cross-tenant is NotFound) and evaluates any row-referencing condition on the caller's Execute grant against it, with no state check and no stamp. Either way, a targeted method's Execute grants may carry row conditions — `access.MigrateRoles` validates them against the target resource's binding vocabulary — and the method joins the target resource's per-row `capabilities=Execute` answer. Requires the transaction form of `Execute`; method and target permission scopes must match. A domain-scoped target resolves tenancy through its `@domain` binding, either form: a bare tenant column is read off the located row, a join-path binding is verified with one query in the same transaction — absent and cross-tenant rows answer the same NotFound either way. Example: [HailShip](lodestar/pkg/rpc/hail_ship.go). |
 | `@answers` | `@rpc` struct | `200, 409` | Declares the statuses the method may answer with; the result type carries `HTTPStatus() int` and chooses one per response. Allowed: `200`, `201`, `202`, `204`, and any 4xx except `401`, `403`, and `404`, which stay the frame's own refusals; at least one must be a 2xx. A 4xx answer is the method's refusal with its typed body: in the transaction form the transaction rolls back first, so nothing the body armed commits. `204` writes no body and requires a pointer result returned nil, or an answerless method, whose only permitted declaration is `@answers(204)`. A result declaring `HTTPStatus()` without `@answers`, or the reverse, is a generation error; an undeclared status at runtime answers 500. The TypeScript client resolves `{ status, result }` for a method with declared statuses and still throws on every undeclared 4xx. Example: [CompleteMission](lodestar/pkg/rpc/complete_mission.go). |
 | `@upload` | `@rpc` struct | `max: 5MB`, and `store: S` for a named store | Declares the method as a multipart upload. Its `Execute` takes `resource.Files` third, `Execute(ctx, txn resource.ReadWriteTransaction, files resource.Files, client *Client)`, the transaction form only, since the transaction is what claims the files, and the declaration and the signature go together (either alone is a generation error). With `store: S`, the files go to the named store `S` (section 13) and `Execute` takes `resource.FilesIn[S]`, whose keys are `resource.Key[S]`; the declaration and the signature name one store or neither, and a mismatch is a generation error. The request is `multipart/form-data`: one part named `request` first, carrying the JSON the method's decoder reads exactly as for a JSON RPC, then one or more parts named `file`. `max` (a byte count or `KB`/`MB`/`GB`, 1024-based) bounds the whole body; over it is a 413 naming the maximum, no `file` part a 400, a body that is not multipart a 415. The frame streams each file to the method's store, read off the resource client, under a key it minted, runs the body with the files, and on any failure before commit deletes the objects it streamed and answers with the failure; after a commit nothing more happens, since the rows the body wrote claim the keys. The body records each key in a `@file` column of the same store, a `string` column for the default store and a `resource.Key[S]` column for `S`, whose generated setter takes the typed key, so a key of another store does not compile into it; a key recorded anywhere else is invisible to the release and is the orphaned-file cleanup's. An upload naming a store no `@file` column holds is refused at generation. Reading a file back is the `@file` route (section 13). A dry run streams nothing: the files describe the parts with empty keys. The TypeScript handle gains `upload(body, files)`, which refuses locally over the maximum. Examples: [AttachRefitPhoto](lodestar/pkg/rpc/attach_refit_photo.go) on the default store, [AttachMissionDocument](lodestar/pkg/rpc/attach_mission_document.go) on a named one. |
+| `@schedule` | `@rpc` struct | the cron expression in quotes, and `zone: "<IANA zone>"` (UTC when absent): `@schedule("30 3 * * *", zone: "America/Denver")` | Declares the method a scheduled route: Cloud Scheduler calls it on the schedule, read in the zone. The expression is five fields separated by single spaces (minute, hour, day of the month, month, day of the week), each a comma list of `*`, a value, or a range, the `*` and the range optionally stepped (`*/15`, `1-5/2`), months and days of the week also by name (`JAN`, `MON`); an expression outside that, a zone the time zone database does not know, and `Local` are generation errors. A scheduled method takes no input: no field, no `@upload`, no `@permissionScope` (a domain scope is a path parameter, and a scheduled method checks no permission), no `@target` or `@transition`, no `@outlet`, `@feature`, `@formerly` or `@suppress`, each refused naming the struct, and it needs `GenerateRouter`. It is served at `POST /_scheduled/<method in kebab case>` behind the scheduler's token check alone, never on an outlet, never in the permission collection or a TypeScript client. Section 19. Example: [PruneDroidReports](lodestar/pkg/rpc/prune_droid_reports.go). |
 | `@file` | field of a `@resource`, `@virtual`, or keyed `@computed` struct (the column holding the store key); or a keyed `@computed` struct | none, `segment`, and on a field `name: Field`, `type: Field` | A row says which stored object is its file, and the generator serves that file under the row's read route: `GET <read route>/content` answers the bytes with their type, name, size, time, and validator, gated by `Read` on the resource and a `Read` grant on `content`, the route's own field, which the Collection registers with no column behind it (`columns=content` on a read stays a 400; a grant naming it is accepted by `access.MigrateRoles`). On a field, the annotation marks the column holding the store key: `@file` bare serves under `content`, `@file(thumbnail)` under its own segment, and `name:` and `type:` name sibling columns carrying the file's name and media type (a struct may carry several, one per segment). The column's type says which store holds the file: `string` or `*string` is the default store, `resource.Key[S]` or `*resource.Key[S]` the named store `S`, a type the application declares by embedding `resource.Store` (section 13); both are `STRING` columns, and the generated `FileKeys()` names each column with its store. The key column goes off the wire in both directions: never returned on read or list, never accepted on create or update, absent from the TypeScript interface and metadata; a `NOT NULL` key means a row is added by the `@upload` method that stores its file, so `Create` is not registered and the patch handlers refuse a create op naming that way in, while a nullable key leaves `Create` ordinary. On a keyed `@computed` struct, `@file` or `@file(segment)` declares a rendered file: the computed package declares `<Name><Segment>(ctx, key…, qSet *resource.QuerySet[Name], client resource.Client, computedClient *Client) (*resource.Content, error)` beside `Read<Name>`, checked at generation as `Read<Name>`'s callers are, and a nil content is 404. Deleting a row that carries a key, or pointing it at another object, releases the old object: the patch machinery records the key on the transaction and the executor deletes it from the column's store, wired on the resource client (`resource.WithFileStore`, `resource.WithNamedFileStore[S]`), once the commit lands, from every transaction the application runs; one row owns one object, and a row the database deletes by cascade releases nothing (section 13). Under a suppressed read route the declaration serves nothing and still names the key column, so the release and the orphaned-file cleanup see its keys. Refused at generation, naming the struct: a key-less struct, an unknown sibling, two declarations on one segment, a name or type field that is not a `string` or `*string`, a key field that is none of `string`, `*string`, `resource.Key[S]` and `*resource.Key[S]`, a `resource.Key[S]` column without the declaration, the struct-scope form on a table or view, a rendered file under a suppressed read route, and a content function that is missing or has another signature. Examples: [MissionDocument.StoreKey](lodestar/pkg/resources/mission_documents.go), a stored file; [ExpenseManifest](lodestar/pkg/computedresources/expense_manifests.go), a rendered one. |
 | `@subjectSet` | user-id field of a `@resource` struct | `name, value: Field` | Declares subject-side set vocabulary: `subject.<name>` in grant conditions is the set of `value:` values on this table's rows whose annotated column matches the requesting user (`crew IN subject.crews`). The annotation designates the user-id column — no separate marker — and is repeatable per anchor; `value:` names the sibling Go field the set yields, dotted to continue through foreign-key hops with the same many-to-one validation as `via:`; every set is drawn in the package's `zz_gen_bindings.dot`: the requester enters the anchor once naming its sets, a bare set is listed in the anchor's box and points at its table when the column is a foreign key, and a dotted value continues as edges (see `@domain`). **Tenancy:** the rendered subject subquery is tenant-filtered by the anchor resource's own `@domain` binding, so a domain-scoped anchor must declare one — generation rejects it otherwise, because without it `subject.<name>` matches the user's rows from every tenant (a membership held at tenant B would satisfy conditions evaluated at tenant A). A global-scoped anchor is the deliberately shared pattern — a certification earned once applies everywhere — and stays unfiltered. Note the anchor's own binding is what counts: tenancy never arrives transitively from a domain-scoped parent table (see `@domain`). **Type:** the set's comparison type is derived from the `value:` column (the terminal of a dotted value) exactly as `@attribute`'s is, and a grant may test only an attribute of the same type for membership in it; `MigrateRoles` refuses the mismatch at deploy. Example: [SquadronMembership](lodestar/pkg/resources/squadron_memberships.go). |
 | `@subjectValue` | user-id field of a `@resource` struct | `name, value: Field` | Declares subject-side scalar vocabulary for threshold comparisons (`amount <= subject.approvalLimit`). Same grammar — and the same tenancy rule, and the same place in `zz_gen_bindings.dot` — as `@subjectSet`, valid only where the annotated user-id column is the whole key of a unique index, the single-column primary key included, so the database enforces exactly one row per user; a column of a composite key or composite unique index does not qualify. **Type:** the value's comparison type is derived from the `value:` column as `@attribute`'s is, and a grant may compare it only against an attribute of the same type (`now` only against a timestamp-typed value); `MigrateRoles` refuses the mismatch at deploy. |
@@ -566,7 +567,10 @@ no release declared on either session outlet:
 `resource.ReleaseFile` (`Outlets` by name, each a `ReleaseOutlet` with `APIKey` and
 `OldestAnswered`, `"this"` read back as `resource.ThisRelease`), refusing a file that is
 not this shape, so the deploy and the tests share one parser; the name is
-`resource.ReleaseFileName`.
+`resource.ReleaseFileName`. An application with scheduled methods (section 19) also finds
+them listed there, under `scheduled`, in path order: each route's `path`, its cron
+`schedule` and its `timeZone`, read into `ReleaseFile.Scheduled`; the key is absent when
+there are none.
 
 **The generated test** drives every generated route through `New` with recording stubs
 and asserts the middleware each request passed through, in order, for its outlet; that
@@ -1728,3 +1732,68 @@ release 2.
 cursor an application holds across release 1 over an order that names the renamed field is
 refused once, and that list restarts from its first page; a cursor over any other order
 carries across.
+
+## 19. Scheduled methods
+
+A scheduled method is an RPC method Cloud Scheduler calls on a schedule, not a person:
+pruning old rows every night, sending a digest every morning. It is an `@rpc` struct with
+`@schedule` (section 1) and an `Execute` in either form, and it runs on the service itself;
+a schedule never starts a job process. Lodestar's:
+
+```go
+// @rpc
+// @schedule("30 3 * * *", zone: "America/Denver")
+PruneDroidReports struct{}
+```
+
+**What a scheduled method is.** It takes no input, since the scheduler sends no body and
+names no row or tenant: the struct declares no field, and nothing that adds a path
+parameter or a body is admitted. It checks no permission and is in no outlet: the
+scheduler's token is its gate, so no role names it, the permission collection and the
+digest leave it out, and no TypeScript client carries it. `Execute` runs as the
+application, with no caller stamped on its context, so `Enforce` and `Check` refuse inside
+it and its queries and patches run trusted; it records its writes under a process
+(`resource.ProcessEvent`) rather than a person. The frame is a method's otherwise: the
+transaction form runs inside the handler's transaction, the rows it writes are published to
+the live pages after the commit, and it answers with its result or its chosen status
+(`@answers`), which the scheduler records as the call's success or failure. There is no
+dry run.
+
+**The route.** The generated router mounts every scheduled method under one prefix it
+reserves, `/_scheduled` (`scheduled.Prefix`), one `POST` each at the method's name in kebab
+case: `/_scheduled/prune-droid-reports`. Its group is `NoCaching`, `CompressionMiddleware`
+and `SchedulerAuth`, and nothing else: no session handling, no XSRF guard, no version
+check, no hook. Under the prefix an unknown path is 404, as under an outlet's. No outlet's
+prefix and no browser application's mount path may sit at or under it, and no API-key
+outlet may be named so that its middleware would be `SchedulerAuth`; each is a generation
+error. The route tables carry `GeneratedScheduledHandlers` and `generatedScheduledRoutes`
+beside the outlets', `Handlers` embeds the one and declares `SchedulerAuth(next
+http.Handler) http.Handler`, the chain comment names the group, and the generated test
+drives each scheduled route through `New` behind exactly that chain. `NewTestRouter` does
+not mount them.
+
+**The check.** The service is open to the load balancer, so Cloud Run's own permission
+check lets every caller through, and the check is the application's. Cloud Scheduler calls
+with an OpenID Connect token (an OIDC token: a JSON web token Google signs) minted for the
+invoker identity, a service account the application's stack creates for its schedules, with
+the route's URL as the token's audience. `resource/scheduled` holds the check: a `Guard`
+admits a call whose `Authorization: Bearer` token verifies against Google's signing keys
+(`google.golang.org/api/idtoken`: the signature and the expiry) for the audience
+`https://<host the call names><path>`, was issued by Google, and carries the invoker
+identity as its verified email. Any other call answers 401 Unauthorized, and the reason
+(no token, a token that does not verify for this URL, another issuer, an unverified email,
+another identity) is logged, never written into the answer. The stack hands the service
+the invoker's email in `APP_SCHEDULER_INVOKER` (`scheduled.InvokerVariable`), which the
+framework reads itself, as it reads `APP_MAINTENANCE`, so no configuration level declares
+it: `scheduled.FromEnvironment(ctx)` builds the guard when the application starts, and with
+the variable empty, as in development and in a pull-request stack, the scheduled routes are
+off, the start logs so, and every scheduled call is refused. The application's
+`SchedulerAuth` delegates to the guard (`return a.scheduler.Middleware(next)`); a nil guard
+refuses every call too. `scheduled.NewFake()` stands in for Google's keys in a test: a
+token it mints for a URL and an email is one Cloud Scheduler would present.
+
+**The schedule.** The generator writes each scheduled route with its schedule and zone into
+the release file (section 8), and that is where the application's stack reads them: bedrock
+renders one Cloud Scheduler job per scheduled route in every environment, never in a
+pull-request stack, calling `https://<the environment's canonical hostname><path>` with a
+token of the invoker identity it creates, and sets `APP_SCHEDULER_INVOKER` on the service.

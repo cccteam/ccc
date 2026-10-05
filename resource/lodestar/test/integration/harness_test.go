@@ -29,6 +29,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
+	"github.com/cccteam/ccc/resource/scheduled"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
@@ -228,6 +229,9 @@ type testConfigurer struct {
 	// version is the release the served stack reports as its own (AppVersion); empty
 	// is dev, under which the version check answers every release.
 	version string
+	// scheduler is the guard the scheduled routes sit behind on the served stack, over
+	// a fake of Google's keys; nil elsewhere, which refuses every scheduled call.
+	scheduler *scheduled.Guard
 }
 
 // TenantRoster is the application's tenant roster as production's DataConfiguration
@@ -316,6 +320,13 @@ func (c *testConfigurer) PortalDist() string { return "" }
 // DroidsAPIKey is the droids outlet's key on the served stack; the test router carries no
 // outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return droidsAPIKey }
+
+// Scheduler is the served stack's guard over the scheduled routes (newServedAt), which
+// admits the tokens its fake issues for schedulerInvoker; nil for a suite on the test
+// router, which mounts no scheduled route.
+func (c *testConfigurer) Scheduler() *scheduled.Guard {
+	return c.scheduler
+}
 
 // Live is the live service the suite passed (newTestAppWithLive), an in-memory fake;
 // a suite that passed none gets a fake of its own, since the live service is required
@@ -633,6 +644,9 @@ type served struct {
 	members *access.Client
 	stores  *testStores
 	db      *initiator.SpannerDB
+	// scheduler stands in for Google's keys behind the scheduled routes: a token it
+	// mints for schedulerInvoker and a route's URL is what Cloud Scheduler presents.
+	scheduler *scheduled.Fake
 }
 
 // newServed provisions the database the way the bootstrap does (schema, the demo world,
@@ -718,6 +732,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	}
 
 	stores := newTestStores()
+	keys := scheduled.NewFake()
 	a := app.New(&testConfigurer{
 		db:            db,
 		access:        crewAuth.Access(),
@@ -728,12 +743,17 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		live:          fake,
 		management:    crewAuth.Access().Handlers(httpio.Log),
 		version:       version,
+		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),
 	})
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
 
-	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db}
+	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys}
 }
+
+// schedulerInvoker is the invoker identity the served stack's scheduled routes admit, as
+// the stack names it in APP_SCHEDULER_INVOKER on Cloud Run.
+const schedulerInvoker = "lodestar-scheduler@lodestar.iam.gserviceaccount.com"
 
 // outletXSRF names the XSRF cookie each session-serving outlet's auth issues: the browser
 // on an outlet echoes that auth's cookie, as the outlet's web app does.

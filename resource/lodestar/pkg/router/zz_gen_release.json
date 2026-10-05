@@ -9,5 +9,12 @@
     "portal": {
       "oldestAnswered": ""
     }
-  }
+  },
+  "scheduled": [
+    {
+      "path": "/_scheduled/prune-droid-reports",
+      "schedule": "30 3 * * *",
+      "timeZone": "America/Denver"
+    }
+  ]
 }

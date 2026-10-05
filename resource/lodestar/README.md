@@ -370,6 +370,26 @@ How it is wired:
   instances, two crew engines with the heartbeat pinned to an hour, and the in-memory
   live service, which fans a signal out to every subscription.
 
+## The nightly prune
+
+The telemetry link keeps ninety days of droid readings, and one method keeps it so.
+`PruneDroidReports` ([`@schedule`](pkg/rpc/prune_droid_reports.go)) is declared with
+`@schedule("30 3 * * *", zone: "America/Denver")`: Cloud Scheduler calls it every night at
+03:30 headquarters time, and it deletes the readings recorded before the window and answers
+how many went. No person calls it and no role names it. The generated router serves it at
+`POST /_scheduled/prune-droid-reports` behind `SchedulerAuth` alone, which admits a token
+Google signed for that URL whose verified email is the invoker identity, the service account
+the stack names in `APP_SCHEDULER_INVOKER`, and answers any other call 401, logging why. The
+App's `SchedulerAuth` (`app/app.go`) delegates to the guard `pkg/config/site.go` builds with
+`scheduled.FromEnvironment`; in development the variable is unset, so the scheduled routes are
+off, the server says so when it starts, and every call is refused. The release file,
+`pkg/router/zz_gen_release.json`, lists the route with its schedule and zone, which bedrock
+reads to create the Cloud Scheduler job and the invoker identity in each environment.
+[`test/integration/scheduled_test.go`](test/integration/scheduled_test.go) calls the route on
+the served stack with tokens from a fake of Google's keys: a call with no token, with another
+identity's token, or with a token for another route is refused and deletes nothing, and the
+scheduler's own call deletes the stale reading and keeps the fresh one.
+
 ## Running against a real Spanner instance
 
 The emulator answers every test, but it returns no query plans, does not promise the
@@ -482,7 +502,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   all but the hull catalog with `@order` ([`order.none`](pkg/resources/ship_classes.go),
   a catalog read whole and unsorted, whose pages need a requested sort,
   [`order.required`](pkg/resources/ship_classes.go)); `pkg/rpc`: the thirteen transitions and the effect methods, including the
-  client-form [`rpc.client-form`](pkg/rpc/compile_briefing.go); `pkg/computedresources`
+  client-form [`rpc.client-form`](pkg/rpc/compile_briefing.go) and the nightly prune
+  Cloud Scheduler calls ([`@schedule`](pkg/rpc/prune_droid_reports.go)); `pkg/computedresources`
   (the pushdown [`computed.pushdown`](pkg/computedresources/service_ledgers.go), the
   fold, and the key-less standing orders
   [`computed.keyless`](pkg/computedresources/standing_orders.go)) and `pkg/virtualresources`; `pkg/router`: the generated router over three outlets

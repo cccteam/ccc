@@ -10,18 +10,19 @@ import (
 )
 
 // Test_renderReleaseFile pins the release file's bytes for the shapes an outlet takes
-// (a release, this release, no declaration and a machine outlet) and that what is
-// written reads back through the reader a deploy uses.
+// (a release, this release, no declaration and a machine outlet) and for the scheduled
+// routes, and that what is written reads back through the reader a deploy uses.
 func Test_renderReleaseFile(t *testing.T) {
 	t.Parallel()
 
 	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
 
 	tests := []struct {
-		name     string
-		outlets  []routerOutlet
-		want     string
-		wantRead resource.ReleaseFile
+		name      string
+		outlets   []routerOutlet
+		scheduled []*scheduledRoute
+		want      string
+		wantRead  resource.ReleaseFile
 	}{
 		{
 			name: "a release, a machine outlet, no declaration and this release",
@@ -87,12 +88,47 @@ func Test_renderReleaseFile(t *testing.T) {
 `,
 			wantRead: resource.ReleaseFile{Outlets: map[string]resource.ReleaseOutlet{"beacons": {APIKey: true}, "default": {}}},
 		},
+		{
+			name:    "the scheduled routes render in path order with their schedules",
+			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
+			scheduled: []*scheduledRoute{
+				{Path: "/_scheduled/send-digest", HandlerFunc: "SendDigest", Cron: "0 6 * * MON-FRI", Zone: "UTC"},
+				{Path: "/_scheduled/prune-droid-reports", HandlerFunc: "PruneDroidReports", Cron: "30 3 * * *", Zone: "America/Denver"},
+			},
+			want: `{
+  "outlets": {
+    "default": {
+      "oldestAnswered": ""
+    }
+  },
+  "scheduled": [
+    {
+      "path": "/_scheduled/prune-droid-reports",
+      "schedule": "30 3 * * *",
+      "timeZone": "America/Denver"
+    },
+    {
+      "path": "/_scheduled/send-digest",
+      "schedule": "0 6 * * MON-FRI",
+      "timeZone": "UTC"
+    }
+  ]
+}
+`,
+			wantRead: resource.ReleaseFile{
+				Outlets: map[string]resource.ReleaseOutlet{"default": {}},
+				Scheduled: []resource.ScheduledRoute{
+					{Path: "/_scheduled/prune-droid-reports", Schedule: "30 3 * * *", TimeZone: "America/Denver"},
+					{Path: "/_scheduled/send-digest", Schedule: "0 6 * * MON-FRI", TimeZone: "UTC"},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := renderReleaseFile(releaseFileOf(tt.outlets))
+			got, err := renderReleaseFile(releaseFileOf(tt.outlets, tt.scheduled))
 			if err != nil {
 				t.Fatalf("renderReleaseFile() error = %v", err)
 			}

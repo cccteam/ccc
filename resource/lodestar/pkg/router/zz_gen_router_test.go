@@ -185,6 +185,7 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		"/console/api/does-not-exist",
 		"/droids/does-not-exist",
 		"/portal/api/does-not-exist",
+		"/_scheduled/does-not-exist",
 	}
 	for _, url := range unknown {
 		t.Run("GET-url"+strings.ReplaceAll(url, "/", "-"), func(t *testing.T) {
@@ -595,6 +596,53 @@ func TestGeneratedRouterRoot(t *testing.T) {
 			}
 			if !slices.Equal(rec.chain, routerRootChain) {
 				t.Errorf("middleware chain = %v, want %v", rec.chain, routerRootChain)
+			}
+		})
+	}
+}
+
+// TestGeneratedRouterScheduled proves each scheduled route answers POST under the
+// scheduled prefix from exactly its own handler, behind the every-request chain,
+// NoCaching, CompressionMiddleware and SchedulerAuth and nothing else, so no session,
+// outlet guard or hook stands in front of it, and that another method reaches no handler.
+func TestGeneratedRouterScheduled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url     string
+		handler string
+	}{
+		{url: "/_scheduled/prune-droid-reports", handler: "PruneDroidReports"},
+	}
+	for _, tt := range tests {
+		t.Run("POST-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			rr := serveGeneratedRouter(t, rec, Hooks{}, http.MethodPost, tt.url)
+
+			if got := rr.Code; got != http.StatusOK {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusOK)
+			}
+			if cnt := rec.handlers[tt.handler]; cnt != 1 || len(rec.handlers) != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %v", tt.handler, rec.handlers)
+			}
+			want := slices.Concat(routerRootChain, []string{"NoCaching", "CompressionMiddleware", "SchedulerAuth"})
+			if !slices.Equal(rec.chain, want) {
+				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
+			}
+		})
+		t.Run("GET-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			rr := serveGeneratedRouter(t, rec, Hooks{}, http.MethodGet, tt.url)
+
+			if got := rr.Code; got == http.StatusOK {
+				t.Errorf("response.Code = %v, want a refusal", got)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Fatalf("expected no handler called, got: %v", rec.handlers)
 			}
 		})
 	}
@@ -1042,6 +1090,14 @@ func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handl
 
 func (s *routerHandlersStub) DroidsAuth(next http.Handler) http.Handler {
 	return s.rec.Middleware("DroidsAuth")(next)
+}
+
+func (s *routerHandlersStub) SchedulerAuth(next http.Handler) http.Handler {
+	return s.rec.Middleware("SchedulerAuth")(next)
+}
+
+func (s *routerHandlersStub) PruneDroidReports() http.HandlerFunc {
+	return s.rec.RecordHandlerCall("PruneDroidReports")
 }
 
 func (s *routerHandlersStub) LoggerMiddleware() func(http.Handler) http.Handler {

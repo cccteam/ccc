@@ -223,6 +223,30 @@ func Test_validateRouterConfig(t *testing.T) {
 			wantErr: `WebApp("/api/console"), which sits under outlet "default"'s route prefix /api`,
 		},
 		{
+			name:    "an outlet prefix at the scheduled prefix",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "_scheduled", APIKey())},
+			wantErr: `outlet "machines" has the route prefix /_scheduled, under /_scheduled, which the generated router reserves for the scheduled routes (@schedule)`,
+		},
+		{
+			name:    "an outlet prefix under the scheduled prefix",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "_scheduled/api", staff)},
+			wantErr: `outlet "default" has the route prefix /_scheduled/api, under /_scheduled`,
+		},
+		{
+			name:    "a browser application under the scheduled prefix",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, WebApp("/_scheduled/console"))},
+			wantErr: `outlet "default" declares WebApp("/_scheduled/console"), under /_scheduled, which the generated router reserves for the scheduled routes`,
+		},
+		{
+			name:    "an API-key outlet whose middleware would be SchedulerAuth",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("scheduler", "scheduler", APIKey())},
+			wantErr: `outlet "scheduler" would take the Handlers method SchedulerAuth, which the generated router reserves for the scheduled routes`,
+		},
+		{
+			name:    "a prefix that only begins with the scheduled prefix's letters is not under it",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "_scheduledapi", staff)},
+		},
+		{
 			name:    "an API prefix under a browser application is the ordinary layout",
 			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("portal", "portal/api", members, WebApp("/portal"))},
 		},

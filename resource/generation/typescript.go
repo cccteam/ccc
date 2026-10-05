@@ -269,10 +269,13 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genRPCMethods {
 		pkg := packageMap[t.rpc.Package()]
 		rpcStructs := parser.ParsePackage(pkg).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
+		methods, err := t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 		if err != nil {
 			return err
 		}
+		// A scheduled method is Cloud Scheduler's to call, never a browser's: the
+		// client carries the methods a person calls alone.
+		t.rpcMethods, t.scheduledMethods = splitScheduled(methods)
 		if err := t.validateRPCPickerSources(t.rpcMethods); err != nil {
 			return err
 		}

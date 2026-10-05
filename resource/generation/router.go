@@ -96,6 +96,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		ExtraOutlets:           extraOutlets,
 		ExtraStubHandlerFuncs:  extraStubHandlerFuncs(defaultOutlet, extraOutlets),
 		NegativeRouterTests:    negativeTests,
+		ScheduledRoutes:        r.scheduledRoutes(),
 		HasGatedRoutes:         defaultOutlet.HasGatedRoutes,
 		StubFeatureGuard:       stubFeatureGuard,
 		ResourcePackage:        r.resource.Package(),

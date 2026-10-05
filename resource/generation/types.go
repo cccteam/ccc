@@ -505,6 +505,10 @@ type rpcMethodInfo struct {
 	// method never renamed. The router answers the former route beside the current
 	// one, and the collection carries the name for the role migration.
 	Formerly string
+	// Schedule is the method's @schedule: when Cloud Scheduler calls it. A scheduled
+	// method is served under the scheduled prefix alone, behind the scheduler's token
+	// check, and never on an outlet; nil for a method a person calls.
+	Schedule *rpcSchedule
 }
 
 // FormerRouteName is the kebab-cased former name the method's former route is served
@@ -2045,6 +2049,7 @@ const (
 	featureKeyword              string = "feature"              // Gates a resource, a field or an RPC method behind a feature flag, by the flag's constant: @feature(Debriefs)
 	tenantKeyword               string = "tenant"               // Declares the tenant record: the global, table-backed @resource whose rows are the tenants and whose key is the domain in every tenant-scoped URL
 	formerlyKeyword             string = "formerly"             // Declares a field's or a method's former name, answered beside the current one while older applications still send it: @formerly(Title)
+	scheduleKeyword             string = "schedule"             // Declares an RPC method a scheduled route Cloud Scheduler calls: @schedule("0 3 * * *"[, zone: "America/Denver"])
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -2082,6 +2087,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		featureKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		tenantKeyword:               {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		formerlyKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		scheduleKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

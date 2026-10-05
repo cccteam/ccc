@@ -23,6 +23,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
+	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -102,6 +103,11 @@ type Configurer interface {
 	// permission checks; nil where those routes are never mounted (the test router's
 	// suites), since mounting them draws on it.
 	UserManagement() access.Handlers
+	// Scheduler is the guard the scheduled routes sit behind (resource/scheduled): the
+	// invoker identity the stack names in APP_SCHEDULER_INVOKER, whose Google-signed
+	// tokens alone are admitted. A guard with no invoker, or none at all, refuses every
+	// scheduled call.
+	Scheduler() *scheduled.Guard
 	// TenantRoster is the application's tenant roster: the Sectors table's keys, built by
 	// the generated NewSectorRoster over the resource client and started by the
 	// configuration, so it is loaded before the App is built and keeps up through the
@@ -155,6 +161,7 @@ type App struct {
 	consoleApp     *resource.BrowserApp
 	portalApp      *resource.BrowserApp
 	droidsAPIKey   string
+	scheduler      *scheduled.Guard
 	tenants        *resource.TenantRoster
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
@@ -191,6 +198,7 @@ func New(cfg Configurer) *App {
 		consoleApp:     resource.NewBrowserApp(cfg.ConsoleDist(), "/console"),
 		portalApp:      resource.NewBrowserApp(cfg.PortalDist(), "/portal"),
 		droidsAPIKey:   cfg.DroidsAPIKey(),
+		scheduler:      cfg.Scheduler(),
 		tenants:        cfg.TenantRoster(),
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, resourceClient.FileStore(resource.StoreNameFor[resources.Documents]())),
 		computedClient: computedresources.NewClient(),
@@ -356,6 +364,16 @@ func (a *App) DroidsAuth(next http.Handler) http.Handler {
 
 		return nil
 	})
+}
+
+// SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes: a token Google
+// signed for the route's URL whose verified email is the invoker identity the stack names
+// in APP_SCHEDULER_INVOKER. Any other call answers 401, its reason logged, and with no
+// invoker configured (development, a pull-request stack) every call does.
+//
+// Demonstrates: @schedule.
+func (a *App) SchedulerAuth(next http.Handler) http.Handler {
+	return a.scheduler.Middleware(next)
 }
 
 // UserPermissions returns the permission checker for a request, composed from the

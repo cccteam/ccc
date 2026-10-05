@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/cccteam/ccc/resource"
@@ -13,11 +15,13 @@ import (
 // runReleaseFileGeneration writes the release file (resource.ReleaseFileName) beside the
 // served router: every outlet by name, a machine outlet by its kind and a session outlet
 // by its oldest answered release as the generator program declared it, so a deploy reads
-// from the checkout whether the release needs a maintenance window. It is written only
-// with the router, and the stale sweep removes it when the router goes.
+// from the checkout whether the release needs a maintenance window, and the scheduled
+// routes with their schedules, which the application's stack creates a Cloud Scheduler
+// job for each of. It is written only with the router, and the stale sweep removes it
+// when the router goes.
 func (r *resourceGenerator) runReleaseFileGeneration(outlets []routerOutlet) error {
 	begin := time.Now()
-	data, err := renderReleaseFile(releaseFileOf(outlets))
+	data, err := renderReleaseFile(releaseFileOf(outlets, scheduledRoutesOf(r.scheduledMethods)))
 	if err != nil {
 		return err
 	}
@@ -31,8 +35,9 @@ func (r *resourceGenerator) runReleaseFileGeneration(outlets []routerOutlet) err
 	return nil
 }
 
-// releaseFileOf builds the release file from the validated outlet declarations.
-func releaseFileOf(outlets []routerOutlet) resource.ReleaseFile {
+// releaseFileOf builds the release file from the validated outlet declarations and the
+// scheduled routes, the routes in path order.
+func releaseFileOf(outlets []routerOutlet, scheduledRoutes []*scheduledRoute) resource.ReleaseFile {
 	file := resource.ReleaseFile{Outlets: make(map[string]resource.ReleaseOutlet, len(outlets))}
 	for _, o := range outlets {
 		if o.apiKey {
@@ -42,6 +47,12 @@ func releaseFileOf(outlets []routerOutlet) resource.ReleaseFile {
 		}
 		file.Outlets[o.name] = resource.ReleaseOutlet{OldestAnswered: o.oldestAnswered}
 	}
+	for _, route := range scheduledRoutes {
+		file.Scheduled = append(file.Scheduled, resource.ScheduledRoute{Path: route.Path, Schedule: route.Cron, TimeZone: route.Zone})
+	}
+	slices.SortFunc(file.Scheduled, func(a, b resource.ScheduledRoute) int {
+		return strings.Compare(a.Path, b.Path)
+	})
 
 	return file
 }

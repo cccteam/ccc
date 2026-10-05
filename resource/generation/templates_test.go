@@ -26,6 +26,7 @@ func fileTemplates() map[string]string {
 		"servedRouterTestTemplate":        servedRouterTestTemplate,
 		"rpcFileTemplate":                 rpcFileTemplate,
 		"rpcHandlerTemplate":              rpcHandlerTemplate,
+		"scheduledHandlerTemplate":        scheduledHandlerTemplate,
 		"rpcInterfacesTemplate":           rpcInterfacesTemplate,
 		"computedResourceHandlerTemplate": computedResourceHandlerTemplate,
 		"domainGuardTemplate":             domainGuardTemplate,
@@ -830,6 +831,14 @@ func Test_handlerTemplates_live(t *testing.T) {
 				`{{- template "rpcPublish" $ }}`,
 				"ctx, touched := resource.CollectTouchedRows(ctx)",
 				`live.Publish(ctx, {{ $.ReceiverName }}.LiveService(), {{ if .RPCMethod.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)`,
+			},
+		},
+		{
+			name:     "scheduled",
+			template: scheduledHandlerTemplate,
+			want: []string{
+				`{{- template "rpcCollectTouched" $ }}`,
+				`{{- template "rpcPublish" $ }}`,
 			},
 		},
 		{
