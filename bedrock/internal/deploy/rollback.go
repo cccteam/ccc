@@ -184,13 +184,13 @@ type generationNote struct {
 	At         string `json:"at"`
 }
 
-// rollback does a rollback run's work before the plan, as the apply identity: a forensic
-// backup of the live database is started as of now; the chosen backup is read (or, for a
-// moment, made as of it) and waited for until READY; it is restored into the database's
-// next generation, named after the current database's base with the number; the generation
-// is written beside the deployment records; the restored database is imported into the
-// stack as its generation's instance; and the facts carry the rest to the record. It
-// answers the new generation, which the plan is told.
+// rollback does a rollback run's work before the plan, as the apply identity: the chosen
+// backup is read (or, for a moment, made as of it) and waited for until READY; a forensic
+// backup of the live database is started as of now; the chosen backup is restored into the
+// database's next generation, named after the current database's base with the number;
+// the generation is written beside the deployment records; the restored database is
+// imported into the stack as its generation's instance; and the facts carry the rest to
+// the record. It answers the new generation, which the plan is told.
 func (s *stack) rollback(ctx context.Context, subs, facts map[string]string, w Workspace, generation int, now time.Time) (int, error) {
 	app, env := subs[appSub], subs[envSub]
 	if subs[recordsBucket] == "" {
@@ -211,22 +211,25 @@ func (s *stack) rollback(ctx context.Context, subs, facts map[string]string, w W
 	if err != nil {
 		return 0, err
 	}
-	// The chosen backup is found (or, for a moment, started) before the forensic backup
-	// is, so a refusal leaves no backup behind; the wait for READY comes after, so the
-	// two backups are taken side by side.
+	// The chosen backup is found (or, for a moment, started) and waited for until READY
+	// before the forensic backup starts: Spanner takes one backup of a database at a
+	// time, and the chosen one is often the release backup the release build started
+	// minutes ago, still being taken. The application is in maintenance meanwhile, so the
+	// forensic backup, taken as of this moment, holds the live data as the rollback found
+	// it. A refusal of the chosen backup leaves no backup behind.
 	backup, err := s.chosenBackup(ctx, store, instance, database, facts[rollbackFact], now)
 	if err != nil {
 		return 0, err
 	}
-	stamp := now.UTC().Format(backupStamp)
-	forensic := path.Base(database) + forensicBackupInfix + stamp
-	if _, err := store.CreateBackup(ctx, instance, forensic, database, now.UTC(), now.UTC().Add(forensicBackupKeep)); err != nil {
-		return 0, errors.Wrapf(err, "starting the forensic backup %s of %s", forensic, path.Base(database))
-	}
-	fmt.Fprintf(s.out, "Forensic backup: %s holds %s as of %s, kept thirty days; %s itself stays, protected, as the forensic copy. The backup stands as this run's release backup in the record, so a later rollback from this release finds its last data there.\n", forensic, path.Base(database), now.UTC().Format(time.RFC3339), path.Base(database))
 	if backup, err = s.readyBackup(ctx, store, backup); err != nil {
 		return 0, err
 	}
+	stamp := now.UTC().Format(backupStamp)
+	forensic := path.Base(database) + forensicBackupInfix + stamp
+	if _, err := startBackup(ctx, s.clients, s.out, store, instance, forensic, database, now.UTC(), now.UTC().Add(forensicBackupKeep), "the forensic backup "+forensic); err != nil {
+		return 0, errors.Wrapf(err, "starting the forensic backup %s of %s", forensic, path.Base(database))
+	}
+	fmt.Fprintf(s.out, "Forensic backup: %s holds %s as of %s, kept thirty days; %s itself stays, protected, as the forensic copy. The backup stands as this run's release backup in the record, so a later rollback from this release finds its last data there.\n", forensic, path.Base(database), now.UTC().Format(time.RFC3339), path.Base(database))
 	fmt.Fprintf(s.out, "=== Rollback: %s is restored from %s (data as of %s) into %s, generation %d of %s's database ===\n", env, path.Base(backup.Name), backup.VersionTime, restored, next, app)
 	if err := store.RestoreDatabase(ctx, instance, restored, backup.Name); err != nil {
 		return 0, errors.Wrapf(err, "restoring %s from %s", restored, backup.Name)
@@ -265,7 +268,7 @@ func (s *stack) chosenBackup(ctx context.Context, store Spanner, instance, datab
 			return nil, errors.Newf("%s=%s: the moment is not RFC 3339", rollbackSub, instruction)
 		}
 		id := path.Base(database) + pointInTimeBackupInfix + at.UTC().Format(backupStamp)
-		if _, err := store.CreateBackup(ctx, instance, id, database, at.UTC(), now.UTC().Add(pointInTimeBackupKeep)); err != nil {
+		if _, err := startBackup(ctx, s.clients, s.out, store, instance, id, database, at.UTC(), now.UTC().Add(pointInTimeBackupKeep), "the backup "+id+" as of "+at.UTC().Format(time.RFC3339)); err != nil {
 			return nil, errors.Wrapf(err, "making the backup %s of %s as of %s", id, path.Base(database), at.UTC().Format(time.RFC3339))
 		}
 		name = instance + databaseBackupsSegment + id

@@ -18,10 +18,13 @@ func TestStartReleaseBackup(t *testing.T) {
 	now := time.Date(2026, 10, 5, 4, 30, 15, 500, time.UTC)
 	subs := map[string]string{"_PROJECT": "prd-project", "_ENV": "prd", "_APP": "harbor", "_APPLY_IDENTITY": "imp-prd-gbl-harbor-tofu@prd-project.iam.gserviceaccount.com", "TAG_NAME": "v1.2.3"}
 	tests := []struct {
-		name    string
-		env     string
-		subs    map[string]string
-		refuse  string
+		name   string
+		env    string
+		subs   map[string]string
+		refuse string
+		// pending is how many starts Spanner refuses first because it is taking another
+		// backup of the database.
+		pending int
 		wantOut []string
 		// wantCreated is the backup the step asked Spanner for, as the fake records it;
 		// wantFacts the facts it leaves.
@@ -87,6 +90,18 @@ func TestStartReleaseBackup(t *testing.T) {
 			wantOut: []string{pullRequestBuildNotice},
 		},
 		{
+			name:    "a release backup waits while Spanner takes another backup of the database",
+			env:     keeping,
+			subs:    subs,
+			pending: 3,
+			wantOut: []string{
+				"Waiting to start the release backup imp-prd-gbl-harbor-db-pre-v1-2-3-b-1: Spanner is taking another backup of imp-prd-gbl-harbor-db, and takes one at a time (0s so far); it starts when that one completes.",
+				"=== Release backup: imp-prd-gbl-harbor-db-pre-v1-2-3-b-1 holds imp-prd-gbl-harbor-db as of the cut, 2026-10-05T04:30:15Z",
+			},
+			wantCreated: []string{"imp-prd-gbl-harbor-db-pre-v1-2-3-b-1 of imp-prd-gbl-harbor-db as of 2026-10-05T04:30:15Z until 2026-10-19T04:30:15Z"},
+			wantFacts:   map[string]string{"RELEASE_BACKUP": "projects/spn/instances/imp-spn-gbl-spanner/backups/imp-prd-gbl-harbor-db-pre-v1-2-3-b-1"},
+		},
+		{
 			name:    "a backup Spanner refuses stops the run before the migrations",
 			env:     keeping,
 			subs:    subs,
@@ -105,8 +120,8 @@ func TestStartReleaseBackup(t *testing.T) {
 			t.Parallel()
 
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, tt.subs)})
-			store := &fakeSpanner{refuse: tt.refuse}
-			clients := &Clients{SpannerAs: store.open}
+			store := &fakeSpanner{refuse: tt.refuse, pending: tt.pending}
+			clients := &Clients{SpannerAs: store.open, Sleep: noSleep}
 			var out strings.Builder
 			err := StartReleaseBackup(t.Context(), clients, w, now, &out)
 			if tt.wantErr != "" {

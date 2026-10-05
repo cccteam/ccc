@@ -1308,8 +1308,13 @@ rollback nobody approved is not left waiting.
 application goes into maintenance whatever the window; the stack plan, as the apply
 identity, finds the chosen backup (or starts one as of the moment, kept fourteen days)
 and refuses one that does not exist or belongs to another application before anything
-is started, starts the forensic backup of the live database (`<db>-forensic-<stamp>`,
-thirty days), waits for the chosen backup to be READY, restores it into the database's
+is started, waits for the chosen backup to be READY (often it is the release's own
+backup as of its cut, still being taken: Spanner takes one backup of a database at a
+time, and a backup runs twenty minutes or more however small the database), then starts
+the forensic backup of the live database (`<db>-forensic-<stamp>`, thirty days; a
+backup start Spanner refuses because it is taking another, a scheduled one say, waits
+for its turn, as does a release build's backup as of the cut), restores the chosen
+backup into the database's
 next generation (`<db>-2`, then `-3`), writes the generation beside the deployment
 records (`<app>/database/<env>/<n>.json`), imports the restored database into the stack
 and plans with `database_generation = <n>`; the apply points the service at it; the

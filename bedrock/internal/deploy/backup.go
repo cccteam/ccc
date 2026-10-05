@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -80,7 +81,7 @@ func StartReleaseBackup(ctx context.Context, clients *Clients, w Workspace, now 
 	if err != nil {
 		return err
 	}
-	operation, err := store.CreateBackup(ctx, instance, id, database, cut, expires)
+	operation, err := startBackup(ctx, clients, out, store, instance, id, database, cut, expires, "the release backup "+id)
 	if err != nil {
 		return errors.Wrapf(err, "starting the release backup %s of %s as of %s", id, path.Base(database), cut.Format(time.RFC3339))
 	}
@@ -89,6 +90,37 @@ func StartReleaseBackup(ctx context.Context, clients *Clients, w Workspace, now 
 	fmt.Fprintf(out, "Spanner takes the backup in the background while %s goes on; the migrations that follow change the live database alone. A release gone wrong is rolled back to it with bedrock rollback %s.\n", release, subs[envSub])
 
 	return w.Append(map[string]string{cutFact: cut.Format(time.RFC3339), releaseBackupFact: name, releaseBackupTimeFact: cut.Format(time.RFC3339), releaseBackupExpiresFact: expires.Format(time.RFC3339)})
+}
+
+// pendingBackupRE is Spanner's refusal of a backup while it takes another of the same
+// database: it takes one at a time, and the refusal names the limit.
+var pendingBackupRE = regexp.MustCompile(`maximum number of pending backups`)
+
+// startBackup starts a backup of the database, waiting while Spanner takes another one of
+// it. Spanner takes one backup of a database at a time, and a backup runs for twenty
+// minutes or more however small the database, so a rollback asked for soon after a
+// release finds the release's backup as of its cut still being taken, and a backup asked
+// for while the daily schedule's runs finds that one; each waits for its turn rather
+// than failing the run, saying what it waits for once and again every five minutes. A
+// refusal for any other reason is answered as it came.
+func startBackup(ctx context.Context, clients *Clients, out io.Writer, store Spanner, instance, backupID, database string, versionTime, expireTime time.Time, what string) (string, error) {
+	waited := time.Duration(0)
+	for {
+		operation, err := store.CreateBackup(ctx, instance, backupID, database, versionTime, expireTime)
+		if err == nil {
+			return operation, nil
+		}
+		if !pendingBackupRE.MatchString(err.Error()) {
+			return "", err
+		}
+		if waited == 0 || waited%backupWaitSays == 0 {
+			fmt.Fprintf(out, "Waiting to start %s: Spanner is taking another backup of %s, and takes one at a time (%s so far); it starts when that one completes.\n", what, path.Base(database), waited.Round(time.Minute))
+		}
+		if err := clients.sleep()(ctx, backupWaitPoll); err != nil {
+			return "", err
+		}
+		waited += backupWaitPoll
+	}
 }
 
 // shortBuildID is the build id's first eight characters (a UUID's first group), enough

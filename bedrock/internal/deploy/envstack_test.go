@@ -265,9 +265,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		state string
 		// backup is the backup the instance holds (production's for a production-backup
 		// restore, the chosen one for a rollback); nil when none. creating is how many
-		// reads of it answer CREATING first.
+		// reads of it answer CREATING first; pending how many backup starts Spanner
+		// refuses first because it is taking another backup.
 		backup   *Backup
 		creating int
+		pending  int
 		// objects are the records bucket's objects before the run, by gs:// path.
 		objects map[string]string
 		// live is the maintenance variable's value on the live service the stack names
@@ -421,15 +423,29 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantObject: "gs://records/quill/database/stg/2.json",
 		},
 		{
-			name:         "a rollback waits for a backup Spanner is still taking",
+			name:         "a rollback waits for a backup Spanner is still taking, and starts the forensic backup once it is READY",
 			subs:         rollbackSubs(),
 			pins:         enabledPins(),
 			env:          rollbackEnv,
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			creating:     2,
-			wantOut:      []string{"Waiting for p-stg-gbl-quill-db-pre-v1-2-3: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.", "=== Rollback: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
+			wantOut:      []string{"Waiting for p-stg-gbl-quill-db-pre-v1-2-3: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Rollback: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
+			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
+		},
+		{
+			name:         "a rollback waits to start the forensic backup while Spanner takes another backup of the database",
+			subs:         rollbackSubs(),
+			pins:         enabledPins(),
+			env:          rollbackEnv,
+			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
+			pending:      2,
+			wantOut:      []string{"Waiting to start the forensic backup p-stg-gbl-quill-db-forensic-20261005-0430: Spanner is taking another backup of p-stg-gbl-quill-db, and takes one at a time (0s so far); it starts when that one completes.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Rollback: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
 		},
 		{
@@ -588,7 +604,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": planJSON, "tofu state": tt.state}}
 			secrets := &fakeSecrets{states: tt.pins}
-			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating}
+			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating, pending: tt.pending}
 			store := &memoryStore{objects: map[string]string{}}
 			for k, v := range tt.objects {
 				store.objects[k] = v
@@ -863,9 +879,14 @@ type fakeSpanner struct {
 	restored string
 	created  []string
 	refuse   string
-	// creating is how many reads of the backup answer CREATING before READY.
+	// creating is how many reads of the backup answer CREATING before READY; pending how
+	// many starts Spanner refuses first because it is taking another backup.
 	creating int
+	pending  int
 }
+
+// pendingBackupRefusal is Spanner's refusal while it takes another backup of the database.
+const pendingBackupRefusal = "Spanner answered HTTP 400 to POST /v1/projects/p-spn/instances/shared-spanner/backups?backupId=x: Cannot create backup (projects/p-spn/instances/shared-spanner/backups/x) for database (projects/p-spn/instances/shared-spanner/databases/p-stg-gbl-quill-db) because the maximum number of pending backups (1) for the database has been reached. Please retry the operation once the pending backups complete."
 
 func (f *fakeSpanner) open(context.Context, string) (Spanner, error) {
 	return f, nil
@@ -894,6 +915,11 @@ func (f *fakeSpanner) RestoreDatabase(_ context.Context, _, databaseID, backup s
 func (f *fakeSpanner) CreateBackup(_ context.Context, instance, backupID, database string, versionTime, expireTime time.Time) (string, error) {
 	if f.refuse != "" {
 		return "", errors.New(f.refuse)
+	}
+	if f.pending > 0 {
+		f.pending--
+
+		return "", errors.New(pendingBackupRefusal)
 	}
 	f.created = append(f.created, backupID+" of "+path.Base(database)+" as of "+versionTime.Format(time.RFC3339)+" until "+expireTime.Format(time.RFC3339))
 
