@@ -27,6 +27,10 @@ if [ ! -f "$dir/status" ]; then
 fi
 if [ "$(cat "$dir/status")" = 0 ]; then
   summary=$(grep -E '^(Plan:|No changes\.)' "$dir/plan.txt" | tail -n 1 || true)
+  # A plan that changes outputs alone prints neither line, only "Changes to Outputs:".
+  if [ -z "$summary" ] && grep -q '^Changes to Outputs:' "$dir/plan.txt"; then
+    summary="No resource changes; outputs change only."
+  fi
   echo "${summary:-no summary line}"
   exit 0
 fi

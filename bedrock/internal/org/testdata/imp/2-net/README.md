@@ -224,8 +224,11 @@ its own, merged and applied:
    created. A replacement asked for by hand is applied in this step instead.
 3. By hand, where each step happens: point everything that pointed at the
    old set at the new one (below). `bedrock domain check` prints each step
-   with the zone's new name servers, and, once the domain points at the new
-   zone, says that the value can be cleared.
+   for the apps domain with the zone's new name servers, and, once the
+   domain points at the new zone, says that the value can be cleared. The
+   check reads the apps domain alone: a parked domain made again is pointed
+   at its zone in Cloud Domains by hand ("The registration's name servers",
+   below).
 4. In the infrastructure repository: remove `zoneReplacement` from
    `placement.json` (or set it to `false`) and run `bedrock org render`. The
    rule is written back.

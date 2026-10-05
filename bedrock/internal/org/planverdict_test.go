@@ -31,7 +31,10 @@ const (
 	invalidRef    = `{"summary": "Reference to undeclared resource", "detail": "A managed resource \"google_project\" \"x\" has not been declared in the root module."}`
 	failedPlan    = "Error: Unsupported attribute\n"
 	succeededPlan = "Plan: 1 to add, 0 to change, 0 to destroy.\n"
-	planFailed    = "The plan failed; the log says why."
+	// outputsOnlyPlan is what OpenTofu prints for a plan that changes outputs alone: no Plan
+	// line and no "No changes.".
+	outputsOnlyPlan = "OpenTofu will perform the following actions:\n\nChanges to Outputs:\n  + storage_bucket_creator_role = \"projects/x/roles/y\"\n\nYou can apply this plan to save these new output values to the OpenTofu state, without changing any real infrastructure.\n"
+	planFailed      = "The plan failed; the log says why."
 	// noErrors is a plan's errors when it has none; noOutputs its output changes when it
 	// failed.
 	noErrors  = "[]"
@@ -66,6 +69,14 @@ func TestPlanVerdict(t *testing.T) {
 			run:     "1-org",
 			order:   []string{"1-org"},
 			want:    "Plan: 1 to add, 0 to change, 0 to destroy.",
+			pass:    true,
+		},
+		{
+			name:    "a plan that changes outputs alone passes, saying so, since OpenTofu prints no Plan line for it",
+			results: map[string]planResult{"1-org": {name: "1-org", plan: outputsOnlyPlan, errors: noErrors, outputs: createsRole}},
+			run:     "1-org",
+			order:   []string{"1-org"},
+			want:    "No resource changes; outputs change only.",
 			pass:    true,
 		},
 		{
