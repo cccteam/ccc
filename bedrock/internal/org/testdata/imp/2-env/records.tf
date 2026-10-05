@@ -58,12 +58,21 @@ locals {
   records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]
   # The operations identities read the records too: a rollback asked for with
   # no release or backup named takes the live release's predecessor and the live
-  # release's pre-release backup from them (operations.tf, the workflow).
+  # release's pre-release backup from them (operations.tf, the workflow). In
+  # production, the lower environments' operations identities read them as
+  # well: a restore from production's backup that names no release runs
+  # production's live release, which the workflow reads from here as that
+  # environment's operations identity. Their emails follow the model's naming
+  # and 1-org's project ids; the identities exist once each 2-env has applied.
   records_ops_members = [for app in var.applications : google_service_account.operations[app].member]
+  records_lower_ops_members = local.next_environment != "" ? [] : [
+    for pair in setproduct([for env, next in var.next_environment : env if next != ""], var.applications) :
+    "serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com"
+  ]
   records_bindings = [
     for b in [
       { role = "roles/storage.objectCreator", members = local.records_deploy_members },
-      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, values(local.next_deploy_members), [local.team_group]) },
+      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, values(local.next_deploy_members), [local.team_group]) },
     ] : b if length(b.members) > 0
   ]
 }

@@ -328,6 +328,7 @@ and never fails the check either.`,
 			}
 			registrationReport(cmd.Context(), d, p, dir, cmd.OutOrStdout())
 			fmt.Fprint(cmd.OutOrStdout(), zoneReplacementNotice(p))
+			fmt.Fprint(cmd.OutOrStdout(), productionReviewersNotice(p))
 			for _, f := range r.Findings {
 				if f.Missing {
 					fmt.Fprintf(cmd.OutOrStdout(), "%s: missing\n", f.Path)
@@ -367,6 +368,18 @@ func zoneReplacementNotice(p *org.Placement) string {
 	}
 
 	return "zoneReplacement is set in placement.json: 2-net's apps zone and parked zones are rendered without prevent_destroy, so a plan may destroy them and create them again on other name servers. Make the change that recreates the zone (a new appsDomain, then bedrock org render), point what pointed at the old name servers at the new ones as bedrock domain check prints, then clear zoneReplacement and run bedrock org render to write the rule back; bedrock domain check says when the domain points at the zone (2-net/README.md, \"Making a zone again\").\n"
+}
+
+// productionReviewersNotice says, while the placement names no production reviewer, that
+// production's GitHub Environment waits for nobody before an operations job (a rollback,
+// a release run again) runs there; nothing when it names some. It is information: the
+// value is a person's decision, and the check does not fail on it.
+func productionReviewersNotice(p *org.Placement) string {
+	if len(p.GithubProductionReviewers) > 0 {
+		return ""
+	}
+
+	return "githubProductionReviewers is empty in placement.json: production's GitHub Environment waits for no reviewer, so a rollback or a release run again there starts on the requester's word and waits for its approval in Cloud Build alone. Name the GitHub logins to add the gate; 1-org makes the team and the Environment's reviewers on its next apply.\n"
 }
 
 // registrationReport reads each domain 2-net registers (registrations in its

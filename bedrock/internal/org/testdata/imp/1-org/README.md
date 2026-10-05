@@ -234,8 +234,10 @@ on a pull request as `imp-org-gbl-plan`.
   deletion, with the branch up to date with its base, the required checks
   passing and squash the only merge) and the GitHub Environments the operations
   workflow runs in (`tst`, `stg` and `prd`, each deploying from the default
-  branch alone; production's for the rerun of a release, since it is never
-  restored by a run). See "The applications' repositories" below.
+  branch alone; production's for the rerun of a release and the rollback,
+  since it is never restored by a run, waiting for one of the production
+  reviewers when the placement names them). See "The applications'
+  repositories" below.
 
 ## Applying
 
@@ -328,7 +330,16 @@ lien is refused at the first project.
 
 GitHub is configured here, by OpenTofu with the GitHub provider, never by a
 bedrock command: `github.tf` declares each application's repository, its rules
-and its Environments. The layers workflow applies it with the infrastructure
+and its Environments, and the production reviewers' team. Production's
+Environment waits for one of the production reviewers before an operations
+job (a rollback, a release run again) runs there, and its admins cannot bypass
+the wait: the placement's `githubProductionReviewers` names their GitHub
+logins, this layer makes the team `imp-production-reviewers` of them
+(the infrastructure app holds Members, read and write, on the organization
+for it) and names it the Environment's reviewer. The requester may be a
+reviewer: a team of one approves its own ask, so the Environment does not
+forbid self-review. With nobody named there is no team and no wait, and
+`bedrock org check` says so. The layers workflow applies it with the infrastructure
 GitHub App's installation token, minted in the run from the key the boot
 project holds, so the audit log names the app; a person applying by hand sets
 `GITHUB_TOKEN` to the token of an owner of the organization before `tofu plan`

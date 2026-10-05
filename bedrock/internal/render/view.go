@@ -841,7 +841,7 @@ func (v *view) environments() {
 // migration's lines are (named as the application stack names it). Wired is false for
 // an environment the placement records no project for. Restorable is false for
 // production, which is never restored by a run and whose migrations are the platform
-// operator's: a rerun of a release alone reaches it.
+// operator's: a rerun of a release and a rollback alone reach it.
 type operationsEnv struct {
 	Env        string
 	Wired      bool
@@ -852,6 +852,9 @@ type operationsEnv struct {
 	Trigger    string
 	Restore    string
 	Logs       string
+	// Rollback is the environment's rollback trigger, which bedrock rollback runs; empty
+	// for an environment whose release builds keep no release backup.
+	Rollback string
 }
 
 // The pinned GitHub Actions the operations workflow uses, by commit, with the release
@@ -862,7 +865,8 @@ const (
 )
 
 // operations lists the environments the operations workflow acts on: every one, a
-// rerun reaching production and the rest every environment but it.
+// rerun reaching production, a rollback the environments whose release builds keep a
+// release backup, and the rest every environment but production.
 func (v *view) operations() {
 	v.AuthAction, v.GcloudAction = authAction, gcloudAction
 	v.PrimaryRegion = v.P.Regions[0].Name
@@ -874,6 +878,9 @@ func (v *view) operations() {
 		}
 		if o.Restorable {
 			o.Restore = v.P.RestoreKind(env)
+		}
+		if v.P.KeepsReleaseBackups(env) {
+			o.Rollback = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-rollback"
 		}
 		if project, ok := v.P.Project(env); ok {
 			o.Wired = true

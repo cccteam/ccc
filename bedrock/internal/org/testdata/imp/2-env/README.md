@@ -95,9 +95,12 @@ and a `shared_vpc_id` that is null.
   role: `roles/storage.objectCreator` for the environment's deploy
   identities, and `roles/storage.objectViewer` for those deploy identities,
   the environment's application plan identities (the hotfix preview reads
-  the live record), the next environment's deploy identities (the record
-  gate) and the environment's team group (a person reads a record through
-  the group). Nobody else: Cloud Storage's default grants to the project's
+  the live record), the environment's operations identities (a rollback
+  reads what is live and what it returns to), in production the lower
+  environments' operations identities too (a restore from production's
+  backup reads production's live release), the next environment's deploy
+  identities (the record gate) and the environment's team group (a person
+  reads a record through the group). Nobody else: Cloud Storage's default grants to the project's
   basic roles are gone from it, so an Owner, Editor or Viewer of the project
   or the organization reads no record through them. A grant added on the
   bucket by hand, for a day's debugging, is removed by this layer's next

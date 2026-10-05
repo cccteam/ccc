@@ -1,5 +1,5 @@
 // operations.go is what the commands that start the operations workflow share (restore,
-// rerun, migration version, rerun and force): the repository and its placement, the
+// rerun, rollback, migration version, rerun and force): the repository and its placement, the
 // checks on the environment and the release, and the dispatch as the signed-in person
 // with the inputs the workflow declares.
 
@@ -23,15 +23,18 @@ import (
 // first, so the release's action is run), and the three operations on an environment's
 // migrations.
 const (
-	actionInput   = "action"
-	releaseInput  = "release"
-	tableInput    = "table"
-	versionInput  = "version"
-	actionRestore = "restore"
-	actionRun     = "run"
-	actionVersion = "version"
-	actionRerun   = "rerun"
-	actionForce   = "force"
+	actionInput    = "action"
+	releaseInput   = "release"
+	tableInput     = "table"
+	versionInput   = "version"
+	reasonInput    = "reason"
+	backupInput    = "backup"
+	actionRestore  = "restore"
+	actionRun      = "run"
+	actionRollback = "rollback"
+	actionVersion  = "version"
+	actionRerun    = "rerun"
+	actionForce    = "force"
 )
 
 // releaseTagRE is a release tag, v<major>.<minor>.<patch>.
@@ -52,13 +55,14 @@ func (d deps) operationTarget(dirFlag, placementFlag, env string) (*repositoryCo
 	return rc, nil
 }
 
-// dispatchOperation checks the release (a tag of the right shape that exists) and that the
-// environment is wired for operations (the placement records its project), then starts
+// dispatchOperation checks the release (a tag of the right shape that exists; an empty
+// one is passed as it is, for the workflow to resolve where the action allows it) and that
+// the environment is wired for operations (the placement records its project), then starts
 // the operations workflow with the inputs, the environment and the release among them, as
 // the person signed in to gh (or GITHUB_TOKEN), and answers that person's login.
 func dispatchOperation(ctx context.Context, d deps, rc *repositoryContext, env, tag string, inputs map[string]string) (string, error) {
 	p := rc.placement
-	if !releaseTagRE.MatchString(tag) {
+	if tag != "" && !releaseTagRE.MatchString(tag) {
 		return "", errors.Newf("%q is not a release tag (v<major>.<minor>.<patch>, such as v1.4.0)", tag)
 	}
 	if _, ok := p.Project(env); !ok {
@@ -72,12 +76,14 @@ func dispatchOperation(ctx context.Context, d deps, rc *repositoryContext, env, 
 	if err != nil {
 		return "", errors.Wrap(err, "reading who the token belongs to")
 	}
-	if _, err := client.TagCommit(ctx, rc.owner, rc.repo, tag); err != nil {
-		if github.NotFound(err) {
-			return "", errors.Newf("no release %s in %s/%s: an operation names a release that exists", tag, rc.owner, rc.repo)
-		}
+	if tag != "" {
+		if _, err := client.TagCommit(ctx, rc.owner, rc.repo, tag); err != nil {
+			if github.NotFound(err) {
+				return "", errors.Newf("no release %s in %s/%s: an operation names a release that exists", tag, rc.owner, rc.repo)
+			}
 
-		return "", errors.Wrapf(err, "resolving %s", tag)
+			return "", errors.Wrapf(err, "resolving %s", tag)
+		}
 	}
 	inputs[environmentLabel], inputs[releaseInput] = env, tag
 	if err := client.DispatchWorkflow(ctx, rc.owner, rc.repo, render.OperationsWorkflow, p.DefaultBranch, inputs); err != nil {

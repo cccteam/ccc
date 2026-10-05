@@ -139,6 +139,7 @@ its own: the code and a placement are the inputs, the stack is the output.`,
 	root.AddCommand(newHotfix(d))
 	root.AddCommand(newRestore(d))
 	root.AddCommand(newRerun(d))
+	root.AddCommand(newRollback(d))
 	root.AddCommand(newDeploy(d))
 	root.AddCommand(newOrg(d))
 	root.AddCommand(newMigration(d))

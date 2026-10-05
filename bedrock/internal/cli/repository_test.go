@@ -57,6 +57,8 @@ func TestRestoreAndHotfix(t *testing.T) {
 		// prepare adjusts the stand-in before the run.
 		prepare func(server *githubtest.Server, repo *githubtest.Repo)
 		args    []string
+		// in is what the person types: a rollback asks for the environment's name.
+		in      string
 		wantOut []string
 		// wantDispatch is the workflow_dispatch event the run leaves: file, ref and inputs.
 		wantDispatch string
@@ -70,6 +72,107 @@ func TestRestoreAndHotfix(t *testing.T) {
 				"Asked, as octocat, for tst to be restored to v0.1.4: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). The run replaces tst's database (empty), deploys v0.1.4, and its record names you.",
 			},
 			wantDispatch: "operations.yml master action=restore environment=tst release=v0.1.4",
+		},
+		{
+			name:   "restore with no release in an environment restored from production's backup leaves the release to the workflow, which reads production's live release",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"restore", "stg", "--placement", placement},
+			wantOut: []string{
+				"Asked, as octocat, for stg to be restored to production's live release: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). Its job reads the release from production's deployment records and says which; the run replaces stg's database (production-backup), deploys that release, and its record names you.",
+			},
+			wantDispatch: "operations.yml master action=restore environment=stg release=",
+		},
+		{
+			name:   "restore with a release named in an environment restored from production's backup says the workflow tells whether it is production's",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"restore", "stg", "v0.1.4", "--placement", placement},
+			wantOut: []string{
+				"Asked, as octocat, for stg to be restored to v0.1.4: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). Its job says whether v0.1.4 is production's live release, the one a restore from production's backup returns to when none is named; the run replaces stg's database (production-backup), deploys v0.1.4, and its record names you.",
+			},
+			wantDispatch: "operations.yml master action=restore environment=stg release=v0.1.4",
+		},
+		{
+			name:    "restore with no release in the first environment is refused: an empty database has no production state to return to",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"restore", "tst", "--placement", placement},
+			wantErr: "tst restores to an empty database (empty), which has no production state to return to: name the release to run",
+		},
+		{
+			name:   "rollback prints the statement, asks for the environment's name and dispatches the workflow with the reason, the release and the backup left to it",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"rollback", "prd", "--reason", "v0.1.4 mangled the invoices", "--placement", placement},
+			in:     "prd\n",
+			wantOut: []string{
+				"=== ROLLBACK of prd: harbor returns to the release live before the live one on its last data (the pre-release backup of the first release after it), asked for by you: v0.1.4 mangled the invoices ===",
+				"The application goes into maintenance. The live database is kept as the forensic copy and a backup of it is taken.",
+				"Type the environment's name (prd) to ask for it, anything else to stop:",
+				"Asked, as octocat, for prd to return to the release live before the live one: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). Its job reads the environment's records for what is live and what it returns to, prints the statement, runs the rollback trigger and waits for the approval in Cloud Build, thirty minutes at most; the record names you and the reason.",
+			},
+			wantDispatch: "operations.yml master action=rollback backup= environment=prd reason=v0.1.4 mangled the invoices release=",
+		},
+		{
+			name:   "rollback --to names the release to return to, which must exist",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"rollback", "prd", "--to", "v0.1.4", "--reason", "back to the known good", "--placement", placement},
+			in:     "prd\n",
+			wantOut: []string{
+				"=== ROLLBACK of prd: harbor returns to v0.1.4 on its last data (the pre-release backup of the first release after it), asked for by you: back to the known good ===",
+			},
+			wantDispatch: "operations.yml master action=rollback backup= environment=prd reason=back to the known good release=v0.1.4",
+		},
+		{
+			name:   "rollback --at names a moment, passed as @<moment> for a backup made as of it",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"rollback", "prd", "--at", "2026-10-05T04:00:00+02:00", "--reason", "bad data since four", "--placement", placement},
+			in:     "prd\n",
+			wantOut: []string{
+				"=== ROLLBACK of prd: harbor returns to the release live before the live one on the data as of 2026-10-05T04:00:00+02:00 (a backup made as of then), asked for by you: bad data since four ===",
+			},
+			wantDispatch: "operations.yml master action=rollback backup=@2026-10-05T02:00:00Z environment=prd reason=bad data since four release=",
+		},
+		{
+			name:    "rollback is not asked for when the name typed differs",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rollback", "prd", "--reason", "why", "--placement", placement},
+			in:      "no\n",
+			wantErr: `"no" is not prd: the rollback was not asked for, and nothing changed`,
+		},
+		{
+			name:    "rollback refuses an environment whose release builds keep no release backup, naming bedrock restore",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rollback", "stg", "--reason", "why", "--placement", placement},
+			wantErr: "no release backup is kept in stg: the placement's releaseBackups list (prd) does not name it, so there is no backup of an earlier release to return to; bedrock restore serves it",
+		},
+		{
+			name:    "rollback without a reason is refused",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rollback", "prd", "--placement", placement},
+			wantErr: "a rollback says why it was asked for: --reason, in a sentence",
+		},
+		{
+			name:    "rollback refuses a reason carrying a | character",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rollback", "prd", "--reason", "a | b", "--placement", placement},
+			wantErr: "the reason carries a | character, which the build's substitutions cannot",
+		},
+		{
+			name:    "rollback refuses --to with --at",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rollback", "prd", "--to", "v0.1.4", "--at", "2026-10-05T04:00:00Z", "--reason", "why", "--placement", placement},
+			wantErr: "--to names the release to return to and --at the moment whose data to restore: a rollback takes one of them, or neither",
+		},
+		{
+			name:    "rollback refuses a moment that is not RFC 3339",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rollback", "prd", "--at", "yesterday", "--reason", "why", "--placement", placement},
+			wantErr: `--at "yesterday" is not an RFC 3339 moment (2026-10-05T04:30:00Z)`,
+		},
+		{
+			name:    "rollback --to refuses a release that does not exist",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"rollback", "prd", "--to", "v0.9.9", "--reason", "why", "--placement", placement},
+			in:      "prd\n",
+			wantErr: "no release v0.9.9 in impulseframework/harbor: an operation names a release that exists",
 		},
 		{
 			name:   "rerun dispatches the operations workflow with the run action, production included",
@@ -204,10 +307,13 @@ func TestRestoreAndHotfix(t *testing.T) {
 					return server.Client(), nil
 				},
 			}
-			out, err := execute(d, "", tt.args...)
+			out, err := execute(d, tt.in, tt.args...)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+				if len(repo.Dispatches) != 0 {
+					t.Errorf("a refused operation dispatched %+v", repo.Dispatches)
 				}
 
 				return

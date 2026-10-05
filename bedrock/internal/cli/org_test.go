@@ -1055,3 +1055,46 @@ func TestOrgRegisterRefusal(t *testing.T) {
 		})
 	}
 }
+
+// TestOrgCheckProductionReviewers: while the placement names no production reviewer, org
+// check says production's Environment waits for nobody and how to add the gate, as
+// information; the check stays clean either way; with reviewers named nothing is said.
+func TestOrgCheckProductionReviewers(t *testing.T) {
+	t.Parallel()
+
+	const notice = "githubProductionReviewers is empty in placement.json: production's GitHub Environment waits for no reviewer, so a rollback or a release run again there starts on the requester's word and waits for its approval in Cloud Build alone. Name the GitHub logins to add the gate; 1-org makes the team and the Environment's reviewers on its next apply."
+	tests := []struct {
+		name       string
+		reviewers  []string
+		wantNotice bool
+	}{
+		{name: "nobody named: the notice", wantNotice: true},
+		{name: "reviewers named: nothing said", reviewers: []string{"octocat"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			path := filepath.Join(dir, "placement.json")
+			p, err := org.ReadPlacement(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.GithubProductionReviewers = tt.reviewers
+			if err := p.Write(path); err != nil {
+				t.Fatal(err)
+			}
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			code, out := runOrg(t, "org", "check", "--dir", dir)
+			if code != 0 {
+				t.Fatalf("org check: exit %d, want 0:\n%s", code, out)
+			}
+			if strings.Contains(out, notice) != tt.wantNotice {
+				t.Errorf("output carries the notice: %v, want %v:\n%s", !tt.wantNotice, tt.wantNotice, out)
+			}
+		})
+	}
+}

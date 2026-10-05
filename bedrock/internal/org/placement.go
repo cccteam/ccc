@@ -137,6 +137,11 @@ type Placement struct {
 	// whose approval a change to an application's workflow and Cloud Build files
 	// needs; empty for none.
 	GithubInfrastructureTeam string `json:"githubInfrastructureTeam,omitempty"`
+	// GithubProductionReviewers are the GitHub logins of the people whose review an
+	// operations job in production (a rollback, a release run again) waits for: 1-org
+	// makes a team of them and names it production's GitHub Environment's reviewer.
+	// Empty for no reviewer gate, which org check says.
+	GithubProductionReviewers []string `json:"githubProductionReviewers,omitempty"`
 	// SourceRepo is this repository's name, the source_repo label every resource carries.
 	SourceRepo string `json:"sourceRepo"`
 	// StateBucket is the seeded state bucket every backend block names; empty until the
@@ -324,6 +329,11 @@ func (p *Placement) validateGithubApps() error {
 	}
 	if p.GithubInfrastructureKeyVersion != "" && !projectNumberRE.MatchString(p.GithubInfrastructureKeyVersion) {
 		return errors.Newf("githubInfrastructureKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubInfrastructureKeyVersion)
+	}
+	for _, login := range p.GithubProductionReviewers {
+		if len(login) > githubLoginLength || !githubLoginRE.MatchString(login) {
+			return errors.Newf("githubProductionReviewers names %q, which is not a GitHub login (letters, digits and single hyphens, at most %d characters)", login, githubLoginLength)
+		}
 	}
 
 	return nil
