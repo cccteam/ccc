@@ -1607,33 +1607,59 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusBadRequest},
 		},
 		{
-			name:         "AttachMissionDocument denied",
-			method:       http.MethodPost,
-			target:       "/console/api/sectors/testDomain/attach-mission-document",
-			body:         `{}`,
+			name:   "AttachMissionDocument denied",
+			method: http.MethodPost,
+			target: "/console/api/sectors/testDomain/attach-mission-document",
+			body: `--authz
+Content-Disposition: form-data; name="request"
+Content-Type: application/json
+
+{}
+--authz--
+`,
+			headers:      map[string]string{"Content-Type": "multipart/form-data; boundary=authz"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
-			name:         "AttachMissionDocument dry run denied",
-			method:       http.MethodPost,
-			target:       "/console/api/sectors/testDomain/attach-mission-document",
-			body:         `{}`,
-			headers:      map[string]string{"X-Dry-Run": "true"},
+			name:   "AttachMissionDocument dry run denied",
+			method: http.MethodPost,
+			target: "/console/api/sectors/testDomain/attach-mission-document",
+			body: `--authz
+Content-Disposition: form-data; name="request"
+Content-Type: application/json
+
+{}
+--authz--
+`,
+			headers:      map[string]string{"Content-Type": "multipart/form-data; boundary=authz", "X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
-			name:         "AttachRefitPhoto denied",
-			method:       http.MethodPost,
-			target:       "/console/api/sectors/testDomain/attach-refit-photo",
-			body:         `{}`,
+			name:   "AttachRefitPhoto denied",
+			method: http.MethodPost,
+			target: "/console/api/sectors/testDomain/attach-refit-photo",
+			body: `--authz
+Content-Disposition: form-data; name="request"
+Content-Type: application/json
+
+{}
+--authz--
+`,
+			headers:      map[string]string{"Content-Type": "multipart/form-data; boundary=authz"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
-			name:         "AttachRefitPhoto dry run denied",
-			method:       http.MethodPost,
-			target:       "/console/api/sectors/testDomain/attach-refit-photo",
-			body:         `{}`,
-			headers:      map[string]string{"X-Dry-Run": "true"},
+			name:   "AttachRefitPhoto dry run denied",
+			method: http.MethodPost,
+			target: "/console/api/sectors/testDomain/attach-refit-photo",
+			body: `--authz
+Content-Disposition: form-data; name="request"
+Content-Type: application/json
+
+{}
+--authz--
+`,
+			headers:      map[string]string{"Content-Type": "multipart/form-data; boundary=authz", "X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1854,18 +1880,31 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
-			name:         "ReplaceMissionDocument denied",
-			method:       http.MethodPost,
-			target:       "/console/api/sectors/testDomain/replace-mission-document",
-			body:         `{}`,
+			name:   "ReplaceMissionDocument denied",
+			method: http.MethodPost,
+			target: "/console/api/sectors/testDomain/replace-mission-document",
+			body: `--authz
+Content-Disposition: form-data; name="request"
+Content-Type: application/json
+
+{}
+--authz--
+`,
+			headers:      map[string]string{"Content-Type": "multipart/form-data; boundary=authz"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
-			name:         "ReplaceMissionDocument dry run denied",
-			method:       http.MethodPost,
-			target:       "/console/api/sectors/testDomain/replace-mission-document",
-			body:         `{}`,
-			headers:      map[string]string{"X-Dry-Run": "true"},
+			name:   "ReplaceMissionDocument dry run denied",
+			method: http.MethodPost,
+			target: "/console/api/sectors/testDomain/replace-mission-document",
+			body: `--authz
+Content-Disposition: form-data; name="request"
+Content-Type: application/json
+
+{}
+--authz--
+`,
+			headers:      map[string]string{"Content-Type": "multipart/form-data; boundary=authz", "X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{

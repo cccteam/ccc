@@ -370,6 +370,22 @@ func (r *resourceGenerator) consolidatedAuthzCases() (cases []authzCase, err err
 // permission check the case pins.
 const emptyObjectBody = "{}"
 
+// uploadAuthzBoundary is the multipart boundary an @upload method's cases send.
+const uploadAuthzBoundary = "authz"
+
+// uploadAuthzBody is the minimal body of an @upload method: the request part alone,
+// carrying the empty object. The intake refuses any other content type before the
+// method's decoder runs, so a JSON body would answer 415 ahead of the permission check
+// the case pins; this body reaches it, with no file part to stream.
+func uploadAuthzBody() string {
+	return fmt.Sprintf("--%[1]s\nContent-Disposition: form-data; name=%[2]q\nContent-Type: application/json\n\n%[3]s\n--%[1]s--\n", uploadAuthzBoundary, resource.UploadRequestPart, emptyObjectBody)
+}
+
+// uploadAuthzHeader is the content type an @upload method's cases send.
+func uploadAuthzHeader() authzHeader {
+	return authzHeader{Name: "Content-Type", Value: "multipart/form-data; boundary=" + uploadAuthzBoundary}
+}
+
 // rpcAuthzCases covers the RPC method routes. The RPC decoder checks the method
 // permission after parsing the body (the parsed request is what a data-dependent rule
 // evaluates against) and before executing anything; an empty object reaches that check
@@ -384,13 +400,20 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 			continue
 		}
 
+		// An @upload method's intake takes multipart alone, so its cases send the
+		// request part and nothing after it; a JSON method's send the empty object.
+		body, headers := emptyObjectBody, []authzHeader(nil)
+		if rpcStruct.Upload != nil {
+			body, headers = uploadAuthzBody(), []authzHeader{uploadAuthzHeader()}
+		}
 		for _, outlet := range r.memberOutlets(&rpcStruct.outletMembership) {
 			route := r.rpcRoute(rpcStruct, outlet.prefix)
 			cases = append(cases, authzCase{
 				Name:       authzCaseName(route.HandlerFunc, &outlet),
 				Method:     httpMethodConst(route.Method),
 				URL:        route.TestURL,
-				Body:       emptyObjectBody,
+				Body:       body,
+				Headers:    slices.Clone(headers),
 				DeniedOnly: true,
 			})
 			// A dry run of a transaction-form method refuses exactly as the real
@@ -400,8 +423,8 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 					Name:       authzCaseName(route.HandlerFunc, &outlet) + " dry run",
 					Method:     httpMethodConst(route.Method),
 					URL:        route.TestURL,
-					Body:       emptyObjectBody,
-					Headers:    []authzHeader{{Name: resource.DryRunHeader, Value: jsonTrueLiteral}},
+					Body:       body,
+					Headers:    append(slices.Clone(headers), authzHeader{Name: resource.DryRunHeader, Value: jsonTrueLiteral}),
 					DeniedOnly: true,
 				})
 			}
