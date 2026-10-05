@@ -6,6 +6,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"slices"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -104,7 +105,10 @@ func DeclaresType(rel string, src []byte, name string) (bool, error) {
 	return p.typeSpec(name) != nil, nil
 }
 
-// AddStructField appends a field ("name Type") to the named struct type.
+// AddStructField appends a field ("name Type", with any comment lines above it) to the
+// named struct type. A field the struct declares already, by name, is not added again:
+// the source comes back unchanged, so a transition run over an application that wired
+// the field by hand adds nothing twice.
 func AddStructField(rel string, src []byte, typeName, field string) ([]byte, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
@@ -118,11 +122,20 @@ func AddStructField(rel string, src []byte, typeName, field string) ([]byte, err
 	if !ok {
 		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s is not a struct", rel, typeName)
 	}
+	names, err := declaredNames(token.STRUCT, field)
+	if err != nil {
+		return nil, err
+	}
+	if declaresAll(st.Fields, names) {
+		return src, nil
+	}
 
 	return p.appendToBlock(rel, st.Fields, field)
 }
 
-// AddInterfaceLine appends a method or an embedded interface to the named interface type.
+// AddInterfaceLine appends a method or an embedded interface to the named interface
+// type. A method or an embedded interface the type declares already, by name, is not
+// added again: the source comes back unchanged.
 func AddInterfaceLine(rel string, src []byte, typeName, line string) ([]byte, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
@@ -136,8 +149,95 @@ func AddInterfaceLine(rel string, src []byte, typeName, line string) ([]byte, er
 	if !ok {
 		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s is not an interface", rel, typeName)
 	}
+	names, err := declaredNames(token.INTERFACE, line)
+	if err != nil {
+		return nil, err
+	}
+	if declaresAll(it.Methods, names) {
+		return src, nil
+	}
 
 	return p.appendToBlock(rel, it.Methods, line)
+}
+
+// declaredNames are the names a struct field or interface line declares: the field or
+// method names, or the type an unnamed field or an embedded interface names.
+func declaredNames(kind token.Token, text string) ([]string, error) {
+	synthetic := "package p\n\ntype t " + kind.String() + " {\n" + text + "\n}\n"
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "line.go", synthetic, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrapf(err, "parser.ParseFile(): the %s line %q", kind, text)
+	}
+	var names []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch t := n.(type) {
+		case *ast.StructType:
+			names = fieldListNames(t.Fields)
+		case *ast.InterfaceType:
+			names = fieldListNames(t.Methods)
+		}
+
+		return names == nil
+	})
+
+	return names, nil
+}
+
+// fieldListNames are the names a field list declares, one per named field or method and
+// the type's name for an unnamed field or an embedded interface.
+func fieldListNames(list *ast.FieldList) []string {
+	if list == nil {
+		return nil
+	}
+	var names []string
+	for _, f := range list.List {
+		if len(f.Names) == 0 {
+			if name := exprName(f.Type); name != "" {
+				names = append(names, name)
+			}
+
+			continue
+		}
+		for _, n := range f.Names {
+			names = append(names, n.Name)
+		}
+	}
+
+	return names
+}
+
+// exprName is a type expression as a name: T, pkg.T, or the same through a pointer;
+// empty for any other shape.
+func exprName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.SelectorExpr:
+		if x, ok := t.X.(*ast.Ident); ok {
+			return x.Name + "." + t.Sel.Name
+		}
+	case *ast.StarExpr:
+		return exprName(t.X)
+	}
+
+	return ""
+}
+
+// declaresAll reports whether the list declares every one of the names, and at least
+// one.
+func declaresAll(list *ast.FieldList, names []string) bool {
+	if len(names) == 0 {
+		return false
+	}
+	declared := fieldListNames(list)
+	for _, name := range names {
+		if !slices.Contains(declared, name) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // appendToBlock inserts a line before a field list's closing brace.
@@ -151,7 +251,8 @@ func (p *parsed) appendToBlock(rel string, fields *ast.FieldList, line string) (
 }
 
 // AddLiteralElement appends "key: value" to the first composite literal of the named
-// type inside the named function.
+// type inside the named function. An element whose key the literal sets already is not
+// added again: the source comes back unchanged.
 func AddLiteralElement(rel string, src []byte, funcName, typeName, element string) ([]byte, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
@@ -161,9 +262,39 @@ func AddLiteralElement(rel string, src []byte, funcName, typeName, element strin
 	if fd == nil {
 		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
 	}
-	lit := literalOf(fd, typeName)
+	lit := literalOf(fd.Body, typeName)
 	if lit == nil {
 		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s builds no %s literal", rel, funcName, typeName)
+	}
+
+	return p.appendElement(rel, lit, element)
+}
+
+// AddLiteralElementOfType appends "key: value" to the first composite literal of the
+// named type anywhere in the file, for a literal whose function the caller does not
+// know (a test harness building its configurer). An element whose key the literal sets
+// already is not added again.
+func AddLiteralElementOfType(rel string, src []byte, typeName, element string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	lit := literalOf(p.file, typeName)
+	if lit == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s builds no %s literal", rel, typeName)
+	}
+
+	return p.appendElement(rel, lit, element)
+}
+
+// appendElement appends the element to the literal, unless the literal sets its key.
+func (p *parsed) appendElement(rel string, lit *ast.CompositeLit, element string) ([]byte, error) {
+	key, err := elementKey(element)
+	if err != nil {
+		return nil, err
+	}
+	if key != "" && hasKey(lit, key) {
+		return p.src, nil
 	}
 	text := element + ",\n"
 	if n := len(lit.Elts); n > 0 && !bytes.Contains(p.src[p.offset(lit.Elts[n-1].End()):p.offset(lit.Rbrace)], []byte(",")) {
@@ -174,10 +305,44 @@ func AddLiteralElement(rel string, src []byte, funcName, typeName, element strin
 	return p.splice(rel, rbrace, rbrace, text)
 }
 
-// literalOf finds the first composite literal of the named type in a function.
-func literalOf(fd *ast.FuncDecl, typeName string) *ast.CompositeLit {
+// elementKey is the key of a "key: value" element, or empty for an element without one.
+func elementKey(element string) (string, error) {
+	synthetic := "package p\n\nvar _ = t{\n" + element + ",\n}\n"
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "element.go", synthetic, parser.SkipObjectResolution)
+	if err != nil {
+		return "", errors.Wrapf(err, "parser.ParseFile(): the element %q", element)
+	}
+	var key string
+	ast.Inspect(f, func(n ast.Node) bool {
+		if kv, ok := n.(*ast.KeyValueExpr); ok {
+			key = exprName(kv.Key)
+
+			return false
+		}
+
+		return key == ""
+	})
+
+	return key, nil
+}
+
+// hasKey reports whether the literal sets the key.
+func hasKey(lit *ast.CompositeLit, key string) bool {
+	for _, elt := range lit.Elts {
+		if kv, ok := elt.(*ast.KeyValueExpr); ok && exprName(kv.Key) == key {
+			return true
+		}
+	}
+
+	return false
+}
+
+// literalOf finds the first composite literal of the named type under a node: a
+// function's body, or the file.
+func literalOf(root ast.Node, typeName string) *ast.CompositeLit {
 	var lit *ast.CompositeLit
-	ast.Inspect(fd.Body, func(n ast.Node) bool {
+	ast.Inspect(root, func(n ast.Node) bool {
 		if lit != nil {
 			return false
 		}
@@ -253,6 +418,19 @@ func returnOfLiteral(fd *ast.FuncDecl, typeName string) *ast.ReturnStmt {
 // StructFieldOfType returns the name of the first field of the named struct whose type is
 // a pointer to typeName from the package at importPath, or empty.
 func StructFieldOfType(rel string, src []byte, structName, importPath, typeName string) (string, error) {
+	return structFieldOf(rel, src, structName, importPath, typeName, true)
+}
+
+// StructFieldOfValueType returns the name of the first field of the named struct whose
+// type is typeName from the package at importPath itself, not a pointer to it (an
+// interface such as jobs.Starter), or empty.
+func StructFieldOfValueType(rel string, src []byte, structName, importPath, typeName string) (string, error) {
+	return structFieldOf(rel, src, structName, importPath, typeName, false)
+}
+
+// structFieldOf finds the first named field of the struct typed pkg.T, through a
+// pointer when pointer is set and bare otherwise.
+func structFieldOf(rel string, src []byte, structName, importPath, typeName string, pointer bool) (string, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
 		return "", err
@@ -267,11 +445,18 @@ func StructFieldOfType(rel string, src []byte, structName, importPath, typeName 
 		return "", nil
 	}
 	for _, f := range st.Fields.List {
-		star, ok := f.Type.(*ast.StarExpr)
-		if !ok || len(f.Names) == 0 {
+		if len(f.Names) == 0 {
 			continue
 		}
-		if isQualified(star.X, pkg, typeName) {
+		t := f.Type
+		if pointer {
+			star, ok := t.(*ast.StarExpr)
+			if !ok {
+				continue
+			}
+			t = star.X
+		}
+		if isQualified(t, pkg, typeName) {
 			return f.Names[0].Name, nil
 		}
 	}
@@ -445,20 +630,63 @@ func (p *parsed) leadingComment(stmt ast.Stmt) token.Pos {
 	return stmt.Pos()
 }
 
-// ExtendCall appends arguments to the first call to callee, a dotted name as the source
-// writes it, inside the named function. The result is formatted.
-func ExtendCall(rel string, src []byte, funcName, callee, arguments string) ([]byte, error) {
+// HasCall reports whether the named function, or the named method of the type when
+// typeName is set, calls callee, a dotted name as the source writes it
+// (scheduled.FromEnvironment). A function the file lacks is ErrNoAnchor.
+func HasCall(rel string, src []byte, typeName, funcName, callee string) (bool, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return false, err
+	}
+	fd := p.methodDecl(typeName, funcName)
+	if fd == nil {
+		return false, errors.Wrapf(ErrNoAnchor, "%s declares no %s", rel, qualifiedFunc(typeName, funcName))
+	}
+
+	return callIn(fd.Body, callee) != nil, nil
+}
+
+// MethodNames lists the methods the file declares on the named type, through a pointer
+// or a value receiver, in source order.
+func MethodNames(rel string, src []byte, typeName string) ([]string, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
 		return nil, err
 	}
-	fd := p.methodDecl("", funcName)
+	var names []string
+	for _, d := range p.file.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Recv == nil || len(fd.Recv.List) != 1 {
+			continue
+		}
+		if exprName(fd.Recv.List[0].Type) == typeName {
+			names = append(names, fd.Name.Name)
+		}
+	}
+
+	return names, nil
+}
+
+// ExtendCall appends arguments to the first call to callee, a dotted name as the source
+// writes it, inside the named function. The result is formatted.
+func ExtendCall(rel string, src []byte, funcName, callee, arguments string) ([]byte, error) {
+	return ExtendMethodCall(rel, src, "", funcName, callee, arguments)
+}
+
+// ExtendMethodCall appends arguments to the first call to callee inside the named
+// method of the type, or the named function when typeName is empty.
+func ExtendMethodCall(rel string, src []byte, typeName, funcName, callee, arguments string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	fd := p.methodDecl(typeName, funcName)
 	if fd == nil {
-		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no %s", rel, qualifiedFunc(typeName, funcName))
 	}
 	call := callIn(fd.Body, callee)
 	if call == nil {
-		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s makes no %s call", rel, funcName, callee)
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s makes no %s call", rel, qualifiedFunc(typeName, funcName), callee)
 	}
 	text := arguments
 	if len(call.Args) > 0 {

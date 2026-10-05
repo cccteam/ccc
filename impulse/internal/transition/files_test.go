@@ -140,7 +140,7 @@ func TestFilesApply(t *testing.T) {
 		`pkg/rpc: the rpc package, its Client carrying the job process's starter (Jobs()), and CleanUpFiles (@rpc, @schedule("0 9 * * *")), which starts cmd/jobs cleanup-files through it`,
 		"pkg/config/site.go: SiteConfiguration gained the fields, built from the environment; pkg/config/scheduled.go: Scheduler() and Jobs(), which the app's Configurer asks for",
 		"app/app.go: App gained Scheduler() and Jobs() on Configurer, the scheduler field, its construction, and the RPC client built over the starter; app/scheduled.go: SchedulerAuth, the middleware the generated router mounts the scheduled routes behind, and RPCClient(), the dependencies of the RPC methods",
-		"the test configurers gained a nil guard and a fake starter: test/authz/harness_test.go (testConfigurer: Scheduler() and Jobs()); test/integration/harness_test.go (servedConfigurer: Scheduler() and Jobs())",
+		"the test configurers gained a nil guard, a fake starter and a memory file store: test/authz/harness_test.go (testConfigurer: Scheduler(), Jobs(), and the files field); test/integration/harness_test.go (servedConfigurer: Scheduler(), Jobs(), and the files field)",
 		`cmd/generate/resourcegenerator/main.go: WithRPC("pkg/rpc"), so the generator reads the rpc package`,
 		"ran go generate ./..., which emitted the CleanUpFiles handler, its scheduled route under /_scheduled, and the router's SchedulerAuth requirement",
 	}
@@ -166,7 +166,7 @@ func TestFilesApply(t *testing.T) {
 			"if c.files != nil {\n\t\tif err := c.files.Close(); err != nil {\n\t\t\tlog.Print(errors.Wrap(err, \"filestore.Store.Close()\"))",
 		},
 		"pkg/config/files.go":     {"package config", "Default string `env:\"APP_FILE_STORE\"`", "func LoadFileStoreSettings(", "func openFileStore(", "func fileStoreOptions("},
-		"pkg/config/site.go":      {"scheduler *scheduled.Guard", "jobs      jobs.Starter", "scheduler, err := scheduled.FromEnvironment(ctx)", "starter, err := jobs.FromEnvironment(ctx)", "scheduler:         scheduler,", "jobs:              starter,"},
+		"pkg/config/site.go":      {"scheduler *scheduled.Guard", "jobs jobs.Starter", "scheduler, err := scheduled.FromEnvironment(ctx)", "starter, err := jobs.FromEnvironment(ctx)", "scheduler:         scheduler,", "jobs:              starter,"},
 		"pkg/config/scheduled.go": {"func (c *SiteConfiguration) Scheduler() *scheduled.Guard", "func (c *SiteConfiguration) Jobs() jobs.Starter"},
 		"app/app.go":              {"Scheduler() *scheduled.Guard", "Jobs() jobs.Starter", "scheduler   *scheduled.Guard", "rpcClient   *rpc.Client", "scheduler:      cfg.Scheduler(),", "rpcClient:      rpc.NewClient(cfg.Jobs()),", `"example.com/acme/beacon/pkg/rpc"`},
 		"app/scheduled.go":        {"func (a *App) SchedulerAuth(next http.Handler) http.Handler", "return a.scheduler.Middleware(next)", "func (a *App) RPCClient() *rpc.Client", "(pkg/rpc)"},
@@ -182,7 +182,7 @@ func TestFilesApply(t *testing.T) {
 			`appjobs "example.com/acme/beacon/pkg/jobs"`,
 		},
 		"test/authz/harness_test.go":             {"func (c *testConfigurer) Scheduler() *scheduled.Guard {\n\treturn nil\n}", "func (c *testConfigurer) Jobs() jobs.Starter {\n\treturn jobs.NewFake()\n}", `"github.com/cccteam/ccc/resource/jobs"`, `"github.com/cccteam/ccc/resource/scheduled"`},
-		"test/integration/harness_test.go":       {"func (c *servedConfigurer) Scheduler() *scheduled.Guard", "func (c *servedConfigurer) Jobs() jobs.Starter"},
+		"test/integration/harness_test.go":       {"func (c *servedConfigurer) Scheduler() *scheduled.Guard", "func (c *servedConfigurer) Jobs() jobs.Starter", "files *filestore.Mem", "files: filestore.NewMem()", "resource.NewSpannerClient(c.db.Client, resource.WithFileStore(c.files))", `"github.com/cccteam/ccc/resource/filestore"`},
 		"cmd/generate/resourcegenerator/main.go": {"\t\tgeneration.GenerateHandlers(\"app\"),\n\t\tgeneration.WithRPC(\"pkg/rpc\"),\n"},
 		".envrc.template":                        {"# cmd/jobs cleanup-files removes what no row holds.\nexport APP_FILE_STORE=file://uploads\n\n# --- site: the served site ---"},
 		".gitignore":                             {"go.work.sum\nuploads/\n"},
@@ -269,6 +269,131 @@ func TestFilesApplyExistingRPC(t *testing.T) {
 	}
 	if text := read(t, a, "cmd/generate/resourcegenerator/main.go"); text != rpcProgram {
 		t.Errorf("the program changed:\n%s", text)
+	}
+}
+
+// scheduledFiles stages the base skeleton with the scheduled routes' guard wired by hand,
+// as an application with a scheduled method of its own has it: the site level's field,
+// its construction and its accessor, the Configurer's accessor, the App's field, its
+// construction and SchedulerAuth, and the test configurers' accessors.
+func scheduledFiles(t *testing.T) map[string]string {
+	t.Helper()
+
+	files := skeletonFiles(t)
+	site := files["pkg/config/site.go"]
+	site = replaceOnce(t, site, "\tvalidator *validator.Validate\n}", "\tvalidator *validator.Validate\n\tscheduler *scheduled.Guard\n}")
+	site = replaceOnce(t, site, "\treturn &SiteConfiguration{\n", "\tscheduler, err := scheduled.FromEnvironment(ctx)\n\tif err != nil {\n\t\treturn nil, errors.Wrap(err, \"scheduled.FromEnvironment()\")\n\t}\n\n\treturn &SiteConfiguration{\n")
+	site = replaceOnce(t, site, "\t\tvalidator:         validator.New(),\n", "\t\tvalidator:         validator.New(),\n\t\tscheduler:         scheduler,\n")
+	site += "\n// Scheduler is the guard the scheduled routes sit behind.\nfunc (c *SiteConfiguration) Scheduler() *scheduled.Guard {\n\treturn c.scheduler\n}\n"
+	files["pkg/config/site.go"] = withImport(t, "pkg/config/site.go", site, scheduledImportPath)
+
+	application := files["app/app.go"]
+	application = replaceOnce(t, application, "\tConsoleDist() string\n}", "\tConsoleDist() string\n\tScheduler() *scheduled.Guard\n}")
+	application = replaceOnce(t, application, "\tcsp         string\n}", "\tcsp         string\n\tscheduler   *scheduled.Guard\n}")
+	application = replaceOnce(t, application, "\t\tcsp:            cspPolicy(cfg.LiveOrigins()),\n", "\t\tcsp:            cspPolicy(cfg.LiveOrigins()),\n\t\tscheduler:      cfg.Scheduler(),\n")
+	application += "\n// SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes.\nfunc (a *App) SchedulerAuth(next http.Handler) http.Handler {\n\treturn a.scheduler.Middleware(next)\n}\n"
+	files["app/app.go"] = withImport(t, "app/app.go", application, scheduledImportPath)
+
+	for rel, receiver := range map[string]string{"test/authz/harness_test.go": "testConfigurer", "test/integration/harness_test.go": "servedConfigurer"} {
+		text := files[rel] + "\nfunc (c *" + receiver + ") Scheduler() *scheduled.Guard { return nil }\n"
+		files[rel] = withImport(t, rel, text, scheduledImportPath)
+	}
+
+	return files
+}
+
+// replaceOnce replaces the anchor the fixture builds on, failing when the skeleton no
+// longer has it.
+func replaceOnce(t *testing.T, text, anchor, replacement string) string {
+	t.Helper()
+
+	if strings.Count(text, anchor) != 1 {
+		t.Fatalf("the skeleton has %d of %q, want one", strings.Count(text, anchor), anchor)
+	}
+
+	return strings.Replace(text, anchor, replacement, 1)
+}
+
+// withImport adds an import to a fixture's source, formatted.
+func withImport(t *testing.T, rel, text, importPath string) string {
+	t.Helper()
+
+	out, err := app.AddImport(rel, []byte(text), importPath)
+	if err != nil {
+		t.Fatalf("app.AddImport(%s) error = %v", rel, err)
+	}
+
+	return string(out)
+}
+
+func TestFilesApplyScheduled(t *testing.T) {
+	t.Parallel()
+
+	a := beacon(t, scheduledFiles(t))
+	change, err := Files{}.Apply(t.Context(), a, &fakeExec{})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	wantDid := []string{
+		"pkg/config/site.go: SiteConfiguration gained the jobs field, built from the environment (the guard was wired already); pkg/config/scheduled.go: Jobs(), which the app's Configurer asks for",
+		"app/app.go: App gained Jobs() on Configurer and the RPC client built over the starter; app/scheduled.go: RPCClient(), the dependencies of the RPC methods",
+		"the test configurers gained a nil guard, a fake starter and a memory file store: test/authz/harness_test.go (testConfigurer: Jobs() and the files field); test/integration/harness_test.go (servedConfigurer: Jobs() and the files field)",
+	}
+	for _, want := range wantDid {
+		if !slicesContains(change.Did, want) {
+			t.Errorf("Did lacks %q:\n%s", want, strings.Join(change.Did, "\n"))
+		}
+	}
+	if len(change.Skipped) != 0 {
+		t.Errorf("Skipped = %q, want none: the wired guard is left as it is", change.Skipped)
+	}
+
+	// Nothing the application wired is declared twice, and what it lacked is there once.
+	wantCounts := map[string]map[string]int{
+		"pkg/config/site.go": {
+			"scheduler *scheduled.Guard":                  1,
+			"scheduled.FromEnvironment(ctx)":              1,
+			"scheduler:         scheduler,":               1,
+			"jobs.FromEnvironment(ctx)":                   1,
+			"jobs:              starter,":                 1,
+			"func (c *SiteConfiguration) Scheduler()":     1,
+			`"github.com/cccteam/ccc/resource/scheduled"`: 1,
+			`"github.com/cccteam/ccc/resource/jobs"`:      1,
+		},
+		"pkg/config/scheduled.go": {
+			"func (c *SiteConfiguration) Jobs() jobs.Starter": 1,
+			"Scheduler()": 0,
+			"scheduled":   0,
+		},
+		"app/app.go": {
+			"Scheduler() *scheduled.Guard":              1,
+			"Jobs() jobs.Starter":                       1,
+			"scheduler   *scheduled.Guard":              1,
+			"scheduler:      cfg.Scheduler()":           1,
+			"rpcClient:      rpc.NewClient(cfg.Jobs())": 1,
+			"func (a *App) SchedulerAuth(":              1,
+		},
+		"app/scheduled.go": {
+			"func (a *App) RPCClient() *rpc.Client": 1,
+			"SchedulerAuth":                         0,
+			`"net/http"`:                            0,
+		},
+		"test/authz/harness_test.go":       {"Scheduler() *scheduled.Guard": 1, "func (c *testConfigurer) Jobs() jobs.Starter": 1, "files *filestore.Mem": 1, "files: filestore.NewMem()": 1, "resource.WithFileStore(c.files)": 1},
+		"test/integration/harness_test.go": {"Scheduler() *scheduled.Guard": 1, "func (c *servedConfigurer) Jobs() jobs.Starter": 1, "files *filestore.Mem": 1, "files: filestore.NewMem()": 1, "resource.WithFileStore(c.files)": 1},
+	}
+	for rel, counts := range wantCounts {
+		text := read(t, a, rel)
+		for want, n := range counts {
+			if got := strings.Count(text, want); got != n {
+				t.Errorf("%s has %d of %q, want %d:\n%s", rel, got, want, n, text)
+			}
+		}
+		formatted, err := format.Source([]byte(text))
+		if err != nil {
+			t.Errorf("%s does not parse: %v", rel, err)
+		} else if string(formatted) != text {
+			t.Errorf("%s is not formatted (-formatted +got):\n%s", rel, cmp.Diff(string(formatted), text))
+		}
 	}
 }
 

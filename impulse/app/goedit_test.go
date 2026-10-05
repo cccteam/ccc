@@ -74,6 +74,13 @@ func TestGoEdits(t *testing.T) {
 			want: strings.Replace(configSource, "\taccess        *access.Client\n}", "\taccess        *access.Client\n\ttenants       tenantRoster\n}", 1),
 		},
 		{
+			name: "a struct field the struct declares already",
+			edit: func() ([]byte, error) {
+				return AddStructField("data.go", []byte(configSource), "DataConfiguration", "// access is the engine.\naccess *access.Client")
+			},
+			want: configSource,
+		},
+		{
 			name: "a struct the file lacks",
 			edit: func() ([]byte, error) {
 				return AddStructField("data.go", []byte(configSource), "SiteConfiguration", "x int")
@@ -86,6 +93,20 @@ func TestGoEdits(t *testing.T) {
 				return AddInterfaceLine("app.go", []byte(appSource), "Configurer", "TenancyConfigurer")
 			},
 			want: strings.Replace(appSource, "\tConsoleDist() string\n}", "\tConsoleDist() string\n\tTenancyConfigurer\n}", 1),
+		},
+		{
+			name: "an interface method the interface declares already",
+			edit: func() ([]byte, error) {
+				return AddInterfaceLine("app.go", []byte(appSource), "Configurer", "// Access is the engine.\nAccess() string")
+			},
+			want: appSource,
+		},
+		{
+			name: "a literal element the literal sets already",
+			edit: func() ([]byte, error) {
+				return AddLiteralElement("app.go", []byte(appSource), "New", "App", "access: cfg.Access()")
+			},
+			want: appSource,
 		},
 		{
 			name: "a literal element on a single-line literal",
@@ -416,5 +437,131 @@ func TestExtendCallEmpty(t *testing.T) {
 	}
 	if want := strings.Replace(src, "build()", "build(opts...)", 1); string(got) != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestHasCall(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		typeName string
+		funcName string
+		callee   string
+		want     bool
+		wantErr  error
+	}{
+		{name: "a call the function makes", funcName: "NewDataConfiguration", callee: "load", want: true},
+		{name: "a call the function does not make", funcName: "NewDataConfiguration", callee: "scheduled.FromEnvironment", want: false},
+		{name: "a function the file lacks", funcName: "NewSiteConfiguration", callee: "load", wantErr: ErrNoAnchor},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := HasCall("data.go", []byte(configSource), tt.typeName, tt.funcName, tt.callee)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("error = %v, want %v", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("HasCall() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+const methodsSource = `package config
+
+type SiteConfiguration struct {
+	scheduler *scheduled.Guard
+	jobs      jobs.Starter
+}
+
+func (c *SiteConfiguration) Scheduler() *scheduled.Guard { return c.scheduler }
+
+func (c SiteConfiguration) Addr() string { return "" }
+
+func (c *DataConfiguration) Close() {}
+
+func helper() {}
+`
+
+func TestMethodNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		typeName string
+		want     []string
+	}{
+		{name: "pointer and value receivers", typeName: "SiteConfiguration", want: []string{"Scheduler", "Addr"}},
+		{name: "another type", typeName: "DataConfiguration", want: []string{"Close"}},
+		{name: "no methods", typeName: "App"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := MethodNames("site.go", []byte(methodsSource), tt.typeName)
+			if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestStructFieldOfValueType(t *testing.T) {
+	t.Parallel()
+
+	src := `package config
+
+import (
+	"github.com/cccteam/ccc/resource/jobs"
+	"github.com/cccteam/ccc/resource/scheduled"
+)
+
+type SiteConfiguration struct {
+	guard   *scheduled.Guard
+	starter jobs.Starter
+}
+`
+	tests := []struct {
+		name       string
+		importPath string
+		typeName   string
+		pointer    bool
+		want       string
+	}{
+		{name: "an interface field", importPath: "github.com/cccteam/ccc/resource/jobs", typeName: "Starter", want: "starter"},
+		{name: "a pointer field is not a value", importPath: "github.com/cccteam/ccc/resource/scheduled", typeName: "Guard", want: ""},
+		{name: "a pointer field through StructFieldOfType", importPath: "github.com/cccteam/ccc/resource/scheduled", typeName: "Guard", pointer: true, want: "guard"},
+		{name: "a value field through StructFieldOfType", importPath: "github.com/cccteam/ccc/resource/jobs", typeName: "Starter", pointer: true, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			find := StructFieldOfValueType
+			if tt.pointer {
+				find = StructFieldOfType
+			}
+			got, err := find("site.go", []byte(src), "SiteConfiguration", tt.importPath, tt.typeName)
+			if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("field = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

@@ -1,6 +1,7 @@
 package transition
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"go/ast"
@@ -71,24 +72,31 @@ const (
 
 // The names the wiring takes in the application's own code.
 const (
-	dataConfigType     = "DataConfiguration"
-	dataConstructor    = "NewDataConfiguration"
-	siteConfigType     = "SiteConfiguration"
-	siteConstructor    = "NewSiteConfiguration"
-	configurerType     = "Configurer"
-	appType            = "App"
-	appConstructor     = "New"
-	closeMethod        = "Close"
-	bootstrapRun       = "run"
-	seedCall           = "deploy.SeedDevelopmentData"
-	spannerClientCall  = "resource.NewSpannerClient"
-	rpcClientType      = "Client"
-	rpcClientAccessor  = "RPCClient"
-	schedulerAccessor  = "Scheduler"
-	jobsAccessor       = "Jobs"
-	schedulerAuth      = "SchedulerAuth"
-	configurerMarker   = "LogExporter"
-	envTemplateSiteSep = "# --- site:"
+	dataConfigType       = "DataConfiguration"
+	dataConstructor      = "NewDataConfiguration"
+	siteConfigType       = "SiteConfiguration"
+	siteConstructor      = "NewSiteConfiguration"
+	configurerType       = "Configurer"
+	appType              = "App"
+	appConstructor       = "New"
+	closeMethod          = "Close"
+	bootstrapRun         = "run"
+	seedCall             = "deploy.SeedDevelopmentData"
+	spannerClientCall    = "resource.NewSpannerClient"
+	rpcClientType        = "Client"
+	rpcClientAccessor    = "RPCClient"
+	resourceClientMethod = "ResourceClient"
+	harnessStoreField    = "files"
+	dockerfileName       = "Dockerfile"
+	jobsProcess          = "jobs"
+	siteGuardField       = "scheduler"
+	siteStarterField     = "jobs"
+	appGuardField        = "scheduler"
+	schedulerAccessor    = "Scheduler"
+	jobsAccessor         = "Jobs"
+	schedulerAuth        = "SchedulerAuth"
+	configurerMarker     = "LogExporter"
+	envTemplateSiteSep   = "# --- site:"
 )
 
 // Command is the impulse command line for the transition.
@@ -607,6 +615,9 @@ func (f Files) writeJobs(a *app.App, modulePath, configDir string, g *app.Genera
 		return err
 	}
 	ch.didf("%s: CleanupCommand (%s) and CleanupFiles, the orphaned-file cleanup over the store through the generated FileHolders(); %s: the job process running it, with -window and -dry-run", cleanupFile, cleanupCommand, mainFile)
+	if dockerfile, err := os.ReadFile(a.Abs(dockerfileName)); err == nil && !strings.Contains(string(dockerfile), "/build/"+jobsProcess) {
+		ch.skipf("%s: build %s as /%s beside the other binaries (go build -o /build/%s ./%s) and bake the job's name into the image (ARG JOBS_JOB; ENV APP_JOBS_JOB=\"${JOBS_JOB}\"), which bedrock check asks for once the job process exists", dockerfileName, jobsCmdDir, jobsProcess, jobsProcess, jobsCmdDir)
+	}
 
 	return nil
 }
@@ -867,7 +878,9 @@ func (m *CleanUpFiles) Execute(ctx context.Context, _ resource.ReadWriteTransact
 
 // editSiteConfig gives the site level the scheduled routes' guard and the job process's
 // starter, read from the environment where the level is built, with their accessors in a
-// new file beside it.
+// new file beside it. What the level holds already is left as it is: an application
+// whose own scheduled method wired the guard gains the starter alone, and an accessor
+// the package declares is not written twice.
 func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 	rel, src, mode, err := findDeclaringFile(a, siteConfigType)
 	if err != nil {
@@ -882,15 +895,11 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 	if err != nil {
 		return err
 	}
-	edited, err := app.AddImport(rel, src, scheduledImportPath)
+	guardField, err := app.StructFieldOfType(rel, src, siteConfigType, scheduledImportPath, "Guard")
 	if err != nil {
 		return err
 	}
-	edited, err = app.AddImport(rel, edited, jobsImportPath)
-	if err != nil {
-		return err
-	}
-	edited, err = app.AddStructField(rel, edited, siteConfigType, "// scheduler is the guard the scheduled routes sit behind, and jobs the job process's\n// starter ("+scheduledConfigFile+").\nscheduler *scheduled.Guard\njobs      jobs.Starter")
+	starterField, err := app.StructFieldOfValueType(rel, src, siteConfigType, jobsImportPath, "Starter")
 	if err != nil {
 		return err
 	}
@@ -898,40 +907,157 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 	if ok, _ := app.HasImport(rel, src, errorsImportPath); ok {
 		wrapErr = `errors.Wrap(err, %q)`
 	}
-	statements := "// The scheduled routes' guard and the job process's starter (" + scheduledConfigFile + "): the guard\n" +
-		"// reads the invoker identity the stack names in APP_SCHEDULER_INVOKER, and without one\n" +
-		"// logs that the scheduled routes are off; the starter reads the Cloud Run job the image\n" +
-		"// names in APP_JOBS_JOB, and without one refuses every start.\n" +
-		"scheduler, err := scheduled.FromEnvironment(ctx)\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "scheduled.FromEnvironment()") + "\n}\n" +
-		"starter, err := jobs.FromEnvironment(ctx)\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "jobs.FromEnvironment()") + "\n}"
-	built, err := app.AddStatementsBeforeConstruction(rel, edited, siteConstructor, siteConfigType, statements)
-	gained := "the fields"
-	switch {
-	case errors.Is(err, app.ErrNoAnchor):
-		ch.skipf("%s: %s builds no &%s{...} literal, so the guard and the starter are declared but not built; call scheduled.FromEnvironment(ctx) and jobs.FromEnvironment(ctx) where the level is built and set the fields", rel, siteConstructor, siteConfigType)
-	case err != nil:
-		return err
-	default:
-		edited, err = app.AddLiteralElement(rel, built, siteConstructor, siteConfigType, "scheduler: scheduler")
+	edit := &sourceEdit{rel: rel, src: src}
+	var added, wired []string
+	built := true
+	if guardField == "" {
+		guardField = siteGuardField
+		ok, err := f.buildInSite(edit, &siteWiring{
+			importPath: scheduledImportPath,
+			field:      "// " + siteGuardField + " is the guard the scheduled routes sit behind (" + scheduledConfigFile + ").\n" + siteGuardField + " *scheduled.Guard",
+			statements: "// The scheduled routes' guard (" + scheduledConfigFile + "): it reads the invoker identity the stack\n// names in APP_SCHEDULER_INVOKER, and without one logs that the scheduled routes are off.\n" +
+				siteGuardField + ", err := scheduled.FromEnvironment(ctx)\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "scheduled.FromEnvironment()") + "\n}",
+			callee:  "scheduled.FromEnvironment",
+			element: siteGuardField + ": " + siteGuardField,
+			what:    "the guard",
+		})
 		if err != nil {
 			return err
 		}
-		edited, err = app.AddLiteralElement(rel, edited, siteConstructor, siteConfigType, "jobs: starter")
+		built = built && ok
+		added = append(added, "the "+siteGuardField+" field")
+	} else {
+		wired = append(wired, "the guard")
+	}
+	if starterField == "" {
+		starterField = siteStarterField
+		ok, err := f.buildInSite(edit, &siteWiring{
+			importPath: jobsImportPath,
+			field:      "// " + siteStarterField + " is the job process's starter (" + scheduledConfigFile + ").\n" + siteStarterField + " jobs.Starter",
+			statements: "// The job process's starter (" + scheduledConfigFile + "): it reads the Cloud Run job the image names in\n// APP_JOBS_JOB, and without one refuses every start.\n" +
+				"starter, err := jobs.FromEnvironment(ctx)\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "jobs.FromEnvironment()") + "\n}",
+			callee:  "jobs.FromEnvironment",
+			element: siteStarterField + ": starter",
+			what:    "the starter",
+		})
 		if err != nil {
 			return err
 		}
-		gained = "the fields, built from the environment"
+		built = built && ok
+		added = append(added, "the "+siteStarterField+" field")
+	} else {
+		wired = append(wired, "the starter")
 	}
-	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
-		return errors.Wrap(err, "os.WriteFile()")
+	if len(added) > 0 {
+		if err := os.WriteFile(a.Abs(rel), edit.src, mode); err != nil {
+			return errors.Wrap(err, "os.WriteFile()")
+		}
 	}
-	accessors := path.Join(path.Dir(rel), scheduledConfigFile)
-	if err := writeGo(a, accessors, f.siteAccessorsSource(pkg)); err != nil {
+	accessors, accessorsFile, err := f.writeSiteAccessors(a, rel, pkg, guardField, starterField)
+	if err != nil {
 		return err
 	}
-	ch.didf("%s: %s gained %s; %s: %s() and %s(), which the app's %s asks for", rel, siteConfigType, gained, accessors, schedulerAccessor, jobsAccessor, configurerType)
+	line := fmt.Sprintf("%s: %s gained %s", rel, siteConfigType, gainedInSite(added, built, wired))
+	if len(accessors) > 0 {
+		line += fmt.Sprintf("; %s: %s, which the app's %s asks for", accessorsFile, joinAnd(accessors), configurerType)
+	}
+	ch.didf("%s", line)
+	edit.report(ch)
 
 	return nil
+}
+
+// writeSiteAccessors writes the site level's scheduled file with the accessors the
+// package lacks, Scheduler() over the guard field and Jobs() over the starter field,
+// and returns the accessors written and the file; none written, no file is.
+func (Files) writeSiteAccessors(a *app.App, rel, pkg, guardField, starterField string) (accessors []string, file string, err error) {
+	methods, err := methodsOfType(a, path.Dir(rel), siteConfigType)
+	if err != nil {
+		return nil, "", err
+	}
+	var imports []string
+	var body strings.Builder
+	if !slices.Contains(methods, schedulerAccessor) {
+		accessors, imports = append(accessors, schedulerAccessor+"()"), append(imports, scheduledImportPath)
+		fmt.Fprintf(&body, schedulerAccessorSource, schedulerAccessor, siteConfigType, guardField)
+	}
+	if !slices.Contains(methods, jobsAccessor) {
+		accessors, imports = append(accessors, jobsAccessor+"()"), append(imports, jobsImportPath)
+		fmt.Fprintf(&body, jobsAccessorSource, jobsAccessor, siteConfigType, starterField)
+	}
+	file = path.Join(path.Dir(rel), scheduledConfigFile)
+	if len(accessors) == 0 {
+		return nil, file, nil
+	}
+	if err := writeGo(a, file, goFile(pkg, imports, body.String())); err != nil {
+		return nil, "", err
+	}
+
+	return accessors, file, nil
+}
+
+// gainedInSite says what the site level took: both fields, one of them beside the one
+// the application had wired, or nothing.
+func gainedInSite(added []string, built bool, wired []string) string {
+	from := ""
+	if built {
+		from = ", built from the environment"
+	}
+	switch {
+	case len(added) == 0:
+		return "nothing: " + joinAnd(wired) + " were wired already"
+	case len(wired) == 0:
+		return "the fields" + from
+	default:
+		return added[0] + from + " (" + wired[0] + " was wired already)"
+	}
+}
+
+// siteWiring is one of the two values the site level gains: its field with the import
+// the type needs, the statements that build it before the construction, the call those
+// statements make (present already, they are not added), and the literal element that
+// sets the field.
+type siteWiring struct {
+	importPath, field, statements, callee, element, what string
+}
+
+// buildInSite adds one wiring to the site level: the field and its import, the
+// statements unless the constructor makes the call already, and the element. It reports
+// whether the value is built where the level is constructed; a constructor without the
+// literal leaves the field declared and the building to the agent.
+func (Files) buildInSite(e *sourceEdit, w *siteWiring) (bool, error) {
+	if err := e.apply(app.AddStructField(e.rel, e.src, siteConfigType, w.field)); err != nil {
+		return false, err
+	}
+	if err := e.apply(app.AddImport(e.rel, e.src, w.importPath)); err != nil {
+		return false, err
+	}
+	calls, err := app.HasCall(e.rel, e.src, "", siteConstructor, w.callee)
+	switch {
+	case errors.Is(err, app.ErrNoAnchor):
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: no %s to build %s in; call %s(ctx) where the level is built and set the field", e.rel, siteConstructor, w.what, w.callee))
+
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	if !calls {
+		built, err := app.AddStatementsBeforeConstruction(e.rel, e.src, siteConstructor, siteConfigType, w.statements)
+		switch {
+		case errors.Is(err, app.ErrNoAnchor):
+			e.skipped = append(e.skipped, fmt.Sprintf("%s: %s builds no &%s{...} literal, so %s is declared but not built; call %s(ctx) where the level is built and set the field", e.rel, siteConstructor, siteConfigType, w.what, w.callee))
+
+			return false, nil
+		case err != nil:
+			return false, err
+		}
+		e.src = built
+	}
+	if err := e.apply(app.AddLiteralElement(e.rel, e.src, siteConstructor, siteConfigType, w.element)); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // wrapFor renders an error return: the wrap template with its message, or err alone.
@@ -943,41 +1069,55 @@ func wrapFor(wrapErr, message string) string {
 	return fmt.Sprintf(wrapErr, message)
 }
 
-// siteAccessorsSource is the site level's scheduled file: the two accessors.
-func (Files) siteAccessorsSource(pkg string) string {
-	return fmt.Sprintf(`package %[1]s
-
-import (
-	"%[2]s"
-	"%[3]s"
-)
-
-// %[4]s returns the guard the scheduled routes sit behind: Cloud Scheduler's tokens of
+// The site level's accessors, one per value: the accessor's name, the type, and the
+// field it reads.
+const (
+	schedulerAccessorSource = `
+// %[1]s returns the guard the scheduled routes sit behind: Cloud Scheduler's tokens of
 // the invoker identity APP_SCHEDULER_INVOKER names, and nothing else. With the variable
 // unset, as in development, every scheduled call is refused.
-func (c *%[6]s) %[4]s() *scheduled.Guard {
-	return c.scheduler
+func (c *%[2]s) %[1]s() *scheduled.Guard {
+	return c.%[3]s
 }
-
-// %[5]s starts the application's job process: the Cloud Run job the image names in
+`
+	jobsAccessorSource = `
+// %[1]s starts the application's job process: the Cloud Run job the image names in
 // APP_JOBS_JOB (resource/jobs), or a starter that refuses where none is configured.
-func (c *%[6]s) %[5]s() jobs.Starter {
-	return c.jobs
+func (c *%[2]s) %[1]s() jobs.Starter {
+	return c.%[3]s
 }
-`, pkg, jobsImportPath, scheduledImportPath, schedulerAccessor, jobsAccessor, siteConfigType)
+`
+)
+
+// goFile is a Go file: the package clause, the imports, and the body.
+func goFile(pkg string, imports []string, body string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "package %s\n", pkg)
+	if len(imports) > 0 {
+		b.WriteString("\nimport (\n")
+		for _, path := range imports {
+			fmt.Fprintf(&b, "\t%q\n", path)
+		}
+		b.WriteString(")\n")
+	}
+	b.WriteString(body)
+
+	return b.String()
 }
 
 // editApp exposes the guard and the RPC client on the App: the Configurer asks the
 // configuration for the guard and the starter, the App carries the guard and the client
 // built over the starter, and a new file declares the middleware the generated router
 // requires (SchedulerAuth) and the accessor the generated handlers require (RPCClient).
+// What the app declares already, as an application with a scheduled method of its own
+// does, is left as it is.
 func (f Files) editApp(a *app.App, modulePath, rpcDir string, hasClient bool, ch *Change) error {
 	rel, src, mode, err := findDeclaringFile(a, configurerType)
 	if err != nil {
 		return err
 	}
 	if rel == "" {
-		ch.skipf("no file declares a %s interface, so the guard and the RPC client are not exposed on the app; the generated router needs %s(next http.Handler) http.Handler (scheduled.Guard's Middleware) and the generated handlers %s() returning the rpc package's *Client, built over the configuration's %s()", configurerType, schedulerAuth, rpcClientAccessor, jobsAccessor)
+		ch.skipf("no file declares a %s interface, so the guard and the RPC client are not exposed on the app; the generated router needs %s(next http.Handler) http.Handler (scheduled.Guard's Middleware) and the generated handlers %s() returning the rpc package's *%s, built over the configuration's %s()", configurerType, schedulerAuth, rpcClientAccessor, rpcClientType, jobsAccessor)
 
 		return nil
 	}
@@ -986,58 +1126,101 @@ func (f Files) editApp(a *app.App, modulePath, rpcDir string, hasClient bool, ch
 		return err
 	}
 	edit := &sourceEdit{rel: rel, src: src}
-	if err := f.exposeGuard(edit); err != nil {
+	guardField, err := f.exposeGuard(edit)
+	if err != nil {
 		return err
 	}
 	rpcPath, rpcPkg := modulePath+"/"+rpcDir, path.Base(rpcDir)
 	if err := f.exposeRPCClient(edit, rpcPath, rpcPkg, rpcDir, hasClient); err != nil {
 		return err
 	}
-	if err := os.WriteFile(a.Abs(rel), edit.src, mode); err != nil {
-		return errors.Wrap(err, "os.WriteFile()")
+	if len(edit.gained) > 0 {
+		if err := os.WriteFile(a.Abs(rel), edit.src, mode); err != nil {
+			return errors.Wrap(err, "os.WriteFile()")
+		}
 	}
-	scheduledFile := path.Join(path.Dir(rel), scheduledAppFile)
-	if err := writeGo(a, scheduledFile, f.appSource(pkg, rpcPath, rpcDir, rpcPkg, hasClient)); err != nil {
+	methods, err := methodsOfType(a, path.Dir(rel), appType)
+	if err != nil {
 		return err
 	}
-	ch.didf("%s: %s gained %s; %s: %s, the middleware the generated router mounts the scheduled routes behind%s", rel, appType, joinAnd(edit.gained), scheduledFile, schedulerAuth, rpcAccessorNote(hasClient))
+	writeAuth := !slices.Contains(methods, schedulerAuth)
+	writeClient := hasClient && !slices.Contains(methods, rpcClientAccessor)
+	line := fmt.Sprintf("%s: %s gained %s", rel, appType, joinAnd(edit.gained))
+	if len(edit.gained) == 0 {
+		line = fmt.Sprintf("%s: %s exposed the guard and the starter already", rel, appType)
+	}
+	if writeAuth || writeClient {
+		scheduledFile := path.Join(path.Dir(rel), scheduledAppFile)
+		if err := writeGo(a, scheduledFile, f.appSource(pkg, rpcPath, rpcDir, rpcPkg, guardField, writeAuth, writeClient)); err != nil {
+			return err
+		}
+		var declared string
+		switch {
+		case writeAuth && writeClient:
+			declared = schedulerAuth + ", the middleware the generated router mounts the scheduled routes behind, and " + rpcClientAccessor + "(), the dependencies of the RPC methods"
+		case writeAuth:
+			declared = schedulerAuth + ", the middleware the generated router mounts the scheduled routes behind"
+		default:
+			declared = rpcClientAccessor + "(), the dependencies of the RPC methods"
+		}
+		line += fmt.Sprintf("; %s: %s", scheduledFile, declared)
+	}
+	ch.didf("%s", line)
 	edit.report(ch)
 
 	return nil
 }
 
 // exposeGuard asks the Configurer for the guard and the starter, and gives the App the
-// guard.
-func (Files) exposeGuard(e *sourceEdit) error {
-	for _, importPath := range []string{scheduledImportPath, jobsImportPath} {
-		if err := e.apply(app.AddImport(e.rel, e.src, importPath)); err != nil {
-			return err
-		}
-	}
-	for _, line := range []string{
-		"// " + schedulerAccessor + " is the guard the scheduled routes sit behind (resource/scheduled): the\n// invoker identity the stack names in APP_SCHEDULER_INVOKER, whose Google-signed tokens\n// alone are admitted. A guard with no invoker refuses every scheduled call.\n" + schedulerAccessor + "() *scheduled.Guard",
-		"// " + jobsAccessor + " starts the application's job process (resource/jobs): an execution of the\n// Cloud Run job deployed with this revision, which the image names in APP_JOBS_JOB.\n// The scheduled CleanUpFiles method starts the orphaned-file cleanup through it.\n" + jobsAccessor + "() jobs.Starter",
+// guard. It returns the App's guard field: the one the application declared, or the one
+// added here.
+func (Files) exposeGuard(e *sourceEdit) (string, error) {
+	var onConfigurer []string
+	for _, m := range []struct{ name, line, importPath string }{
+		{schedulerAccessor, "// " + schedulerAccessor + " is the guard the scheduled routes sit behind (resource/scheduled): the\n// invoker identity the stack names in APP_SCHEDULER_INVOKER, whose Google-signed tokens\n// alone are admitted. A guard with no invoker refuses every scheduled call.\n" + schedulerAccessor + "() *scheduled.Guard", scheduledImportPath},
+		{jobsAccessor, "// " + jobsAccessor + " starts the application's job process (resource/jobs): an execution of the\n// Cloud Run job deployed with this revision, which the image names in APP_JOBS_JOB.\n// The scheduled CleanUpFiles method starts the orphaned-file cleanup through it.\n" + jobsAccessor + "() jobs.Starter", jobsImportPath},
 	} {
-		if err := e.apply(app.AddInterfaceLine(e.rel, e.src, configurerType, line)); err != nil {
-			return err
+		before := e.src
+		if err := e.apply(app.AddInterfaceLine(e.rel, e.src, configurerType, m.line)); err != nil {
+			return "", err
 		}
+		if bytes.Equal(before, e.src) {
+			continue
+		}
+		if err := e.apply(app.AddImport(e.rel, e.src, m.importPath)); err != nil {
+			return "", err
+		}
+		onConfigurer = append(onConfigurer, m.name+"()")
 	}
-	if err := e.apply(app.AddStructField(e.rel, e.src, appType, "scheduler *scheduled.Guard")); err != nil {
-		return err
+	if len(onConfigurer) > 0 {
+		e.gained = append(e.gained, joinAnd(onConfigurer)+" on "+configurerType)
 	}
-	e.gained = append(e.gained, schedulerAccessor+"() and "+jobsAccessor+"() on "+configurerType, "the scheduler field")
-	with, err := app.AddLiteralElement(e.rel, e.src, appConstructor, appType, "scheduler: cfg."+schedulerAccessor+"()")
+	field, err := app.StructFieldOfType(e.rel, e.src, appType, scheduledImportPath, "Guard")
+	if err != nil {
+		return "", err
+	}
+	if field != "" {
+		return field, nil
+	}
+	if err := e.apply(app.AddStructField(e.rel, e.src, appType, appGuardField+" *scheduled.Guard")); err != nil {
+		return "", err
+	}
+	if err := e.apply(app.AddImport(e.rel, e.src, scheduledImportPath)); err != nil {
+		return "", err
+	}
+	e.gained = append(e.gained, "the "+appGuardField+" field")
+	with, err := app.AddLiteralElement(e.rel, e.src, appConstructor, appType, appGuardField+": cfg."+schedulerAccessor+"()")
 	switch {
 	case errors.Is(err, app.ErrNoAnchor):
-		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s builds no %s literal, so the guard is not set; set scheduler to cfg.%s()", e.rel, appConstructor, appType, schedulerAccessor))
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s builds no %s literal, so the guard is not set; set %s to cfg.%s()", e.rel, appConstructor, appType, appGuardField, schedulerAccessor))
 	case err != nil:
-		return err
+		return "", err
 	default:
 		e.src = with
 		e.gained = append(e.gained, "its construction")
 	}
 
-	return nil
+	return appGuardField, nil
 }
 
 // exposeRPCClient gives the App the RPC client built over the starter when the rpc
@@ -1071,34 +1254,26 @@ func (Files) exposeRPCClient(e *sourceEdit, rpcPath, rpcPkg, rpcDir string, hasC
 	return nil
 }
 
-// rpcAccessorNote says whether the app's scheduled file also declares RPCClient.
-func rpcAccessorNote(hasClient bool) string {
-	if !hasClient {
-		return ""
-	}
-
-	return ", and " + rpcClientAccessor + "(), the dependencies of the RPC methods"
-}
-
-// appSource is the app's scheduled file: SchedulerAuth, and RPCClient when the rpc
-// package is this transition's.
-func (Files) appSource(pkg, rpcPath, rpcDir, rpcPkg string, hasClient bool) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "package %s\n\nimport (\n\t\"net/http\"\n", pkg)
-	if hasClient {
-		fmt.Fprintf(&b, "\n\t%q\n", rpcPath)
-	}
-	b.WriteString(")\n\n")
-	fmt.Fprintf(&b, `// %[1]s admits Cloud Scheduler's calls to the scheduled routes (/_scheduled): a
+// appSource is the app's scheduled file: SchedulerAuth over the App's guard field, and
+// RPCClient when the rpc package is this transition's, each when the app lacks it.
+func (Files) appSource(pkg, rpcPath, rpcDir, rpcPkg, guardField string, writeAuth, writeClient bool) string {
+	var imports []string
+	var body strings.Builder
+	if writeAuth {
+		imports = append(imports, "net/http")
+		fmt.Fprintf(&body, `
+// %[1]s admits Cloud Scheduler's calls to the scheduled routes (/_scheduled): a
 // token Google signed for the route's URL whose verified email is the invoker identity
 // named in APP_SCHEDULER_INVOKER. Any other call answers 401, its reason logged, and with
 // no invoker configured every call is refused: the routes are off in development.
 func (a *%[2]s) %[1]s(next http.Handler) http.Handler {
-	return a.scheduler.Middleware(next)
+	return a.%[3]s.Middleware(next)
 }
-`, schedulerAuth, appType)
-	if hasClient {
-		fmt.Fprintf(&b, `
+`, schedulerAuth, appType, guardField)
+	}
+	if writeClient {
+		imports = append(imports, rpcPath)
+		fmt.Fprintf(&body, `
 // %[1]s returns the dependencies for RPC method implementations (%[2]s): the starter of
 // the job process, which the scheduled CleanUpFiles method starts the cleanup through.
 func (a *%[3]s) %[1]s() *%[4]s.%[5]s {
@@ -1107,14 +1282,45 @@ func (a *%[3]s) %[1]s() *%[4]s.%[5]s {
 `, rpcClientAccessor, rpcDir, appType, rpcPkg, rpcClientType)
 	}
 
-	return b.String()
+	return goFile(pkg, imports, body.String())
 }
 
-// editHarnesses gives every test configurer the two accessors the Configurer gained: a
+// methodsOfType lists the methods the package at dir declares on the type in its
+// non-test files, so an accessor or a middleware the application wrote itself is not
+// written twice.
+func methodsOfType(a *app.App, dir, typeName string) ([]string, error) {
+	entries, err := os.ReadDir(a.Abs(dir))
+	if err != nil {
+		return nil, errors.Wrap(err, "os.ReadDir()")
+	}
+	var methods []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		rel := path.Join(dir, name)
+		src, err := os.ReadFile(a.Abs(rel))
+		if err != nil {
+			return nil, errors.Wrap(err, "os.ReadFile()")
+		}
+		names, err := app.MethodNames(rel, src, typeName)
+		if err != nil {
+			return nil, err
+		}
+		methods = append(methods, names...)
+	}
+
+	return methods, nil
+}
+
+// editHarnesses gives every test configurer the two accessors the Configurer gained, a
 // nil guard, since no suite mounts a scheduled route and a missing guard refuses every
-// call, and a fake starter that records what a scheduled call starts. A test configurer
-// is a type in a test file declaring LogExporter, the Configurer method every harness
-// implements.
+// call, and a fake starter that records what a scheduled call starts, and builds its
+// resource client over a memory store, as the data level builds production's over the
+// bucket, so a file route the application declares later is served in the suites rather
+// than refused by the router. A test configurer is a type in a test file declaring
+// LogExporter, the Configurer method every harness implements.
 func (f Files) editHarnesses(a *app.App, ch *Change) error {
 	harnesses, err := f.harnessFiles(a)
 	if err != nil {
@@ -1126,7 +1332,7 @@ func (f Files) editHarnesses(a *app.App, ch *Change) error {
 		if err != nil {
 			return err
 		}
-		text := string(src)
+		edit := &sourceEdit{rel: h.file, src: src}
 		var added []string
 		for _, m := range []struct {
 			name, method string
@@ -1137,30 +1343,76 @@ func (f Files) editHarnesses(a *app.App, ch *Change) error {
 			if slices.Contains(h.methods, m.name) {
 				continue
 			}
-			text += m.method
+			edit.src = append(edit.src, m.method...)
 			added = append(added, m.name+"()")
 		}
+		if len(added) > 0 {
+			for _, importPath := range []string{scheduledImportPath, jobsImportPath} {
+				if err := edit.apply(app.AddImport(edit.rel, edit.src, importPath)); err != nil {
+					return err
+				}
+			}
+		}
+		stored, err := f.wireHarnessStore(edit, h)
+		if err != nil {
+			return err
+		}
+		if stored {
+			added = append(added, "the "+harnessStoreField+" field")
+		}
+		edit.report(ch)
 		if len(added) == 0 {
 			continue
 		}
-		out, err := app.AddImport(h.file, []byte(text), scheduledImportPath)
-		if err != nil {
-			return err
-		}
-		out, err = app.AddImport(h.file, out, jobsImportPath)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(a.Abs(h.file), out, mode); err != nil {
+		if err := os.WriteFile(a.Abs(h.file), edit.src, mode); err != nil {
 			return errors.Wrap(err, "os.WriteFile()")
 		}
 		edited = append(edited, fmt.Sprintf("%s (%s: %s)", h.file, h.typeName, joinAnd(added)))
 	}
 	if len(edited) > 0 {
-		ch.didf("the test configurers gained a nil guard and a fake starter: %s", strings.Join(edited, "; "))
+		ch.didf("the test configurers gained a nil guard, a fake starter and a memory file store: %s", strings.Join(edited, "; "))
 	}
 
 	return nil
+}
+
+// wireHarnessStore builds the test configurer's resource client over a memory store:
+// the configurer gains a files field, the literal that builds it sets a fresh store, and
+// its ResourceClient method passes the store as resource.WithFileStore. A configurer
+// that declares no ResourceClient in its file, builds the client elsewhere than
+// resource.NewSpannerClient, or passes a store already is left as it is.
+func (Files) wireHarnessStore(e *sourceEdit, h harness) (bool, error) {
+	if !slices.Contains(h.methods, resourceClientMethod) || strings.Contains(string(e.src), "resource.WithFileStore(") {
+		return false, nil
+	}
+	calls, err := app.HasCall(e.rel, e.src, h.typeName, resourceClientMethod, spannerClientCall)
+	if err != nil || !calls {
+		return false, err
+	}
+	receiver, err := receiverName(e.rel, e.src, h.typeName, resourceClientMethod)
+	if err != nil {
+		return false, err
+	}
+	if err := e.apply(app.AddStructField(e.rel, e.src, h.typeName, "// "+harnessStoreField+" is the memory store the resource client is built over, standing in for\n// the bucket: a file route the application declares is served from it.\n"+harnessStoreField+" *filestore.Mem")); err != nil {
+		return false, err
+	}
+	with, err := app.AddLiteralElementOfType(e.rel, e.src, h.typeName, harnessStoreField+": filestore.NewMem()")
+	switch {
+	case errors.Is(err, app.ErrNoAnchor):
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: no %s literal builds the configurer, so its memory store is declared but not set; set %s to filestore.NewMem() where it is built", e.rel, h.typeName, harnessStoreField))
+	case err != nil:
+		return false, err
+	default:
+		e.src = with
+	}
+	if err := e.apply(app.ExtendMethodCall(e.rel, e.src, h.typeName, resourceClientMethod, spannerClientCall, "resource.WithFileStore("+receiver+"."+harnessStoreField+")")); err != nil {
+		return false, err
+	}
+	if err := e.apply(app.AddImport(e.rel, e.src, filestoreImportPath)); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // harness is one test configurer: the file declaring it, its type, the receiver as its
