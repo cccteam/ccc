@@ -1026,6 +1026,46 @@ func TestJobsJob(t *testing.T) {
 	}
 }
 
+func TestFrameworkJobsJob(t *testing.T) {
+	t.Parallel()
+
+	jobs := &Process{Name: jobsProcess, Dir: jobsDir}
+	declared := Variable{Name: varJobsJob, Role: RoleJobsJob, Level: LevelSite, Struct: "siteConfig", Field: "JobsJob"}
+	tests := []struct {
+		name  string
+		model Model
+		want  []Variable
+	}{
+		{name: "no job process: no variable", model: Model{}},
+		{name: "a declared variable is kept as it is", model: Model{Jobs: jobs, Variables: []Variable{declared}}, want: []Variable{declared}},
+		{
+			name:  "the framework reads it: the site's variable, named by the framework's reader",
+			model: Model{Jobs: jobs, Levels: []Level{{Name: LevelSite, File: "pkg/config/site.go"}}},
+			want: []Variable{{
+				Name: varJobsJob, Level: LevelSite, Struct: "jobs", Field: "FromEnvironment", File: "pkg/config/site.go", Type: "string",
+				Doc:  "the job process's Cloud Run job, read by the framework (resource/jobs) where the site builds its starter",
+				Role: RoleJobsJob,
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.model.frameworkJobsJob()
+			if !slices.Equal(tt.want, tt.model.Variables) {
+				t.Errorf("Variables = %+v, want %+v", tt.model.Variables, tt.want)
+			}
+			if err := tt.model.jobsJob(); err != nil {
+				t.Errorf("jobsJob() after frameworkJobsJob() error = %v", err)
+			}
+			if v := tt.model.ByRoleAtLevel(RoleJobsJob, LevelSite); tt.model.Jobs != nil && (v == nil || v.Declaration() == "") {
+				t.Errorf("ByRoleAtLevel(RoleJobsJob, site) = %v, want the variable with a declaration", v)
+			}
+		})
+	}
+}
+
 func TestPlacementRestore(t *testing.T) {
 	t.Parallel()
 

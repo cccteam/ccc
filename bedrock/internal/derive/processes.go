@@ -58,8 +58,40 @@ func (m *Model) processes(a *app.App, cfg *config) error {
 		}
 		m.Jobs = &jobs
 	}
+	m.frameworkJobsJob()
 
 	return m.jobsJob()
+}
+
+// frameworkJobsJob gives the site the job's variable when the framework reads it. An
+// application whose site builds its starter with jobs.FromEnvironment (resource/jobs,
+// what impulse add files writes) declares no env tag for APP_JOBS_JOB: the framework
+// reads the variable itself. The stack, the pipeline and the image treat it as a
+// declared one, baked into the image from the build argument JOBS_JOB, the job of that
+// build, which is why bedrock check asks the Dockerfile for the argument whenever the
+// job process exists.
+func (m *Model) frameworkJobsJob() {
+	if m.Jobs == nil {
+		return
+	}
+	for i := range m.Variables {
+		if m.Variables[i].Role == RoleJobsJob {
+			return
+		}
+	}
+	v := Variable{
+		Name:   varJobsJob,
+		Level:  LevelSite,
+		Struct: "jobs",
+		Field:  "FromEnvironment",
+		Type:   "string",
+		Doc:    "the job process's Cloud Run job, read by the framework (resource/jobs) where the site builds its starter",
+		Role:   RoleJobsJob,
+	}
+	if level, ok := m.Level(LevelSite); ok {
+		v.File = level.File
+	}
+	m.Variables = append(m.Variables, v)
 }
 
 // jobsJob checks the variable that names the job process to the site, when the code

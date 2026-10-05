@@ -337,7 +337,7 @@ database because the {{.FirestoreDatabase.Level}} level opens its live service w
 the release's role migration signals the running instances through it{{if .FirebaseAPIKey}}; the web
 API key rides beside it, a public value{{end}}. {{end}}Not set: `{{.Version.Name}}` (the
 pipeline bakes it into the image, so a deploy never edits the template's
-variables),{{if .Jobs}} `{{.JobsJob.Name}}` (baked into the image the same way, the job of
+variables),{{if .JobsJob}} `{{.JobsJob.Name}}` (baked into the image the same way, the job of
 that build),{{end}} {{.CodeDefaultsCell}}, `{{.Port.Name}}` (Cloud Run
 sets it), `{{.SiteImageVars}}` (where the image put the bundle).
 
