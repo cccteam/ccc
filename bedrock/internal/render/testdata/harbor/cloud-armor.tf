@@ -108,7 +108,7 @@ resource "google_compute_security_policy" "app" {
 
     match {
       expr {
-        expression = "request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"
+        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"
       }
     }
   }
@@ -122,7 +122,7 @@ resource "google_compute_security_policy" "app" {
 
     match {
       expr {
-        expression = "request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"
+        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"
       }
     }
   }
@@ -136,7 +136,7 @@ resource "google_compute_security_policy" "app" {
 
     match {
       expr {
-        expression = "request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"
+        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"
       }
     }
 
@@ -161,7 +161,7 @@ resource "google_compute_security_policy" "app" {
 
     match {
       expr {
-        expression = "request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"
+        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"
       }
     }
   }

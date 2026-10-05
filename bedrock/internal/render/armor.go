@@ -132,20 +132,26 @@ func (v *armorView) add(priority int, action, what, source, expression string, e
 }
 
 // scope builds the expression that limits a trailing rule set to the outlets' routes,
-// from the prefixes the site declares.
+// from the prefixes the site declares: request.path.startsWith for each prefix, the
+// several joined with || in parentheses. Cloud Armor's matcher refuses a capture group in
+// a regular expression, so the prefixes are not written as one alternation.
 func (v *armorView) scope(outlets []derive.Outlet) {
 	var prefixes, prose []string
 	for _, o := range outlets {
 		if o.Prefix == "" {
 			continue
 		}
-		prefixes = append(prefixes, pathRegex(o.Prefix))
+		prefixes = append(prefixes, fmt.Sprintf("request.path.startsWith('/%s/')", o.Prefix))
 		prose = append(prose, "/"+o.Prefix)
 	}
-	if len(prefixes) == 0 {
+	switch len(prefixes) {
+	case 0:
 		return
+	case 1:
+		v.Scope = prefixes[0]
+	default:
+		v.Scope = "(" + strings.Join(prefixes, " || ") + ")"
 	}
-	v.Scope = fmt.Sprintf("request.path.matches('^/(%s)/')", strings.Join(prefixes, "|"))
 	v.ScopeProse = joinAnd(prose)
 }
 

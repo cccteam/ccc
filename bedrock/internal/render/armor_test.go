@@ -134,15 +134,15 @@ func TestArmorView(t *testing.T) {
 				RouterDir: "pkg/router",
 				Outlets:   []derive.Outlet{{Name: "default", Prefix: "api"}},
 			},
-			wantScope:   "request.path.matches('^/(api)/')",
+			wantScope:   "request.path.startsWith('/api/')",
 			wantProse:   "/api",
 			wantDefault: true,
 			wantRules: []rule{
 				{Priority: 1000, Action: "deny(403)", Deny: true, Text: "scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path; bedrock's default rule sets", Expression: `"evaluatePreconfiguredWaf('scannerdetection-v33-stable', {'sensitivity': 1})"`},
-				{Priority: 3000, Action: "deny(403)", Deny: true, Text: "SQL injection (sqli-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"`},
-				{Priority: 3010, Action: "deny(403)", Deny: true, Text: "SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"`},
-				{Priority: 3020, Action: "deny(403)", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 1})"`},
-				{Priority: 3030, Action: "deny(403)", Deny: true, Text: "protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.matches('^/(api)/') && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 3000, Action: "deny(403)", Deny: true, Text: "SQL injection (sqli-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 3010, Action: "deny(403)", Deny: true, Text: "SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"`},
+				{Priority: 3020, Action: "deny(403)", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 3030, Action: "deny(403)", Deny: true, Text: "protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"`},
 			},
 		},
 		{
@@ -163,7 +163,7 @@ func TestArmorView(t *testing.T) {
 					{Kind: derive.FileRouteStored, Method: http.MethodGet, Path: "/portal/api/manifests/{id}/file", Source: "Manifest.Key"},
 				},
 			},
-			wantScope: "request.path.matches('^/(api|droids|portal/api)/')",
+			wantScope: "(request.path.startsWith('/api/') || request.path.startsWith('/droids/') || request.path.startsWith('/portal/api/'))",
 			wantProse: "/api, /droids, and /portal/api",
 			wantRules: []rule{
 				{Priority: 1000, Action: "deny(403)", Deny: true, Text: "scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path; placement.json cloudArmor.ruleSets", Expression: `"evaluatePreconfiguredWaf('scannerdetection-v33-stable', {'sensitivity': 1})"`},
@@ -171,7 +171,7 @@ func TestArmorView(t *testing.T) {
 				{Priority: 2001, Action: "allow", Text: "GET /portal/api/manifests/{id}/file; the @file column Manifest.Key, pkg/router/zz_gen_release.json; its answer is the stored object", Expression: `"request.method == 'GET' && request.path.matches('^/portal/api/manifests/[^/]+/file$')"`},
 				{Priority: 2002, Action: "allow", Text: "POST /hooks/registry; placement.json cloudArmor.bypasses; signed by the registry", Expression: `"request.method == 'POST' && request.path.matches('^/hooks/registry$')"`},
 				{Priority: 2003, Action: "allow", Text: "/streams/*; placement.json cloudArmor.bypasses; bytes", Expression: `"request.path.matches('^/streams/.*$')"`},
-				{Priority: 3000, Action: "deny(403)", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 2) on /api, /droids, and /portal/api; placement.json cloudArmor.ruleSets", Expression: `"request.path.matches('^/(api|droids|portal/api)/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"`, Exclusions: 2},
+				{Priority: 3000, Action: "deny(403)", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 2) on /api, /droids, and /portal/api; placement.json cloudArmor.ruleSets", Expression: `"(request.path.startsWith('/api/') || request.path.startsWith('/droids/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"`, Exclusions: 2},
 			},
 			wantExcl: []string{
 				"xss-v33-stable request_cookie EQUALS \"harbor_session\" [] the cookie `harbor_session` under every rule of the set",
