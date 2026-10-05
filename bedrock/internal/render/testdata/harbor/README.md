@@ -408,7 +408,11 @@ substitutions and this stack's outputs:
   as those identities to say where the hotfix will be refused; `_APPLY_IDENTITY`, the identity the tag build applies this
   environment's stack as, and the pull-request build a pull request's stack
   as; `_RESTORE` and `_REQUESTER`, empty on a tag's own build and set on a
-  restore run (what replaces the environment's database, and who asked), the
+  restore run (what replaces the environment's database, and who asked), with
+  `_RESTORE_DATABASE` and `_RESTORE_DATABASE_BACKUP` on a restore from
+  production's backup (production's live database by its deployment record,
+  the generation a rollback restored into, and the backup it was restored from,
+  which stands in while the generation has no backup of its own), the
   requester alone on a rerun (`bedrock rerun`: the release's tag build again,
   production included);
   `_MIGRATE_ACTION`, `_MIGRATE_TABLE` and `_MIGRATE_VERSION`, empty on a tag's

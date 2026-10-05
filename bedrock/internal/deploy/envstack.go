@@ -231,11 +231,15 @@ var stateAttribute = regexp.MustCompile(`(?m)^\s*(project|instance|name)\s*=\s*"
 
 // restoreFromBackup is a production-backup restore: before the plan, the environment's
 // database is dropped and restored, under its own name, from the most recent backup of
-// production's database on the instance the two share, as the apply identity (which holds
-// database admin on that instance). The database's address keeps its state entry, so the
-// plan then finds the restored database and recreates the memberships the drop took with
-// it; the migrations then apply whatever production's backup predates. The backup and the
-// moment its data is from are appended for the record (RESTORE_BACKUP, RESTORE_BACKUP_TIME).
+// production's live database on the instance the two share, as the apply identity (which
+// holds database admin on that instance). Production's live database is the one its
+// deployment record names (productionDatabase): after a rollback, the generation restored
+// into, whose own backups begin with the next release or schedule, so while it has none
+// the backup it was restored from stands in (restoredFromBackup). The database's address
+// keeps its state entry, so the plan then finds the restored database and recreates the
+// memberships the drop took with it; the migrations then apply whatever production's
+// backup predates. The backup and the moment its data is from are appended for the record
+// (RESTORE_BACKUP, RESTORE_BACKUP_TIME).
 func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]string, w Workspace) error {
 	app, env, requester := subs[appSub], subs[envSub], facts[requesterFact]
 	address := "google_spanner_database." + app + "[0]"
@@ -250,24 +254,27 @@ func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]st
 	if attributes["project"] == "" || attributes["instance"] == "" || attributes["name"] == "" {
 		return errors.Newf("%s=%s: the database %s could not be read from the state (project, instance, name)", restoreSub, restoreBackup, address)
 	}
-	environments := strings.Split(subs[environmentsSub], ",")
-	production := environments[len(environments)-1]
-	productionDB := strings.Replace(attributes["name"], "-"+env+"-", "-"+production+"-", 1)
-	if productionDB == attributes["name"] || production == "" || production == env {
-		return errors.Newf("%s=%s: production's database cannot be named from %s's (%s): the environments are %s", restoreSub, restoreBackup, env, attributes["name"], subs[environmentsSub])
-	}
 	instance := "projects/" + attributes["project"] + "/instances/" + attributes["instance"]
 	database := instance + "/databases/" + attributes["name"]
+	productionDB, err := productionDatabase(subs, facts, instance, attributes["name"], env, s.out)
+	if err != nil {
+		return err
+	}
 	store, err := s.clients.SpannerAs(ctx, s.identity)
 	if err != nil {
 		return err
 	}
-	backup, err := store.LatestBackup(ctx, instance, instance+"/databases/"+productionDB)
+	backup, err := store.LatestBackup(ctx, instance, productionDB)
 	if err != nil {
-		return errors.Wrapf(err, "listing the backups of %s", productionDB)
+		return errors.Wrapf(err, "listing the backups of %s", path.Base(productionDB))
 	}
 	if backup == nil {
-		return errors.Newf("%s=%s: %s has no READY backup of production's database %s; %s keeps its database", restoreSub, restoreBackup, attributes["instance"], productionDB, env)
+		if backup, err = restoredFromBackup(ctx, store, facts, productionDB, s.out); err != nil {
+			return err
+		}
+	}
+	if backup == nil {
+		return errors.Newf("%s=%s: %s has no READY backup of production's database %s; %s keeps its database", restoreSub, restoreBackup, attributes["instance"], path.Base(productionDB), env)
 	}
 	fmt.Fprintf(s.out, "=== Restore (%s, asked for by %s): %s's database %s is dropped and restored from production's backup %s (data as of %s); the migrations production's backup predates then apply ===\n", restoreBackup, requester, env, attributes["name"], path.Base(backup.Name), backup.VersionTime)
 	if err := store.DropDatabase(ctx, database); err != nil {
@@ -280,6 +287,55 @@ func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]st
 	fmt.Fprintf(s.out, "Restored %s from %s; the plan recreates its memberships.\n", attributes["name"], path.Base(backup.Name))
 
 	return w.Append(map[string]string{restoredFact: address, backupFact: backup.Name, backupTimeFact: backup.VersionTime})
+}
+
+// productionDatabase names production's live database for a restore from its backup: the
+// one the operations workflow read from production's deployment record
+// (RESTORE_SOURCE_DATABASE; after a rollback, the generation restored into), which has to
+// sit on the environment's instance, the one the backups are restored across. When the
+// record named none (records written before database generations), production's first
+// database is named from the environment's by the environments' order, as every record
+// before generations meant, and the log says so.
+func productionDatabase(subs, facts map[string]string, instance, name, env string, out io.Writer) (string, error) {
+	if given := facts[restoreSourceDatabaseFact]; given != "" {
+		if !strings.HasPrefix(given, instance+"/databases/") {
+			return "", errors.Newf("%s=%s: production's live database %s is not on %s's instance %s, and a backup is restored within one instance", restoreSub, restoreBackup, given, env, path.Base(instance))
+		}
+
+		return given, nil
+	}
+	environments := strings.Split(subs[environmentsSub], ",")
+	production := environments[len(environments)-1]
+	productionDB := strings.Replace(name, "-"+env+"-", "-"+production+"-", 1)
+	if productionDB == name || production == "" || production == env {
+		return "", errors.Newf("%s=%s: production's database cannot be named from %s's (%s): the environments are %s", restoreSub, restoreBackup, env, name, subs[environmentsSub])
+	}
+	fmt.Fprintf(out, "Production's record names no database (written before database generations): its first database, %s, is read.\n", productionDB)
+
+	return instance + "/databases/" + productionDB, nil
+}
+
+// restoredFromBackup is the backup production's live database was restored from, when the
+// operations workflow read one from production's record (RESTORE_SOURCE_BACKUP: a rollback
+// restores a backup into a new generation, which has no backup of its own until the next
+// release or the schedule takes one). READY, it stands in for the generation's own backup,
+// since the generation's data began as that backup's; nil when none was named or it is
+// gone, and the caller refuses.
+func restoredFromBackup(ctx context.Context, store Spanner, facts map[string]string, productionDB string, out io.Writer) (*Backup, error) {
+	name := facts[restoreSourceBackupFact]
+	if name == "" {
+		return nil, nil
+	}
+	backup, err := store.Backup(ctx, name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "reading the backup %s", path.Base(name))
+	}
+	if backup == nil || backup.State != BackupReady {
+		return nil, nil
+	}
+	fmt.Fprintf(out, "%s has no backup of its own yet (a rollback restored it from %s, and no release or schedule has taken one since): that backup, whose data its own began as, is restored.\n", path.Base(productionDB), path.Base(name))
+
+	return backup, nil
 }
 
 // replaceForRestore is a restore run's -replace of what the environment's database

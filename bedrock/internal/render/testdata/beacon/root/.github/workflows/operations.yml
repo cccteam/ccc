@@ -185,7 +185,10 @@ jobs:
             exit 1
           fi
           objects=$(gcloud storage ls -l "gs://$bucket/$APP/$PRODUCTION/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -40 | awk '{print $3}')
-          live=$( [ -n "$objects" ] && gcloud storage cat $objects | jq -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | reverse | .[0].version // empty' -r )
+          record=$( [ -n "$objects" ] && gcloud storage cat $objects | jq -c -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | reverse | .[0] // empty' )
+          live=$(printf '%s' "$record" | jq -r '.version // empty')
+          database=$(printf '%s' "$record" | jq -r '.database.name // empty')
+          source=$(printf '%s' "$record" | jq -r '.rollback.backup // empty')
           if [ -z "$live" ]; then
             echo "::error::no release is live in $PRODUCTION by its deployment records (gs://$bucket/$APP/$PRODUCTION/): name the release to run"
             exit 1
@@ -198,7 +201,19 @@ jobs:
           else
             echo "$RELEASE differs from production's live release, $live: $ENVIRONMENT runs $RELEASE on production's backup, whose data is at $live's schema or before it."
           fi
+          # Production's live database, by the same record: after a rollback it is the
+          # generation restored into, not the stack's first database, and until a release
+          # or the schedule backs the generation up, the backup it was restored from stands
+          # in for its own. A record written before database generations names none, and
+          # the build reads production's first database, as every such record meant.
+          if [ -n "$database" ]; then
+            echo "Production's live database by its record: ${database##*/}$( [ -n "$source" ] && echo ", restored by a rollback from ${source##*/}" ). Its most recent backup is restored, or that backup while it has none of its own."
+          else
+            echo "Production's record names no database (written before database generations): production's first database is read."
+          fi
           echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+          echo "database=$database" >> "$GITHUB_OUTPUT"
+          echo "source_backup=$source" >> "$GITHUB_OUTPUT"
       # The version trigger's build with the restore instruction, waited for to its end: a
       # release in an environment that waits for an approval in Cloud Build waits here too.
       - name: Run the version trigger with the restore instruction
@@ -207,9 +222,11 @@ jobs:
           TRIGGER: ${{ steps.target.outputs.trigger }}
           RESTORE: ${{ steps.target.outputs.restore }}
           RELEASE: ${{ steps.release.outputs.release }}
+          DATABASE: ${{ steps.release.outputs.database }}
+          SOURCE_BACKUP: ${{ steps.release.outputs.source_backup }}
         run: |
           build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
-            --substitutions "_RESTORE=$RESTORE,_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+            --substitutions "_RESTORE=$RESTORE,_REQUESTER=$REQUESTER,_RESTORE_DATABASE=$DATABASE,_RESTORE_DATABASE_BACKUP=$SOURCE_BACKUP" --format='value(metadata.build.id)')
           echo "Build $build in $ENVIRONMENT restores it to $RELEASE ($RESTORE), asked for by $REQUESTER."
           echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
           while :; do

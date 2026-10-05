@@ -66,6 +66,16 @@ const (
 	requesterSub  = "_REQUESTER"
 	restoreFact   = "RESTORE"
 	requesterFact = "RESTORE_REQUESTER"
+	// restoreDatabaseSub and restoreDatabaseBackupSub come with a restore from production's
+	// backup, read by the operations workflow from production's deployment record:
+	// production's live database (after a rollback, the generation it restored into, not
+	// the stack's first database) and the backup that generation was restored from, for a
+	// generation too young to have a backup of its own. Empty when production's record
+	// names no database (written before database generations): its first database is read.
+	restoreDatabaseSub        = "_RESTORE_DATABASE"
+	restoreDatabaseBackupSub  = "_RESTORE_DATABASE_BACKUP"
+	restoreSourceDatabaseFact = "RESTORE_SOURCE_DATABASE"
+	restoreSourceBackupFact   = "RESTORE_SOURCE_BACKUP"
 	// The build's approval, where its trigger required one: who approved it in Cloud
 	// Build, when, and their comment. The record carries them.
 	approverFact        = "APPROVER"
@@ -335,6 +345,11 @@ type Facts struct {
 	// record names them. Both empty for a tag's own build.
 	Restore   string
 	Requester string
+	// RestoreDatabase and RestoreDatabaseBackup are production's live database and the
+	// backup it was restored from, for a restore from production's backup; see
+	// restoreDatabaseSub.
+	RestoreDatabase       string
+	RestoreDatabaseBackup string
 	// RestoreReason is set with Restore when the build decided the restore itself (the
 	// seed changed in an environment on the placement's seed list); empty for a restore
 	// a person asked for.
@@ -538,6 +553,9 @@ func (f *Facts) restore() error {
 		return errors.Newf("%s=%s names no requester (%s): a restore says who asked for it", restoreSub, restore, requesterSub)
 	}
 	f.Restore, f.Requester = restore, requester
+	if restore == restoreBackup {
+		f.RestoreDatabase, f.RestoreDatabaseBackup = f.Substitutions[restoreDatabaseSub], f.Substitutions[restoreDatabaseBackupSub]
+	}
 
 	return nil
 }
@@ -1103,6 +1121,8 @@ func (f *Facts) environment() string {
 		{downFact, flag(f.Down)},
 		{restoreFact, f.Restore},
 		{requesterFact, f.Requester},
+		{restoreSourceDatabaseFact, f.RestoreDatabase},
+		{restoreSourceBackupFact, f.RestoreDatabaseBackup},
 		{restoreReasonFact, f.RestoreReason},
 		{rollbackFact, f.Rollback},
 		{rollbackFromFact, f.RollbackFrom},

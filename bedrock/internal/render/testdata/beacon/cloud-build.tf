@@ -57,6 +57,8 @@ locals {
     _REASON                  = ""                                    # why the rollback was asked for; its first step prints it and the record carries it
     _RESTORE                 = ""                                    # a restore run's instruction (empty, or production-backup): the environment's database is replaced before the release deploys; set by bedrock restore when it runs the trigger, never on a tag's own build, and refused in prd
     _REQUESTER               = ""                                    # who asked for the restore or the migration operation; the record carries it
+    _RESTORE_DATABASE        = ""                                    # production's live database for a restore from its backup, read by the operations workflow from production's deployment record (after a rollback, the generation restored into); empty, production's first database is read
+    _RESTORE_DATABASE_BACKUP = ""                                    # the backup production's live generation was restored from (its record's rollback.backup), restored while the generation has no backup of its own; empty otherwise
     _MIGRATE_ACTION          = ""                                    # a migration operation (version, rerun or force) the operations workflow asks the migrate command for (bedrock migration); empty on a tag's own build
     _MIGRATE_TABLE           = ""                                    # the migrations table a force sets: schema, or data; empty means schema
     _MIGRATE_VERSION         = ""                                    # the version a force sets: an integer, or -1 for no version

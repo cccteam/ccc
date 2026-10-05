@@ -743,10 +743,16 @@ thing one step hands the next. In order:
   identity, since they refer to rows the restore replaced (`RESTORE_CLEARED`). In a
   restore from production's backup (`_RESTORE=production-backup`, the environment on
   production's instance) the plan step first drops the environment's database and
-  restores it, under its own name, from the most recent backup of production's database
-  on the instance they share, as the apply identity; the plan then recreates the
+  restores it, under its own name, from the most recent backup of production's live
+  database on the instance they share, as the apply identity; the plan then recreates the
   memberships the drop took with it, and the migrate command applies whatever production's
-  backup predates. The backup and the moment its data is from reach the record
+  backup predates. Production's live database is the one its deployment record names
+  (`_RESTORE_DATABASE`, read by the operations workflow): after a rollback, the generation
+  restored into, not the stack's first database, and while that generation has no backup
+  of its own (the next release or the schedule takes one) the backup it was restored from
+  stands in (`_RESTORE_DATABASE_BACKUP`, the record's `rollback.backup`); a record written
+  before database generations names none, and production's first database is read. The
+  backup and the moment its data is from reach the record
   (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`). While the application is in maintenance the
   plan carries the maintenance variable's live value (`-var maintenance=1`): the stack
   declares `APP_MAINTENANCE` with `var.maintenance`, empty by default, and an entry of the
@@ -1177,10 +1183,12 @@ after maintenance on is healed by the next release that deploys; a pull-request 
 leaves the environment's queue as it is, since a restore may be in maintenance while
 the pull request builds). The run refuses the instruction in production. `bedrock restore` starts it from GitHub (below).
 For the environment on production's instance the database is not emptied but restored
-from production's most recent backup, at production's schema: the plan step drops it
-and restores it under its own name as the apply identity, and the migrations production's
-backup predates then apply. The environment's file objects are kept, and its Firestore
-documents are deleted as in every restore.
+from the most recent backup of production's live database (the generation its deployment
+record names; after a rollback, the backup the generation was restored from while it has
+none of its own), at production's schema: the plan step drops it and restores it under
+its own name as the apply identity, and the migrations production's backup predates then
+apply. The environment's file objects are kept, and its Firestore documents are deleted
+as in every restore.
 
 ## When the migration fails
 
