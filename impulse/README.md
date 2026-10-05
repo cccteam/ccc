@@ -689,7 +689,7 @@ marked `@rpc` and `@schedule("0 9 * * *")` whose `Execute` starts the job proces
 cleanup command through the client's `Jobs()`; an application without an rpc package gains
 `pkg/rpc` with a `Client` carrying the starter, and `WithRPC("pkg/rpc")` in the generator
 program. The site level builds the scheduler guard (`scheduled.FromEnvironment`, from
-`APP_SCHEDULER_INVOKER`) and the job starter (`jobs.FromEnvironment`, from `APP_JOBS_JOB`)
+`APP_SCHEDULER_INVOKER`) and the job starter (`jobs.FromEnvironment`, from `APP_JOBS_TEMPLATE` and `APP_VERSION`)
 and exposes them as `Scheduler()` and `Jobs()`; the `Configurer` asks for both, the `App`
 carries the guard and the RPC client built over the starter, and `app/scheduled.go`
 declares `SchedulerAuth` (the middleware the generated router mounts the scheduled routes
@@ -705,8 +705,8 @@ requirement.
 An application already holding an rpc package keeps its `Client`: the method is written
 into the package, and giving the client a `Jobs()` accessor fed from the configuration is
 the agent's, as is the cleanup command where `cmd/jobs` exists, and the image: a Dockerfile
-builds `/jobs` beside the other binaries and bakes the job's name from the build argument
-`JOBS_JOB` (`bedrock check` asks for both once the job process exists). Which resources record
+builds `/jobs` beside the other binaries (`bedrock check` asks for it once the job process
+exists). Which resources record
 files (`@file` on a `resource.Key` column, an `@upload` method) is the application's;
 until one does, the store is wired and idle. The `file-store` check watches the variable
 from then on, and the stack reads it to make the bucket (`gs://<bucket>` on Cloud Run),

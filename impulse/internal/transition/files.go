@@ -616,7 +616,7 @@ func (f Files) writeJobs(a *app.App, modulePath, configDir string, g *app.Genera
 	}
 	ch.didf("%s: CleanupCommand (%s) and CleanupFiles, the orphaned-file cleanup over the store through the generated FileHolders(); %s: the job process running it, with -window and -dry-run", cleanupFile, cleanupCommand, mainFile)
 	if dockerfile, err := os.ReadFile(a.Abs(dockerfileName)); err == nil && !strings.Contains(string(dockerfile), "/build/"+jobsProcess) {
-		ch.skipf("%s: build %s as /%s beside the other binaries (go build -o /build/%s ./%s) and bake the job's name into the image (ARG JOBS_JOB; ENV APP_JOBS_JOB=\"${JOBS_JOB}\"), which bedrock check asks for once the job process exists", dockerfileName, jobsCmdDir, jobsProcess, jobsProcess, jobsCmdDir)
+		ch.skipf("%s: build %s as /%s beside the other binaries (go build -o /build/%s ./%s), which bedrock check asks for once the job process exists", dockerfileName, jobsCmdDir, jobsProcess, jobsProcess, jobsCmdDir)
 	}
 
 	return nil
@@ -844,8 +844,9 @@ type (
 	// CleanUpFiles is the scheduled method that starts the orphaned-file cleanup. Every
 	// day at 09:00 UTC Cloud Scheduler calls it, and it starts one execution of the
 	// application's job process with the cleanup command (%[3]s %[4]s), through the
-	// starter the configuration built from APP_JOBS_JOB (resource/jobs). The service
-	// starts its job, the job deployed with this revision, and the cleanup never runs
+	// starter the configuration built from the template job the stack sets
+	// (APP_JOBS_TEMPLATE, resource/jobs) and the version. The service starts its job,
+	// the job deployed with this revision, and the cleanup never runs
 	// inside a request; where no job is configured (development, a pull-request stack)
 	// the start is refused and the call says so.
 	//
@@ -934,7 +935,7 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 		ok, err := f.buildInSite(edit, &siteWiring{
 			importPath: jobsImportPath,
 			field:      "// " + siteStarterField + " is the job process's starter (" + scheduledConfigFile + ").\n" + siteStarterField + " jobs.Starter",
-			statements: "// The job process's starter (" + scheduledConfigFile + "): it reads the Cloud Run job the image names in\n// APP_JOBS_JOB, and without one refuses every start.\n" +
+			statements: "// The job process's starter (" + scheduledConfigFile + "): it names the job of this build from the template\n// job the stack sets in APP_JOBS_TEMPLATE and the version the image bakes in, and without a\n// template refuses every start.\n" +
 				"starter, err := jobs.FromEnvironment(ctx)\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "jobs.FromEnvironment()") + "\n}",
 			callee:  "jobs.FromEnvironment",
 			element: siteStarterField + ": starter",
@@ -1081,8 +1082,9 @@ func (c *%[2]s) %[1]s() *scheduled.Guard {
 }
 `
 	jobsAccessorSource = `
-// %[1]s starts the application's job process: the Cloud Run job the image names in
-// APP_JOBS_JOB (resource/jobs), or a starter that refuses where none is configured.
+// %[1]s starts the application's job process: the job of this build, named from the
+// template job the stack sets in APP_JOBS_TEMPLATE and the version the image bakes in
+// (resource/jobs), or a starter that refuses where no template is configured.
 func (c *%[2]s) %[1]s() jobs.Starter {
 	return c.%[3]s
 }
@@ -1178,7 +1180,7 @@ func (Files) exposeGuard(e *sourceEdit) (string, error) {
 	var onConfigurer []string
 	for _, m := range []struct{ name, line, importPath string }{
 		{schedulerAccessor, "// " + schedulerAccessor + " is the guard the scheduled routes sit behind (resource/scheduled): the\n// invoker identity the stack names in APP_SCHEDULER_INVOKER, whose Google-signed tokens\n// alone are admitted. A guard with no invoker refuses every scheduled call.\n" + schedulerAccessor + "() *scheduled.Guard", scheduledImportPath},
-		{jobsAccessor, "// " + jobsAccessor + " starts the application's job process (resource/jobs): an execution of the\n// Cloud Run job deployed with this revision, which the image names in APP_JOBS_JOB.\n// The scheduled CleanUpFiles method starts the orphaned-file cleanup through it.\n" + jobsAccessor + "() jobs.Starter", jobsImportPath},
+		{jobsAccessor, "// " + jobsAccessor + " starts the application's job process (resource/jobs): an execution of the\n// Cloud Run job deployed with this revision, named from the template job the stack sets in\n// APP_JOBS_TEMPLATE and the version the image bakes in.\n// The scheduled CleanUpFiles method starts the orphaned-file cleanup through it.\n" + jobsAccessor + "() jobs.Starter", jobsImportPath},
 	} {
 		before := e.src
 		if err := e.apply(app.AddInterfaceLine(e.rel, e.src, configurerType, m.line)); err != nil {
@@ -1586,7 +1588,7 @@ func (Files) Meaning() string {
 	items := []string{
 		"Record files. A resource that keeps a file declares a key column (`resource.Key[resource.Store]` for the default store) and `@file` on it, or an `@upload` method whose Execute takes `resource.Files`; the generated holders (`FileHolders()`) then list the resource, and the cleanup reads its keys. Until a resource records a file the store is wired and idle.",
 		fmt.Sprintf("Development. `%s` in `%s` keeps files under `%s`, gitignored; `%s` empties the directory before it seeds, since no row holds a file then.", app.FileStoreVariable, ".envrc.template", fileStoreDevDir, bootstrapDir),
-		"Deployment. The stack reads the variable from the configuration and makes the bucket, sets `APP_FILE_STORE` to it, deploys the job process with the service (`APP_JOBS_JOB` names it to the service), and schedules the method with Cloud Scheduler under the invoker identity it names in `APP_SCHEDULER_INVOKER`; nothing here is configured by hand.",
+		"Deployment. The stack reads the variable from the configuration and makes the bucket, sets `APP_FILE_STORE` to it, deploys the job process with the service (`APP_JOBS_TEMPLATE` names the template job to the service, and the site starts the copy of its own build), and schedules the method with Cloud Scheduler under the invoker identity it names in `APP_SCHEDULER_INVOKER`; nothing here is configured by hand.",
 		"Tests. The test configurers answer a nil guard and a fake starter (`jobs.NewFake`), so no suite starts the job; a suite that drives the scheduled route builds a guard over `scheduled.NewFake` and reads the starts off the fake.",
 	}
 	for i, item := range items {

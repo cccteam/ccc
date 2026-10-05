@@ -55,7 +55,8 @@ the directory; the bootstrap empties a directory store before it seeds; cmd/jobs
 the orphaned-file cleanup command (pkg/jobs, filestore.Cleanup over the generated
 FileHolders()); and the rpc package gains CleanUpFiles, a method marked @schedule that
 starts the job process's cleanup each day at 09:00 UTC through the starter the site
-configuration builds from APP_JOBS_JOB (resource/jobs), behind the scheduler guard it
+configuration builds from the template job the stack sets in APP_JOBS_TEMPLATE and the
+version (resource/jobs), behind the scheduler guard it
 builds from APP_SCHEDULER_INVOKER (resource/scheduled). An application without an rpc
 package gains one, with WithRPC in the generator program and the Client the generated
 handlers ask the App for; the test configurers gain a nil guard and a fake starter.
