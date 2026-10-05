@@ -65,6 +65,10 @@ type Model struct {
 	// (GenerateRoutes), where the resource generator writes the release file the deploy
 	// reads for the maintenance window; empty when the site generator declares none.
 	RouterDir string
+	// Scheduled are the routes the code declares with @schedule, read from that release
+	// file in path order: the stack gives each a Cloud Scheduler job per environment
+	// (scheduler.tf). None when the code declares none.
+	Scheduled []ScheduledRoute
 	// Firestore is what the application's Firestore database carries beyond the
 	// database itself (the composite indexes, the time-to-live policies and the security
 	// rules the files beside the schema migrations declare), or nil when the code
@@ -660,6 +664,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, err
 	}
 	m.router(a)
+	if err := m.scheduled(a); err != nil {
+		return nil, err
+	}
 	m.Environments = p.environments(code)
 
 	return m, nil

@@ -48,6 +48,12 @@ locals {
   jobs_member       = "serviceAccount:${local.jobs_email}"
   jobs_account_name = "projects/${local.project_id}/serviceAccounts/${local.jobs_email}"
 
+  # The invoker identity Cloud Scheduler calls the scheduled routes as
+  # (scheduler.tf), spelled out the same way. An environment's stack alone
+  # creates it: a pull-request stack has no scheduler jobs.
+  scheduler_account = "${local.name}-gbl-${local.app}-sched"
+  scheduler_email   = "${local.scheduler_account}@${local.project_id}.iam.gserviceaccount.com"
+
   # The environment before this one in the promotion order (tst, stg, prd) and
   # its deployment-records bucket: the pipeline runs a release here only after
   # that environment holds a live record of it. The first environment has none.
@@ -248,10 +254,18 @@ locals {
     APP_FIREBASE_API_KEY = nonsensitive(google_apikeys_key.firebase.key_string)
   }
 
+  # APP_SCHEDULER_INVOKER: the invoker identity's email, which the framework requires
+  # of the token on every call to a scheduled route (scheduler.tf). No configuration
+  # level declares it: the framework reads it itself. A pull-request stack leaves it
+  # unset, so its scheduled routes refuse every call.
+  scheduler_env = local.is_pr ? {} : {
+    APP_SCHEDULER_INVOKER = local.scheduler_email
+  }
+
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
   # error) and APP_CONSOLE_DIST and APP_PORTAL_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.files_env, local.tasks_env, local.firestore_env)
+  service_env = merge(local.core_env, local.data_env, local.site_directory_env, local.files_env, local.tasks_env, local.firestore_env, local.scheduler_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them: what the pipeline
   # runs the migrate command with on the build worker (cloud-build.tf,

@@ -8,6 +8,8 @@
 //	default (/api), Google directory sessions:
 //	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/login, GET /api/user/callback, GET /api/user/session, DELETE /api/user/session
 //	  + ValidateSession, ValidateXSRFToken: hooks.Default, generatedRoutes
+//	scheduled (/_scheduled), Cloud Scheduler's token:
+//	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -23,9 +25,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, and the browser applications' handlers.
+// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, the scheduled methods' handlers and the scheduler's token check, and the browser applications' handlers.
 type Handlers interface {
 	GeneratedHandlers
+	GeneratedScheduledHandlers
 	// The default outlet's session handlers.
 	session.OIDCGoogleHandlers
 
@@ -36,6 +39,12 @@ type Handlers interface {
 	// Every outlet.
 	NoCaching(next http.Handler) http.Handler
 	CompressionMiddleware() func(http.Handler) http.Handler
+
+	// SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes and refuses
+	// every other with 401: a token Google signed for the route's URL whose verified
+	// email is the invoker identity (scheduled.Guard's Middleware, built from the
+	// environment by scheduled.FromEnvironment).
+	SchedulerAuth(next http.Handler) http.Handler
 
 	// The default outlet's browser application at /: DeepLink rewrites its routes to
 	// the entry document, Assets serves the built bundle.
@@ -100,9 +109,20 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 
+	// The scheduled routes (/_scheduled): Cloud Scheduler's calls, each carrying a token
+	// of the invoker identity, so the group carries no session handling, no XSRF guard and
+	// no hook: SchedulerAuth is the one way in.
+	r.Group(func(r chi.Router) {
+		r.Use(h.NoCaching)
+		r.Use(h.CompressionMiddleware())
+		r.Use(h.SchedulerAuth)
+
+		generatedScheduledRoutes(r, h)
+	})
+
 	// Under an outlet's prefix nothing else answers: an unknown API path is 404, never a
 	// browser application's entry document.
-	for _, prefix := range []string{"/api/"} {
+	for _, prefix := range []string{"/api/", "/_scheduled/"} {
 		r.Route(prefix, func(r chi.Router) {
 			r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "Not Found", http.StatusNotFound)

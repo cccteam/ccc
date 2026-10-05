@@ -357,3 +357,162 @@ func localExpression(t *testing.T, path, name string) hcl.Expression {
 
 	return nil
 }
+
+// TestScheduledJobs evaluates the rendered scheduler.tf and locals.tf of a stack whose code
+// declares a scheduled route and of one that declares none, in an environment's stack and
+// in a pull-request stack. With a route, an environment's stack creates the invoker
+// identity and one Cloud Scheduler job per route, which posts to the route on the
+// environment's first hostname with an OIDC token of the invoker minted for the same URL,
+// at the schedule and in the zone the code declares, and the service receives the
+// invoker's email as APP_SCHEDULER_INVOKER; a pull-request stack creates neither and sets
+// no variable. Without a route the stack declares none of it.
+func TestScheduledJobs(t *testing.T) {
+	t.Parallel()
+
+	const (
+		host    = "app-tst.example.dev"
+		invoker = "imp-tst-gbl-app-sched@imp-tst-gbl-core-3c4d.iam.gserviceaccount.com"
+	)
+	tests := []struct {
+		name        string
+		dir         string
+		pullRequest bool
+		// wantJobs are the jobs by key, each as jobLine writes it; none when no job is
+		// created.
+		wantJobs map[string]string
+		// wantAccounts is how many invoker identities the stack creates.
+		wantAccounts int
+		// wantInvoker is the APP_SCHEDULER_INVOKER the service receives, empty for none.
+		wantInvoker string
+		// declaresNone says the code declares no scheduled route, so the stack carries
+		// no scheduler locals or resources at all.
+		declaresNone bool
+	}{
+		{
+			name:         "a scheduled route in an environment's stack",
+			dir:          "harbor",
+			wantJobs:     map[string]string{"send-daily-digest": "0 7 * * 1-5 in America/New_York: POST https://app-tst.example.dev/_scheduled/send-daily-digest as " + invoker + " for https://app-tst.example.dev/_scheduled/send-daily-digest"},
+			wantAccounts: 1,
+			wantInvoker:  invoker,
+		},
+		{name: "a scheduled route in a pull-request stack", dir: "harbor", pullRequest: true},
+		{name: "no scheduled route", dir: "beacon", declaresNone: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			scheduler := parseBody(t, filepath.Join("testdata", tt.dir, "scheduler.tf"))
+			locals := localsOf(t, parseBody(t, filepath.Join("testdata", tt.dir, "locals.tf")))
+			if tt.declaresNone {
+				if len(scheduler.Blocks) != 0 {
+					t.Errorf("scheduler.tf declares %d block(s), want none", len(scheduler.Blocks))
+				}
+				for _, name := range []string{"scheduler_account", "scheduler_email", "scheduler_env"} {
+					if _, ok := locals[name]; ok {
+						t.Errorf("locals.tf declares %s, for code that declares no scheduled route", name)
+					}
+				}
+
+				return
+			}
+
+			routes, diags := localExpression(t, filepath.Join("testdata", tt.dir, "scheduler.tf"), "scheduled_routes").Value(nil)
+			if diags.HasErrors() {
+				t.Fatalf("scheduled_routes: %s", diags.Error())
+			}
+			local := map[string]cty.Value{
+				"is_pr":            cty.BoolVal(tt.pullRequest),
+				"scheduled_routes": routes,
+				"scheduler_email":  cty.StringVal(invoker),
+				"hostnames":        cty.ListVal([]cty.Value{cty.StringVal(host)}),
+			}
+			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"local": cty.ObjectVal(local)}}
+
+			accounts := evalAttribute(t, ctx, resourceBody(t, scheduler, "google_service_account.scheduler"), "count")
+			if got, _ := accounts.AsBigFloat().Int64(); got != int64(tt.wantAccounts) {
+				t.Errorf("google_service_account.scheduler count = %d, want %d", got, tt.wantAccounts)
+			}
+
+			job := resourceBody(t, scheduler, "google_cloud_scheduler_job.scheduled")
+			got := map[string]string{}
+			for key, route := range evalAttribute(t, ctx, job, "for_each").AsValueMap() {
+				each := &hcl.EvalContext{Variables: map[string]cty.Value{
+					"local": cty.ObjectVal(local),
+					"each":  cty.ObjectVal(map[string]cty.Value{"key": cty.StringVal(key), "value": route}),
+				}}
+				got[key] = jobLine(t, each, job)
+			}
+			if len(got) != len(tt.wantJobs) {
+				t.Fatalf("jobs = %v, want %v", got, tt.wantJobs)
+			}
+			for key, want := range tt.wantJobs {
+				if got[key] != want {
+					t.Errorf("job %s = %q, want %q", key, got[key], want)
+				}
+			}
+
+			env, ok := locals["scheduler_env"]
+			if !ok {
+				t.Fatalf("locals.tf declares no scheduler_env")
+			}
+			value, diags := env.Expr.Value(ctx)
+			if diags.HasErrors() {
+				t.Fatalf("scheduler_env: %s", diags.Error())
+			}
+			invokerSet := ""
+			if v, ok := value.AsValueMap()["APP_SCHEDULER_INVOKER"]; ok {
+				invokerSet = v.AsString()
+			}
+			if invokerSet != tt.wantInvoker {
+				t.Errorf("scheduler_env sets APP_SCHEDULER_INVOKER to %q, want %q", invokerSet, tt.wantInvoker)
+			}
+			if !slices.Contains(localsReferenced(locals["service_env"].Expr), "scheduler_env") {
+				t.Errorf("service_env does not merge scheduler_env")
+			}
+		})
+	}
+}
+
+// evalAttribute evaluates the named attribute of body in ctx.
+func evalAttribute(t *testing.T, ctx *hcl.EvalContext, body *hclsyntax.Body, name string) cty.Value {
+	t.Helper()
+
+	attr, ok := body.Attributes[name]
+	if !ok {
+		t.Fatalf("no attribute %s", name)
+	}
+	value, diags := attr.Expr.Value(ctx)
+	if diags.HasErrors() {
+		t.Fatalf("%s: %s", name, diags.Error())
+	}
+
+	return value
+}
+
+// nestedBlock is the body of the first block of the type inside body.
+func nestedBlock(t *testing.T, body *hclsyntax.Body, typ string) *hclsyntax.Body {
+	t.Helper()
+
+	for _, b := range body.Blocks {
+		if b.Type == typ {
+			return b.Body
+		}
+	}
+	t.Fatalf("no %s block", typ)
+
+	return nil
+}
+
+// jobLine is what a Cloud Scheduler job does, on one line: its schedule and zone, then
+// the call it makes, the identity whose token it carries and the token's audience.
+func jobLine(t *testing.T, ctx *hcl.EvalContext, job *hclsyntax.Body) string {
+	t.Helper()
+
+	target := nestedBlock(t, job, "http_target")
+	token := nestedBlock(t, target, "oidc_token")
+
+	return evalAttribute(t, ctx, job, "schedule").AsString() + " in " + evalAttribute(t, ctx, job, "time_zone").AsString() + ": " +
+		evalAttribute(t, ctx, target, "http_method").AsString() + " " + evalAttribute(t, ctx, target, "uri").AsString() +
+		" as " + evalAttribute(t, ctx, token, "service_account_email").AsString() + " for " + evalAttribute(t, ctx, token, "audience").AsString()
+}

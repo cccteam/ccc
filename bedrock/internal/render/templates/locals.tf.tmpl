@@ -51,6 +51,14 @@ locals {
   jobs_member       = "serviceAccount:${local.jobs_email}"
   jobs_account_name = "projects/${local.project_id}/serviceAccounts/${local.jobs_email}"
 {{- end}}
+{{- if .Scheduled}}
+
+  # The invoker identity Cloud Scheduler calls the scheduled routes as
+  # (scheduler.tf), spelled out the same way. An environment's stack alone
+  # creates it: a pull-request stack has no scheduler jobs.
+  scheduler_account = "${local.name}-gbl-${local.app}-sched"
+  scheduler_email   = "${local.scheduler_account}@${local.project_id}.iam.gserviceaccount.com"
+{{- end}}
 
   # The environment before this one in the promotion order ({{.EnvsComma}}) and
   # its deployment-records bucket: the pipeline runs a release here only after
@@ -289,10 +297,21 @@ locals {
   }
 {{- end}}
 
+{{- if .Scheduled}}
+
+  # {{.SchedulerVariable}}: the invoker identity's email, which the framework requires
+  # of the token on every call to a scheduled route (scheduler.tf). No configuration
+  # level declares it: the framework reads it itself. A pull-request stack leaves it
+  # unset, so its scheduled routes refuse every call.
+  scheduler_env = local.is_pr ? {} : {
+    {{.SchedulerVariable}} = local.scheduler_email
+  }
+{{- end}}
+
   # {{.SiteLevel.FileBase}}: {{.Port.Name}} is set by Cloud Run itself (reserved; setting it is an
   # error) and {{.SiteImageVars}} is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}})
+  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}}{{if .Scheduled}}, local.scheduler_env{{end}})
 
   # {{.Migrate.Dir}} reads {{.MigrateLevels}} and nothing above them: what the pipeline
   # runs the migrate command with on the build worker (cloud-build.tf,

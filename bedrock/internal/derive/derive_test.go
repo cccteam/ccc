@@ -70,6 +70,9 @@ func TestDerive(t *testing.T) {
 		// wantFileStores are the file stores (fileStoreLine), none for an application
 		// that declares no store.
 		wantFileStores []string
+		// wantScheduled are the scheduled routes (scheduledLine), none for an application
+		// that declares none.
+		wantScheduled []string
 	}{
 		{
 			name:    "harbor",
@@ -124,6 +127,7 @@ func TestDerive(t *testing.T) {
 			wantHooks:      []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
 			wantFirestore:  "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
 			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files"},
+			wantScheduled:  []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
 		},
 		{
 			name:      "beacon, a password auth: no registration, no callback",
@@ -247,6 +251,13 @@ func TestDerive(t *testing.T) {
 			if !slices.Equal(stores, tt.wantFileStores) {
 				t.Errorf("FileStores = %v, want %v", stores, tt.wantFileStores)
 			}
+			var scheduled []string
+			for i := range m.Scheduled {
+				scheduled = append(scheduled, scheduledLine(&m.Scheduled[i]))
+			}
+			if !slices.Equal(scheduled, tt.wantScheduled) {
+				t.Errorf("Scheduled = %v, want %v", scheduled, tt.wantScheduled)
+			}
 			for _, e := range m.Environments {
 				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
 					t.Errorf("Environment %s hostnames = %v, want %s", e.Name, e.Hostnames, want)
@@ -301,6 +312,81 @@ func fileStoreLine(s *FileStore) string {
 	}
 
 	return fmt.Sprintf("%s %s %s: %s, %s, %s, %s", s.Variable.Name, s.Variable.Level, s.Variable.Declaration(), name, s.Resource, s.Suffix, s.Address())
+}
+
+// TestDeriveScheduled reads the scheduled routes from the release file beside the
+// generated router, over a copy of the fixture whose release file each case writes: no
+// file means no routes, as for an application generated before the file existed, and a
+// file that does not read is refused, since the stack could not say which jobs the code
+// declares.
+func TestDeriveScheduled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// content is the release file's content; empty removes the file.
+		content string
+		want    []string
+		wantErr string
+	}{
+		{name: "no release file declares no route"},
+		{name: "a release file without scheduled routes", content: `{"outlets": {"default": {}}}`},
+		{
+			name:    "two routes in the file's order",
+			content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * *", "timeZone": "UTC"}, {"path": "/_scheduled/send-digest", "schedule": "0 7 * * 1-5", "timeZone": "America/Denver"}]}`,
+			want: []string{
+				"prune-logs: POST /_scheduled/prune-logs at 30 3 * * * in UTC",
+				"send-digest: POST /_scheduled/send-digest at 0 7 * * 1-5 in America/Denver",
+			},
+		},
+		{name: "a release file that does not read is refused", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/prune-logs"}]}`, wantErr: "pkg/router/zz_gen_release.json: the scheduled route \"/prune-logs\" is not /_scheduled/<method in kebab case>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "app")
+			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", "harbor"))); err != nil {
+				t.Fatalf("os.CopyFS() error = %v", err)
+			}
+			file := filepath.Join(dir, "pkg", "router", ReleaseFileName)
+			if tt.content == "" {
+				if err := os.Remove(file); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(file, []byte(tt.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			a, err := app.Discover(dir)
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			m, err := Derive(a, testPlacement(t))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Derive() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Derive() error = %v", err)
+			}
+			var got []string
+			for i := range m.Scheduled {
+				got = append(got, scheduledLine(&m.Scheduled[i]))
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("Scheduled = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// scheduledLine is what a scheduled route says about itself on one line: its name, then
+// the call Cloud Scheduler makes and when.
+func scheduledLine(r *ScheduledRoute) string {
+	return fmt.Sprintf("%s: POST %s at %s in %s", r.Name(), r.Path, r.Schedule, r.TimeZone)
 }
 
 // TestBucketPolicyAddress reads a bucket policy's address from its bucket's, the way the

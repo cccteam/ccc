@@ -213,6 +213,25 @@ from `2-env`'s state.
   and the labels and annotations a deploy stamps are the pipeline's
   (`ignore_changes`); identity, scaling, variables, and secret mounts stay
   this stack's.
+- **Cloud Scheduler jobs**, one per scheduled route: a method the code marks
+  `@schedule`, which the generated router serves under `/_scheduled` and lists
+  in `pkg/router/zz_gen_release.json`. In every environment, never in a
+  pull-request stack, in the primary region, named
+  `imp-<env>-uc1-harbor-sched-<route>` (`scheduler.tf`):
+
+  | Route | Schedule | Time zone |
+  |---|---|---|
+  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |
+
+  Each job calls `https://<first hostname><route>` with an OIDC token (an
+  identity token Google signs) of the invoker identity
+  `imp-<env>-gbl-harbor-sched`, with the same URL as the token's audience.
+  The service is open to the load balancer, so Cloud Run does not check the
+  call; the framework in front of the routes does, admitting a token Google
+  signed for the route's URL whose email is the one this stack sets on the
+  service as `APP_SCHEDULER_INVOKER`, and answering any other call 401. So the
+  invoker holds no role. A pull-request stack leaves the variable unset, and
+  its scheduled routes refuse every call.
 - **Load balancer backend**: a serverless NEG per region and one global
   backend service `imp-<env>-gbl-harbor-backend` over both, external managed,
   outlier detection on (5 consecutive errors in a 1-second interval eject a
@@ -263,6 +282,7 @@ above them.
 | `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | | |
 | `APP_STAFF_OIDC_GROUP_LOOKUP` | data | `var.staff_oidc_group_lookup` | yes | | |
 | `APP_JOBS_JOB` | site | the job of the build, baked into the image (Dockerfile, `ARG JOBS_JOB`) | yes | | |
+| `APP_SCHEDULER_INVOKER` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | | |
 | `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
 The migrate command and the job process carry the hosted domain and group prefix because the session

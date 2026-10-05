@@ -78,7 +78,8 @@ again does not, because its pull request is already labeled as tagged.
 - **Application stack**: the OpenTofu root under the application repository's
   `infrastructure/` directory (or the one layer under `3-app/` of an infrastructure
   repository): the Cloud Run services, the database, the secret
-  containers, the backend service, the triggers and the sweep schedule, per environment.
+  containers, the backend service, the triggers, the sweep schedule and the scheduled
+  routes' jobs, per environment.
   Rendered by `bedrock render` from the code and the application's placement.
 - **Placement**: `placement.json` beside the stack. For an application it records the
   organization's facts the stack needs, the bedrock the pipeline runs
@@ -298,7 +299,19 @@ and, when the site's config declares `APP_JOBS_JOB`, that variable baked into ea
 build's image as the name of that build's job, with `run.invoker` for the site's
 identity on the template job, copied by the pipeline onto each build's job, so the
 running service, and only it, starts the job of its own build through the Cloud Run API
-(a schedule calls an endpoint on the service; the pipeline never runs it); a config variable
+(a schedule calls an endpoint on the service; the pipeline never runs it); a method the
+code marks `@schedule("<cron>", zone: "<IANA zone>")` on an `@rpc` struct, which the
+generated router serves at `POST /_scheduled/<method>` and lists in its release file,
+becomes one Cloud Scheduler job per environment in the primary region (`scheduler.tf`),
+`<prefix>-<env>-<region>-<app>-sched-<method>`, which calls the route on the environment's
+canonical hostname on its schedule, in its time zone, with an OIDC token of the stack's
+invoker identity `<prefix>-<env>-gbl-<app>-sched` minted for the route's URL; the service
+receives that identity's email as `APP_SCHEDULER_INVOKER`, and the framework in front of
+the route admits a token Google signed for the route's URL with that email and answers
+every other call 401, so the identity holds no role and Cloud Run's IAM, which the load
+balancer's tag opens, is not what guards the route; a pull-request stack creates neither
+the identity nor the jobs and leaves the variable unset, so its scheduled routes refuse
+every call; a config variable
 `APP_FILE_STORE` (the application's default file store) or `APP_FILE_STORE_<NAME>` (a
 named store, `APP_FILE_STORE_DOCUMENTS`) becomes a Cloud Storage bucket in the primary
 region, one per variable, named `<app>-files-<project number>` or

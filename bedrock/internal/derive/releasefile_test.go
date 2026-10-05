@@ -32,6 +32,26 @@ func TestReadReleaseFile(t *testing.T) {
 		{name: "no outlet", content: `{"outlets": {}}`, wantErr: "names no outlet; a generated router has at least its default outlet"},
 		{name: "a kind that is not api-key", content: `{"outlets": {"default": {"kind": "session"}}}`, wantErr: `outlet default has kind "session", and the one kind an entry declares is "api-key"`},
 		{name: "an oldest answered that is not a release", content: `{"outlets": {"default": {"oldestAnswered": "v1.5.0"}}}`, wantErr: `outlet default answers "v1.5.0" at the oldest, which is not a release (1.5.0), "this" or ""`},
+		{
+			name:    "scheduled routes, a schedule with names and a zone with a region",
+			content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * *", "timeZone": "UTC"}, {"path": "/_scheduled/send-digest", "schedule": "0 7 * JAN-MAR MON-FRI", "timeZone": "America/Argentina/Buenos_Aires"}]}`,
+			want: &ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				Scheduled: []ScheduledRoute{
+					{Path: "/_scheduled/prune-logs", Schedule: "30 3 * * *", TimeZone: "UTC"},
+					{Path: "/_scheduled/send-digest", Schedule: "0 7 * JAN-MAR MON-FRI", TimeZone: "America/Argentina/Buenos_Aires"},
+				},
+			},
+		},
+		{name: "a scheduled route outside the prefix", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/api/prune-logs", "schedule": "30 3 * * *", "timeZone": "UTC"}]}`, wantErr: `the scheduled route "/api/prune-logs" is not /_scheduled/<method in kebab case>`},
+		{name: "a scheduled route whose name is not in kebab case", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/PruneLogs", "schedule": "30 3 * * *", "timeZone": "UTC"}]}`, wantErr: `the scheduled route "/_scheduled/PruneLogs" is not /_scheduled/<method in kebab case>`},
+		{name: "a scheduled route deeper than one segment", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/logs/prune", "schedule": "30 3 * * *", "timeZone": "UTC"}]}`, wantErr: `the scheduled route "/_scheduled/logs/prune" is not /_scheduled/<method in kebab case>`},
+		{name: "a scheduled route listed twice", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * *", "timeZone": "UTC"}, {"path": "/_scheduled/prune-logs", "schedule": "0 4 * * *", "timeZone": "UTC"}]}`, wantErr: "the scheduled route /_scheduled/prune-logs is listed twice"},
+		{name: "a schedule of four fields", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * *", "timeZone": "UTC"}]}`, wantErr: `the scheduled route /_scheduled/prune-logs has the schedule "30 3 * *", which is not five cron fields separated by single spaces`},
+		{name: "a schedule carrying a quote", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * \"", "timeZone": "UTC"}]}`, wantErr: "which is not five cron fields separated by single spaces"},
+		{name: "no schedule", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "timeZone": "UTC"}]}`, wantErr: `has the schedule "", which is not five cron fields`},
+		{name: "no time zone", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * *"}]}`, wantErr: `the scheduled route /_scheduled/prune-logs has the time zone "", which is not an IANA name (UTC, America/Denver)`},
+		{name: "a time zone carrying an interpolation", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * *", "timeZone": "${var.zone}"}]}`, wantErr: `has the time zone "${var.zone}", which is not an IANA name`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

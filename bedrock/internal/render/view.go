@@ -133,13 +133,19 @@ type view struct {
 	// MaintenanceVariable is the variable the pipeline sets on a maintenance revision,
 	// declared empty on the service by the stack.
 	MaintenanceVariable string
-	Port                *derive.Variable
-	ClientID            *derive.Variable
-	ClientSecret        *derive.Variable
-	RedirectURL         *derive.Variable
-	HostedDomain        *derive.Variable
-	GroupPrefix         *derive.Variable
-	GroupLookup         *derive.Variable
+	// SchedulerVariable is the variable that names the invoker identity of the scheduled
+	// routes to the service (scheduler.tf); ScheduledPrefix the path they are served
+	// under; ReleaseFileName the generated file that lists them.
+	SchedulerVariable string
+	ScheduledPrefix   string
+	ReleaseFileName   string
+	Port              *derive.Variable
+	ClientID          *derive.Variable
+	ClientSecret      *derive.Variable
+	RedirectURL       *derive.Variable
+	HostedDomain      *derive.Variable
+	GroupPrefix       *derive.Variable
+	GroupLookup       *derive.Variable
 	// CookieKeySecret and ClientSecretSecret are the secrets by role.
 	CookieKeySecret    *derive.Secret
 	ClientSecretSecret *derive.Secret
@@ -660,6 +666,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.GcloudImage, v.OpenTofuImage, v.DockerImage = gcloudImage, openTofuImage, dockerImage
 	v.Auth = &m.Auths[0]
 	v.MaintenanceVariable = derive.MaintenanceVariable
+	v.SchedulerVariable, v.ScheduledPrefix, v.ReleaseFileName = derive.SchedulerInvokerVariable, derive.ScheduledPrefix, derive.ReleaseFileName
 	v.Directory = v.Auth.OIDC()
 	v.AuthVar = v.Auth.VariablePrefix()
 	if v.Directory {

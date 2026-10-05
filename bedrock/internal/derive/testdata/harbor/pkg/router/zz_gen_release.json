@@ -1,0 +1,14 @@
+{
+  "outlets": {
+    "default": {
+      "oldestAnswered": ""
+    }
+  },
+  "scheduled": [
+    {
+      "path": "/_scheduled/send-daily-digest",
+      "schedule": "0 7 * * 1-5",
+      "timeZone": "America/New_York"
+    }
+  ]
+}
