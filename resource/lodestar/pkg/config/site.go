@@ -102,8 +102,9 @@ func (c *SiteConfiguration) Scheduler() *scheduled.Guard {
 	return c.scheduler
 }
 
-// Jobs starts the application's job process: the Cloud Run job the image names in
-// APP_JOBS_JOB (resource/jobs), or a starter that refuses where none is configured.
+// Jobs starts the application's job process: the job of this build, named from the
+// template job the stack sets in APP_JOBS_TEMPLATE and the version the image bakes in
+// (resource/jobs), or a starter that refuses where no template is configured.
 func (c *SiteConfiguration) Jobs() jobs.Starter {
 	return c.jobs
 }

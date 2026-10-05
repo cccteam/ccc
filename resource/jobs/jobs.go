@@ -3,14 +3,17 @@
 // started by the running service and never by a schedule or a hand; Cloud Scheduler
 // calls a scheduled route on the service (resource/scheduled), and the method behind
 // it starts the job. So a traffic rollback rolls the job back too, since each
-// revision's image names the job built with it.
+// revision names the job built with it.
 //
-// The pipeline bakes the job's resource name into the image as JobVariable
-// (APP_JOBS_JOB). FromEnvironment reads it when the application starts: set, the
-// starter runs the job through the Cloud Run Admin API as the service's own identity,
-// which holds roles/run.invoker on its job; unset (development, a pull-request stack,
-// an application without a job process), every start is refused with a message saying
-// so, which the start logs.
+// The stack owns a template job it never runs and sets its resource name on the service
+// as TemplateVariable (APP_JOBS_TEMPLATE); the pipeline copies the template per build
+// into a job named after it with the build's version key, on that build's image, and
+// bakes the version into the image as VersionVariable (APP_VERSION). FromEnvironment
+// reads both when the application starts and names the job of this build from them
+// (JobOf): set, the starter runs that job through the Cloud Run Admin API as the
+// service's own identity, which holds roles/run.invoker on it; with no template
+// (development, a pull-request stack that sets none, an application without a job
+// process), every start is refused with a message saying so, which the start logs.
 package jobs
 
 import (
@@ -30,9 +33,14 @@ import (
 )
 
 const (
-	// JobVariable is the environment variable naming the application's Cloud Run job
-	// (projects/<p>/locations/<l>/jobs/<j>), baked into the image by the pipeline.
-	JobVariable = "APP_JOBS_JOB"
+	// TemplateVariable is the environment variable naming the application's template
+	// job (projects/<p>/locations/<l>/jobs/<j>), the Cloud Run job the stack owns and
+	// never runs: the stack sets it on the service, and the job of a build is named from
+	// it (JobOf).
+	TemplateVariable = "APP_JOBS_TEMPLATE"
+	// VersionVariable is the environment variable carrying the build's version, which
+	// the pipeline bakes into the image.
+	VersionVariable = "APP_VERSION"
 	// cloudRunAPI is where a job is run.
 	cloudRunAPI = "https://run.googleapis.com"
 	// cloudPlatformScope is the OAuth scope the service's token carries for the API.
@@ -55,22 +63,55 @@ type Starter interface {
 	Start(ctx context.Context, args ...string) (execution string, err error)
 }
 
-// FromEnvironment reads JobVariable: the Cloud Run starter for the job it names, or
-// None when it is empty, which is logged.
+// FromEnvironment reads TemplateVariable and VersionVariable: the Cloud Run starter for
+// the job of this build, JobOf(template, version), or None when the template is empty,
+// which is logged. A template with no version beside it is refused: the pipeline bakes
+// the version into every image it deploys.
 func FromEnvironment(ctx context.Context) (Starter, error) {
-	job := strings.TrimSpace(os.Getenv(JobVariable))
-	if job == "" {
-		logger.FromCtx(ctx).Infof("jobs: %s is not set; no job process is configured, so a scheduled method that starts one answers that it cannot", JobVariable)
+	template := strings.TrimSpace(os.Getenv(TemplateVariable))
+	if template == "" {
+		logger.FromCtx(ctx).Infof("jobs: %s is not set; no job process is configured, so a scheduled method that starts one answers that it cannot", TemplateVariable)
 
 		return None{}, nil
 	}
-	starter, err := NewCloudRun(ctx, job)
+	version := strings.TrimSpace(os.Getenv(VersionVariable))
+	if VersionKey(version) == "" {
+		return nil, errors.Newf("%s=%q names the template job, but %s=%q names no version to pick this build's copy by; the pipeline bakes the version into the image", TemplateVariable, template, VersionVariable, version)
+	}
+	starter, err := NewCloudRun(ctx, JobOf(template, version))
 	if err != nil {
 		return nil, err
 	}
-	logger.FromCtx(ctx).Infof("jobs: the job process is %s", job)
+	logger.FromCtx(ctx).Infof("jobs: the job process is %s (the template %s, this build's version %s)", starter.Job(), template, version)
 
 	return starter, nil
+}
+
+// JobOf is the job of one build: the template job's resource name, a hyphen and
+// VersionKey(version) (projects/p/locations/l/jobs/harbor-jobs-v0-1-15). The pipeline
+// makes each build's job under this name, from the template on the build's image.
+func JobOf(template, version string) string {
+	return template + "-" + VersionKey(version)
+}
+
+// VersionKey is a version as a name: lowercase, every run of characters outside a-z and
+// 0-9 one hyphen, none at either end (v0.1.15 is v0-1-15, pr39@abc1234 is pr39-abc1234).
+// The pipeline names a build's job by the same key.
+func VersionKey(version string) string {
+	var b strings.Builder
+	hyphen := false
+	for _, r := range strings.ToLower(version) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			hyphen = false
+		case !hyphen && b.Len() > 0:
+			b.WriteByte('-')
+			hyphen = true
+		}
+	}
+
+	return strings.TrimSuffix(b.String(), "-")
 }
 
 // None is the starter of an application with no job configured: every start is refused,
@@ -79,7 +120,7 @@ type None struct{}
 
 // Start refuses: no job process is configured.
 func (None) Start(context.Context, ...string) (string, error) {
-	return "", errors.Newf("no job process is configured (%s is not set), so the job cannot be started", JobVariable)
+	return "", errors.Newf("no job process is configured (%s is not set), so the job cannot be started", TemplateVariable)
 }
 
 // CloudRun starts executions of one job through the Cloud Run Admin API.
@@ -93,7 +134,7 @@ type CloudRun struct {
 // service's own identity, for the job named (projects/<p>/locations/<l>/jobs/<j>).
 func NewCloudRun(ctx context.Context, job string) (*CloudRun, error) {
 	if !strings.HasPrefix(job, jobNamePrefix) || strings.Count(job, "/") != 5 || !strings.Contains(job, "/jobs/") {
-		return nil, errors.Newf("%s=%q is not a Cloud Run job's resource name (projects/<project>/locations/<location>/jobs/<job>)", JobVariable, job)
+		return nil, errors.Newf("%q is not a Cloud Run job's resource name (projects/<project>/locations/<location>/jobs/<job>)", job)
 	}
 	client, _, err := htransport.NewClient(ctx, option.WithScopes(cloudPlatformScope))
 	if err != nil {

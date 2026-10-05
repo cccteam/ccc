@@ -1294,7 +1294,9 @@ delete is the recovery. Lodestar's `cmd/jobs cleanup-files` runs it over both st
 the walkthrough proves it with one orphan and one live file. The cleanup runs from the
 service: a scheduled method (`@schedule`, daily) starts one execution of the job process
 with the cleanup command through `resource/jobs`, whose starter the configuration builds
-from the job the image names (`APP_JOBS_JOB`, baked in by the pipeline), so Cloud
+from the template job the stack sets on the service (`APP_JOBS_TEMPLATE`) and the version
+the image bakes in (`APP_VERSION`): the job of this build is the template's name with the
+version's key (`…-jobs-v0-1-15`), which the pipeline made on this build's image, so Cloud
 Scheduler calls the service and the service starts the job deployed with it, which a
 traffic rollback rolls back too; where no job is configured (development, a pull-request
 stack) the start is refused and the call says so. Lodestar's `CleanUpFiles` is the method.

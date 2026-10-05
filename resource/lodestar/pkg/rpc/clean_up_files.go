@@ -14,8 +14,9 @@ type (
 	// day at 09:00 UTC, outside every sector's working hours, Cloud Scheduler calls it,
 	// and it starts one execution of the application's job process with the cleanup
 	// command (cmd/jobs cleanup-files), through the starter the configuration built from
-	// APP_JOBS_JOB (resource/jobs). The service starts its job, the job deployed with this
-	// revision, and the cleanup never runs inside a request; where no job is configured
+	// the template job the stack sets (APP_JOBS_TEMPLATE, resource/jobs) and the version.
+	// The service starts its job, the job deployed with this revision, and the cleanup
+	// never runs inside a request; where no job is configured
 	// (development, a pull-request stack) the start is refused and the call says so.
 	//
 	// It takes no input and runs as the application; it answers the execution it started,

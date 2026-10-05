@@ -119,21 +119,93 @@ func TestNewCloudRun(t *testing.T) {
 // TestFromEnvironment: the variable unset is None, whose start says no job is
 // configured; a name that is not a job's is refused.
 func TestFromEnvironment(t *testing.T) {
-	t.Setenv(JobVariable, "")
-	starter, err := FromEnvironment(t.Context())
-	if err != nil {
-		t.Fatalf("FromEnvironment() error = %v", err)
+	tests := []struct {
+		name     string
+		template string
+		version  string
+		wantNone bool
+		wantErr  string
+	}{
+		{name: "no template: a starter that refuses", version: "v0.1.15", wantNone: true},
+		{name: "a template with no version is refused", template: "projects/p/locations/l/jobs/harbor-jobs", wantErr: "names no version to pick this build's copy by"},
+		{name: "a template with a version that is no name is refused", template: "projects/p/locations/l/jobs/harbor-jobs", version: "...", wantErr: "names no version to pick this build's copy by"},
+		{name: "a template that is not a job's resource name is refused", template: "not-a-job", version: "v0.1.15", wantErr: "is not a Cloud Run job's resource name"},
 	}
-	if _, ok := starter.(None); !ok {
-		t.Fatalf("FromEnvironment() = %T, want None", starter)
-	}
-	if _, err := starter.Start(context.Background(), "cleanup-files"); err == nil || !strings.Contains(err.Error(), "no job process is configured") {
-		t.Errorf("None.Start() error = %v, want the refusal", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(TemplateVariable, tt.template)
+			t.Setenv(VersionVariable, tt.version)
+			starter, err := FromEnvironment(t.Context())
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("FromEnvironment() error = %v, want %q", err, tt.wantErr)
+				}
 
-	t.Setenv(JobVariable, "not-a-job")
-	if _, err := FromEnvironment(t.Context()); err == nil || !strings.Contains(err.Error(), "is not a Cloud Run job's resource name") {
-		t.Errorf("FromEnvironment() with a bad name error = %v, want the name refused", err)
+				return
+			}
+			if err != nil {
+				t.Fatalf("FromEnvironment() error = %v", err)
+			}
+			if _, ok := starter.(None); ok != tt.wantNone {
+				t.Fatalf("FromEnvironment() = %T, want None %v", starter, tt.wantNone)
+			}
+			if tt.wantNone {
+				if _, err := starter.Start(context.Background(), "cleanup-files"); err == nil || !strings.Contains(err.Error(), "no job process is configured") {
+					t.Errorf("None.Start() error = %v, want the refusal", err)
+				}
+			}
+		})
+	}
+}
+
+// TestJobOf names a build's job from the template and the version, by the version's key.
+func TestJobOf(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		template string
+		version  string
+		want     string
+	}{
+		{name: "a release", template: "projects/p/locations/us-central1/jobs/harbor-jobs", version: "v0.1.15", want: "projects/p/locations/us-central1/jobs/harbor-jobs-v0-1-15"},
+		{name: "a pull request's build", template: "projects/p/locations/us-central1/jobs/harbor-pr39-jobs", version: "pr39@abc1234", want: "projects/p/locations/us-central1/jobs/harbor-pr39-jobs-pr39-abc1234"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := JobOf(tt.template, tt.version); got != tt.want {
+				t.Errorf("JobOf() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestVersionKey pins the key the pipeline names a build's job by.
+func TestVersionKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		version string
+		want    string
+	}{
+		{name: "a release", version: "v0.1.15", want: "v0-1-15"},
+		{name: "a pull request's build", version: "pr39@abc1234", want: "pr39-abc1234"},
+		{name: "upper case and runs of punctuation", version: "V1.0.0-RC.1", want: "v1-0-0-rc-1"},
+		{name: "punctuation at the ends", version: "-v1.0.0-", want: "v1-0-0"},
+		{name: "nothing", version: "", want: ""},
+		{name: "punctuation alone", version: "...", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := VersionKey(tt.version); got != tt.want {
+				t.Errorf("VersionKey(%q) = %q, want %q", tt.version, got, tt.want)
+			}
+		})
 	}
 }
 

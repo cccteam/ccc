@@ -110,7 +110,8 @@ type Configurer interface {
 	// scheduled call.
 	Scheduler() *scheduled.Guard
 	// Jobs starts the application's job process (resource/jobs): an execution of the
-	// Cloud Run job deployed with this revision, which the image names in APP_JOBS_JOB.
+	// Cloud Run job deployed with this revision, named from the template job the stack
+	// sets in APP_JOBS_TEMPLATE and the version the image bakes in.
 	// The scheduled CleanUpFiles method starts the orphaned-file cleanup through it, so
 	// the service starts its job and the cleanup never runs inside a request. Where no
 	// job is configured (development, a pull-request stack) every start is refused.
