@@ -179,10 +179,10 @@ resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
   title       = "Cloud Build Trigger Runner"
   description = "Runs Cloud Build triggers, reads the builds they start and cancels one left waiting, and nothing else."
   permissions = [
-    "cloudbuild.builds.cancel",
     "cloudbuild.builds.create",
     "cloudbuild.builds.get",
     "cloudbuild.builds.list",
+    "cloudbuild.builds.update",
     "cloudbuild.triggers.get",
     "cloudbuild.triggers.list",
   ]

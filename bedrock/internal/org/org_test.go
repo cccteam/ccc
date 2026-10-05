@@ -731,7 +731,7 @@ func TestCustomRolePermissions(t *testing.T) {
 			resource: "cloud_build_trigger_runner",
 			roleID:   "cloudBuildTriggerRunner",
 			permissions: []string{
-				"cloudbuild.builds.cancel", "cloudbuild.builds.create", "cloudbuild.builds.get", "cloudbuild.builds.list",
+				"cloudbuild.builds.create", "cloudbuild.builds.get", "cloudbuild.builds.list", "cloudbuild.builds.update",
 				"cloudbuild.triggers.get", "cloudbuild.triggers.list",
 			},
 		},
@@ -1010,7 +1010,7 @@ func TestSpannerGrants(t *testing.T) {
 		{
 			name: "the trigger runner cancels a build left waiting",
 			path: "1-org/custom-roles.tf",
-			want: []string{"    \"cloudbuild.builds.cancel\",\n    \"cloudbuild.builds.create\",\n"},
+			want: []string{"    \"cloudbuild.builds.list\",\n    \"cloudbuild.builds.update\",\n"},
 		},
 		{
 			name: "the shared instance's apply identities may grant the metric writer role on its project and no other, and its plan identities read the project's policy",

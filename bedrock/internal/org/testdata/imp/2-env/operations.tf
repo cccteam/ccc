@@ -23,7 +23,8 @@
 # reaches it, and it reads no log view. A rollback runs the application's
 # rollback trigger, reads the environment's deployment records (records.tf)
 # for what is live and what it returns to, and cancels a build left waiting
-# for its approval (the runner role's cloudbuild.builds.cancel).
+# for its approval (the runner role's cloudbuild.builds.update, the permission
+# a cancel takes).
 #
 # cloudBuildTriggerRunner carries cloudbuild.builds.create, which also submits
 # a build without a trigger, and Cloud Build evaluates no resource condition
