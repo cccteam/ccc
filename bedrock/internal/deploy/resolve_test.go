@@ -123,6 +123,9 @@ type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token string
 	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Seed  bool
 	ReloadReason, Restore, Requester, RestoreReason              string
+	// KeepsReleaseBackups says the environment is on the checkout placement's
+	// releaseBackups list (production alone unless it says otherwise).
+	KeepsReleaseBackups bool
 	// Migration is the migration operation in words, empty for none.
 	Migration string
 	// Declared are the declared substitutions' names and Values their values, as the
@@ -138,7 +141,7 @@ type outcome struct {
 func summarize(f *Facts) outcome {
 	o := outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
-		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Seed: f.Seed,
+		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Seed: f.Seed, KeepsReleaseBackups: f.KeepsReleaseBackups,
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
 		Values: f.declared, BuildSecrets: f.BuildSecrets, BuildArguments: f.BuildArguments,
 	}
@@ -464,9 +467,9 @@ func TestResolve(t *testing.T) {
 			name: "a rerun reaches production",
 			subs: tagBuild(map[string]string{requesterSub: "octocat", "_ENV": "prd"}),
 			want: withComment(tag, "", func(o *outcome) {
-				o.Requester, o.ImageTag, o.CommitTag = "octocat", "v1.2.3-prd", "deadbeefcafe-prd"
+				o.Requester, o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "octocat", "v1.2.3-prd", "deadbeefcafe-prd", true
 			}),
-			wantOut: []string{"Rerun: v1.2.3 runs again in prd, asked for by octocat."},
+			wantOut: []string{"Rerun: v1.2.3 runs again in prd, asked for by octocat.", "Release backup: prd keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock rollback restores it."},
 		},
 		{
 			name:     "a pull-request build is not rerun through the door",
@@ -748,7 +751,22 @@ func TestResolve(t *testing.T) {
 			subs:    seededTag(map[string]string{"_ENV": "prd"}),
 			records: map[string]string{"gs://records/harbor/prd/v1.2.2/b-0.json": liveRecordWith("prd", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
 			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
-			want:    withComment(tag, "", func(o *outcome) { o.ImageTag, o.CommitTag = "v1.2.3-prd", "deadbeefcafe-prd" }),
+			want: withComment(tag, "", func(o *outcome) {
+				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
+			}),
+		},
+		{
+			name:      "an environment the placement's releaseBackups list names keeps a backup as of the cut, production or not",
+			subs:      tagBuild(nil),
+			placement: strings.TrimSuffix(testPlacement(""), "}\n") + `, "releaseBackups": ["tst"]}` + "\n",
+			want:      withComment(tag, "", func(o *outcome) { o.KeepsReleaseBackups = true }),
+			wantOut:   []string{"Release backup: tst keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock rollback restores it."},
+		},
+		{
+			name:    "an environment off the list keeps none, and the log names the list",
+			subs:    tagBuild(nil),
+			want:    withComment(tag, "", func(*outcome) {}),
+			wantOut: []string{"Release backup: tst is not on the placement's releaseBackups list (prd), so this run keeps no backup as of the cut and bedrock rollback does not serve it."},
 		},
 		{
 			name:     "a pull-request build compares the tree with its own records, not with the environment's live release",

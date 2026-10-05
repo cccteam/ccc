@@ -273,6 +273,18 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, maintenance, "on", --window]
     timeout: 900s
+
+  # In {{.ReleaseBackupsProse}} (placement.json's releaseBackups), a release that applies
+  # its migrations first takes a backup of the database as of this moment, the cut, kept
+  # fourteen days, as the apply identity, and goes on without waiting for it: what bedrock
+  # rollback restores into the database's next generation when the release goes wrong. A
+  # backup that cannot start stops the run here, before any migration ran. Any other run
+  # (another environment, no migration, a restore, a rollback) says so and does nothing.
+  - id: StartReleaseBackup
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, backup]
+    timeout: 600s
 {{- if .HasHook "before-migrate"}}
 
   # The application's hook before the migrations: {{.HookSource "before-migrate"}}.

@@ -1,6 +1,9 @@
-// spanner.go is the Spanner seam of a restore from production's backup: the environment's
-// database is dropped and restored from the most recent backup of production's database,
-// on the instance they share, as the apply identity.
+// spanner.go is the Spanner seam of the restores and the rollback: a restore from
+// production's backup drops the environment's database and restores it from the most
+// recent backup of production's database, on the instance they share; a release build
+// takes a backup of the database as of its cut; a rollback takes a forensic backup of the
+// live database and restores a backup into the database's next generation. All as the
+// apply identity.
 
 package deploy
 
@@ -16,8 +19,12 @@ import (
 	"google.golang.org/api/impersonate"
 )
 
-// spannerAPI is where databases are dropped and restored and backups are listed.
-const spannerAPI = "https://spanner.googleapis.com"
+// spannerAPI is where databases are dropped and restored and backups are listed;
+// keyDatabase is the field naming a backup's database.
+const (
+	spannerAPI  = "https://spanner.googleapis.com"
+	keyDatabase = "database"
+)
 
 // Backup is one backup of a database as the restore reads it.
 type Backup struct {
@@ -26,7 +33,19 @@ type Backup struct {
 	// VersionTime is the moment the backup's data is from; CreateTime when it was taken.
 	VersionTime string
 	CreateTime  string
+	// Database is the database the backup was taken from (projects/<p>/instances/<i>/databases/<d>);
+	// State is CREATING while Spanner takes it and READY once it can be restored.
+	Database string
+	State    string
+	// ExpireTime is when Spanner deletes the backup.
+	ExpireTime string
 }
+
+// Spanner's backup states.
+const (
+	BackupReady    = "READY"
+	BackupCreating = "CREATING"
+)
 
 // Spanner drops and restores databases and lists backups: the v1 API, or a fake in tests.
 type Spanner interface {
@@ -39,6 +58,12 @@ type Spanner interface {
 	// RestoreDatabase creates the database id on the instance from the backup and waits
 	// for the restore to end.
 	RestoreDatabase(ctx context.Context, instance, databaseID, backup string) error
+	// CreateBackup starts a backup of the database (projects/<p>/instances/<i>/databases/<d>)
+	// as of versionTime, named backupID on the instance and kept until expireTime, and
+	// answers the operation's name without waiting for it.
+	CreateBackup(ctx context.Context, instance, backupID, database string, versionTime, expireTime time.Time) (string, error)
+	// Backup reads one backup by resource name; nil when there is none.
+	Backup(ctx context.Context, name string) (*Backup, error)
 }
 
 // SpannerAsFunc opens Spanner as an impersonated identity: the apply identity, which holds
@@ -73,7 +98,7 @@ func (s *spanner) LatestBackup(ctx context.Context, instance, database string) (
 	var found []*Backup
 	for _, b := range backups {
 		// The filter is a match on the backup's fields; the database is checked exactly.
-		if text(b, "database") != database || text(b, "state") != "READY" {
+		if text(b, keyDatabase) != database || text(b, "state") != BackupReady {
 			continue
 		}
 		found = append(found, &Backup{Name: text(b, keyName), VersionTime: text(b, "versionTime"), CreateTime: text(b, "createTime")})
@@ -86,6 +111,40 @@ func (s *spanner) LatestBackup(ctx context.Context, instance, database string) (
 	})
 
 	return found[0], nil
+}
+
+func (s *spanner) CreateBackup(ctx context.Context, instance, backupID, database string, versionTime, expireTime time.Time) (string, error) {
+	query := url.Values{}
+	query.Set("backupId", backupID)
+	body := map[string]any{keyDatabase: database, "versionTime": versionTime.UTC().Format(time.RFC3339Nano), "expireTime": expireTime.UTC().Format(time.RFC3339Nano)}
+	op, err := s.call(ctx, http.MethodPost, "/v1/"+instance+"/backups?"+query.Encode(), body)
+	if err != nil {
+		return "", err
+	}
+	name, _ := op[keyName].(string)
+	if name == "" {
+		return "", errors.New("Spanner answered no operation name")
+	}
+	if apiErr, ok := op["error"].(map[string]any); ok {
+		msg, _ := apiErr["message"].(string)
+
+		return "", errors.Newf("Spanner refused the backup %s: %s", backupID, msg)
+	}
+
+	return name, nil
+}
+
+func (s *spanner) Backup(ctx context.Context, name string) (*Backup, error) {
+	b, err := s.call(ctx, http.MethodGet, "/v1/"+name, nil)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return &Backup{Name: text(b, keyName), VersionTime: text(b, "versionTime"), CreateTime: text(b, "createTime"), Database: text(b, keyDatabase), State: text(b, "state"), ExpireTime: text(b, "expireTime")}, nil
 }
 
 func (s *spanner) DropDatabase(ctx context.Context, database string) error {

@@ -56,7 +56,7 @@ request's own resources through, apply applies exactly that plan. A tag build sk
 	}
 	stack.AddCommand(newDeployStackPlan(d), newDeployStackGuard(d), newDeployStackApply(d))
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), stack, newDeployHook(d),
-		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
+		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployBackup(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
 		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployMaintenance(d), newDeployWindow(d))
 
 	return cmd
@@ -312,6 +312,31 @@ line) for shift-traffic and record.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.Deploy(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
+
+	return cmd
+}
+
+// newDeployBackup is deploy backup.
+func newDeployBackup(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "backup",
+		Short: "Start the release backup: the database as of the cut, before the migrations",
+		Long: `backup starts, as the apply identity, a Spanner backup of the environment's database as of this
+moment, the cut, in a tag build whose environment the placement's releaseBackups list names (production
+alone unless it says otherwise) and that applies its migrations; the backup is named after the database
+and the release, is kept fourteen days, and is what bedrock rollback restores into the database's next
+generation when the release goes wrong. The step waits for nothing: Spanner takes the backup while the
+release goes on. Its facts (CUT, RELEASE_BACKUP, RELEASE_BACKUP_TIME, RELEASE_BACKUP_EXPIRES) reach
+the deployment record. A pull-request build, a run that deploys nothing or applies no migration, a
+restore run and a rollback run take no backup and say so. A backup that cannot start fails the step,
+before any migration ran.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.StartReleaseBackup(cmd.Context(), d.deploy, deploy.Workspace(workspace), time.Now(), cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")

@@ -72,6 +72,68 @@ type Record struct {
 	// was breaking, why, which opening let the run in, when and after how long a wait.
 	// Absent for a release that deploys at any time.
 	Window *Window `json:"window,omitempty"`
+	// Cut is the moment before the run's migrations ran, as the release backup step took
+	// it: the state the release backup holds. Absent when the run took none.
+	Cut string `json:"cut,omitempty"`
+	// ReleaseBackup is the backup the run started as of the cut, in an environment the
+	// placement's releaseBackups names: what bedrock rollback restores. Absent otherwise.
+	ReleaseBackup *ReleaseBackup `json:"releaseBackup,omitempty"`
+	// Database is the Spanner database the run's revisions open: its name and its
+	// generation (1 for the stack's own, the number a rollback restored into otherwise).
+	// Absent when the run touched no stack.
+	Database *DatabaseRef `json:"database,omitempty"`
+}
+
+// ReleaseBackup is the backup a release build took as of its cut, as the record keeps it.
+type ReleaseBackup struct {
+	// Name is the backup's resource name (projects/<p>/instances/<i>/backups/<b>).
+	Name string `json:"name"`
+	// VersionTime is the moment the backup's data is from, the cut; ExpireTime when
+	// Spanner deletes it.
+	VersionTime string `json:"versionTime"`
+	ExpireTime  string `json:"expireTime"`
+}
+
+// DatabaseRef is the database a run's revisions open, as the record keeps it.
+type DatabaseRef struct {
+	// Name is the database's resource name (projects/<p>/instances/<i>/databases/<d>).
+	Name string `json:"name"`
+	// Generation is 1 for the database the stack created and the number a rollback
+	// restored a backup into otherwise.
+	Generation int `json:"generation"`
+}
+
+// releaseBackupOf reads the release backup the run started from the facts the backup step
+// left; nil for a run that took none.
+func releaseBackupOf(env map[string]string) *ReleaseBackup {
+	if env[releaseBackupFact] == "" {
+		return nil
+	}
+
+	return &ReleaseBackup{Name: env[releaseBackupFact], VersionTime: env[releaseBackupTimeFact], ExpireTime: env[releaseBackupExpiresFact]}
+}
+
+// databaseOf reads the database the run's revisions open: the Spanner database the stack
+// steps named for the migrate command and the generation the stack plan was told (1
+// unless a rollback moved it); nil for a run without the stack's facts.
+func databaseOf(env map[string]string) *DatabaseRef {
+	databases, err := migrateDatabases(env)
+	if err != nil {
+		return nil
+	}
+	for _, database := range databases {
+		if !strings.Contains(database, "/instances/") {
+			continue
+		}
+		generation, err := strconv.Atoi(env[databaseGenerationFact])
+		if err != nil || generation < 1 {
+			generation = 1
+		}
+
+		return &DatabaseRef{Name: database, Generation: generation}
+	}
+
+	return nil
 }
 
 // Force is a forced migration version as the record keeps it.
@@ -256,24 +318,27 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 	}
 	maintenance, restore := maintenanceOf(env), restoreOf(env)
 	record := Record{
-		App:         build.Substitutions[appSub],
-		Env:         build.Substitutions[envSub],
-		Version:     env[versionFact],
-		Commit:      build.Substitutions[commitSub],
-		Image:       env[imageFact] + "@" + env[digestFact],
-		Digest:      env[digestFact],
-		Regions:     regions,
-		Revisions:   revisions,
-		Timestamp:   now.UTC().Format(time.RFC3339),
-		Status:      status,
-		Build:       build.ID,
-		Migrations:  applied,
-		Stack:       stack,
-		Requester:   build.Substitutions[requesterSub],
-		Restore:     restore,
-		Maintenance: maintenance,
-		Force:       forceOf(env, build),
-		Window:      windowOf(env),
+		App:           build.Substitutions[appSub],
+		Env:           build.Substitutions[envSub],
+		Version:       env[versionFact],
+		Commit:        build.Substitutions[commitSub],
+		Image:         env[imageFact] + "@" + env[digestFact],
+		Digest:        env[digestFact],
+		Regions:       regions,
+		Revisions:     revisions,
+		Timestamp:     now.UTC().Format(time.RFC3339),
+		Status:        status,
+		Build:         build.ID,
+		Migrations:    applied,
+		Stack:         stack,
+		Requester:     build.Substitutions[requesterSub],
+		Restore:       restore,
+		Maintenance:   maintenance,
+		Force:         forceOf(env, build),
+		Window:        windowOf(env),
+		Cut:           env[cutFact],
+		ReleaseBackup: releaseBackupOf(env),
+		Database:      databaseOf(env),
 	}
 
 	return &RecordRequest{

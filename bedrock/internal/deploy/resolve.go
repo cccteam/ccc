@@ -66,6 +66,20 @@ const (
 	requesterSub  = "_REQUESTER"
 	restoreFact   = "RESTORE"
 	requesterFact = "RESTORE_REQUESTER"
+	// rollbackSub, rollbackFromSub and reasonSub are a rollback run's instruction, which
+	// bedrock rollback sets on the rollback trigger alone: the backup to restore (a name,
+	// @<moment>, or empty for the live release's pre-release backup), the release the
+	// rollback leaves, and why; rollbackFact, rollbackFromFact and rollbackReasonFact
+	// carry them to the steps, rollbackFact holding the backup's resource name once resolved.
+	rollbackSub        = "_ROLLBACK"
+	rollbackFromSub    = "_ROLLBACK_FROM"
+	reasonSub          = "_REASON"
+	rollbackFact       = "ROLLBACK"
+	rollbackFromFact   = "ROLLBACK_FROM"
+	rollbackReasonFact = "ROLLBACK_REASON"
+	// keepsReleaseBackupsFact says the environment is on the placement's releaseBackups
+	// list in the checkout: the release build takes a backup as of its cut (deploy backup).
+	keepsReleaseBackupsFact = "KEEPS_RELEASE_BACKUPS"
 	// restoreReasonFact says why a release build restores the environment's database
 	// without being asked: the seed changed since the environment's live release applied
 	// it (seedChanged). The record carries it beside the restore.
@@ -324,6 +338,11 @@ type Facts struct {
 	// database is new and always seeded; a release build seeds where the placement in the
 	// checkout names the environment on its seed list.
 	Seed bool
+	// KeepsReleaseBackups says a release build takes a backup of the database as of its
+	// cut, before its migrations: the placement in the checkout names the environment on
+	// its releaseBackups list (production alone unless it says otherwise). Never on a
+	// pull-request build.
+	KeepsReleaseBackups bool
 	// Migration is the migration operation a release build carries (the operations
 	// workflow's version, rerun or force), which the migrate step does; nil for none.
 	Migration     *MigrateAction
@@ -395,6 +414,9 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 		return nil, err
 	}
 	if err := f.seed(req.Source, out); err != nil {
+		return nil, err
+	}
+	if err := f.releaseBackups(req.Source, out); err != nil {
 		return nil, err
 	}
 	if err := f.declare(req.Known, req.Source, out); err != nil {
@@ -667,6 +689,28 @@ func (f *Facts) seed(source string, out io.Writer) error {
 	fmt.Fprintf(out, "Seed: %s %s the seed list of the placement in the checkout (%s).\n", f.Environment, listed, path.Join(stackDir, placementFile))
 	if said, ok := f.Substitutions[seedSub]; ok && said != strconv.FormatBool(f.Seed) {
 		fmt.Fprintf(out, "The trigger's %s=%s is what the stack said at its last apply; the placement in the checkout decides for this release.\n", seedSub, said)
+	}
+
+	return nil
+}
+
+// releaseBackups reads whether the environment keeps release backups: a release build
+// takes a backup of the database as of its cut where the placement in the checkout names
+// the environment on its releaseBackups list (production alone unless it says otherwise);
+// a pull-request build never does, its database being its own.
+func (f *Facts) releaseBackups(source string, out io.Writer) error {
+	if f.Tag == "" {
+		return nil
+	}
+	placement, err := checkoutPlacement(Workspace(source), "the release backups are decided")
+	if err != nil {
+		return err
+	}
+	f.KeepsReleaseBackups = placement.KeepsReleaseBackups(f.Environment)
+	if f.KeepsReleaseBackups {
+		fmt.Fprintf(out, "Release backup: %s keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock rollback restores it.\n", f.Environment)
+	} else {
+		fmt.Fprintf(out, "Release backup: %s is not on the placement's releaseBackups list (%s), so this run keeps no backup as of the cut and bedrock rollback does not serve it.\n", f.Environment, strings.Join(placement.ReleaseBackupEnvironments(), ", "))
 	}
 
 	return nil
@@ -1031,6 +1075,7 @@ func (f *Facts) environment() string {
 		{requesterFact, f.Requester},
 		{restoreReasonFact, f.RestoreReason},
 		{seedFact, flag(f.Seed)},
+		{keepsReleaseBackupsFact, flag(f.KeepsReleaseBackups)},
 		{buildSecretsFact, f.BuildSecrets},
 		{skipDeploy, ""},
 		{imageFact, f.Image},

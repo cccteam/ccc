@@ -109,8 +109,40 @@ func TestNewRecordRequest(t *testing.T) {
 		wantRequester string
 		// wantWindow is the window a release that needed one records.
 		wantWindow *Window
-		wantErr    string
+		// wantCut, wantReleaseBackup and wantDatabase are what a release in an environment
+		// keeping release backups records: the cut, the backup as of it and the database
+		// with its generation.
+		wantCut           string
+		wantReleaseBackup *ReleaseBackup
+		wantDatabase      *DatabaseRef
+		wantErr           string
 	}{
+		{
+			name: "a release in an environment keeping release backups records the cut, the backup and the database's generation",
+			files: map[string]string{
+				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport CUT=\"2026-10-05T04:30:15Z\"\nexport RELEASE_BACKUP=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-3\"\nexport RELEASE_BACKUP_TIME=\"2026-10-05T04:30:15Z\"\nexport RELEASE_BACKUP_EXPIRES=\"2026-10-19T04:30:15Z\"\nexport MIGRATE_DATABASES='[\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db\",\"projects/prd-project/databases/imp-prd-gbl-harbor-fs\"]'\nexport DATABASE_GENERATION=\"1\"\n",
+				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef"}}`,
+				RevisionsFile:   revisionsLines,
+			},
+			wantObject:        "harbor/prd/v1.2.3/b-1.json",
+			wantStatus:        Live,
+			wantRegions:       "us-central1,us-west3",
+			wantCut:           "2026-10-05T04:30:15Z",
+			wantReleaseBackup: &ReleaseBackup{Name: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-3", VersionTime: "2026-10-05T04:30:15Z", ExpireTime: "2026-10-19T04:30:15Z"},
+			wantDatabase:      &DatabaseRef{Name: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db", Generation: 1},
+		},
+		{
+			name: "a run after a rollback records the database's generation, and no backup when it took none",
+			files: map[string]string{
+				EnvironmentFile: liveEnvironment + "export MIGRATE_DATABASES='[\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"]'\nexport DATABASE_GENERATION=\"2\"\n",
+				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef"}}`,
+				RevisionsFile:   revisionsLines,
+			},
+			wantObject:   "harbor/prd/v1.2.3/b-1.json",
+			wantStatus:   Live,
+			wantRegions:  "us-central1,us-west3",
+			wantDatabase: &DatabaseRef{Name: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2", Generation: 2},
+		},
 		{
 			name:        "a window release records whether it was breaking, why, the opening that let it in and the wait",
 			files:       map[string]string{EnvironmentFile: liveEnvironment + "export WINDOW_NEEDED=\"true\"\nexport WINDOW_BREAKING=\"true\"\nexport WINDOW_REASON=\"the default outlet answers 1.2.3 at the oldest, and tst runs v1.2.2, which it turns away\"\nexport WINDOW_SLOT=\"Sunday 02:00 to 04:00 America/Chicago\"\nexport WINDOW_OPENED=\"2026-10-04T07:00:00Z\"\nexport WINDOW_WAITED=\"6h0m0s\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
@@ -295,6 +327,15 @@ func TestNewRecordRequest(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantForce, r.Force); diff != "" {
 				t.Errorf("Force mismatch (-want +got):\n%s", diff)
+			}
+			if r.Cut != tt.wantCut {
+				t.Errorf("Cut = %q, want %q", r.Cut, tt.wantCut)
+			}
+			if diff := cmp.Diff(tt.wantReleaseBackup, r.ReleaseBackup); diff != "" {
+				t.Errorf("ReleaseBackup mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantDatabase, r.Database); diff != "" {
+				t.Errorf("Database mismatch (-want +got):\n%s", diff)
 			}
 			if r.Requester != tt.wantRequester {
 				t.Errorf("Requester = %q, want %q", r.Requester, tt.wantRequester)

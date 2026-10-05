@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -695,11 +696,14 @@ func TestApplyEnvironmentStack(t *testing.T) {
 	}
 }
 
-// fakeSpanner answers the one backup it holds and records the drop and the restore.
+// fakeSpanner answers the one backup it holds and records the drop, the restore and the
+// backups it was asked to create; refuse, when set, is the error every create answers.
 type fakeSpanner struct {
 	backup   *Backup
 	dropped  string
 	restored string
+	created  []string
+	refuse   string
 }
 
 func (f *fakeSpanner) open(context.Context, string) (Spanner, error) {
@@ -724,6 +728,23 @@ func (f *fakeSpanner) RestoreDatabase(_ context.Context, _, databaseID, backup s
 	f.restored = databaseID + " from " + backup
 
 	return nil
+}
+
+func (f *fakeSpanner) CreateBackup(_ context.Context, instance, backupID, database string, versionTime, expireTime time.Time) (string, error) {
+	if f.refuse != "" {
+		return "", errors.New(f.refuse)
+	}
+	f.created = append(f.created, backupID+" of "+path.Base(database)+" as of "+versionTime.Format(time.RFC3339)+" until "+expireTime.Format(time.RFC3339))
+
+	return instance + "/operations/op-" + backupID, nil
+}
+
+func (f *fakeSpanner) Backup(_ context.Context, name string) (*Backup, error) {
+	if f.backup != nil && f.backup.Name == name {
+		return f.backup, nil
+	}
+
+	return nil, nil
 }
 
 // fakeFirestore records the database whose documents were deleted, and the identity asked for.
