@@ -10,11 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/domain"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/bedrock/internal/where"
@@ -290,7 +292,17 @@ func newOrgCheck(d deps) *cobra.Command {
 owned file with the one in the repository. It exits 1 when any differs or is missing, listing
 each with the first line that differs: the drift between the placement and the committed
 infrastructure. Seeded files (each layer's terraform.tfvars, the journal, the ignore rules)
-are a person's and are not compared. It then lists each person (a user: member) holding
+are a person's and are not compared.
+
+Before anything else it reports each domain 2-net registers (registrations in
+2-net/terraform.tfvars) as Cloud Domains holds it in the network project: first every
+registration whose registrant mailbox is not verified yet, naming the mailbox and the date
+the registrar's verification mail must be followed by (fifteen days after the registration,
+or the domain is suspended), then each registration's state and expiry date, an expiry
+within thirty days and any other issue the registrar raises. That report reads the
+registrations with the run's Google credentials (gcloud auth application-default login,
+roles/domains.viewer on the network project); without any, or when Cloud Domains cannot be
+reached, it says so, and it never fails the check. It then lists each person (a user: member) holding
 roles/owner on an environment project the placement records: the grant a project's creator
 receives, which the first apply of 1-org by hand leaves the bootstrap administrator with on
 every project it creates, temporary by design and removed by hand once the layers workflow
@@ -312,6 +324,7 @@ and never fails the check either.`,
 			if err != nil {
 				return err
 			}
+			registrationReport(cmd.Context(), d, p, dir, cmd.OutOrStdout())
 			for _, f := range r.Findings {
 				if f.Missing {
 					fmt.Fprintf(cmd.OutOrStdout(), "%s: missing\n", f.Path)
@@ -339,6 +352,29 @@ and never fails the check either.`,
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// registrationReport reads each domain 2-net registers (registrations in its
+// terraform.tfvars) through Cloud Domains and prints its state and expiry date, a
+// registration waiting on the registrant mailbox's verification first: the registrar's
+// verification mail goes to that mailbox, and a domain whose link is not followed within
+// fifteen days is suspended. The read needs Google credentials that read the network
+// project's registrations; without any the report says so and what it would have done.
+// Nothing here fails the check, as with the owners and the keys.
+func registrationReport(ctx context.Context, d deps, p *org.Placement, dir string, out io.Writer) {
+	const does = "org check reports each domain 2-net registers (registrations in 2-net/terraform.tfvars), its state and expiry date, a registrant mailbox waiting on its verification first, when it runs with Google credentials that read the network project's Cloud Domains registrations (roles/domains.viewer; gcloud auth application-default login)"
+	var open domain.RegistrationReaderFunc
+	if d.org != nil {
+		open = d.org.registrations
+	}
+	project, _ := p.AppsZone()
+	r, err := domain.Registrations(ctx, open, domain.RegistrationsRequest{Dir: dir, Project: project, Now: time.Now()})
+	if err != nil {
+		fmt.Fprintf(out, "Registrations not checked (%v): %s.\n", errors.Cause(err), does)
+
+		return
+	}
+	r.Write(out)
 }
 
 // ownerReport lists each person holding roles/owner on an environment project the

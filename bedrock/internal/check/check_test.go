@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -282,6 +283,96 @@ func TestRun(t *testing.T) {
 			for _, want := range tt.wantOutput {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("Write() output lacks %q:\n%s", want, out.String())
+				}
+			}
+		})
+	}
+}
+
+// TestRunLatest: check names each secret an environment's secret_versions lets track
+// latest, environment by environment in promotion order, and says so when none does; both
+// leave the check clean. A secret_versions that is not written out stops the check.
+func TestRunLatest(t *testing.T) {
+	t.Parallel()
+
+	const none = "latest   no secret tracks latest: every entry of secret_versions in terraform.tfvars pins a version number"
+	tests := []struct {
+		name       string
+		versions   string
+		wantLatest []LatestSecret
+		wantOutput []string
+		absent     []string
+		wantErr    string
+	}{
+		{
+			name:       "the committed stack pins nothing, so nothing tracks latest",
+			wantOutput: []string{none},
+		},
+		{
+			name:       "every secret pinned to a version number",
+			versions:   "secret_versions = {\n  tst = { APP_STRIPE_KEY = \"3\" }\n  stg = { APP_STRIPE_KEY = 2 }\n  prd = { APP_STRIPE_KEY = \"2\" }\n}\n",
+			wantOutput: []string{none},
+		},
+		{
+			name:       "secrets tracking latest, named per environment in promotion order",
+			versions:   "secret_versions = {\n  prd = { APP_STRIPE_KEY = \"latest\", APP_MAPS_KEY = \"latest\" }\n  stg = { APP_STRIPE_KEY = \"2\" }\n  tst = { APP_STRIPE_KEY = \"latest\" }\n}\n",
+			wantLatest: []LatestSecret{{Environment: "tst", Variable: "APP_STRIPE_KEY"}, {Environment: "prd", Variable: "APP_MAPS_KEY"}, {Environment: "prd", Variable: "APP_STRIPE_KEY"}},
+			wantOutput: []string{
+				"latest   APP_STRIPE_KEY tracks latest in tst (secret_versions.tst in terraform.tfvars): the environment runs whatever version is added next, with no release; pinning a version number is the default, and latest the exception for a secret that has to follow its source",
+				"latest   APP_MAPS_KEY tracks latest in prd (secret_versions.prd in terraform.tfvars)",
+				"latest   APP_STRIPE_KEY tracks latest in prd (secret_versions.prd in terraform.tfvars)",
+			},
+			absent: []string{none, "in stg (secret_versions.stg"},
+		},
+		{
+			name:     "a secret_versions that is not written out stops the check",
+			versions: "secret_versions = var.pins\n",
+			wantErr:  "secret_versions in",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := copyGolden(t)
+			if tt.versions != "" {
+				path := filepath.Join(dir, "terraform.tfvars")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = bytes.Replace(data, []byte("secret_versions = {\n  tst = {}\n  stg = {}\n  prd = {}\n}\n"), []byte(tt.versions), 1)
+				if err := os.WriteFile(path, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			report, err := Run(harborModel(t), dir, filepath.Join(dir, "root"))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Run() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if !report.Clean() {
+				t.Errorf("Clean() = false, want true: a secret tracking latest is information, not drift")
+			}
+			if !slices.Equal(report.Latest, tt.wantLatest) {
+				t.Errorf("Latest = %+v, want %+v", report.Latest, tt.wantLatest)
+			}
+			var out bytes.Buffer
+			report.Write(&out)
+			for _, want := range tt.wantOutput {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("Write() output lacks %q:\n%s", want, out.String())
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(out.String(), a) {
+					t.Errorf("Write() output carries %q:\n%s", a, out.String())
 				}
 			}
 		})

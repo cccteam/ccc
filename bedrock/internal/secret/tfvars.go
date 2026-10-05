@@ -125,6 +125,56 @@ func BuildSecretNames(layerDir, env string) ([]string, error) {
 	return names, nil
 }
 
+// LatestVersions lists the secrets the layer's placement (terraform.tfvars in layerDir)
+// lets track the newest version in the environment: the variables of
+// secret_versions.<env> whose version is the word latest, sorted. A version number
+// written bare or quoted pins. No file, no secret_versions map and no map for the
+// environment all track none; a map that is not written out, and a version that is not a
+// literal, are refused.
+func LatestVersions(layerDir, env string) ([]string, error) {
+	file := filepath.Join(layerDir, tfvarsFile)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	p, err := parsePlacement(src, file)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := p.body.Attributes[versionsKey]; !ok {
+		return nil, nil
+	}
+	inner, err := p.versions(versionsKey, env)
+	if err != nil {
+		if errors.Is(err, errNoEnvironment) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+	var names []string
+	for _, item := range inner.Items {
+		name, err := ObjectKey(item.KeyExpr)
+		if err != nil {
+			return nil, errors.Wrap(err, p.at(versionsKey+"."+env))
+		}
+		v, diags := item.ValueExpr.Value(nil)
+		if diags.HasErrors() {
+			return nil, errors.Wrap(diags, p.at(versionsKey+"."+env+"."+name))
+		}
+		if !v.IsNull() && v.Type().Equals(cty.String) && v.AsString() == Latest {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+
+	return names, nil
+}
+
 // The placement's maps EnvironmentValues reads for the pipeline: the substitutions the
 // application declares for its hooks and its image build (the stack's var.substitutions),
 // and the build secrets' pins (var.build_secrets).

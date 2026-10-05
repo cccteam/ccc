@@ -163,7 +163,8 @@ The steps by hand, each where it happens:
 1. In the registrant's mailbox (`registrant_contact.email` in
    `terraform.tfvars`), for a domain registered here: the registrar's
    verification mail arrives after the apply that registers the domain. Its
-   link must be followed within fifteen days, or the domain is suspended.
+   link must be followed within fifteen days, or the domain is suspended;
+   `bedrock org check` names the mailbox and the date until it is.
 2. At the registrar where the domain is registered, for a domain delegated
    at the apex: set its name servers to the zone's four, as `bedrock domain
    check` prints them, in place of the ones it has. At Squarespace Domains:
@@ -244,6 +245,15 @@ The registrant contact (`registrant_contact`) is the client's, the
 organization that owns the domain, never that of a contractor who builds or
 runs the foundation, and its mailbox is one a person reads: the verification
 mail and every notice about the domain go there.
+
+`bedrock org check`, run from the repository root, reads each registration
+back through Cloud Domains. Before anything else it names a registration
+still waiting on the verification, with the mailbox and the date its link
+must be followed by; then it gives each registration's state and expiry
+date, and says when the expiry is within thirty days or the registrar
+raises another issue. It reads with the run's Google credentials, which need
+the Cloud Domains Viewer role (`roles/domains.viewer`) on the network
+project, and never fails the check.
 
 The registration lives in the network project and cannot move to another
 project; deleting the project loses access to the domain (`1-org` puts a

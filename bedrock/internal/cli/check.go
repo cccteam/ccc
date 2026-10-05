@@ -55,6 +55,12 @@ file (zz_gen_release.json, which the resource generator writes: without it no re
 breaking and the window never holds a run), when that file does not read, and when a dated
 slot has passed. A malformed setting is refused, as render refuses it.
 
+The secrets that track latest: it names each secret whose version in an environment's
+secret_versions in terraform.tfvars is the word latest in place of a version number, one
+line per secret and environment, and says so when none does. Pinning is the default and
+latest the exception for a secret that has to follow its source, so the listing is
+information and never fails the check.
+
 Run from anywhere inside the repository, it finds both directories: the stack is the
 application repository's infrastructure directory, or the one application layer under
 3-app of an infrastructure root (the repository root, or its infrastructure directory);

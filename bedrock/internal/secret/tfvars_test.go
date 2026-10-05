@@ -253,6 +253,58 @@ func TestBuildSecretNames(t *testing.T) {
 	}
 }
 
+// TestLatestVersions: the secrets an environment's secret_versions lets track latest,
+// sorted; none where every secret is pinned, and none where the file, the map or the
+// environment's map is absent; a map not written out and a version that is not a literal
+// refused.
+func TestLatestVersions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		env     string
+		want    []string
+		wantErr string
+	}{
+		{name: "the secrets tracking latest in the environment, sorted", tfvars: "secret_versions = {\n  tst = {\n    APP_B = \"latest\"\n    APP_C = \"3\"\n    \"APP_A\" = \"latest\"\n  }\n  stg = { APP_B = \"2\" }\n}\n", env: "tst", want: []string{"APP_A", "APP_B"}},
+		{name: "an environment whose secrets are all pinned tracks none", tfvars: "secret_versions = {\n  tst = { APP_B = \"latest\" }\n  stg = { APP_B = \"2\", APP_C = 4 }\n}\n", env: "stg"},
+		{name: "an empty map for the environment tracks none", tfvars: "secret_versions = {\n  tst = {}\n}\n", env: "tst"},
+		{name: "an environment the map lacks tracks none", tfvars: "secret_versions = {\n  tst = { APP_B = \"latest\" }\n}\n", env: "prd"},
+		{name: "a placement without the map tracks none", tfvars: "build_secrets = {\n  tst = {}\n}\n", env: "tst"},
+		{name: "no placement tracks none", missing: true, env: "tst"},
+		{name: "a map that is not written out is refused", tfvars: "secret_versions = var.x\n", env: "tst", wantErr: "secret_versions in"},
+		{name: "a version that is not a literal is refused", tfvars: "secret_versions = {\n  tst = { APP_B = lower(\"LATEST\") }\n}\n", env: "tst", wantErr: "secret_versions.tst.APP_B in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := LatestVersions(dir, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("LatestVersions() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("LatestVersions() error = %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("LatestVersions() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestEnvironmentValues: the environment's map under a key of the placement, as the stack
 // looks it up; none where the file, the map or the environment's map is absent; a map not
 // written out and a value that is not a literal string refused.

@@ -182,7 +182,7 @@ variable "secret_versions" {
     A value is a version number. "latest" is allowed only where the map says
     so, and means the environment tracks whatever version is added next; the
     design brief reserves it for secrets whose placement marks them as
-    tracking, and the check that bedrock adds later names each one.
+    tracking, and bedrock check names each one, per environment.
 
       secret_versions = {
         tst = { APP_COOKIE_KEY = "1", APP_STAFF_OIDC_CLIENT_SECRET = "1" }

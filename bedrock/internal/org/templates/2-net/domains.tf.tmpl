@@ -13,7 +13,10 @@
 # change is a visible diff and a failed apply, never a silent charge. The
 # contact is placement too (var.registrant_contact), published redacted; the
 # registrant mailbox must be read by a person, because the registrar's
-# verification mail goes there and an unverified domain is suspended.
+# verification mail goes there and an unverified domain is suspended;
+# bedrock org check reads each registration back and names a mailbox still
+# waiting on the verification first, then each registration's state and
+# expiry date.
 #
 # A registration is never removed by a plan: deleting one deletes the domain
 # after its grace period. Removal is a deliberate two-step change, as with

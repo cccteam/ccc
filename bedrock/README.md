@@ -355,6 +355,14 @@ that never opens, a from that is not before its to on a dated slot, an environme
 placement does not list) is refused by `render` and `check` alike, since both read the
 placement.
 
+It lists, as information, each secret that tracks `latest`: a secret whose version in an
+environment's `secret_versions` in `terraform.tfvars` is the word `latest` in place of a
+version number, which the environment then runs at whatever version is added next, with
+no release. One line names each secret and environment, and a stack where every secret is
+pinned says so. Pinning is the default and `latest` the exception for a secret that has
+to follow its source, so the listing never fails the check; it keeps the exception
+visible.
+
 The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
 `bedrock check` on every pull request and on the default branch. It is rendered too: the
 job gets the bedrock the placement pins as the pipeline does (a release downloaded from
@@ -1171,7 +1179,10 @@ still waiting on it. It exits 1 when anything is missing or refused.
 A domain 2-net registers has a registrant contact (`registrant_contact` in
 `2-net/terraform.tfvars`) that is the client's, never that of a contractor who builds or
 runs the foundation, with a mailbox a person reads: the verification mail and every notice
-about the domain go there. The registration lives in the network project and cannot move
+about the domain go there. `bedrock org check` reads each registration back through Cloud
+Domains and reports, before anything else, a registration still waiting on the
+verification, with the mailbox and the date its link must be followed by, then each
+registration's state and expiry date (bedrock org, below). The registration lives in the network project and cannot move
 to another project; deleting the project loses access to the domain, which is one reason
 1-org puts a lien on every project it creates (a mark that refuses the project's deletion
 until it is removed). If the client wants the domain at another registrar, it transfers it
@@ -1269,7 +1280,16 @@ who grants it where, or when it could not check (no credentials, or an API that 
 
 `org render` rewrites the owned files from the placement, seeds the absent ones and says
 what the workflow still lacks in the placement; `org check` compares the owned files, the
-workflow among them, and exits 1 on drift. `org check` then lists each person (a `user:`
+workflow among them, and exits 1 on drift. Before anything else, `org check` reports each
+domain 2-net registers (`registrations` in `2-net/terraform.tfvars`) as Cloud Domains
+holds it in the network project: first every registration whose registrant mailbox is not
+verified yet, naming the mailbox and the date the registrar's verification mail must be
+followed by (fifteen days after the registration, or the domain is suspended), then each
+registration's state and expiry date, an expiry within thirty days with the billing
+account to look at (renewal is automatic while it is active), and any other issue the
+registrar raises. It reads the registrations with the run's Google credentials
+(`roles/domains.viewer` on the network project); without any, or when Cloud Domains
+cannot be reached, it says so and never fails the check. `org check` then lists each person (a `user:`
 member) holding `roles/owner` on an environment project the placement records, with the
 project: the grant a project's creator receives, which the first apply of 1-org by hand
 leaves the bootstrap administrator with on every project it creates, temporary by design

@@ -9,10 +9,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/domain"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 )
@@ -39,7 +41,7 @@ func orgRepo(t *testing.T) string {
 // API key reports run without credentials, and the running bedrock is a commit installed
 // with go install, which an application's first placement can pin.
 func orgDeps(dir string) deps {
-	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, org: &orgClients{policies: noPolicies, keys: noKeys, permissions: noPermissions}, cwd: dir, interactive: never, version: installedHead}
+	return deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, org: &orgClients{policies: noPolicies, keys: noKeys, registrations: noRegistrations, permissions: noPermissions}, cwd: dir, interactive: never, version: installedHead}
 }
 
 // installedHead is the running bedrock as go install builds the head commit.
@@ -54,6 +56,12 @@ func noPolicies(context.Context) (org.PolicyReader, error) {
 
 // noKeys refuses to open an API key lister, as a run without Google credentials.
 func noKeys(context.Context) (org.KeyLister, error) {
+	return nil, errors.New("no Google credentials in this test")
+}
+
+// noRegistrations refuses to open a Cloud Domains registration reader, as a run without
+// Google credentials.
+func noRegistrations(context.Context, string) (domain.RegistrationReader, error) {
 	return nil, errors.New("no Google credentials in this test")
 }
 
@@ -269,6 +277,118 @@ func TestOrgCheckAPIKeys(t *testing.T) {
 			for _, a := range tt.absent {
 				if strings.Contains(out, a) {
 					t.Errorf("output carries %q:\n%s", a, out)
+				}
+			}
+		})
+	}
+}
+
+// fakeRegistrationReader answers every registration from one map; a domain it lacks is not
+// registered.
+type fakeRegistrationReader struct {
+	byDomain map[string]domain.RegistrationStatus
+}
+
+func (f *fakeRegistrationReader) Registration(_ context.Context, _, name string) (*domain.RegistrationStatus, error) {
+	s, ok := f.byDomain[name]
+	if !ok {
+		return &domain.RegistrationStatus{Domain: name}, nil
+	}
+	s.Domain, s.Found = name, true
+
+	return &s, nil
+}
+
+func (*fakeRegistrationReader) Close() error {
+	return nil
+}
+
+// TestOrgCheckRegistrations: org check reports, before anything else, each domain 2-net
+// registers as Cloud Domains holds it in the network project, a registrant mailbox waiting
+// on its verification first; it says so when 2-net registers none, and says what it does
+// when it cannot reach Cloud Domains; none of it fails the check.
+func TestOrgCheckRegistrations(t *testing.T) {
+	t.Parallel()
+
+	const registrations = "registrant_contact = {\n  email = \"hostmaster@imp.example\"\n}\n\nregistrations = {\n  \"imp.app\" = {\n    yearly_price_usd = 14\n    notices          = [\"HSTS_PRELOADED\"]\n  }\n  \"imp.dev\" = {\n    yearly_price_usd = 12\n    notices          = [\"HSTS_PRELOADED\"]\n  }\n}\n"
+	created := time.Now().Add(-48 * time.Hour)
+	expires := time.Now().Add(365 * 24 * time.Hour)
+	reader := func(byDomain map[string]domain.RegistrationStatus) domain.RegistrationReaderFunc {
+		return func(_ context.Context, project string) (domain.RegistrationReader, error) {
+			if project != "imp-net-gbl-core-9c0d" {
+				return nil, errors.Newf("opened for %s, not the network project", project)
+			}
+
+			return &fakeRegistrationReader{byDomain: byDomain}, nil
+		}
+	}
+	tests := []struct {
+		name          string
+		registrations string
+		reader        domain.RegistrationReaderFunc
+		// wantFirst is the output's first line; wantOut are lines it holds anywhere.
+		wantFirst string
+		wantOut   []string
+	}{
+		{
+			name:          "an unverified registrant mailbox comes before anything else",
+			registrations: registrations,
+			reader: reader(map[string]domain.RegistrationStatus{
+				"imp.app": {State: "ACTIVE", Created: created, Expires: expires},
+				"imp.dev": {State: "ACTIVE", Created: created, Expires: expires, Issues: []string{domain.IssueUnverifiedEmail}},
+			}),
+			wantFirst: "In the registrant's mailbox (hostmaster@imp.example, registrant_contact.email in 2-net/terraform.tfvars): the registration of imp.dev waits on the registrar's verification mail; follow its link by " + created.Add(15*24*time.Hour).Format("2006-01-02") + ", fifteen days after the registration on " + created.Format("2006-01-02") + ", or the domain is suspended.",
+			wantOut: []string{
+				"imp.app: ACTIVE, expires on " + expires.Format("2006-01-02") + ".",
+				"imp.dev: ACTIVE, expires on " + expires.Format("2006-01-02") + ".",
+				"owned file(s) match the placement",
+			},
+		},
+		{
+			name:      "2-net registers none",
+			reader:    noRegistrations,
+			wantFirst: "No domain is registered through 2-net (registrations in 2-net/terraform.tfvars lists none).",
+			wantOut:   []string{"owned file(s) match the placement"},
+		},
+		{
+			name:          "Cloud Domains out of reach: the check says what it would do",
+			registrations: registrations,
+			reader:        noRegistrations,
+			wantFirst:     "Registrations not checked (no Google credentials in this test): org check reports each domain 2-net registers (registrations in 2-net/terraform.tfvars), its state and expiry date, a registrant mailbox waiting on its verification first, when it runs with Google credentials that read the network project's Cloud Domains registrations (roles/domains.viewer; gcloud auth application-default login).",
+			wantOut:       []string{"owned file(s) match the placement"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			if tt.registrations != "" {
+				path := filepath.Join(dir, "2-net", "terraform.tfvars")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = bytes.Replace(data, []byte("registrations = {}\n"), []byte(tt.registrations), 1)
+				if err := os.WriteFile(path, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			d := orgDeps(dir)
+			d.org = &orgClients{policies: noPolicies, keys: noKeys, registrations: tt.reader, permissions: noPermissions}
+			out, err := execute(d, "", "org", "check", "--dir", dir)
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			if first, _, _ := strings.Cut(out, "\n"); first != tt.wantFirst {
+				t.Errorf("first line = %q, want %q", first, tt.wantFirst)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
 				}
 			}
 		})

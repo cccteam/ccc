@@ -19,6 +19,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/render"
+	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
 // Finding is one file that is not as the render says it should be.
@@ -106,6 +107,20 @@ type Report struct {
 	// not drift: the check stays clean, so the refusal at run start is never the first
 	// sign.
 	Maintenance []MaintenanceFinding
+	// Latest are the secrets an environment's secret_versions in terraform.tfvars lets
+	// track the newest version (the word latest in place of a version number), in
+	// promotion order and then by name. Information, not drift: pinning is the default and
+	// latest the exception a secret with a real need takes, and the check names each one
+	// so the exception stays visible.
+	Latest []LatestSecret
+}
+
+// LatestSecret is one secret an environment runs at whatever version is added next.
+type LatestSecret struct {
+	// Environment is the environment, and Variable the environment variable the secret
+	// feeds, its key in secret_versions.<environment>.
+	Environment string
+	Variable    string
 }
 
 // MaintenanceFinding is one warning about the maintenance windows.
@@ -187,8 +202,30 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 	}
 	r.ReleaseLines = releaseLines
 	r.Maintenance = scanMaintenance(m, appDir, time.Now())
+	latest, err := scanLatest(dir, m.Placement.Environments)
+	if err != nil {
+		return nil, err
+	}
+	r.Latest = latest
 
 	return r, nil
+}
+
+// scanLatest reads the stack's terraform.tfvars for the secrets each environment's
+// secret_versions lets track latest, environment by environment in promotion order.
+func scanLatest(dir string, envs []string) ([]LatestSecret, error) {
+	var found []LatestSecret
+	for _, env := range envs {
+		names, err := secret.LatestVersions(dir, env)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range names {
+			found = append(found, LatestSecret{Environment: env, Variable: name})
+		}
+	}
+
+	return found, nil
 }
 
 // scanImage reads the Dockerfile against the stack: the binaries its jobs run, the
@@ -357,6 +394,12 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, path := range r.Unseeded {
 		fmt.Fprintf(w, "  unseeded %s (bedrock render creates it once)\n", path)
+	}
+	if len(r.Latest) == 0 {
+		fmt.Fprintln(w, "  latest   no secret tracks latest: every entry of secret_versions in terraform.tfvars pins a version number")
+	}
+	for _, l := range r.Latest {
+		fmt.Fprintf(w, "  latest   %s tracks latest in %s (secret_versions.%s in terraform.tfvars): the environment runs whatever version is added next, with no release; pinning a version number is the default, and latest the exception for a secret that has to follow its source\n", l.Variable, l.Environment, l.Environment)
 	}
 	for _, a := range r.Authoritative {
 		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead (a file store's bucket policy, storage.tf's, is the one admitted)\n", a.Path, a.Line, a.Address)
