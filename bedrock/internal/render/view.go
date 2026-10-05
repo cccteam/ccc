@@ -68,6 +68,13 @@ type view struct {
 	// SeedList is the HCL list of the environments whose migration applies the
 	// development seed.
 	SeedList string
+	// ReleaseBackupList is the HCL list of the environments whose release builds keep a
+	// backup as of their cut and whose stack has the rollback trigger;
+	// ReleaseBackupsProse spells them. RetentionMap is the HCL map of each environment's
+	// Spanner version retention period ({ tst = "7d", stg = "7d", prd = "7d" }).
+	ReleaseBackupList   string
+	ReleaseBackupsProse string
+	RetentionMap        string
 	// BuildMachine is the Cloud Build machine the placement puts the builds on, empty
 	// when it leaves them to Cloud Build's default, and BuildMachineCPUs its vCPUs, for
 	// the README's arithmetic; BuildMachineNames spells the machines a placement may
@@ -1193,6 +1200,17 @@ func (v *view) order(envs []string) {
 		seeds = append(seeds, strconv.Quote(env))
 	}
 	v.SeedList = "[" + strings.Join(seeds, ", ") + "]"
+	backups := make([]string, 0, len(v.P.ReleaseBackupEnvironments()))
+	for _, env := range v.P.ReleaseBackupEnvironments() {
+		backups = append(backups, strconv.Quote(env))
+	}
+	v.ReleaseBackupList = "[" + strings.Join(backups, ", ") + "]"
+	v.ReleaseBackupsProse = joinAnd(v.P.ReleaseBackupEnvironments())
+	retention := make([]string, 0, len(envs))
+	for _, env := range envs {
+		retention = append(retention, env+" = "+strconv.Quote(v.P.Retention(env)))
+	}
+	v.RetentionMap = "{ " + strings.Join(retention, ", ") + " }"
 	v.Image = newImageView(v.Model, v.SiteLevel.Name)
 	v.ApprovalsProse = joinAnd(v.P.ApprovalEnvironments())
 	if v.ApprovalsProse == "" {

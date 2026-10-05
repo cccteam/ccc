@@ -52,6 +52,30 @@ variable "shared_database" {
   }
 }
 
+variable "database_generation" {
+  description = <<-EOT
+    Which generation of the environment's database the stack points the
+    application at: 1, the database this stack created, or the number of the
+    database a rollback restored a backup into ("<database>-2", then "-3").
+    The pipeline passes it from the fact a rollback writes beside the
+    deployment records (bedrock deploy stack plan reads it; nobody sets it by
+    hand), so every build after a rollback keeps the generation; the earlier
+    generations stay in the stack, protected where the first is, until a later
+    change removes them.
+  EOT
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.database_generation >= 1 && floor(var.database_generation) == var.database_generation
+    error_message = "database_generation is a whole number from 1."
+  }
+  validation {
+    condition     = var.database_generation == 1 || var.pull_request == 0
+    error_message = "A pull-request stack has one generation of its database; a rollback restores an environment's."
+  }
+}
+
 variable "hostnames" {
   description = <<-EOT
     Hostnames the site answers on, per environment, in 2-net's convention:

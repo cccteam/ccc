@@ -114,15 +114,21 @@ resource "google_spanner_instance_iam_member" "backup_admin" {
   }
 }
 
-# A restore from production's backup creates the environment's database afresh
-# from a backup of production's, on this instance, as the environment's apply
-# identity: spanner.backups.restoreDatabase on the backup, which neither
-# databaseAdmin nor backupAdmin carries and restoreAdmin adds alone, bounded
-# to production's backups of the same application (the other permissions
-# restoreAdmin carries, the roles above already hold). Production's own
-# identity holds no restore right: no run restores production.
+# A restore creates a database from a backup on this instance as the
+# environment's apply identity: spanner.backups.restoreDatabase on the backup,
+# which neither databaseAdmin nor backupAdmin carries and restoreAdmin adds
+# alone (the other permissions restoreAdmin carries, the roles above already
+# hold). Two restores exist. A restore from production's backup (bedrock
+# restore) creates the environment's database afresh from a backup of
+# production's: production's backups of the same application, for the
+# identities with restore_from set. A rollback (bedrock rollback) restores a
+# backup the application's own release build took, as of its cut, into the
+# database's next generation: the application's own backups in the
+# environment, for every identity. Nothing restores over an existing database
+# (Spanner refuses it), and production's identity reaches production's backups
+# alone.
 resource "google_spanner_instance_iam_member" "restore_admin" {
-  for_each = { for m, v in var.database_admins : m => v if v.restore_from != "" }
+  for_each = var.database_admins
 
   project  = local.project_id
   instance = google_spanner_instance.shared.name
@@ -130,9 +136,9 @@ resource "google_spanner_instance_iam_member" "restore_admin" {
   member   = each.key
 
   condition {
-    title       = "${each.value.application} ${each.value.environment} restores from ${each.value.restore_from}"
-    description = "Production's backups of the application, which this environment's database is restored from."
-    expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")"
+    title       = "${each.value.application} ${each.value.environment} restores"
+    description = each.value.restore_from != "" ? "The application's own backups in this environment, which a rollback restores, and production's backups of it, which this environment's database is restored from." : "The application's own backups in this environment, which a rollback restores into the database's next generation."
+    expression  = each.value.restore_from != "" ? "resource.name.startsWith(\"${local.own_backups[each.key]}\") || resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")" : "resource.name.startsWith(\"${local.own_backups[each.key]}\")"
   }
 }
 

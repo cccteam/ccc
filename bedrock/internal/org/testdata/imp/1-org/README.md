@@ -120,9 +120,11 @@ on a pull request as `imp-org-gbl-plan`.
   `2-spn` grants it on the shared instance and `2-env` on an environment's
   own instance to each application's plan identity.
 - The custom organization role `cloudBuildTriggerRunner`: runs Cloud Build
-  triggers and reads the builds they start (`cloudbuild.builds.create`,
-  `cloudbuild.builds.get`, `cloudbuild.builds.list`, `cloudbuild.triggers.get`,
-  `cloudbuild.triggers.list`) and nothing else. A restore of an environment to
+  triggers, reads the builds they start and cancels one (`cloudbuild.builds.cancel`,
+  `cloudbuild.builds.create`, `cloudbuild.builds.get`, `cloudbuild.builds.list`,
+  `cloudbuild.triggers.get`, `cloudbuild.triggers.list`) and nothing else; the
+  operations workflow cancels a rollback's build left waiting for its approval
+  past the half hour it allows. A restore of an environment to
   a release, and a release run again, are started from GitHub: the
   application's operations workflow exchanges its token for the environment's
   operations identity and runs the environment's version trigger with the

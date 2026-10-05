@@ -1290,3 +1290,81 @@ func TestMigrationGrants(t *testing.T) {
 		})
 	}
 }
+
+// TestReleaseBackupsAndRetention pins what the placement's release backups and Spanner
+// retention render: the rollback trigger in the environments whose release builds keep
+// a backup as of their cut (production unless the placement lists others), with the
+// three substitutions a rollback carries, and the retention map the database reads its
+// version retention period from (seven days unless the placement says otherwise).
+func TestReleaseBackupsAndRetention(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		backups       []string
+		retention     map[string]string
+		wantTriggers  []string
+		wantLocals    []string
+		wantSubs      []string
+		absentTrigger []string
+	}{
+		{
+			name:         "nothing set: production keeps release backups, every environment seven days",
+			wantTriggers: []string{"resource \"google_cloudbuild_trigger\" \"rollback\" {\n  count = local.identities.repository_id == null || local.is_pr || !contains([\"prd\"], var.environment) ? 0 : 1\n", "  name     = \"${local.name}-${local.primary_region_code}-${local.app}-rollback\"\n  disabled = true\n", "# The rollback trigger, in prd alone"},
+			wantLocals:   []string{"spanner_retention = { tst = \"7d\", stg = \"7d\", prd = \"7d\" }"},
+			wantSubs:     []string{"    _ROLLBACK                = \"\"", "    _ROLLBACK_FROM           = \"\"", "    _REASON                  = \"\""},
+		},
+		{
+			name:         "two environments keep release backups and one keeps thirty-six hours",
+			backups:      []string{"tst", "prd"},
+			retention:    map[string]string{"tst": "36h"},
+			wantTriggers: []string{"!contains([\"tst\", \"prd\"], var.environment) ? 0 : 1\n", "# The rollback trigger, in tst and prd alone"},
+			wantLocals:   []string{"spanner_retention = { tst = \"36h\", stg = \"7d\", prd = \"7d\" }"},
+		},
+		{
+			name:          "no environment keeps release backups",
+			backups:       []string{},
+			wantTriggers:  []string{"!contains([], var.environment) ? 0 : 1\n"},
+			absentTrigger: []string{"in prd alone"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			m.Placement.ReleaseBackups = tt.backups
+			m.Placement.SpannerRetention = tt.retention
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			text := map[string]string{}
+			for _, f := range files {
+				if !f.Root {
+					text[f.Path] = string(f.Content)
+				}
+			}
+			for _, w := range tt.wantTriggers {
+				if !strings.Contains(text["cloud-build.tf"], w) {
+					t.Errorf("cloud-build.tf lacks:\n%s", w)
+				}
+			}
+			for _, w := range tt.wantSubs {
+				if !strings.Contains(text["cloud-build.tf"], w) {
+					t.Errorf("cloud-build.tf lacks the substitution:\n%s", w)
+				}
+			}
+			for _, w := range tt.wantLocals {
+				if !strings.Contains(text["locals.tf"], w) {
+					t.Errorf("locals.tf lacks:\n%s", w)
+				}
+			}
+			for _, a := range tt.absentTrigger {
+				if strings.Contains(text["cloud-build.tf"], a) {
+					t.Errorf("cloud-build.tf carries %q", a)
+				}
+			}
+		})
+	}
+}

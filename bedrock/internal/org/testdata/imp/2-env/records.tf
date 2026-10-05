@@ -56,10 +56,14 @@ resource "google_storage_bucket" "records" {
 locals {
   records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]
   records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]
+  # The operations identities read the records too: a rollback asked for with
+  # no release or backup named takes the live release's predecessor and the live
+  # release's pre-release backup from them (operations.tf, the workflow).
+  records_ops_members = [for app in var.applications : google_service_account.operations[app].member]
   records_bindings = [
     for b in [
       { role = "roles/storage.objectCreator", members = local.records_deploy_members },
-      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, values(local.next_deploy_members), [local.team_group]) },
+      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, values(local.next_deploy_members), [local.team_group]) },
     ] : b if length(b.members) > 0
   ]
 }

@@ -27,7 +27,7 @@ resource "google_spanner_database" "{{.App}}" {
   name     = local.database_name
 
   database_dialect         = "GOOGLE_STANDARD_SQL"
-  version_retention_period = "1h"
+  version_retention_period = local.spanner_retention[var.environment]
   deletion_protection      = local.is_prd
   enable_drop_protection   = local.is_prd
 }
@@ -37,6 +37,27 @@ resource "google_spanner_database" "{{.App}}" {
 moved {
   from = google_spanner_database.{{.App}}
   to   = google_spanner_database.{{.App}}[0]
+}
+
+# The databases a rollback restored a backup into, generation 2 onwards
+# (var.database_generation): each named after the first with its number, made
+# by the rollback build that restored it and imported into this stack before
+# its plan (bedrock deploy stack plan), with the first's protections. The
+# current generation is local.database_name, which the grants, the schedules,
+# the service and the migrate command follow; the earlier ones stay as they
+# are, the broken database among them as the forensic copy, until a later
+# change removes them. A pull-request stack has one generation.
+resource "google_spanner_database" "restored" {
+  for_each = local.own_database && !local.is_pr ? toset([for g in range(2, var.database_generation + 1) : tostring(g)]) : toset([])
+
+  project  = local.instance.project
+  instance = local.instance.name
+  name     = "${local.database_base}-${each.key}"
+
+  database_dialect         = "GOOGLE_STANDARD_SQL"
+  version_retention_period = local.spanner_retention[var.environment]
+  deletion_protection      = local.is_prd
+  enable_drop_protection   = local.is_prd
 }
 
 # Rows, as the site reads and writes them ({{.ConfigPackage}}.{{.DataLevel.Constructor}} opens
@@ -50,7 +71,7 @@ resource "google_spanner_database_iam_member" "app_user" {
   role     = "roles/spanner.databaseUser"
   member   = local.app_member
 
-  depends_on = [google_spanner_database.{{.App}}, google_service_account.app]
+  depends_on = [google_spanner_database.{{.App}}, google_spanner_database.restored, google_service_account.app]
 
   # A recreated database (/gcbrun reload-db replaces it) starts with no
   # members; the membership is recreated with it rather than believed to
@@ -70,7 +91,7 @@ resource "google_spanner_database_iam_member" "jobs_user" {
   role     = "roles/spanner.databaseUser"
   member   = local.jobs_member
 
-  depends_on = [google_spanner_database.{{.App}}, google_service_account.jobs]
+  depends_on = [google_spanner_database.{{.App}}, google_spanner_database.restored, google_service_account.jobs]
 
   lifecycle {
     replace_triggered_by = [google_spanner_database.{{.App}}]
@@ -89,9 +110,11 @@ resource "google_spanner_database_iam_member" "deploy_admin" {
 
   project  = local.instance.project
   instance = local.instance.name
-  database = google_spanner_database.{{.App}}[0].name
+  database = local.database_name
   role     = "roles/spanner.databaseAdmin"
   member   = local.identities.deploy_identity_member
+
+  depends_on = [google_spanner_database.{{.App}}, google_spanner_database.restored]
 
   lifecycle {
     replace_triggered_by = [google_spanner_database.{{.App}}[0]]
@@ -133,9 +156,11 @@ resource "google_project_iam_member" "spanner_metrics" {
 # ---------------------------------------------------------------------------
 # Backups, {{.Production}} only: a weekly full backup and a daily incremental one, each
 # kept 90 days, the cadence and retention of the reference deployment with the
-# incremental frequency relaxed from twice a day to once. The instance's
-# default backup schedule is NONE (2-env, 2-spn), so a database that wants
-# backups says so here. Version times are UTC.
+# incremental frequency relaxed from twice a day to once, on the current
+# generation of the database. The instance's default backup schedule is NONE
+# (2-env, 2-spn), so a database that wants backups says so here. Version times
+# are UTC. The backups a release build takes as of its cut, kept fourteen days,
+# and the ones a rollback takes are the pipeline's, not schedules.
 # ---------------------------------------------------------------------------
 
 resource "google_spanner_backup_schedule" "weekly_full" {
@@ -143,7 +168,7 @@ resource "google_spanner_backup_schedule" "weekly_full" {
 
   project  = local.instance.project
   instance = local.instance.name
-  database = google_spanner_database.{{.App}}[0].name
+  database = local.database_name
   name     = "${local.database_name}-weekly-backup"
 
   retention_duration = "7776000s" # 90 days
@@ -155,6 +180,8 @@ resource "google_spanner_backup_schedule" "weekly_full" {
   }
 
   full_backup_spec {}
+
+  depends_on = [google_spanner_database.{{.App}}, google_spanner_database.restored]
 }
 
 resource "google_spanner_backup_schedule" "daily_incremental" {
@@ -162,7 +189,7 @@ resource "google_spanner_backup_schedule" "daily_incremental" {
 
   project  = local.instance.project
   instance = local.instance.name
-  database = google_spanner_database.{{.App}}[0].name
+  database = local.database_name
   name     = "${local.database_name}-daily-backup"
 
   retention_duration = "7776000s" # 90 days
@@ -176,5 +203,5 @@ resource "google_spanner_backup_schedule" "daily_incremental" {
   incremental_backup_spec {}
 
   # An incremental chain hangs off a full backup.
-  depends_on = [google_spanner_backup_schedule.weekly_full]
+  depends_on = [google_spanner_backup_schedule.weekly_full, google_spanner_database.{{.App}}, google_spanner_database.restored]
 }

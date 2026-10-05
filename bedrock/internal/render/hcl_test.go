@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -515,4 +516,82 @@ func jobLine(t *testing.T, ctx *hcl.EvalContext, job *hclsyntax.Body) string {
 	return evalAttribute(t, ctx, job, "schedule").AsString() + " in " + evalAttribute(t, ctx, job, "time_zone").AsString() + ": " +
 		evalAttribute(t, ctx, target, "http_method").AsString() + " " + evalAttribute(t, ctx, target, "uri").AsString() +
 		" as " + evalAttribute(t, ctx, token, "service_account_email").AsString() + " for " + evalAttribute(t, ctx, token, "audience").AsString()
+}
+
+// TestDatabaseGenerations evaluates the rendered database locals and the restored
+// databases over the generation the stack is told (var.database_generation): the first
+// generation keeps the database's name, a later one is the restored database named with
+// its number, the restored resource is named after the base with the generation and keeps
+// the environment's retention from the placement, and the pull-request stack's database
+// has one generation; the for_each and the rollback trigger's count are read as written.
+func TestDatabaseGenerations(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		generation  int64
+		pullRequest bool
+		environment string
+		wantName    string
+	}{
+		{name: "the first generation in production", generation: 1, environment: "prd", wantName: "imp-prd-gbl-harbor-db"},
+		{name: "the third generation in production", generation: 3, environment: "prd", wantName: "imp-prd-gbl-harbor-db-3"},
+		{name: "the second generation in tst", generation: 2, environment: "tst", wantName: "imp-tst-gbl-harbor-db-2"},
+		{name: "a pull-request stack", generation: 1, pullRequest: true, environment: "tst", wantName: "harbor-pr7-db"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			locals := localsOf(t, parseBody(t, filepath.Join("testdata", "harbor", "locals.tf")))
+			spanner := parseBody(t, filepath.Join("testdata", "harbor", "spanner.tf"))
+			local := map[string]cty.Value{
+				"is_pr":        cty.BoolVal(tt.pullRequest),
+				"own_database": cty.True,
+				"pr_name":      cty.StringVal("harbor-pr7"),
+				"name":         cty.StringVal("imp-" + tt.environment),
+				"app":          cty.StringVal("harbor"),
+			}
+			vars := map[string]cty.Value{
+				"environment":         cty.StringVal(tt.environment),
+				"database_generation": cty.NumberIntVal(tt.generation),
+			}
+			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"local": cty.ObjectVal(local), "var": cty.ObjectVal(vars)}}
+			base, diags := locals["database_base"].Expr.Value(ctx)
+			if diags.HasErrors() {
+				t.Fatalf("database_base: %s", diags.Error())
+			}
+			local["database_base"] = base
+			retention, diags := locals["spanner_retention"].Expr.Value(nil)
+			if diags.HasErrors() {
+				t.Fatalf("spanner_retention: %s", diags.Error())
+			}
+			local["spanner_retention"] = retention
+			ctx = &hcl.EvalContext{Variables: map[string]cty.Value{"local": cty.ObjectVal(local), "var": cty.ObjectVal(vars)}}
+			name, diags := locals["database_name"].Expr.Value(ctx)
+			if diags.HasErrors() {
+				t.Fatalf("database_name: %s", diags.Error())
+			}
+			if name.AsString() != tt.wantName {
+				t.Errorf("database_name = %q, want %q", name.AsString(), tt.wantName)
+			}
+
+			restored := resourceBody(t, spanner, "google_spanner_database.restored")
+			if tt.generation > 1 {
+				each := &hcl.EvalContext{Variables: map[string]cty.Value{
+					"local": cty.ObjectVal(local), "var": cty.ObjectVal(vars),
+					"each": cty.ObjectVal(map[string]cty.Value{"key": cty.StringVal(strconv.FormatInt(tt.generation, 10))}),
+				}}
+				if got := evalAttribute(t, each, restored, "name").AsString(); got != tt.wantName {
+					t.Errorf("restored name = %q, want %q", got, tt.wantName)
+				}
+				if got := evalAttribute(t, each, restored, "version_retention_period").AsString(); got != "7d" {
+					t.Errorf("restored version_retention_period = %q, want 7d", got)
+				}
+			}
+			if got := evalAttribute(t, ctx, resourceBody(t, spanner, "google_spanner_database.harbor"), "version_retention_period").AsString(); got != "7d" {
+				t.Errorf("version_retention_period = %q, want 7d", got)
+			}
+		})
+	}
 }

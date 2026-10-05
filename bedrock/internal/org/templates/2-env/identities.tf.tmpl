@@ -112,6 +112,26 @@ resource "google_spanner_instance_iam_member" "apply_backup_admin" {
   }
 }
 
+# A rollback (bedrock rollback) restores a backup the application's own
+# release build took, as of its cut, into the database's next generation on the
+# same instance, as the apply identity: spanner.backups.restoreDatabase on the
+# backup, which restoreAdmin alone carries, bounded to the application's own
+# backups in this environment (2-spn grants the same on the shared instance).
+resource "google_spanner_instance_iam_member" "apply_restore_admin" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = "roles/spanner.restoreAdmin"
+  member   = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} restores"
+    description = "The application's own backups in this environment, which a rollback restores into the database's next generation."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.name}-gbl-${each.key}-\")"
+  }
+}
+
 # Cloud Storage: the application's own buckets. Its stack names its file
 # stores "<prefix>-<env>-gbl-<app>-files-<project number>" (files-<name> for
 # a named store) and a pull-request stack's

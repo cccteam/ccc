@@ -161,9 +161,10 @@ resource "google_organization_iam_custom_role" "storage_bucket_creator" {
 # started from GitHub: the application's operations workflow exchanges its
 # token for the environment's operations identity and runs the environment's
 # version trigger with the instruction, and the pipeline does the work as the
-# deploy identity. That identity starts a trigger's build and reads how it
-# went, and nothing else: roles/cloudbuild.builds.editor would also cancel and
-# retry builds and write every trigger. Granted on the environment project to
+# deploy identity. That identity starts a trigger's build, reads how it went
+# and cancels a rollback's build left waiting for its approval past the half
+# hour the workflow allows, and nothing else: roles/cloudbuild.builds.editor
+# would also retry builds and write every trigger. Granted on the environment project to
 # each application's operations identity by 2-env, in every environment (in
 # production for the rerun alone, since production is never restored by a
 # run); and in tst to each application's deploy identity, as which Cloud
@@ -176,8 +177,9 @@ resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
   org_id      = local.org_id
   role_id     = "cloudBuildTriggerRunner"
   title       = "Cloud Build Trigger Runner"
-  description = "Runs Cloud Build triggers and reads the builds they start, and nothing else."
+  description = "Runs Cloud Build triggers, reads the builds they start and cancels one left waiting, and nothing else."
   permissions = [
+    "cloudbuild.builds.cancel",
     "cloudbuild.builds.create",
     "cloudbuild.builds.get",
     "cloudbuild.builds.list",

@@ -1,6 +1,7 @@
 package org
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,10 @@ import (
 )
 
 const fixture = "testdata/imp"
+
+// update rewrites the fixture organization's files from the render (go test -update),
+// the way the render package's goldens are rewritten.
+var update = flag.Bool("update", false, "rewrite the fixture organization under testdata from the render")
 
 // testPlacement reads the fixture organization's placement.
 func testPlacement(t *testing.T) *Placement {
@@ -138,6 +143,11 @@ func TestRenderGolden(t *testing.T) {
 	rendered := map[string]bool{}
 	for _, f := range files {
 		rendered[f.Path] = true
+		if *update {
+			if err := os.WriteFile(filepath.Join(fixture, filepath.FromSlash(f.Path)), f.Content, 0o600); err != nil {
+				t.Fatalf("os.WriteFile(): %v", err)
+			}
+		}
 		want, err := os.ReadFile(filepath.Join(fixture, filepath.FromSlash(f.Path)))
 		if err != nil {
 			t.Errorf("%s: rendered but not in the fixture: %v", f.Path, err)
@@ -459,7 +469,7 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			want: []string{
 				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
 				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members },\n",
-				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, values(local.next_deploy_members), [local.team_group]) },\n",
+				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, values(local.next_deploy_members), [local.team_group]) },\n",
 				"    ] : b if length(b.members) > 0\n",
 				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n    }\n  }\n}\n",
 				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
@@ -715,7 +725,7 @@ func TestCustomRolePermissions(t *testing.T) {
 			resource: "cloud_build_trigger_runner",
 			roleID:   "cloudBuildTriggerRunner",
 			permissions: []string{
-				"cloudbuild.builds.create", "cloudbuild.builds.get", "cloudbuild.builds.list",
+				"cloudbuild.builds.cancel", "cloudbuild.builds.create", "cloudbuild.builds.get", "cloudbuild.builds.list",
 				"cloudbuild.triggers.get", "cloudbuild.triggers.list",
 			},
 		},
@@ -968,9 +978,33 @@ func TestSpannerGrants(t *testing.T) {
 				`own_backups   = { for m, v in var.database_admins : m => "${local.instance_path}/backups/${local.prefix}-${v.environment}-gbl-${v.application}-" }`,
 				`expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\")"`,
 				`expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\") || resource.name.startsWith(\"${local.own_backups[each.key]}\")"`,
-				`for_each = { for m, v in var.database_admins : m => v if v.restore_from != "" }`,
-				`expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")"`,
+				"resource \"google_spanner_instance_iam_member\" \"restore_admin\" {\n  for_each = var.database_admins\n",
+				`title       = "${each.value.application} ${each.value.environment} restores"`,
+				`expression  = each.value.restore_from != "" ? "resource.name.startsWith(\"${local.own_backups[each.key]}\") || resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")" : "resource.name.startsWith(\"${local.own_backups[each.key]}\")"`,
 			},
+			absent: []string{`m => v if v.restore_from != ""`},
+		},
+		{
+			name: "the environment's own instance lets each apply identity restore its own backups, for a rollback",
+			path: "2-env/identities.tf",
+			want: []string{
+				"resource \"google_spanner_instance_iam_member\" \"apply_restore_admin\" {\n  for_each = { for app in var.applications : app => app if local.own_instance }\n",
+				`role     = "roles/spanner.restoreAdmin"`,
+				`expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.name}-gbl-${each.key}-\")"`,
+			},
+		},
+		{
+			name: "the operations identities read the deployment records, for a rollback's defaults",
+			path: "2-env/records.tf",
+			want: []string{
+				`records_ops_members = [for app in var.applications : google_service_account.operations[app].member]`,
+				`concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, values(local.next_deploy_members), [local.team_group])`,
+			},
+		},
+		{
+			name: "the trigger runner cancels a build left waiting",
+			path: "1-org/custom-roles.tf",
+			want: []string{"    \"cloudbuild.builds.cancel\",\n    \"cloudbuild.builds.create\",\n"},
 		},
 		{
 			name: "the shared instance's apply identities may grant the metric writer role on its project and no other, and its plan identities read the project's policy",

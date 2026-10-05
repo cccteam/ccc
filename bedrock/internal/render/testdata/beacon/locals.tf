@@ -76,8 +76,18 @@ locals {
   # The database the site opens: the environment's own, a pull request's own,
   # or in shared mode (var.shared_database) tst's, which the pull-request
   # stack then only reads by name and grants its app identity on.
-  own_database  = !(local.is_pr && var.shared_database)
-  database_name = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
+  own_database = !(local.is_pr && var.shared_database)
+  # The database by generation (var.database_generation): the first is named
+  # for the environment and the application, and each rollback restores a
+  # backup into the next, "-2", then "-3" (spanner.tf). The current one is what
+  # the site, the migrate command and the grants use.
+  database_base = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
+  database_name = var.database_generation == 1 ? local.database_base : "${local.database_base}-${var.database_generation}"
+  # How far back Spanner keeps the database's row versions, from
+  # placement.json (spannerRetention; seven days, the most Spanner allows,
+  # unless it says otherwise): how far back a backup as of a moment and a
+  # point-in-time rollback reach.
+  spanner_retention = { tst = "7d", stg = "7d", prd = "7d" }
 
   # ---------------------------------------------------------------------------
   # What the code declares, read from pkg/config by bedrock render; each entry

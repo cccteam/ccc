@@ -6,11 +6,13 @@ package derive
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -73,6 +75,16 @@ type Placement struct {
 	// approval in Cloud Build before a release runs there. Absent, every environment
 	// but the first.
 	Approvals []string `json:"approvals,omitempty"`
+	// ReleaseBackups lists the environments whose release builds start, before their
+	// migrations, a Spanner backup of the database as of that moment (the cut), kept
+	// fourteen days: what bedrock rollback restores when a release goes wrong there, and
+	// the environments the command serves. Absent, production alone.
+	ReleaseBackups []string `json:"releaseBackups,omitempty"`
+	// SpannerRetention is how far back Spanner keeps each environment's row versions, by
+	// environment name, as Spanner spells a duration ("7d", "36h"): how far back a backup
+	// as of a moment and a point-in-time rollback can reach, between one hour and seven
+	// days. An environment it does not name keeps seven days, the most Spanner allows.
+	SpannerRetention map[string]string `json:"spannerRetention,omitempty"`
 	// BuildMachine is the Cloud Build machine the pipeline's builds run on, by the name
 	// cloudbuild.yaml's options.machineType takes (E2_HIGHCPU_8); absent, Cloud Build's
 	// default. The machine is a build-level option: the whole run is on it, a window
@@ -276,6 +288,19 @@ func (p *Placement) validateEnvironmentNames() error {
 			return errors.Newf("seed names %q, the production environment, which is never seeded", env)
 		}
 	}
+	for _, env := range p.ReleaseBackups {
+		if !slices.Contains(p.Environments, env) {
+			return errors.Newf("releaseBackups names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
+		}
+	}
+	for env, retention := range p.SpannerRetention {
+		if !slices.Contains(p.Environments, env) {
+			return errors.Newf("spannerRetention names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
+		}
+		if problem := retentionProblem(retention); problem != "" {
+			return errors.Newf("spannerRetention.%s: %s", env, problem)
+		}
+	}
 	for env, project := range p.Projects {
 		if !slices.Contains(p.Environments, env) {
 			return errors.Newf("projects names %q, which is not one of the environments (%s)", env, strings.Join(p.Environments, ", "))
@@ -402,6 +427,68 @@ func CreatePlacement(file string, p *Placement) error {
 // the placement's seed list, none by default.
 func (p *Placement) SeedEnvironments() []string {
 	return p.Seed
+}
+
+// DefaultRetention is how far back Spanner keeps an environment's row versions unless
+// the placement says otherwise: seven days, the most Spanner allows.
+const DefaultRetention = "7d"
+
+// retentionRE is a Spanner duration the placement may write for the retention: hours or
+// days, whole numbers.
+var retentionRE = regexp.MustCompile(`^([1-9]\d*)([hd])$`)
+
+// ValidateRetention checks a version retention period as Spanner takes one: a whole
+// number of hours (1h to 168h) or days (1d to 7d), between one hour and seven days.
+func ValidateRetention(retention string) error {
+	if problem := retentionProblem(retention); problem != "" {
+		return errors.New(problem)
+	}
+
+	return nil
+}
+
+// retentionProblem says what is wrong with a retention period, or nothing.
+func retentionProblem(retention string) string {
+	m := retentionRE.FindStringSubmatch(retention)
+	if m == nil {
+		return fmt.Sprintf("%q is not a retention period: a whole number of hours or days between 1h and 7d, such as 7d or 36h", retention)
+	}
+	n, _ := strconv.Atoi(m[1])
+	hours := n
+	if m[2] == "d" {
+		hours = n * 24
+	}
+	if hours < 1 || hours > 7*24 {
+		return fmt.Sprintf("%q is outside what Spanner keeps: between 1h and 7d (168h)", retention)
+	}
+
+	return ""
+}
+
+// Retention is how far back Spanner keeps env's row versions: the placement's value for
+// the environment, else seven days.
+func (p *Placement) Retention(env string) string {
+	if r, ok := p.SpannerRetention[env]; ok {
+		return r
+	}
+
+	return DefaultRetention
+}
+
+// ReleaseBackupEnvironments are the environments whose release builds start a backup
+// as of the cut, and that bedrock rollback serves: the placement's list, else production
+// alone.
+func (p *Placement) ReleaseBackupEnvironments() []string {
+	if p.ReleaseBackups != nil {
+		return p.ReleaseBackups
+	}
+
+	return []string{p.Production()}
+}
+
+// KeepsReleaseBackups says whether env's release builds start a backup as of the cut.
+func (p *Placement) KeepsReleaseBackups(env string) bool {
+	return slices.Contains(p.ReleaseBackupEnvironments(), env)
 }
 
 // Restorable lists the environments a run may restore: every one but production.
