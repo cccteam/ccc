@@ -108,7 +108,16 @@ from `2-env`'s state.
 - **The database** `{{.Prefix}}-<env>-gbl-{{.App}}-db` on the environment's instance
   (`2-env` output `spanner_instance`: {{.Integration}}'s own, the spn instance for {{.SharedInstanceEnvsWrapped}}), GoogleSQL, no schema (the migrations own it). {{.Production}}: deletion and drop
   protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
-  incremental one (02:00 UTC), each kept 90 days.
+  incremental one (02:00 UTC), each kept 90 days. In {{.ReleaseBackupsProse}}, every
+  release build also starts a backup of the database as of the cut, the moment
+  before its migrations run, kept fourteen days, which `bedrock rollback`
+  restores into the database's next generation (`{{.Prefix}}-<env>-gbl-{{.App}}-db-2`,
+  then `-3`): the stack points at the generation the deployment records name
+  (`var.database_generation`) and keeps the earlier ones, drop-protected, as
+  forensic copies. The rollback trigger `{{.Prefix}}-<env>-<region>-{{.App}}-rollback`,
+  disabled for events and run by the operations workflow alone, runs it. The
+  database keeps its past for the placement's `spannerRetention` (seven days
+  unless it says otherwise).
 {{- range .FileStores}}
 - **{{.Title}}** `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Suffix}}-<project number>`
   (`{{.Variable.Declaration}}` names it to the processes that construct the

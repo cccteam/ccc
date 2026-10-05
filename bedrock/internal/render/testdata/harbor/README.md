@@ -109,7 +109,16 @@ from `2-env`'s state.
   (`2-env` output `spanner_instance`: tst's own, the spn instance for stg and
   prd), GoogleSQL, no schema (the migrations own it). prd: deletion and drop
   protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
-  incremental one (02:00 UTC), each kept 90 days.
+  incremental one (02:00 UTC), each kept 90 days. In prd, every
+  release build also starts a backup of the database as of the cut, the moment
+  before its migrations run, kept fourteen days, which `bedrock rollback`
+  restores into the database's next generation (`imp-<env>-gbl-harbor-db-2`,
+  then `-3`): the stack points at the generation the deployment records name
+  (`var.database_generation`) and keeps the earlier ones, drop-protected, as
+  forensic copies. The rollback trigger `imp-<env>-<region>-harbor-rollback`,
+  disabled for events and run by the operations workflow alone, runs it. The
+  database keeps its past for the placement's `spannerRetention` (seven days
+  unless it says otherwise).
 - **The default file store** `imp-<env>-gbl-harbor-files-<project number>`
   (`dataConfig.FileStore` names it to the processes that construct the
   data level, as a `gs://` URL), in the primary region, uniform access, no public

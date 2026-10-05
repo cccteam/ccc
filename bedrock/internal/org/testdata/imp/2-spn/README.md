@@ -23,12 +23,15 @@ stg and prd databases live on. Applied by the layers workflow as
   (`<prefix>-<env>-gbl-<app>-`, with the schedules and operations under it);
   `roles/spanner.backupAdmin` under the same condition widened to the backups
   taken from that database (for the backup schedules a production stack makes
-  on its database, which `databaseAdmin` does not read); and, for every
-  environment but production, `roles/spanner.restoreAdmin` on production's
-  backups of the same application (the restore of the environment's database
-  from production's backup, which adds `spanner.backups.restoreDatabase`
-  alone). stg's identity can neither drop production's database nor restore
-  over it, and neither application's identity reaches the other's.
+  on its database, which `databaseAdmin` does not read); and
+  `roles/spanner.restoreAdmin` on the backups of the application's own
+  database in that environment (a rollback restores a release backup into
+  the database's next generation) and, for every environment but production,
+  on production's backups of the same application (the restore of the
+  environment's database from production's backup), which adds
+  `spanner.backups.restoreDatabase` alone. stg's identity can neither drop
+  production's database nor restore over it, and neither application's
+  identity reaches the other's.
 - For the same members, `roles/resourcemanager.projectIamAdmin` on the `spn`
   project under a condition that admits a change to the grants of
   `roles/monitoring.metricWriter` and of no other role
@@ -80,8 +83,9 @@ Two levels, two owners, and one project-level role the two share.
 Instance level, this layer: creating a database is `spanner.databases.create`
 checked on the instance, so the identity that creates databases, the
 application apply identity in stg and prd, is listed in `database_admins` and
-bound here as database admin, as backup admin for the backup schedules, and
-as restore admin for the restore from production's backup.
+bound here as database admin, as backup admin for the backup schedules and
+the release backups, and as restore admin for a rollback's restore of a
+release backup and for the restore from production's backup.
 Database admin at instance level reaches every database on the instance;
 bounding it to an application's own databases is an open question, and until
 it is answered the list stays short. The application plan identity of the

@@ -183,9 +183,18 @@ and what its absence means:
   organization's `labels`. Absent, none.
 - `seed`: the environments whose database takes the development seed (`schema/devseed`)
   at a release build. The first environment. Absent, none; production is never seeded.
+- `releaseBackups`: the environments whose release builds keep a backup of the database
+  as of the cut, the moment before the release's migrations run, for fourteen days, so
+  `bedrock rollback` can return the environment to the release before it on that
+  release's last data (bedrock rollback, below). Not written. Absent, production alone.
+- `spannerRetention`: how far back each environment's database keeps its past, by
+  environment (`{"prd": "7d"}`), one hour to seven days (`1h` to `168h`, or `1d` to
+  `7d`): the version retention period of the Spanner database, which bounds a rollback
+  to a moment (`bedrock rollback --at`) and what a backup taken as of a past moment can
+  hold. Not written. Absent, or for an environment it leaves out, seven days.
 - `projects`: each environment project's `id` and `number`, by which the operations
-  workflow, started from GitHub (`bedrock restore`, `bedrock rerun`), names the
-  environment's identity provider and operations identity. From the organization's
+  workflow, started from GitHub (`bedrock restore`, `bedrock rerun`, `bedrock rollback`),
+  names the environment's identity provider and operations identity. From the organization's
   `projects` and `projectNumbers`, 1-org's outputs. An environment without an entry
   cannot be operated from GitHub.
 - `approvals`: the environments whose release waits for a person's approval in Cloud
@@ -1167,10 +1176,21 @@ anywhere: `bedrock rerun` is its door.
 
 ## bedrock restore
 
-`restore <env> <release>` restores an environment to a release, started from GitHub:
+`restore <env> [<release>]` restores an environment to a release, started from GitHub:
 developers authenticate to GitHub and nowhere else, and nobody sets up a cloud tool to
-operate an environment. The command checks that the environment is not production, that
-the release exists, and that the placement records the environment's project
+operate an environment. Its first case is staging's return to production: staging runs a
+release against production's data before production does, so between releases it sits at
+production's release, and the failure expected there is a migration meeting production's
+data. A restore of staging is a rollback to production's release on production's backup,
+after which the failed release returns through a hotfix. So an environment restored from
+production's backup (one on production's instance, off the seed list) may leave the
+release out: the workflow's job reads production's live release from production's
+deployment records, says which, and runs it; a release named is run as named, and the
+job says whether it is production's. The first environment and a seeded one restore to
+an empty database, which has no production state to return to, so they name their
+release. The command checks that the environment is not production (which `bedrock
+rollback`, below, returns to an earlier release), that a release named exists, and that
+the placement records the environment's project
 (`projects`, the id and the number, which `bedrock org register` writes into the
 application's first placement), then
 dispatches the repository's operations workflow (`.github/workflows/operations.yml`,
@@ -1192,6 +1212,64 @@ for any release; the GitHub side never holds a deploy right. The workflow run na
 started it, Cloud Build records the operations identity, and the deployment record
 carries the requester and the restore. An environment the placement records no project
 for is not wired: the job stops before touching anything and says what to record.
+
+## bedrock rollback
+
+`rollback <env> --reason <why> [--to <release>] [--at <moment>]` returns an environment
+to an earlier release on the data of that release's last moment, started from GitHub. It
+is for production, where a release that went wrong is taken back and its data with it;
+an environment on production's instance returns to production's release with `bedrock
+restore` instead, and the command names that when asked for such an environment.
+
+**The release backup.** In the environments the placement's `releaseBackups` names
+(production unless it says otherwise), every release build starts a backup of the
+database as of the cut, the moment before the release's migrations run, kept fourteen
+days (`deploy backup`, after the maintenance step and before the migrations; a failure to
+start it stops the build). The record carries the cut, the backup's name and when it
+expires. The release before it can therefore be returned to on its own data: the backup
+the first release after it started holds that release's last moment. The database keeps
+its past for the placement's `spannerRetention` (seven days unless it says otherwise),
+so a backup can also be taken as of any moment inside that window.
+
+**The command.** It checks the environment and the inputs (a reason is required and may
+not carry `|`; `--to` names a release that exists; `--at` is an RFC 3339 moment; one of
+the two or neither), prints the statement (what returns to what, on which data, asked
+for by whom and why), asks for the environment's name typed, and dispatches the
+repository's operations workflow as the person signed in to gh with the action
+`rollback`, the reason, the release (`--to`, or none) and the backup (`@<moment>` for
+`--at`, or none). The command changes nothing itself.
+
+**The workflow's job** runs in the GitHub Environment named after the environment. Where
+the organization's placement names production reviewers (`githubProductionReviewers`),
+production's Environment waits for one of them before the job starts. The job refuses
+an environment that keeps no release backup, reads the environment's newest deployment
+records (through the version trigger's `_RECORDS_BUCKET`; the operations identity reads
+the bucket) for the live release, which the environment leaves, and, unless named, the
+release to return to (the release live before the live one) and the backup to restore
+(the pre-release backup of the first release after the one returned to), prints the
+statement with them, and runs the environment's **rollback trigger**
+(`<prefix>-<env>-<region>-<app>-rollback`, disabled for events and run by this job
+alone; never the release trigger) for the release returned to with `_ROLLBACK`,
+`_ROLLBACK_FROM`, `_REASON` and `_REQUESTER`. The build waits for its approval in Cloud
+Build as a release does; thirty minutes without one and the job cancels it, so a
+rollback nobody approved is not left waiting.
+
+**The build**, as the deploy identity: the resolve step prints the statement first; the
+application goes into maintenance whatever the window; the stack plan, as the apply
+identity, finds the chosen backup (or starts one as of the moment, kept fourteen days)
+and refuses one that does not exist or belongs to another application before anything
+is started, starts the forensic backup of the live database (`<db>-forensic-<stamp>`,
+thirty days), waits for the chosen backup to be READY, restores it into the database's
+next generation (`<db>-2`, then `-3`), writes the generation beside the deployment
+records (`<app>/database/<env>/<n>.json`), imports the restored database into the stack
+and plans with `database_generation = <n>`; the apply points the service at it; the
+release's migrations run on it (nothing applies when the backup is at the release's
+schema); the release deploys and takes the traffic; the record names the requester, the
+reason, the release left, both backups and both databases. The live database stays,
+drop-protected, as the forensic copy: writes made after the backup's moment are in it
+alone. Every later plan, a pull request's included, reads the generation its records
+name, so the stack keeps pointing at the restored database and the earlier generations
+stay protected; their removal is a later item.
 
 ## bedrock rerun
 
@@ -1496,15 +1574,20 @@ parentheses) and the infrastructure workflow's `bedrock check` passing on its la
 squash the only merge and, when the placement names an infrastructure team, that team's
 approval of a change to the workflow and Cloud Build files), and the GitHub Environments
 the operations workflow runs in (every environment, production's for the rerun of a
-release, each deploying from the default branch alone). The workflow applies it with the
+release and the rollback, each deploying from the default branch alone, production's
+waiting for one of the production reviewers when the placement names them). The workflow applies it with the
 infrastructure GitHub App's
 installation token, minted in the run; a person applying by hand uses their own sign-in,
 `GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
 App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
 by its slug) and also records the slug (`githubReleaseAppSlug`, the name in the app's
 address, `github.com/apps/<slug>`), which each application's placement names as the
-author of its releases, the default branch (`githubDefaultBranch`) and the team
-(`githubInfrastructureTeam`, empty for none). A repository that existed before the layer
+author of its releases, the default branch (`githubDefaultBranch`), the team
+(`githubInfrastructureTeam`, empty for none) and the production reviewers
+(`githubProductionReviewers`, GitHub logins: `1-org` makes the team
+`<prefix>-production-reviewers` of them and names it production's GitHub Environment's
+reviewer, so a rollback or a rerun there waits for one of them first; empty for no gate,
+which `bedrock org check` says). A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
 `hotfix` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
@@ -1526,9 +1609,10 @@ organization's GitHub plan, so its plan must include all four.
   application's repository three rulesets. The tag ruleset lets the release app alone
   create, move or delete a release tag, which is what makes the pipeline's tag check
   sound; a ruleset GitHub shows but does not enforce leaves the check unsound.
-- **Environments on private repositories.** The operations workflow runs a restore or a
-  rerun in a GitHub Environment per environment, each deploying from the default branch
-  alone.
+- **Environments on private repositories.** The operations workflow runs a restore, a
+  rerun or a rollback in a GitHub Environment per environment, each deploying from the
+  default branch alone, production's waiting for a production reviewer when the
+  placement names them (required reviewers on Environments).
 - **Organization secrets that reach private repositories.** The release app's
   `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` are set once for the organization,
   visible to all repositories, and each application's release workflow makes the app's
@@ -1537,7 +1621,8 @@ organization's GitHub plan, so its plan must include all four.
   that scope is refused.
 - **GitHub Apps owned by the organization.** The release app (Contents, Issues and Pull
   requests, read and write), the deployer app (Checks, Deployments, Issues and Pull
-  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`), each
+  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`; on the
+  organization, Members read and write, for the production reviewers' team), each
   installed on all repositories, and the Google Cloud Build GitHub App, installed when
   the connection is authorized.
 
