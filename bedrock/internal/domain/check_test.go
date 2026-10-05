@@ -145,14 +145,27 @@ func authLine(domain string) string {
 	return authName(domain) + " CNAME " + authData
 }
 
-// prefixed is each name server after the prefix, one line each.
-func prefixed(prefix string) []string {
+// formed is each name server after the prefix as a DNS provider's form takes it, the
+// trailing dot dropped, one line each.
+func formed(prefix string) []string {
 	lines := make([]string, 0, len(zoneServers))
 	for _, ns := range zoneServers {
-		lines = append(lines, prefix+ns)
+		lines = append(lines, prefix+strings.TrimSuffix(ns, "."))
 	}
 
 	return lines
+}
+
+// authForm is the authorization record as a DNS provider's form takes it under the
+// domain the provider serves: the host relative to that domain (label empty for the
+// domain itself), the value without the trailing dot.
+func authForm(label string) string {
+	host := "_acme-challenge"
+	if label != "" {
+		host += "." + label
+	}
+
+	return host + " CNAME " + strings.TrimSuffix(authData, ".")
 }
 
 // TestCheck classifies the apps domain over a fake Cloud DNS and a fake resolver, and
@@ -226,10 +239,10 @@ func TestCheck(t *testing.T) {
 			want: LabelUndelegated,
 			wantLines: append(append([]string{
 				"apps.example.com does not answer the zone's name servers (it answers none).",
-				"At the DNS provider that serves example.com: add NS records for apps pointing at the zone's name servers, in place of any it has, one record per line below (name, type, value). The other records of example.com stay as they are.",
-			}, prefixed("apps.example.com. NS ")...),
-				"The certificate is still waiting on the authorization record below, which resolves once the delegation is in place. To have the certificate issued sooner, add it now at the DNS provider that serves example.com (name, type, value):",
-				authLine("apps.example.com"),
+				"At the DNS provider that serves example.com: add NS records for apps pointing at the zone's name servers, in place of any it has, one record per line below as the provider's form takes it (host, type, value: the host relative to example.com, the value without the trailing dot a zone file writes). The other records of example.com stay as they are.",
+			}, formed("apps NS ")...),
+				"The certificate is still waiting on the authorization record below, which resolves once the delegation is in place. To have the certificate issued sooner, add it now at the DNS provider that serves example.com, as its form takes it (host, type, value):",
+				authForm("apps"),
 			),
 		},
 		{
@@ -274,8 +287,8 @@ func TestCheck(t *testing.T) {
 				"example.org does not answer the zone's name servers (it answers ns1.registrar.example., ns2.registrar.example.).",
 				"At the registrar where example.org is registered: set its name servers to the zone's 4 below, in place of the ones it has. " + squarespacePath,
 			}, bare()...),
-				"The certificate is still waiting on the authorization record below, which resolves once the delegation is in place. To have the certificate issued sooner, add it now at the DNS provider that serves example.org (name, type, value):",
-				authLine("example.org"),
+				"The certificate is still waiting on the authorization record below, which resolves once the delegation is in place. To have the certificate issued sooner, add it now at the DNS provider that serves example.org, as its form takes it (host, type, value):",
+				authForm(""),
 			),
 		},
 		{
@@ -459,7 +472,7 @@ func TestCheckRecordOrder(t *testing.T) {
 		want   []string
 	}{
 		{name: "the registrar's name servers, bare host names", domain: "example.org", want: bare()},
-		{name: "the label's NS records, zone-file lines", domain: "apps.example.org", want: prefixed("apps.example.org. NS ")},
+		{name: "the label's NS records, as the parent's provider's form takes them", domain: "apps.example.org", want: formed("apps NS ")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -480,6 +493,34 @@ func TestCheckRecordOrder(t *testing.T) {
 			want := "\n" + strings.Join(tt.want, "\n") + "\n"
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("output lacks the records in the zone's order:\n%s\nwant:\n%s", out.String(), want)
+			}
+		})
+	}
+}
+
+// TestFormLine holds a record's form line to the host relative to the domain the
+// provider serves, the domain itself as @, and the value without the trailing dot.
+func TestFormLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		record Record
+		domain string
+		want   string
+	}{
+		{name: "a label's NS record under its parent", record: Record{Name: "apps.example.com.", Type: "NS", Data: []string{"ns-cloud-c1.googledomains.com."}}, domain: "example.com", want: "apps NS ns-cloud-c1.googledomains.com"},
+		{name: "the domain itself is @", record: Record{Name: "example.com.", Type: "NS", Data: []string{"ns-cloud-c1.googledomains.com."}}, domain: "example.com", want: "@ NS ns-cloud-c1.googledomains.com"},
+		{name: "the authorization record under a label", record: Record{Name: "_acme-challenge.apps.example.com.", Type: "CNAME", Data: []string{authData}}, domain: "example.com", want: "_acme-challenge.apps CNAME " + strings.TrimSuffix(authData, ".")},
+		{name: "a name under another domain stays whole", record: Record{Name: "apps.example.net.", Type: "NS", Data: []string{"ns1.example."}}, domain: "example.com", want: "apps.example.net NS ns1.example"},
+		{name: "no datum", record: Record{Name: "apps.example.com.", Type: "NS"}, domain: "example.com", want: "apps NS "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.record.FormLine(tt.domain); got != tt.want {
+				t.Errorf("FormLine() = %q, want %q", got, tt.want)
 			}
 		})
 	}

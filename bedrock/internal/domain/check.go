@@ -64,7 +64,27 @@ type Record struct {
 	Data []string
 }
 
-// Line is the record as a line to paste: name, type and the first datum.
+// FormLine is the record as a DNS provider's form takes it, under the domain the
+// provider serves: the host relative to that domain (@ for the domain itself), the type,
+// and the first datum as a host name, without the trailing dot a zone file writes
+// (Squarespace, for one, refuses the dot as a character).
+func (r Record) FormLine(domain string) string {
+	host := strings.TrimSuffix(r.Name, ".")
+	switch {
+	case host == domain:
+		host = "@"
+	case strings.HasSuffix(host, "."+domain):
+		host = strings.TrimSuffix(host, "."+domain)
+	}
+	data := ""
+	if len(r.Data) > 0 {
+		data = strings.TrimSuffix(r.Data[0], ".")
+	}
+
+	return host + " " + r.Type + " " + data
+}
+
+// Line is the record as a zone-file line: name, type and the first datum.
 func (r Record) Line() string {
 	data := ""
 	if len(r.Data) > 0 {
@@ -498,10 +518,12 @@ func (r *Report) Passed() bool {
 
 // Write prints what the check found and, for what is missing, the place to act and the
 // records to add there, and, when zoneReplacement is set and nothing is missing, that it
-// can be cleared; each record on its own line exactly as it is pasted: the name
-// servers for a registrar as bare host names (a registrar takes host names; the trailing
-// dot is a zone file's convention), the NS and CNAME records as zone-file lines, fully
-// qualified with the trailing dot.
+// can be cleared; each record on its own line exactly as it is pasted where it goes: the
+// name servers for a registrar as bare host names, and a record for a DNS provider's
+// form as the form takes it (the host relative to the domain the provider serves, the
+// value without the trailing dot), since a registrar and a provider's form take host
+// names and the trailing dot is a zone file's convention; a record the zone itself
+// holds is shown as the zone-file line it is.
 func (r *Report) Write(w io.Writer) {
 	switch r.Delegation {
 	case Delegated:
@@ -526,9 +548,9 @@ func (r *Report) Write(w io.Writer) {
 		fmt.Fprintf(w, "gcloud domains registrations configure dns %s --cloud-dns-zone=%s --project=%s\n", r.Domain, r.Zone, r.Project)
 	case LabelUndelegated:
 		fmt.Fprintf(w, "%s does not answer the zone's name servers (%s).\n", r.Domain, r.answeredNow())
-		fmt.Fprintf(w, "At the DNS provider that serves %s: add NS records for %s pointing at the zone's name servers, in place of any it has, one record per line below (name, type, value). The other records of %s stay as they are.\n", r.Parent, r.Label, r.Parent)
+		fmt.Fprintf(w, "At the DNS provider that serves %s: add NS records for %s pointing at the zone's name servers, in place of any it has, one record per line below as the provider's form takes it (host, type, value: the host relative to %s, the value without the trailing dot a zone file writes). The other records of %s stay as they are.\n", r.Parent, r.Label, r.Parent, r.Parent)
 		for _, ns := range r.NameServers {
-			fmt.Fprintln(w, r.ZoneName+" "+typeNS+" "+ns)
+			fmt.Fprintln(w, Record{Name: r.ZoneName, Type: typeNS, Data: []string{ns}}.FormLine(r.Parent))
 		}
 	case Refused:
 		fmt.Fprintf(w, "%s does not answer the zone's name servers (%s), and it answers records that are not the zone's:\n", r.Domain, r.answeredNow())
@@ -571,7 +593,10 @@ func (r *Report) writeAuthorization(w io.Writer) {
 		if r.Delegation == LabelUndelegated {
 			host = r.Parent
 		}
-		fmt.Fprintf(w, "The certificate is still waiting on the authorization record below, which resolves once the delegation is in place. To have the certificate issued sooner, add it now at the DNS provider that serves %s (name, type, value):\n", host)
+		fmt.Fprintf(w, "The certificate is still waiting on the authorization record below, which resolves once the delegation is in place. To have the certificate issued sooner, add it now at the DNS provider that serves %s, as its form takes it (host, type, value):\n", host)
+		fmt.Fprintln(w, r.Authorization.FormLine(host))
+
+		return
 	}
 	fmt.Fprintln(w, r.Authorization.Line())
 }

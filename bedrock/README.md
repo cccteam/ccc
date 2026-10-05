@@ -1405,8 +1405,12 @@ name servers to set at the registrar where the domain is registered, as bare hos
 (`ns-cloud-c1.googledomains.com`, since a registrar takes host names; at Squarespace
 Domains: the domain's DNS settings, Domain Nameservers, Use Custom Nameservers, up to 48
 hours to take effect); for a label, the NS records to add at the DNS provider that serves
-the domain it belongs to, as zone-file lines with the trailing dot
-(`apps.example.com. NS ns-cloud-c1.googledomains.com.`), as is the authorization record. An apex that is not delegated and answers records that are not
+the domain it belongs to, each as the provider's form takes it: the host relative to that
+domain, the type, and the value without the trailing dot a zone file writes
+(`apps NS ns-cloud-c1.googledomains.com`; Squarespace, for one, refuses the dot as a
+character), as is the authorization record when it is to be added at a provider
+(`_acme-challenge.apps CNAME ...`); a record the zone itself holds is shown as the
+zone-file line it is. An apex that is not delegated and answers records that are not
 the zone's is refused, with a label of it named instead. The check also resolves the
 record that proves the domain to Certificate Manager and says when the certificate is
 still waiting on it. It exits 1 when anything is missing or refused.

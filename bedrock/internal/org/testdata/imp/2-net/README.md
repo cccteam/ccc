@@ -172,7 +172,9 @@ The steps by hand, each where it happens:
    to thirteen servers); the change takes up to 48 hours to take effect.
 3. At the DNS provider that serves the client's domain, for a label: add the
    NS records `bedrock domain check` prints, one per name server of the zone,
-   for the label.
+   for the label, each as the provider's form takes it: the host is the label
+   alone, the value the name server without a trailing dot (Squarespace, for
+   one, refuses the dot as a character).
 4. In Cloud Domains, in the network project, for a domain registered here
    whose registration names other name servers than the zone's (after the
    zone was made again): point the registration at the zone with the command
