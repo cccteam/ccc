@@ -95,13 +95,21 @@ func TestHandler(t *testing.T) {
 func TestServe(t *testing.T) {
 	t.Parallel()
 
+	h2c := new(http.Protocols)
+	h2c.SetUnencryptedHTTP2(true)
 	tests := []struct {
 		name string
 		path string
-		// wantStatus is what a GET of the path answers while the server runs.
+		// client is what the request is made with: HTTP/1.1, or HTTP/2 with prior
+		// knowledge as Cloud Run speaks to a service whose port is named h2c.
+		client *http.Client
+		// wantProto is the protocol the server answered in, and wantStatus what a GET of
+		// the path answers while the server runs.
+		wantProto  string
 		wantStatus int
 	}{
-		{name: "the server answers 503 with the marker and stops when the context ends", path: "/", wantStatus: http.StatusServiceUnavailable},
+		{name: "the server answers 503 with the marker over HTTP/1.1 and stops when the context ends", path: "/", client: http.DefaultClient, wantProto: "HTTP/1.1", wantStatus: http.StatusServiceUnavailable},
+		{name: "the server answers the same over unencrypted HTTP/2, as Cloud Run speaks to an h2c port", path: "/", client: &http.Client{Transport: &http.Transport{Protocols: h2c}}, wantProto: "HTTP/2.0", wantStatus: http.StatusServiceUnavailable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -120,13 +128,16 @@ func TestServe(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err := http.DefaultClient.Do(req)
+			res, err := tt.client.Do(req)
 			if err != nil {
 				t.Fatalf("GET: %v", err)
 			}
 			defer res.Body.Close()
 			if res.StatusCode != tt.wantStatus || res.Header.Get(Header) != HeaderValue {
 				t.Errorf("status = %d, %s = %q; want %d and %q", res.StatusCode, Header, res.Header.Get(Header), tt.wantStatus, HeaderValue)
+			}
+			if res.Proto != tt.wantProto {
+				t.Errorf("answered in %s, want %s", res.Proto, tt.wantProto)
 			}
 			cancel()
 			select {

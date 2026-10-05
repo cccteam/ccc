@@ -87,9 +87,17 @@ func Serve(ctx context.Context) error {
 	return serve(ctx, listener)
 }
 
-// serve serves the handler on the listener until the context ends.
+// serve serves the handler on the listener until the context ends. It speaks HTTP/1.1 and
+// unencrypted HTTP/2 (h2c) on the one listener, as resource/server does, because the
+// maintenance revision runs the same image on the same service as the application: a
+// service whose port is named h2c (the application's main imports resource/server) is
+// spoken to in HTTP/2 by Cloud Run, and a maintenance server that answered HTTP/1.1 alone
+// would be a 502 there, which the pipeline's probe refuses before any traffic moves.
 func serve(ctx context.Context, listener net.Listener) error {
-	server := &http.Server{Handler: Handler(), ReadHeaderTimeout: readHeaderTimeout}
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	server := &http.Server{Handler: Handler(), ReadHeaderTimeout: readHeaderTimeout, Protocols: protocols}
 	errs := make(chan error, 1)
 	go func() {
 		errs <- server.Serve(listener)
