@@ -11,3 +11,7 @@ semantic_differential_test.go
 # navigation; no request data reaches it, so the direct-write audit (an HTML page writing
 # user data) does not apply.
 maintenance/maintenance.go
+# The test server standing in for the Cloud Run API in the jobs package's tests answers
+# JSON to the client under test; the direct-write audit (an HTML page writing user data)
+# does not apply.
+jobs/jobs_test.go

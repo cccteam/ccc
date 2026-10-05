@@ -31,6 +31,10 @@ bedrock/internal/github/githubtest/server.go
 # navigation; no request data reaches it, so the direct-write audit (an HTML page writing
 # user data) does not apply.
 resource/maintenance/maintenance.go
+# The test server standing in for the Cloud Run API in the jobs package's tests answers
+# JSON to the client under test, as the GitHub test fake does; the direct-write audit (an
+# HTML page writing user data) does not apply.
+resource/jobs/jobs_test.go
 # The migration renumber runs git with the repository's own paths (the default branch's
 # tree, the tracked files, git mv), which is its purpose; the dangerous-exec audit does
 # not apply to it.
