@@ -594,7 +594,11 @@ thing one step hands the next. In order:
   can change no environment), and runs the tests a tag build runs before its apply. One
   comment on the pull request carries every summary; a failing plan or test stops the
   build and the comment says so. The plan the reviewer approves is each
-  environment's.
+  environment's. An environment whose stack has never been applied (no state object
+  under its prefix, which the plan identity reads) is skipped with the line "no stack
+  yet: its first apply is by hand", in the log and in the comment, and the build goes
+  on: a plan of a missing state would create it, a write a reader is refused, and the
+  first apply is a person's step on purpose.
 - `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
   applied into its own state prefix as the apply identity. The plan is saved, the guard
   lets only the pull request's own resources through, the apply applies exactly that

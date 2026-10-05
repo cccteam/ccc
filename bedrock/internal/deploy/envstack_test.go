@@ -180,6 +180,9 @@ func tstSubs() map[string]string {
 	return subs
 }
 
+// testStateBucket is the state bucket the test placement names (testPlacement).
+const testStateBucket = "b"
+
 // rollbackSubs is stg with the records bucket and the migrate command's databases the
 // triggers carry, which a rollback needs.
 func rollbackSubs() map[string]string {
@@ -960,12 +963,24 @@ func TestPlanEnvironments(t *testing.T) {
 		deployer  bool
 		planErr   error
 		// objects are the records buckets' objects, by gs:// path: a rollback's generation note.
-		objects     map[string]string
+		objects map[string]string
+		// unapplied names an environment whose stack has no state object yet.
+		unapplied   string
 		wantOut     []string
 		wantTofu    []string
 		wantComment []string
 		wantErr     string
 	}{
+		{
+			name:        "an environment whose stack was never applied is skipped with the line, the others planned, and the comment names it",
+			subs:        prSubs(),
+			pins:        enabledPins(),
+			deployer:    true,
+			unapplied:   "stg",
+			wantOut:     []string{"stg: no stack yet: its first apply is by hand (the stack README, Applying; the registration sequence's step 4), and the plan waits for it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst"), initOf("prd", "p-prd"), planOf("prd"), showOf("prd")},
+			wantComment: []string{"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.", "**stg**: no stack yet: its first apply is by hand, and the plan waits for it\n**prd**: Plan: 2 to add, 1 to change, 1 to destroy."},
+		},
 		{
 			name: "an environment a rollback moved to generation 2 is planned at it, read from its records bucket as the plan identity",
 			subs: func() map[string]string {
@@ -1078,14 +1093,21 @@ func TestPlanEnvironments(t *testing.T) {
 				subs, secrets = deployerSubs(subs), deployerSecrets(t)
 				secrets.states = tt.pins
 			}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n" + tt.env, BuildFile: buildFor(t, subs)})
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n" + tt.env, BuildFile: buildFor(t, subs), placementPath: testPlacement("")})
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON}, fail: map[string]error{"tofu plan": tt.planErr}}
 			repo := &githubtest.Repo{}
 			_, gh := githubStandIn(t, repo)
+			// Every environment's stack has been applied (its state object exists) but the
+			// one the case names.
 			store := &memoryStore{objects: map[string]string{}}
+			for _, e := range strings.Split(subs[environmentsSub], ",") {
+				if e != "" && e != tt.unapplied {
+					store.objects["gs://"+testStateBucket+"/"+statePrefix(subs[appSub], e)+"/default.tfstate"] = "{}"
+				}
+			}
 			for k, v := range tt.objects {
 				store.objects[k] = v
 			}

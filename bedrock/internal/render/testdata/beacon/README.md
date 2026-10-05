@@ -37,7 +37,9 @@ a revision template pins exists and is enabled), applies on a pass, and writes
 the plan's summary to the build log and the deployment record, under the
 release's own approval. A pull-request build plans the stack for every
 environment as that environment's plan identity, a reader, and posts the
-summaries on the pull request: the plan the reviewer approves. So a change to
+summaries on the pull request: the plan the reviewer approves. An environment
+whose stack has not had its first apply yet is skipped with "no stack yet: its
+first apply is by hand", in the log and in the summary, until it has. So a change to
 this directory or to `terraform.tfvars` (a secret pin, a value for one
 environment) is a commit with a releasable type, and promotes as a release.
 An infrastructure change must be safe on the running service: add first,

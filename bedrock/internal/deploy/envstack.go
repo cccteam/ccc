@@ -520,35 +520,17 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 	if err != nil {
 		return err
 	}
+	p, err := checkoutPlacement(w, "the state bucket is named")
+	if err != nil {
+		return err
+	}
 	var summaries []string
 	for _, e := range strings.Split(subs[environmentsSub], ",") {
-		identity := identities[e]
-		s := newEnvironmentStack(clients, w, identity, out)
-		if err := s.initEnvironment(ctx, subs[appSub], e, identity); err != nil {
-			return err
-		}
-		generation, err := s.generation(ctx, func(ctx context.Context) (Store, error) { return clients.StorageAs(ctx, identity) }, subs, e)
+		summary, err := planEnvironment(ctx, clients, w, build, env, subs, e, identities[e], p.StateBucket, out)
 		if err != nil {
 			return err
 		}
-		plan := filepath.Join(string(w), "environment-"+e+".plan")
-		if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation)); err != nil {
-			return refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed; the build log says why (build %s).", e, build.ID), err, out)
-		}
-		shown, err := s.tofuOutput(ctx, "show", "-json", plan)
-		if err != nil {
-			return err
-		}
-		p, err := stackPlan(shown)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "%s: ", e)
-		p.print(out)
-		if err := testStack(ctx, clients, s.dir, identity, subs, shown, out); err != nil {
-			return refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed a test (build %s): %v", e, build.ID, errors.Cause(err)), err, out)
-		}
-		summaries = append(summaries, fmt.Sprintf("**%s**: %s%s", e, p.Summary(), changeList(p)))
+		summaries = append(summaries, summary)
 	}
 	// The pull request's own stack is initialized next, against another prefix.
 	if err := os.RemoveAll(filepath.Join(string(w), stackDir, ".terraform")); err != nil {
@@ -560,6 +542,49 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 	}
 
 	return pr.comment(ctx, fmt.Sprintf("The stack's plan for each environment (build %s), the same tests passed in each:\n\n%s", build.ID, strings.Join(summaries, "\n")), out)
+}
+
+// planEnvironment plans one environment's stack for the pull request as the environment's
+// plan identity and answers its summary line for the comment: the skip line for an
+// environment whose stack has never been applied, else the plan's summary with its
+// changes, after the tests a tag build runs before its apply.
+func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *Build, env, subs map[string]string, e, identity, bucket string, out io.Writer) (string, error) {
+	applied, err := stackApplied(ctx, clients, identity, bucket, subs[appSub], e)
+	if err != nil {
+		return "", err
+	}
+	if !applied {
+		fmt.Fprintf(out, "%s: no stack yet: its first apply is by hand (the stack README, Applying; the registration sequence's step 4), and the plan waits for it.\n", e)
+
+		return "**" + e + "**: no stack yet: its first apply is by hand, and the plan waits for it", nil
+	}
+	s := newEnvironmentStack(clients, w, identity, out)
+	if err := s.initEnvironment(ctx, subs[appSub], e, identity); err != nil {
+		return "", err
+	}
+	generation, err := s.generation(ctx, func(ctx context.Context) (Store, error) { return clients.StorageAs(ctx, identity) }, subs, e)
+	if err != nil {
+		return "", err
+	}
+	plan := filepath.Join(string(w), "environment-"+e+".plan")
+	if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation)); err != nil {
+		return "", refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed; the build log says why (build %s).", e, build.ID), err, out)
+	}
+	shown, err := s.tofuOutput(ctx, "show", "-json", plan)
+	if err != nil {
+		return "", err
+	}
+	p, err := stackPlan(shown)
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(out, "%s: ", e)
+	p.print(out)
+	if err := testStack(ctx, clients, s.dir, identity, subs, shown, out); err != nil {
+		return "", refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed a test (build %s): %v", e, build.ID, errors.Cause(err)), err, out)
+	}
+
+	return fmt.Sprintf("**%s**: %s%s", e, p.Summary(), changeList(p)), nil
 }
 
 // changeList is a plan's changes for a comment: one line each, after the summary; none
@@ -645,6 +670,33 @@ func newEnvironmentStack(clients *Clients, w Workspace, identity string, out io.
 	}
 }
 
+// statePrefix is the environment's stack's state prefix in the state bucket.
+func statePrefix(app, env string) string {
+	return "3-app/" + app + "/" + env
+}
+
+// stackApplied reports whether the environment's stack has been applied: its state
+// object exists under its prefix, read as the environment's plan identity, which reads
+// the prefix. A plan of a stack that has no state yet would create the state, a write
+// the plan identity, a reader, is refused (the lock is written first); the first apply is
+// a person's, so a pull-request build says so and plans the environment once it has.
+func stackApplied(ctx context.Context, clients *Clients, identity, bucket, app, env string) (bool, error) {
+	if bucket == "" {
+		return false, errors.Newf("the checkout's placement names no state bucket (stateBucket): the stack's state lives in it")
+	}
+	store, err := clients.StorageAs(ctx, identity)
+	if err != nil {
+		return false, err
+	}
+	defer store.Close()
+	objects, err := store.List(ctx, bucket, statePrefix(app, env)+"/default.tfstate")
+	if err != nil {
+		return false, errors.Wrapf(err, "reading whether %s's stack has a state under gs://%s/%s/ as %s", env, bucket, statePrefix(app, env), identity)
+	}
+
+	return len(objects) > 0, nil
+}
+
 // initEnvironment points the stack at the environment's state prefix, 3-app/<app>/<env>,
 // afresh: the backend cache of an earlier init, another environment's or a pull request's,
 // is removed first.
@@ -652,7 +704,7 @@ func (s *stack) initEnvironment(ctx context.Context, app, env, identity string) 
 	if err := os.RemoveAll(filepath.Join(s.dir, ".terraform")); err != nil {
 		return errors.Wrap(err, "os.RemoveAll()")
 	}
-	prefix := "3-app/" + app + "/" + env
+	prefix := statePrefix(app, env)
 	fmt.Fprintf(s.out, "=== %s's stack at %s as %s ===\n", env, prefix, identity)
 
 	return s.tofu(ctx, "init", "-input=false", "-no-color",
