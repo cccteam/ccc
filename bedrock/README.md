@@ -77,7 +77,10 @@ again does not, because its pull request is already labeled as tagged.
   infrastructure repository.
 - **Application stack**: the OpenTofu root under the application repository's
   `infrastructure/` directory (or the one layer under `3-app/` of an infrastructure
-  repository): the Cloud Run services, the database, the secret
+  repository): the Cloud Run services (their port named `h2c` when the site's main
+  package imports the framework's server, `resource/server`, which speaks HTTP/1.1 and
+  unencrypted HTTP/2 on one listener, so bodies over Cloud Run's 32 MiB HTTP/1 bound
+  pass; HTTP/1 otherwise), the database, the secret
   containers, the backend service, the triggers, the sweep schedule and the scheduled
   routes' jobs, per environment.
   Rendered by `bedrock render` from the code and the application's placement.

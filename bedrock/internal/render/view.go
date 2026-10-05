@@ -147,15 +147,18 @@ type view struct {
 	// framework names the job of its own build from (locals.tf, jobs_template_env).
 	SchedulerVariable    string
 	JobsTemplateVariable string
-	ScheduledPrefix      string
-	ReleaseFileName      string
-	Port                 *derive.Variable
-	ClientID             *derive.Variable
-	ClientSecret         *derive.Variable
-	RedirectURL          *derive.Variable
-	HostedDomain         *derive.Variable
-	GroupPrefix          *derive.Variable
-	GroupLookup          *derive.Variable
+	// ServerPackage is the framework's server, whose import by the site's main package
+	// is the declaration that the image speaks h2c (derive.ServerPackage).
+	ServerPackage   string
+	ScheduledPrefix string
+	ReleaseFileName string
+	Port            *derive.Variable
+	ClientID        *derive.Variable
+	ClientSecret    *derive.Variable
+	RedirectURL     *derive.Variable
+	HostedDomain    *derive.Variable
+	GroupPrefix     *derive.Variable
+	GroupLookup     *derive.Variable
 	// CookieKeySecret and ClientSecretSecret are the secrets by role.
 	CookieKeySecret    *derive.Secret
 	ClientSecretSecret *derive.Secret
@@ -671,6 +674,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.MaintenanceVariable = derive.MaintenanceVariable
 	v.SchedulerVariable, v.ScheduledPrefix, v.ReleaseFileName = derive.SchedulerInvokerVariable, derive.ScheduledPrefix, derive.ReleaseFileName
 	v.JobsTemplateVariable = derive.JobsTemplateVariable
+	v.ServerPackage = derive.ServerPackage
 	v.Directory = v.Auth.OIDC()
 	v.AuthVar = v.Auth.VariablePrefix()
 	if v.Directory {

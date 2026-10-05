@@ -8,11 +8,11 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/cccteam/ccc/resource/server"
 	"github.com/go-playground/errors/v5"
 	"github.com/impulseframework/harbor/app"
 	"github.com/impulseframework/harbor/pkg/config"
 	"github.com/impulseframework/harbor/pkg/router"
-	"github.com/jtwatson/server"
 )
 
 func main() {

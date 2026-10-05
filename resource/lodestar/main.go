@@ -15,8 +15,8 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/config"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/maintenance"
+	"github.com/cccteam/ccc/resource/server"
 	"github.com/go-playground/errors/v5"
-	"github.com/jtwatson/server"
 )
 
 func main() {

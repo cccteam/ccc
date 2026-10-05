@@ -523,6 +523,10 @@ type Process struct {
 	Main string
 	// Levels are the configuration levels the process constructs, lowest first.
 	Levels []string
+	// H2C reports that the main package imports the framework's server (ServerPackage),
+	// which speaks HTTP/1.1 and h2c on one listener: for the site, the declaration the
+	// stack names the service's port h2c from. Another server leaves the port HTTP/1.
+	H2C bool
 }
 
 // Reads reports whether the process constructs the level.

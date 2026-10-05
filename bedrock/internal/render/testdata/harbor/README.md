@@ -232,7 +232,12 @@ from `2-env`'s state.
   From the first deploy on, the image
   and the labels and annotations a deploy stamps are the pipeline's
   (`ignore_changes`); identity, scaling, variables, and secret mounts stay
-  this stack's.
+  this stack's. The service's port is named `h2c`: the site's main package imports the
+  framework's server (`github.com/cccteam/ccc/resource/server`), which speaks HTTP/1.1 and unencrypted
+  HTTP/2 on one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
+  bounds of HTTP/1 request and response bodies no longer apply; the maintenance
+  revision runs the same image and speaks it too. `bedrock check` refuses a port
+  that does not match the code, as any owned file.
 - **Cloud Scheduler jobs**, one per scheduled route: a method the code marks
   `@schedule`, which the generated router serves under `/_scheduled` and lists
   in `pkg/router/zz_gen_release.json`. In every environment, never in a

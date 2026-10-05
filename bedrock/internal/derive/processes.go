@@ -20,6 +20,11 @@ import (
 
 const (
 	mainFile = "main.go"
+	// ServerPackage is the framework's HTTP server, which speaks HTTP/1.1 and unencrypted
+	// HTTP/2 (h2c) on one listener; a site's main package importing it is the
+	// application's declaration that its image speaks h2c, from which the stack names the
+	// service's port h2c and Cloud Run lifts the 32 MiB bounds of HTTP/1 bodies.
+	ServerPackage = "github.com/cccteam/ccc/resource/server"
 	// migrateSchemaFunc is the function the migrate command calls to apply the schema.
 	migrateSchemaFunc = "MigrateSchema"
 	fileScheme        = "file://"
@@ -110,6 +115,7 @@ func (m *Model) process(a *app.App, cfg *config, name, dir string) (Process, err
 	if local == "" {
 		return Process{}, errors.Newf("%s does not import the config package %s", rel, configPath)
 	}
+	p.H2C = importName(f, ServerPackage) != ""
 
 	highest := -1
 	ast.Inspect(f, func(n ast.Node) bool {

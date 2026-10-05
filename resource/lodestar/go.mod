@@ -25,7 +25,6 @@ require (
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/go-cmp v0.7.0
-	github.com/jtwatson/server v0.2.2
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.4.1-0.20260819210736-ca4740823783
 	google.golang.org/api v0.297.0
@@ -101,7 +100,6 @@ require (
 	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e // indirect
 	github.com/jackc/pgx/v5 v5.10.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/jtwatson/shutdown v0.1.1 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5 // indirect

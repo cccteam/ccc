@@ -52,6 +52,13 @@ resource "google_cloud_run_v2_service" "app" {
 
 
       ports {
+        # h2c: the site's main package imports the framework's server
+        # (github.com/cccteam/ccc/resource/server), which speaks HTTP/1.1 and unencrypted HTTP/2 on
+        # one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
+        # bounds of HTTP/1 request and response bodies no longer apply. The
+        # maintenance revision runs the same image, so it speaks it too. A site on
+        # another server leaves the name out and keeps an HTTP/1 port.
+        name           = "h2c"
         container_port = 8080
       }
 

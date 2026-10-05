@@ -1297,3 +1297,35 @@ func TestBuildArgumentSubstitution(t *testing.T) {
 		})
 	}
 }
+
+// TestSiteH2C holds the h2c declaration to the site's main package importing the
+// framework's server: the harbor fixture does, the beacon fixture runs another server.
+func TestSiteH2C(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		fixture string
+		want    bool
+	}{
+		{name: "a site on the framework's server declares h2c", fixture: "harbor", want: true},
+		{name: "a site on another server keeps an HTTP/1 port", fixture: "beacon", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a, err := app.Discover(filepath.Join("testdata", tt.fixture))
+			if err != nil {
+				t.Fatalf("app.Discover() = %v", err)
+			}
+			m, err := Derive(a, testPlacement(t))
+			if err != nil {
+				t.Fatalf("Derive() = %v", err)
+			}
+			if m.Site.H2C != tt.want {
+				t.Errorf("Site.H2C = %v, want %v", m.Site.H2C, tt.want)
+			}
+		})
+	}
+}
