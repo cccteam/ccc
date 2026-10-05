@@ -70,7 +70,7 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 		return err
 	}
 	if starters == "" {
-		fmt.Fprintf(out, "Job %s has no starter: the template's IAM policy grants nothing. The stack grants run.invoker on the template to the site's identity when the site declares the job variable.\n", shortName(name))
+		fmt.Fprintf(out, "Job %s has no starter: the template's IAM policy grants nothing. The stack grants the site's identity roles/run.jobsExecutorWithOverrides on the template.\n", shortName(name))
 	} else {
 		fmt.Fprintf(out, "Job %s may be started by %s, as the template's IAM policy says.\n", shortName(name), starters)
 	}

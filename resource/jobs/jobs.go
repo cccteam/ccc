@@ -11,7 +11,8 @@
 // bakes the version into the image as VersionVariable (APP_VERSION). FromEnvironment
 // reads both when the application starts and names the job of this build from them
 // (JobOf): set, the starter runs that job through the Cloud Run Admin API as the
-// service's own identity, which holds roles/run.invoker on it; with no template
+// service's own identity, which holds roles/run.jobsExecutorWithOverrides on it (a start
+// passes the command's arguments as container overrides); with no template
 // (development, a pull-request stack that sets none, an application without a job
 // process), every start is refused with a message saying so, which the start logs.
 package jobs

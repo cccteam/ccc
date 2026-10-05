@@ -218,7 +218,8 @@ from `2-env`'s state.
   (resource/jobs) names the job of its own build from it and the version the
   image bakes in, so a revision starts the job of its own build and a traffic
   rollback starts the earlier one; the site
-  holds `roles/run.invoker` on the template, a grant the pipeline copies onto
+  holds `roles/run.jobsExecutorWithOverrides` on the template (a start passes the
+  command's arguments as container overrides, which `run.invoker` does not admit), a grant the pipeline copies onto
   each build's job with the template's settings.
   Only the running service starts the job process: the pipeline never runs
   it, a hook never starts it, and a schedule calls an endpoint on the service,

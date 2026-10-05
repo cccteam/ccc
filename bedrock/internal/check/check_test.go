@@ -131,7 +131,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = []derive.ScheduledRoute{{Path: "/_scheduled/send-daily-digest", Schedule: "0 6 * * 1-5", TimeZone: "America/New_York"}}
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 243, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 244, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
 			wantOutput: []string{"2 of 24 owned file(s) differ", "differs  scheduler.tf:29"},
@@ -143,7 +143,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = append([]derive.ScheduledRoute{{Path: "/_scheduled/close-stale-holds", Schedule: "*/15 * * * *", TimeZone: "UTC"}}, m.Scheduled...)
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 243, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 244, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
 			wantOutput: []string{"2 of 24 owned file(s) differ", "differs  scheduler.tf:27"},

@@ -344,7 +344,7 @@ site's project roles and, when it constructs the data level, the database user g
 accessor on that level's secrets, its timeout, retries and resources as stack variables,
 and the template job's name on the service as `APP_JOBS_TEMPLATE`, which the framework
 (resource/jobs) names the job of its own build from with the version the image bakes in,
-with `run.invoker` for the site's identity on the template job, copied by the pipeline onto
+with `run.jobsExecutorWithOverrides` for the site's identity on the template job (a start passes the command's arguments as container overrides), copied by the pipeline onto
 each build's job, so the running service, and only it, starts the job of its own build
 through the Cloud Run API
 (a schedule calls an endpoint on the service; the pipeline never runs it); a method the
@@ -762,7 +762,7 @@ thing one step hands the next. In order:
   stack's apply, before the migrations, as a copy of the stack's template job (`_JOBS_JOB`,
   read from the stack as this build applied it, so the first release with a job process
   makes one) named after it with the build's version, on this build's image with the
-  pipeline's labels and the template's IAM policy (the site's `run.invoker`). It does not
+  pipeline's labels and the template's IAM policy (the site's `run.jobsExecutorWithOverrides`). It does not
   run it; the service carries the template's name (`APP_JOBS_TEMPLATE`, set by the stack)
   and the image its version, and the framework names the job of its own build from the
   two, so the revision starts the job of its own build and a traffic rollback starts the

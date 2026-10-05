@@ -17,6 +17,9 @@
 
 ARG VERSION=dev
 ARG COMMIT=unknown
+# The job of this build for the job process, as the Cloud Run API names it: the pipeline
+# makes it from the stack's template job and passes its name here, and the image names it
+# to the site as APP_JOBS_JOB, so each revision starts the job of its own build.
 
 # ---- Go: the server and the migrate command ----------------------------------------------
 # The go image is pinned at a digest that carries a toolchain at least as new as go.mod

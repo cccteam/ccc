@@ -280,12 +280,15 @@ resource "google_cloud_run_v2_job" "jobs" {
 # IAM policy onto each build's job with its settings, so who may start the job
 # process is decided here and nowhere else. (Cloud Run does not evaluate IAM
 # conditions on a job's name when a job is run, so one grant on the project
-# bounded to the builds' names would grant nothing.)
+# bounded to the builds' names would grant nothing.) The role is the jobs
+# executor with overrides: a start passes the command and its flags as the
+# container's arguments (run.jobs.runWithOverrides), which run.invoker does
+# not grant, as the first start in the lab showed with its 403.
 resource "google_cloud_run_v2_job_iam_member" "app_runs_jobs" {
   project  = google_cloud_run_v2_job.jobs.project
   location = google_cloud_run_v2_job.jobs.location
   name     = google_cloud_run_v2_job.jobs.name
-  role     = "roles/run.invoker"
+  role     = "roles/run.jobsExecutorWithOverrides"
   member   = local.app_member
 
   depends_on = [google_service_account.app]

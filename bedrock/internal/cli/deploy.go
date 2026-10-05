@@ -275,7 +275,7 @@ func newDeployJobs(d deps) *cobra.Command {
 application with one: a copy of the template job the stack owns (named by the stack's _JOBS_JOB;
 never run, never deployed to), named <template>-<version key> (v0.1.15 gives v0-1-15) and put on
 this build's image with the pipeline's labels through the Cloud Run API, with the template's IAM
-policy (the stack grants the site's identity run.invoker on the template; the copy is what lets the
+policy (the stack grants the site's identity run.jobsExecutorWithOverrides on the template; the copy is what lets the
 site start this job): the service carries the template's name (APP_JOBS_TEMPLATE, set by the stack)
 and the image its version, and the framework names the job of its own build from the two, so the
 revision this build deploys starts a job of its own code, and a traffic rollback to an earlier

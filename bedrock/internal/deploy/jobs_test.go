@@ -37,7 +37,7 @@ func TestJobs(t *testing.T) {
 		build        = `{"id": "b-1", "substitutions": {"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_PR_NUMBER": "7"}}`
 	)
 	wantLabels := map[string]any{"terraform": "true", "application": "harbor", managedByLabel: managedByValue, commitLabel: "deadbeef", buildIDLabel: "b-1", sourceRepoLabel: "harbor", environmentLabel: "tst", prNumberLabel: "7", versionLabel: "v1-2-3"}
-	templateBindings := []any{map[string]any{"role": "roles/run.invoker", "members": []any{"serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com"}}}
+	templateBindings := []any{map[string]any{"role": "roles/run.jobsExecutorWithOverrides", "members": []any{"serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com"}}}
 	templatePolicy := map[string]any{keyBindings: templateBindings, "version": float64(1), keyEtag: "etag-of-template"}
 	templates := func() map[string]map[string]any {
 		return map[string]map[string]any{jobsTemplate: templateDoc(jobsTemplate, jobsAccount)}
@@ -73,7 +73,7 @@ func TestJobs(t *testing.T) {
 			wantOut: []string{
 				"=== Making job [harbor-jobs-v1-2-3] from [harbor-jobs] on this image ===",
 				"Job harbor-jobs-v1-2-3 created: the revision this build deploys starts it through the Cloud Run API; the pipeline does not run it.",
-				"Job harbor-jobs-v1-2-3 may be started by serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com (roles/run.invoker), as the template's IAM policy says.",
+				"Job harbor-jobs-v1-2-3 may be started by serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com (roles/run.jobsExecutorWithOverrides), as the template's IAM policy says.",
 			},
 			wantCreated:  []string{jobsJob},
 			wantBindings: templateBindings,
@@ -88,8 +88,8 @@ func TestJobs(t *testing.T) {
 			name:         "a version deployed before updates the job it made then, policy included",
 			env:          environment,
 			run:          newFakeRun(existing()),
-			policies:     map[string]map[string]any{jobsTemplate: templatePolicy, jobsJob: {keyBindings: []any{map[string]any{"role": "roles/run.invoker", "members": []any{"serviceAccount:someone-else@tst-project.iam.gserviceaccount.com"}}}, keyEtag: "etag-of-job"}},
-			wantOut:      []string{"Job harbor-jobs-v1-2-3 updated: the revision this build deploys starts it", "may be started by serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com (roles/run.invoker)"},
+			policies:     map[string]map[string]any{jobsTemplate: templatePolicy, jobsJob: {keyBindings: []any{map[string]any{"role": "roles/run.jobsExecutorWithOverrides", "members": []any{"serviceAccount:someone-else@tst-project.iam.gserviceaccount.com"}}}, keyEtag: "etag-of-job"}},
+			wantOut:      []string{"Job harbor-jobs-v1-2-3 updated: the revision this build deploys starts it", "may be started by serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com (roles/run.jobsExecutorWithOverrides)"},
 			wantPatched:  []string{jobsJob},
 			wantBindings: templateBindings,
 		},
