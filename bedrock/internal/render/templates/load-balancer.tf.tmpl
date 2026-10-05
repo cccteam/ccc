@@ -51,23 +51,31 @@ resource "google_compute_backend_service" "app" {
       group = backend.value.id
     }
   }
-
+{{with .P.Outlier}}
+{{- if .IsDefault}}
   # Five consecutive errors in a one-second window eject the region for
   # thirty seconds, never more than half the backends at once; enforcing 100
   # means every detection counts.
+{{- else}}
+  # The thresholds are placement.json's (outlierDetection): {{.ConsecutiveErrors}} consecutive
+  # errors in a {{.IntervalSeconds}}-second window eject the region for {{.BaseEjectionSeconds}} seconds, never
+  # more than {{.MaxEjectionPercent}} percent of the backends at once; enforcing {{.EnforcingConsecutiveErrors}} means that
+  # percent of the detections eject.
+{{- end}}
   outlier_detection {
-    consecutive_errors           = 5
-    enforcing_consecutive_errors = 100
-    max_ejection_percent         = 50
+    consecutive_errors           = {{.ConsecutiveErrors}}
+    enforcing_consecutive_errors = {{.EnforcingConsecutiveErrors}}
+    max_ejection_percent         = {{.MaxEjectionPercent}}
 
     interval {
-      seconds = 1
+      seconds = {{.IntervalSeconds}}
     }
 
     base_ejection_time {
-      seconds = 30
+      seconds = {{.BaseEjectionSeconds}}
     }
   }
+{{- end}}
 
   log_config {
     enable      = true

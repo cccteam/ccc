@@ -52,20 +52,21 @@ resource "google_compute_backend_service" "pull_requests" {
       group = backend.value.id
     }
   }
-
+{{with .Outlier}}
   outlier_detection {
-    consecutive_errors           = 5
-    enforcing_consecutive_errors = 100
-    max_ejection_percent         = 50
+    consecutive_errors           = {{.ConsecutiveErrors}}
+    enforcing_consecutive_errors = {{.EnforcingConsecutiveErrors}}
+    max_ejection_percent         = {{.MaxEjectionPercent}}
 
     interval {
-      seconds = 1
+      seconds = {{.IntervalSeconds}}
     }
 
     base_ejection_time {
-      seconds = 30
+      seconds = {{.BaseEjectionSeconds}}
     }
   }
+{{- end}}
 
   log_config {
     enable      = true

@@ -224,8 +224,8 @@ from `2-env`'s state.
   this stack's.
 - **Load balancer backend**: a serverless NEG per region and one global
   backend service `{{.Prefix}}-<env>-gbl-{{.App}}-backend` over both, external managed,
-  outlier detection on (5 consecutive errors in a 1-second interval eject a
-  backend for 30 seconds, at most 50% ejected, enforced at 100), request
+  outlier detection on ({{.P.Outlier.ConsecutiveErrors}} consecutive errors in a {{.P.Outlier.IntervalSeconds}}-second interval eject a
+  backend for {{.P.Outlier.BaseEjectionSeconds}} seconds, at most {{.P.Outlier.MaxEjectionPercent}}% ejected, enforced at {{.P.Outlier.EnforcingConsecutiveErrors}}), request
   logging at full sample rate. No Cloud Armor. The URL map in the net project
   routes this environment's hostnames to it across projects (below).
 - **Cloud Build triggers** on the repository link `2-env` registered, running

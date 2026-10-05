@@ -152,6 +152,11 @@ type Placement struct {
 	Regions []Region `json:"regions"`
 	// Spanner is the shared instance's configuration.
 	Spanner Spanner `json:"spanner"`
+	// OutlierDetection is the outlier detection thresholds of the backend service 2-env
+	// renders for the pull-request environments, and those an application's first
+	// placement takes for its own backend service; a field left out, or the whole block,
+	// takes its default (derive.OutlierDetection).
+	OutlierDetection *derive.OutlierDetection `json:"outlierDetection,omitempty"`
 	// ContactDomains are the domains Essential Contacts may belong to, each with its
 	// leading @.
 	ContactDomains []string `json:"contactDomains"`
@@ -208,8 +213,9 @@ type Region struct {
 
 // Spanner is the shared instance's configuration.
 type Spanner struct {
-	// Config is the instance configuration, a multi-region one whose read-write replicas
-	// are the two regions (nam10 for us-central1 and us-west3).
+	// Config is the instance configuration, a multi-region one bedrock knows
+	// (SpannerConfigs) whose read-write replicas are the two regions (nam10 for
+	// us-central1 and us-west3); any other is refused, naming the ones that fit.
 	Config string `json:"config"`
 }
 
@@ -252,6 +258,12 @@ func (p *Placement) Validate() error {
 		if r.Name == "" || !regionCodeRE.MatchString(r.Code) {
 			return errors.Newf("region %q needs a name and a three-character code", r.Name)
 		}
+	}
+	if err := p.validateSpanner(); err != nil {
+		return err
+	}
+	if err := p.OutlierDetection.Validate(); err != nil {
+		return err
 	}
 	if err := p.validateGithubApps(); err != nil {
 		return err
@@ -418,6 +430,12 @@ func (*Placement) SharedInstanceEnvironments() []string {
 	return Environments[1:]
 }
 
+// Outlier is the outlier detection thresholds the pull-request backend is rendered with:
+// the placement's, with the defaults where it sets none.
+func (p *Placement) Outlier() derive.Outlier {
+	return p.OutlierDetection.Resolved()
+}
+
 // Primary is the primary region.
 func (p *Placement) Primary() Region {
 	return p.Regions[0]
@@ -511,9 +529,10 @@ func (p *Placement) ApplicationProjects() (block string, missing []string) {
 // from this placement but the bedrock pin, which is the bedrock writing it (a release with
 // its pipeline binary's checksum, or a commit pin with none): the prefix, the model's
 // environments, the regions, the domains, the state bucket, the default branch, the
-// release app's slug, the labels and the environment projects' ids and numbers, with
-// Cloud Run's sample image to create the services with, the application's code as its
-// repository's name, and the first environment's database seeded. Approvals, the
+// release app's slug, the labels, the outlier detection thresholds and the environment
+// projects' ids and numbers, with Cloud Run's sample image to create the services with,
+// the application's code as its repository's name, and the first environment's database
+// seeded. Approvals, the
 // maintenance windows, the build machine and the instance caps are left to their
 // defaults, the team's to write. It is refused while this placement records no state
 // bucket or lacks an environment project's id or number, which 1-org's outputs give.
@@ -552,6 +571,7 @@ func (p *Placement) ApplicationPlacement(app, bedrockVersion, bedrockSHA256 stri
 		Labels:           labels,
 		Seed:             []string{Environments[0]},
 		Projects:         projects,
+		OutlierDetection: p.OutlierDetection.Clone(),
 	}
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "%s's placement", app)

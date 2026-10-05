@@ -88,6 +88,10 @@ type Placement struct {
 	// rises. An environment it does not name has no cap of the placement's, and Cloud
 	// Run's own default applies there. Absent, none has a cap.
 	MaxInstances map[string]int `json:"maxInstances,omitempty"`
+	// OutlierDetection is the backend service's outlier detection thresholds, how the
+	// load balancer takes a failing region out (outlier.go); a field left out, or the
+	// whole block, takes its default.
+	OutlierDetection *OutlierDetection `json:"outlierDetection,omitempty"`
 	// Maintenance is each environment's maintenance window by environment name: the
 	// time the environment may take a release that interrupts service (a breaking
 	// release, whose oldest answered release is newer than the one the environment runs,
@@ -246,6 +250,9 @@ func (p *Placement) Validate() error {
 		return err
 	}
 	if err := p.validateMaxInstances(); err != nil {
+		return err
+	}
+	if err := p.OutlierDetection.Validate(); err != nil {
 		return err
 	}
 	for name, value := range map[string]string{
@@ -408,6 +415,12 @@ func (p *Placement) Machine() (Machine, bool) {
 	}
 
 	return Machine{}, false
+}
+
+// Outlier is the outlier detection thresholds the backend service is rendered with: the
+// placement's, with the defaults where it sets none.
+func (p *Placement) Outlier() Outlier {
+	return p.OutlierDetection.Resolved()
 }
 
 // MaxInstanceCount is the most instances the service may run per region in env, and

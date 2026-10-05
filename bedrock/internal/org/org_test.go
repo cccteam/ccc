@@ -1,6 +1,7 @@
 package org
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1675,6 +1676,7 @@ func TestApplicationPlacement(t *testing.T) {
 		commitPin = "v0.0.0-20260928182105-6f6f7795969d"
 		sum       = "0000000000000000000000000000000000000000000000000000000000000000"
 	)
+	three := 3
 	tests := []struct {
 		name    string
 		mutate  func(p *Placement)
@@ -1685,6 +1687,7 @@ func TestApplicationPlacement(t *testing.T) {
 		{name: "a commit pin", mutate: func(*Placement) {}, version: commitPin},
 		{name: "a release pin with its checksum", mutate: func(*Placement) {}, version: "v0.4.0", sha256: sum},
 		{name: "no labels of the organization's", mutate: func(p *Placement) { p.Labels = nil }, version: commitPin},
+		{name: "the organization's outlier detection thresholds", mutate: func(p *Placement) { p.OutlierDetection = &derive.OutlierDetection{ConsecutiveErrors: &three} }, version: commitPin},
 		{name: "a release pin without its checksum", mutate: func(*Placement) {}, version: "v0.4.0", wantErr: "bedrockVersion v0.4.0 is a release, and a release pin carries its bedrockSha256"},
 		{name: "no state bucket", mutate: func(p *Placement) { p.StateBucket = "" }, version: commitPin, wantErr: "placement.json records no stateBucket yet: the seed's state bucket goes there"},
 		{name: "no environment project numbers", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"boot": "1"} }, version: commitPin, wantErr: "placement.json records no project id and number for tst, stg and prd yet"},
@@ -1722,9 +1725,62 @@ func TestApplicationPlacement(t *testing.T) {
 					"stg": {ID: "imp-stg-gbl-core-3c4d", Number: "100000000003"},
 					"prd": {ID: "imp-prd-gbl-core-5e6f", Number: "100000000004"},
 				},
+				OutlierDetection: p.OutlierDetection,
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("ApplicationPlacement() =\n%+v\nwant\n%+v", got, want)
+			}
+			if p.OutlierDetection != nil && got.OutlierDetection == p.OutlierDetection {
+				t.Error("the application's thresholds share the organization's block; they are a copy")
+			}
+		})
+	}
+}
+
+// TestWildcardOutlierThresholds renders 2-env's pull-request backend with the
+// organization's outlier detection thresholds: today's when the placement sets none, the
+// placement's when it does; a threshold out of range refuses the placement.
+func TestWildcardOutlierThresholds(t *testing.T) {
+	t.Parallel()
+
+	n := func(v int) *int {
+		return &v
+	}
+	block := func(consecutive, enforcing, ejection, interval, base int) string {
+		return fmt.Sprintf("  outlier_detection {\n    consecutive_errors           = %d\n    enforcing_consecutive_errors = %d\n    max_ejection_percent         = %d\n\n    interval {\n      seconds = %d\n    }\n\n    base_ejection_time {\n      seconds = %d\n    }\n  }\n\n  log_config {\n", consecutive, enforcing, ejection, interval, base)
+	}
+	tests := []struct {
+		name    string
+		set     *derive.OutlierDetection
+		want    string
+		wantErr string
+	}{
+		{name: "none set: today's thresholds", want: block(5, 100, 50, 1, 30)},
+		{name: "every threshold set", set: &derive.OutlierDetection{ConsecutiveErrors: n(3), EnforcingConsecutiveErrors: n(80), MaxEjectionPercent: n(100), IntervalSeconds: n(2), BaseEjectionSeconds: n(60)}, want: block(3, 80, 100, 2, 60)},
+		{name: "one threshold set, the rest today's", set: &derive.OutlierDetection{IntervalSeconds: n(5)}, want: block(5, 100, 50, 5, 30)},
+		{name: "a threshold out of range", set: &derive.OutlierDetection{EnforcingConsecutiveErrors: n(0)}, wantErr: "outlierDetection.enforcingConsecutiveErrors 0 is outside what keeps outlier detection on"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.OutlierDetection = tt.set
+			files, err := Render(p)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Render() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			for _, f := range files {
+				if f.Path == envLayer+"/pull-requests.tf" && !strings.Contains(string(f.Content), tt.want) {
+					t.Errorf("2-env/pull-requests.tf lacks:\n%s\nin:\n%s", tt.want, f.Content)
+				}
 			}
 		})
 	}

@@ -167,14 +167,18 @@ variable "spanner_instances" {
     is "own" (this layer creates an instance in the environment project) or
     "shared" (the instance 2-spn creates for the organization). For an own
     instance: config is the instance configuration (unset: regional-<primary
-    region>; {{.Spanner.Config}} for the organization's multi-region), edition follows the
-    configuration unless set (STANDARD for regional, ENTERPRISE_PLUS for
-    multi-region, which Google requires), processing_units defaults to 100 and
-    is capped at 200 (JOURNAL.md, 2026-09-25: never more without explicit
-    agreement). The defaults are the ruling of 2026-09-26: tst on its own
-    regional Standard instance, stg and prd on the shared multi-region one;
-    an organization overrides an environment here, for instance tst on the
-    shared instance, or tst on a multi-region instance of its own.
+    region>; {{.Spanner.Config}} for the organization's multi-region;
+    {{.OwnInstanceConfigsProse}} and no other, since a regional instance
+    sits in the primary region, where the primary service runs, and a
+    multi-region one has its read-write replicas in the two regions), edition
+    follows the configuration unless set (STANDARD for regional,
+    ENTERPRISE_PLUS for multi-region, which Google requires), processing_units
+    defaults to 100 and is capped at 200 (JOURNAL.md, 2026-09-25: never more
+    without explicit agreement). The defaults are the ruling of 2026-09-26:
+    tst on its own regional Standard instance, stg and prd on the shared
+    multi-region one; an organization overrides an environment here, for
+    instance tst on the shared instance, or tst on a multi-region instance of
+    its own.
   EOT
   type = map(object({
     placement        = string
@@ -191,6 +195,11 @@ variable "spanner_instances" {
   validation {
     condition     = alltrue([for e, i in var.spanner_instances : contains(["own", "shared"], i.placement)])
     error_message = "placement must be own or shared."
+  }
+
+  validation {
+    condition     = alltrue([for e, i in var.spanner_instances : i.placement != "own" || contains({{.OwnInstanceConfigList}}, coalesce(i.config, "{{.RegionalSpannerConfig}}"))])
+    error_message = "An own instance's config is unset, {{.OwnInstanceConfigsProse}}: a regional instance sits in the primary region, {{.Primary.Name}}, where the primary service runs, and a multi-region one has its read-write replicas in {{.Primary.Name}} and {{.Secondary.Name}}."
   }
 
   validation {

@@ -84,12 +84,14 @@ again does not, because its pull request is already labeled as tagged.
   organization's facts the stack needs, the bedrock the pipeline runs
   (`bedrockVersion`, and `bedrockSha256` for a release) and, when the organization
   sets one, the Cloud Build machine the pipeline's builds run on (`buildMachine`, one
-  of Cloud Build's machine names; absent, Cloud Build's default) and the most Cloud Run
+  of Cloud Build's machine names; absent, Cloud Build's default), the most Cloud Run
   instances the service may run per region in an environment (`maxInstances`, by
   environment name; an environment it leaves out has no cap, and Cloud Run's default
-  applies); for an organization it records the prefix, the domains, the organization
-  and billing ids, the regions, the Spanner configuration, the GitHub organization and
-  its machine account, the applications, the environment projects and
+  applies) and the backend service's outlier detection thresholds (`outlierDetection`;
+  absent, bedrock's defaults); for an organization it records the prefix, the domains,
+  the organization and billing ids, the regions, the Spanner configuration, the outlier
+  detection thresholds, the GitHub organization and its machine account, the
+  applications, the environment projects and
   each environment's team group (`teamGroups`: the group whose members approve the
   environment's releases and ask for its entitlements, with `entitlementDurations` for
   the longest grants).
@@ -198,6 +200,24 @@ and what its absence means:
 - `maxInstances`: the most Cloud Run instances the service may run per region, by
   environment (`{"prd": 10}`), at least 1 each (bedrock render, below). Not written.
   Absent, or for an environment it leaves out, no cap: Cloud Run's default maximum.
+- `outlierDetection`: the thresholds by which the load balancer takes a failing region
+  out of the backend service. A serverless network endpoint group, the backend of each
+  region, has no health check, so without outlier detection a region that fails keeps
+  its share of the requests until it recovers. From the organization's
+  `outlierDetection`, when it sets one. Absent, or for a field it leaves out, the
+  default; a field written is a whole number, and one that would turn the ejection off
+  is refused:
+  - `consecutiveErrors`: how many errors in a row (a 5xx answer, or a request that gets
+    none) take a region's endpoint group out. At least 1; default 5.
+  - `enforcingConsecutiveErrors`: the chance, in percent, that a group reaching that
+    count is taken out. 1 to 100; default 100, every time.
+  - `maxEjectionPercent`: the most of the backend's groups out at once, in percent. 1 to
+    100; default 50, one region of the two.
+  - `intervalSeconds`: how often, in seconds, the load balancer looks at the counts,
+    taking groups out and putting back those whose time is up. At least 1; default 1.
+  - `baseEjectionSeconds`: how long, in seconds, a group stays out the first time; each
+    further time, that multiplied by the number of times it was taken out. At least 1;
+    default 30.
 
 ## bedrock render
 
@@ -1265,6 +1285,22 @@ application"), a person signs in to GitHub as that account, so the connection's 
 the account's and nobody's leaving breaks it; a personal access token of the same
 account is the alternative to that step. `2-env` renders the login where it names the
 account. The field is required: a placement without it is refused.
+
+The organization's two regions (`regions`, the primary first) and its Spanner
+configuration (`spanner.config`, the instance 2-spn creates for stg and prd) are chosen
+together: the configuration is a multi-region one whose two read-write regions, where the
+replicas that take writes are, are the two Cloud Run regions, so each region's service
+writes to a replica in its own region and either region can lose the other. bedrock knows
+these configurations: `nam10` (us-central1 and us-west3), `nam6` and `nam11` (us-central1
+and us-east1), and `nam7`, `nam12` and `nam16` (us-central1 and us-east4). A placement
+naming one whose read-write regions are not its two regions, or one bedrock does not know,
+is refused, and the refusal names the configurations that fit the regions. An
+environment's own instance (2-env's `spanner_instances` in its `terraform.tfvars`, by
+default the first environment's) is regional in the primary region, where the primary
+service runs, or on a multi-region configuration that fits the regions; 2-env's plan
+refuses any other. The placement's `outlierDetection` is the thresholds of the backend
+service 2-env renders for the pull-request environments, and those an application's first
+placement takes (The application's placement, above, names each field).
 
 `org preflight` is the check before the seed. The seed and the first applies of 0-bootstrap
 and 1-org run as the bootstrap administrator, a person, before any layer identity exists, so

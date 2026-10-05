@@ -921,6 +921,82 @@ func TestMaxInstances(t *testing.T) {
 	}
 }
 
+// TestOutlierThresholds renders the backend service's outlier detection from the
+// placement: today's thresholds and their comment when it sets none, and the placement's
+// numbers, with a comment naming where they come from, when it sets them, in the backend
+// and in the README alike.
+func TestOutlierThresholds(t *testing.T) {
+	t.Parallel()
+
+	n := func(v int) *int {
+		return &v
+	}
+	tests := []struct {
+		name       string
+		set        *derive.OutlierDetection
+		wantLB     []string
+		wantReadme string
+		absent     []string
+	}{
+		{
+			name: "none set: today's thresholds",
+			wantLB: []string{
+				"  # Five consecutive errors in a one-second window eject the region for\n  # thirty seconds, never more than half the backends at once; enforcing 100\n  # means every detection counts.\n  outlier_detection {\n" +
+					"    consecutive_errors           = 5\n    enforcing_consecutive_errors = 100\n    max_ejection_percent         = 50\n\n    interval {\n      seconds = 1\n    }\n\n    base_ejection_time {\n      seconds = 30\n    }\n  }\n\n  log_config {\n",
+			},
+			wantReadme: "outlier detection on (5 consecutive errors in a 1-second interval eject a\n  backend for 30 seconds, at most 50% ejected, enforced at 100), request",
+			absent:     []string{"placement.json's (outlierDetection)"},
+		},
+		{
+			name: "every threshold set",
+			set:  &derive.OutlierDetection{ConsecutiveErrors: n(3), EnforcingConsecutiveErrors: n(80), MaxEjectionPercent: n(100), IntervalSeconds: n(2), BaseEjectionSeconds: n(60)},
+			wantLB: []string{
+				"  # The thresholds are placement.json's (outlierDetection): 3 consecutive\n  # errors in a 2-second window eject the region for 60 seconds, never\n  # more than 100 percent of the backends at once; enforcing 80 means that\n  # percent of the detections eject.\n  outlier_detection {\n" +
+					"    consecutive_errors           = 3\n    enforcing_consecutive_errors = 80\n    max_ejection_percent         = 100\n\n    interval {\n      seconds = 2\n    }\n\n    base_ejection_time {\n      seconds = 60\n    }\n  }\n",
+			},
+			wantReadme: "outlier detection on (3 consecutive errors in a 2-second interval eject a\n  backend for 60 seconds, at most 100% ejected, enforced at 80), request",
+			absent:     []string{"Five consecutive errors"},
+		},
+		{
+			name:       "one threshold set, the rest today's",
+			set:        &derive.OutlierDetection{BaseEjectionSeconds: n(120)},
+			wantLB:     []string{"    consecutive_errors           = 5\n", "      seconds = 120\n", "eject the region for 120 seconds"},
+			wantReadme: "backend for 120 seconds, at most 50% ejected, enforced at 100)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			m.Placement.OutlierDetection = tt.set
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			text := map[string]string{}
+			for _, f := range files {
+				if !f.Root {
+					text[f.Path] = string(f.Content)
+				}
+			}
+			for _, w := range tt.wantLB {
+				if !strings.Contains(text["load-balancer.tf"], w) {
+					t.Errorf("load-balancer.tf lacks:\n%s", w)
+				}
+			}
+			if !strings.Contains(text["README.md"], tt.wantReadme) {
+				t.Errorf("README.md lacks:\n%s", tt.wantReadme)
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(text["load-balancer.tf"], a) {
+					t.Errorf("load-balancer.tf carries %q", a)
+				}
+			}
+		})
+	}
+}
+
 func TestAligned(t *testing.T) {
 	t.Parallel()
 

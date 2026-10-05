@@ -69,10 +69,14 @@ and a `shared_vpc_id` that is null.
 
 ## What it creates
 
-- **tst only**: the Spanner instance `imp-tst-gbl-spanner`, multi-region
-  `nam10`, 100 processing units (`var.spanner_processing_units`,
-  validated at or below 200), Standard edition, no autoscaler, default backup
-  schedule `NONE`. stg and prd share the instance `2-spn` creates.
+- **tst only**, by default (`spanner_instances`): the Spanner instance
+  `imp-tst-gbl-spanner`, regional in the primary region
+  (`regional-us-central1`), 100 processing units (validated at or below 200),
+  Standard edition, no autoscaler, default backup schedule `NONE`. stg and prd
+  share the instance `2-spn` creates. An environment's own instance is either
+  regional in the primary region, where the primary service runs, or
+  multi-region with its read-write replicas in the two regions
+  (`nam10`); the plan refuses any other configuration.
 - The Cloud Build (2nd generation) GitHub connection
   `imp-<env>-uc1-github` for the environment project, from the Cloud Build
   GitHub App installation on the imp-example organization and the OAuth
@@ -510,8 +514,7 @@ nothing; the rest of the layer and the deployments are unaffected.
 | `github_deployer_key_secret_versions` | Per environment, the pinned Secret Manager version of the deployer app's private key, in the container this layer creates: added with `bedrock secret add github-deployer-key <env>` and written here by `bedrock secret pin github-deployer-key <env> <version>`. | `map(string)` | `{}` | no |
 | `github_organization` | GitHub organization of the application repositories. | `string` | `"imp-example"` | no |
 | `team_groups` | The environments' team groups by code, a group's address each, from `placement.json` (`teamGroups`). | `map(string)` | rendered | no |
-| `spanner_config` | tst instance configuration. | `string` | `"nam10"` | no |
-| `spanner_processing_units` | tst instance size; 100 or 200. | `number` | `100` | no |
+| `spanner_instances` | Per environment, `own` (an instance in the environment project) or `shared` (2-spn's), with an own instance's `config` (unset for `regional-us-central1`; `regional-us-central1` or `nam10` and no other), `edition` and `processing_units` (100 or 200). | `map(object)` | tst `own`, stg and prd `shared` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs
