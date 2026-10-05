@@ -85,11 +85,12 @@ func (r *resourceGenerator) registerDeclarations(resourcesPkg *parser.Package) e
 
 // allOutlets returns every declared router outlet: the default outlet first,
 // followed by the WithRouterOutlet declarations in option order. The default
-// outlet always serves browser sessions; extra outlets opt in (ServesSessions).
+// outlet serves browser sessions unless it declares APIKey; extra outlets opt in
+// (ServesSessions, or a session Auth).
 func (r *resourceGenerator) allOutlets() []routerOutlet {
 	outlets := make([]routerOutlet, 0, len(r.extraOutlets)+1)
 	defaultOutlet := r.defaultOutlet
-	defaultOutlet.name, defaultOutlet.prefix, defaultOutlet.servesSessions = defaultOutletName, r.routePrefix, true
+	defaultOutlet.name, defaultOutlet.prefix, defaultOutlet.servesSessions = defaultOutletName, r.routePrefix, !defaultOutlet.apiKey
 	outlets = append(outlets, defaultOutlet)
 
 	return append(outlets, r.extraOutlets...)

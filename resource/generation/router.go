@@ -89,6 +89,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		HasConsolidatedHandler: defaultOutlet.HasConsolidatedHandler,
 		HasDomainScoped:        r.hasDomainScoped(),
 		HasDomainScopedRoutes:  defaultOutlet.HasDomainScopedRoutes,
+		ServesSessions:         defaultOutlet.ServesSessions,
 		StubDomainGuard:        stubDomainGuard,
 		DomainRouteParam:       r.domainRouteParam,
 		RoutePrefix:            r.routePrefix,
@@ -137,12 +138,11 @@ const authParam = "auth"
 // key each person's subscriptions and change set by it: the declared auth package's
 // Name, or, where the outlet declares no Auth because the application's own router
 // composes it, the routes function's auth parameter, which NewTestRouter takes as
-// testParam. An outlet without sessions binds nothing, and neither does an API-key
-// outlet, whose routes refuse a subscribing request: the default outlet is one under
-// APIKey, though it serves sessions otherwise.
+// testParam. An outlet without sessions binds nothing, the API-key outlets among them,
+// whose routes refuse a subscribing request.
 func authBinding(o *routerOutlet) (name string, param bool, testParam string) {
 	switch {
-	case !o.servesSessions || o.apiKey:
+	case !o.servesSessions:
 		return "", false, ""
 	case o.auth != nil:
 		return o.auth.packageName() + ".Name", false, ""

@@ -286,7 +286,11 @@ An additional outlet that serves sessions (`Auth(...)` under the generated route
 `ServesSessions()` under a hand-written one) gets the same two routes under its own
 prefix, served by the same generated handlers behind the outlet's session middleware;
 an outlet without the declaration gets neither (the generated router tests prove its
-prefix 404s them).
+prefix 404s them). The default outlet serves them unless it is declared `APIKey()`: a
+machine outlet's generated routes are the resource routes its key authorizes and nothing
+else, so an API-key outlet, the default included, registers neither of these nor the
+live routes, and when no outlet serves sessions the generated `PermissionDigest`,
+`UserDomains` and live handlers are not written at all.
 
 **The digest.** The payload is the user's structural grant enumeration for the requested scope:
 resource → permission → `granted` | `conditional`, with field targets under their
@@ -505,8 +509,9 @@ the application writes its own router, the generator does not know the auths, so
 session outlet's routes function takes the name as its last parameter,
 `generatedRoutes(r, h, staff.Name)`, and `NewTestRouter` takes one per session outlet in
 outlet order, `NewTestRouter(h, staff.Name)`; a router that passes none does not
-compile. An API-key outlet binds none: its routes refuse a request carrying
-`X-Subscribe`, and so do the default outlet's when it is declared `APIKey()`.
+compile. An API-key outlet binds none and registers no live routes: its resource
+routes refuse a request carrying `X-Subscribe`, and so do the default outlet's when it
+is declared `APIKey()`.
 
 **Release versions.** A browser application and the server each carry the release they
 were built from, and the server refuses an application it no longer answers. The

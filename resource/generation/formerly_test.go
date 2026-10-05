@@ -392,6 +392,7 @@ func Test_formerlyTemplates(t *testing.T) {
 			template: routesTemplate,
 			goSource: true,
 			data: &routerFileData{
+				ServesSessions:  true,
 				Package:         "router",
 				RoutesMap:       map[string][]*generatedRoute{"Publish": {route}},
 				ResourcePackage: "resources",

@@ -275,10 +275,15 @@ func (r *resourceGenerator) generateAppContract() error {
 }
 
 // generatePermissions emits the application's PermissionDigest and UserDomains
-// handlers — delegations to the library-owned handlers — unconditionally: every
-// generated application serves both permission endpoints on its default outlet,
-// wiring nothing.
+// handlers — delegations to the library-owned handlers — on every application with a
+// session-serving outlet, wiring nothing. Under a generated route table whose outlets
+// all run behind API keys the file is not written: no route would serve them.
 func (r *resourceGenerator) generatePermissions() error {
+	if !r.anyOutletServesSessions() {
+		log.Printf("No outlet serves sessions: no permissions file")
+
+		return nil
+	}
 	begin := time.Now()
 	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(permissionsOutputName))
 
@@ -288,6 +293,7 @@ func (r *resourceGenerator) generatePermissions() error {
 		ApplicationName:        r.applicationName,
 		ReceiverName:           r.receiverName,
 		RoutePrefix:            r.routePrefix,
+		DefaultServesSessions:  r.allOutlets()[0].servesSessions,
 		HasExtraSessionOutlets: slices.ContainsFunc(r.extraOutlets, func(outlet routerOutlet) bool { return outlet.servesSessions }),
 		LocalPackageImports:    r.localPackageImports(),
 		ResourcePackage:        r.resource.Package(),
@@ -302,9 +308,15 @@ func (r *resourceGenerator) generatePermissions() error {
 
 // generateLive emits the application's live route handlers — LiveRenew,
 // LiveUnsubscribe and LiveToken — as delegations to the library-owned handlers over
-// the application's LiveService, unconditionally: every generated application serves
-// the live routes on each session-serving outlet, wiring only the service.
+// the application's LiveService, on every application with a session-serving outlet,
+// wiring only the service. Under a generated route table whose outlets all run behind
+// API keys the file is not written: no route would serve them.
 func (r *resourceGenerator) generateLive() error {
+	if !r.anyOutletServesSessions() {
+		log.Printf("No outlet serves sessions: no live file")
+
+		return nil
+	}
 	begin := time.Now()
 	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(liveOutputName))
 
@@ -317,6 +329,7 @@ func (r *resourceGenerator) generateLive() error {
 		ApplicationName:        r.applicationName,
 		ReceiverName:           r.receiverName,
 		RoutePrefix:            r.routePrefix,
+		DefaultServesSessions:  r.allOutlets()[0].servesSessions,
 		HasExtraSessionOutlets: extraSessionOutlets,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
@@ -324,6 +337,14 @@ func (r *resourceGenerator) generateLive() error {
 	log.Printf("Generated live file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
+}
+
+// anyOutletServesSessions reports whether an outlet serves sessions, which the
+// generated PermissionDigest, UserDomains and live handlers exist for. Without a
+// generated route table the default outlet counts as serving them: the application's
+// own router mounts the handlers where it will.
+func (r *resourceGenerator) anyOutletServesSessions() bool {
+	return slices.ContainsFunc(r.allOutlets(), func(outlet routerOutlet) bool { return outlet.servesSessions })
 }
 
 func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {

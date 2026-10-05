@@ -161,9 +161,11 @@ type routerOutlet struct {
 	name   string
 	prefix string
 	// servesSessions declares the outlet a browser-session surface: the generated
-	// router registers the permission-digest and user-domains routes under its
-	// prefix. Always true for the default outlet; opt-in via ServesSessions() or a
-	// session Auth for additional outlets.
+	// router registers the permission-digest, user-domains and live routes under its
+	// prefix. True for the default outlet unless it declares APIKey; opt-in via
+	// ServesSessions() or a session Auth for additional outlets. An API-key outlet
+	// never serves sessions: its generated routes are the resource routes its key
+	// authorizes and nothing else.
 	servesSessions bool
 	// auth is the auth the generated router binds the outlet's browser sessions to
 	// (Auth); nil for an API-key outlet and for an outlet under a hand-written router.
@@ -263,9 +265,10 @@ func (f outletOption) applyToOutlet(o *routerOutlet) error { return f(o) }
 // router registers the permission-digest and user-domains routes under the outlet's
 // prefix — behind whatever session middleware the application composes around the
 // outlet, exactly like its resource routes — and the application's generated
-// PermissionDigest and UserDomains handlers serve them. The default outlet always
-// serves sessions; an outlet without the declaration gets no permission routes, and
-// a GenerateTypescript target may only name a session-serving outlet (ForOutlet).
+// PermissionDigest and UserDomains handlers serve them. The default outlet serves
+// sessions unless it declares APIKey; an outlet without the declaration gets no
+// permission routes, and a GenerateTypescript target may only name a session-serving
+// outlet (ForOutlet).
 // Under GenerateRouter a session Auth declares the same, so ServesSessions is for
 // applications that keep a hand-written router.
 // The generator then does not know the outlet's auth, so the outlet's routes function
@@ -334,10 +337,14 @@ func Auth(importPath string, flavor AuthFlavor) OutletOption {
 // carries no session handling and no XSRF guard; NoCaching, CompressionMiddleware, and
 // the application's <Outlet>Auth middleware run in front of the outlet's routes, and
 // <Outlet>Auth binds each request to a service identity the way the session middleware
-// binds a browser request to its user. An API-key outlet serves no sessions.
+// binds a browser request to its user. An API-key outlet serves no sessions: the
+// generated router registers no permission-digest, user-domains or live routes under
+// its prefix, so its generated routes are the resource routes its key authorizes and
+// nothing else, and a request carrying X-Subscribe is refused naming the header.
 func APIKey() OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		o.apiKey = true
+		o.servesSessions = false
 
 		return nil
 	})

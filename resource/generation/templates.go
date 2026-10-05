@@ -723,8 +723,9 @@ import (
 // means global) and the payload is advisory and fail-closed: denied targets are
 // absent, and so is every resource, field and method gated behind a feature flag
 // that is off ({{ .ResourcePackage }}.FeatureGates); a renamed field or method
-// (@formerly) appears under its former name too, with the same states. The generated router registers it at GET /{{ .RoutePrefix }}/permission-digest{{ if .HasExtraSessionOutlets }} and,
-// for each additional session-serving outlet (ServesSessions), under that outlet's prefix{{ end }}.
+// (@formerly) appears under its former name too, with the same states. The generated router registers it at {{ if .DefaultServesSessions }}GET /{{ .RoutePrefix }}/permission-digest{{ if .HasExtraSessionOutlets }} and,
+// for each additional session-serving outlet (ServesSessions), under that outlet's prefix{{ end }}{{ else }}GET /<prefix>/permission-digest
+// under each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.HandlerFunc {
 	return resource.PermissionDigestHandler({{ .ReceiverName }}.UserPermissions, resource.WithFeatureGates({{ .ResourcePackage }}.FeatureGates(), {{ .ReceiverName }}.FeatureSet()), resource.WithFormerNames({{ .RouterPackage }}.Collection()))
 }
@@ -733,8 +734,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.Handl
 // domains where they hold at least one grant, the tenant picker's question. The
 // predicate is concealed tenancy's own foothold test, so the picker and the
 // domain guard can never disagree. The generated router registers it at
-// GET /{{ .RoutePrefix }}/user-domains{{ if .HasExtraSessionOutlets }} and, for each additional session-serving
-// outlet (ServesSessions), under that outlet's prefix{{ end }}.
+// {{ if .DefaultServesSessions }}GET /{{ .RoutePrefix }}/user-domains{{ if .HasExtraSessionOutlets }} and, for each additional session-serving
+// outlet (ServesSessions), under that outlet's prefix{{ end }}{{ else }}GET /<prefix>/user-domains under each session-serving outlet's
+// prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) UserDomains() http.HandlerFunc {
 	return resource.UserDomainsHandler({{ .ReceiverName }}.UserPermissions)
 }
@@ -1030,24 +1032,27 @@ import (
 // LiveRenew serves a tab's live subscriptions renewed: each is re-checked against the
 // session user's grants (Read for a row, List for a list, in its domain), the kept ones
 // are written with a fresh expiry, and the answer says which were kept and which
-// dropped. The generated router registers it at POST /{{ .RoutePrefix }}/live/renew{{ if .HasExtraSessionOutlets }} and,
-// for each additional session-serving outlet, under that outlet's prefix{{ end }}.
+// dropped. The generated router registers it at {{ if .DefaultServesSessions }}POST /{{ .RoutePrefix }}/live/renew{{ if .HasExtraSessionOutlets }} and,
+// for each additional session-serving outlet, under that outlet's prefix{{ end }}{{ else }}POST /<prefix>/live/renew under
+// each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveRenew() http.HandlerFunc {
 	return live.RenewHandler({{ .ReceiverName }}.LiveService(), {{ .ReceiverName }}.UserPermissions)
 }
 
 // LiveUnsubscribe serves a tab leaving, or with all a logout: the subscriptions are
 // deleted and, on a logout, the browser's identity is revoked. The generated router
-// registers it at POST /{{ .RoutePrefix }}/live/unsubscribe{{ if .HasExtraSessionOutlets }} and, for each additional
-// session-serving outlet, under that outlet's prefix{{ end }}.
+// registers it at {{ if .DefaultServesSessions }}POST /{{ .RoutePrefix }}/live/unsubscribe{{ if .HasExtraSessionOutlets }} and, for each additional
+// session-serving outlet, under that outlet's prefix{{ end }}{{ else }}POST /<prefix>/live/unsubscribe under each
+// session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveUnsubscribe() http.HandlerFunc {
 	return live.UnsubscribeHandler({{ .ReceiverName }}.LiveService())
 }
 
 // LiveToken serves how the browser connects to the session principal's change set: the
 // identity token and where the change set lives. The generated router registers it at
-// GET /{{ .RoutePrefix }}/live/token{{ if .HasExtraSessionOutlets }} and, for each additional session-serving outlet,
-// under that outlet's prefix{{ end }}.
+// {{ if .DefaultServesSessions }}GET /{{ .RoutePrefix }}/live/token{{ if .HasExtraSessionOutlets }} and, for each additional session-serving outlet,
+// under that outlet's prefix{{ end }}{{ else }}GET /<prefix>/live/token under each session-serving outlet's prefix,
+// and not under the default outlet's, which is declared APIKey{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveToken() http.HandlerFunc {
 	return live.TokenHandler({{ .ReceiverName }}.LiveService())
 }
@@ -2884,6 +2889,7 @@ type GeneratedHandlers interface {
 	// while the flag is off the route answers 404 as an unregistered route does.
 	FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc
 	{{ end }}
+	{{- if .ServesSessions }}
 	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
 	// outlet's prefix: a tab's subscriptions renewed against the user's grants, a tab
 	// or a logout leaving, and how the browser connects to its change set.
@@ -2899,6 +2905,7 @@ type GeneratedHandlers interface {
 	// where they hold at least one grant — the tenant picker's source, on the same
 	// foothold predicate as concealed tenancy.
 	UserDomains() http.HandlerFunc
+	{{- end }}
 	{{ range $Struct, $Routes := .RoutesMap }}
 	{{- range $Routes }}
 	{{ .HandlerFunc }}() http.HandlerFunc
@@ -2924,12 +2931,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers{{ if .AuthParam }}, auth 
 {{- if .HasGatedRoutes }}
 	featureGuard := h.FeatureGuard()
 {{ end }}
+{{- if .ServesSessions }}
 	r.Get("/{{ .RoutePrefix }}/permission-digest", h.PermissionDigest())
 	r.Get("/{{ .RoutePrefix }}/user-domains", h.UserDomains())
 	r.Post("/{{ .RoutePrefix }}/{{ LiveRenewRoute }}", h.LiveRenew())
 	r.Post("/{{ .RoutePrefix }}/{{ LiveUnsubscribeRoute }}", h.LiveUnsubscribe())
 	r.Get("/{{ .RoutePrefix }}/{{ LiveTokenRoute }}", h.LiveToken())
-{{ range $Struct, $Routes := .RoutesMap }}
+{{ end }}
+{{- range $Struct, $Routes := .RoutesMap }}
 	{{- range $route := $Routes }}
 	{{- if $route.SharedHandler }}
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
@@ -3314,6 +3323,7 @@ func generatedRouteParameters() []string {
 
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest {
+		{{- if .ServesSessions }}
 		{
 			url: "/{{ .RoutePrefix }}/permission-digest", method: http.MethodGet,
 			handlerFunc: "PermissionDigest",
@@ -3334,6 +3344,7 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/{{ .RoutePrefix }}/{{ LiveTokenRoute }}", method: http.MethodGet,
 			handlerFunc: "LiveToken",
 		},
+		{{- end }}
 		{{- range $route := .RouterTestRoutes }}
 		{{- range $method := $route.TestMethods }}
 		{

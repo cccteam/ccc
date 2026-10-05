@@ -213,6 +213,11 @@ type routerFileData struct {
 	DomainRouteParam  string
 	RoutePrefix       string
 	ConsolidatedRoute string
+	// ServesSessions registers the permission-digest, user-domains and live routes
+	// under the default outlet's prefix and their handlers on GeneratedHandlers; false
+	// under APIKey, when the outlet's generated routes are the resource routes its key
+	// authorizes and nothing else (an extra outlet's is on its outletRouteData).
+	ServesSessions bool
 	// ExtraOutlets carries the WithRouterOutlet registration surfaces; the fields
 	// above describe the default outlet, whose generated identifiers are unsuffixed.
 	// With no extra outlets the rendered file is exactly the single-outlet file.
@@ -316,6 +321,9 @@ type permissionsData struct {
 	// RoutePrefix names the default outlet's route prefix in the emitted doc
 	// comments; the routes themselves are registered by the routes template.
 	RoutePrefix string
+	// DefaultServesSessions says the default outlet serves the routes the doc
+	// comments name; false under APIKey, when only the additional session outlets do.
+	DefaultServesSessions bool
 	// HasExtraSessionOutlets extends the doc comments when additional outlets
 	// serve sessions (ServesSessions), whose routes the same handlers serve.
 	HasExtraSessionOutlets bool

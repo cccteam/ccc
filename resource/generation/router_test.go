@@ -84,6 +84,25 @@ func Test_negativeTestsForOutlet_sessionRoutes(t *testing.T) {
 			outlet: routerOutlet{name: "portal", prefix: "portal", servesSessions: true},
 			want:   nil,
 		},
+		{
+			// An API-key outlet serves no sessions, the default outlet included: its
+			// generated routes are the resource routes its key authorizes and nothing
+			// else, so its prefix 404s the session routes like any session-less outlet's.
+			name:   "an API-key default outlet gets the 404 cases under its prefix",
+			outlet: routerOutlet{name: defaultOutletName, prefix: "api", apiKey: true},
+			want: []negativeRouterTest{
+				{Method: "http.MethodGet", URL: "/api/permission-digest"},
+				{Method: "http.MethodGet", URL: "/api/user-domains"},
+				{Method: "http.MethodPost", URL: "/api/live/renew"},
+				{Method: "http.MethodPost", URL: "/api/live/unsubscribe"},
+				{Method: "http.MethodGet", URL: "/api/live/token"},
+				{Method: "http.MethodGet", URL: "/api/feature-flags"},
+				{Method: "http.MethodPost", URL: "/api/feature-flags"},
+				{Method: "http.MethodGet", URL: "/api/feature-flags/testFeatureFlagName"},
+				{Method: "http.MethodPost", URL: "/api/feature-flags/testFeatureFlagName"},
+				{Method: "http.MethodPost", URL: "/api/set-feature"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -212,8 +231,8 @@ func Test_authBindings(t *testing.T) {
 			wantTestArgs:   []string{`"default"`, `"field-portal"`},
 		},
 		{
-			name:         "an API-key default outlet binds nothing though the default serves sessions",
-			outlets:      []routerOutlet{{name: "default", prefix: "api", servesSessions: true, apiKey: true}},
+			name:         "an API-key default outlet binds nothing: it serves no sessions",
+			outlets:      []routerOutlet{{name: "default", prefix: "api", apiKey: true}},
 			wantBindings: []binding{{}},
 		},
 	}
@@ -242,6 +261,71 @@ func Test_authBindings(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantTestArgs, testArgs, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("test router arguments mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// Test_allOutlets_defaultServesSessions pins which outlets serve sessions, which decides
+// where the permission-digest, user-domains and live routes register and whether the
+// handlers behind them are generated at all: the default outlet serves them unless it
+// declares APIKey, an extra outlet when it declares a session Auth or ServesSessions, and
+// an API-key outlet never, since its generated routes are the resource routes its key
+// authorizes and nothing else.
+func Test_allOutlets_defaultServesSessions(t *testing.T) {
+	t.Parallel()
+
+	staff := &outletAuth{importPath: "example.com/app/pkg/auth/staff", flavor: Password}
+	tests := []struct {
+		name          string
+		defaultOutlet routerOutlet
+		extraOutlets  []routerOutlet
+		wantSessions  []bool
+		wantAny       bool
+	}{
+		{
+			name:          "a session default outlet",
+			defaultOutlet: routerOutlet{servesSessions: true, auth: staff},
+			wantSessions:  []bool{true},
+			wantAny:       true,
+		},
+		{
+			name:          "no GenerateRoutes: the default outlet counts as serving sessions, since the application's own router mounts the handlers",
+			defaultOutlet: routerOutlet{},
+			wantSessions:  []bool{true},
+			wantAny:       true,
+		},
+		{
+			name:          "an API-key default outlet beside a session outlet",
+			defaultOutlet: routerOutlet{apiKey: true},
+			extraOutlets:  []routerOutlet{{name: "portal", prefix: "portal/api", servesSessions: true, auth: staff}},
+			wantSessions:  []bool{false, true},
+			wantAny:       true,
+		},
+		{
+			name:          "API-key outlets alone: nothing serves sessions, so no permissions or live file is written",
+			defaultOutlet: routerOutlet{apiKey: true},
+			extraOutlets:  []routerOutlet{{name: "droids", prefix: "droids", apiKey: true}},
+			wantSessions:  []bool{false, false},
+			wantAny:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rg := &resourceGenerator{client: &client{}, defaultOutlet: tt.defaultOutlet, extraOutlets: tt.extraOutlets, routePrefix: "api"}
+			outlets := rg.allOutlets()
+			got := make([]bool, len(outlets))
+			for i, outlet := range outlets {
+				got[i] = outlet.servesSessions
+			}
+			if diff := cmp.Diff(tt.wantSessions, got); diff != "" {
+				t.Errorf("allOutlets() servesSessions mismatch (-want +got):\n%s", diff)
+			}
+			if got := rg.anyOutletServesSessions(); got != tt.wantAny {
+				t.Errorf("anyOutletServesSessions() = %v, want %v", got, tt.wantAny)
 			}
 		})
 	}

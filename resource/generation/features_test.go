@@ -490,6 +490,7 @@ func Test_routesTemplate_featureGuard(t *testing.T) {
 		{
 			name: "gated routes wrap in the feature guard, a domain-scoped one outside the domain guard",
 			data: routerFileData{
+				ServesSessions:        true,
 				Package:               "router",
 				RoutesMap:             gated,
 				HasDomainScoped:       true,
@@ -512,6 +513,7 @@ func Test_routesTemplate_featureGuard(t *testing.T) {
 		{
 			name: "without gated routes the guard does not exist",
 			data: routerFileData{
+				ServesSessions:  true,
 				Package:         "router",
 				RoutesMap:       map[string][]*generatedRoute{"Ship": gated["Ship"]},
 				ResourcePackage: "resources",

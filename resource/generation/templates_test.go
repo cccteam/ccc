@@ -358,7 +358,8 @@ func Test_routerTestTemplate_selfContained(t *testing.T) {
 		{
 			name: "domain-scoped consolidated app emits guard pass-through and dispatch test",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets"}},
 				},
@@ -384,7 +385,8 @@ func Test_routerTestTemplate_selfContained(t *testing.T) {
 		{
 			name: "without domain-scoped routes or a consolidated handler the stub stays minimal",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets"}},
 				},
@@ -395,7 +397,8 @@ func Test_routerTestTemplate_selfContained(t *testing.T) {
 		{
 			name: "under the application's own router the test names each session outlet's auth after the outlet",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets"}},
 				},
@@ -449,7 +452,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 		{
 			name: "extra outlet renders suffixed surface and all-outlet test router",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -496,7 +500,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 		{
 			name: "a session-serving outlet registers the permission routes under its prefix",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -529,7 +534,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 		{
 			name: "declared auths bind their packages' Name, which the routes file imports",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -563,7 +569,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 		{
 			name: "under the application's own router each session outlet's routes take its auth's name",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -608,7 +615,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 		{
 			name: "the application's own router's single outlet takes one auth's name",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -626,9 +634,10 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			wantNotContains: []string{"in outlet order"},
 		},
 		{
-			name: "an API-key default outlet binds no auth and refuses a subscribing request",
+			name: "an API-key default outlet binds no auth, refuses a subscribing request and registers no session routes",
 			data: routerFileData{
-				Package: "router",
+				Package:     "router",
+				RoutePrefix: "api",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -636,14 +645,55 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			wantContains: []string{
 				"func generatedRoutes(r chi.Router, h GeneratedHandlers) {\n\t// The outlet serves machine clients behind an API key, so it serves no live pages",
 				"r = r.With(live.Refusing())",
+				`r.Get("/api/widgets", widgetsHandler)`,
 				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
 			},
-			wantNotContains: []string{"live.Subscribing("},
+			// A machine outlet's generated routes are the resource routes its key
+			// authorizes and nothing else: no permission routes, no live routes, and no
+			// PermissionDigest, UserDomains or live requirement on its handlers.
+			wantNotContains: []string{
+				"live.Subscribing(",
+				`r.Get("/api/permission-digest"`,
+				`r.Get("/api/user-domains"`,
+				`r.Post("/api/live/renew"`,
+				`r.Post("/api/live/unsubscribe"`,
+				`r.Get("/api/live/token"`,
+				"PermissionDigest() http.HandlerFunc",
+				"UserDomains() http.HandlerFunc",
+				"LiveRenew() http.HandlerFunc",
+				"LiveToken() http.HandlerFunc",
+			},
+		},
+		{
+			name: "a session default outlet registers the session routes under its prefix",
+			data: routerFileData{
+				ServesSessions: true,
+				Package:        "router",
+				RoutePrefix:    "api",
+				AuthName:       "crew.Name",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+			},
+			wantContains: []string{
+				"r = r.With(live.Subscribing(crew.Name))",
+				`r.Get("/api/permission-digest", h.PermissionDigest())`,
+				`r.Get("/api/user-domains", h.UserDomains())`,
+				`r.Post("/api/live/renew", h.LiveRenew())`,
+				`r.Post("/api/live/unsubscribe", h.LiveUnsubscribe())`,
+				`r.Get("/api/live/token", h.LiveToken())`,
+				"PermissionDigest() http.HandlerFunc",
+				"UserDomains() http.HandlerFunc",
+				"LiveRenew() http.HandlerFunc",
+				"LiveUnsubscribe() http.HandlerFunc",
+				"LiveToken() http.HandlerFunc",
+			},
 		},
 		{
 			name: "no extra outlets renders the single-outlet file",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -694,7 +744,7 @@ func Test_permissionsTemplate_sessionOutlets(t *testing.T) {
 	}{
 		{
 			name: "default outlet only keeps today's wording",
-			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", ResourcePackage: "resources", RouterPackage: "router"},
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", DefaultServesSessions: true, ResourcePackage: "resources", RouterPackage: "router"},
 			wantContains: []string{
 				"registers it at GET /api/permission-digest.",
 				"GET /api/user-domains.",
@@ -704,11 +754,22 @@ func Test_permissionsTemplate_sessionOutlets(t *testing.T) {
 		},
 		{
 			name: "extra session outlets extend the comments",
-			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true, ResourcePackage: "resources"},
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", DefaultServesSessions: true, HasExtraSessionOutlets: true, ResourcePackage: "resources"},
 			wantContains: []string{
 				"registers it at GET /api/permission-digest and,",
 				"for each additional session-serving outlet (ServesSessions), under that outlet's prefix.",
 			},
+		},
+		{
+			// The default outlet declared APIKey serves no sessions, so the comments name
+			// the session outlets' prefixes alone and say the default's is not among them.
+			name: "an API-key default outlet beside session outlets names their prefixes alone",
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true, ResourcePackage: "resources"},
+			wantContains: []string{
+				"registers it at GET /<prefix>/permission-digest\n// under each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey.",
+				"GET /<prefix>/user-domains under each session-serving outlet's\n// prefix, and not under the default outlet's, which is declared APIKey.",
+			},
+			wantNotContains: []string{"GET /api/permission-digest", "GET /api/user-domains"},
 		},
 	}
 
@@ -743,8 +804,9 @@ func Test_routesTemplate_sessionOutletHandlers(t *testing.T) {
 	t.Parallel()
 
 	data := routerFileData{
-		Package:   "router",
-		RoutesMap: map[string][]*generatedRoute{},
+		ServesSessions: true,
+		Package:        "router",
+		RoutesMap:      map[string][]*generatedRoute{},
 		ExtraOutlets: []*outletRouteData{{
 			Name:           "portal",
 			Suffix:         "Portal",
@@ -894,7 +956,8 @@ func Test_routerTestTemplate_outletIsolation(t *testing.T) {
 		{
 			name: "extra outlets render isolation test, extra stubs, and consolidated dispatch case",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -946,7 +1009,8 @@ func Test_routerTestTemplate_outletIsolation(t *testing.T) {
 		{
 			name: "no extra outlets renders no isolation test",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
@@ -1054,6 +1118,64 @@ func Test_stdlibImports_doesNotShadowTemplateImports(t *testing.T) {
 				qualifier := assumedPackageName(path)
 				if seedPath, ok := seed[qualifier]; ok {
 					t.Errorf("stdlibImports() maps %q to %q, shadowing %q declared by %s: remove the seed entry — the seed must not contain qualifiers that generated code resolves to third-party packages", qualifier, seedPath, path, name)
+				}
+			}
+		})
+	}
+}
+
+// Test_liveTemplate_sessionOutlets pins the live handlers' doc comments the same way:
+// the default outlet's routes when it serves sessions, the session outlets' prefixes
+// alone when the default outlet is declared APIKey.
+func Test_liveTemplate_sessionOutlets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		data            permissionsData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "a session default outlet names its routes",
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", DefaultServesSessions: true},
+			wantContains: []string{
+				"registers it at POST /api/live/renew.",
+				"registers it at POST /api/live/unsubscribe.",
+				"GET /api/live/token.",
+			},
+			wantNotContains: []string{"declared APIKey"},
+		},
+		{
+			name: "an API-key default outlet beside session outlets names their prefixes alone",
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true},
+			wantContains: []string{
+				"registers it at POST /<prefix>/live/renew under\n// each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey.",
+				"registers it at POST /<prefix>/live/unsubscribe under each\n// session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey.",
+				"GET /<prefix>/live/token under each session-serving outlet's prefix,\n// and not under the default outlet's, which is declared APIKey.",
+			},
+			wantNotContains: []string{"POST /api/live/renew", "GET /api/live/token"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("liveTemplate", liveTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("liveTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("liveTemplate output must not contain %q:\n%s", notWant, out)
 				}
 			}
 		})

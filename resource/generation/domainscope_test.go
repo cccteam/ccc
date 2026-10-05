@@ -119,6 +119,7 @@ func Test_routerTestTemplate_domainRouteParam(t *testing.T) {
 
 			c := &client{}
 			out, err := c.generateTemplateOutput("routerTestTemplate", routerTestTemplate, routerFileData{
+				ServesSessions:   true,
 				Package:          "router",
 				HasDomainScoped:  tt.hasDomainScoped,
 				DomainRouteParam: "stationID",
@@ -451,6 +452,7 @@ func Test_routesTemplate_domainGuard(t *testing.T) {
 		{
 			name: "domain-scoped routes wrap in DomainGuard, global routes register bare",
 			data: routerFileData{
+				ServesSessions:        true,
 				Package:               "router",
 				RoutesMap:             guardedRoutes,
 				HasDomainScoped:       true,
@@ -473,7 +475,8 @@ func Test_routesTemplate_domainGuard(t *testing.T) {
 		{
 			name: "without domain-scoped routes the guard does not exist",
 			data: routerFileData{
-				Package: "router",
+				ServesSessions: true,
+				Package:        "router",
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
