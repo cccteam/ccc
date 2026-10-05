@@ -409,6 +409,45 @@ so it builds against local framework work instead of the pins; indirect requirem
 stay pinned, since a checkout of a library's own dependency can lag what the library needs. That `go.work` is for
 development only; never commit it.
 
+## impulse upgrade
+
+`upgrade` moves an application forward through the impulse releases the ledger records,
+one release at a time, and commits each. An impulse release is a coherent pin set (the
+resource, access, session and accesstypes versions its skeleton's `go.mod` named) together
+with the recipes an application at the release before it needs, or a note that none is
+needed. Where the application stands is read, never recorded: the framework pins in its
+`go.mod` say which release it builds against (the latest release whose pins they reach), and
+every release after that up to the running impulse's is pending.
+
+```sh
+go get -tool github.com/cccteam/ccc/impulse@<version>   # the impulse to upgrade to
+go tool impulse upgrade --dry-run                        # the releases and recipes the walk would apply
+go tool impulse upgrade                                  # walk, one commit per release
+go tool impulse upgrade --to v0.3.0                      # stop at a release short of the running impulse's
+```
+
+Each release is one step. Its recipes run first: a recipe detects the old form in the
+application (the generator program, the annotations, the known seams) and edits only where
+it finds it, so running it twice is safe, and so is running it on an application whose pins
+were bumped by hand ahead of its code. Then the pins move to the release's set and the
+impulse tool pin to the release (`go get`, then `go mod tidy`), the owned files are
+rendered again from the code (what `impulse render` writes), `go generate ./...` runs, and
+`impulse check` runs. A clean check is committed as `feat: upgrade to impulse <version>`
+with the release's note and recipes in the body. A failing check stops the walk with the
+step's changes staged and the handoff brief written (`impulse handoff`, below): fix the
+obligations or hand them to the agent, commit, and run `upgrade` again; it resumes from
+whatever `go.mod` says, since the pin is the checkpoint and nothing else records progress.
+No release is skipped: a recipe is written against the shape the release before it left
+behind. A release with no recipe is a pin bump and a commit.
+
+The ledger (`internal/ledger`) records releases from the first published impulse beta on;
+until that beta is cut it is empty and `upgrade` has nothing to walk. From then on, a
+breaking change in resource, access, session or accesstypes is not done until the impulse
+release that carries it records its recipe in the ledger, or says that no code change is
+needed; the ledger's test holds every entry to its shape (a version newer than the one
+before it, a pin set of framework modules, a note, no recipe named twice). Applications
+that predate the first beta are adopted once by hand, not upgraded.
+
 ## impulse handoff
 
 `handoff` is the protocol between the tool and an agent for the work the tool cannot do

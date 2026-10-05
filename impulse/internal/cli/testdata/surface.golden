@@ -121,6 +121,14 @@ impulse swap auth <name>
   --oidc-azure bool
   --oidc-google bool
   --skip-generate bool
+impulse upgrade
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --dry-run bool
+  --skip-generate bool
+  --to string
 
 checks:
   generator-program

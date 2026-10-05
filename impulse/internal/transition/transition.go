@@ -72,8 +72,8 @@ func (c *Change) Text() string {
 	return b.String()
 }
 
-// warningPrefix is how a generate program prints one schema warning.
-const warningPrefix = "Warning: "
+// WarningPrefix is how a generate program prints one schema warning.
+const WarningPrefix = "Warning: "
 
 // plainErr is the error expression an inserted statement returns where the file imports
 // no errors package to wrap it with.
@@ -92,7 +92,7 @@ func generate(ctx context.Context, a *app.App, exec check.Execer, ch *Change, fa
 	}
 	ch.didf("%s", did)
 	for line := range strings.Lines(string(out)) {
-		if w, ok := strings.CutPrefix(strings.TrimRight(line, "\r\n"), warningPrefix); ok {
+		if w, ok := strings.CutPrefix(strings.TrimRight(line, "\r\n"), WarningPrefix); ok {
 			ch.Warnings = append(ch.Warnings, w)
 		}
 	}
