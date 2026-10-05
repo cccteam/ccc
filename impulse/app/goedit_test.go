@@ -114,7 +114,7 @@ func TestGoEdits(t *testing.T) {
 				return AddLiteralElement("app.go", []byte(appSource), "New", "App", "tenants: cfg.TenantRoster()")
 			},
 			want: strings.Replace(appSource, "\treturn &App{access: cfg.Access(), consoleDist: cfg.ConsoleDist()}\n",
-				"\treturn &App{access: cfg.Access(), consoleDist: cfg.ConsoleDist(),\n\t\ttenants: cfg.TenantRoster(),\n\t}\n", 1),
+				"\treturn &App{access: cfg.Access(), consoleDist: cfg.ConsoleDist(), tenants: cfg.TenantRoster()}\n", 1),
 		},
 		{
 			name: "a literal element on a multi-line literal",

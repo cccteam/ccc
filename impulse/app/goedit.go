@@ -287,7 +287,10 @@ func AddLiteralElementOfType(rel string, src []byte, typeName, element string) (
 	return p.appendElement(rel, lit, element)
 }
 
-// appendElement appends the element to the literal, unless the literal sets its key.
+// appendElement appends the element to the literal, unless the literal sets its key. A
+// literal written on one line stays on one line, and a multi-line literal gains the
+// element on a line of its own, so the result is what gofumpt accepts: a literal is
+// either all on one line or one element per line.
 func (p *parsed) appendElement(rel string, lit *ast.CompositeLit, element string) ([]byte, error) {
 	key, err := elementKey(element)
 	if err != nil {
@@ -296,11 +299,19 @@ func (p *parsed) appendElement(rel string, lit *ast.CompositeLit, element string
 	if key != "" && hasKey(lit, key) {
 		return p.src, nil
 	}
+	rbrace := p.offset(lit.Rbrace)
+	if p.fset.Position(lit.Lbrace).Line == p.fset.Position(lit.Rbrace).Line {
+		text := element
+		if len(lit.Elts) > 0 {
+			text = ", " + element
+		}
+
+		return p.splice(rel, rbrace, rbrace, text)
+	}
 	text := element + ",\n"
-	if n := len(lit.Elts); n > 0 && !bytes.Contains(p.src[p.offset(lit.Elts[n-1].End()):p.offset(lit.Rbrace)], []byte(",")) {
+	if n := len(lit.Elts); n > 0 && !bytes.Contains(p.src[p.offset(lit.Elts[n-1].End()):rbrace], []byte(",")) {
 		text = ",\n" + text
 	}
-	rbrace := p.offset(lit.Rbrace)
 
 	return p.splice(rel, rbrace, rbrace, text)
 }
