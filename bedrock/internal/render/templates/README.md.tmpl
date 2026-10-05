@@ -23,8 +23,12 @@ per-environment backend caches and saved plans out of the repository; the
 pipeline"), with its `.dockerignore`; and release-please's two files at the
 root, which the release workflow reads: `release-please-config.json`, starting
 the releases at 0.1.0 (`initial-version`) with a feature on the minor below
-1.0, and `.release-please-manifest.json`, at 0.0.0 until release-please moves
-it with each release. `bedrock check` refuses the root without either.
+1.0 and a changelog section for every title type the CI's `title` check
+accepts (`upgrade`, `infra` and `config` shown, so a merge of only those
+releases a patch; `cleanup` hidden), and `.release-please-manifest.json`, at
+0.0.0 until release-please moves it with each release. `bedrock check` refuses
+the root without either, and a configuration whose sections lack an accepted
+type.
 
 ## Applying
 

@@ -29,13 +29,14 @@
 # does not require of an organization.
 #
 # The required checks are the infrastructure workflow's job, bedrock check,
-# which GitHub Actions reports, and the jobs of the application's own CI
-# workflow, which impulse renders and GitHub Actions reports by their ids:
-# title, go, image, secrets and migrations. Every application's workflow
+# which GitHub Actions reports, and the fixed jobs of the application's own
+# CI workflow, which impulse renders and GitHub Actions reports by their ids:
+# title, go, web, image, secrets and migrations. Every application's workflow
 # carries those; the list is read from impulse, so the names have one source.
 # The workflow's browser jobs (angular-<workspace>, one per browser
-# workspace) are not required by the rule, since the placement does not carry
-# each application's workspaces. A pull request merges once every required
+# workspace) are named per application, so the rule does not name them; web,
+# the gate over them, fails when any of them did, so a failed browser build
+# blocks the merge all the same. A pull request merges once every required
 # check passes on its latest commit. The pull-request build, which Cloud
 # Build runs on /gcbrun, is not required: it is the developer's preview of a
 # pull request in tst, and a pull request merges whether or
@@ -93,6 +94,10 @@ locals {
       },
       {
         context        = "go"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "web"
         integration_id = tonumber(data.github_app.actions.id)
       },
       {

@@ -40,7 +40,11 @@ default branch has taken since the branch was cut.
 It refuses an application root without release-please's configuration or its manifest
 (release-please-config.json, .release-please-manifest.json): the release workflow reads both,
 and without them no release is cut and nothing reaches an environment. bedrock render seeds
-both when absent; edited, they are the application's.
+both when absent; edited, they are the application's. It refuses a configuration whose
+changelog-sections (at the top level, or a package's own) lacks a type the CI's title check
+accepts, naming the types: release-please drops a merge whose type has no section exactly
+as it drops a hidden one, so a pull request of only such titles would never release. Whether
+a section is hidden is the application's choice; only an absent entry is refused.
 
 The build secrets: a secret the Dockerfile mounts as required (--mount=type=secret,
 id=NAME,required=true) must be declared in every environment's build_secrets in

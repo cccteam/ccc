@@ -331,23 +331,23 @@ func (*view) FirstEnvironment() string {
 }
 
 // ImpulseChecks is the job ids every application's CI workflow carries, as impulse
-// renders the workflow and GitHub Actions reports its jobs (title, go, image, secrets,
-// migrations), in the workflow's order: the check names the branch rulesets require
-// beside bedrock check and the pull-request build, read from impulse so the names have
-// one source. The browser jobs (angular-<workspace>, one per browser workspace) are not
-// among them, since the placement does not carry each application's workspaces.
+// renders the workflow and GitHub Actions reports its jobs (title, go, web, image,
+// secrets, migrations), in the workflow's order: the check names the branch rulesets
+// require beside bedrock check, read from impulse so the names have one source. The
+// browser jobs (angular-<workspace>, one per browser workspace) are not among them,
+// since they are named per application; web, the gate over them, is.
 func (*view) ImpulseChecks() []string {
 	return ci.FixedChecks
 }
 
-// ImpulseChecksProse is the same job ids as prose, for a .tf comment: title, go, image,
-// secrets and migrations.
+// ImpulseChecksProse is the same job ids as prose, for a .tf comment: title, go, web,
+// image, secrets and migrations.
 func (*view) ImpulseChecksProse() string {
 	return prose(ci.FixedChecks)
 }
 
 // ImpulseChecksProseQuoted is the job ids as prose, backticked for a README: `title`,
-// `go`, `image`, `secrets` and `migrations`.
+// `go`, `web`, `image`, `secrets` and `migrations`.
 func (*view) ImpulseChecksProseQuoted() string {
 	return prose(backticked(ci.FixedChecks))
 }

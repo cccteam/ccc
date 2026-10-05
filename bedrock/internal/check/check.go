@@ -98,6 +98,10 @@ type Report struct {
 	// ReleaseLines are the release-please settings under which a feature release would
 	// not open a new hotfix line (a feature on the patch below 1.0).
 	ReleaseLines []ReleaseLineFinding
+	// ReleaseSections are the release-please changelog-sections lists that lack a type
+	// the CI's title check accepts, under which a merge of only such titles would never
+	// release.
+	ReleaseSections []ReleaseSectionFinding
 	// ReleaseFiles are release-please's files the application root lacks (its
 	// configuration, its manifest): seeded files like the Dockerfile, but without them
 	// the release workflow cuts no release and nothing reaches an environment, so their
@@ -133,9 +137,10 @@ type MaintenanceFinding struct {
 // Clean reports no drift, no refused resource, a sound migration sequence, every
 // required build secret declared, every job's binary built, reserved stages holding
 // their install alone, every declared build argument declared by the Dockerfile, release
-// lines that a feature release opens, and release-please's files in place.
+// lines that a feature release opens, a changelog section for every accepted title type,
+// and release-please's files in place.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseFiles) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -197,11 +202,9 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 	if err := r.scanImage(appDir, m); err != nil {
 		return nil, err
 	}
-	releaseLines, err := scanReleaseLines(appDir)
-	if err != nil {
+	if err := r.scanRelease(appDir); err != nil {
 		return nil, err
 	}
-	r.ReleaseLines = releaseLines
 	r.Maintenance = scanMaintenance(m, appDir, time.Now())
 	latest, err := scanLatest(dir, m.Placement.Environments)
 	if err != nil {
@@ -210,6 +213,25 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 	r.Latest = latest
 
 	return r, nil
+}
+
+// scanRelease reads release-please's configuration at the application root for the
+// settings under which a release would not happen as the model needs: a feature on the
+// patch below 1.0 (ReleaseLines) and an accepted title type without a changelog section
+// (ReleaseSections).
+func (r *Report) scanRelease(appDir string) error {
+	releaseLines, err := scanReleaseLines(appDir)
+	if err != nil {
+		return err
+	}
+	r.ReleaseLines = releaseLines
+	releaseSections, err := scanReleaseSections(appDir)
+	if err != nil {
+		return err
+	}
+	r.ReleaseSections = releaseSections
+
+	return nil
 }
 
 // scanLatest reads the stack's terraform.tfvars for the secrets each environment's
@@ -426,6 +448,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, rl := range r.ReleaseLines {
 		fmt.Fprintf(w, "  refused  %s: %s\n", rl.Path, rl.Problem)
+	}
+	for _, rs := range r.ReleaseSections {
+		fmt.Fprintf(w, "  refused  %s: %s\n", rs.Path, rs.Problem())
 	}
 	for _, path := range r.ReleaseFiles {
 		fmt.Fprintf(w, "  refused  %s is missing at the application root: the release workflow reads it, and without it no release is cut and nothing reaches an environment; bedrock render seeds it when absent\n", path)

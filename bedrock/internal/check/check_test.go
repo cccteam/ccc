@@ -131,7 +131,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = []derive.ScheduledRoute{{Path: "/_scheduled/send-daily-digest", Schedule: "0 6 * * 1-5", TimeZone: "America/New_York"}}
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 249, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 253, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
 			wantOutput: []string{"2 of 24 owned file(s) differ", "differs  scheduler.tf:29"},
@@ -143,7 +143,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = append([]derive.ScheduledRoute{{Path: "/_scheduled/close-stale-holds", Schedule: "*/15 * * * *", TimeZone: "UTC"}}, m.Scheduled...)
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 249, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 253, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
 			wantOutput: []string{"2 of 24 owned file(s) differ", "differs  scheduler.tf:27"},
@@ -184,6 +184,26 @@ func TestRun(t *testing.T) {
 			},
 			wantReleaseFiles: []string{"release-please-config.json"},
 			wantOutput:       []string{"refused  release-please-config.json is missing at the application root: the release workflow reads it, and without it no release is cut and nothing reaches an environment; bedrock render seeds it when absent"},
+		},
+		{
+			name: "release-please's configuration lacking a section for an accepted title type is refused naming the type",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				path := filepath.Join(dir, "root", "release-please-config.json")
+				src, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				edited := strings.Replace(string(src), "    { \"type\": \"infra\", \"section\": \"Infrastructure\" },\n", "", 1)
+				if edited == string(src) {
+					t.Fatal("the seeded configuration carries no infra section to remove")
+				}
+				if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantOutput: []string{"refused  release-please-config.json: changelog-sections has no entry for `infra`: release-please drops a merge whose type has no section exactly as it drops a hidden one"},
 		},
 		{
 			name: "release-please's manifest missing is refused",

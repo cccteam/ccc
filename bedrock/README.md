@@ -441,9 +441,21 @@ It also refuses:
   (`release-please-config.json`) or its manifest (`.release-please-manifest.json`),
   naming the file: the release workflow reads both, and without them no release is cut
   and nothing reaches an environment. `bedrock render` seeds both when absent, the
-  configuration with `initial-version` 0.1.0 and the manifest at 0.0.0, so the first
-  release pull request proposes 0.1.0; release-please moves the manifest from then on,
-  and both are the application's to edit.
+  configuration with `initial-version` 0.1.0 and a changelog section for every title
+  type the CI's `title` check accepts (`upgrade`, `infra` and `config` shown, so a merge
+  of only those releases a patch; `cleanup` hidden beside `refactor`), and the manifest
+  at 0.0.0, so the first release pull request proposes 0.1.0; release-please moves the
+  manifest from then on, and both are the application's to edit. An application seeded
+  before the four types had sections adds them by hand, since render never rewrites the
+  configuration.
+- a release-please configuration whose `changelog-sections`, at the top level or a
+  package's own, lacks a type the CI's `title` check accepts (impulse's `ci.TitleTypes`,
+  the list the check reads), naming the types: release-please drops a merge whose type
+  has no section exactly as it drops a hidden one, so a pull request of only such titles
+  opens no release pull request and never reaches an environment, and an upgrade (new
+  pins, new pipeline) or an infrastructure change (applied only in a tag build) must not
+  wait for a later releasing merge. Whether a section is hidden is the application's
+  choice; only an absent entry is refused.
 - a release-please configuration (`release-please-config.json`) with
   `bump-patch-for-minor-pre-major` true, at the top level or for a package: below 1.0 a
   feature release would bump the patch and stay on production's hotfix line
@@ -1642,9 +1654,12 @@ the squashed commit titled from the pull request; the head branch deleted on mer
 destroyed by the layer), its three rulesets (a `v*` or `*/v*` tag created, moved or
 deleted by the release app alone, with no bypass for the repository's admins, which is
 what makes the pipeline's tag check sound; the default branch and the hotfix lines
-changed by pull request alone, with the branch up to date with its base, the pull-request
-build (which Cloud Build reports under the trigger's name followed by the project in
-parentheses) and the infrastructure workflow's `bedrock check` passing on its latest commit,
+changed by pull request alone, with the branch up to date with its base, the
+infrastructure workflow's `bedrock check` and the six fixed jobs of the application's CI
+workflow (`title`, `go`, `web`, `image`, `secrets`, `migrations`, read from impulse's `ci`
+package; `web` gates the per-workspace browser jobs, so a failed browser build blocks the
+merge) passing on its latest commit, never the pull-request build (the developer's preview
+on `/gcbrun`),
 squash the only merge and, when the placement names an infrastructure team, that team's
 approval of a change to the workflow and Cloud Build files), and the GitHub Environments
 the operations workflow runs in (every environment, production's for the rerun of a

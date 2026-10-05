@@ -1372,7 +1372,7 @@ func TestViewPhrases(t *testing.T) {
 		}, want: "an hour|90 minutes|12 hours|three hours"},
 		{name: "impulse's checks: the list, as prose and backticked", placement: Placement{}, check: func(v *view) string {
 			return strings.Join(v.ImpulseChecks(), ",") + " / " + v.ImpulseChecksProse() + " / " + v.ImpulseChecksProseQuoted()
-		}, want: "title,go,image,secrets,migrations / title, go, image, secrets and migrations / `title`, `go`, `image`, `secrets` and `migrations`"},
+		}, want: "title,go,web,image,secrets,migrations / title, go, web, image, secrets and migrations / `title`, `go`, `web`, `image`, `secrets` and `migrations`"},
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd"},
@@ -2302,8 +2302,9 @@ func TestPublicInvoker(t *testing.T) {
 
 // TestRepositoryRules reads the repository module 1-org renders: the applications it
 // configures, the checks a pull request must pass (the infrastructure workflow's job and
-// the five jobs of impulse's CI workflow in the workflow's order; never the pull-request
-// build, which is the preview on /gcbrun), squash as the only merge, the branch up to date
+// the six fixed jobs of impulse's CI workflow in the workflow's order, web among them so a
+// failed browser build blocks the merge; never the pull-request build, which is the
+// preview on /gcbrun), squash as the only merge, the branch up to date
 // before it merges, the environments the operations workflow runs in (every one), and the
 // placement's values as the variables' defaults.
 func TestRepositoryRules(t *testing.T) {
@@ -2329,7 +2330,7 @@ func TestRepositoryRules(t *testing.T) {
 			want: []string{`applications = ["harbor", "beacon"]`},
 		},
 		{
-			name: "the rules name the checks in order (bedrock check, impulse's five jobs), squash alone and the branch up to date",
+			name: "the rules name the checks in order (bedrock check, impulse's six fixed jobs), squash alone and the branch up to date",
 			path: "1-org/github.tf",
 			want: []string{
 				`      {
@@ -2342,6 +2343,10 @@ func TestRepositoryRules(t *testing.T) {
       },
       {
         context        = "go"
+        integration_id = tonumber(data.github_app.actions.id)
+      },
+      {
+        context        = "web"
         integration_id = tonumber(data.github_app.actions.id)
       },
       {

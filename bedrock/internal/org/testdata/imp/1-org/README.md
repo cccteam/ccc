@@ -346,14 +346,16 @@ request.
 
 The required checks on the default branch and the hotfix lines are the
 infrastructure workflow's job, `bedrock check`, which GitHub Actions reports,
-and the jobs of the application's own CI workflow, `.github/workflows/ci.yml`,
-which `impulse render` writes and GitHub Actions reports by their ids:
-`title`, `go`, `image`, `secrets` and `migrations`. Every application's workflow
-carries those; bedrock reads the list from impulse when it renders
-`github.tf`, so the names have one source. The workflow's browser jobs
-(`angular-<workspace>`, one per browser workspace) are not required by the
-rule, since the placement does not carry each application's workspaces. A
-pull request merges once every required check passes on its latest commit and
+and the fixed jobs of the application's own CI workflow,
+`.github/workflows/ci.yml`, which `impulse render` writes and GitHub Actions
+reports by their ids: `title`, `go`, `web`, `image`, `secrets` and `migrations`. Every
+application's workflow carries those; bedrock reads the list from impulse when
+it renders `github.tf`, so the names have one source. The workflow's browser
+jobs (`angular-<workspace>`, one per browser workspace) are named per
+application, so the rule does not name them; `web`, the gate over them, fails
+when any of them did, so a failed browser build, lint or test blocks the merge
+all the same. A pull request merges once every required check passes on its
+latest commit and
 its branch holds every commit of its base. The checks are not enforced on the creation of a branch: a hotfix line is created from a released commit of the default branch, which carries no pull-request check (they ran on the pull request's head, not on its squash commit), and every change to the line after that is a pull request. A renamed job is one change to
 `github.tf`, timed with the release that renames it; requiring both names
 would block every pull request. The rule requires impulse's names once every

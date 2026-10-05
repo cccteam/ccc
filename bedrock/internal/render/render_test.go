@@ -16,6 +16,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/ci"
 )
 
 // fixtures is where the fixture applications and the placement live.
@@ -464,11 +465,33 @@ func TestReleaseFiles(t *testing.T) {
 	if err := json.Unmarshal(rendered[ReleasePleaseManifest].Content, &manifest); err != nil {
 		t.Fatalf("%s does not read: %v", ReleasePleaseManifest, err)
 	}
+	// hidden is each changelog section's visibility by type; a type outside the map has
+	// no section, and release-please would drop its merges.
+	hidden := map[string]bool{}
+	sections, _ := config["changelog-sections"].([]any)
+	for _, s := range sections {
+		section, _ := s.(map[string]any)
+		typ, _ := section["type"].(string)
+		h, _ := section["hidden"].(bool)
+		hidden[typ] = h
+	}
+	covered := make([]string, 0, len(ci.TitleTypes))
+	for _, typ := range ci.TitleTypes {
+		if _, ok := hidden[typ]; ok {
+			covered = append(covered, typ)
+		}
+	}
 	tests := []struct {
 		name string
 		got  any
 		want any
 	}{
+		{name: "every type the title check accepts has a section", got: strings.Join(covered, ","), want: strings.Join(ci.TitleTypes, ",")},
+		{name: "an upgrade releases: its section is shown", got: hidden["upgrade"], want: false},
+		{name: "an infrastructure change releases: its section is shown", got: hidden["infra"], want: false},
+		{name: "a configuration change releases: its section is shown", got: hidden["config"], want: false},
+		{name: "a cleanup is hidden, beside refactor", got: hidden["cleanup"] && hidden["refactor"], want: true},
+		{name: "a feature is shown", got: hidden["feat"] || hidden["feature"], want: false},
 		{name: "the configuration is seeded at the root", got: rendered[ReleasePleaseConfig].Tier == Seeded && rendered[ReleasePleaseConfig].Root, want: true},
 		{name: "the manifest is seeded at the root", got: rendered[ReleasePleaseManifest].Tier == Seeded && rendered[ReleasePleaseManifest].Root, want: true},
 		{name: "the first release is 0.1.0", got: config["initial-version"], want: "0.1.0"},
