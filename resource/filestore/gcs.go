@@ -36,6 +36,14 @@ const (
 	maxAttempts = 5
 	// deletesInFlight bounds the deletes one Delete runs at once.
 	deletesInFlight = 8
+	// startupWait bounds how long Check keeps probing a refused permission before the
+	// store starts in its refused state, and startupRetry is the pause between probes.
+	// A grant takes minutes to take effect; the service's first revision is deployed
+	// after its grants (the stack's depends_on on the bucket's policy), so a refusal at
+	// start is the tail of that lag, and ninety seconds covers most of it without
+	// holding the process past Cloud Run's startup window.
+	startupWait  = 90 * time.Second
+	startupRetry = 5 * time.Second
 )
 
 // Bucket is a file store over one Cloud Storage bucket: gs://<bucket>. Put is create
@@ -52,13 +60,19 @@ const (
 // The readiness check lists one object, which roles/storage.objectUser allows. A bad
 // URL or a missing bucket refuses to start. A refused permission at start does not: a
 // new grant takes minutes to take effect, so refusing would fail a first deploy. The
-// store starts, logs loudly, answers 503 on every file operation, and probes again on
-// the next one, until the grant arrives.
+// check probes again every few seconds for a bounded time (startupWait), and when the
+// permission is still refused the store starts, logs loudly, answers 503 on every file
+// operation, and probes again on the next one, until the grant arrives.
 type Bucket struct {
 	name    string
 	client  *storage.Client
 	bucket  *storage.BucketHandle
 	refused atomic.Bool
+	// probe lists one object; sleep waits between the startup probes and now reads the
+	// clock. The real ones in openBucket, fakes in tests.
+	probe func(ctx context.Context) error
+	sleep func(ctx context.Context, d time.Duration) error
+	now   func() time.Time
 }
 
 // openBucket opens the client over the named bucket. The client reads
@@ -74,7 +88,22 @@ func openBucket(ctx context.Context, name string) (*Bucket, error) {
 		storage.WithBackoff(gax.Backoff{Initial: 200 * time.Millisecond, Max: 5 * time.Second, Multiplier: 2}),
 	)
 
-	return &Bucket{name: name, client: client, bucket: client.Bucket(name)}, nil
+	b := &Bucket{name: name, client: client, bucket: client.Bucket(name), sleep: sleepUntil, now: time.Now}
+	b.probe = b.listOne
+
+	return b, nil
+}
+
+// sleepUntil waits d, or until the context ends.
+func sleepUntil(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return perrors.Wrap(ctx.Err(), "waiting between the file store's startup probes")
+	case <-timer.C:
+		return nil
+	}
 }
 
 // Location is the URL the store was opened at: gs://<bucket>.
@@ -198,24 +227,35 @@ func (s *Bucket) Objects(ctx context.Context) iter.Seq2[Object, error] {
 }
 
 // Check probes the bucket by listing one object. A missing bucket or an unreachable
-// service is an error; a refused permission is logged, puts the store in its refused
-// state, and is not an error, so the process starts and serves everything but files.
+// service is an error. A refused permission is probed again every startupRetry for
+// startupWait, since a grant made moments ago takes minutes to take effect; still
+// refused after that, it is logged, puts the store in its refused state, and is not an
+// error, so the process starts and serves everything but files.
 func (s *Bucket) Check(ctx context.Context) error {
-	err := s.probe(ctx)
-	if err == nil {
-		return nil
-	}
-	if !isRefused(err) {
-		return err
-	}
-	s.refused.Store(true)
-	logger.FromCtx(ctx).Errorf("filestore: the permission on %s is refused; the process starts, every file operation answers 503, and the store is probed again on the next one until the grant takes effect: %v", s.Location(), err)
+	deadline := s.now().Add(startupWait)
+	for {
+		err := s.probe(ctx)
+		if err == nil {
+			return nil
+		}
+		if !isRefused(err) {
+			return err
+		}
+		if !s.now().Before(deadline) {
+			s.refused.Store(true)
+			logger.FromCtx(ctx).Errorf("filestore: the permission on %s is still refused after %s; the process starts, every file operation answers 503, and the store is probed again on the next one until the grant takes effect: %v", s.Location(), startupWait, err)
 
-	return nil
+			return nil
+		}
+		logger.FromCtx(ctx).Warnf("filestore: the permission on %s is refused; probing again in %s while the grant takes effect: %v", s.Location(), startupRetry, err)
+		if err := s.sleep(ctx, startupRetry); err != nil {
+			return err
+		}
+	}
 }
 
-// probe lists one object under the call timeout.
-func (s *Bucket) probe(ctx context.Context) error {
+// listOne lists one object under the call timeout: the readiness probe.
+func (s *Bucket) listOne(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	it := s.bucket.Objects(ctx, &storage.Query{Projection: storage.ProjectionNoACL})

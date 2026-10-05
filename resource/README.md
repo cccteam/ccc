@@ -1152,8 +1152,9 @@ URL and a missing bucket at start, and on Cloud Run (`K_SERVICE` or `CLOUD_RUN_J
 refuses `file://`, `mem://`, `STORAGE_EMULATOR_HOST` and `GOOGLE_APPLICATION_CREDENTIALS`,
 each of which would send the service's files somewhere other than its bucket under its
 own identity. A bucket whose permission is refused at start does not stop the process,
-since a new grant takes minutes to take effect: the store logs loudly, answers 503 on
-every file operation, and probes again on the next one. Every store follows the rules
+since a new grant takes minutes to take effect: the store probes again every five seconds
+for ninety seconds, and still refused it logs loudly, answers 503 on every file
+operation, and probes again on the next one. Every store follows the rules
 the frames rely on: a failed write leaves no object, deleting a missing key succeeds, a
 key is any safe relative object name (the upload frame mints UUIDs, which is a fact
 about the frame, so an adopter with existing files may pass its rows' names as keys),
