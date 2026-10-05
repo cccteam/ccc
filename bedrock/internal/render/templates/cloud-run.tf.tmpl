@@ -59,6 +59,7 @@ resource "google_cloud_run_v2_service" "app" {
     containers {
       image = var.placeholder_image
 
+
       ports {
         container_port = {{.Port.Default}}
       }
@@ -131,9 +132,15 @@ resource "google_cloud_run_v2_service" "app" {
     }
   }
 
+  # The grants the first revision needs before it starts: a grant takes minutes
+  # to take effect, and the file store's readiness probe runs at start.
   depends_on = [
     google_secret_manager_secret_iam_member.app_accessor,
     google_spanner_database_iam_member.app_user,
+{{- range .FileStores}}
+    google_storage_bucket_iam_policy.{{.Resource}},
+    google_storage_bucket_iam_member.{{.Resource}}_preview,
+{{- end}}
   ]
 }
 
@@ -262,7 +269,7 @@ resource "google_cloud_run_v2_job" "jobs" {
     ]
   }
 
-  depends_on = [{{if .JobsReadsData}}google_spanner_database_iam_member.jobs_user, google_secret_manager_secret_iam_member.jobs_accessor{{else}}google_project_iam_member.jobs{{end}}]
+  depends_on = [{{if .JobsReadsData}}google_spanner_database_iam_member.jobs_user, google_secret_manager_secret_iam_member.jobs_accessor{{else}}google_project_iam_member.jobs{{end}}{{range .FileStores}}{{if .JobsReads}}, google_storage_bucket_iam_policy.{{.Resource}}, google_storage_bucket_iam_member.{{.Resource}}_preview{{end}}{{end}}]
 }
 {{- if .JobsJob}}
 

@@ -121,10 +121,16 @@ from `2-env`'s state.
   disabled for events and run by the operations workflow alone, runs it. The
   database keeps its past for the placement's `spannerRetention` (seven days
   unless it says otherwise).
-- **The default file store** `imp-<env>-gbl-harbor-files-<project number>`
+- **The default file store** `imp-<env>-<location code>-harbor-files-<project number>`
   (`dataConfig.FileStore` names it to the processes that construct the
-  data level, as a `gs://` URL), in the primary region, uniform access, no public
-  access, unversioned; prd's survives a destroy. The site and the job
+  data level, as a `gs://` URL), where the database is: regional with a regional
+  instance, dual-region over the shared instance's two regions, the location code the
+  region's (`uc1`) or the instance configuration's (`nam10`); uniform access, no public
+  access, unversioned, soft delete seven days in prd and none elsewhere;
+  prd's survives a destroy. A pull-request stack with its own database has
+  its own bucket; one sharing tst's database uses tst's, its
+  identities granted on it, since the rows it reads name objects there. The service's
+  first revision waits for the bucket's grants. The site and the job
   process hold `roles/storage.objectUser` on it, and nobody else: the stack
   sets the bucket's whole permission list (`google_storage_bucket_iam_policy.files`),
   so Cloud Storage's default grants to the project's basic roles are gone

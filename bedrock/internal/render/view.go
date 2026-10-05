@@ -336,7 +336,7 @@ func newFileStore(s derive.FileStore, jobs *derive.Process) fileStore {
 
 	return fileStore{
 		FileStore: s,
-		Value:     `"gs://${` + s.Address() + `.name}"`,
+		Value:     `"gs://${local.` + s.Resource + `_bucket_name}"`,
 		Label:     label,
 		Title:     "The" + strings.TrimPrefix(label, "the"),
 		JobsReads: jobs != nil && jobs.Reads(s.Variable.Level),

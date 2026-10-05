@@ -61,6 +61,10 @@ locals {
   # creates in the spn project (2-spn outputs project_id and instance_name).
   instance_project = local.own_instance ? local.project_id : try(data.terraform_remote_state.spn.outputs.project_id, local.org.project_ids["spn"])
   instance_name    = local.own_instance ? google_spanner_instance.tst[0].name : try(data.terraform_remote_state.spn.outputs.instance_name, null)
+  # The instance's configuration by its short name (regional-<region>, or a
+  # multi-region such as nam10): an application stack puts its file stores
+  # where the database is, from this.
+  instance_config = local.own_instance ? local.spanner_config : try(data.terraform_remote_state.spn.outputs.spanner_config, null)
 
   # Container images live in the shr project, one repository per application
   # (2-shr output repository_names: application code => repository ID). The

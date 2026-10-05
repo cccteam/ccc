@@ -54,7 +54,7 @@ locals {
     _RECORDS_BUCKETS         = local.records_buckets
     _APPLY_IDENTITY          = local.identities.apply_identity_email # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
     _TASKS_QUEUE             = local.tasks_queue                     # the task queue a maintenance step pauses while the database is replaced or migrated and resumes after traffic moves
-    _FILE_STORES             = "google_storage_bucket.files"         # the file stores' buckets as this stack addresses them, comma-separated; a restore run in tst replaces them with the database
+    _FILE_STORES             = "google_storage_bucket.files[0]"      # the file stores' buckets as this stack addresses them, comma-separated; a restore run in tst replaces them with the database
     _ROLLBACK                = ""                                    # a rollback run's data (bedrock rollback, on the rollback trigger alone): the backup it restores into the database's next generation, by name, or @<moment> for a backup made as of that moment, or empty for the live release's pre-release backup
     _ROLLBACK_FROM           = ""                                    # the release the rollback leaves, the environment's live release when it was asked for; the record carries it
     _REASON                  = ""                                    # why the rollback was asked for; its first step prints it and the record carries it

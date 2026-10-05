@@ -47,6 +47,7 @@ resource "google_cloud_run_v2_service" "app" {
     containers {
       image = var.placeholder_image
 
+
       ports {
         container_port = 8080
       }
@@ -119,6 +120,8 @@ resource "google_cloud_run_v2_service" "app" {
     }
   }
 
+  # The grants the first revision needs before it starts: a grant takes minutes
+  # to take effect, and the file store's readiness probe runs at start.
   depends_on = [
     google_secret_manager_secret_iam_member.app_accessor,
     google_spanner_database_iam_member.app_user,

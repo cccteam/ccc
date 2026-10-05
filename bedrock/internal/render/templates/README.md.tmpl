@@ -121,10 +121,16 @@ from `2-env`'s state.
   database keeps its past for the placement's `spannerRetention` (seven days
   unless it says otherwise).
 {{- range .FileStores}}
-- **{{.Title}}** `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Suffix}}-<project number>`
+- **{{.Title}}** `{{$.Prefix}}-<env>-<location code>-{{$.App}}-{{.Suffix}}-<project number>`
   (`{{.Variable.Declaration}}` names it to the processes that construct the
-  {{.Variable.Level}} level, as a `gs://` URL), in the primary region, uniform access, no public
-  access, unversioned; {{$.Production}}'s survives a destroy. The site{{if .JobsReads}} and the job
+  {{.Variable.Level}} level, as a `gs://` URL), where the database is: regional with a regional
+  instance, dual-region over the shared instance's two regions, the location code the
+  region's (`uc1`) or the instance configuration's (`nam10`); uniform access, no public
+  access, unversioned, soft delete seven days in {{$.Production}} and none elsewhere;
+  {{$.Production}}'s survives a destroy. A pull-request stack with its own database has
+  its own bucket; one sharing {{$.Integration}}'s database uses {{$.Integration}}'s, its
+  identities granted on it, since the rows it reads name objects there. The service's
+  first revision waits for the bucket's grants. The site{{if .JobsReads}} and the job
   process{{end}} hold{{if not .JobsReads}}s{{end}} `roles/storage.objectUser` on it, and nobody else: the stack
   sets the bucket's whole permission list (`google_storage_bucket_iam_policy.{{.Resource}}`),
   so Cloud Storage's default grants to the project's basic roles are gone

@@ -111,9 +111,27 @@ locals {
   # point-in-time rollback reach.
   spanner_retention = { tst = "7d", stg = "7d", prd = "7d" }
 
-  # The default file store (dataConfig.FileStore): a pull-request stack has its
-  # own, and the environment project's number makes the name unique.
-  files_bucket_name = "${local.name}-gbl-${local.is_pr ? local.pr_name : local.app}-files-${local.env.project_number}"
+  # Where the file stores live: with the database. tst's instance
+  # is regional, so its buckets are regional too, named by the region's code;
+  # the shared instance's configuration spans the organization's two regions,
+  # so the buckets there are dual-region over the same two, named after the
+  # configuration (2-env's spanner_instance output carries it). A stack
+  # rendered by an older bedrock named them gbl in the primary region; the
+  # first apply with this one replaces them, which is why the rename came
+  # while no application held files.
+  spanner_config      = local.env.spanner_instance.config
+  files_regional      = startswith(local.spanner_config, "regional-")
+  files_region        = trimprefix(local.spanner_config, "regional-")
+  files_location_code = local.files_regional ? { for code, name in local.regions : name => code }[local.files_region] : local.spanner_config
+  files_location      = local.files_regional ? local.files_region : lookup({ nam = "US", eur = "EU", asia = "ASIA" }, regex("^[a-z]+", local.spanner_config), "US")
+
+  # The default file store (dataConfig.FileStore): the environment's, named for the
+  # environment, where the database is, the application, the store and the
+  # environment project's number, which makes the name unique. A pull-request
+  # stack with its own database has its own; one sharing tst's
+  # database uses tst's bucket, since the rows it reads name
+  # objects there (storage.tf grants its identities on it).
+  files_bucket_name = "${local.name}-${local.files_location_code}-${local.own_database && local.is_pr ? local.pr_name : local.app}-files-${local.env.project_number}"
 
   # The task queue (dataConfig.TasksQueue), by name and as the Cloud Tasks API
   # names it: tst's for a pull-request stack, which enqueues on it (tasks.tf).
@@ -238,7 +256,7 @@ locals {
   # processes that construct its level and run the application's own code:
   # dataConfig.FileStore, the default file store (data level).
   files_env = {
-    APP_FILE_STORE = "gs://${google_storage_bucket.files.name}"
+    APP_FILE_STORE = "gs://${local.files_bucket_name}"
   }
 
   # dataConfig.TasksQueue: the task queue (tasks.tf), for the processes that

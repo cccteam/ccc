@@ -50,6 +50,7 @@ resource "google_cloud_run_v2_service" "app" {
     containers {
       image = var.placeholder_image
 
+
       ports {
         container_port = 8080
       }
@@ -122,9 +123,13 @@ resource "google_cloud_run_v2_service" "app" {
     }
   }
 
+  # The grants the first revision needs before it starts: a grant takes minutes
+  # to take effect, and the file store's readiness probe runs at start.
   depends_on = [
     google_secret_manager_secret_iam_member.app_accessor,
     google_spanner_database_iam_member.app_user,
+    google_storage_bucket_iam_policy.files,
+    google_storage_bucket_iam_member.files_preview,
   ]
 }
 
@@ -250,7 +255,7 @@ resource "google_cloud_run_v2_job" "jobs" {
     ]
   }
 
-  depends_on = [google_spanner_database_iam_member.jobs_user, google_secret_manager_secret_iam_member.jobs_accessor]
+  depends_on = [google_spanner_database_iam_member.jobs_user, google_secret_manager_secret_iam_member.jobs_accessor, google_storage_bucket_iam_policy.files, google_storage_bucket_iam_member.files_preview]
 }
 
 # The site starts the job of its own build through the Cloud Run API as its

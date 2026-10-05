@@ -421,7 +421,7 @@ func newFileStore(v *Variable, name string) FileStore {
 
 // Address is the bucket's address in the stack: google_storage_bucket.<resource>.
 func (s *FileStore) Address() string {
-	return bucketResourceType + "." + s.Resource
+	return bucketResourceType + "." + s.Resource + "[0]"
 }
 
 // PolicyAddress is the address of the bucket's IAM policy in the stack,
@@ -440,6 +440,12 @@ func (s *FileStore) PolicyAddress() string {
 func BucketPolicyAddress(bucket string) string {
 	resource, ok := strings.CutPrefix(bucket, bucketResourceType+".")
 	if !ok || resource == "" {
+		return ""
+	}
+	// The bucket is counted (google_storage_bucket.<resource>[0]); the policy's address
+	// in the stack's files, which check and the test compare, carries no index.
+	resource, _, _ = strings.Cut(resource, "[")
+	if resource == "" {
 		return ""
 	}
 

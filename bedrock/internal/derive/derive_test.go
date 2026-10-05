@@ -126,7 +126,7 @@ func TestDerive(t *testing.T) {
 			wantGroupPfx:   "staff-",
 			wantHooks:      []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
 			wantFirestore:  "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
-			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files"},
+			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files[0]"},
 			wantScheduled:  []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
 		},
 		{
@@ -403,6 +403,8 @@ func TestBucketPolicyAddress(t *testing.T) {
 		{name: "a named store's bucket", bucket: "google_storage_bucket.files_client_files", want: "google_storage_bucket_iam_policy.files_client_files"},
 		{name: "an address that is not a bucket's", bucket: "google_spanner_database.app", want: ""},
 		{name: "a bucket type with no resource name", bucket: "google_storage_bucket.", want: ""},
+		{name: "the counted bucket the stack declares: the policy's address carries no index", bucket: "google_storage_bucket.files[0]", want: "google_storage_bucket_iam_policy.files"},
+		{name: "a counted bucket with no resource name", bucket: "google_storage_bucket.[0]", want: ""},
 		{name: "a policy's own address", bucket: "google_storage_bucket_iam_policy.files", want: ""},
 		{name: "nothing", bucket: "", want: ""},
 	}
@@ -433,10 +435,10 @@ func TestFileStoreName(t *testing.T) {
 		wantAddress  string
 		wantRole     Role
 	}{
-		{name: "the default store", variable: "APP_FILE_STORE", wantStore: true, wantName: "", wantResource: "files", wantSuffix: "files", wantAddress: "google_storage_bucket.files", wantRole: RoleFileStore},
-		{name: "a named store", variable: "APP_FILE_STORE_DOCUMENTS", wantStore: true, wantName: "documents", wantResource: "files_documents", wantSuffix: "files-documents", wantAddress: "google_storage_bucket.files_documents", wantRole: RoleFileStore},
-		{name: "a two-word name: underscores become hyphens in the bucket's name and stay in the resource's", variable: "APP_FILE_STORE_CLIENT_FILES", wantStore: true, wantName: "client-files", wantResource: "files_client_files", wantSuffix: "files-client-files", wantAddress: "google_storage_bucket.files_client_files", wantRole: RoleFileStore},
-		{name: "a name with a digit", variable: "APP_FILE_STORE_V2", wantStore: true, wantName: "v2", wantResource: "files_v2", wantSuffix: "files-v2", wantAddress: "google_storage_bucket.files_v2", wantRole: RoleFileStore},
+		{name: "the default store", variable: "APP_FILE_STORE", wantStore: true, wantName: "", wantResource: "files", wantSuffix: "files", wantAddress: "google_storage_bucket.files[0]", wantRole: RoleFileStore},
+		{name: "a named store", variable: "APP_FILE_STORE_DOCUMENTS", wantStore: true, wantName: "documents", wantResource: "files_documents", wantSuffix: "files-documents", wantAddress: "google_storage_bucket.files_documents[0]", wantRole: RoleFileStore},
+		{name: "a two-word name: underscores become hyphens in the bucket's name and stay in the resource's", variable: "APP_FILE_STORE_CLIENT_FILES", wantStore: true, wantName: "client-files", wantResource: "files_client_files", wantSuffix: "files-client-files", wantAddress: "google_storage_bucket.files_client_files[0]", wantRole: RoleFileStore},
+		{name: "a name with a digit", variable: "APP_FILE_STORE_V2", wantStore: true, wantName: "v2", wantResource: "files_v2", wantSuffix: "files-v2", wantAddress: "google_storage_bucket.files_v2[0]", wantRole: RoleFileStore},
 		{name: "letters that continue the prefix are not a store", variable: "APP_FILE_STOREROOM", wantRole: RoleNone},
 		{name: "nothing after the underscore is not a store", variable: "APP_FILE_STORE_", wantRole: RoleNone},
 		{name: "a name that is not upper snake case is not a store", variable: "APP_FILE_STORE_documents", wantRole: RoleNone},

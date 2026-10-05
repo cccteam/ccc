@@ -82,10 +82,11 @@ output "secondary_region_code" {
 }
 
 output "spanner_instance" {
-  description = "The Spanner instance applications in this environment put their databases on: its project and name. tst's own instance, or the shared one from 2-spn for stg and prd."
+  description = "The Spanner instance applications in this environment put their databases on: its project, name and configuration (regional-<region>, or a multi-region such as nam10, by which an application stack puts its file stores where the database is). tst's own instance, or the shared one from 2-spn for stg and prd."
   value = {
     project = local.instance_project
     name    = local.instance_name
+    config  = local.instance_config
   }
 }
 

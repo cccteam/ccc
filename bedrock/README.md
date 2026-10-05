@@ -322,14 +322,21 @@ balancer's tag opens, is not what guards the route; a pull-request stack creates
 the identity nor the jobs and leaves the variable unset, so its scheduled routes refuse
 every call; a config variable
 `APP_FILE_STORE` (the application's default file store) or `APP_FILE_STORE_<NAME>` (a
-named store, `APP_FILE_STORE_DOCUMENTS`) becomes a Cloud Storage bucket in the primary
-region, one per variable, named `<app>-files-<project number>` or
-`<app>-files-<name>-<project number>` with the name in lower case and hyphens, the
+named store, `APP_FILE_STORE_DOCUMENTS`) becomes a Cloud Storage bucket where the
+environment's database is (the region of a regional instance, a dual-region over the two
+regions of the shared instance's configuration), one per variable, named
+`<prefix>-<env>-<location code>-<app>-files-<project number>` or
+`...-files-<name>-<project number>` with the name in lower case and hyphens and the
+location code the region's (`uc1`) or the instance configuration's (`nam10`), uniform
+access, no public access, soft delete seven days in production and none elsewhere, the
 variable set to the bucket's `gs://` URL for the processes that construct its level, with
 `objectUser` for the site and, when it constructs that level, the job process, as the
 bucket's whole permission list (set on every apply, so Cloud Storage's default grants to
 the project's basic roles are gone from it and a grant added on the bucket by hand does
-not outlive the next release), and
+not outlive the next release), the service's first revision waiting for those grants
+(its `depends_on`), a pull-request stack with its own database having its own bucket and
+one sharing the integration environment's database using its bucket, its identities
+granted on it, since the rows it reads name objects there, and
 neither the URL nor a grant for the migrate command; a config variable `APP_TASKS_QUEUE` becomes a
 Cloud Tasks queue in the primary region (a pull-request stack enqueues on the
 integration environment's), the variable set to its resource name, with `enqueuer` on
