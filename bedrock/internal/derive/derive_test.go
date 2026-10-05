@@ -1304,12 +1304,13 @@ func TestSiteH2C(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		fixture string
-		want    bool
+		name      string
+		fixture   string
+		placement string
+		want      bool
 	}{
 		{name: "a site on the framework's server declares h2c", fixture: "harbor", want: true},
-		{name: "a site on another server keeps an HTTP/1 port", fixture: "beacon", want: false},
+		{name: "a site on another server keeps an HTTP/1 port", fixture: "beacon", placement: "placement-beacon.json", want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1319,7 +1320,11 @@ func TestSiteH2C(t *testing.T) {
 			if err != nil {
 				t.Fatalf("app.Discover() = %v", err)
 			}
-			m, err := Derive(a, testPlacement(t))
+			p := testPlacement(t)
+			if tt.placement != "" {
+				p = fixturePlacement(t, tt.placement)
+			}
+			m, err := Derive(a, p)
 			if err != nil {
 				t.Fatalf("Derive() = %v", err)
 			}
