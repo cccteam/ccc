@@ -694,12 +694,19 @@ and exposes them as `Scheduler()` and `Jobs()`; the `Configurer` asks for both, 
 carries the guard and the RPC client built over the starter, and `app/scheduled.go`
 declares `SchedulerAuth` (the middleware the generated router mounts the scheduled routes
 behind) and `RPCClient`. Every test configurer (a type in a test file declaring
-`LogExporter`) gains a nil guard and `jobs.NewFake()`. Then `go generate` emits the
-method's handler, its route under `/_scheduled` and the router's requirement.
+`LogExporter`) gains a nil guard, `jobs.NewFake()`, and a memory store its resource client
+is built over (`files *filestore.Mem`, passed as `resource.WithFileStore`), so a file route
+the application declares later is served in the suites. What the application wired already
+(a scheduled method of its own brought the guard, the accessor, the middleware) is left as
+it is: the editors add nothing the code declares, and the report says what was there. Then
+`go generate` emits the method's handler, its route under `/_scheduled` and the router's
+requirement.
 
 An application already holding an rpc package keeps its `Client`: the method is written
 into the package, and giving the client a `Jobs()` accessor fed from the configuration is
-the agent's, as is the cleanup command where `cmd/jobs` exists. Which resources record
+the agent's, as is the cleanup command where `cmd/jobs` exists, and the image: a Dockerfile
+builds `/jobs` beside the other binaries and bakes the job's name from the build argument
+`JOBS_JOB` (`bedrock check` asks for both once the job process exists). Which resources record
 files (`@file` on a `resource.Key` column, an `@upload` method) is the application's;
 until one does, the store is wired and idle. The `file-store` check watches the variable
 from then on, and the stack reads it to make the bucket (`gs://<bucket>` on Cloud Run),
