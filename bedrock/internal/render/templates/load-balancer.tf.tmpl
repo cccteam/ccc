@@ -83,12 +83,6 @@ resource "google_compute_backend_service" "app" {
     enable      = true
     sample_rate = 1.0
   }
-
-  # The policy is referenced through a conditional, which gives the graph no
-  # edge once Cloud Armor is turned off; without this edge the apply that turns
-  # it off destroys the policy while the backend still names it (Compute refuses:
-  # the policy is in use), so the detaching update is ordered before the destroy.
-  depends_on = [google_compute_security_policy.app]
 }
 
 # The next revision's backend: the same services under the revision tag "next",
@@ -134,10 +128,4 @@ resource "google_compute_backend_service" "next" {
     enable      = true
     sample_rate = 1.0
   }
-
-  # The policy is referenced through a conditional, which gives the graph no
-  # edge once Cloud Armor is turned off; without this edge the apply that turns
-  # it off destroys the policy while the backend still names it (Compute refuses:
-  # the policy is in use), so the detaching update is ordered before the destroy.
-  depends_on = [google_compute_security_policy.app]
 }

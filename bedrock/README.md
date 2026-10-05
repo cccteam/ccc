@@ -233,9 +233,10 @@ and what its absence means:
 - `cloudArmor`: the Cloud Armor policy the stack renders on its backend services
   (`cloud-armor.tf`), which an environment turns on in the stack's `terraform.tfvars`
   (`cloud_armor`, by environment: `"preview"` evaluates the rules and logs what each
-  would have done, `"enforce"` applies them; an environment left out is off, and a
-  pull-request stack never has a policy, since the environment layer serves previews from
-  one backend service). Rules run in priority order and the first match decides: a rule
+  would have done, `"enforce"` applies them, `"off"` keeps the policy and detaches it
+  from the backend services; an environment left out has no policy, and an
+  environment goes off before its entry is removed, since an apply that deletes the
+  policy while the backend services still name it fails). Rules run in priority order and the first match decides: a rule
   set that reads no body (scanner detection) first, on every path; then the bypasses,
   each a route whose body is a file or a third party's rather than the application's
   JSON, allowed so that no rule below reads it, the generated router's upload and

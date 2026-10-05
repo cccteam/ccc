@@ -17,20 +17,30 @@
 # names what it comes from. A pull-request stack has no policy: the environment
 # layer serves previews from one backend service, and a policy attaches to a
 # backend service.
+#
+# "off" keeps the policy and detaches it from the backend services; removing
+# the environment's entry deletes it. The two are separate applies on purpose:
+# an apply that deletes the policy while the backend services still name it
+# fails, because OpenTofu destroys the policy before it updates the services
+# (a dependency edge orders creation, not this), and Compute refuses to delete
+# a policy in use. Off first, then removed, each apply changes what it can.
 # ---------------------------------------------------------------------------
 
 locals {
-  cloud_armor_mode    = lookup(var.cloud_armor, var.environment, "off")
-  cloud_armor_on      = !local.is_pr && local.cloud_armor_mode != "off"
-  cloud_armor_preview = local.cloud_armor_mode == "preview"
+  # The environment's mode: "preview", "enforce", "off" (the policy kept,
+  # detached), or empty, the environment left out (no policy).
+  cloud_armor_mode     = lookup(var.cloud_armor, var.environment, "")
+  cloud_armor_declared = !local.is_pr && local.cloud_armor_mode != ""
+  cloud_armor_on       = local.cloud_armor_declared && local.cloud_armor_mode != "off"
+  cloud_armor_preview  = local.cloud_armor_mode != "enforce"
 }
 
 resource "google_compute_security_policy" "app" {
-  count = local.cloud_armor_on ? 1 : 0
+  count = local.cloud_armor_declared ? 1 : 0
 
   project     = local.project_id
   name        = "${local.name}-gbl-${local.app}-armor"
-  description = "harbor in ${var.environment}: the web application firewall's rules, ${local.cloud_armor_preview ? "in preview, logging what each rule would do" : "enforced"}."
+  description = "harbor in ${var.environment}: the web application firewall's rules, ${local.cloud_armor_mode == "off" ? "off, kept and detached from the backend services" : local.cloud_armor_preview ? "in preview, logging what each rule would do" : "enforced"}."
   type        = "CLOUD_ARMOR"
 
   # scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path; placement.json cloudArmor.ruleSets

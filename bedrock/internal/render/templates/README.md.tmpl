@@ -528,11 +528,16 @@ adding the entry and applying `2-net` is the whole registration.
 
 ## Cloud Armor
 
-Off unless `terraform.tfvars` turns it on in an environment (`cloud_armor`, by
+None unless `terraform.tfvars` names the environment (`cloud_armor`, by
 environment: `"preview"` evaluates the policy and logs what each rule would have
-done, `"enforce"` applies it; an environment left out is off, and a pull-request
-stack never has a policy, since the environment layer serves previews from one
+done, `"enforce"` applies it, `"off"` keeps the policy and detaches it from the
+backend services; an environment left out has no policy, and a pull-request
+stack never has one, since the environment layer serves previews from one
 backend service and a policy attaches to a backend service). Turn an
+environment off before removing its entry: an apply that deletes the policy
+while the backend services still name it fails, because OpenTofu destroys the
+policy before it updates the services and Compute refuses to delete a policy
+in use; off first and removed next, each apply goes through. Turn an
 environment to preview first and read its load balancer's request logs for a
 while: `jsonPayload.previewSecurityPolicy` names the rule a request would have
 met, and a legitimate request that meets one wants a field exclusion or a
@@ -797,7 +802,7 @@ Per environment, after the first apply:
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
-| `cloud_armor` | Cloud Armor per environment: `"preview"` or `"enforce"`; an environment left out is off. | `map(string)` | `{}` | no |
+| `cloud_armor` | Cloud Armor per environment: `"preview"`, `"enforce"` or `"off"` (the policy kept, detached); an environment left out has no policy. Off before removed. | `map(string)` | `{}` | no |
 | `environment` | {{.EnvsBacktickOr}}; passed as `-var` on every run. | `string` | n/a | yes |
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the {{.EnvCountWord}} above | no |
 {{- if .Jobs}}

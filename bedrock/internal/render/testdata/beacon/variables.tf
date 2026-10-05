@@ -105,7 +105,7 @@ variable "placeholder_image" {
 }
 
 variable "cloud_armor" {
-  description = "Whether Cloud Armor's policy (cloud-armor.tf) is on in each environment, by environment name: \"preview\" evaluates the rules and logs what each would have done, \"enforce\" applies them. An environment left out, or set to \"off\", has no policy; a pull-request stack never has one. Turn an environment to preview first, read its request logs, then enforce."
+  description = "Cloud Armor's policy (cloud-armor.tf) in each environment, by environment name: \"preview\" evaluates the rules and logs what each would have done, \"enforce\" applies them, \"off\" keeps the policy and detaches it from the backend services; an environment left out has no policy. Turn an environment off before removing its entry: an apply that deletes the policy while the backend services still name it fails. A pull-request stack never has a policy."
   type        = map(string)
   default     = {}
 
