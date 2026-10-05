@@ -37,9 +37,10 @@ const (
 
 // StartReleaseBackup takes the release backup when the run is a tag build in an
 // environment on the placement's releaseBackups list that applies its migrations: the
-// cut is now, the backup is named after the database and the release
-// (<database>-pre-<release with dashes>), its data is as of the cut and it is kept
-// fourteen days; the facts carry it to the record. A pull-request build, a run that
+// cut is now, the backup is named after the database, the release and the build
+// (<database>-pre-<release with dashes>-<the build id's first eight characters>, so a
+// release run again keeps a backup of its own cut), its data is as of the cut and it is
+// kept fourteen days; the facts carry it to the record. A pull-request build, a run that
 // deploys nothing, a run that applies no migration, a restore run (which replaces the
 // database) and a rollback run (which restores a backup) take none, each said on out.
 func StartReleaseBackup(ctx context.Context, clients *Clients, w Workspace, now time.Time, out io.Writer) error {
@@ -68,9 +69,13 @@ func StartReleaseBackup(ctx context.Context, clients *Clients, w Workspace, now 
 	if identity == "" {
 		return errors.Newf("%s names no apply identity (%s): the stack's triggers carry it", BuildFile, applyIdentitySub)
 	}
+	b, err := w.Build()
+	if err != nil {
+		return err
+	}
 	cut := now.UTC().Truncate(time.Second)
 	expires := cut.Add(releaseBackupKeep)
-	id := path.Base(database) + releaseBackupInfix + strings.ReplaceAll(release, ".", "-")
+	id := path.Base(database) + releaseBackupInfix + strings.ReplaceAll(release, ".", "-") + "-" + shortBuildID(b.ID)
 	store, err := clients.SpannerAs(ctx, identity)
 	if err != nil {
 		return err
@@ -84,6 +89,16 @@ func StartReleaseBackup(ctx context.Context, clients *Clients, w Workspace, now 
 	fmt.Fprintf(out, "Spanner takes the backup in the background while %s goes on; the migrations that follow change the live database alone. A release gone wrong is rolled back to it with bedrock rollback %s.\n", release, subs[envSub])
 
 	return w.Append(map[string]string{cutFact: cut.Format(time.RFC3339), releaseBackupFact: name, releaseBackupTimeFact: cut.Format(time.RFC3339), releaseBackupExpiresFact: expires.Format(time.RFC3339)})
+}
+
+// shortBuildID is the build id's first eight characters (a UUID's first group), enough
+// to tell two builds of one release apart in a backup's name.
+func shortBuildID(id string) string {
+	if len(id) > 8 {
+		id = id[:8]
+	}
+
+	return strings.TrimRight(id, "-")
 }
 
 // noReleaseBackup says why the run takes no release backup, or nothing when it does.

@@ -218,7 +218,7 @@ func (s *stack) rollback(ctx context.Context, subs, facts map[string]string, w W
 	if _, err := store.CreateBackup(ctx, instance, forensic, database, now.UTC(), now.UTC().Add(forensicBackupKeep)); err != nil {
 		return 0, errors.Wrapf(err, "starting the forensic backup %s of %s", forensic, path.Base(database))
 	}
-	fmt.Fprintf(s.out, "Forensic backup: %s holds %s as of %s, kept thirty days; %s itself stays, protected, as the forensic copy.\n", forensic, path.Base(database), now.UTC().Format(time.RFC3339), path.Base(database))
+	fmt.Fprintf(s.out, "Forensic backup: %s holds %s as of %s, kept thirty days; %s itself stays, protected, as the forensic copy. The backup stands as this run's release backup in the record, so a later rollback from this release finds its last data there.\n", forensic, path.Base(database), now.UTC().Format(time.RFC3339), path.Base(database))
 	if backup, err = s.readyBackup(ctx, store, backup); err != nil {
 		return 0, err
 	}
@@ -236,9 +236,11 @@ func (s *stack) rollback(ctx context.Context, subs, facts map[string]string, w W
 		return 0, errors.Wrapf(err, "importing %s into the stack as %s", restored, address)
 	}
 	fmt.Fprintf(s.out, "Imported %s into the stack as %s; the plan points the stack at generation %d.\n", restored, address, next)
+	stamp = now.UTC().Format(time.RFC3339)
 	err = w.Append(map[string]string{
 		rollbackBackupFact: backup.Name, rollbackBackupTimeFact: backup.VersionTime, rollbackForensicFact: instance + databaseBackupsSegment + forensic,
 		rollbackDatabaseFact: note.Database, rollbackKeptFact: database, previousGenerationFact: strconv.Itoa(generation),
+		cutFact: stamp, releaseBackupFact: instance + databaseBackupsSegment + forensic, releaseBackupTimeFact: stamp, releaseBackupExpiresFact: now.UTC().Add(forensicBackupKeep).Format(time.RFC3339),
 	})
 	if err != nil {
 		return 0, err

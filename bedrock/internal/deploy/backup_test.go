@@ -34,12 +34,12 @@ func TestStartReleaseBackup(t *testing.T) {
 			env:  keeping,
 			subs: subs,
 			wantOut: []string{
-				"=== Release backup: imp-prd-gbl-harbor-db-pre-v1-2-3 holds imp-prd-gbl-harbor-db as of the cut, 2026-10-05T04:30:15Z, and is kept until 2026-10-19T04:30:15Z (operation projects/spn/instances/imp-spn-gbl-spanner/operations/op-imp-prd-gbl-harbor-db-pre-v1-2-3) ===",
+				"=== Release backup: imp-prd-gbl-harbor-db-pre-v1-2-3-b-1 holds imp-prd-gbl-harbor-db as of the cut, 2026-10-05T04:30:15Z, and is kept until 2026-10-19T04:30:15Z (operation projects/spn/instances/imp-spn-gbl-spanner/operations/op-imp-prd-gbl-harbor-db-pre-v1-2-3-b-1) ===",
 				"Spanner takes the backup in the background while v1.2.3 goes on; the migrations that follow change the live database alone. A release gone wrong is rolled back to it with bedrock rollback prd.",
 			},
-			wantCreated: []string{"imp-prd-gbl-harbor-db-pre-v1-2-3 of imp-prd-gbl-harbor-db as of 2026-10-05T04:30:15Z until 2026-10-19T04:30:15Z"},
+			wantCreated: []string{"imp-prd-gbl-harbor-db-pre-v1-2-3-b-1 of imp-prd-gbl-harbor-db as of 2026-10-05T04:30:15Z until 2026-10-19T04:30:15Z"},
 			wantFacts: map[string]string{
-				"CUT": "2026-10-05T04:30:15Z", "RELEASE_BACKUP": "projects/spn/instances/imp-spn-gbl-spanner/backups/imp-prd-gbl-harbor-db-pre-v1-2-3",
+				"CUT": "2026-10-05T04:30:15Z", "RELEASE_BACKUP": "projects/spn/instances/imp-spn-gbl-spanner/backups/imp-prd-gbl-harbor-db-pre-v1-2-3-b-1",
 				"RELEASE_BACKUP_TIME": "2026-10-05T04:30:15Z", "RELEASE_BACKUP_EXPIRES": "2026-10-19T04:30:15Z",
 			},
 		},
@@ -47,8 +47,8 @@ func TestStartReleaseBackup(t *testing.T) {
 			name:        "a later generation of the database names the backup after it",
 			env:         strings.Replace(keeping, "imp-prd-gbl-harbor-db\"", "imp-prd-gbl-harbor-db-2\"", 1),
 			subs:        subs,
-			wantCreated: []string{"imp-prd-gbl-harbor-db-2-pre-v1-2-3 of imp-prd-gbl-harbor-db-2 as of 2026-10-05T04:30:15Z until 2026-10-19T04:30:15Z"},
-			wantFacts:   map[string]string{"RELEASE_BACKUP": "projects/spn/instances/imp-spn-gbl-spanner/backups/imp-prd-gbl-harbor-db-2-pre-v1-2-3"},
+			wantCreated: []string{"imp-prd-gbl-harbor-db-2-pre-v1-2-3-b-1 of imp-prd-gbl-harbor-db-2 as of 2026-10-05T04:30:15Z until 2026-10-19T04:30:15Z"},
+			wantFacts:   map[string]string{"RELEASE_BACKUP": "projects/spn/instances/imp-spn-gbl-spanner/backups/imp-prd-gbl-harbor-db-2-pre-v1-2-3-b-1"},
 		},
 		{
 			name:    "an environment off the releaseBackups list takes none",
@@ -91,7 +91,7 @@ func TestStartReleaseBackup(t *testing.T) {
 			env:     keeping,
 			subs:    subs,
 			refuse:  "the backup quota is reached",
-			wantErr: "starting the release backup imp-prd-gbl-harbor-db-pre-v1-2-3 of imp-prd-gbl-harbor-db as of 2026-10-05T04:30:15Z",
+			wantErr: "starting the release backup imp-prd-gbl-harbor-db-pre-v1-2-3-b-1 of imp-prd-gbl-harbor-db as of 2026-10-05T04:30:15Z",
 		},
 		{
 			name:    "a run without the stack's databases is refused",

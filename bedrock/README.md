@@ -1265,9 +1265,11 @@ records (`<app>/database/<env>/<n>.json`), imports the restored database into th
 and plans with `database_generation = <n>`; the apply points the service at it; the
 release's migrations run on it (nothing applies when the backup is at the release's
 schema); the release deploys and takes the traffic; the record names the requester, the
-reason, the release left, both backups and both databases. The live database stays,
-drop-protected, as the forensic copy: writes made after the backup's moment are in it
-alone. Every later plan, a pull request's included, reads the generation its records
+reason, the release left, both backups and both databases, the forensic backup standing
+as the run's release backup so a later rollback from this release finds its last data.
+The live database stays, drop-protected, as the forensic copy: writes made after the
+backup's moment are in it alone. A release backup's name ends in the build's first
+eight characters, so a release run again keeps a backup of its own cut. Every later plan, a pull request's included, reads the generation its records
 name, so the stack keeps pointing at the restored database and the earlier generations
 stay protected; their removal is a later item.
 

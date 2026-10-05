@@ -412,6 +412,8 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantFacts: map[string]string{
 				databaseGenerationFact: "2", previousGenerationFact: "1", rollbackBackupFact: releaseBackupName, rollbackBackupTimeFact: "2026-10-04T02:00:00Z",
 				rollbackForensicFact: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-forensic-20261005-0430", rollbackDatabaseFact: quillDatabase + "-2", rollbackKeptFact: quillDatabase,
+				// The forensic backup stands as the run's release backup in the record.
+				cutFact: "2026-10-05T04:30:00Z", releaseBackupFact: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-forensic-20261005-0430", releaseBackupTimeFact: "2026-10-05T04:30:00Z", releaseBackupExpiresFact: "2026-11-04T04:30:00Z",
 			},
 			wantObject: "gs://records/quill/database/stg/2.json",
 		},
