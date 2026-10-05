@@ -19,12 +19,18 @@
 # never runs the migrations.
 # ---------------------------------------------------------------------------
 
+# The first generation keeps its name whatever generation is current
+# (local.database_base, not local.database_name): a rollback moves the current
+# generation to a restored database below, and this one stays as it is, the
+# forensic copy among them. Named after the current generation it would be
+# replaced on the first build after a rollback, which the deletion protection
+# refuses, as the lab's first production rollback showed.
 resource "google_spanner_database" "harbor" {
   count = local.own_database ? 1 : 0
 
   project  = local.instance.project
   instance = local.instance.name
-  name     = local.database_name
+  name     = local.database_base
 
   database_dialect         = "GOOGLE_STANDARD_SQL"
   version_retention_period = local.spanner_retention[var.environment]
