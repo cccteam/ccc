@@ -288,9 +288,10 @@ func (s *stack) chosenBackup(ctx context.Context, store Spanner, instance, datab
 	return backup, nil
 }
 
-// readyBackup is the backup once Spanner has finished taking it: a restore needs a READY
-// backup, and a backup just started (a point in time's, or a release backup the release
-// build started minutes ago) is CREATING for a while.
+// readyBackup is the backup once Spanner has finished taking it: a restore (a rollback's,
+// or an environment's from production's backup) needs a READY backup, and a backup just
+// started (a point in time's, or a release backup the release build started minutes ago)
+// is CREATING for a while.
 func (s *stack) readyBackup(ctx context.Context, store Spanner, backup *Backup) (*Backup, error) {
 	waited := time.Duration(0)
 	for backup.State != BackupReady {
@@ -306,7 +307,7 @@ func (s *stack) readyBackup(ctx context.Context, store Spanner, backup *Backup) 
 			return nil, errors.Wrapf(err, "reading the backup %s", backup.Name)
 		}
 		if again == nil {
-			return nil, errors.Newf("the backup %s went away while the rollback waited for it", backup.Name)
+			return nil, errors.Newf("the backup %s went away while the build waited for it", backup.Name)
 		}
 		backup = again
 	}

@@ -744,7 +744,9 @@ thing one step hands the next. In order:
   restore from production's backup (`_RESTORE=production-backup`, the environment on
   production's instance) the plan step first drops the environment's database and
   restores it, under its own name, from the most recent backup of production's live
-  database on the instance they share, as the apply identity; the plan then recreates the
+  database on the instance they share, as the apply identity (a backup Spanner is still
+  taking, the release backup a release started minutes earlier, is that backup: the step
+  waits for it, as a rollback does, since it holds the newest data); the plan then recreates the
   memberships the drop took with it, and the migrate command applies whatever production's
   backup predates. Production's live database is the one its deployment record names
   (`_RESTORE_DATABASE`, read by the operations workflow): after a rollback, the generation
@@ -1185,7 +1187,8 @@ the pull request builds). The run refuses the instruction in production. `bedroc
 For the environment on production's instance the database is not emptied but restored
 from the most recent backup of production's live database (the generation its deployment
 record names; after a rollback, the backup the generation was restored from while it has
-none of its own), at production's schema: the plan step drops it and restores it under
+none of its own; a backup Spanner is still taking, a release's started minutes earlier, is
+waited for), at production's schema: the plan step drops it and restores it under
 its own name as the apply identity, and the migrations production's backup predates then
 apply. The environment's file objects are kept, and its Firestore documents are deleted
 as in every restore.

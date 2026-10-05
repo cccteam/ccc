@@ -387,8 +387,22 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:         enabledPins(),
 			env:          strings.Replace(restoreEnv, "empty", "production-backup", 1),
 			state:        "# google_spanner_database.quill[0]:\nresource \"google_spanner_database\" \"quill\" {\n    database_dialect = \"GOOGLE_STANDARD_SQL\"\n    instance         = \"shared-spanner\"\n    name             = \"p-stg-gbl-quill-db\"\n    project          = \"p-spn\"\n}\n",
-			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z"},
+			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
 			wantOut:      []string{"=== Restore (production-backup, asked for by octocat): stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-20261001 (data as of 2026-10-01T02:00:00Z); the migrations production's backup predates then apply ===", "Dropped p-stg-gbl-quill-db.", "Restored p-stg-gbl-quill-db from p-prd-gbl-quill-db-20261001; the plan recreates its memberships.", "Tests passed"},
+			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", planLine, showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantReplaced: "google_spanner_database.quill[0]",
+			wantBackup:   "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001",
+		},
+		{
+			name:         "a restore asked minutes after a release waits for the release's backup, which Spanner is still taking, and restores it",
+			subs:         promotedSubs(),
+			pins:         enabledPins(),
+			env:          strings.Replace(restoreEnv, "empty", "production-backup", 1),
+			state:        "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
+			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
+			creating:     1,
+			wantOut:      []string{"Waiting for p-prd-gbl-quill-db-20261001: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.", "stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-20261001 (data as of 2026-10-01T02:00:00Z)", "Restored p-stg-gbl-quill-db from p-prd-gbl-quill-db-20261001; the plan recreates its memberships.", "Tests passed"},
 			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", planLine, showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
@@ -427,7 +441,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:      strings.Replace(restoreEnv, "empty", "production-backup", 1) + "export RESTORE_SOURCE_DATABASE=\"projects/p-spn/instances/shared-spanner/databases/p-prd-gbl-quill-db-3\"\n",
 			state:    "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
 			wantTofu: []string{initLine, "tofu state show google_spanner_database.quill[0]"},
-			wantErr:  "_RESTORE=production-backup: shared-spanner has no READY backup of production's database p-prd-gbl-quill-db-3; stg keeps its database",
+			wantErr:  "_RESTORE=production-backup: shared-spanner has no backup of production's database p-prd-gbl-quill-db-3; stg keeps its database",
 		},
 		{
 			name:     "production's live database on another instance is refused",
@@ -445,7 +459,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:      strings.Replace(restoreEnv, "empty", "production-backup", 1),
 			state:    "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
 			wantTofu: []string{initLine, "tofu state show google_spanner_database.quill[0]"},
-			wantErr:  "_RESTORE=production-backup: shared-spanner has no READY backup of production's database p-prd-gbl-quill-db; stg keeps its database",
+			wantErr:  "_RESTORE=production-backup: shared-spanner has no backup of production's database p-prd-gbl-quill-db; stg keeps its database",
 		},
 		{
 			name:         "a rollback run finds the backup, starts the forensic backup, restores into generation 2, writes the generation beside the records, imports the database and plans at it, in maintenance",
@@ -967,8 +981,9 @@ type fakeSpanner struct {
 	restored string
 	created  []string
 	refuse   string
-	// creating is how many reads of the backup answer CREATING before READY; pending how
-	// many starts Spanner refuses first because it is taking another backup.
+	// creating is how many reads of the backup (listed, or by name) answer CREATING before
+	// READY; pending how many starts Spanner refuses first because it is taking another
+	// backup.
 	creating int
 	pending  int
 }
@@ -985,7 +1000,18 @@ func (f *fakeSpanner) LatestBackup(_ context.Context, _, database string) (*Back
 		return nil, nil
 	}
 
-	return f.backup, nil
+	return f.read(), nil
+}
+
+// read is a copy of the backup, CREATING while the creating reads last.
+func (f *fakeSpanner) read() *Backup {
+	b := *f.backup
+	if f.creating > 0 {
+		f.creating--
+		b.State = BackupCreating
+	}
+
+	return &b
 }
 
 func (f *fakeSpanner) DropDatabase(_ context.Context, database string) error {
@@ -1018,13 +1044,8 @@ func (f *fakeSpanner) Backup(_ context.Context, name string) (*Backup, error) {
 	if f.backup == nil || f.backup.Name != name {
 		return nil, nil
 	}
-	b := *f.backup
-	if f.creating > 0 {
-		f.creating--
-		b.State = BackupCreating
-	}
 
-	return &b, nil
+	return f.read(), nil
 }
 
 // fakeFirestore records the database whose documents were deleted, and the identity asked for.

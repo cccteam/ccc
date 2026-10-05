@@ -232,7 +232,10 @@ var stateAttribute = regexp.MustCompile(`(?m)^\s*(project|instance|name)\s*=\s*"
 // restoreFromBackup is a production-backup restore: before the plan, the environment's
 // database is dropped and restored, under its own name, from the most recent backup of
 // production's live database on the instance the two share, as the apply identity (which
-// holds database admin on that instance). Production's live database is the one its
+// holds database admin on that instance). A backup Spanner is still taking (the release
+// backup a release started minutes ago) is that backup, since it holds the newest data:
+// the build waits for it as a rollback does (readyBackup) rather than taking an older
+// one or refusing. Production's live database is the one its
 // deployment record names (productionDatabase): after a rollback, the generation restored
 // into, whose own backups begin with the next release or schedule, so while it has none
 // the backup it was restored from stands in (restoredFromBackup). The database's address
@@ -274,7 +277,10 @@ func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]st
 		}
 	}
 	if backup == nil {
-		return errors.Newf("%s=%s: %s has no READY backup of production's database %s; %s keeps its database", restoreSub, restoreBackup, attributes["instance"], path.Base(productionDB), env)
+		return errors.Newf("%s=%s: %s has no backup of production's database %s; %s keeps its database", restoreSub, restoreBackup, attributes["instance"], path.Base(productionDB), env)
+	}
+	if backup, err = s.readyBackup(ctx, store, backup); err != nil {
+		return err
 	}
 	fmt.Fprintf(s.out, "=== Restore (%s, asked for by %s): %s's database %s is dropped and restored from production's backup %s (data as of %s); the migrations production's backup predates then apply ===\n", restoreBackup, requester, env, attributes["name"], path.Base(backup.Name), backup.VersionTime)
 	if err := store.DropDatabase(ctx, database); err != nil {

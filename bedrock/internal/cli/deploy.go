@@ -535,7 +535,8 @@ appended (RESTORE_REPLACED) for the record. The Firestore database is not replac
 keeps a deleted database's id unavailable for minutes: the apply step deletes its documents. In a
 restore from production's backup (RESTORE=production-backup) the step first drops the environment's
 database and restores it under its own name from the most recent backup of production's database on
-the instance they share, as the apply identity; the plan then recreates the memberships the drop took
+the instance they share, as the apply identity (a backup Spanner is still taking, a release's started
+minutes earlier, is waited for); the plan then recreates the memberships the drop took
 with it, and the backup is appended (RESTORE_BACKUP, RESTORE_BACKUP_TIME) for the record. While the
 application is in maintenance (after deploy maintenance on) the plan carries the maintenance
 variable's live value (-var maintenance=1), so that declared and live agree and the apply leaves

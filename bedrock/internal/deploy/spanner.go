@@ -49,8 +49,10 @@ const (
 
 // Spanner drops and restores databases and lists backups: the v1 API, or a fake in tests.
 type Spanner interface {
-	// LatestBackup is the most recently created READY backup of the database
-	// (projects/<p>/instances/<i>/databases/<d>) on its instance; nil when it has none.
+	// LatestBackup is the most recently created backup of the database
+	// (projects/<p>/instances/<i>/databases/<d>) on its instance, READY or still CREATING
+	// (a backup Spanner is taking, a release's started minutes ago, holds the newest data,
+	// and a restore waits for it); nil when it has none.
 	LatestBackup(ctx context.Context, instance, database string) (*Backup, error)
 	// DropDatabase drops the database (projects/<p>/instances/<i>/databases/<d>); a
 	// database that is already gone is no error.
@@ -90,7 +92,7 @@ type spanner struct {
 
 func (s *spanner) LatestBackup(ctx context.Context, instance, database string) (*Backup, error) {
 	query := url.Values{}
-	query.Set("filter", `database:"`+database+`" AND state:READY`)
+	query.Set("filter", `database:"`+database+`"`)
 	backups, err := s.list(ctx, "/v1/"+instance+"/backups?"+query.Encode(), "backups")
 	if err != nil {
 		return nil, err
@@ -98,10 +100,11 @@ func (s *spanner) LatestBackup(ctx context.Context, instance, database string) (
 	var found []*Backup
 	for _, b := range backups {
 		// The filter is a match on the backup's fields; the database is checked exactly.
-		if text(b, keyDatabase) != database || text(b, "state") != BackupReady {
+		state := text(b, "state")
+		if text(b, keyDatabase) != database || (state != BackupReady && state != BackupCreating) {
 			continue
 		}
-		found = append(found, &Backup{Name: text(b, keyName), VersionTime: text(b, "versionTime"), CreateTime: text(b, "createTime")})
+		found = append(found, &Backup{Name: text(b, keyName), VersionTime: text(b, "versionTime"), CreateTime: text(b, "createTime"), Database: database, State: state})
 	}
 	if len(found) == 0 {
 		return nil, nil

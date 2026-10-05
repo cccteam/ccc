@@ -24,19 +24,31 @@ func TestLatestBackup(t *testing.T) {
 		return map[string]any{"name": instance + "/backups/" + name, "database": db, "state": state, "createTime": created}
 	}
 	tests := []struct {
-		name  string
-		pages []map[string]any
-		want  string
+		name      string
+		pages     []map[string]any
+		want      string
+		wantState string
 	}{
 		{
-			name: "the newest ready backup of the database",
+			name: "the newest backup of the database, still CREATING, with its state",
 			pages: []map[string]any{{"backups": []map[string]any{
 				backup("old", database, "READY", "2026-09-30T02:00:00Z"),
 				backup("new", database, "READY", "2026-10-01T02:00:00Z"),
 				backup("creating", database, "CREATING", "2026-10-02T02:00:00Z"),
 				backup("other", database+"2", "READY", "2026-10-03T02:00:00Z"),
 			}}},
-			want: instance + "/backups/new",
+			want:      instance + "/backups/creating",
+			wantState: "CREATING",
+		},
+		{
+			name: "the newest READY backup when none is being taken",
+			pages: []map[string]any{{"backups": []map[string]any{
+				backup("old", database, "READY", "2026-09-30T02:00:00Z"),
+				backup("new", database, "READY", "2026-10-01T02:00:00Z"),
+				backup("unspecified", database, "STATE_UNSPECIFIED", "2026-10-02T02:00:00Z"),
+			}}},
+			want:      instance + "/backups/new",
+			wantState: "READY",
 		},
 		{
 			name:  "no backup",
@@ -49,7 +61,8 @@ func TestLatestBackup(t *testing.T) {
 				{"backups": []map[string]any{backup("first", database, "READY", "2026-09-30T02:00:00Z")}, "nextPageToken": "more"},
 				{"backups": []map[string]any{backup("second", database, "READY", "2026-10-01T02:00:00Z")}},
 			},
-			want: instance + "/backups/second",
+			want:      instance + "/backups/second",
+			wantState: "READY",
 		},
 	}
 	for _, tt := range tests {
@@ -63,7 +76,7 @@ func TestLatestBackup(t *testing.T) {
 				if r.URL.Path != "/v1/"+instance+"/backups" {
 					t.Errorf("path = %s, want /v1/%s/backups", r.URL.Path, instance)
 				}
-				if got, want := q.Get("filter"), `database:"`+database+`" AND state:READY`; got != want {
+				if got, want := q.Get("filter"), `database:"`+database+`"`; got != want {
 					t.Errorf("filter = %q, want %q", got, want)
 				}
 				if got := q.Get("pageSize"); got != "100" {
@@ -95,6 +108,8 @@ func TestLatestBackup(t *testing.T) {
 				t.Errorf("LatestBackup() = none, want %s", tt.want)
 			case got != nil && got.Name != tt.want:
 				t.Errorf("LatestBackup() = %s, want %s", got.Name, tt.want)
+			case got != nil && got.State != tt.wantState:
+				t.Errorf("LatestBackup().State = %s, want %s", got.State, tt.wantState)
 			}
 			if int(calls.Load()) != len(tt.pages) {
 				t.Errorf("pages read = %d, want %d", calls.Load(), len(tt.pages))
