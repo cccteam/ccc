@@ -1726,6 +1726,9 @@ func TestApplicationPlacement(t *testing.T) {
 		{name: "a release pin with its checksum", mutate: func(*Placement) {}, version: "v0.4.0", sha256: sum},
 		{name: "no labels of the organization's", mutate: func(p *Placement) { p.Labels = nil }, version: commitPin},
 		{name: "the organization's outlier detection thresholds", mutate: func(p *Placement) { p.OutlierDetection = &derive.OutlierDetection{ConsecutiveErrors: &three} }, version: commitPin},
+		{name: "the organization's Cloud Armor policy", mutate: func(p *Placement) {
+			p.CloudArmor = &derive.CloudArmor{RuleSets: []derive.RuleSet{{Name: "sqli-v33-stable", Sensitivity: 2}}, Bypasses: []derive.Bypass{{Path: "/hooks/*", Reason: "the senders sign their bodies"}}}
+		}, version: commitPin},
 		{name: "a release pin without its checksum", mutate: func(*Placement) {}, version: "v0.4.0", wantErr: "bedrockVersion v0.4.0 is a release, and a release pin carries its bedrockSha256"},
 		{name: "no state bucket", mutate: func(p *Placement) { p.StateBucket = "" }, version: commitPin, wantErr: "placement.json records no stateBucket yet: the seed's state bucket goes there"},
 		{name: "no environment project numbers", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"boot": "1"} }, version: commitPin, wantErr: "placement.json records no project id and number for tst, stg and prd yet"},
@@ -1764,12 +1767,16 @@ func TestApplicationPlacement(t *testing.T) {
 					"prd": {ID: "imp-prd-gbl-core-5e6f", Number: "100000000004"},
 				},
 				OutlierDetection: p.OutlierDetection,
+				CloudArmor:       p.CloudArmor,
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("ApplicationPlacement() =\n%+v\nwant\n%+v", got, want)
 			}
 			if p.OutlierDetection != nil && got.OutlierDetection == p.OutlierDetection {
 				t.Error("the application's thresholds share the organization's block; they are a copy")
+			}
+			if p.CloudArmor != nil && (got.CloudArmor == p.CloudArmor || &got.CloudArmor.Bypasses[0] == &p.CloudArmor.Bypasses[0]) {
+				t.Error("the application's Cloud Armor policy shares the organization's block; it is a copy")
 			}
 		})
 	}

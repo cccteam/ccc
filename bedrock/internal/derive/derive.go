@@ -69,6 +69,15 @@ type Model struct {
 	// file in path order: the stack gives each a Cloud Scheduler job per environment
 	// (scheduler.tf). None when the code declares none.
 	Scheduled []ScheduledRoute
+	// FileRoutes are the routes that carry a file rather than JSON, read from the same
+	// file in path order: each @upload method's route and each stored file's read
+	// route. Cloud Armor, where an environment turns it on, matches each ahead of its
+	// rules (cloud-armor.tf). None when the code declares neither.
+	FileRoutes []FileRoute
+	// Outlets are the site's router outlets as the generator program declares them, the
+	// default first: the URL spaces the routes carrying JSON input live under, which
+	// Cloud Armor's rule sets are scoped to.
+	Outlets []Outlet
 	// Firestore is what the application's Firestore database carries beyond the
 	// database itself (the composite indexes, the time-to-live policies and the security
 	// rules the files beside the schema migrations declare), or nil when the code
@@ -85,6 +94,13 @@ type Model struct {
 	Environments []Environment
 	// Placement is the placement the model was derived for.
 	Placement *Placement
+}
+
+// Outlet is one router outlet of the site: its name and the prefix its routes live under
+// (api, portal/api).
+type Outlet struct {
+	Name   string
+	Prefix string
 }
 
 // Level is one configuration level of the config package.
@@ -671,6 +687,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	}
 	m.router(a)
 	if err := m.scheduled(a); err != nil {
+		return nil, err
+	}
+	if err := m.armor(); err != nil {
 		return nil, err
 	}
 	m.Environments = p.environments(code)

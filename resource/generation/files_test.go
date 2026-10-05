@@ -380,8 +380,8 @@ func Test_fileRoutes(t *testing.T) {
 				return fileGenerator().resourceFileRoutes(res, "api")
 			},
 			want: []*generatedRoute{
-				{Method: "GET", Path: "/api/documents/{documentID}/content", HandlerFunc: "DocumentContent", HandlerType: fileHandler, TestURL: "/api/documents/testDocumentID/content", TestParams: []routeTestParam{{Key: "documentID", Value: "testDocumentID"}}},
-				{Method: "GET", Path: "/api/documents/{documentID}/thumbnail", HandlerFunc: "DocumentThumbnail", HandlerType: fileHandler, TestURL: "/api/documents/testDocumentID/thumbnail", TestParams: []routeTestParam{{Key: "documentID", Value: "testDocumentID"}}},
+				{Method: "GET", Path: "/api/documents/{documentID}/content", HandlerFunc: "DocumentContent", HandlerType: fileHandler, TestURL: "/api/documents/testDocumentID/content", TestParams: []routeTestParam{{Key: "documentID", Value: "testDocumentID"}}, Source: "Document.StoreKey"},
+				{Method: "GET", Path: "/api/documents/{documentID}/thumbnail", HandlerFunc: "DocumentThumbnail", HandlerType: fileHandler, TestURL: "/api/documents/testDocumentID/thumbnail", TestParams: []routeTestParam{{Key: "documentID", Value: "testDocumentID"}}, Source: "Document.ThumbKey"},
 			},
 		},
 		{
@@ -398,7 +398,7 @@ func Test_fileRoutes(t *testing.T) {
 				return fileGenerator().resourceFileRoutes(res, "api")
 			},
 			want: []*generatedRoute{
-				{Method: "GET", Path: "/api/sectors/{sectorID}/logos/{logoID}/content", HandlerFunc: "LogoContent", HandlerType: fileHandler, DomainScoped: true, TestURL: "/api/sectors/testDomain/logos/testLogoID/content", TestParams: []routeTestParam{{Key: "sectorID", Value: "testDomain"}, {Key: "logoID", Value: "testLogoID"}}},
+				{Method: "GET", Path: "/api/sectors/{sectorID}/logos/{logoID}/content", HandlerFunc: "LogoContent", HandlerType: fileHandler, DomainScoped: true, TestURL: "/api/sectors/testDomain/logos/testLogoID/content", TestParams: []routeTestParam{{Key: "sectorID", Value: "testDomain"}, {Key: "logoID", Value: "testLogoID"}}, Source: "Logo.StoreKey"},
 			},
 		},
 		{
@@ -413,7 +413,7 @@ func Test_fileRoutes(t *testing.T) {
 				return fileGenerator().computedFileRoutes(res, "api")
 			},
 			want: []*generatedRoute{
-				{Method: "GET", Path: "/api/statements/{statementClientID}/{statementPeriod}/sheet", HandlerFunc: "StatementSheet", HandlerType: fileHandler, TestURL: "/api/statements/testStatementClientID/testStatementPeriod/sheet", TestParams: []routeTestParam{{Key: "statementClientID", Value: "testStatementClientID"}, {Key: "statementPeriod", Value: "testStatementPeriod"}}},
+				{Method: "GET", Path: "/api/statements/{statementClientID}/{statementPeriod}/sheet", HandlerFunc: "StatementSheet", HandlerType: fileHandler, TestURL: "/api/statements/testStatementClientID/testStatementPeriod/sheet", TestParams: []routeTestParam{{Key: "statementClientID", Value: "testStatementClientID"}, {Key: "statementPeriod", Value: "testStatementPeriod"}}, Source: "Statement"},
 			},
 		},
 		{

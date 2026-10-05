@@ -8,6 +8,7 @@ package derive
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -43,6 +44,48 @@ type ReleaseFile struct {
 	// Scheduled are the routes the code declares with @schedule, in path order; none
 	// when it declares none.
 	Scheduled []ScheduledRoute `json:"scheduled,omitempty"`
+	// FileRoutes are the routes that carry a file rather than JSON, in path order: each
+	// @upload method's route and each stored file's read route (@file). The stack puts
+	// each ahead of Cloud Armor's rules (cloud-armor.tf). None when the code declares
+	// neither.
+	FileRoutes []FileRoute `json:"fileRoutes,omitempty"`
+}
+
+// FileRoute is one route of the release file that carries a file rather than JSON: an
+// @upload method's route, whose body is multipart, or a stored file's read route, whose
+// answer is the object.
+type FileRoute struct {
+	// Kind is FileRouteUpload or FileRouteStored.
+	Kind string `json:"kind"`
+	// Method is the HTTP method the route answers: POST for an upload, GET for a stored
+	// file.
+	Method string `json:"method"`
+	// Path is the route as the router mounts it, under its outlet's prefix, with its
+	// parameters in braces (/api/photos/{id}/file).
+	Path string `json:"path"`
+	// Source names the declaration the route comes from: the method's struct
+	// (AttachPhoto) or the resource and its key column (Photo.Key).
+	Source string `json:"source"`
+}
+
+// The kinds of file route, as the file spells them.
+const (
+	FileRouteUpload = "upload"
+	FileRouteStored = "file"
+)
+
+// Declaration says what the route comes from, for a rule's description: the @upload
+// method, the @file column (resource and column, Manifest.Key), or the computed resource
+// that renders its file (Statement).
+func (r *FileRoute) Declaration() string {
+	switch {
+	case r.Kind == FileRouteUpload:
+		return "the @upload method " + r.Source
+	case strings.Contains(r.Source, "."):
+		return "the @file column " + r.Source
+	}
+
+	return "the @file of the computed resource " + r.Source
 }
 
 // ScheduledPrefix is the path the generated router serves the scheduled routes under,
@@ -143,8 +186,42 @@ func ReadReleaseFile(dir string) (*ReleaseFile, error) {
 	if err := validateScheduled(name, f.Scheduled); err != nil {
 		return nil, err
 	}
+	if err := validateFileRoutes(name, f.FileRoutes); err != nil {
+		return nil, err
+	}
 
 	return &f, nil
+}
+
+// fileRoutePathRE is the shape of a file route's path: segments of letters, digits,
+// dashes, underscores and dots, or a parameter in braces, under the root. The stack
+// writes each into a rule's expression, so nothing else passes.
+var fileRoutePathRE = regexp.MustCompile(`^(/(\{[A-Za-z0-9_]+\}|[A-Za-z0-9_.-]+))+$`)
+
+// validateFileRoutes refuses a file route of the file name the generator would not
+// write: a kind other than the two, a method other than the kind's, a path not of the
+// shape a router mounts, a path listed twice for one method, or no source.
+func validateFileRoutes(name string, routes []FileRoute) error {
+	seen := map[string]bool{}
+	for i := range routes {
+		r := &routes[i]
+		key := r.Method + " " + r.Path
+		switch {
+		case r.Kind != FileRouteUpload && r.Kind != FileRouteStored:
+			return errors.Newf("%s: the file route %q has the kind %q, and a file route is an %s or a %s", name, r.Path, r.Kind, FileRouteUpload, FileRouteStored)
+		case r.Kind == FileRouteUpload && r.Method != http.MethodPost, r.Kind == FileRouteStored && r.Method != http.MethodGet:
+			return errors.Newf("%s: the file route %q (%s) answers %s; an %s answers POST and a %s GET", name, r.Path, r.Kind, r.Method, FileRouteUpload, FileRouteStored)
+		case !fileRoutePathRE.MatchString(r.Path):
+			return errors.Newf("%s: the file route %q is not a path a router mounts (/api/photos/{id}/file)", name, r.Path)
+		case seen[key]:
+			return errors.Newf("%s: the file route %s is listed twice", name, key)
+		case r.Source == "":
+			return errors.Newf("%s: the file route %s names no source", name, key)
+		}
+		seen[key] = true
+	}
+
+	return nil
 }
 
 // validateScheduled refuses a scheduled route of the file name the generator would not
@@ -171,10 +248,10 @@ func validateScheduled(name string, routes []ScheduledRoute) error {
 	return nil
 }
 
-// scheduled reads the scheduled routes from the release file beside the generated
-// router. An application with no router, or whose router has no release file yet, has
-// none; a release file that does not read is refused, since the stack cannot say which
-// jobs the code declares.
+// scheduled reads the scheduled routes and the file routes from the release file
+// beside the generated router. An application with no router, or whose router has no
+// release file yet, has none; a release file that does not read is refused, since the
+// stack cannot say which jobs the code declares or which routes carry files.
 func (m *Model) scheduled(a *app.App) error {
 	if m.RouterDir == "" {
 		return nil
@@ -187,6 +264,7 @@ func (m *Model) scheduled(a *app.App) error {
 		return err
 	}
 	m.Scheduled = f.Scheduled
+	m.FileRoutes = f.FileRoutes
 
 	return nil
 }

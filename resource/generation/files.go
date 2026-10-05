@@ -729,6 +729,11 @@ func fileSegments(files []*fileRoute, readDisabled bool) []string {
 // fileRouteFrom derives a file route from the read route it hangs under: the same
 // parameters, the segment appended, the handler named for the resource and segment.
 func fileRouteFrom(read *generatedRoute, resourceName string, file *fileRoute) *generatedRoute {
+	source := resourceName
+	if file.Key != nil {
+		source += "." + file.Key.Name
+	}
+
 	return &generatedRoute{
 		Method:       fileHandler.method(),
 		Path:         read.Path + "/" + file.Segment,
@@ -738,6 +743,7 @@ func fileRouteFrom(read *generatedRoute, resourceName string, file *fileRoute) *
 		TestURL:      read.TestURL + "/" + file.Segment,
 		TestParams:   slices.Clone(read.TestParams),
 		Feature:      read.Feature,
+		Source:       source,
 	}
 }
 

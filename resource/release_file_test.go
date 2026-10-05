@@ -135,6 +135,42 @@ func TestReadReleaseFile(t *testing.T) {
 			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "scheduled": [{"path": "/_scheduled/prune", "schedule": "0 3 * * *"}]}`,
 			wantErr: "the scheduled route /_scheduled/prune names no time zone",
 		},
+		{
+			name:    "file routes, an upload and a stored file",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-photo", "source": "AttachPhoto"}, {"kind": "file", "method": "GET", "path": "/api/photos/{id}/file", "source": "Photo.Key"}]}`,
+			want: ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				FileRoutes: []FileRoute{
+					{Kind: FileRouteUpload, Method: "POST", Path: "/api/attach-photo", Source: "AttachPhoto"},
+					{Kind: FileRouteStored, Method: "GET", Path: "/api/photos/{id}/file", Source: "Photo.Key"},
+				},
+			},
+		},
+		{
+			name:    "a file route of a third kind",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "fileRoutes": [{"kind": "stream", "method": "GET", "path": "/api/stream", "source": "Stream"}]}`,
+			wantErr: `the file route "/api/stream" has the kind "stream"; a file route is an upload or a file`,
+		},
+		{
+			name:    "an upload answering GET",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "fileRoutes": [{"kind": "upload", "method": "GET", "path": "/api/attach-photo", "source": "AttachPhoto"}]}`,
+			wantErr: `the file route "/api/attach-photo" (upload) answers GET; an upload answers POST and a file GET`,
+		},
+		{
+			name:    "a stored file answering POST",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "fileRoutes": [{"kind": "file", "method": "POST", "path": "/api/photos/{id}/file", "source": "Photo.Key"}]}`,
+			wantErr: `the file route "/api/photos/{id}/file" (file) answers POST`,
+		},
+		{
+			name:    "a file route not under the root",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "api/attach-photo", "source": "AttachPhoto"}]}`,
+			wantErr: `the file route "api/attach-photo" is not a path under the root`,
+		},
+		{
+			name:    "a file route naming no source",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-photo"}]}`,
+			wantErr: "the file route /api/attach-photo names no source",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

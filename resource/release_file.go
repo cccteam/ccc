@@ -2,6 +2,7 @@ package resource
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +36,39 @@ const (
 type ReleaseFile struct {
 	Outlets   map[string]ReleaseOutlet `json:"outlets"`
 	Scheduled []ScheduledRoute         `json:"scheduled,omitempty"`
+	// FileRoutes are the routes that carry a file rather than JSON, in path order: each
+	// @upload method's route and each stored file's read route (@file). None when the
+	// code declares neither.
+	FileRoutes []FileRoute `json:"fileRoutes,omitempty"`
 }
+
+// FileRoute is one route in the release file that carries a file rather than JSON: an
+// @upload method's route, whose body is multipart, or a stored file's read route (@file
+// on a key column), whose answer is the object. The application's stack reads them to
+// put each ahead of its web application firewall's rules: a body of bytes trips rules
+// written for text, so the route is matched before the rules and never evaluated by
+// them, and the rule the stack writes names the declaration here.
+type FileRoute struct {
+	// Kind is FileRouteUpload or FileRouteStored.
+	Kind string `json:"kind"`
+	// Method is the HTTP method the route answers: POST for an upload, GET for a stored
+	// file.
+	Method string `json:"method"`
+	// Path is the route as the router mounts it, under its outlet's prefix, with its
+	// parameters in braces (/api/photos/{id}/file).
+	Path string `json:"path"`
+	// Source names the declaration the route comes from: the method's struct
+	// (AttachPhoto) or the resource and its key column (Photo.Key).
+	Source string `json:"source"`
+}
+
+// The kinds of file route.
+const (
+	// FileRouteUpload is an @upload method's route.
+	FileRouteUpload = "upload"
+	// FileRouteStored is a stored file's read route, a @file column's.
+	FileRouteStored = "file"
+)
 
 // ScheduledRoute is one scheduled route in the release file: the method declared with
 // @schedule, as the generated router mounts it and Cloud Scheduler calls it.
@@ -160,8 +193,31 @@ func ReadReleaseFile(dir string) (ReleaseFile, error) {
 			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
 		}
 	}
+	for _, route := range file.FileRoutes {
+		if err := route.validate(); err != nil {
+			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
+		}
+	}
 
 	return file, nil
+}
+
+// validate refuses a file route the generator would not write: a kind that is neither
+// an upload nor a stored file, a method other than the kind's, a path not under the
+// root, or no source.
+func (f FileRoute) validate() error {
+	switch {
+	case f.Kind != FileRouteUpload && f.Kind != FileRouteStored:
+		return errors.Newf("the file route %q has the kind %q; a file route is an %s or a %s", f.Path, f.Kind, FileRouteUpload, FileRouteStored)
+	case f.Kind == FileRouteUpload && f.Method != http.MethodPost, f.Kind == FileRouteStored && f.Method != http.MethodGet:
+		return errors.Newf("the file route %q (%s) answers %s; an %s answers POST and a %s GET", f.Path, f.Kind, f.Method, FileRouteUpload, FileRouteStored)
+	case !strings.HasPrefix(f.Path, "/") || len(f.Path) < 2:
+		return errors.Newf("the file route %q is not a path under the root", f.Path)
+	case f.Source == "":
+		return errors.Newf("the file route %s names no source", f.Path)
+	}
+
+	return nil
 }
 
 // validate refuses a scheduled route the generator would not write: a path outside the

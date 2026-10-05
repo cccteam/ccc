@@ -7,8 +7,9 @@
 # and references the backend across projects; 2-env granted the net project's
 # principals compute.loadBalancerServiceUser here for that. Outlier detection
 # ejects a region whose service answers errors, and request logging is on at
-# full sample rate, the cheapest observability there is. No Cloud Armor
-# (opt-in, off).
+# full sample rate, the cheapest observability there is. Cloud Armor's policy
+# (cloud-armor.tf) is attached where terraform.tfvars turns it on in this
+# environment, to this backend and the next revision's alike.
 #
 # Modeled on CCC's reference deployment.
 # ---------------------------------------------------------------------------
@@ -44,6 +45,7 @@ resource "google_compute_backend_service" "app" {
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   protocol              = "HTTPS"
+  security_policy       = local.cloud_armor_on ? google_compute_security_policy.app[0].self_link : null
 
   dynamic "backend" {
     for_each = google_compute_region_network_endpoint_group.app
@@ -113,6 +115,7 @@ resource "google_compute_backend_service" "next" {
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   protocol              = "HTTPS"
+  security_policy       = local.cloud_armor_on ? google_compute_security_policy.app[0].self_link : null
 
   dynamic "backend" {
     for_each = google_compute_region_network_endpoint_group.next

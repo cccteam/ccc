@@ -106,6 +106,17 @@ variable "placeholder_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+variable "cloud_armor" {
+  description = "Whether Cloud Armor's policy (cloud-armor.tf) is on in each environment, by environment name: \"preview\" evaluates the rules and logs what each would have done, \"enforce\" applies them. An environment left out, or set to \"off\", has no policy; a pull-request stack never has one. Turn an environment to preview first, read its request logs, then enforce."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for env, mode in var.cloud_armor : contains(["off", "preview", "enforce"], mode)])
+    error_message = "Each environment's cloud_armor is \"off\", \"preview\" or \"enforce\"."
+  }
+}
+
 variable "maintenance" {
   description = "Value of the service's APP_MAINTENANCE variable: empty, the application serving. The pipeline passes 1 to the plan it makes while the application is in maintenance (a restore run), the value its maintenance revision carries, so that the apply leaves the service alone; nothing else sets it."
   type        = string

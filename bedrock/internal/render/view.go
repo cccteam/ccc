@@ -237,6 +237,8 @@ type view struct {
 	HostnamesSummary string
 	// RestatedDefaults are the aligned lines of the tfvars comment restating defaults.
 	RestatedDefaults string
+	// Armor is the Cloud Armor policy (cloud-armor.tf), its rules in priority order.
+	Armor *armorView
 	// BelowProduction spells the hostname shapes below production.
 	BelowProduction string
 	// HostnamesProse lists the hostnames for the README, wrapped after the first.
@@ -685,6 +687,7 @@ func newView(m *derive.Model) (*view, error) {
 	v.environments()
 	v.regions()
 	v.secrets()
+	v.Armor = newArmorView(m)
 	v.blocks()
 	v.operations()
 	if err := v.buildArguments(); err != nil {

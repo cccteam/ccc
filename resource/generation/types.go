@@ -409,6 +409,9 @@ type generatedRoute struct {
 	// other route.
 	FormerPath    string
 	FormerTestURL string
+	// Source names the declaration a stored-file route comes from, the resource and its
+	// key column (Photo.Key), for the release file; empty on every other route.
+	Source string
 }
 
 // SharedHandler reports whether the route's handler is additionally registered

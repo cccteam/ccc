@@ -36,6 +36,49 @@
     "stg": 2,
     "prd": 2
   },
+  "cloudArmor": {
+    "ruleSets": [
+      {
+        "name": "scannerdetection-v33-stable",
+        "sensitivity": 1
+      },
+      {
+        "name": "sqli-v33-stable",
+        "sensitivity": 1
+      },
+      {
+        "name": "json-sqli-canary",
+        "sensitivity": 1
+      },
+      {
+        "name": "xss-v33-stable",
+        "sensitivity": 2
+      },
+      {
+        "name": "protocolattack-v33-stable",
+        "sensitivity": 1
+      }
+    ],
+    "fieldExclusions": [
+      {
+        "ruleSet": "xss-v33-stable",
+        "field": "cookie",
+        "value": "harbor_session",
+        "reason": "the session cookie is random bytes, which the cross-site scripting rules misread"
+      }
+    ],
+    "bypasses": [
+      {
+        "path": "/hooks/registry",
+        "method": "POST",
+        "reason": "the registry's webhook body is signed by the registry, which the Root hook verifies"
+      },
+      {
+        "path": "/streams/*",
+        "reason": "the manifest stream is bytes, not JSON"
+      }
+    ]
+  },
   "projects": {
     "tst": {
       "id": "imp-tst-gbl-core-b241",

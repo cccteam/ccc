@@ -164,6 +164,12 @@ type Placement struct {
 	// placement takes for its own backend service; a field left out, or the whole block,
 	// takes its default (derive.OutlierDetection).
 	OutlierDetection *derive.OutlierDetection `json:"outlierDetection,omitempty"`
+	// CloudArmor is the Cloud Armor policy an application's first placement takes for
+	// its backend services: the rule sets in order at their sensitivities, the fields a
+	// set leaves alone, and the paths allowed ahead of the sets; a block left out is
+	// bedrock's defaults (derive.CloudArmor). An environment turns the policy on in the
+	// application's terraform.tfvars; nothing of the organization's carries one.
+	CloudArmor *derive.CloudArmor `json:"cloudArmor,omitempty"`
 	// ContactDomains are the domains Essential Contacts may belong to, each with its
 	// leading @.
 	ContactDomains []string `json:"contactDomains"`
@@ -270,6 +276,9 @@ func (p *Placement) Validate() error {
 		return err
 	}
 	if err := p.OutlierDetection.Validate(); err != nil {
+		return err
+	}
+	if err := p.CloudArmor.Validate(); err != nil {
 		return err
 	}
 	if err := p.validateGithubApps(); err != nil {
@@ -579,6 +588,7 @@ func (p *Placement) ApplicationPlacement(app, bedrockVersion, bedrockSHA256 stri
 		Seed:             []string{Environments[0]},
 		Projects:         projects,
 		OutlierDetection: p.OutlierDetection.Clone(),
+		CloudArmor:       p.CloudArmor.Clone(),
 	}
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "%s's placement", app)

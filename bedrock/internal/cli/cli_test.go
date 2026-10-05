@@ -71,7 +71,7 @@ func TestRenderThenCheck(t *testing.T) {
 			name:      "a fresh render checks clean",
 			afterFunc: func(*testing.T, string, string) {},
 			wantCode:  0,
-			wantOut:   []string{"23 owned file(s) match the code"},
+			wantOut:   []string{"24 owned file(s) match the code"},
 		},
 		{
 			name: "an edited owned file fails the check",
@@ -95,7 +95,7 @@ func TestRenderThenCheck(t *testing.T) {
 				}
 			},
 			wantCode: 1,
-			wantOut:  []string{"23 owned file(s) match the code", "refused  release-please-config.json is missing at the application root", "bedrock render seeds it when absent"},
+			wantOut:  []string{"24 owned file(s) match the code", "refused  release-please-config.json is missing at the application root", "bedrock render seeds it when absent"},
 		},
 		{
 			name: "an edited seeded file is left alone",
@@ -257,7 +257,7 @@ func TestStackFromLayout(t *testing.T) {
 			if err != nil {
 				t.Fatalf("check error = %v; output:\n%s", err, out)
 			}
-			if want := "23 owned file(s) match the code"; !strings.Contains(out, want) {
+			if want := "24 owned file(s) match the code"; !strings.Contains(out, want) {
 				t.Errorf("check output lacks %q:\n%s", want, out)
 			}
 		})

@@ -88,10 +88,12 @@ again does not, because its pull request is already labeled as tagged.
   of Cloud Build's machine names; absent, Cloud Build's default), the most Cloud Run
   instances the service may run per region in an environment (`maxInstances`, by
   environment name; an environment it leaves out has no cap, and Cloud Run's default
-  applies) and the backend service's outlier detection thresholds (`outlierDetection`;
-  absent, bedrock's defaults); for an organization it records the prefix, the domains,
-  the organization and billing ids, the regions, the Spanner configuration, the outlier
-  detection thresholds, the GitHub organization and its machine account, the
+  applies), the backend service's outlier detection thresholds (`outlierDetection`;
+  absent, bedrock's defaults) and the Cloud Armor policy an environment may turn on
+  (`cloudArmor`; absent, bedrock's defaults); for an organization it records the prefix,
+  the domains, the organization and billing ids, the regions, the Spanner configuration,
+  the outlier detection thresholds, the Cloud Armor policy its applications start with,
+  the GitHub organization and its machine account, the
   applications, the environment projects and
   each environment's team group (`teamGroups`: the group whose members approve the
   environment's releases and ask for its entitlements, with `entitlementDurations` for
@@ -228,6 +230,42 @@ and what its absence means:
   - `baseEjectionSeconds`: how long, in seconds, a group stays out the first time; each
     further time, that multiplied by the number of times it was taken out. At least 1;
     default 30.
+- `cloudArmor`: the Cloud Armor policy the stack renders on its backend services
+  (`cloud-armor.tf`), which an environment turns on in the stack's `terraform.tfvars`
+  (`cloud_armor`, by environment: `"preview"` evaluates the rules and logs what each
+  would have done, `"enforce"` applies them; an environment left out is off, and a
+  pull-request stack never has a policy, since the environment layer serves previews from
+  one backend service). Rules run in priority order and the first match decides: a rule
+  set that reads no body (scanner detection) first, on every path; then the bypasses,
+  each a route whose body is a file or a third party's rather than the application's
+  JSON, allowed so that no rule below reads it, the generated router's upload and
+  stored-file routes (the release file's `fileRoutes`) and the placement's; then the
+  other rule sets, each scoped to the outlets' routes; and every other request allowed.
+  Each rule's description names its source. From the organization's `cloudArmor`, when it
+  sets one. Absent, or for a field it leaves out, the default:
+  - `ruleSets`: the preconfigured rule sets the policy evaluates, in order, each a `name`
+    Cloud Armor gives the set (`sqli-v33-stable`, `xss-v33-stable`, `lfi-v33-stable`,
+    `rfi-v33-stable`, `rce-v33-stable`, `methodenforcement-v33-stable`,
+    `scannerdetection-v33-stable`, `protocolattack-v33-stable`, `php-v33-stable`,
+    `sessionfixation-v33-stable`, `java-v33-stable`, `nodejs-v33-stable`, `cve-canary`,
+    `json-sqli-canary`; any other is refused) and a `sensitivity` from 1, the rules least
+    likely to misfire, to 4, every rule. Absent, the reference deployment's five at
+    sensitivity 1: `scannerdetection-v33-stable`, `sqli-v33-stable`, `json-sqli-canary`,
+    `xss-v33-stable` and `protocolattack-v33-stable`.
+  - `fieldExclusions`: the request fields a rule set does not inspect, each the
+    `ruleSet` (one of the policy's), the `field` (`header`, `cookie`, `queryParam` or
+    `uri`), how the `value` names it (`operator`: `equals`, the default, `startsWith`,
+    `endsWith`, `contains`, or `any`, which names every field of the kind and takes no
+    value), the rules it is for (`rules`, Cloud Armor's rule ids such as
+    `owasp-crs-v030301-id941100-xss`; absent, every rule of the set) and a `reason`. For a
+    field whose legitimate values trip a rule: a session cookie of random bytes under the
+    cross-site scripting rules. Absent, none.
+  - `bypasses`: the paths allowed ahead of the rule sets beside the ones derived from the
+    router, each a `path` as the application mounts it, parameters in braces and a last
+    segment of `*` for the subtree (`/hooks/registry`, `/streams/*`), a `method` (absent,
+    every method) and a `reason`: a webhook under the Root hook whose sender signs its
+    body, a media stream. A bypass the router already derives is refused, naming the
+    declaration. Absent, none.
 - `buildArguments`: values the stack makes in each environment that the image build
   takes as build arguments (a build argument is a `NAME=value` the image build is given
   and a Dockerfile stage reads after it declares `ARG NAME`), as a map from the argument's
@@ -1473,7 +1511,10 @@ default the first environment's) is regional in the primary region, where the pr
 service runs, or on a multi-region configuration that fits the regions; 2-env's plan
 refuses any other. The placement's `outlierDetection` is the thresholds of the backend
 service 2-env renders for the pull-request environments, and those an application's first
-placement takes (The application's placement, above, names each field).
+placement takes (The application's placement, above, names each field); its `cloudArmor`
+is the Cloud Armor policy an application's first placement starts with, which an
+environment turns on in the application's `terraform.tfvars` (the organization's own
+backends carry none).
 
 `org preflight` is the check before the seed. The seed and the first applies of 0-bootstrap
 and 1-org run as the bootstrap administrator, a person, before any layer identity exists, so

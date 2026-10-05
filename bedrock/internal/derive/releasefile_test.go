@@ -1,6 +1,7 @@
 package derive
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,24 @@ func TestReadReleaseFile(t *testing.T) {
 		{name: "no schedule", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "timeZone": "UTC"}]}`, wantErr: `has the schedule "", which is not five cron fields`},
 		{name: "no time zone", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * *"}]}`, wantErr: `the scheduled route /_scheduled/prune-logs has the time zone "", which is not an IANA name (UTC, America/Denver)`},
 		{name: "a time zone carrying an interpolation", content: `{"outlets": {"default": {}}, "scheduled": [{"path": "/_scheduled/prune-logs", "schedule": "30 3 * * *", "timeZone": "${var.zone}"}]}`, wantErr: `has the time zone "${var.zone}", which is not an IANA name`},
+		{
+			name:    "file routes, an upload and a stored file",
+			content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-manifest", "source": "AttachManifest"}, {"kind": "file", "method": "GET", "path": "/api/manifests/{id}/file", "source": "Manifest.Key"}]}`,
+			want: &ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				FileRoutes: []FileRoute{
+					{Kind: FileRouteUpload, Method: http.MethodPost, Path: "/api/attach-manifest", Source: "AttachManifest"},
+					{Kind: FileRouteStored, Method: http.MethodGet, Path: "/api/manifests/{id}/file", Source: "Manifest.Key"},
+				},
+			},
+		},
+		{name: "a file route of a third kind", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "stream", "method": "GET", "path": "/api/streams", "source": "Stream"}]}`, wantErr: `the file route "/api/streams" has the kind "stream", and a file route is an upload or a file`},
+		{name: "an upload answering GET", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "GET", "path": "/api/attach-manifest", "source": "AttachManifest"}]}`, wantErr: `the file route "/api/attach-manifest" (upload) answers GET; an upload answers POST and a file GET`},
+		{name: "a stored file answering POST", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "file", "method": "POST", "path": "/api/manifests/{id}/file", "source": "Manifest.Key"}]}`, wantErr: `the file route "/api/manifests/{id}/file" (file) answers POST`},
+		{name: "a file route with a path of the wrong shape", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach manifest", "source": "AttachManifest"}]}`, wantErr: `the file route "/api/attach manifest" is not a path a router mounts (/api/photos/{id}/file)`},
+		{name: "a file route carrying an interpolation", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/${var.x}", "source": "AttachManifest"}]}`, wantErr: `the file route "/api/${var.x}" is not a path a router mounts`},
+		{name: "a file route listed twice", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-manifest", "source": "AttachManifest"}, {"kind": "upload", "method": "POST", "path": "/api/attach-manifest", "source": "AttachAgain"}]}`, wantErr: "the file route POST /api/attach-manifest is listed twice"},
+		{name: "a file route naming no source", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-manifest"}]}`, wantErr: "the file route POST /api/attach-manifest names no source"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -79,6 +98,31 @@ func TestReadReleaseFile(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("ReadReleaseFile() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestFileRouteDeclaration names what a file route comes from: the @upload method, the
+// @file column of a resource, or the computed resource that renders its file.
+func TestFileRouteDeclaration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		route FileRoute
+		want  string
+	}{
+		{name: "an upload", route: FileRoute{Kind: FileRouteUpload, Source: "AttachManifest"}, want: "the @upload method AttachManifest"},
+		{name: "a stored file's column", route: FileRoute{Kind: FileRouteStored, Source: "Manifest.Key"}, want: "the @file column Manifest.Key"},
+		{name: "a computed resource's file", route: FileRoute{Kind: FileRouteStored, Source: "Statement"}, want: "the @file of the computed resource Statement"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.route.Declaration(); got != tt.want {
+				t.Errorf("Declaration() = %q, want %q", got, tt.want)
 			}
 		})
 	}

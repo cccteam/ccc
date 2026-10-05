@@ -10,5 +10,19 @@
       "schedule": "0 7 * * 1-5",
       "timeZone": "America/New_York"
     }
+  ],
+  "fileRoutes": [
+    {
+      "kind": "upload",
+      "method": "POST",
+      "path": "/api/attach-manifest",
+      "source": "AttachManifest"
+    },
+    {
+      "kind": "file",
+      "method": "GET",
+      "path": "/api/manifests/{id}/file",
+      "source": "Manifest.Key"
+    }
   ]
 }

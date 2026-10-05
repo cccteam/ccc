@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,11 +19,12 @@ func Test_renderReleaseFile(t *testing.T) {
 	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
 
 	tests := []struct {
-		name      string
-		outlets   []routerOutlet
-		scheduled []*scheduledRoute
-		want      string
-		wantRead  resource.ReleaseFile
+		name       string
+		outlets    []routerOutlet
+		scheduled  []*scheduledRoute
+		fileRoutes []resource.FileRoute
+		want       string
+		wantRead   resource.ReleaseFile
 	}{
 		{
 			name: "a release, a machine outlet, no declaration and this release",
@@ -123,12 +125,49 @@ func Test_renderReleaseFile(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:    "file routes, an upload and a stored file",
+			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
+			fileRoutes: []resource.FileRoute{
+				{Kind: resource.FileRouteUpload, Method: "POST", Path: "/api/attach-photo", Source: "AttachPhoto"},
+				{Kind: resource.FileRouteStored, Method: "GET", Path: "/api/photos/{id}/file", Source: "Photo.Key"},
+			},
+			want: `{
+  "outlets": {
+    "default": {
+      "oldestAnswered": ""
+    }
+  },
+  "fileRoutes": [
+    {
+      "kind": "upload",
+      "method": "POST",
+      "path": "/api/attach-photo",
+      "source": "AttachPhoto"
+    },
+    {
+      "kind": "file",
+      "method": "GET",
+      "path": "/api/photos/{id}/file",
+      "source": "Photo.Key"
+    }
+  ]
+}
+`,
+			wantRead: resource.ReleaseFile{
+				Outlets: map[string]resource.ReleaseOutlet{"default": {}},
+				FileRoutes: []resource.FileRoute{
+					{Kind: resource.FileRouteUpload, Method: "POST", Path: "/api/attach-photo", Source: "AttachPhoto"},
+					{Kind: resource.FileRouteStored, Method: "GET", Path: "/api/photos/{id}/file", Source: "Photo.Key"},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := renderReleaseFile(releaseFileOf(tt.outlets, tt.scheduled))
+			got, err := renderReleaseFile(releaseFileOf(tt.outlets, tt.scheduled, tt.fileRoutes))
 			if err != nil {
 				t.Fatalf("renderReleaseFile() error = %v", err)
 			}
@@ -161,6 +200,68 @@ func Test_releaseFileName(t *testing.T) {
 	}
 	if reservedOutputStems[releaseOutputName].file != resource.ReleaseFileName {
 		t.Errorf("reservedOutputStems[%q].file = %q, want %q", releaseOutputName, reservedOutputStems[releaseOutputName].file, resource.ReleaseFileName)
+	}
+}
+
+// Test_fileRoutesOf lists the routes that carry a file, in path order: each served
+// @upload method's route on every outlet it is on, under the outlet's prefix, and each
+// outlet's stored-file routes, each naming its declaration; a JSON method, a suppressed
+// upload and an upload on another outlet are left out.
+func Test_fileRoutesOf(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "rpcform"))
+	upload := &rpcUpload{MaxBytes: 1}
+	outlets := []routerOutlet{{name: "default", prefix: "api"}, {name: "portal", prefix: "portal/api"}}
+	tests := []struct {
+		name       string
+		methods    []*rpcMethodInfo
+		fileRoutes map[string][]*generatedRoute
+		want       []resource.FileRoute
+	}{
+		{name: "nothing declared"},
+		{
+			name: "an upload on the default outlet, one on the portal, a JSON method and a suppressed upload",
+			methods: []*rpcMethodInfo{
+				{Struct: structs["UploadForm"], Form: rpcFormTxn, Upload: upload},
+				{Struct: structs["UploadAnswers"], Form: rpcFormTxn, Upload: upload, outletMembership: outletMembership{OutletNames: []string{"portal"}}},
+				{Struct: structs["UploadUndeclared"], Form: rpcFormTxn},
+				{Struct: structs["AnswersDuplicate"], Form: rpcFormTxn, Upload: upload, SuppressHandler: true},
+			},
+			want: []resource.FileRoute{
+				{Kind: resource.FileRouteUpload, Method: http.MethodPost, Path: "/api/upload-form", Source: "UploadForm"},
+				{Kind: resource.FileRouteUpload, Method: http.MethodPost, Path: "/portal/api/upload-answers", Source: "UploadAnswers"},
+			},
+		},
+		{
+			name: "stored files by outlet, sorted with the uploads by path",
+			methods: []*rpcMethodInfo{
+				{Struct: structs["UploadForm"], Form: rpcFormTxn, Upload: upload, outletMembership: outletMembership{OutletNames: []string{"default", "portal"}}},
+			},
+			fileRoutes: map[string][]*generatedRoute{
+				"default": {{Method: http.MethodGet, Path: "/api/photos/{id}/file", Source: "Photo.Key"}},
+				"portal":  {{Method: http.MethodGet, Path: "/portal/api/photos/{id}/file", Source: "Photo.Key"}, {Method: http.MethodGet, Path: "/portal/api/manifests/{id}/content", Source: "Manifest"}},
+			},
+			want: []resource.FileRoute{
+				{Kind: resource.FileRouteStored, Method: http.MethodGet, Path: "/api/photos/{id}/file", Source: "Photo.Key"},
+				{Kind: resource.FileRouteUpload, Method: http.MethodPost, Path: "/api/upload-form", Source: "UploadForm"},
+				{Kind: resource.FileRouteStored, Method: http.MethodGet, Path: "/portal/api/manifests/{id}/content", Source: "Manifest"},
+				{Kind: resource.FileRouteStored, Method: http.MethodGet, Path: "/portal/api/photos/{id}/file", Source: "Photo.Key"},
+				{Kind: resource.FileRouteUpload, Method: http.MethodPost, Path: "/portal/api/upload-form", Source: "UploadForm"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &resourceGenerator{client: &client{}}
+			r.rpcMethods = tt.methods
+			got := r.fileRoutesOf(outlets, tt.fileRoutes)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("fileRoutesOf() mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
 

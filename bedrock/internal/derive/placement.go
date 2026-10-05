@@ -113,6 +113,12 @@ type Placement struct {
 	// load balancer takes a failing region out (outlier.go); a field left out, or the
 	// whole block, takes its default.
 	OutlierDetection *OutlierDetection `json:"outlierDetection,omitempty"`
+	// CloudArmor is the Cloud Armor policy the stack renders on its backend services
+	// (armor.go): the rule sets in order at their sensitivities, the fields a set leaves
+	// alone, and the paths allowed ahead of the sets beside the ones derived from the
+	// generated router. An environment turns the policy on in terraform.tfvars; a block
+	// left out is the default rule sets with no exclusion and no bypass.
+	CloudArmor *CloudArmor `json:"cloudArmor,omitempty"`
 	// Maintenance is each environment's maintenance window by environment name: the
 	// time the environment may take a release that interrupts service (a breaking
 	// release, whose oldest answered release is newer than the one the environment runs,
@@ -253,6 +259,9 @@ func (p *Placement) Validate() error {
 		return err
 	}
 	if err := p.OutlierDetection.Validate(); err != nil {
+		return err
+	}
+	if err := p.CloudArmor.Validate(); err != nil {
 		return err
 	}
 	if err := p.validateBuildArguments(); err != nil {
@@ -531,6 +540,12 @@ func (p *Placement) Machine() (Machine, bool) {
 // placement's, with the defaults where it sets none.
 func (p *Placement) Outlier() Outlier {
 	return p.OutlierDetection.Resolved()
+}
+
+// Armor is the Cloud Armor policy the stack is rendered with: the placement's, with the
+// defaults where it writes none.
+func (p *Placement) Armor() Armor {
+	return p.CloudArmor.Resolved()
 }
 
 // MaxInstanceCount is the most instances the service may run per region in env, and

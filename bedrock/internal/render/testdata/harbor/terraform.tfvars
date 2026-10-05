@@ -48,6 +48,12 @@ build_secrets = {
   prd = {}
 }
 
+# Cloud Armor per environment (README, "Cloud Armor"): "preview" evaluates the
+# policy and logs what each rule would have done, "enforce" applies it. Off for
+# an environment left out. Preview first, read the logs, then enforce.
+cloud_armor = {
+}
+
 # Defaults that are decisions, restated so they are visible here:
 #   hostnames                = harbor-tst. / harbor-stg. / harbor.impulseframework.dev
 #   placeholder_image        = us-docker.pkg.dev/cloudrun/container/hello

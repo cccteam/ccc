@@ -453,7 +453,7 @@ func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, ne
 	}
 	log.Printf("Generated router test file in %s: %s\n", time.Since(begin), testDestination)
 
-	return r.runReleaseFileGeneration(outlets)
+	return r.runReleaseFileGeneration(outlets, fileRoutes)
 }
 
 // servedRouterData builds the template payload from the validated outlet declarations

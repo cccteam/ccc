@@ -73,6 +73,10 @@ func TestDerive(t *testing.T) {
 		// wantScheduled are the scheduled routes (scheduledLine), none for an application
 		// that declares none.
 		wantScheduled []string
+		// wantFileRoutes are the file routes (fileRouteLine), none for an application that
+		// declares no upload and no stored file; wantOutlets the outlets, name and prefix.
+		wantFileRoutes []string
+		wantOutlets    []string
 	}{
 		{
 			name:    "harbor",
@@ -128,12 +132,15 @@ func TestDerive(t *testing.T) {
 			wantFirestore:  "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
 			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files[0]"},
 			wantScheduled:  []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
+			wantFileRoutes: []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
+			wantOutlets:    []string{"default /api"},
 		},
 		{
-			name:      "beacon, a password auth: no registration, no callback",
-			fixture:   "beacon",
-			placement: "placement-beacon.json",
-			wantApp:   "beacon",
+			name:        "beacon, a password auth: no registration, no callback",
+			fixture:     "beacon",
+			placement:   "placement-beacon.json",
+			wantApp:     "beacon",
+			wantOutlets: []string{"default /api"},
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
 			},
@@ -257,6 +264,19 @@ func TestDerive(t *testing.T) {
 			}
 			if !slices.Equal(scheduled, tt.wantScheduled) {
 				t.Errorf("Scheduled = %v, want %v", scheduled, tt.wantScheduled)
+			}
+			var fileRoutes, outlets []string
+			for i := range m.FileRoutes {
+				fileRoutes = append(fileRoutes, fileRouteLine(&m.FileRoutes[i]))
+			}
+			if !slices.Equal(fileRoutes, tt.wantFileRoutes) {
+				t.Errorf("FileRoutes = %v, want %v", fileRoutes, tt.wantFileRoutes)
+			}
+			for _, o := range m.Outlets {
+				outlets = append(outlets, o.Name+" /"+o.Prefix)
+			}
+			if !slices.Equal(outlets, tt.wantOutlets) {
+				t.Errorf("Outlets = %v, want %v", outlets, tt.wantOutlets)
 			}
 			for _, e := range m.Environments {
 				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
@@ -387,6 +407,11 @@ func TestDeriveScheduled(t *testing.T) {
 // the call Cloud Scheduler makes and when.
 func scheduledLine(r *ScheduledRoute) string {
 	return fmt.Sprintf("%s: POST %s at %s in %s", r.Name(), r.Path, r.Schedule, r.TimeZone)
+}
+
+// fileRouteLine spells a file route: its method and path, and its declaration.
+func fileRouteLine(r *FileRoute) string {
+	return fmt.Sprintf("%s %s: %s", r.Method, r.Path, r.Declaration())
 }
 
 // TestBucketPolicyAddress reads a bucket policy's address from its bucket's, the way the

@@ -146,8 +146,9 @@ from `2-env`'s state.
   backend service `imp-<env>-gbl-beacon-backend` over both, external managed,
   outlier detection on (5 consecutive errors in a 1-second interval eject a
   backend for 30 seconds, at most 50% ejected, enforced at 100), request
-  logging at full sample rate. No Cloud Armor. The URL map in the net project
-  routes this environment's hostnames to it across projects (below).
+  logging at full sample rate, and Cloud Armor's policy attached where
+  `terraform.tfvars` turns it on (Cloud Armor, below). The URL map in the net
+  project routes this environment's hostnames to it across projects (below).
 - **Cloud Build triggers** on the repository link `2-env` registered, running
   `cloudbuild.yaml` as the deploy identity: `imp-<env>-uc1-beacon-version` on a
   tag `^v\d+\.\d+\.\d+$` in every environment, with Cloud Build approval
@@ -364,6 +365,44 @@ hosts = {
 DNS (the wildcard A record) and the certificate already cover the hostname;
 adding the entry and applying `2-net` is the whole registration.
 
+## Cloud Armor
+
+Off unless `terraform.tfvars` turns it on in an environment (`cloud_armor`, by
+environment: `"preview"` evaluates the policy and logs what each rule would have
+done, `"enforce"` applies it; an environment left out is off, and a pull-request
+stack never has a policy, since the environment layer serves previews from one
+backend service and a policy attaches to a backend service). Turn an
+environment to preview first and read its load balancer's request logs for a
+while: `jsonPayload.previewSecurityPolicy` names the rule a request would have
+met, and a legitimate request that meets one wants a field exclusion or a
+bypass in `placement.json` before the environment is enforced
+(`jsonPayload.enforcedSecurityPolicy` then names the rule that decided). The
+policy is `imp-<env>-gbl-beacon-armor` (`cloud-armor.tf`), on the backend
+service and the next revision's. Cloud Armor Standard bills each policy, each
+rule and the requests the policy evaluates, at the rates on its pricing page.
+
+Rules run in priority order and the first match decides. The rule sets are
+bedrock's defaults, the reference deployment's five at sensitivity 1;
+`placement.json` replaces the list (`cloudArmor.ruleSets`, each set at a
+sensitivity from 1, the rules least likely to misfire, to 4, every rule). A set that reads no body (scanner
+detection) runs first, on every path. Then the bypasses: each a route whose body
+is a file or a third party's rather than the application's JSON, allowed so
+that no rule below reads it: the generated router's upload and stored-file
+routes (`pkg/router/zz_gen_release.json`, `fileRoutes`) and the placement's
+(`cloudArmor.bypasses`, a webhook under the Root hook whose sender signs its
+body, a media stream). Then the other sets, each scoped to the outlets' routes
+(/api), where the input a rule can judge arrives. Every other
+request is allowed. Each rule's description names its source.
+
+| Priority | Action | Rule | Source |
+|---|---|---|---|
+| 1000 | deny | scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path | bedrock's default rule sets |
+| 3000 | deny | SQL injection (sqli-v33-stable, sensitivity 1) on /api | bedrock's default rule sets |
+| 3010 | deny | SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api | bedrock's default rule sets |
+| 3020 | deny | cross-site scripting (xss-v33-stable, sensitivity 1) on /api | bedrock's default rule sets |
+| 3030 | deny | protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api | bedrock's default rule sets |
+| 2147483647 | allow | every other request | the default rule |
+
 ## Pull-request environments
 
 The same stack, applied in tst with `pull_request` set to the pull request's
@@ -564,6 +603,7 @@ Per environment, after the first apply:
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
+| `cloud_armor` | Cloud Armor per environment: `"preview"` or `"enforce"`; an environment left out is off. | `map(string)` | `{}` | no |
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the three above | no |
 | `placeholder_image` | Image the services and job are created with. | `string` | `us-docker.pkg.dev/cloudrun/container/hello` | no |
