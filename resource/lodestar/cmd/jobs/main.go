@@ -9,7 +9,9 @@
 // UUID-named objects older than the window that no row holds, one store at a time; a
 // store named with -store (documents, or default for the default store) narrows the run,
 // -window raises the age an object must reach, and -dry-run lists what would go and
-// deletes nothing. On Cloud Run the same binary runs as the job the schedule starts.
+// deletes nothing. On Cloud Run the same binary runs as the job the application's
+// scheduled CleanUpFiles method starts each day (pkg/rpc): Cloud Scheduler calls the
+// service, and the service starts the job deployed with it.
 //
 // Demonstrates: filestore.cleanup.
 package main
@@ -29,8 +31,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// cleanupCommand names the one command.
-const cleanupCommand = "cleanup-files"
+// cleanupCommand names the one command, as the scheduled method starts it.
+const cleanupCommand = jobs.CleanupCommand
 
 // defaultStoreArg is how -store names the default store, which has no name of its own.
 const defaultStoreArg = "default"

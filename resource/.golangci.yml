@@ -98,6 +98,7 @@ linters:
             - golang.org/x/tools/imports
             - google.golang.org/api/iterator
             - google.golang.org/api/option
+            - google.golang.org/api/transport/http
             - google.golang.org/grpc
             - google.golang.org/grpc/codes
             - google.golang.org/grpc/credentials/insecure

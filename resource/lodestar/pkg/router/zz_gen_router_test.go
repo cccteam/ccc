@@ -612,6 +612,7 @@ func TestGeneratedRouterScheduled(t *testing.T) {
 		url     string
 		handler string
 	}{
+		{url: "/_scheduled/clean-up-files", handler: "CleanUpFiles"},
 		{url: "/_scheduled/prune-droid-reports", handler: "PruneDroidReports"},
 	}
 	for _, tt := range tests {
@@ -1094,6 +1095,10 @@ func (s *routerHandlersStub) DroidsAuth(next http.Handler) http.Handler {
 
 func (s *routerHandlersStub) SchedulerAuth(next http.Handler) http.Handler {
 	return s.rec.Middleware("SchedulerAuth")(next)
+}
+
+func (s *routerHandlersStub) CleanUpFiles() http.HandlerFunc {
+	return s.rec.RecordHandlerCall("CleanUpFiles")
 }
 
 func (s *routerHandlersStub) PruneDroidReports() http.HandlerFunc {

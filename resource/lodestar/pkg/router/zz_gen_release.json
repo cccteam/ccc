@@ -12,6 +12,11 @@
   },
   "scheduled": [
     {
+      "path": "/_scheduled/clean-up-files",
+      "schedule": "0 9 * * *",
+      "timeZone": "UTC"
+    },
+    {
       "path": "/_scheduled/prune-droid-reports",
       "schedule": "30 3 * * *",
       "timeZone": "America/Denver"

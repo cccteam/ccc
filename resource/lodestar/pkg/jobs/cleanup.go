@@ -14,6 +14,10 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// CleanupCommand is the job process's command for the orphaned-file cleanup, the
+// argument the scheduled CleanUpFiles method starts the job with.
+const CleanupCommand = "cleanup-files"
+
 // CleanupOptions says how the cleanup runs.
 type CleanupOptions struct {
 	// Stores names the stores to clean; empty cleans every store the application's

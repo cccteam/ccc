@@ -22,6 +22,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/filestore"
+	"github.com/cccteam/ccc/resource/jobs"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
@@ -232,6 +233,9 @@ type testConfigurer struct {
 	// scheduler is the guard the scheduled routes sit behind on the served stack, over
 	// a fake of Google's keys; nil elsewhere, which refuses every scheduled call.
 	scheduler *scheduled.Guard
+	// jobs is the job process's starter, a fake the served stack's suites read the
+	// starts from; nil gets a fake of its own.
+	jobs jobs.Starter
 }
 
 // TenantRoster is the application's tenant roster as production's DataConfiguration
@@ -326,6 +330,16 @@ func (c *testConfigurer) DroidsAPIKey() string { return droidsAPIKey }
 // router, which mounts no scheduled route.
 func (c *testConfigurer) Scheduler() *scheduled.Guard {
 	return c.scheduler
+}
+
+// Jobs is the fake starter the suite passed (newServed), which records the starts the
+// scheduled cleanup makes; a suite that passed none gets a fake of its own.
+func (c *testConfigurer) Jobs() jobs.Starter {
+	if c.jobs == nil {
+		return jobs.NewFake()
+	}
+
+	return c.jobs
 }
 
 // Live is the live service the suite passed (newTestAppWithLive), an in-memory fake;
@@ -647,6 +661,8 @@ type served struct {
 	// scheduler stands in for Google's keys behind the scheduled routes: a token it
 	// mints for schedulerInvoker and a route's URL is what Cloud Scheduler presents.
 	scheduler *scheduled.Fake
+	// jobs is the job process's fake starter: what the scheduled cleanup started.
+	jobs *jobs.Fake
 }
 
 // newServed provisions the database the way the bootstrap does (schema, the demo world,
@@ -733,6 +749,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 
 	stores := newTestStores()
 	keys := scheduled.NewFake()
+	starter := jobs.NewFake()
 	a := app.New(&testConfigurer{
 		db:            db,
 		access:        crewAuth.Access(),
@@ -744,11 +761,12 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		management:    crewAuth.Access().Handlers(httpio.Log),
 		version:       version,
 		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),
+		jobs:          starter,
 	})
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
 
-	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys}
+	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys, jobs: starter}
 }
 
 // schedulerInvoker is the invoker identity the served stack's scheduled routes admit, as

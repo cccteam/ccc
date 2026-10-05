@@ -1291,7 +1291,13 @@ then most likely not all read; it touches only UUID-shaped names, so an object n
 its row (an adopter's existing files) is never the cleanup's; and a dry run lists what it
 would delete. It never runs in a pull-request stack, and in production a bucket's soft
 delete is the recovery. Lodestar's `cmd/jobs cleanup-files` runs it over both stores and
-the walkthrough proves it with one orphan and one live file.
+the walkthrough proves it with one orphan and one live file. The cleanup runs from the
+service: a scheduled method (`@schedule`, daily) starts one execution of the job process
+with the cleanup command through `resource/jobs`, whose starter the configuration builds
+from the job the image names (`APP_JOBS_JOB`, baked in by the pipeline), so Cloud
+Scheduler calls the service and the service starts the job deployed with it, which a
+traffic rollback rolls back too; where no job is configured (development, a pull-request
+stack) the start is refused and the call says so. Lodestar's `CleanUpFiles` is the method.
 
 **Rendered files.** A document produced at request time is a computed resource's
 content: struct-scope `@file` on a keyed `@computed` struct, and the computed package

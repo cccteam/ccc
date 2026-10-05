@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/filestore"
+	"github.com/cccteam/ccc/resource/jobs"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
@@ -137,6 +138,12 @@ func (c *testConfigurer) DroidsAPIKey() string { return "authz-droids-key" }
 // route, and a missing guard refuses every scheduled call.
 func (c *testConfigurer) Scheduler() *scheduled.Guard {
 	return nil
+}
+
+// Jobs is a fake starter: no suite starts the job process, and a scheduled call that
+// does records the start.
+func (c *testConfigurer) Jobs() jobs.Starter {
+	return jobs.NewFake()
 }
 
 // Live is an in-memory live service: the live service is required in every

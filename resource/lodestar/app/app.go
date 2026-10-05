@@ -16,6 +16,7 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/jobs"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
@@ -108,6 +109,12 @@ type Configurer interface {
 	// tokens alone are admitted. A guard with no invoker, or none at all, refuses every
 	// scheduled call.
 	Scheduler() *scheduled.Guard
+	// Jobs starts the application's job process (resource/jobs): an execution of the
+	// Cloud Run job deployed with this revision, which the image names in APP_JOBS_JOB.
+	// The scheduled CleanUpFiles method starts the orphaned-file cleanup through it, so
+	// the service starts its job and the cleanup never runs inside a request. Where no
+	// job is configured (development, a pull-request stack) every start is refused.
+	Jobs() jobs.Starter
 	// TenantRoster is the application's tenant roster: the Sectors table's keys, built by
 	// the generated NewSectorRoster over the resource client and started by the
 	// configuration, so it is loaded before the App is built and keeps up through the
@@ -200,7 +207,7 @@ func New(cfg Configurer) *App {
 		droidsAPIKey:   cfg.DroidsAPIKey(),
 		scheduler:      cfg.Scheduler(),
 		tenants:        cfg.TenantRoster(),
-		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, resourceClient.FileStore(resource.StoreNameFor[resources.Documents]())),
+		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, resourceClient.FileStore(resource.StoreNameFor[resources.Documents]()), cfg.Jobs()),
 		computedClient: computedresources.NewClient(),
 		live:           cfg.Live(),
 		management:     cfg.UserManagement(),

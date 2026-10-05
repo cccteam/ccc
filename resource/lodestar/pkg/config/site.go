@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 
+	"github.com/cccteam/ccc/resource/jobs"
 	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -17,6 +18,7 @@ type SiteConfiguration struct {
 	validator    *validator.Validate
 	droidsAPIKey string
 	scheduler    *scheduled.Guard
+	jobs         jobs.Starter
 }
 
 // NewSiteConfiguration loads every level and constructs the served site's
@@ -48,6 +50,10 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "scheduled.FromEnvironment()")
 	}
+	starter, err := jobs.FromEnvironment(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "jobs.FromEnvironment()")
+	}
 
 	return &SiteConfiguration{
 		DataConfiguration: data,
@@ -55,6 +61,7 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 		validator:         validator.New(),
 		droidsAPIKey:      droidsAPIKey,
 		scheduler:         scheduler,
+		jobs:              starter,
 	}, nil
 }
 
@@ -93,6 +100,12 @@ func (c *SiteConfiguration) DroidsAPIKey() string {
 // of the invoker identity APP_SCHEDULER_INVOKER names, and nothing else.
 func (c *SiteConfiguration) Scheduler() *scheduled.Guard {
 	return c.scheduler
+}
+
+// Jobs starts the application's job process: the Cloud Run job the image names in
+// APP_JOBS_JOB (resource/jobs), or a starter that refuses where none is configured.
+func (c *SiteConfiguration) Jobs() jobs.Starter {
+	return c.jobs
 }
 
 // siteConfig holds the environment only the served site reads.

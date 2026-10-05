@@ -552,6 +552,7 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 // GeneratedScheduledHandlers is the scheduled methods' generated handler surface: the
 // methods declared with @schedule, which Cloud Scheduler calls under /_scheduled.
 type GeneratedScheduledHandlers interface {
+	CleanUpFiles() http.HandlerFunc
 	PruneDroidReports() http.HandlerFunc
 }
 
@@ -562,6 +563,7 @@ type GeneratedScheduledHandlers interface {
 // refused naming the header.
 func generatedScheduledRoutes(r chi.Router, h GeneratedScheduledHandlers) {
 	r = r.With(live.Refusing())
+	r.Post("/_scheduled/clean-up-files", h.CleanUpFiles())
 	r.Post("/_scheduled/prune-droid-reports", h.PruneDroidReports())
 }
 

@@ -29,6 +29,7 @@ package rpc
 import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/jobs"
 )
 
 // PaymasterRole is the service role a body borrows to post a settlement: nobody signs in
@@ -43,17 +44,25 @@ const PaymasterRole accesstypes.Role = "Paymaster"
 type RoleCheckerFunc func(role accesstypes.Role) resource.RolePermissions
 
 // Client carries application dependencies into RPC method implementations: the role
-// checker a body composes through caller.As, and the Documents store the upload frame
+// checker a body composes through caller.As, the Documents store the upload frame
 // streams mission documents into, read off the resource client, which
-// AttachMissionDocument and ReplaceMissionDocument read back to digest each file.
+// AttachMissionDocument and ReplaceMissionDocument read back to digest each file, and
+// the starter of the job process, which CleanUpFiles starts the cleanup through.
 type Client struct {
 	forRole   RoleCheckerFunc
 	documents resource.FileStore
+	jobs      jobs.Starter
 }
 
-// NewClient constructs a Client over the engine's role checker and the Documents store.
-func NewClient(forRole RoleCheckerFunc, documents resource.FileStore) *Client {
-	return &Client{forRole: forRole, documents: documents}
+// NewClient constructs a Client over the engine's role checker, the Documents store and
+// the job process's starter.
+func NewClient(forRole RoleCheckerFunc, documents resource.FileStore, starter jobs.Starter) *Client {
+	return &Client{forRole: forRole, documents: documents, jobs: starter}
+}
+
+// Jobs is the job process's starter (resource/jobs).
+func (c *Client) Jobs() jobs.Starter {
+	return c.jobs
 }
 
 // ForRole returns the checker for a role, for a body acting through caller.As.
