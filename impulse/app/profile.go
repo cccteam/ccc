@@ -50,7 +50,16 @@ type Profile struct {
 	// Shared are the generators that emit no handlers: the shared resource generators of
 	// an application in the sites layout.
 	Shared []*Generator
+	// FileStore is the env tag that wires the framework's file store, APP_FILE_STORE
+	// (impulse add files), nil when the application has none: the data level opens the
+	// store from it and builds the resource client over it.
+	FileStore *EnvTag
 }
+
+// FileStoreVariable is the environment variable the data level opens the default file
+// store from (resource/filestore): the tag impulse add files declares, and the one the
+// profile reports the option by.
+const FileStoreVariable = "APP_FILE_STORE"
 
 // Site is one site: the generator program that emits its handlers and what that program
 // declares about it.
@@ -136,6 +145,13 @@ func (a *App) Profile() Profile {
 	for i := range p.Sites {
 		if p.Sites[i].Dir != "." {
 			p.Layout = LayoutSites
+
+			break
+		}
+	}
+	for i := range a.EnvTags {
+		if a.EnvTags[i].Name == FileStoreVariable {
+			p.FileStore = &a.EnvTags[i]
 
 			break
 		}

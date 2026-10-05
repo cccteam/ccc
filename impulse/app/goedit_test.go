@@ -276,3 +276,145 @@ func TestAddStatementsBeforeConstruction(t *testing.T) {
 		})
 	}
 }
+
+const bootstrapSource = `package main
+
+import (
+	"context"
+
+	"example.com/acme/beacon/pkg/deploy"
+)
+
+func run(ctx context.Context, settings deploy.Settings) error {
+	if err := deploy.MigrateSchema(ctx, settings); err != nil {
+		return err
+	}
+
+	// The development seed: the same data migrations the migrate command applies
+	// with -seed in test environments.
+	if err := deploy.SeedDevelopmentData(ctx, settings); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Close releases the level's clients.
+func (c *DataConfiguration) Close() {
+	c.staff.Close()
+	c.spannerClient.Close()
+}
+`
+
+// bootstrapRun is the bootstrap's function the cases edit.
+const bootstrapRun = "run"
+
+func TestAddStatementsBeforeCall(t *testing.T) {
+	t.Parallel()
+
+	const statements = "if err := emptyFileStore(ctx); err != nil {\nreturn err\n}"
+	const inserted = "\tif err := emptyFileStore(ctx); err != nil {\n\t\treturn err\n\t}\n\n"
+
+	tests := []struct {
+		name     string
+		typeName string
+		funcName string
+		callee   string
+		want     string
+		wantErr  error
+	}{
+		{
+			name: "before the statement holding the call and the comment introducing it", funcName: bootstrapRun, callee: "deploy.SeedDevelopmentData",
+			want: strings.Replace(bootstrapSource, "\t// The development seed:", inserted+"\t// The development seed:", 1),
+		},
+		{
+			name: "before a method's call through the receiver", typeName: "DataConfiguration", funcName: "Close", callee: "c.spannerClient.Close",
+			want: strings.Replace(bootstrapSource, "\tc.spannerClient.Close()", inserted+"\tc.spannerClient.Close()", 1),
+		},
+		{name: "a call the function does not make", funcName: bootstrapRun, callee: "deploy.Reset", wantErr: ErrNoAnchor},
+		{name: "a function the file lacks", funcName: "main", callee: bootstrapRun, wantErr: ErrNoAnchor},
+		{name: "a method on another type", typeName: "SiteConfiguration", funcName: "Close", callee: "c.spannerClient.Close", wantErr: ErrNoAnchor},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AddStatementsBeforeCall("main.go", []byte(bootstrapSource), tt.typeName, tt.funcName, tt.callee, statements)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("error = %v, want %v", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestExtendCall(t *testing.T) {
+	t.Parallel()
+
+	const src = `package config
+
+func NewDataConfiguration() *DataConfiguration {
+	client := resource.NewSpannerClient(spannerClient)
+	empty := resource.NewSpannerClient()
+
+	return &DataConfiguration{client: client, empty: empty}
+}
+`
+	tests := []struct {
+		name      string
+		funcName  string
+		callee    string
+		arguments string
+		want      string
+		wantErr   error
+	}{
+		{
+			name: "a call with arguments gains one after a comma", funcName: "NewDataConfiguration", callee: "resource.NewSpannerClient", arguments: "fileStoreOptions(files)...",
+			want: strings.Replace(src, "resource.NewSpannerClient(spannerClient)", "resource.NewSpannerClient(spannerClient, fileStoreOptions(files)...)", 1),
+		},
+		{name: "a call the function does not make", funcName: "NewDataConfiguration", callee: "resource.NewClient", arguments: "x", wantErr: ErrNoAnchor},
+		{name: "a function the file lacks", funcName: "New", callee: "resource.NewSpannerClient", arguments: "x", wantErr: ErrNoAnchor},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := ExtendCall("data.go", []byte(src), tt.funcName, tt.callee, tt.arguments)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("error = %v, want %v", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestExtendCallEmpty(t *testing.T) {
+	t.Parallel()
+
+	const src = "package config\n\nfunc New() *T {\n\treturn build()\n}\n"
+	got, err := ExtendCall("t.go", []byte(src), "New", "build", "opts...")
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if want := strings.Replace(src, "build()", "build(opts...)", 1); string(got) != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}

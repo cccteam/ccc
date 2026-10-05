@@ -247,6 +247,16 @@ func TestComposedOptions(t *testing.T) {
 			wantDescribe:  "the oidc-google flavor for the staff auth, role membership the directory's, tenancy (Tenants)",
 			wantReference: transition_.ReferenceCandidate,
 		},
+		{
+			name: "the file store composes after the outlets and before the sites", opts: composedOptions{files: true, apiOutlets: []string{"machines=machines"}, sites: []string{"console", "portal"}},
+			want: []transition{
+				transition_.Outlet{Name: "machines", Prefix: "machines"},
+				transition_.Files{},
+				transition_.Site{Name: "portal", Existing: "console"},
+			},
+			wantDescribe:  "the API-key outlet machines=machines, the file store, the sites console, portal (the base site becomes console)",
+			wantReference: transition_.SitesReference,
+		},
 		{name: "one site is no layout", opts: composedOptions{sites: []string{"console"}}, wantErr: "name at least two sites"},
 		{name: "an outlet without a prefix", opts: composedOptions{outlets: []string{"portal"}}, wantErr: `--outlet "portal": name the outlet and its prefix`},
 		{name: "an API outlet without a name", opts: composedOptions{apiOutlets: []string{"=machines"}}, wantErr: `--api-outlet "=machines"`},

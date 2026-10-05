@@ -305,7 +305,7 @@ func addRosterField(a *app.App, rel string, src []byte, mode os.FileMode, ch *Ch
 	if err != nil {
 		return "", err
 	}
-	wrapErr := "err"
+	wrapErr := plainErr
 	if ok, _ := app.HasImport(rel, src, errorsImportPath); ok {
 		wrapErr = `errors.Wrap(err, "` + rosterStart + `()")`
 	}

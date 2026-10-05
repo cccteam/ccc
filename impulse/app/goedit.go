@@ -405,3 +405,133 @@ func ReplaceNilArgument(rel string, src []byte, funcName, callee, replacement st
 
 	return p.splice(rel, p.offset(arg.Pos()), p.offset(arg.End()), replacement)
 }
+
+// AddStatementsBeforeCall inserts statements before the first top-level statement of
+// the named function that calls callee, a dotted name as the source writes it
+// (deploy.SeedDevelopmentData, c.spannerClient.Close); typeName names the receiver type
+// of a method, and is empty for a function.
+func AddStatementsBeforeCall(rel string, src []byte, typeName, funcName, callee, statements string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	fd := p.methodDecl(typeName, funcName)
+	if fd == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no %s", rel, qualifiedFunc(typeName, funcName))
+	}
+	for _, stmt := range fd.Body.List {
+		if callIn(stmt, callee) == nil {
+			continue
+		}
+		at := p.offset(p.leadingComment(stmt))
+
+		return p.splice(rel, at, at, statements+"\n\n")
+	}
+
+	return nil, errors.Wrapf(ErrNoAnchor, "%s: %s makes no %s call", rel, qualifiedFunc(typeName, funcName), callee)
+}
+
+// leadingComment is where a statement starts for an insertion before it: the start of
+// the comment group ending on the line above it, which introduces it, or its own
+// position when no comment does.
+func (p *parsed) leadingComment(stmt ast.Stmt) token.Pos {
+	line := p.fset.Position(stmt.Pos()).Line
+	for _, cg := range p.file.Comments {
+		if p.fset.Position(cg.End()).Line == line-1 {
+			return cg.Pos()
+		}
+	}
+
+	return stmt.Pos()
+}
+
+// ExtendCall appends arguments to the first call to callee, a dotted name as the source
+// writes it, inside the named function. The result is formatted.
+func ExtendCall(rel string, src []byte, funcName, callee, arguments string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	fd := p.methodDecl("", funcName)
+	if fd == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
+	}
+	call := callIn(fd.Body, callee)
+	if call == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s makes no %s call", rel, funcName, callee)
+	}
+	text := arguments
+	if len(call.Args) > 0 {
+		text = ", " + arguments
+	}
+	at := p.offset(call.Rparen)
+
+	return p.splice(rel, at, at, text)
+}
+
+// methodDecl finds the named function, or the named method of the type when typeName is
+// set (a pointer or a value receiver).
+func (p *parsed) methodDecl(typeName, name string) *ast.FuncDecl {
+	if typeName == "" {
+		return p.funcDecl(name)
+	}
+	for _, d := range p.file.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Recv == nil || fd.Name.Name != name || len(fd.Recv.List) != 1 {
+			continue
+		}
+		recv := fd.Recv.List[0].Type
+		if star, ok := recv.(*ast.StarExpr); ok {
+			recv = star.X
+		}
+		if id, ok := recv.(*ast.Ident); ok && id.Name == typeName {
+			return fd
+		}
+	}
+
+	return nil
+}
+
+// qualifiedFunc names a function or a method for a message.
+func qualifiedFunc(typeName, name string) string {
+	if typeName == "" {
+		return "function " + name
+	}
+
+	return "method " + name + " of " + typeName
+}
+
+// callIn finds the first call under n whose function is written as the dotted name
+// callee.
+func callIn(n ast.Node, callee string) *ast.CallExpr {
+	var call *ast.CallExpr
+	ast.Inspect(n, func(n ast.Node) bool {
+		if call != nil {
+			return false
+		}
+		if c, ok := n.(*ast.CallExpr); ok && dottedName(c.Fun) == callee {
+			call = c
+
+			return false
+		}
+
+		return true
+	})
+
+	return call
+}
+
+// dottedName renders an identifier or a selector chain over identifiers (a, a.b, a.b.c);
+// any other expression renders empty.
+func dottedName(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name
+	case *ast.SelectorExpr:
+		if base := dottedName(e.X); base != "" {
+			return base + "." + e.Sel.Name
+		}
+	}
+
+	return ""
+}

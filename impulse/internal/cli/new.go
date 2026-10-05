@@ -53,6 +53,7 @@ func (nf *newFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&nf.opts.outlets, "outlet", nil, "compose a session outlet, <name>=<prefix> (repeatable), such as portal=portal/api")
 	cmd.Flags().StringArrayVar(&nf.opts.apiOutlets, "api-outlet", nil, "compose an API-key outlet, <name>=<prefix> (repeatable), such as machines=machines")
 	cmd.Flags().StringArrayVar(&nf.opts.sites, "site", nil, "compose the sites layout: two or more site names (repeatable), the first being what the base site becomes under apps/")
+	cmd.Flags().BoolVar(&nf.opts.files, "files", false, "compose the file store: APP_FILE_STORE, the development directory, the cleanup job and its scheduled method")
 	nf.transition.bindAgent(cmd)
 	_ = cmd.MarkFlagRequired("module")
 }
@@ -371,12 +372,14 @@ type composedOptions struct {
 	outlets     []string
 	apiOutlets  []string
 	sites       []string
+	files       bool
 }
 
 // transitions returns the transitions the options ask for, in the order add would run
 // them: the first auth's flavor first, since it swaps the base's handler seams where they
 // stand, then tenancy, since an outlet's members may be tenant-scoped, then the outlets,
-// then the sites, since promotion moves what the others laid in.
+// then the file store, which is wired into the flat tree, then the sites, since promotion
+// moves what the others laid in.
 func (o *composedOptions) transitions() ([]transition, error) {
 	var ts []transition
 	if o.flavor != "" {
@@ -397,6 +400,9 @@ func (o *composedOptions) transitions() ([]transition, error) {
 			}
 			ts = append(ts, transition_.Outlet{Name: name, Prefix: prefix, Sessions: kind.sessions})
 		}
+	}
+	if o.files {
+		ts = append(ts, transition_.Files{})
 	}
 	if len(o.sites) == 1 {
 		return nil, errors.Newf("--site %s: name at least two sites, the first being what the base site becomes under apps/ (an application with one site stays flat)", o.sites[0])
@@ -429,6 +435,9 @@ func (o *composedOptions) describe() string {
 	}
 	for _, spec := range o.apiOutlets {
 		parts = append(parts, "the API-key outlet "+spec)
+	}
+	if o.files {
+		parts = append(parts, "the file store")
 	}
 	if len(o.sites) > 1 {
 		parts = append(parts, "the sites "+strings.Join(o.sites, ", ")+" (the base site becomes "+o.sites[0]+")")

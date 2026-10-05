@@ -17,6 +17,12 @@ impulse add feature <name>
   --app string (default .)
   --site string
   --skip-generate bool
+impulse add files
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --skip-generate bool
 impulse add outlet <name>
   --agent bool
   --agent-arg stringArray
@@ -70,6 +76,7 @@ impulse new <dir>
   --auth string
   --authority string
   --dev-root string
+  --files bool
   --module string (required)
   --name string
   --oidc-azure bool
@@ -142,6 +149,7 @@ checks:
   feature-flags
   sites-generators
   env-template
+  file-store
   pins
   gowork-off
   regen

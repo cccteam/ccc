@@ -284,7 +284,8 @@ func tenancy(s *app.Site) string {
 	return fmt.Sprintf("tenanted (record %s)", s.TenantRecord.Name)
 }
 
-// profileSummary is the one-line option set: layout, sites, tenancy, outlets.
+// profileSummary is the one-line option set: layout, sites, tenancy, outlets, the
+// generated router, and the file store.
 func profileSummary(p app.Profile) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s layout, %d site(s)", p.Layout, len(p.Sites))
@@ -320,6 +321,9 @@ func profileSummary(p app.Profile) string {
 	}
 	if generated {
 		b.WriteString("; generated router")
+	}
+	if p.FileStore != nil {
+		b.WriteString("; file store")
 	}
 
 	return b.String()

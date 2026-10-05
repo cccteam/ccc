@@ -35,6 +35,39 @@ launches Claude Code on it and verifies the guardrails when it returns.`,
 	cmd.AddCommand(newAddAuth())
 	cmd.AddCommand(newAddSite())
 	cmd.AddCommand(newAddFeature())
+	cmd.AddCommand(newAddFiles())
+
+	return cmd
+}
+
+func newAddFiles() *cobra.Command {
+	var f transitionFlags
+
+	cmd := &cobra.Command{
+		Use:   "files",
+		Short: "Wire the file store: APP_FILE_STORE, the development directory, the cleanup job and its schedule",
+		Long: `files wires the framework's file store into the application (resource/filestore): the
+data level reads APP_FILE_STORE, opens the store it names when it is set (a directory in
+development, a bucket on Cloud Run) and builds the resource client over it, so the
+generated handlers keep uploaded files in it and a committed transaction's released
+objects are deleted from it; .envrc.template sets file://uploads and .gitignore ignores
+the directory; the bootstrap empties a directory store before it seeds; cmd/jobs gains
+the orphaned-file cleanup command (pkg/jobs, filestore.Cleanup over the generated
+FileHolders()); and the rpc package gains CleanUpFiles, a method marked @schedule that
+starts the job process's cleanup each day at 09:00 UTC through the starter the site
+configuration builds from APP_JOBS_JOB (resource/jobs), behind the scheduler guard it
+builds from APP_SCHEDULER_INVOKER (resource/scheduled). An application without an rpc
+package gains one, with WithRPC in the generator program and the Client the generated
+handlers ask the App for; the test configurers gain a nil guard and a fake starter.
+
+Which resources record files (@file on a key column, an @upload method) is the
+application's; until one does, the store is wired and idle.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runTransition(cmd, &f, transition_.Files{}, "")
+		},
+	}
+	f.bind(cmd)
 
 	return cmd
 }

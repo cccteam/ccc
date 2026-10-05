@@ -164,6 +164,7 @@ func All() []Check {
 		featureFlags{},
 		sitesGenerators{},
 		envTemplate{},
+		fileStore{},
 		pins{},
 		goworkOff{},
 		regen{},

@@ -75,6 +75,10 @@ func (c *Change) Text() string {
 // warningPrefix is how a generate program prints one schema warning.
 const warningPrefix = "Warning: "
 
+// plainErr is the error expression an inserted statement returns where the file imports
+// no errors package to wrap it with.
+const plainErr = "err"
+
 // generate runs go generate ./... at the application root, the one regeneration every
 // transition ends in. A clean run records did and every warning line the programs
 // printed; a failed run records the failure and the output tail as the agent's, with

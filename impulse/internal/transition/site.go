@@ -759,7 +759,7 @@ func zeroResults(results *ast.FieldList) string {
 	if !ok || last.Name != "error" {
 		return ""
 	}
-	values[len(values)-1] = "err"
+	values[len(values)-1] = plainErr
 
 	return strings.Join(values, ", ")
 }

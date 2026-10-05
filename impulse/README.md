@@ -174,14 +174,14 @@ application builds against local checkouts.
 The tree is committed as the application's first commit (`--skip-git` leaves it
 uncommitted), so `impulse add` can start from a clean tree; with `--dev-root` the `go.work`
 it writes is ignored by git. Options come afterwards, one reviewable change each:
-`impulse add tenancy`, `impulse add outlet`, `impulse add auth`.
+`impulse add tenancy`, `impulse add outlet`, `impulse add auth`, `impulse add files`.
 
 Options can be composed into the creation: `--tenancy` (with `--tenant-table`, default
 `Tenants`), `--outlet <name>=<prefix>` (repeatable; `--api-outlet` for a machine surface),
-and `--site <name>` (two or more, the first being what the base site becomes under
-`apps/`) run the same transitions `impulse add` runs, on the fresh tree in order, tenancy
-first and the sites last, and end in one check and one handoff brief carrying every
-obligation, so the agent wires the whole shape in one sitting (`--agent` launches it). The
+`--files` (the file store, section add files) and `--site <name>` (two or more, the first
+being what the base site becomes under `apps/`) run the same transitions `impulse add`
+runs, on the fresh tree in order, tenancy first, the file store after the outlets and the
+sites last, and end in one check and one handoff brief carrying every obligation, so the agent wires the whole shape in one sitting (`--agent` launches it). The
 first commit is the base alone, so the composed options are one reviewable diff on top of
 it; the brief's reference is the `sites` skeleton when sites are composed, `outlets` when
 an outlet or a directory flavor is, else `tenanted`.
@@ -289,6 +289,7 @@ impulse check --list
 | `feature-flags` | The `FeatureFlags` and `FeatureFlagChanges` tables the generated feature flag routes and the deploy's `MigrateFeatures` read are created by a migration as the resource module the application pins declares them: the check reads `resource.FeatureFlagsDDL(resource.SpannerDBType)` from that module's source (found through `go list -m`, so the comparison is against the library the application builds with, a replace or a workspace included) and compares each statement with the migration's, whitespace aside; a table that differs is brought to the library's statement by a new migration. Every declared flag (`resource.Feature` constant) gates something (`@feature(<Constant>)` on a resource, a field or a method) or is read somewhere outside tests (`a.FeatureSet().Enabled(resources.<Constant>)` in Go, `Feature.<Constant>` in a browser application), or it is a switch wired to nothing and fails by name and position; a flag declared twice and an annotation naming no declared constant fail too. Skipped when the generator emits no feature flags (no `zz_gen_features.go` in a resources package) and none is declared. |
 | `sites-generators` | In the sites layout, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
 | `env-template` | Every `env` struct tag without a default appears in the development environment template (`.envrc.template`, `.env.template`, or `.env.example`). `--fix` adds the missing lines. |
+| `file-store` | Every file store variable the code declares (`APP_FILE_STORE`, `APP_FILE_STORE_<NAME>`) names, in the development environment template, a store the framework opens (`file://<dir>`, `gs://<bucket>` or `mem://`); a directory store's directory is in `.gitignore` (`--fix` adds it); and a resource or method recording files (`@file`, `@upload`) has a store wired, the failure naming `impulse add files`. |
 | `pins` | Framework pins in `go.mod` are released versions; pseudo-versions and local replaces warn but do not fail. `go.mod` carries the `tool github.com/cccteam/ccc/impulse` directive and a require of impulse, or the check fails with the commands that add it (`go get -tool github.com/cccteam/ccc/impulse@<version>`, `go tool impulse render`, `go tool impulse check`). When the running impulse was built from a module version (`go tool impulse`, `go install github.com/cccteam/ccc/impulse@<version>`) and that version is not the pin, the check fails with the same three commands to move the pin; an impulse built from a checkout is a development build, noted and not compared. |
 | `gowork-off` | `GOWORK=off go build ./...` and `go vet ./...` succeed, so the pins in `go.mod` resolve without the workspace. |
 | `regen` | `go generate ./...` reproduces the generated files on disk (content compared before and after, so it holds in untracked trees too). The `Warning:` lines the generate programs printed are listed under the result and counted in its summary; they never fail the check, since the program's warnings test is what gates the accepted set. Needs the Spanner emulator and rewrites the working tree; `--skip-generate` leaves it out. |
@@ -627,6 +628,47 @@ from `@cccteam/resource-angular/ccc-feature-flags`; the application decides the 
 ```sh
 impulse add feature cargo_manifest --agent
 impulse add feature debriefs --site console
+```
+
+### add files
+
+`add files` wires the framework's file store (`resource/filestore`) into a flat
+application, the whole of it, so the check is clean when it ends. The data level gains
+`FileStoreSettings` and `LoadFileStoreSettings` in `pkg/config/files.go`, reads
+`APP_FILE_STORE` into its environment struct, opens the store the variable names before
+the configuration is built (`openFileStore`; unset leaves the store closed, so the migrate
+and bootstrap commands run without one), builds the resource client over it
+(`resource.NewSpannerClient(client, fileStoreOptions(files)...)`, which is
+`resource.WithFileStore`) and releases it in `Close`. `.envrc.template` sets
+`APP_FILE_STORE=file://uploads` in the data block and `.gitignore` ignores `uploads/`;
+`cmd/bootstrap` gains `emptyFileStore`, called before the development seed, which empties
+a `file://` store since no row holds a file then. `pkg/jobs` declares the cleanup
+(`CleanupCommand`, `cleanup-files`, and `CleanupFiles`, `filestore.Cleanup` over the
+default store through the generated `FileHolders()`), and `cmd/jobs` is the job process
+running it with `-window` and `-dry-run`. The rpc package gains `CleanUpFiles`, a method
+marked `@rpc` and `@schedule("0 9 * * *")` whose `Execute` starts the job process on the
+cleanup command through the client's `Jobs()`; an application without an rpc package gains
+`pkg/rpc` with a `Client` carrying the starter, and `WithRPC("pkg/rpc")` in the generator
+program. The site level builds the scheduler guard (`scheduled.FromEnvironment`, from
+`APP_SCHEDULER_INVOKER`) and the job starter (`jobs.FromEnvironment`, from `APP_JOBS_JOB`)
+and exposes them as `Scheduler()` and `Jobs()`; the `Configurer` asks for both, the `App`
+carries the guard and the RPC client built over the starter, and `app/scheduled.go`
+declares `SchedulerAuth` (the middleware the generated router mounts the scheduled routes
+behind) and `RPCClient`. Every test configurer (a type in a test file declaring
+`LogExporter`) gains a nil guard and `jobs.NewFake()`. Then `go generate` emits the
+method's handler, its route under `/_scheduled` and the router's requirement.
+
+An application already holding an rpc package keeps its `Client`: the method is written
+into the package, and giving the client a `Jobs()` accessor fed from the configuration is
+the agent's, as is the cleanup command where `cmd/jobs` exists. Which resources record
+files (`@file` on a `resource.Key` column, an `@upload` method) is the application's;
+until one does, the store is wired and idle. The `file-store` check watches the variable
+from then on, and the stack reads it to make the bucket (`gs://<bucket>` on Cloud Run),
+deploy the job process beside the service and schedule the method.
+
+```sh
+impulse add files
+impulse new ./harbor --module example.com/harbor --auth staff --files
 ```
 
 ### swap auth
