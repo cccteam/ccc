@@ -94,6 +94,13 @@ type Placement struct {
 	// AppsDomain is the domain the applications' hostnames hang under, never the
 	// identity domain.
 	AppsDomain string `json:"appsDomain"`
+	// ZoneReplacement, while true, renders 2-net's apps zone and its parked zones without
+	// prevent_destroy, so the change that makes a zone again (a new appsDomain, a
+	// replacement) can be planned and applied; false, the default, renders the rule that
+	// refuses it. It is set for the recreation alone and cleared once everything points
+	// at the new zone (2-net/README.md, "Making a zone again"), which org check and
+	// domain check remind of while it is set.
+	ZoneReplacement bool `json:"zoneReplacement,omitempty"`
 	// GithubOrganization is the GitHub organization holding the application
 	// repositories and this one.
 	GithubOrganization string `json:"githubOrganization"`

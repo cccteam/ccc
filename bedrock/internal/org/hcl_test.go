@@ -58,44 +58,50 @@ func TestRenderedOrganizationParsesAsHCL(t *testing.T) {
 	}
 }
 
-// TestZonePreventDestroy holds 2-net's zones to prevent_destroy: Cloud DNS assigns a zone
-// its name servers when it creates the zone, and a zone made again can land on a different
-// set, so the apps zone and every parked zone a registration points at refuse a recreation
-// unless the rule is removed first. The registration keeps ignoring its DNS and contact
-// settings, which the provider cannot change in place, and the README walks the
-// recreation's steps and the step in Cloud Domains that points a registration at the zone.
+// TestZonePreventDestroy holds 2-net's zones to prevent_destroy unless the placement sets
+// zoneReplacement: Cloud DNS assigns a zone its name servers when it creates the zone, and
+// a zone made again can land on a different set, so the apps zone and every parked zone a
+// registration points at refuse a recreation unless the value lifts the rule for one.
+// The registration keeps its own rule and keeps ignoring its DNS and contact settings,
+// which the provider cannot change in place, in both renders.
 func TestZonePreventDestroy(t *testing.T) {
 	t.Parallel()
 
-	files, err := Render(testPlacement(t))
-	if err != nil {
-		t.Fatalf("Render() error = %v", err)
-	}
-	byPath := map[string][]byte{}
-	for _, f := range files {
-		byPath[f.Path] = f.Content
-	}
+	registration := "google_clouddomains_registration.this"
 	tests := []struct {
-		name    string
-		path    string
-		address string
+		name            string
+		zoneReplacement bool
+		path            string
+		address         string
+		wantRule        bool
 		// wantIgnored are the attributes the resource's ignore_changes lists; none means
 		// it has no ignore_changes.
 		wantIgnored []string
 	}{
-		{name: "the apps zone", path: "2-net/dns.tf", address: "google_dns_managed_zone.apps"},
-		{name: "every parked zone", path: "2-net/domains.tf", address: "google_dns_managed_zone.parked"},
-		{
-			name: "the registration, still ignoring the settings the provider cannot change in place", path: "2-net/domains.tf",
-			address: "google_clouddomains_registration.this", wantIgnored: []string{"contact_settings", "dns_settings"},
-		},
+		{name: "the apps zone, by default", path: "2-net/dns.tf", address: "google_dns_managed_zone.apps", wantRule: true},
+		{name: "every parked zone, by default", path: "2-net/domains.tf", address: "google_dns_managed_zone.parked", wantRule: true},
+		{name: "the registration, by default", path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings"}},
+		{name: "the apps zone, zoneReplacement set", zoneReplacement: true, path: "2-net/dns.tf", address: "google_dns_managed_zone.apps"},
+		{name: "every parked zone, zoneReplacement set", zoneReplacement: true, path: "2-net/domains.tf", address: "google_dns_managed_zone.parked"},
+		{name: "the registration, zoneReplacement set", zoneReplacement: true, path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			content, ok := byPath[tt.path]
-			if !ok {
+			p := testPlacement(t)
+			p.ZoneReplacement = tt.zoneReplacement
+			files, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var content []byte
+			for _, f := range files {
+				if f.Path == tt.path {
+					content = f.Content
+				}
+			}
+			if content == nil {
 				t.Fatalf("%s is not rendered", tt.path)
 			}
 			f, diags := hclparse.NewParser().ParseHCL(content, tt.path)
@@ -106,26 +112,31 @@ func TestZonePreventDestroy(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s: not native syntax", tt.path)
 			}
-			lifecycle := lifecycleOf(t, body, tt.address)
-			preventDestroy, ok := lifecycle.Attributes["prevent_destroy"]
-			if !ok {
-				t.Fatalf("%s has no prevent_destroy", tt.address)
+			lifecycle := findLifecycle(t, body, tt.address)
+			rule := false
+			if lifecycle != nil {
+				if attr, ok := lifecycle.Attributes["prevent_destroy"]; ok {
+					v, diags := attr.Expr.Value(nil)
+					rule = !diags.HasErrors() && v.True()
+				}
 			}
-			if v, diags := preventDestroy.Expr.Value(nil); diags.HasErrors() || !v.True() {
-				t.Errorf("%s: prevent_destroy is not true", tt.address)
+			if rule != tt.wantRule {
+				t.Errorf("%s: prevent_destroy = %v, want %v", tt.address, rule, tt.wantRule)
 			}
 			var ignored []string
-			if attr, ok := lifecycle.Attributes["ignore_changes"]; ok {
-				exprs, diags := hcl.ExprList(attr.Expr)
-				if diags.HasErrors() {
-					t.Fatalf("%s: ignore_changes is not a list", tt.address)
-				}
-				for _, expr := range exprs {
-					traversal, diags := hcl.AbsTraversalForExpr(expr)
+			if lifecycle != nil {
+				if attr, ok := lifecycle.Attributes["ignore_changes"]; ok {
+					exprs, diags := hcl.ExprList(attr.Expr)
 					if diags.HasErrors() {
-						t.Fatalf("%s: ignore_changes holds an entry that is not a name", tt.address)
+						t.Fatalf("%s: ignore_changes is not a list", tt.address)
 					}
-					ignored = append(ignored, traversal.RootName())
+					for _, expr := range exprs {
+						traversal, diags := hcl.AbsTraversalForExpr(expr)
+						if diags.HasErrors() {
+							t.Fatalf("%s: ignore_changes holds an entry that is not a name", tt.address)
+						}
+						ignored = append(ignored, traversal.RootName())
+					}
 				}
 			}
 			if !slices.Equal(ignored, tt.wantIgnored) {
@@ -133,23 +144,57 @@ func TestZonePreventDestroy(t *testing.T) {
 			}
 		})
 	}
-	readme := string(byPath["2-net/README.md"])
-	for _, want := range []string{
-		"## Making a zone again",
-		"1. In the infrastructure repository, a pull request that removes the\n   `prevent_destroy` rule",
-		"- **The registration's name servers**",
-		"- **The certificate's authorization record.**",
-		"- **Any delegation a person made**",
-		"`gcloud domains registrations configure dns\n   <domain> --cloud-dns-zone=<zone> --project=<network project>`",
-	} {
-		if !strings.Contains(readme, want) {
-			t.Errorf("2-net/README.md lacks %q", want)
-		}
+}
+
+// TestMakingAZoneAgain holds 2-net's README to the recreation as three renders and one
+// hand step: zoneReplacement set and rendered, the recreating change rendered, the
+// re-pointing by hand that bedrock domain check prints, and the value cleared and
+// rendered; with what a zone made again moves, and the step in Cloud Domains.
+func TestMakingAZoneAgain(t *testing.T) {
+	t.Parallel()
+
+	readme := renderedFile(t, "2-net/README.md")
+	_, section, found := strings.Cut(readme, "## Making a zone again")
+	if !found {
+		t.Fatal("2-net/README.md has no \"Making a zone again\"")
+	}
+	section, _, found = strings.Cut(section, "\n## A domain registered here")
+	if !found {
+		t.Fatal("2-net/README.md has no \"A domain registered here\" after \"Making a zone again\"")
+	}
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "three renders and one hand step", want: "is a deliberate change of three renders and one hand step. The\nrule is lifted by a value in `placement.json`, `zoneReplacement`, never by\nediting the files, which are bedrock's"},
+		{name: "the first render sets the value", want: "1. In the infrastructure repository: set `\"zoneReplacement\": true` in\n   `placement.json` and run `bedrock org render`."},
+		{name: "the second render makes the recreating change", want: "2. In the infrastructure repository: make the change that recreates the\n   zone and run `bedrock org render`, the value still set"},
+		{name: "the hand step re-points, as domain check prints", want: "3. By hand, where each step happens: point everything that pointed at the\n   old set at the new one (below). `bedrock domain check` prints each step"},
+		{name: "the third render clears the value", want: "4. In the infrastructure repository: remove `zoneReplacement` from\n   `placement.json` (or set it to `false`) and run `bedrock org render`. The\n   rule is written back."},
+		{name: "what a zone made again moves", want: "- **The registration's name servers**"},
+		{name: "the certificate's record", want: "- **The certificate's authorization record.**"},
+		{name: "a delegation a person made", want: "- **Any delegation a person made**"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if !strings.Contains(section, tt.want) {
+				t.Errorf("2-net/README.md's \"Making a zone again\" lacks %q:\n%s", tt.want, section)
+			}
+		})
+	}
+	if strings.Contains(section, "removes the\n   `prevent_destroy` rule") {
+		t.Error("2-net/README.md still has the rule removed by editing the files")
+	}
+	if want := "`gcloud domains registrations configure dns\n   <domain> --cloud-dns-zone=<zone> --project=<network project>`"; !strings.Contains(readme, want) {
+		t.Errorf("2-net/README.md lacks %q", want)
 	}
 }
 
-// lifecycleOf is the lifecycle block of the resource named type.name.
-func lifecycleOf(t *testing.T, body *hclsyntax.Body, address string) *hclsyntax.Body {
+// findLifecycle is the lifecycle block of the resource named type.name, or nil when the
+// resource has none.
+func findLifecycle(t *testing.T, body *hclsyntax.Body, address string) *hclsyntax.Body {
 	t.Helper()
 
 	for _, b := range body.Blocks {
@@ -161,7 +206,8 @@ func lifecycleOf(t *testing.T, body *hclsyntax.Body, address string) *hclsyntax.
 				return inner.Body
 			}
 		}
-		t.Fatalf("%s has no lifecycle block", address)
+
+		return nil
 	}
 	t.Fatalf("no resource %s", address)
 

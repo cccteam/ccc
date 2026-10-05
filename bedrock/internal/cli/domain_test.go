@@ -69,8 +69,8 @@ func (w world) LookupCNAME(_ context.Context, host string) (string, error) {
 }
 
 // checkRepo is an organization repository whose placement names checkDomain as its apps
-// domain, with the network project recorded or not.
-func checkRepo(t *testing.T, recorded bool) string {
+// domain, with the network project recorded or not, and zoneReplacement set or not.
+func checkRepo(t *testing.T, recorded, zoneReplacement bool) string {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -79,6 +79,7 @@ func checkRepo(t *testing.T, recorded bool) string {
 		t.Fatal(err)
 	}
 	p.AppsDomain = checkDomain
+	p.ZoneReplacement = zoneReplacement
 	if !recorded {
 		p.Projects = nil
 		p.ProjectNumbers = nil
@@ -91,25 +92,36 @@ func checkRepo(t *testing.T, recorded bool) string {
 }
 
 // TestDomainCheck runs domain check over a fake zone and a fake world: it passes on a
-// delegated domain, exits 1 with the registrar step on one that is not, and is refused
-// before the network project is recorded.
+// delegated domain, saying zoneReplacement can be cleared when the placement sets it,
+// exits 1 with the registrar step on one that is not, with nothing said about the value,
+// and is refused before the network project is recorded.
 func TestDomainCheck(t *testing.T) {
 	t.Parallel()
 
 	delegated := world{ns: map[string]string{checkDomain: checkServer}, cname: map[string]string{"_acme-challenge." + checkDomain + ".": checkAuth}}
 	tests := []struct {
-		name     string
-		recorded bool
-		world    world
-		wantCode int
-		wantOut  []string
-		wantErr  string
+		name            string
+		recorded        bool
+		zoneReplacement bool
+		world           world
+		wantCode        int
+		wantOut         []string
+		absent          []string
+		wantErr         string
 	}{
 		{
 			name:     "a delegated domain passes",
 			recorded: true,
 			world:    delegated,
 			wantOut:  []string{"example.dev is delegated to the zone imp-net-gbl-dns-apps in imp-net-gbl-core-9c0d: it answers the zone's name servers (" + checkServer + ")."},
+			absent:   []string{"zoneReplacement"},
+		},
+		{
+			name:            "a delegated domain passes, and zoneReplacement set can be cleared",
+			recorded:        true,
+			zoneReplacement: true,
+			world:           delegated,
+			wantOut:         []string{"\nzoneReplacement is set in placement.json and the domain points at this zone: clear it and run bedrock org render.\n"},
 		},
 		{
 			name:     "an undelegated domain exits 1 with the registrar step",
@@ -117,6 +129,15 @@ func TestDomainCheck(t *testing.T) {
 			world:    world{},
 			wantCode: 1,
 			wantOut:  []string{"At the registrar where example.dev is registered: set its name servers to the zone's 1 below", "\n" + strings.TrimSuffix(checkServer, ".") + "\n"},
+		},
+		{
+			name:            "an undelegated domain with zoneReplacement set: the value stays",
+			recorded:        true,
+			zoneReplacement: true,
+			world:           world{},
+			wantCode:        1,
+			wantOut:         []string{"At the registrar where example.dev is registered"},
+			absent:          []string{"zoneReplacement"},
 		},
 		{
 			name:     "refused before 1-org's project_ids are recorded",
@@ -129,7 +150,7 @@ func TestDomainCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			dir := checkRepo(t, tt.recorded)
+			dir := checkRepo(t, tt.recorded, tt.zoneReplacement)
 			d := orgDeps(dir)
 			d.lookups = &domain.Lookups{
 				OpenZones: func(context.Context) (domain.ZoneReader, error) {
@@ -159,6 +180,11 @@ func TestDomainCheck(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(out, a) {
+					t.Errorf("output carries %q:\n%s", a, out)
 				}
 			}
 		})

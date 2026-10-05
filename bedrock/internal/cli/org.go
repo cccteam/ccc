@@ -302,7 +302,9 @@ or the domain is suspended), then each registration's state and expiry date, an 
 within thirty days and any other issue the registrar raises. That report reads the
 registrations with the run's Google credentials (gcloud auth application-default login,
 roles/domains.viewer on the network project); without any, or when Cloud Domains cannot be
-reached, it says so, and it never fails the check. It then lists each person (a user: member) holding
+reached, it says so, and it never fails the check. While zoneReplacement is set in the
+placement (2-net's zones rendered without prevent_destroy, for making a zone again), it says
+so and what is left to do, also without failing the check. It then lists each person (a user: member) holding
 roles/owner on an environment project the placement records: the grant a project's creator
 receives, which the first apply of 1-org by hand leaves the bootstrap administrator with on
 every project it creates, temporary by design and removed by hand once the layers workflow
@@ -325,6 +327,7 @@ and never fails the check either.`,
 				return err
 			}
 			registrationReport(cmd.Context(), d, p, dir, cmd.OutOrStdout())
+			fmt.Fprint(cmd.OutOrStdout(), zoneReplacementNotice(p))
 			for _, f := range r.Findings {
 				if f.Missing {
 					fmt.Fprintf(cmd.OutOrStdout(), "%s: missing\n", f.Path)
@@ -352,6 +355,18 @@ and never fails the check either.`,
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// zoneReplacementNotice says, while zoneReplacement is set in the placement, that 2-net's
+// zones are rendered without prevent_destroy and what is left to do, so the guard is not
+// left off by forgetting; nothing when it is not set. It is information: the value is a
+// person's decision, and the check does not fail on it.
+func zoneReplacementNotice(p *org.Placement) string {
+	if !p.ZoneReplacement {
+		return ""
+	}
+
+	return "zoneReplacement is set in placement.json: 2-net's apps zone and parked zones are rendered without prevent_destroy, so a plan may destroy them and create them again on other name servers. Make the change that recreates the zone (a new appsDomain, then bedrock org render), point what pointed at the old name servers at the new ones as bedrock domain check prints, then clear zoneReplacement and run bedrock org render to write the rule back; bedrock domain check says when the domain points at the zone (2-net/README.md, \"Making a zone again\").\n"
 }
 
 // registrationReport reads each domain 2-net registers (registrations in its

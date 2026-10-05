@@ -54,7 +54,9 @@ add at the DNS provider that serves that domain. A registrable domain that is no
 and already answers records that are not the zone's (a website, mail) is refused: such a
 domain is never delegated whole, and the check names a label of it to use instead. The
 check also resolves the authorization record and says when the certificate is still waiting
-on it. Every record is printed on its own line, as it is pasted.
+on it. Every record is printed on its own line, as it is pasted. While zoneReplacement is set
+in placement.json (2-net's zones rendered without prevent_destroy, for making a zone again),
+a check that passes says the value can be cleared now, and bedrock org render written.
 
 The zone is read with the run's Google credentials (gcloud auth application-default login),
 which need to read the network project's zones (roles/dns.reader). It exits 1 when anything
@@ -69,7 +71,7 @@ is missing or refused.`,
 			if project == "" {
 				return errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
 			}
-			r, err := domain.Check(cmd.Context(), d.lookups, domain.CheckRequest{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir})
+			r, err := domain.Check(cmd.Context(), d.lookups, domain.CheckRequest{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir, ZoneReplacement: p.ZoneReplacement})
 			if err != nil {
 				return err
 			}

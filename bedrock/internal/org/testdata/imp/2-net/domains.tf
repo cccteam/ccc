@@ -63,7 +63,7 @@ resource "google_dns_managed_zone" "parked" {
   # The registration points at this zone's name servers, which Cloud DNS
   # assigns when it creates the zone; a zone made again can land on a
   # different set, so a recreation is refused by default and is a deliberate
-  # two-step change, as for the apps zone (dns.tf).
+  # change in steps, as for the apps zone (dns.tf).
   lifecycle {
     prevent_destroy = true
   }

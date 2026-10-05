@@ -28,9 +28,10 @@ resource "google_dns_managed_zone" "apps" {
   # set (the registration in domains.tf, the certificate's authorization
   # record, a delegation a person made at a registrar or a parent zone) then
   # points at servers that no longer answer for the domain. So a recreation is
-  # refused by default and is a deliberate two-step change: remove this rule
-  # in one change, recreate the zone in the next, then re-point what pointed
-  # at the old set (README.md, "Making a zone again").
+  # refused by default and is a deliberate change in steps: set
+  # zoneReplacement in placement.json and render, which lifts this rule,
+  # recreate the zone in the next change, then re-point what pointed at the
+  # old set (README.md, "Making a zone again").
   lifecycle {
     prevent_destroy = true
   }

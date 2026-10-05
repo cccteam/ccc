@@ -395,6 +395,52 @@ func TestOrgCheckRegistrations(t *testing.T) {
 	}
 }
 
+// TestOrgCheckZoneReplacement: while zoneReplacement is set in the placement, org check
+// names it and what is left to do, as information; the layers rendered with it match, so
+// the check stays clean; without it nothing is said.
+func TestOrgCheckZoneReplacement(t *testing.T) {
+	t.Parallel()
+
+	const notice = "zoneReplacement is set in placement.json: 2-net's apps zone and parked zones are rendered without prevent_destroy, so a plan may destroy them and create them again on other name servers. Make the change that recreates the zone (a new appsDomain, then bedrock org render), point what pointed at the old name servers at the new ones as bedrock domain check prints, then clear zoneReplacement and run bedrock org render to write the rule back; bedrock domain check says when the domain points at the zone (2-net/README.md, \"Making a zone again\").\n"
+	tests := []struct {
+		name            string
+		zoneReplacement bool
+		wantNotice      bool
+	}{
+		{name: "set: named, with what is left to do", zoneReplacement: true, wantNotice: true},
+		{name: "not set: nothing said"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			path := filepath.Join(dir, "placement.json")
+			p, err := org.ReadPlacement(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.ZoneReplacement = tt.zoneReplacement
+			if err := p.Write(path); err != nil {
+				t.Fatal(err)
+			}
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			code, out := runOrg(t, "org", "check", "--dir", dir)
+			if code != 0 {
+				t.Fatalf("org check: exit %d, want 0:\n%s", code, out)
+			}
+			if strings.Contains(out, notice) != tt.wantNotice {
+				t.Errorf("output carries the notice: %v, want %v:\n%s", !tt.wantNotice, tt.wantNotice, out)
+			}
+			if !strings.Contains(out, "owned file(s) match the placement") {
+				t.Errorf("output lacks the match line:\n%s", out)
+			}
+		})
+	}
+}
+
 // grantedTester holds every permission asked about except those it lacks.
 type grantedTester struct {
 	lacks []string

@@ -211,18 +211,27 @@ names stop resolving until each is pointed again. So the apps zone
 (`dns.tf`) and every parked zone (`domains.tf`) carry `prevent_destroy`, as
 the Spanner instance does in `2-spn`: no plan and no stray destroy removes
 one, and making a zone again (a new `apps_domain`, or a replacement asked
-for by hand) is a deliberate change in steps:
+for by hand) is a deliberate change of three renders and one hand step. The
+rule is lifted by a value in `placement.json`, `zoneReplacement`, never by
+editing the files, which are bedrock's; each render goes in a pull request of
+its own, merged and applied:
 
-1. In the infrastructure repository, a pull request that removes the
-   `prevent_destroy` rule from the zone's `lifecycle` block, merged and
-   applied. Nothing else changes.
-2. A pull request that makes the change that recreates the zone, still
-   without the rule. Its plan shows the zone destroyed and created.
-3. Everything that pointed at the old set is pointed at the new one, below;
-   `bedrock domain check` prints each step with the zone's new name servers.
-4. `bedrock org render` writes the rule back, in a pull request of its own:
-   the files are bedrock's, and `bedrock org check` reports the difference
-   until then.
+1. In the infrastructure repository: set `"zoneReplacement": true` in
+   `placement.json` and run `bedrock org render`. The apps zone and every
+   parked zone are written without `prevent_destroy`; nothing else changes.
+   While the value is set, `bedrock org check` names it and what is left to
+   do.
+2. In the infrastructure repository: make the change that recreates the
+   zone and run `bedrock org render`, the value still set; for a new domain,
+   `appsDomain` in `placement.json`. Its plan shows the zone destroyed and
+   created. A replacement asked for by hand is applied in this step instead.
+3. By hand, where each step happens: point everything that pointed at the
+   old set at the new one (below). `bedrock domain check` prints each step
+   with the zone's new name servers, and, once the domain points at the new
+   zone, says that the value can be cleared.
+4. In the infrastructure repository: remove `zoneReplacement` from
+   `placement.json` (or set it to `false`) and run `bedrock org render`. The
+   rule is written back.
 
 What a zone made again moves:
 

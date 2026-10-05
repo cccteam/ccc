@@ -161,17 +161,38 @@ func TestCheck(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		domain     string
-		zones      *fakeZones
-		resolver   *fakeResolver
-		want       Delegation
-		wantPassed bool
-		wantLines  []string
+		name     string
+		domain   string
+		zones    *fakeZones
+		resolver *fakeResolver
+		// zoneReplacement is zoneReplacement set in the organization's placement.
+		zoneReplacement bool
+		want            Delegation
+		wantPassed      bool
+		wantLines       []string
 		// wantAbsent are texts no line may hold.
 		wantAbsent []string
 		wantErr    string
 	}{
+		{
+			name:            "a domain that passes while zoneReplacement is set: the value can be cleared",
+			domain:          "example.dev",
+			zones:           zoneFor("example.dev"),
+			resolver:        resolved("example.dev"),
+			zoneReplacement: true,
+			want:            Delegated,
+			wantPassed:      true,
+			wantLines:       []string{ZoneReplacementCleared},
+		},
+		{
+			name:            "a domain that does not pass yet while zoneReplacement is set: nothing said of it",
+			domain:          "example.app",
+			zones:           zoneFor("example.app"),
+			resolver:        &fakeResolver{ns: map[string][]string{"example.app": movedServers}},
+			zoneReplacement: true,
+			want:            Repoint,
+			wantAbsent:      []string{"zoneReplacement"},
+		},
 		{
 			name:       "an apex registered here or delegated: the zone's name servers answer",
 			domain:     "example.dev",
@@ -183,6 +204,7 @@ func TestCheck(t *testing.T) {
 				"example.dev is delegated to the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: it answers the zone's name servers (" + strings.Join(zoneServers, ", ") + ").",
 				"The authorization record resolves: the certificate for example.dev and *.example.dev is not waiting on it.",
 			},
+			wantAbsent: []string{"zoneReplacement"},
 		},
 		{
 			name:       "a label delegated at its parent's DNS provider",
@@ -392,7 +414,7 @@ func TestCheck(t *testing.T) {
 				},
 				Resolver: tt.resolver,
 			}
-			r, err := Check(context.Background(), lookups, CheckRequest{Domain: tt.domain, Project: checkProject, Zone: checkZone, Dir: repo})
+			r, err := Check(context.Background(), lookups, CheckRequest{Domain: tt.domain, Project: checkProject, Zone: checkZone, Dir: repo, ZoneReplacement: tt.zoneReplacement})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Check() error = %v, wantErr %q", err, tt.wantErr)

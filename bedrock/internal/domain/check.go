@@ -175,6 +175,10 @@ type CheckRequest struct {
 	// Dir is the infrastructure repository's root, whose network layer placement lists
 	// the domains the layer registers.
 	Dir string
+	// ZoneReplacement reports zoneReplacement set in the organization's placement: the
+	// zones rendered without prevent_destroy for a recreation, which the check says can
+	// be cleared once the domain points at the zone.
+	ZoneReplacement bool
 }
 
 // Delegation is what the answers show about the apps domain.
@@ -230,6 +234,8 @@ type Report struct {
 	// whether the world sees it.
 	Authorization         Record
 	AuthorizationResolves bool
+	// ZoneReplacement reports zoneReplacement set in the organization's placement.
+	ZoneReplacement bool
 }
 
 // appsZone is what the zone holds that the check compares against.
@@ -262,6 +268,7 @@ func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 	r := &Report{
 		Domain: req.Domain, Project: req.Project, Zone: req.Zone,
 		ZoneName: z.zone.DNSName, NameServers: z.zone.NameServers, Authorization: z.authorization,
+		ZoneReplacement: req.ZoneReplacement,
 	}
 	r.Answered, err = nameServers(ctx, l.Resolver, req.Domain)
 	r.Lame = registered && serverFailure(err)
@@ -490,7 +497,8 @@ func (r *Report) Passed() bool {
 }
 
 // Write prints what the check found and, for what is missing, the place to act and the
-// records to add there, each record on its own line exactly as it is pasted: the name
+// records to add there, and, when zoneReplacement is set and nothing is missing, that it
+// can be cleared; each record on its own line exactly as it is pasted: the name
 // servers for a registrar as bare host names (a registrar takes host names; the trailing
 // dot is a zone file's convention), the NS and CNAME records as zone-file lines, fully
 // qualified with the trailing dot.
@@ -533,7 +541,15 @@ func (r *Report) Write(w io.Writer) {
 		return
 	}
 	r.writeAuthorization(w)
+	if r.ZoneReplacement && r.Passed() {
+		fmt.Fprintln(w, ZoneReplacementCleared)
+	}
 }
+
+// ZoneReplacementCleared is what the check says when zoneReplacement is set in the
+// organization's placement and the domain passes: the recreation the value was set for
+// is done, and the rule that refuses the next one is to be written back.
+const ZoneReplacementCleared = "zoneReplacement is set in placement.json and the domain points at this zone: clear it and run bedrock org render."
 
 // writeAuthorization says whether the certificate is waiting on the authorization record
 // and, when it is, prints the record.

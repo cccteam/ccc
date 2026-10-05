@@ -1220,9 +1220,14 @@ Cloud DNS gives a zone its name servers when it creates the zone, and a zone mad
 land on a different set, which the registration, the certificate's authorization record and
 any delegation made by hand would no longer point at. So 2-net's apps zone and every zone a
 registration points at carry `prevent_destroy`: a recreation is refused by default and is a
-deliberate change in steps (remove the rule in one change, recreate the zone in the next,
-then point everything at the new set, `bedrock domain check` printing each step), which
-2-net's README describes under "Making a zone again".
+deliberate change of three renders and one hand step, which 2-net's README describes under
+"Making a zone again". The organization's placement takes `"zoneReplacement": true` and
+`bedrock org render` writes the zones without the rule; the change that recreates the zone
+is rendered with the value still set; by hand, everything that pointed at the old name
+servers is pointed at the new ones, `bedrock domain check` printing each step; and the
+value is cleared and rendered, which writes the rule back. The files are never edited by
+hand. While the value is set, `bedrock org check` names it and what is left to do, and a
+`bedrock domain check` that passes says it can be cleared now; neither fails on it.
 
 ## bedrock org
 
