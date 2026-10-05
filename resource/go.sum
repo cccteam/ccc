@@ -70,8 +70,8 @@ github.com/cccteam/ccc/securehash v0.0.13 h1:UhoslRb/VKE+OFRcUBuF7SSn+1g0quaKqrW
 github.com/cccteam/ccc/securehash v0.0.13/go.mod h1:Nz+2cTjI8QIRcyBaHATC0xXnYBW3AEGCiv3CbnPRX94=
 github.com/cccteam/ccc/tracer v0.1.6 h1:VqBzbXZ5ErfCWMjQ9kZM2OPYUk31b68lLmAUHbRlQiY=
 github.com/cccteam/ccc/tracer v0.1.6/go.mod h1:WDlvXc+QYqWgdiBB/t7mIZRa8IvgulBOVqPk9ZEwUo8=
-github.com/cccteam/db-initiator v0.4.1-0.20261004223623-20a2067c6324 h1:0E3WPZl3JVh0tkQXe5Q9pieOdT9QheqlKw8g7Al9qK4=
-github.com/cccteam/db-initiator v0.4.1-0.20261004223623-20a2067c6324/go.mod h1:fEy3MCL4O+YE4p3V6p6oN49pJz+vRvoi7LBtwooIZ5Q=
+github.com/cccteam/db-initiator v0.4.1 h1:fQctANANTaqirVpoi95OVtKfcIGZvdn8fW1g6k9OL08=
+github.com/cccteam/db-initiator v0.4.1/go.mod h1:fEy3MCL4O+YE4p3V6p6oN49pJz+vRvoi7LBtwooIZ5Q=
 github.com/cccteam/httpio v0.7.17 h1:lpfVeNKQlYn+Jkpt7Pt4AjzsJMW+KneXUwe4qavZ5kQ=
 github.com/cccteam/httpio v0.7.17/go.mod h1:5roRxY/96pX4jP/0dQcLm/hyXESg5YS3et5tcIYjet8=
 github.com/cccteam/logger v0.1.27 h1:SNYK8jfMLMFOtZ0aoPNBeHrnwZWZ4zWWhEv3cwgDEsc=
