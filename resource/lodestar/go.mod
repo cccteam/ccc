@@ -14,7 +14,7 @@ require (
 	github.com/cccteam/access v0.9.12-0.20261002224611-0ed5dfe165e2
 	github.com/cccteam/ccc v0.3.4-0.20260908043255-2adf7c91cccf
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69
-	github.com/cccteam/ccc/resource v0.10.7-0.20260928050122-b8fa8fb4ac3b
+	github.com/cccteam/ccc/resource v0.10.7-0.20261005064211-ce3bc37a7307
 	github.com/cccteam/ccc/tracer v0.1.7
 	github.com/cccteam/db-initiator v0.4.1-0.20261004223623-20a2067c6324
 	github.com/cccteam/httpio v0.7.18

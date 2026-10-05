@@ -48,8 +48,8 @@ export APP_DROIDS_API_KEY=dev-droids-key
 # export APP_SCHEDULER_INVOKER=
 # The file stores, one URL each: the default store (the refit photos') and the Documents
 # store (the mission documents'), directories in development (gitignored); on Cloud Run
-# bedrock sets each to its bucket, gs://<bucket>. bootstrap -reset empties both, and
-# cmd/jobs cleanup-files removes what no row holds.
+# bedrock sets each to its bucket, gs://<bucket>. cmd/bootstrap empties both directories
+# before it seeds, and cmd/jobs cleanup-files removes what no row holds.
 export APP_FILE_STORE=file://uploads
 export APP_FILE_STORE_DOCUMENTS=file://uploads-documents
 

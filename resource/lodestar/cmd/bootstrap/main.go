@@ -34,7 +34,6 @@ import (
 	"cloud.google.com/go/spanner/admin/instance/apiv1/instancepb"
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource/filestore"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/config"
@@ -139,9 +138,11 @@ func run(ctx context.Context, reset bool) error {
 			return err
 		}
 		fmt.Println("Emptied the database's data; the schema stays")
-		if err := emptyFileStores(ctx); err != nil {
-			return err
-		}
+	}
+
+	// The file stores are emptied before the seed (files.go): no row holds a file yet.
+	if err := emptyFileStores(ctx); err != nil {
+		return err
 	}
 
 	if err := deploy.SeedDevelopmentData(ctx, settings); err != nil {
@@ -262,50 +263,6 @@ func resetData(ctx context.Context, settings config.SpannerSettings) error {
 	if err := deploy.ResetDevelopmentData(ctx, client, deploy.MigrationsSource); err != nil {
 		return errors.Wrap(err, "deploy.ResetDevelopmentData()")
 	}
-
-	return nil
-}
-
-// emptyFileStores removes every object from the file stores whose variables are set, so
-// a reset leaves no file of the previous world behind: an object no row holds would
-// otherwise sit in the development directories until the orphaned-file cleanup's window
-// passed. Each store opens through filestore.Open, as the data level opens it.
-func emptyFileStores(ctx context.Context) error {
-	settings, err := config.LoadFileStoreSettings(ctx)
-	if err != nil {
-		return errors.Wrap(err, "config.LoadFileStoreSettings()")
-	}
-	for _, rawURL := range []string{settings.Default, settings.Documents} {
-		if rawURL == "" {
-			continue
-		}
-		if err := emptyFileStore(ctx, rawURL); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// emptyFileStore deletes every object the store at rawURL holds.
-func emptyFileStore(ctx context.Context, rawURL string) error {
-	store, err := filestore.Open(ctx, rawURL)
-	if err != nil {
-		return errors.Wrap(err, "filestore.Open()")
-	}
-	defer store.Close()
-
-	var keys []string
-	for obj, err := range store.Objects(ctx) {
-		if err != nil {
-			return errors.Wrap(err, "filestore.Store.Objects()")
-		}
-		keys = append(keys, obj.Key)
-	}
-	if err := store.Delete(ctx, keys); err != nil {
-		return errors.Wrap(err, "filestore.Store.Delete()")
-	}
-	fmt.Printf("Emptied the file store %s (%d objects)\n", rawURL, len(keys))
 
 	return nil
 }

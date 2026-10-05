@@ -74,8 +74,9 @@ documents, declared by the `Documents` type in `pkg/resources` and wired on the 
 client in `pkg/config/data.go`. The upload frame streams each file to the store its
 method names under a minted key, the transaction's commit claims it, a failure before
 commit deletes it, the generated file route reads it back, and a deleted or replaced row
-releases its object from the store its column names. `go run -tags skipAuth ./cmd/bootstrap
--reset` empties both stores with the database, and `go run -tags skipAuth ./cmd/jobs
+releases its object from the store its column names. The bootstrap empties both directory
+stores before it seeds (`cmd/bootstrap/files.go`; a fresh database or a `-reset` holds no
+row that names a file), and `go run -tags skipAuth ./cmd/jobs
 cleanup-files` is the orphaned-file cleanup: the job process lists a store, reads every
 key the rows hold through the generated `resources.FileHolders()`, and deletes the
 UUID-named objects older than the window (two days by default, a day at least) that no
