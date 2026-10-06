@@ -603,7 +603,19 @@ thing one step hands the next. In order:
   lists the seed files with their hashes; edited, renumbered or removed since): the
   release is the requester, the reason goes on the record (`RESTORE_REASON`), and a
   restore asked for takes precedence. A seed file added beside the applied ones
-  recreates nothing. The substitutions the application declares for its hooks and its
+  recreates nothing. In staging a tag build decides a restore from production's backup
+  itself, the staging rehearsal: staging runs a release against production's data before
+  production does, so a release that carries migrations production has not applied, by
+  the versions tst's live record of the release and production's live record say they
+  applied (the highest schema migration's index in each; tst's record is read as the
+  build, production's as production's plan identity, which also names production's live
+  database and the backup a rollback restored it from), restores staging's database from
+  production's newest backup before it deploys there, as a restore run the release asked
+  for, and so does a release when staging's own live record lists a migration file the
+  release does not carry as applied (a failed release's), so that staging sits at
+  production's release between releases; a release without such migrations deploys to
+  staging as it stands, since there may be things to see against production's data
+  anyway. The reason goes on the record, and the log says which versions it read. The substitutions the application declares for its hooks and its
   image build (`substitutions` in the stack's `terraform.tfvars`) and its build secrets'
   pins (`build_secrets` there) are read from the checkout the same way, the build
   secrets' containers alone from the trigger (`BUILD_SECRETS`), so a release that
@@ -642,7 +654,9 @@ thing one step hands the next. In order:
   in every environment: the environment's newest live deployment record lists the
   migration and seed files its database holds, each with its hash, and the hotfix is
   refused when the database holds a file the hotfix does not carry, or one whose content
-  differs, naming the file; the environment is restored to the hotfix first (a restore
+  differs, naming the file; the environment is restored to the hotfix first (staging's
+  own build restores it, as the staging rehearsal says, when its database is ahead of the
+  release; tst is restored with `bedrock restore tst`; a restore
   run replaces the database and skips this check); at production's door the hotfix must
   also be on the line production runs, read from the same record.
 - `deploy guard-migrations`: the schema migrations and the seed are each one sequence
@@ -1128,7 +1142,8 @@ no migration and no seed file, the hotfix deploys into that environment as it is
 migrate command finds a database at a version it knows, and the environment runs the hotfix
 until the held-up release resumes. When the later release did move the database, the
 environment holds a file the hotfix does not carry, and the release check refuses the
-hotfix there, naming the file; the environment is restored to the hotfix first, from an
+hotfix there, naming the file; the environment is restored to the hotfix first (staging's own build does
+it, as the staging rehearsal says; tst is restored with `bedrock restore tst`), from an
 empty database or from production's backup, since a restore run replaces the database
 and skips the check. At production's door the hotfix must be on the
 line production runs, and that is checked first; a hotfix from an older line that
@@ -1262,11 +1277,14 @@ anywhere: `bedrock rerun` is its door.
 
 `restore <env> [<release>]` restores an environment to a release, started from GitHub:
 developers authenticate to GitHub and nowhere else, and nobody sets up a cloud tool to
-operate an environment. Its first case is staging's return to production: staging runs a
-release against production's data before production does, so between releases it sits at
-production's release, and the failure expected there is a migration meeting production's
-data. A restore of staging is a rollback to production's release on production's backup,
-after which the failed release returns through a hotfix. So an environment restored from
+operate an environment. Staging runs a release against production's data before
+production does: a release that carries migrations production has not applied restores
+staging from production's newest backup in its own build (the staging rehearsal, decided
+by the resolve step from the versions the records say tst and production applied), so
+between releases staging sits at production's release, and the failure expected there is
+a migration meeting production's data. `restore stg` is the manual way to bring staging's
+data current between releases, migrations or not, and the way back to production's
+release after a failed release there. So an environment restored from
 production's backup (one on production's instance, off the seed list) may leave the
 release out: the workflow's job reads production's live release from production's
 deployment records, says which, and runs it; a release named is run as named, and the

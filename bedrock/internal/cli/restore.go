@@ -19,11 +19,13 @@ func newRestore(d deps) *cobra.Command {
 		Use:   restoreUse + " <env> [<release>]",
 		Short: "Restore an environment to a release, started from GitHub",
 		Long: `restore starts the operations workflow of the application's repository for the environment and the
-release. Its first case is staging's return to production: staging runs a release against
-production's data before production does, so between releases it sits at production's release, and
-the failure expected there is a migration meeting production's data. A restore of staging is a
-rollback to production's release on production's backup, after which the failed release returns
-through a hotfix. So for an environment restored from production's backup (one on production's
+release. Staging runs a release against production's data before production does: a release that
+carries migrations production has not applied restores staging from production's newest backup in
+its own build (the staging rehearsal, decided by the resolve step from the versions the records say
+tst and production applied), so between releases staging sits at production's release, and the
+failure expected there is a migration meeting production's data. restore stg is the manual way to
+bring staging's data current between releases, migrations or not, and the way back to production's
+release after a failed release there. So for an environment restored from production's backup (one on production's
 instance, off the seed list) the release may be left out, and production's live release is what the
 environment returns to: the workflow's job reads it from production's deployment records and says
 which; a release named is run as named, and the job says whether it is production's. The first

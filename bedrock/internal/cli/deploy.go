@@ -90,7 +90,15 @@ differ. In an environment on the seed list a tag build decides a restore itself 
 longer carries a seed file as the environment's live release applied it (the release's record lists the seed files with their
 hashes): the release is the requester and the reason is a fact of its own (RESTORE_REASON), on the
 record; a restore asked for takes precedence, and a seed file added beside the applied ones
-recreates nothing. The substitutions the application declares for its hooks and its image build
+recreates nothing.
+In staging the step decides a restore from production's backup itself (the staging rehearsal): a
+release that carries migrations production has not applied, by the versions tst's live record of the
+release and production's live record say they applied, or one that staging's own live record is
+ahead of (a failed release's migration file the release does not carry), restores staging's database
+from production's newest backup before it deploys, as a restore run the release asked for
+(RESTORE=production-backup, RESTORE_SOURCE_DATABASE and RESTORE_SOURCE_BACKUP from production's
+record, RESTORE_REASON); a release without such migrations deploys to staging as it stands. The
+substitutions the application declares for its hooks and its image build
 and its build secrets' pins are read from the checkout the same way (substitutions and
 build_secrets in infrastructure/terraform.tfvars; the build secrets' containers alone from the
 trigger), so a release that changes them builds with its own; a declared name the contract
