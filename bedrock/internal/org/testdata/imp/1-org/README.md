@@ -388,7 +388,9 @@ CI workflow reads for its two test legs and its image build, the jobs that
 take the most machine; the other jobs, and those three while the variable is
 absent, run on GitHub's standard runner. The runner itself is the
 organization's own setting (a larger hosted runner or a runner group); this
-layer names it.
+layer names it, through the infrastructure GitHub App's Variables
+organization permission (`0-bootstrap/README.md`), without which the apply
+is refused 403.
 
 GitHub features this uses, on a private repository: rulesets with required
 status checks and required reviewers, and deployment branch policies on

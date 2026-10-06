@@ -1771,7 +1771,8 @@ address, `github.com/apps/<slug>`), which each application's placement names as 
 author of its releases, the default branch (`githubDefaultBranch`), the team
 (`githubInfrastructureTeam`, empty for none) and the larger runner the applications' CI
 runs its test legs and image build on (`ciLargeRunner`, a runner label or a runner group
-set as the organization's Actions variable `CI_LARGE_RUNNER`; empty for the standard
+set as the organization's Actions variable `CI_LARGE_RUNNER`, which takes the
+infrastructure app's Variables organization permission; empty for the standard
 runner). A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
@@ -1806,7 +1807,9 @@ organization's GitHub plan, so its plan must include all four.
   that scope is refused.
 - **GitHub Apps owned by the organization.** The release app (Contents, Issues and Pull
   requests, read and write), the deployer app (Checks, Deployments, Issues and Pull
-  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`), each
+  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`:
+  repository Actions, Administration and Metadata, organization Administration and
+  Variables), each
   installed on all repositories, and the Google Cloud Build GitHub App, installed when
   the connection is authorized.
 
