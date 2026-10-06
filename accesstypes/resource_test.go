@@ -4,79 +4,88 @@ import (
 	"testing"
 )
 
-func TestResourceFromStringAndBack(t *testing.T) {
+func TestResource_ResourceWithTag(t *testing.T) {
 	t.Parallel()
 
-	type args struct {
-		user string
-	}
 	tests := []struct {
-		name string
-		args args
-		want Resource
+		name      string
+		resource  Resource
+		tag       Tag
+		want      Resource
+		wantPanic bool
 	}{
 		{
-			name: "Administrator",
-			args: args{
-				user: "resource:Administrator",
-			},
-			want: "Administrator",
+			name:     "field resource",
+			resource: Resource("Persons"),
+			tag:      Tag("firstName"),
+			want:     Resource("Persons.firstName"),
 		},
 		{
-			name: "Bad",
-			args: args{
-				user: "resource:Bad",
-			},
-			want: Resource("Bad"),
+			name:      "dotted tag panics",
+			resource:  Resource("Persons"),
+			tag:       Tag("first.name"),
+			wantPanic: true,
 		},
 	}
+
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := UnmarshalResource(tt.args.user)
-			if got != tt.want {
-				t.Errorf("ResourceFromString() = %v, want %v", got, tt.want)
-			}
-			if gotString := got.Marshal(); gotString != tt.args.user {
-				t.Errorf("Resource.String() = %v, want %v", gotString, tt.args.user)
+
+			defer func() {
+				if r := recover(); (r != nil) != tt.wantPanic {
+					t.Errorf("ResourceWithTag() panic = %v, wantPanic %v", r, tt.wantPanic)
+				}
+			}()
+
+			if got := tt.resource.ResourceWithTag(tt.tag); got != tt.want {
+				t.Errorf("ResourceWithTag() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestResource_Marshal(t *testing.T) {
+func TestResource_ResourceAndTag(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		u         Resource
-		want      string
-		wantPanic bool
+		name         string
+		resource     Resource
+		wantResource Resource
+		wantTag      Tag
+		wantPanic    bool
 	}{
 		{
-			name: "Success",
-			u:    "MyResource",
-			want: resourcePrefix + "MyResource",
+			name:         "parent resource only",
+			resource:     Resource("Persons"),
+			wantResource: Resource("Persons"),
 		},
 		{
-			name:      "Panic",
-			u:         resourcePrefix + "MyResource",
+			name:         "field resource splits",
+			resource:     Resource("Persons.firstName"),
+			wantResource: Resource("Persons"),
+			wantTag:      Tag("firstName"),
+		},
+		{
+			name:      "more than one dot panics",
+			resource:  Resource("Persons.first.name"),
 			wantPanic: true,
 		},
 	}
+
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			defer func() {
-				didPanic := recover()
-				if tt.wantPanic != (didPanic != nil) {
-					t.Errorf("Resource.Mashal() panic = %v, wantPanic %v", didPanic, tt.wantPanic)
+				if r := recover(); (r != nil) != tt.wantPanic {
+					t.Errorf("ResourceAndTag() panic = %v, wantPanic %v", r, tt.wantPanic)
 				}
 			}()
-			if got := tt.u.Marshal(); got != tt.want {
-				t.Errorf("Resource.Marshal() = %v, want %v", got, tt.want)
+
+			gotResource, gotTag := tt.resource.ResourceAndTag()
+			if gotResource != tt.wantResource || gotTag != tt.wantTag {
+				t.Errorf("ResourceAndTag() = (%v, %v), want (%v, %v)", gotResource, gotTag, tt.wantResource, tt.wantTag)
 			}
 		})
 	}
