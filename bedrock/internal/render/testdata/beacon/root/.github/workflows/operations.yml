@@ -713,7 +713,7 @@ jobs:
                 "",
                 "| release | live since | build | cut | pre-release backup | data as of | expires |",
                 "|---|---|---|---|---|---|---|",
-                ($live | reverse[] | "| \(.version)\(if .version == $now.version then " (live)" else "" end) | \(.timestamp) | \(.build[0:8]) | \(.cut // "") | \(.releaseBackup.name // "none" | split("/") | last) | \(.releaseBackup.versionTime // "") | \(.releaseBackup.expireTime // "") |")' records.json
+                ($live | reverse[] | "| \(.version)\(if .build == $now.build then " (live)" else "" end) | \(.timestamp) | \(.build[0:8]) | \(.cut // "") | \(.releaseBackup.name // "none" | split("/") | last) | \(.releaseBackup.versionTime // "") | \(.releaseBackup.expireTime // "") |")' records.json
             echo
             echo "### Database generations a restore made, oldest first (restore with backup <name> or @<moment>, and database <name> for a moment in an earlier generation)"
             echo
