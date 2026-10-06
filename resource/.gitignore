@@ -1,0 +1,2 @@
+# The generator's on-disk cache, which the package's tests write when they run the generator over the test fixtures; cache.New keeps a lock file in it.
+.ccc-cache/

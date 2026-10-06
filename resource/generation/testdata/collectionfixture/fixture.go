@@ -1,9 +1,9 @@
 // Package collectionfixture provides parsed-struct fixtures for the static permission
-// collection computation tests. The structs cover the registration-relevant tag shapes:
-// perm-tagged fields, untagged fields, immutable fields, and input-only/output-only
-// fields. The constants cover @manualAddResource annotation shapes: doc-comment and
-// line-comment placement, an explicit scope, and an unannotated (dormant) constant that
-// must contribute nothing.
+// collection computation tests. The structs cover the registration-relevant field
+// shapes: plain (structurally enforced) fields, immutable fields, and
+// input-only/output-only fields. The constants cover @manualAddResource annotation
+// shapes: doc-comment and line-comment placement, an explicit scope, and an unannotated
+// (dormant) constant that must contribute nothing.
 package collectionfixture
 
 import (
@@ -12,7 +12,9 @@ import (
 )
 
 const (
+	// ManualThing's hand-written route is mounted on the portal outlet.
 	// @manualAddResource(Execute)
+	// @outlet(portal)
 	ManualThing accesstypes.Resource = "ManualThings"
 
 	// ScopedThing has an ordinary doc comment above its annotation.
@@ -27,8 +29,8 @@ const UploadThing accesstypes.Resource = "UploadThings" // @manualAddResource(Ex
 
 type Widget struct {
 	ID         ccc.UUID `spanner:"Id"`
-	Name       string   `spanner:"Name" perm:"Read,Update"`
-	ListedName string   `spanner:"ListedName" perm:"List"`
+	Name       string   `spanner:"Name"`
+	ListedName string   `spanner:"ListedName"`
 	Code       string   `spanner:"Code" conditions:"immutable"`
 	Secret     string   `spanner:"Secret" conditions:"input_only"`
 	Derived    string   `spanner:"Derived" conditions:"output_only"`
@@ -39,14 +41,28 @@ type Gadget struct {
 	Name string   `spanner:"Name"`
 }
 
+// Beacon carries a positional field; the collection tests give it an order and an
+// index, so its list's query keys and the field's masking reach the collection.
+type Beacon struct {
+	ID       ccc.UUID `spanner:"Id"`
+	Name     string   `spanner:"Name"`
+	Deadline string   `spanner:"Deadline" masking:"positional"`
+}
+
 type Sprocket struct {
 	ID   ccc.UUID `spanner:"Id"`
-	Name string   `spanner:"Name" perm:"Update"`
+	Name string   `spanner:"Name"`
 }
 
 type Summary struct {
 	ID    ccc.UUID `spanner:"Id"`
 	Total int64    `spanner:"Total"`
+}
+
+// Digest is a computed resource with no @primarykey: a whole read-only list, List
+// only, with no read identity.
+type Digest struct {
+	Total int64 `spanner:"Total"`
 }
 
 type Relic struct {
@@ -61,7 +77,7 @@ type (
 	// @manualAddResourceSet(listHandler, readHandler)
 	Ledger struct {
 		ID    ccc.UUID `spanner:"Id"`
-		Total int64    `spanner:"Total" perm:"Read"`
+		Total int64    `spanner:"Total"`
 	}
 
 	// Vault's registrations all use the domain scope.
@@ -79,10 +95,41 @@ type Fossil struct {
 	Name string   `spanner:"Name"`
 }
 
+type (
+	// Curio is a virtual resource whose read identity is declared with @primarykey.
+	//
+	// @virtual
+	Curio struct {
+		// @primarykey
+		ID   ccc.UUID `spanner:"Id" uniqueindex:"true"`
+		Name string   `spanner:"Name"`
+	}
+)
+
+// Station exists to pin the domain-route-segment collision guard: its route name
+// ("stations") equals the segment the consolidated dispatcher descends on.
+type Station struct {
+	ID   ccc.UUID `spanner:"Id"`
+	Name string   `spanner:"Name"`
+}
+
+// Antique retains a stale perm tag; the validator tests pin its rejection.
+type Antique struct {
+	ID   ccc.UUID `spanner:"Id"`
+	Name string   `spanner:"Name" perm:"Read"`
+}
+
 type DoSomething struct {
 	Input string
 }
 
 type HiddenMethod struct {
+	Input string
+}
+
+// DrillTest is in the wrong file on purpose: its expected file carries the _rpc marker
+// (drill_test_rpc.go) because drill_test.go would be a Go test file, and the validator's
+// message must say so.
+type DrillTest struct {
 	Input string
 }

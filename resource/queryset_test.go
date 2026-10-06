@@ -14,9 +14,10 @@ import (
 
 // SortTestResource is used for testing sorting functionality.
 type SortTestResource struct {
-	ID   string `spanner:"Id"   db:"Id"`
-	Name string `spanner:"Name" db:"Name"`
-	Date string `spanner:"Date" db:"Date"`
+	ID   string  `spanner:"Id"   postgres:"Id"`
+	Name string  `spanner:"Name" postgres:"Name"`
+	Date string  `spanner:"Date" postgres:"Date"`
+	Note *string `spanner:"Note" postgres:"Note"`
 }
 
 func (SortTestResource) Resource() accesstypes.Resource {
@@ -298,7 +299,7 @@ func TestQuerySet_BatchList(t *testing.T) {
 
 			var collectedResources []*SortTestResource
 			for batch := range tt.qSet.BatchList(t.Context(), txn, tt.batchSize) {
-				for resource, err := range batch {
+				for row, err := range batch {
 					if tt.expectError {
 						if err == nil {
 							t.Fatal("Expected an error but got nil")
@@ -312,7 +313,7 @@ func TestQuerySet_BatchList(t *testing.T) {
 					if err != nil {
 						t.Fatalf("Unexpected error while iterating a batch: %v", err)
 					}
-					collectedResources = append(collectedResources, resource)
+					collectedResources = append(collectedResources, &row.Data)
 				}
 			}
 
@@ -509,6 +510,35 @@ func TestQuerySetCompare(t *testing.T) {
 
 			if diff := QuerySetDiff(cmp.Comparer(hashCompare))(tt.a, tt.b); (diff != "") != tt.wantDiff {
 				t.Errorf("QuerySetCompare() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestQuerySet_Scope pins that the QuerySet hands application query logic the scope
+// its permission check ran in, so a computed resource partitions on the checked value.
+func TestQuerySet_Scope(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		scope accesstypes.Scope
+	}{
+		{name: "domain scope", scope: accesstypes.DomainScope("anvil")},
+		{name: "global scope", scope: accesstypes.GlobalScope()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[SortTestResource, struct{}](accesstypes.List)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+			qSet := NewQuerySet(NewMetadata[SortTestResource]()).EnableUserPermissionEnforcement(rSet, nil, tt.scope, accesstypes.List)
+
+			if got := qSet.Scope(); got != tt.scope {
+				t.Errorf("Scope() = %v, want %v", got, tt.scope)
 			}
 		})
 	}

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/go-playground/errors/v5"
@@ -12,7 +11,9 @@ import (
 
 func (r *resourceGenerator) generateComputedResourceHandler(res *computedResource) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(res.Name())))
+	// The handler file is plural like every other resource kind's (and like the
+	// handler method it holds).
+	fileName := generatedGoFileName(fileStem(r.pluralize(res.Name())))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("computedResourceHandlerTemplate:%q", res.Name()), computedResourceHandlerTemplate, &computedHandlerData{

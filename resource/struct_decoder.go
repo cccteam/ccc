@@ -33,9 +33,9 @@ func NewStructDecoder[Request any]() (*StructDecoder[Request], error) {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	rSet, err := NewSet[nilResource, Request]()
+	rSet, err := newUnenforcedSet[nilResource, Request]()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewSet()")
+		return nil, errors.Wrap(err, "newUnenforcedSet()")
 	}
 
 	return &StructDecoder[Request]{
@@ -54,7 +54,7 @@ func (s *StructDecoder[Request]) WithValidator(v ValidatorFunc) *StructDecoder[R
 
 // Decode decodes the HTTP request body into the target Request struct.
 func (s *StructDecoder[Request]) Decode(request *http.Request) (*Request, error) {
-	_, target, err := decodeToPatch[nilResource, Request](s.resourceSet, s.fieldMapper, request, s.validate, accesstypes.NullPermission)
+	_, target, err := decodeToPatch[nilResource, Request](s.resourceSet, s.fieldMapper, request, s.validate, accesstypes.NullPermission, nil)
 	if err != nil {
 		return nil, err
 	}

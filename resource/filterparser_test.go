@@ -1,11 +1,18 @@
 package resource
 
 import (
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"cloud.google.com/go/civil"
+	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/httpio"
+	"github.com/google/go-cmp/cmp"
+	"github.com/shopspring/decimal"
 )
 
 // defaultTestJSONToSQLNameMap provides a standard map for most test cases.
@@ -21,6 +28,13 @@ var defaultTestJSONToSQLNameMap = map[jsonFieldName]FilterFieldInfo{
 	"email":    {dbColumnNames: map[DBType]string{SpannerDBType: "Email"}, Kind: reflect.String, Indexed: true},
 	"active":   {dbColumnNames: map[DBType]string{SpannerDBType: "Active"}, Kind: reflect.Bool, Indexed: true},
 	"field":    {dbColumnNames: map[DBType]string{SpannerDBType: "Field"}, Kind: reflect.String, Indexed: true},
+	// struct-typed columns, typed by FieldType the way the query decoder records them
+	"fee":         {dbColumnNames: map[DBType]string{SpannerDBType: "Fee"}, Kind: reflect.Struct, FieldType: reflect.TypeFor[decimal.Decimal](), Indexed: true},
+	"estimate":    {dbColumnNames: map[DBType]string{SpannerDBType: "Estimate"}, Kind: reflect.Struct, FieldType: reflect.TypeFor[decimal.NullDecimal](), Indexed: true},
+	"deadline":    {dbColumnNames: map[DBType]string{SpannerDBType: "Deadline"}, Kind: reflect.Struct, FieldType: reflect.TypeFor[time.Time](), Indexed: true},
+	"released_on": {dbColumnNames: map[DBType]string{SpannerDBType: "ReleasedOn"}, Kind: reflect.Struct, FieldType: reflect.TypeFor[civil.Date](), Indexed: true},
+	"ship_id":     {dbColumnNames: map[DBType]string{SpannerDBType: "ShipId"}, Kind: reflect.Struct, FieldType: reflect.TypeFor[ccc.UUID](), Indexed: true},
+	"count":       {dbColumnNames: map[DBType]string{SpannerDBType: "Count"}, Kind: reflect.Struct, FieldType: reflect.TypeFor[spanner.NullInt64](), Indexed: true},
 }
 
 func TestNewLexer(t *testing.T) {
@@ -295,6 +309,30 @@ func TestParser_Parse_Errors(t *testing.T) {
 	}
 	tests := []errorTestCase{
 		{
+			name:               "a decimal column refuses a non-numeric value",
+			filterString:       "fee:gt:abc",
+			wantErrMsgContains: "value 'abc' in condition 'fee:gt:abc' is not a valid decimal number",
+			isHTTPError:        true,
+		},
+		{
+			name:               "a timestamp column refuses a non-RFC 3339 value",
+			filterString:       "deadline:lt:yesterday",
+			wantErrMsgContains: "value 'yesterday' in condition 'deadline:lt:yesterday' is not a valid RFC 3339 timestamp",
+			isHTTPError:        true,
+		},
+		{
+			name:               "a date column refuses an impossible date",
+			filterString:       "released_on:eq:2026-13-01",
+			wantErrMsgContains: "value '2026-13-01' in condition 'released_on:eq:2026-13-01' is not a valid date (YYYY-MM-DD)",
+			isHTTPError:        true,
+		},
+		{
+			name:               "a UUID column refuses a malformed value",
+			filterString:       "ship_id:eq:nope",
+			wantErrMsgContains: "value 'nope' in condition 'ship_id:eq:nope' is not a valid UUID",
+			isHTTPError:        true,
+		},
+		{
 			name:               "invalid condition - missing value",
 			filterString:       "name:eq",
 			wantErrMsgContains: "operator 'eq' requires a value",
@@ -417,7 +455,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:               "invalid field name - using empty map",
 			filterString:       "unknown_field:eq:value",
-			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			wantErrMsgContains: "'unknown_field' is not filterable but was included in condition 'unknown_field:eq:value'",
 			customMap:          map[jsonFieldName]FilterFieldInfo{},
 			isHTTPError:        true,
 		},
@@ -425,14 +463,14 @@ func TestParser_Parse_Errors(t *testing.T) {
 			name:               "invalid field name in group - using empty map",
 			filterString:       "(unknown_field:eq:value,another_unknown:eq:Test)",
 			customMap:          map[jsonFieldName]FilterFieldInfo{},
-			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			wantErrMsgContains: "'unknown_field' is not filterable but was included in condition 'unknown_field:eq:value'",
 			isHTTPError:        true,
 		},
 		{
 			name:               "invalid field name with pipe - using map without the specific field",
 			filterString:       "name:eq:Test|unknown_field:eq:value",
 			customMap:          map[jsonFieldName]FilterFieldInfo{"name": {dbColumnNames: map[DBType]string{SpannerDBType: "Name"}, Kind: reflect.String}},
-			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			wantErrMsgContains: "'unknown_field' is not filterable but was included in condition 'unknown_field:eq:value'",
 			isHTTPError:        true,
 		},
 		// New test cases
@@ -540,6 +578,41 @@ func TestParser_Parse_Successful(t *testing.T) {
 		wantNode     ExpressionNode
 	}{
 		{
+			name:         "a decimal column's value is a decimal, not text",
+			filterString: "fee:gt:100.50",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Fee", Operator: gtStr, Value: decimal.RequireFromString("100.50")}},
+		},
+		{
+			name:         "a nullable decimal column reads its base type",
+			filterString: "estimate:lte:12",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Estimate", Operator: lteStr, Value: decimal.RequireFromString("12")}},
+		},
+		{
+			name:         "a decimal list is typed element by element",
+			filterString: "fee:in:(1,2.5)",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Fee", Operator: inStr, Values: []any{decimal.RequireFromString("1"), decimal.RequireFromString("2.5")}}},
+		},
+		{
+			name:         "a timestamp column's value is a time",
+			filterString: "deadline:lt:2026-09-01T00:00:00Z",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Deadline", Operator: ltStr, Value: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)}},
+		},
+		{
+			name:         "a date column's value is a civil date",
+			filterString: "released_on:eq:2026-09-01",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "ReleasedOn", Operator: eqStr, Value: civil.Date{Year: 2026, Month: 9, Day: 1}}},
+		},
+		{
+			name:         "a UUID column's value is a UUID",
+			filterString: "ship_id:eq:00000000-0000-4000-8000-000000000001",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "ShipId", Operator: eqStr, Value: ccc.Must(ccc.UUIDFromString("00000000-0000-4000-8000-000000000001"))}},
+		},
+		{
+			name:         "a nullable integer column reads an integer",
+			filterString: "count:gte:3",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Count", Operator: gteStr, Value: int64(3)}},
+		},
+		{
 			name:         "simple condition with status",
 			filterString: "status:eq:active",
 			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: eqStr, Value: "active"}},
@@ -636,6 +709,37 @@ func TestParser_Parse_Successful(t *testing.T) {
 
 			if gotNodeStr != wantNodeStr {
 				t.Errorf("parser.Parse() for input '%s'\ngotNode = %s\nwantNode = %s", tt.filterString, gotNodeStr, wantNodeStr)
+			}
+		})
+	}
+}
+
+// TestCondition_TypedValues pins the array-parameter shape a pushed-down in or notin
+// filter binds: the values' own type, decimals as NUMERIC, and the list untouched
+// when it is empty or not uniformly typed.
+func TestCondition_TypedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		values []any
+		want   any
+	}{
+		{name: "strings bind as a STRING array", values: []any{"a", "b"}, want: []string{"a", "b"}},
+		{name: "integers bind as an INT64 array", values: []any{int64(1), int64(2)}, want: []int64{1, 2}},
+		{name: "decimals bind as a NUMERIC array", values: []any{decimal.NewFromInt(5), decimal.RequireFromString("2.5")}, want: []*big.Rat{big.NewRat(5, 1), big.NewRat(5, 2)}},
+		{name: "an empty list is returned unchanged", values: nil, want: []any(nil)},
+		{name: "a list the parser did not type uniformly is returned unchanged", values: []any{"a", int64(1)}, want: []any{"a", int64(1)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &Condition{Field: "Name", Operator: inStr, Values: tt.values}
+			got := c.TypedValues()
+			if diff := cmp.Diff(tt.want, got, cmp.Comparer(func(a, b *big.Rat) bool { return a.Cmp(b) == 0 })); diff != "" {
+				t.Errorf("Condition.TypedValues() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

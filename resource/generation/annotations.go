@@ -5,7 +5,11 @@ package generation
 // TestAnnotationsDocCoversGeneratorVocabulary enforces that, so register new keys in
 // sourceStructTagKeys below.
 const (
-	spannerTagKey            = "spanner"
+	spannerTagKey = "spanner"
+	// permTagKey is no longer author vocabulary: field permissions are enforced
+	// structurally from the endpoint permission, and a perm tag on a source struct is a
+	// generation error (validateNoPermTags). The generator still writes this key into
+	// list/read request structs as the perm:"-" primary-key exemption marker.
 	permTagKey               = "perm"
 	conditionsTagKey         = "conditions"
 	defaultCreateFnTagKey    = "default_create_fn"
@@ -13,22 +17,34 @@ const (
 	allowFilterTagKey        = "allow_filter"
 	indexTagKey              = "index"
 	uniqueIndexTagKey        = "uniqueindex"
-	enumeratedTagKey         = "enumerated"
+	maskingTagKey            = "masking"
 )
 
 // sourceStructTagKeys registers every author-written struct-tag key for the
 // README.md completeness test. Add every new tag-key constant here.
 var sourceStructTagKeys = []string{
 	spannerTagKey,
-	permTagKey,
 	conditionsTagKey,
 	defaultCreateFnTagKey,
 	outputOnlyUpdateFnTagKey,
 	allowFilterTagKey,
 	indexTagKey,
 	uniqueIndexTagKey,
-	enumeratedTagKey,
+	maskingTagKey,
 }
+
+// Values recognized in a masking tag: how a field's masked cells meet a sort or a
+// filter. concealing is the default and says so; positional opts the field into
+// sorting and filtering on the real column while the cell stays hidden — register new
+// values in maskingValues below.
+const (
+	maskingPositional = "positional"
+	maskingConcealing = "concealing"
+)
+
+// maskingValues registers every recognized masking value, for the refusal's
+// suggestion and the README completeness test.
+var maskingValues = []string{maskingPositional, maskingConcealing}
 
 // Values recognized inside a conditions tag's comma-separated list — register new values
 // in conditionValues below.
@@ -54,4 +70,19 @@ const (
 	jsonTagKey         = "json"
 	immutableOutTagKey = "immutable"
 	piiOutTagKey       = "pii"
+	maskingOutTagKey   = "masking"
+	// sqltypeOutTagKey carries a column's declared Spanner type onto a patch request
+	// struct field the decoder sizes (resourceField.SqltypeTag).
+	sqltypeOutTagKey = "sqltype"
+	// nullableOutTagKey marks a slice-typed patch request struct field whose column
+	// allows NULL, the one nullability fact the decoder cannot read off the field's
+	// type (resourceField.NullableTag).
+	nullableOutTagKey = "nullable"
+	// featureOutTagKey names the feature flag a request struct field is gated behind
+	// (resourceField.FeatureTag); the decoders answer the field as unknown while the
+	// flag is off.
+	featureOutTagKey = "feature"
+	// formerlyOutTagKey carries a renamed request struct field's former wire name
+	// (resourceField.FormerlyTag); the decoders answer the former name as the current.
+	formerlyOutTagKey = "formerly"
 )

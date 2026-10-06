@@ -3,6 +3,8 @@ package genlang
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
@@ -175,7 +177,7 @@ func (s *scanner) scan() error {
 			}
 
 			if _, ok := s.keywordArguments[key]; ok && s.isExclusive(key) {
-				return errors.New(s.error("%s used twice here", key))
+				return errors.New(s.errorPostscript(fmt.Sprintf("%s used twice here", key), "every comment line that starts with @ is read as an annotation, prose included; if this line is prose, start it with another word"))
 			}
 
 			var (
@@ -340,30 +342,18 @@ func (s *scanner) consumeIdentifier() []byte {
 
 func (s *scanner) matchKeyword() (string, bool) {
 	currentPos := s.pos
-	possibleMatch := ""
-	var matchSimilarity float64
 
-	ident := s.consumeIdentifier()
-	for key := range s.keywords {
-		if len(ident) == len(key) && string(ident) == key {
-			return key, true
-		}
-
-		// calculating a similarity score for identifiers is expensive
-		// so we should only do it if they're nearly the same length
-		v := len(ident) - len(key)
-		if -2 <= v && v <= 2 {
-			if ss := similarity(string(ident), key); ss > matchSimilarity && ss > 0.65 {
-				possibleMatch = key
-				matchSimilarity = ss
-			}
-		}
+	ident := string(s.consumeIdentifier())
+	if _, ok := s.keywords[ident]; ok {
+		return ident, true
 	}
 
 	// rewind the position for accurate error messaging
 	s.pos = currentPos
 
-	return possibleMatch, false
+	suggestion, _ := Suggest(ident, slices.Sorted(maps.Keys(s.keywords)))
+
+	return suggestion, false
 }
 
 // Calculates an edit distance between two strings using Jaro similarity:

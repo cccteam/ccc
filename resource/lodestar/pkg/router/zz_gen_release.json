@@ -1,0 +1,69 @@
+{
+  "outlets": {
+    "default": {
+      "oldestAnswered": "0.1.0"
+    },
+    "droids": {
+      "kind": "api-key"
+    },
+    "portal": {
+      "oldestAnswered": ""
+    }
+  },
+  "scheduled": [
+    {
+      "path": "/_scheduled/clean-up-files",
+      "schedule": "0 9 * * *",
+      "timeZone": "UTC"
+    },
+    {
+      "path": "/_scheduled/prune-droid-reports",
+      "schedule": "30 3 * * *",
+      "timeZone": "America/Denver"
+    }
+  ],
+  "fileRoutes": [
+    {
+      "kind": "upload",
+      "method": "POST",
+      "path": "/console/api/sectors/{sectorID}/attach-mission-document",
+      "source": "AttachMissionDocument"
+    },
+    {
+      "kind": "upload",
+      "method": "POST",
+      "path": "/console/api/sectors/{sectorID}/attach-refit-photo",
+      "source": "AttachRefitPhoto"
+    },
+    {
+      "kind": "file",
+      "method": "GET",
+      "path": "/console/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}/content",
+      "source": "ExpenseManifest"
+    },
+    {
+      "kind": "file",
+      "method": "GET",
+      "path": "/console/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content",
+      "source": "MissionDocument.StoreKey"
+    },
+    {
+      "kind": "file",
+      "method": "GET",
+      "path": "/console/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}/photo",
+      "source": "RefitTask.PhotoKey"
+    },
+    {
+      "kind": "upload",
+      "method": "POST",
+      "path": "/console/api/sectors/{sectorID}/replace-mission-document",
+      "source": "ReplaceMissionDocument"
+    },
+    {
+      "kind": "file",
+      "method": "GET",
+      "path": "/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content",
+      "source": "MissionDocument.StoreKey"
+    }
+  ]
+}
