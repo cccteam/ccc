@@ -1,0 +1,441 @@
+package secret
+
+import (
+	"bytes"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/hashicorp/hcl/v2/hclwrite"
+)
+
+// edits is where the tfvars edit cases live: <case>.tfvars and <case>[.<variant>].want.tfvars.
+const edits = "testdata/edit"
+
+func TestSetVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		src      string
+		build    bool
+		env      string
+		variable string
+		version  string
+		want     string
+		wantErr  string
+	}{
+		{name: "an entry joins the environment's map", src: "pins.tfvars", env: "tst", variable: "APP_MAIL_API_KEY", version: "4", want: "pins.added.want.tfvars"},
+		{name: "a build secret's pin is replaced under build_secrets, the runtime map untouched", src: "build.tfvars", build: true, env: "tst", variable: "UI_LICENSE", version: "2", want: "build.replaced.want.tfvars"},
+		{name: "a build secret's pin joins an empty environment map under build_secrets", src: "build.tfvars", build: true, env: "stg", variable: "UI_LICENSE", version: "1", want: "build.added.want.tfvars"},
+		{name: "a build secret's pin needs the build_secrets map", src: "pins.tfvars", build: true, env: "tst", variable: "UI_LICENSE", version: "1", wantErr: "no build_secrets in pins.tfvars"},
+		{name: "an empty map takes the first entry", src: "pins.tfvars", env: "stg", variable: "APP_COOKIE_KEY", version: "1", want: "pins.empty.want.tfvars"},
+		{name: "a pinned value is replaced", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", want: "pins.replaced.want.tfvars"},
+		{name: "latest is pinned as written", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "latest", want: "pins.latest.want.tfvars"},
+		{name: "a map on one line takes the entry after a comma", src: "oneline.tfvars", env: "stg", variable: "APP_MAIL_API_KEY", version: "4", want: "oneline.added.want.tfvars"},
+		{name: "a value in a map on one line is replaced in place", src: "oneline.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", want: "oneline.replaced.want.tfvars"},
+		{name: "quoted keys are matched and kept", src: "quoted.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", want: "quoted.want.tfvars"},
+		{name: "a value that is not a string is replaced by the quoted version", src: "number.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", want: "number.want.tfvars"},
+		{name: "every comment is kept when a value is replaced", src: "comments.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", want: "comments.replaced.want.tfvars"},
+		{name: "every comment is kept when an entry is added", src: "comments.tfvars", env: "tst", variable: "APP_MAIL_API_KEY", version: "4", want: "comments.added.want.tfvars"},
+		{name: "a comment after an empty map stays after it", src: "comments.tfvars", env: "stg", variable: "APP_COOKIE_KEY", version: "1", want: "comments.empty.want.tfvars"},
+		{name: "a placement without the map is refused", src: "missing.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", wantErr: "no secret_versions in missing.tfvars"},
+		{name: "a map that is not written out is refused", src: "notmap.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", wantErr: "secret_versions in notmap.tfvars is not a map written out"},
+		{name: "an environment that is not a map is refused", src: "envnotmap.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", wantErr: "secret_versions.tst in envnotmap.tfvars is not a map written out"},
+		{name: "an environment the map lacks is refused", src: "unknownenv.tfvars", env: "prd", variable: "APP_COOKIE_KEY", version: "3", wantErr: "secret_versions in unknownenv.tfvars has no prd map: its keys are tst, stg"},
+		{name: "a file that does not parse is refused", src: "broken.tfvars", env: "tst", variable: "APP_COOKIE_KEY", version: "3", wantErr: "hclsyntax.ParseConfig()"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			src, err := os.ReadFile(filepath.Join(edits, tt.src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			set := SetVersion
+			if tt.build {
+				set = SetBuildVersion
+			}
+			got, err := set(src, tt.src, tt.env, tt.variable, tt.version)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("SetVersion() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("SetVersion() error = %v", err)
+			}
+			// The source is already formatted, so the only difference the golden file
+			// may show is the entry set.
+			if formatted := hclwrite.Format(src); !bytes.Equal(formatted, src) {
+				t.Errorf("%s is not formatted; hclwrite.Format() gives:\n%s", tt.src, formatted)
+			}
+			want, err := os.ReadFile(filepath.Join(edits, tt.want))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Errorf("SetVersion() =\n%s\nwant\n%s", got, want)
+			}
+		})
+	}
+}
+
+func TestPinned(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		src         string
+		key         string
+		env         string
+		variable    string
+		wantVersion string
+		wantPinned  bool
+		wantErr     string
+	}{
+		{name: "a pinned variable", src: "pins.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantVersion: "2", wantPinned: true},
+		{name: "a build secret's pin, under build_secrets", src: "build.tfvars", key: buildKey, env: "tst", variable: "UI_LICENSE", wantVersion: "1", wantPinned: true},
+		{name: "a build secret's pin is not a runtime pin", src: "build.tfvars", env: "tst", variable: "UI_LICENSE"},
+		{name: "a variable the environment's map lacks", src: "pins.tfvars", env: "tst", variable: "APP_MAIL_API_KEY"},
+		{name: "an empty map", src: "pins.tfvars", env: "stg", variable: "APP_COOKIE_KEY"},
+		{name: "a quoted key", src: "quoted.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantVersion: "2", wantPinned: true},
+		{name: "a map on one line", src: "oneline.tfvars", env: "tst", variable: "APP_MAIL_API_KEY", wantVersion: "1", wantPinned: true},
+		{name: "a pin that is not a string counts as another value", src: "number.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantPinned: true},
+		{name: "a placement without the map is refused", src: "missing.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantErr: "no secret_versions in"},
+		{name: "an environment the map lacks is refused", src: "unknownenv.tfvars", env: "prd", variable: "APP_COOKIE_KEY", wantErr: "has no prd map: its keys are tst, stg"},
+		{name: "an environment that is not a map is refused", src: "envnotmap.tfvars", env: "tst", variable: "APP_COOKIE_KEY", wantErr: "secret_versions.tst in envnotmap.tfvars is not a map written out"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			src, err := os.ReadFile(filepath.Join(edits, tt.src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := parsePlacement(src, tt.src)
+			if err != nil {
+				t.Fatalf("parsePlacement() error = %v", err)
+			}
+			key := tt.key
+			if key == "" {
+				key = versionsKey
+			}
+			version, pinned, err := p.pinned(key, tt.env, tt.variable)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("pinned() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("pinned() error = %v", err)
+			}
+			if version != tt.wantVersion || pinned != tt.wantPinned {
+				t.Errorf("pinned() = %q, %v, want %q, %v", version, pinned, tt.wantVersion, tt.wantPinned)
+			}
+		})
+	}
+}
+
+func TestPlacementEnvironments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		src     string
+		want    []string
+		wantErr string
+	}{
+		{name: "the environments in the file's order", src: "pins.tfvars", want: []string{"tst", "stg", "prd"}},
+		{name: "a quoted key", src: "quoted.tfvars", want: []string{"tst", "stg", "prd"}},
+		{name: "two environments", src: "unknownenv.tfvars", want: []string{"tst", "stg"}},
+		{name: "a placement without the map is refused", src: "missing.tfvars", wantErr: "no secret_versions in"},
+		{name: "a map that is not written out is refused", src: "notmap.tfvars", wantErr: "is not a map written out"},
+		{name: "a file that is not there is refused", src: "absent.tfvars", wantErr: "no placement at"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := PlacementEnvironments(filepath.Join(edits, tt.src))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("PlacementEnvironments() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("PlacementEnvironments() error = %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("PlacementEnvironments() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestContainerSuffix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		variable string
+		want     string
+	}{
+		{name: "two words", variable: "APP_COOKIE_KEY", want: "-cookie-key"},
+		{name: "one word", variable: "APP_KEY", want: "-key"},
+		{name: "several words", variable: "APP_STAFF_OIDC_CLIENT_SECRET", want: "-staff-oidc-client-secret"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := ContainerSuffix(tt.variable); got != tt.want {
+				t.Errorf("ContainerSuffix(%q) = %q, want %q", tt.variable, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildSecretNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		env     string
+		want    []string
+		wantErr string
+	}{
+		{name: "the names for the environment, sorted", tfvars: "build_secrets = {\n  tst = {\n    APP_B = \"1\"\n    APP_A = \"2\"\n  }\n  stg = {}\n}\n", env: "tst", want: []string{"APP_A", "APP_B"}},
+		{name: "an environment with none", tfvars: "build_secrets = {\n  tst = {\n    APP_A = \"2\"\n  }\n  stg = {}\n}\n", env: "stg"},
+		{name: "an environment the map lacks declares none", tfvars: "build_secrets = {\n  tst = {\n    APP_A = \"2\"\n  }\n}\n", env: "prd"},
+		{name: "a placement without the map declares none", tfvars: "secret_versions = {\n  tst = {}\n}\n", env: "tst"},
+		{name: "no placement declares none", missing: true, env: "tst"},
+		{name: "a map that is not written out is refused", tfvars: "build_secrets = var.x\n", env: "tst", wantErr: "build_secrets in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := BuildSecretNames(dir, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("BuildSecretNames() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("BuildSecretNames() error = %v", err)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("BuildSecretNames() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLatestVersions: the secrets an environment's secret_versions lets track latest,
+// sorted; none where every secret is pinned, and none where the file, the map or the
+// environment's map is absent; a map not written out and a version that is not a literal
+// refused.
+func TestLatestVersions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		env     string
+		want    []string
+		wantErr string
+	}{
+		{name: "the secrets tracking latest in the environment, sorted", tfvars: "secret_versions = {\n  tst = {\n    APP_B = \"latest\"\n    APP_C = \"3\"\n    \"APP_A\" = \"latest\"\n  }\n  stg = { APP_B = \"2\" }\n}\n", env: "tst", want: []string{"APP_A", "APP_B"}},
+		{name: "an environment whose secrets are all pinned tracks none", tfvars: "secret_versions = {\n  tst = { APP_B = \"latest\" }\n  stg = { APP_B = \"2\", APP_C = 4 }\n}\n", env: "stg"},
+		{name: "an empty map for the environment tracks none", tfvars: "secret_versions = {\n  tst = {}\n}\n", env: "tst"},
+		{name: "an environment the map lacks tracks none", tfvars: "secret_versions = {\n  tst = { APP_B = \"latest\" }\n}\n", env: "prd"},
+		{name: "a placement without the map tracks none", tfvars: "build_secrets = {\n  tst = {}\n}\n", env: "tst"},
+		{name: "no placement tracks none", missing: true, env: "tst"},
+		{name: "a map that is not written out is refused", tfvars: "secret_versions = var.x\n", env: "tst", wantErr: "secret_versions in"},
+		{name: "a version that is not a literal is refused", tfvars: "secret_versions = {\n  tst = { APP_B = lower(\"LATEST\") }\n}\n", env: "tst", wantErr: "secret_versions.tst.APP_B in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := LatestVersions(dir, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("LatestVersions() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("LatestVersions() error = %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("LatestVersions() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEnvironmentValues: the environment's map under a key of the placement, as the stack
+// looks it up; none where the file, the map or the environment's map is absent; a map not
+// written out and a value that is not a literal string refused.
+func TestEnvironmentValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		key     string
+		env     string
+		want    map[string]string
+		wantErr string
+	}{
+		{name: "the environment's substitutions, quoted and bare keys alike", tfvars: "substitutions = {\n  tst = {\n    _THEME = \"dusk\"\n    \"_MODE\" = \"it's \\\"on\\\" $now\"\n  }\n  stg = {}\n}\n", key: SubstitutionsKey, env: "tst", want: map[string]string{"_THEME": "dusk", "_MODE": `it's "on" $now`}},
+		{name: "the environment's build secrets' pins", tfvars: "build_secrets = {\n  tst = {\n    UI_LICENSE = \"2\"\n  }\n}\n", key: BuildSecretsKey, env: "tst", want: map[string]string{"UI_LICENSE": "2"}},
+		{name: "an empty map for the environment holds none", tfvars: "substitutions = {\n  tst = {}\n}\n", key: SubstitutionsKey, env: "tst", want: map[string]string{}},
+		{name: "an environment the map lacks holds none", tfvars: "substitutions = {\n  tst = { _THEME = \"dusk\" }\n}\n", key: SubstitutionsKey, env: "prd", want: map[string]string{}},
+		{name: "a placement without the map holds none", tfvars: "secret_versions = {\n  tst = {}\n}\n", key: SubstitutionsKey, env: "tst", want: map[string]string{}},
+		{name: "no placement holds none", missing: true, key: SubstitutionsKey, env: "tst", want: map[string]string{}},
+		{name: "a map that is not written out is refused", tfvars: "substitutions = var.x\n", key: SubstitutionsKey, env: "tst", wantErr: "substitutions in"},
+		{name: "an environment that is not a map written out is refused", tfvars: "substitutions = {\n  tst = var.x\n}\n", key: SubstitutionsKey, env: "tst", wantErr: "substitutions.tst in"},
+		{name: "a value that is not a string is refused", tfvars: "build_secrets = {\n  tst = { UI_LICENSE = 2 }\n}\n", key: BuildSecretsKey, env: "tst", wantErr: "build_secrets.tst.UI_LICENSE in"},
+		{name: "a value that is not a literal is refused", tfvars: "substitutions = {\n  tst = { _THEME = upper(\"dusk\") }\n}\n", key: SubstitutionsKey, env: "tst", wantErr: "substitutions.tst._THEME in"},
+		{name: "a file that does not parse is refused", tfvars: "substitutions = {\n", key: SubstitutionsKey, env: "tst", wantErr: "hclsyntax.ParseConfig()"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := EnvironmentValues(dir, tt.key, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("EnvironmentValues() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("EnvironmentValues() error = %v", err)
+			}
+			if !maps.Equal(got, tt.want) {
+				t.Errorf("EnvironmentValues() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSetMapEntry: an entry is set in a map attribute, added beside the others or
+// replacing its own value, the attribute added at the file's end when absent; comments
+// stay; an attribute that is not a map written out, and a file that does not parse, are
+// refused.
+func TestSetMapEntry(t *testing.T) {
+	t.Parallel()
+
+	const value = "projects/p-tst/secrets/k/versions/2"
+	tests := []struct {
+		name    string
+		src     string
+		key     string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "the attribute absent is added at the end, the commented example kept",
+			src:  "# keys = { tst = \"projects/<number>/secrets/k/versions/1\" }\nother = 1\n",
+			key:  "tst",
+			want: "# keys = { tst = \"projects/<number>/secrets/k/versions/1\" }\nother = 1\nkeys = {\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n}\n",
+		},
+		{
+			name: "an empty map takes the entry",
+			src:  "keys = {}\n",
+			key:  "tst",
+			want: "keys = {\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n}\n",
+		},
+		{
+			name: "an entry joins the others, which stay",
+			src:  "keys = {\n  stg = \"projects/p-stg/secrets/k/versions/1\" # the first key\n}\n",
+			key:  "tst",
+			want: "keys = {\n  stg = \"projects/p-stg/secrets/k/versions/1\" # the first key\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n}\n",
+		},
+		{
+			name: "the entry's own value is replaced in place",
+			src:  "keys = {\n  tst = \"projects/p-tst/secrets/k/versions/1\"\n  stg = \"projects/p-stg/secrets/k/versions/1\"\n}\n",
+			key:  "tst",
+			want: "keys = {\n  tst = \"projects/p-tst/secrets/k/versions/2\"\n  stg = \"projects/p-stg/secrets/k/versions/1\"\n}\n",
+		},
+		{
+			name: "a map on one line takes the entry after a comma",
+			src:  "keys = { stg = \"projects/p-stg/secrets/k/versions/1\" }\n",
+			key:  "tst",
+			want: "keys = { stg = \"projects/p-stg/secrets/k/versions/1\", tst = \"projects/p-tst/secrets/k/versions/2\" }\n",
+		},
+		{
+			name:    "an attribute that is not a map written out is refused",
+			src:     "keys = var.keys\n",
+			key:     "tst",
+			wantErr: "keys in values.tfvars is not a map written out ({ ... })",
+		},
+		{
+			name:    "a file that does not parse is refused",
+			src:     "keys = {\n",
+			key:     "tst",
+			wantErr: "hclsyntax.ParseConfig()",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := SetMapEntry([]byte(tt.src), "values.tfvars", "keys", tt.key, value)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("SetMapEntry() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("SetMapEntry() error = %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("SetMapEntry() =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}

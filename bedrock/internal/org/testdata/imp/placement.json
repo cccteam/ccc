@@ -1,0 +1,41 @@
+{
+  "prefix": "imp",
+  "organizationDomain": "imp.example",
+  "organizationId": "123456789012",
+  "billingAccount": "012345-6789AB-CDEF01",
+  "appsDomain": "apps.imp.example",
+  "githubOrganization": "imp-example",
+  "githubMachineAccount": "imp-machine",
+  "githubReleaseAppId": "5080645",
+  "githubReleaseAppSlug": "imp-release",
+  "githubDefaultBranch": "master",
+  "githubInfrastructureAppId": "5080700",
+  "githubInfrastructureKeyVersion": "1",
+  "sourceRepo": "imp-impulse-infrastructure",
+  "stateBucket": "imp-boot-gbl-state-a1b2",
+  "operator": "seed@imp.example",
+  "teamGroups": {
+    "tst": "team-tst@imp.example",
+    "stg": "team-stg@imp.example",
+    "prd": "team-prd@imp.example"
+  },
+  "entitlementDurations": {"spannerViewer": "8h"},
+  "regions": [
+    {"name": "us-central1", "code": "uc1"},
+    {"name": "us-west3", "code": "uw3"}
+  ],
+  "spanner": {"config": "nam10"},
+  "contactDomains": ["@imp.example"],
+  "applications": ["harbor", "beacon"],
+  "projects": {
+    "boot": "imp-boot-gbl-core-a1b2",
+    "shr": "imp-shr-gbl-core-7a8b",
+    "net": "imp-net-gbl-core-9c0d",
+    "spn": "imp-spn-gbl-core-2e3f",
+    "tst": "imp-tst-gbl-core-1a2b",
+    "stg": "imp-stg-gbl-core-3c4d",
+    "prd": "imp-prd-gbl-core-5e6f"
+  },
+  "projectNumbers": {"boot": "100000000001", "tst": "100000000002", "stg": "100000000003", "prd": "100000000004"},
+  "labels": {"bedrock-lab": "true"}
+}

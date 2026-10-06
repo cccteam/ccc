@@ -1,0 +1,31 @@
+# Rendered by bedrock from placement.json (applications, projects) and owned by it: bedrock org
+# render rewrites this file and bedrock org check compares it, so an application is registered
+# in placement.json (bedrock org register <app>), never here. OpenTofu reads *.auto.tfvars after
+# terraform.tfvars, which keeps the values a person decides.
+
+applications = {{.ApplicationsList}}
+
+# Each application's deploy identity in every environment (2-env's), writer on the
+# application's repository in the shared registry.
+pushers = {
+{{- range $app := .Applications}}
+  {{$app}} = [
+{{- range $env := $.Environments}}
+    "{{$.DeployIdentity $env $app}}",
+{{- end}}
+  ]
+{{- end}}
+}
+
+# Each application's apply identity in every environment (2-env's), reader on the
+# repository: a revision an apply creates carries the image the last deploy left, and
+# Cloud Run checks that the creator can read it.
+pullers = {
+{{- range $app := .Applications}}
+  {{$app}} = [
+{{- range $env := $.Environments}}
+    "{{$.ApplyIdentity $env $app}}",
+{{- end}}
+  ]
+{{- end}}
+}

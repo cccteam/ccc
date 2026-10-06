@@ -1,0 +1,114 @@
+terraform {
+  # One directory, applied once per environment with -var environment=<env>.
+  # No workspaces: each environment's state lives at its own prefix,
+  # 2-env/<env>, in the bucket 0-bootstrap seeded. A backend block cannot read
+  # a variable, so the prefix below is a placeholder that every init overrides:
+  #
+  #   TF_DATA_DIR=.terraform.tst tofu init -backend-config="prefix=2-env/tst"
+  #   tofu plan -var environment=tst
+  #
+  # TF_DATA_DIR keeps one backend cache per environment in the same checkout,
+  # so an init for stg cannot be paired with a plan for tst by mistake. The
+  # bucket name is substituted once, by hand, as in 1-org.
+  backend "gcs" {
+    bucket = "imp-boot-gbl-state-a1b2"
+    prefix = "2-env/ENVIRONMENT" # overridden at init; see the comment above and the README
+  }
+  required_version = ">= 1.11.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 7.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 7.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+  }
+}
+
+# Every API call is billed and quota-counted against the boot project, as in
+# 1-org. The layer runs as the environment's layer identity
+# (imp-<env>-gbl-tofu), which 1-org gave roles/serviceusage.serviceUsageConsumer
+# there for exactly this.
+provider "google" {
+  user_project_override = true
+  billing_project       = var.boot_project_id
+}
+
+provider "google-beta" {
+  user_project_override = true
+  billing_project       = var.boot_project_id
+}
+
+# ---------------------------------------------------------------------------
+# Upstream layers, read from their state in the same bucket. Nothing any layer
+# publishes is a secret (see each outputs.tf). The identity applying this layer
+# needs object read on these prefixes and object admin on its own.
+#
+# 2-shr, 2-spn, and 2-net are written beside this layer; their outputs are
+# named here as this layer expects them, and every read is wrapped in try() so
+# a layer that is not applied yet reads as absent rather than failing the plan.
+# The README lists the names to reconcile.
+# ---------------------------------------------------------------------------
+
+data "terraform_remote_state" "org" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "1-org"
+  }
+}
+
+data "terraform_remote_state" "shr" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-shr"
+  }
+}
+
+data "terraform_remote_state" "spn" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-spn"
+  }
+}
+
+data "terraform_remote_state" "net" {
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-net"
+  }
+}
+
+# The next environment's 2-env, for the deploy identities the record gate lets
+# read this environment's records. Absent for the last environment.
+data "terraform_remote_state" "next_env" {
+  count = local.next_environment == "" ? 0 : 1
+
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-env/${local.next_environment}"
+  }
+}
+
+# tst's 2-env state, for its deploy identities: they run every pull-request
+# build, which plans this environment's application stacks as this
+# environment's plan identities (identities.tf). tst reads its own.
+data "terraform_remote_state" "tst_env" {
+  count = local.is_tst ? 0 : 1
+
+  backend = "gcs"
+  config = {
+    bucket = var.state_bucket
+    prefix = "2-env/tst"
+  }
+}

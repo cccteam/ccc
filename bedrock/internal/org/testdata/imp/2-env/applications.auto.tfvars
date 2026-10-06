@@ -1,0 +1,8 @@
+# Rendered by bedrock from placement.json (applications, projects) and owned by it: bedrock org
+# render rewrites this file and bedrock org check compares it, so an application is registered
+# in placement.json (bedrock org register <app>), never here. OpenTofu reads *.auto.tfvars after
+# terraform.tfvars, which keeps the values a person decides.
+
+# The applications deployed into every environment, beside each other in the same
+# projects, each with its own identities, repository link and stack.
+applications = ["harbor", "beacon"]

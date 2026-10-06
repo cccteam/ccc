@@ -1,0 +1,600 @@
+# The layers of the imp.example organization, planned on every pull request and applied
+# on its merge, each as its own identity with no key. Rendered by bedrock and owned by it (bedrock
+# org render rewrites this file, bedrock org check compares it).
+#
+# A pull request into master plans every layer whose .tf, .tfvars or lock file it
+# changes, as that layer's plan identity (a reader), and posts each plan on the pull request: one
+# comment per layer, kept current with the pull request's pushes. The plans run side by side (tofu
+# plan <layer>), and each layer's verdict waits for all of them (plan <layer>): a plan that fails
+# only because it reads outputs the plan of a layer before it creates passes, its comment saying it
+# is "planned after <layer> applies", since those outputs exist once the merge has applied that
+# layer; any other failure fails. A push to master
+# (a merge) applies every layer changed since the last push run that applied everything it touched,
+# as that layer's apply identity, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time, and stops at
+# the first failure; the next push applies the failed layer again beside whatever it touches. After
+# each apply of 2-env it restricts Firebase's browser key in the environment project to the sign-in
+# APIs (2-env/README.md, Identity Platform). Run
+# workflow (the Actions tab) applies one layer again with no change to it, from
+# master alone: 2-env in every environment, tst first, which a registration's
+# second pass needs. A change to .opentofu-version or to this file touches every layer, and the
+# OpenTofu version is the one .opentofu-version pins.
+#
+# Every run signs in through the boot project's workload identity pool (0-bootstrap/github.tf):
+# GitHub vouches for the run, Google answers with a short-lived token for the identity, and no key
+# exists anywhere. The pool's provider trusts tokens of this repository and this workflow file alone,
+# and maps the token's event and ref to attribute.purpose: plan for a pull request into the default
+# branch, apply for a push to it or a run started from it. Each plan identity's binding admits plan
+# and each apply identity's admits apply, so a pull request's code reads and never writes
+# (0-bootstrap binds its two identities, 1-org the rest). 1-org's GitHub provider takes an
+# installation token of the infrastructure GitHub App, minted in the run from the key the boot
+# project's Secret Manager holds at the version placement.json pins (0-bootstrap/README.md, "The
+# infrastructure GitHub App"); until the app and its key are recorded there, a run of 1-org says so
+# and stops.
+#
+# Until the first applies of 0-bootstrap and 1-org (the bootstrap administrator's, by hand) the pool,
+# the identities and their grants do not exist, and a run fails at its sign-in. A placement that does
+# not record a project yet renders REPLACEME into that layer's identity, and the run stops before
+# signing in and says what to record.
+name: layers
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      layer:
+        description: The layer to apply again, with no change to it (2-env in every environment, tst first)
+        type: choice
+        required: true
+        options:
+          - 0-bootstrap
+          - 1-org
+          - 2-shr
+          - 2-spn
+          - 2-net
+          - 2-env
+
+# A pull request's plans give way to its next push: its runs share one group, and a new one cancels
+# the one in progress. A push or a Run workflow is a group of its own here; its applies wait on
+# their layers instead (the apply job's concurrency, below).
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('layers-plan-{0}', github.ref) || format('layers-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
+
+env:
+  # The boot project's identity provider, by the project's number (placement.json, projectNumbers.boot).
+  PROVIDER: projects/100000000001/locations/global/workloadIdentityPools/imp-boot-github/providers/github
+
+jobs:
+  layers:
+    name: the layers this run touches
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      matrix: ${{ steps.touched.outputs.matrix }}
+      count: ${{ steps.touched.outputs.count }}
+      tofu: ${{ steps.touched.outputs.tofu }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: The layers this run touches, in layer order
+        id: touched
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LAYER: ${{ inputs.layer }}
+        run: |
+          # Every run of the workflow, rendered from placement.json: the layer, its environment and
+          # state prefix (- for none), its apply identity and its plan identity.
+          runs() {
+            cat <<'EOF'
+          0-bootstrap - - imp-boot-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com imp-boot-gbl-plan@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com
+          1-org - - imp-org-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com imp-org-gbl-plan@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com
+          2-shr - - imp-shr-gbl-tofu@imp-shr-gbl-core-7a8b.iam.gserviceaccount.com imp-shr-gbl-plan@imp-shr-gbl-core-7a8b.iam.gserviceaccount.com
+          2-spn - - imp-spn-gbl-tofu@imp-spn-gbl-core-2e3f.iam.gserviceaccount.com imp-spn-gbl-plan@imp-spn-gbl-core-2e3f.iam.gserviceaccount.com
+          2-net - - imp-net-gbl-tofu@imp-net-gbl-core-9c0d.iam.gserviceaccount.com imp-net-gbl-plan@imp-net-gbl-core-9c0d.iam.gserviceaccount.com
+          2-env tst 2-env/tst imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com imp-tst-gbl-plan@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com
+          2-env stg 2-env/stg imp-stg-gbl-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com imp-stg-gbl-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com
+          2-env prd 2-env/prd imp-prd-gbl-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com imp-prd-gbl-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com
+          EOF
+          }
+          all="0-bootstrap 1-org 2-shr 2-spn 2-net 2-env"
+          # The paths that change a layer's run: its .tf and .tfvars files and its lock file. The
+          # OpenTofu version and this workflow touch every layer.
+          layers_of() {
+            while IFS= read -r path; do
+              case "$path" in
+                .opentofu-version|.github/workflows/layers.yml) printf '%s\n' $all ;;
+                */*.tf|*/*.tfvars|*/.terraform.lock.hcl) printf '%s\n' "${path%%/*}" ;;
+              esac
+            done
+          }
+          case "$EVENT" in
+            pull_request)
+              touched=$(git diff --name-only "$(git merge-base "$BASE_SHA" "$HEAD_SHA")" "$HEAD_SHA" | layers_of)
+              ;;
+            push)
+              # Since the last push run that applied everything it touched; every layer when there
+              # is none yet, or when that run's commit is not in this history.
+              last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/layers.yml/runs?branch=$GITHUB_REF_NAME&event=push&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty')
+              if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null; then
+                echo "Changed since $last, the last push run that applied everything it touched."
+                touched=$(git diff --name-only "$last" "$GITHUB_SHA" | layers_of)
+              else
+                echo "No earlier push run on $GITHUB_REF_NAME applied everything it touched: every layer."
+                touched=$(printf '%s\n' $all)
+              fi
+              ;;
+            workflow_dispatch)
+              touched=$LAYER
+              ;;
+          esac
+          touched=" $(printf '%s\n' $touched | sort -u | tr '\n' ' ')"
+          selected=$(runs | while read -r layer env prefix apply plan; do
+            case "$touched" in *" $layer "*) echo "$layer $env $prefix $apply $plan" ;; esac
+          done)
+          if printf '%s' "$selected" | grep -q REPLACEME; then
+            echo "::error::a touched layer's identity is under a project placement.json does not record yet (REPLACEME): record the project ids and the boot project's number (projects, projectNumbers.boot) and run bedrock org render"
+            exit 1
+          fi
+          if [ -n "$selected" ] && [ -z "$PROVIDER" ]; then
+            echo "::error::the identity provider is not named yet: record the boot project's number in placement.json (projectNumbers.boot) and run bedrock org render"
+            exit 1
+          fi
+          matrix=$(printf '%s\n' "$selected" | jq -Rsc '[split("\n")[] | select(length > 0) | split(" ") | {layer: .[0], environment: (if .[1] == "-" then "" else .[1] end), prefix: (if .[2] == "-" then "" else .[2] end), apply: .[3], plan: .[4]} | .name = (if .environment == "" then .layer else .layer + " " + .environment end) | .slug = (.name | gsub(" "; "-"))]')
+          count=$(printf '%s' "$matrix" | jq length)
+          {
+            echo "matrix=$matrix"
+            echo "count=$count"
+            echo "tofu=$(tr -d '[:space:]' < .opentofu-version)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Touched:${touched% } ($count run(s): $(printf '%s' "$matrix" | jq -r 'map(.name) | join(", ")'))"
+
+  # Each layer's plan, side by side, as its plan identity. The job passes whenever the plan ran,
+  # whatever it found, and leaves what the plan job reads: the plan as tofu printed it, its errors,
+  # and the output changes it makes, by name and action without their values.
+  tofu:
+    name: tofu plan ${{ matrix.name }}
+    needs: layers
+    if: github.event_name == 'pull_request' && needs.layers.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.layers.outputs.matrix) }}
+    env:
+      NAME: ${{ matrix.name }}
+      ENVIRONMENT: ${{ matrix.environment }}
+      STATE_PREFIX: ${{ matrix.prefix }}
+      IDENTITY: ${{ matrix.plan }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ needs.layers.outputs.tofu }}
+          tofu_wrapper: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.PROVIDER }}
+          service_account: ${{ env.IDENTITY }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        if: matrix.layer == '1-org'
+      # 1-org's GitHub provider reads the applications' repositories with the infrastructure app's
+      # token, minted from the key the boot project holds at the pinned version; the plan identity
+      # of 1-org reads that one secret.
+      - name: The infrastructure GitHub App's key, from the boot project
+        if: matrix.layer == '1-org'
+        id: key
+        env:
+          APP_ID: 5080700
+          KEY_VERSION: 1
+          KEY_SECRET: imp-boot-gbl-github-infrastructure-key
+          BOOT_PROJECT: imp-boot-gbl-core-a1b2
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$KEY_VERSION" ]; then
+            echo "::error::1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, The infrastructure GitHub App): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to $KEY_SECRET in $BOOT_PROJECT with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render"
+            exit 1
+          fi
+          key=$(gcloud secrets versions access "$KEY_VERSION" --secret "$KEY_SECRET" --project "$BOOT_PROJECT")
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then echo "::add-mask::$line"; fi
+          done <<< "$key"
+          {
+            echo "key<<KEY"
+            printf '%s\n' "$key"
+            echo "KEY"
+          } >> "$GITHUB_OUTPUT"
+      - name: Token of the infrastructure GitHub App
+        if: matrix.layer == '1-org'
+        id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: 5080700
+          private-key: ${{ steps.key.outputs.key }}
+          owner: imp-example
+      # The plan runs without the state lock: the plan identity reads the state and writes nothing.
+      - name: tofu plan
+        id: plan
+        working-directory: ${{ matrix.layer }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          init_args=""
+          if [ -n "$STATE_PREFIX" ]; then
+            init_args="-backend-config=prefix=$STATE_PREFIX"
+          fi
+          tofu init -input=false $init_args
+          set +e
+          tofu plan -input=false -lock=false -no-color -out="$RUNNER_TEMP/plan.tfplan" -json-into="$RUNNER_TEMP/plan-log.json" ${ENVIRONMENT:+-var environment=$ENVIRONMENT} > "$RUNNER_TEMP/plan.txt" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/plan.txt"
+          result="$RUNNER_TEMP/result"
+          mkdir -p "$result"
+          printf '%s\n' "$NAME" > "$result/name"
+          printf '%s\n' "$status" > "$result/status"
+          cp "$RUNNER_TEMP/plan.txt" "$result/plan.txt"
+          if [ -f "$RUNNER_TEMP/plan-log.json" ]; then
+            jq -s '[.[] | select(.type == "diagnostic" and .diagnostic.severity == "error") | .diagnostic | {summary, detail}]' "$RUNNER_TEMP/plan-log.json" > "$result/errors.json"
+          else
+            echo '[]' > "$result/errors.json"
+          fi
+          if [ "$status" -eq 0 ]; then
+            tofu show -json "$RUNNER_TEMP/plan.tfplan" | jq '.output_changes // {} | map_values(.actions)' > "$result/outputs.json"
+          else
+            echo '{}' > "$result/outputs.json"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: plan-${{ matrix.slug }}
+          path: ${{ runner.temp }}/result
+          retention-days: 1
+          overwrite: true
+
+  # Each layer's verdict, once every plan has finished, and its comment on the pull request: the
+  # job passes when the plan succeeded, or when it failed only because it reads outputs that the
+  # plan of a layer before it in layer order creates (the verdict script below says how it decides),
+  # and fails otherwise, a plan that did not run included.
+  plan:
+    name: plan ${{ matrix.name }}
+    needs: [layers, tofu]
+    if: ${{ (success() || failure()) && github.event_name == 'pull_request' && needs.layers.result == 'success' && needs.layers.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.layers.outputs.matrix) }}
+    env:
+      NAME: ${{ matrix.name }}
+      SLUG: ${{ matrix.slug }}
+      IDENTITY: ${{ matrix.plan }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          pattern: plan-*
+          path: ${{ runner.temp }}/plans
+      # One comment per layer on the pull request, replaced on each push, with the verdict's line
+      # and the plan itself folded under it; the run's summary carries the same.
+      - name: The plan's verdict, on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MATRIX: ${{ needs.layers.outputs.matrix }}
+        run: |
+          cat > "$RUNNER_TEMP/plan-verdict.sh" <<'VERDICT'
+          # The verdict on one run's plan of a pull request in the layers workflow, run by its plan
+          # job once every tofu plan job of the pull request has finished.
+          #
+          #   plan-verdict.sh <results> <run> <runs...>
+          #
+          # results holds one directory per run that planned, plan-<run>: name (the run as the
+          # workflow calls it), status (tofu plan's exit code), plan.txt (what tofu plan printed),
+          # errors.json (the plan's errors, [{summary, detail}]) and outputs.json (the output
+          # changes the plan makes, {output: [actions]}, without their values; {} when the plan
+          # failed). run is this run's directory name without plan-; runs are every run the pull
+          # request touches, in layer order, the order the merge applies them in.
+          #
+          # It prints the plan's one line for the pull request and exits 0 when the plan passes:
+          # the plan succeeded, or it failed only because it reads outputs that the plans of runs
+          # before it create, which exist once the merge has applied those runs ("planned after
+          # <run> applies"). Any other failure exits 1, as does a run that did not plan.
+          set -euo pipefail
+
+          results=$1
+          run=$2
+          shift 2
+          dir="$results/plan-$run"
+          failed="The plan failed; the log says why."
+          if [ ! -f "$dir/status" ]; then
+            echo "The plan did not run; the log of its tofu plan job says why."
+            exit 1
+          fi
+          if [ "$(cat "$dir/status")" = 0 ]; then
+            summary=$(grep -E '^(Plan:|No changes\.)' "$dir/plan.txt" | tail -n 1 || true)
+            # A plan that changes outputs alone prints neither line, only "Changes to Outputs:".
+            if [ -z "$summary" ] && grep -q '^Changes to Outputs:' "$dir/plan.txt"; then
+              summary="No resource changes; outputs change only."
+            fi
+            echo "${summary:-no summary line}"
+            exit 0
+          fi
+
+          # The runs before this one in the order the merge applies them; this run is among them.
+          earlier=()
+          found=""
+          for r in "$@"; do
+            if [ "$r" = "$run" ]; then
+              found=1
+              break
+            fi
+            earlier+=("$r")
+          done
+          if [ -z "$found" ]; then
+            echo "$failed"
+            exit 1
+          fi
+
+          # Every error is an unsupported attribute: an object read without the attribute named.
+          lacks='^This object does not have an attribute named "[^"]+"\.$'
+          others=$(jq --arg lacks "$lacks" '[.[] | select(.summary != "Unsupported attribute" or ((.detail // "") | test($lacks) | not))] | length' "$dir/errors.json")
+          mapfile -t attributes < <(jq -r '.[] | (.detail // "") | capture("^This object does not have an attribute named \"(?<name>[^\"]+)\"\\.$") | .name' "$dir/errors.json" | sort -u)
+          if [ "$others" != 0 ] || [ "${#attributes[@]}" = 0 ]; then
+            echo "$failed"
+            exit 1
+          fi
+
+          # Each attribute is an output the plan of a run before this one creates.
+          declare -A outputs
+          producers=()
+          for attribute in "${attributes[@]}"; do
+            producer=""
+            for r in "${earlier[@]}"; do
+              if [ -f "$results/plan-$r/outputs.json" ] && jq -e --arg a "$attribute" '.[$a] == ["create"]' "$results/plan-$r/outputs.json" > /dev/null; then
+                producer=$(cat "$results/plan-$r/name")
+                break
+              fi
+            done
+            if [ -z "$producer" ]; then
+              echo "$failed"
+              exit 1
+            fi
+            if [ -z "${outputs[$producer]+set}" ]; then
+              producers+=("$producer")
+              outputs[$producer]=$attribute
+            else
+              outputs[$producer]+=" $attribute"
+            fi
+          done
+
+          # joined joins words as a sentence does: a, b and c.
+          joined() {
+            local out="" i
+            for ((i = 1; i <= $#; i++)); do
+              if [ "$i" -gt 1 ]; then
+                if [ "$i" -eq "$#" ]; then out+=" and "; else out+=", "; fi
+              fi
+              out+="${!i}"
+            done
+            printf '%s' "$out"
+          }
+
+          if [ "${#producers[@]}" -eq 1 ]; then
+            read -r -a names <<< "${outputs[${producers[0]}]}"
+            noun="the output"
+            if [ "${#names[@]}" -gt 1 ]; then noun="the outputs"; fi
+            echo "planned after ${producers[0]} applies: this plan reads $noun $(joined "${names[@]}"), which ${producers[0]}'s plan creates, and the merge applies ${producers[0]} first."
+            exit 0
+          fi
+          sources=""
+          for producer in "${producers[@]}"; do
+            read -r -a names <<< "${outputs[$producer]}"
+            sources+="${sources:+; }$(joined "${names[@]}") from $producer"
+          done
+          echo "planned after $(joined "${producers[@]}") apply: this plan reads outputs their plans create ($sources), and the merge applies them first."
+          VERDICT
+          plans="$RUNNER_TEMP/plans"
+          # One matching artifact is extracted into the directory itself, not into a
+          # directory of its own as several are: a run that touches one layer gives its
+          # plan the place the others get, and that layer is this job's.
+          if [ -f "$plans/status" ] && [ ! -d "$plans/plan-$SLUG" ]; then
+            mkdir "$plans/plan-$SLUG"
+            for f in name status plan.txt errors.json outputs.json; do
+              [ -f "$plans/$f" ] && mv "$plans/$f" "$plans/plan-$SLUG/"
+            done
+          fi
+          order=$(printf '%s' "$MATRIX" | jq -r 'map(.slug) | join(" ")')
+          set +e
+          summary=$(bash "$RUNNER_TEMP/plan-verdict.sh" "$plans" "$SLUG" $order)
+          verdict=$?
+          set -e
+          echo "$summary"
+          plan="$plans/plan-$SLUG/plan.txt"
+          if [ ! -f "$plan" ]; then
+            plan="$RUNNER_TEMP/no-plan.txt"
+            echo "tofu plan $NAME left no plan; its log says why." > "$plan"
+          fi
+          marker="<!-- layers: $NAME -->"
+          {
+            echo "$marker"
+            echo "### plan of $NAME"
+            echo
+            echo "As \`$IDENTITY\` at $HEAD_SHA: ${summary:-no summary line}"
+            echo
+            echo "<details><summary>the plan</summary>"
+            echo
+            echo '````text'
+            head -c 60000 "$plan"
+            if [ "$(wc -c < "$plan")" -gt 60000 ]; then
+              echo
+              echo "... cut at 60000 characters; the run's log has all of it"
+            fi
+            echo '````'
+            echo
+            echo "</details>"
+          } > "$RUNNER_TEMP/comment.md"
+          cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --paginate --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F "body=@$RUNNER_TEMP/comment.md" --silent
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -F "body=@$RUNNER_TEMP/comment.md" --silent
+          fi
+          exit "$verdict"
+
+  apply:
+    name: apply ${{ matrix.name }}
+    needs: layers
+    if: github.event_name != 'pull_request' && needs.layers.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    # One concurrency group per layer (layers-apply-<layer>, 2-env's environments in one group), so
+    # two applies of one layer never overlap and applies of different layers do not wait on each
+    # other: a Run workflow of 2-spn and one of 2-env started seconds apart both run. GitHub runs one
+    # job of a group and keeps at most one more pending behind it; a job that arrives while one is
+    # pending cancels that pending one, which ends its run (fail-fast). So where several layers go
+    # by Run workflow, start each when the previous has finished.
+    concurrency:
+      group: layers-apply-${{ matrix.layer }}
+      cancel-in-progress: false
+    # One layer at a time, in the matrix's order (layer order); a failure cancels the rest. A push
+    # run keeps that order inside the run.
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.layers.outputs.matrix) }}
+    env:
+      NAME: ${{ matrix.name }}
+      ENVIRONMENT: ${{ matrix.environment }}
+      STATE_PREFIX: ${{ matrix.prefix }}
+      IDENTITY: ${{ matrix.apply }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ needs.layers.outputs.tofu }}
+          tofu_wrapper: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.PROVIDER }}
+          service_account: ${{ env.IDENTITY }}
+      # gcloud reads the infrastructure app's key for 1-org and restricts Firebase's browser key
+      # after 2-env's apply.
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        if: matrix.layer == '1-org' || matrix.layer == '2-env'
+      - name: The infrastructure GitHub App's key, from the boot project
+        if: matrix.layer == '1-org'
+        id: key
+        env:
+          APP_ID: 5080700
+          KEY_VERSION: 1
+          KEY_SECRET: imp-boot-gbl-github-infrastructure-key
+          BOOT_PROJECT: imp-boot-gbl-core-a1b2
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$KEY_VERSION" ]; then
+            echo "::error::1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, The infrastructure GitHub App): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to $KEY_SECRET in $BOOT_PROJECT with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render"
+            exit 1
+          fi
+          key=$(gcloud secrets versions access "$KEY_VERSION" --secret "$KEY_SECRET" --project "$BOOT_PROJECT")
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then echo "::add-mask::$line"; fi
+          done <<< "$key"
+          {
+            echo "key<<KEY"
+            printf '%s\n' "$key"
+            echo "KEY"
+          } >> "$GITHUB_OUTPUT"
+      - name: Token of the infrastructure GitHub App
+        if: matrix.layer == '1-org'
+        id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: 5080700
+          private-key: ${{ steps.key.outputs.key }}
+          owner: imp-example
+      # The plan this run makes is the one it applies; the run's summary carries both.
+      - name: tofu apply
+        working-directory: ${{ matrix.layer }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          init_args=""
+          if [ -n "$STATE_PREFIX" ]; then
+            init_args="-backend-config=prefix=$STATE_PREFIX"
+          fi
+          tofu init -input=false $init_args
+          set +e
+          tofu plan -input=false -no-color -out="$RUNNER_TEMP/plan.tfplan" ${ENVIRONMENT:+-var environment=$ENVIRONMENT} > "$RUNNER_TEMP/plan.txt" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/plan.txt"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::the plan of $NAME failed; the log says why"
+            exit "$status"
+          fi
+          set +e
+          tofu apply -input=false -no-color "$RUNNER_TEMP/plan.tfplan" > "$RUNNER_TEMP/apply.txt" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/apply.txt"
+          {
+            echo "### apply of $NAME"
+            echo
+            echo "As \`$IDENTITY\` at $GITHUB_SHA: $(grep -hE '^(Apply complete|No changes\.|Error:)' "$RUNNER_TEMP/plan.txt" "$RUNNER_TEMP/apply.txt" | tail -n 1)"
+            echo
+            echo "<details><summary>the plan and the apply</summary>"
+            echo
+            echo '````text'
+            head -c 30000 "$RUNNER_TEMP/plan.txt"
+            echo
+            head -c 30000 "$RUNNER_TEMP/apply.txt"
+            echo '````'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      # 2-env alone, after its apply: initializing Identity Platform (2-env/identity-platform.tf)
+      # makes Firebase create an API key in the environment project with no restriction,
+      # "Browser key (auto created by Firebase)", so every API in the project that accepts an API key
+      # answers it. No layer can declare it: OpenTofu adopts a key only by the id Firebase assigns
+      # it, and the Google provider finds no key by its name. Each key of that name is restricted
+      # to the two sign-in APIs the applications' web API keys admit, as the layer identity
+      # (roles/serviceusage.apiKeysAdmin, 1-org's app role set), in the identity's own project, the
+      # environment project. A restriction outlives Firebase making the key again: the next run of
+      # 2-env restricts the new one, and bedrock org check names it meanwhile (2-env/README.md,
+      # Identity Platform).
+      - name: Restrict Firebase's browser key to the sign-in APIs
+        if: matrix.layer == '2-env'
+        env:
+          KEY_NAME: "Browser key (auto created by Firebase)"
+        run: |
+          project=${IDENTITY#*@}
+          project=${project%.iam.gserviceaccount.com}
+          keys=$(gcloud services api-keys list --project "$project" --filter "displayName=\"$KEY_NAME\"" --format 'value(name)')
+          if [ -z "$keys" ]; then
+            echo "No API key named \"$KEY_NAME\" in $project."
+            exit 0
+          fi
+          for key in $keys; do
+            gcloud services api-keys update "$key" --api-target=service=identitytoolkit.googleapis.com --api-target=service=securetoken.googleapis.com
+            echo "Restricted $key (\"$KEY_NAME\") to identitytoolkit.googleapis.com and securetoken.googleapis.com."
+          done

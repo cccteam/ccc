@@ -1,0 +1,96 @@
+{
+  "prefix": "imp",
+  "environments": [
+    "tst",
+    "stg",
+    "prd"
+  ],
+  "regions": [
+    {
+      "name": "us-central1",
+      "code": "uc1"
+    },
+    {
+      "name": "us-west3",
+      "code": "uw3"
+    }
+  ],
+  "appsDomain": "impulseframework.dev",
+  "hostedDomain": "impulseframework.com",
+  "stateBucket": "imp-boot-gbl-state-REPLACEME",
+  "placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello",
+  "defaultBranch": "master",
+  "repository": "harbor",
+  "releaseApp": "impulseframework-release",
+  "bedrockVersion": "v0.1.0",
+  "bedrockSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "labels": {
+    "bedrock-lab": "true"
+  },
+  "buildArguments": {
+    "FIREBASE_API_KEY": "firebaseApiKey",
+    "PROJECT_ID": "projectId"
+  },
+  "maxInstances": {
+    "tst": 2,
+    "stg": 2,
+    "prd": 2
+  },
+  "cloudArmor": {
+    "ruleSets": [
+      {
+        "name": "scannerdetection-v33-stable",
+        "sensitivity": 1
+      },
+      {
+        "name": "sqli-v33-stable",
+        "sensitivity": 1
+      },
+      {
+        "name": "json-sqli-canary",
+        "sensitivity": 1
+      },
+      {
+        "name": "xss-v33-stable",
+        "sensitivity": 2
+      },
+      {
+        "name": "protocolattack-v33-stable",
+        "sensitivity": 1
+      }
+    ],
+    "fieldExclusions": [
+      {
+        "ruleSet": "xss-v33-stable",
+        "field": "cookie",
+        "value": "harbor_session",
+        "reason": "the session cookie is random bytes, which the cross-site scripting rules misread"
+      }
+    ],
+    "bypasses": [
+      {
+        "path": "/hooks/registry",
+        "method": "POST",
+        "reason": "the registry's webhook body is signed by the registry, which the Root hook verifies"
+      },
+      {
+        "path": "/streams/*",
+        "reason": "the manifest stream is bytes, not JSON"
+      }
+    ]
+  },
+  "projects": {
+    "tst": {
+      "id": "imp-tst-gbl-core-b241",
+      "number": "123456789012"
+    },
+    "stg": {
+      "id": "imp-stg-gbl-core-0fa7",
+      "number": "234567890123"
+    },
+    "prd": {
+      "id": "imp-prd-gbl-core-abe8",
+      "number": "345678901234"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# Rendered by bedrock from placement.json (applications, projects) and owned by it: bedrock org
+# render rewrites this file and bedrock org check compares it, so an application is registered
+# in placement.json (bedrock org register <app>), never here. OpenTofu reads *.auto.tfvars after
+# terraform.tfvars, which keeps the values a person decides.
+
+# Each application's apply identity in every environment (2-env's), granted tagUser on the
+# organization's public-invoker tag (tags.tf). A file of its own, apart from
+# applications.auto.tfvars, because it is committed later: the repository in that file comes
+# first, 2-env creates the identities under it, and a grant on an identity that does not exist
+# is refused. bedrock org register prints the sequence.
+public_invokers = {
+{{- range $app := .Applications}}
+  {{$app}} = [
+{{- range $env := $.Environments}}
+    "{{$.ApplyIdentity $env $app}}",
+{{- end}}
+  ]
+{{- end}}
+}

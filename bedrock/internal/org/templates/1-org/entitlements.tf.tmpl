@@ -1,0 +1,128 @@
+# ---------------------------------------------------------------------------
+# The environment layers' state entitlements
+#
+# A recovery of 2-env by hand is a member of the environment's team group
+# running the layer as themselves, with the environment layer identity's
+# roles for a short time (2-env/README.md, Applying). Its roles on the
+# environment project come from the layer administrator entitlement 2-env
+# declares there. Its slot in the state bucket and the boot project as its
+# quota project are grants in the boot project, which an entitlement on the
+# environment project cannot reach (an entitlement grants on one project), so
+# each environment has a second entitlement, declared here, where the
+# identity's slot is made (workflow.tf) and from the same prefixes, so the
+# two cannot drift. The person asks for both, for the same time; the longest
+# grant is the layer administrator's (placement.json, entitlementDurations).
+# A request takes a justification and, in the approval environments, one
+# approval by another member of the group with a justification of their own
+# (a requester cannot approve their own request).
+#
+# Declaring an entitlement on the boot project is
+# roles/privilegedaccessmanager.admin there, which 0-bootstrap grants this
+# layer's identity, with the API in the boot project's set (0-bootstrap).
+# ---------------------------------------------------------------------------
+
+locals {
+  # Each environment with its team group's address and whether a grant there
+  # waits for an approval (every environment but the first), from
+  # placement.json.
+  layer_state_environments = {
+{{.EnvironmentEntitlementLines}}
+  }
+
+  # The longest grant: the layer administrator's, from placement.json.
+  layer_state_duration = "{{.EntitlementDuration "layerAdministrator"}}"
+
+  state_bucket_name = "projects/_/buckets/${var.state_bucket}"
+
+  # What the environment layer identity holds on the state bucket and the boot
+  # project (workflow.tf, service-accounts.tf), as bindings on the boot
+  # project: a binding there reaches the bucket, and a condition on the
+  # resource's name bounds it. The bucket's own name admits the list and the
+  # read of the bucket (a list is a request on the bucket) and its policy,
+  # which 2-env sets for the slots of the application identities it creates;
+  # an object's name admits that object.
+  layer_state_entitlements = {
+    for env, e in local.layer_state_environments : env => {
+      group    = e.group
+      approval = e.approval
+      bindings = [
+        { role = "roles/serviceusage.serviceUsageConsumer", condition = "" },
+        { role = "roles/storage.objectUser", condition = "resource.name.startsWith(\"${local.state_bucket_objects}/${local.layer_state_prefixes[env]}/\")" },
+        { role = "roles/storage.objectViewer", condition = join(" || ", concat(["resource.name == \"${local.state_bucket_name}\""], [for p in local.layer_upstream_prefixes[env] : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])) },
+        { role = local.boot.state_bucket_policy_admin_role, condition = "resource.name == \"${local.state_bucket_name}\"" },
+      ]
+    }
+  }
+}
+
+# Privileged Access Manager is set up on the boot project before an
+# entitlement is declared on it, as on the environment projects (2-env's
+# team-group.tf): the organization's service agent for it holds the service
+# agent role on the project.
+resource "google_project_iam_member" "pam_service_agent" {
+  project = var.boot_project_id
+  role    = "roles/privilegedaccessmanager.serviceAgent"
+  member  = "serviceAccount:service-org-${local.org_id}@gcp-sa-pam.iam.gserviceaccount.com"
+}
+
+# A pull request plans this layer as its plan identity, which refreshes the
+# entitlements: their read, on the boot project alone.
+resource "google_project_iam_member" "org_plan_entitlements" {
+  project = var.boot_project_id
+  role    = "roles/privilegedaccessmanager.viewer"
+  member  = google_service_account.boot_plan["org"].member
+}
+
+resource "google_privileged_access_manager_entitlement" "layer_state" {
+  for_each = local.layer_state_entitlements
+
+  entitlement_id       = "${var.prefix}-${each.key}-layer-state"
+  location             = "global"
+  parent               = "projects/${var.boot_project_id}"
+  max_request_duration = local.layer_state_duration
+
+  eligible_users {
+    principals = ["group:${each.value.group}"]
+  }
+
+  privileged_access {
+    gcp_iam_access {
+      resource_type = "cloudresourcemanager.googleapis.com/Project"
+      resource      = "//cloudresourcemanager.googleapis.com/projects/${var.boot_project_id}"
+
+      dynamic "role_bindings" {
+        for_each = each.value.bindings
+        content {
+          role                 = role_bindings.value.role
+          condition_expression = role_bindings.value.condition == "" ? null : role_bindings.value.condition
+        }
+      }
+    }
+  }
+
+  # The requester says why, every time.
+  requester_justification_config {
+    unstructured {}
+  }
+
+  # In the approval environments, one approval by another member of the
+  # environment's group, with a justification; the group is mailed the request.
+  dynamic "approval_workflow" {
+    for_each = each.value.approval ? [1] : []
+    content {
+      manual_approvals {
+        require_approver_justification = true
+
+        steps {
+          approvals_needed          = 1
+          approver_email_recipients = [each.value.group]
+
+          approvers {
+            principals = ["group:${each.value.group}"]
+          }
+        }
+      }
+    }
+  }
+  depends_on = [google_project_iam_member.pam_service_agent]
+}
