@@ -1419,11 +1419,16 @@ none, so the release guard and the staging rehearsal read the environment where 
 ## bedrock backups
 
 `backups <env>` lists, in the summary of an operations workflow run, what an
-environment's database can be restored to: every release that was live there, when,
-with its cut and the pre-release backup that holds the database as it was before that
-release's migrations (fourteen days); and every generation of the database a restore
-made, from which backup, when, the generation it left as the forensic copy and that
-copy's forensic backup (thirty days). A generation's own history reaches back the
+environment's database can be restored to: every run that went live there, newest
+first, with the release, the kind of run (a release, a rollback and the release it left,
+or a restore and what it restored), when, its cut and its backup, which for a release's
+run is the pre-release backup that holds the database as it was before that release's
+migrations (fourteen days) and for a restore's run the forensic backup of the data the
+restore replaced (thirty days), a rollback's run having none; and every generation of
+the database a restore made, from which backup, when, the generation it left as the
+forensic copy and that copy's forensic backup. `restore --before <release>` reads the
+release's first run as a release, never a rollback's or a restore's record of its
+version. A generation's own history reaches back the
 placement's `spannerRetention` while the generation exists; the backups are the fixed
 points. The command dispatches the workflow's `list` action as the person signed in to
 gh and prints where to read the summary; the job reads the deployment records as the

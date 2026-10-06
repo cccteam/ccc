@@ -270,8 +270,11 @@ jobs:
             fi
             backup=$BACKUP
             if [ -n "$BEFORE" ]; then
-              backup=$(jq -r --arg v "$BEFORE" '[.[] | select(.version == $v and .releaseBackup != null)] | last | .releaseBackup.name // empty' records.json)
-              moment=$(jq -r --arg v "$BEFORE" '[.[] | select(.version == $v and .releaseBackup != null)] | last | .releaseBackup.versionTime // empty' records.json)
+              # The release's first run as a release: a rollback to it writes a record of its version with no
+              # backup, and a restore under it writes one whose backup is the forensic copy of the data the
+              # restore replaced, neither the data as it was before the release's migrations.
+              backup=$(jq -r --arg v "$BEFORE" '[.[] | select(.version == $v and .rollback == null and .restore == null and .releaseBackup != null)] | first | .releaseBackup.name // empty' records.json)
+              moment=$(jq -r --arg v "$BEFORE" '[.[] | select(.version == $v and .rollback == null and .restore == null and .releaseBackup != null)] | first | .releaseBackup.versionTime // empty' records.json)
               if [ -z "$backup" ]; then
                 echo "::error::no record of $BEFORE in $ENVIRONMENT names a pre-release backup (the release never ran there, ran on a bedrock before release backups, or the environment keeps none): name a backup or @<moment>; the list action shows what there is"
                 exit 1
@@ -722,11 +725,14 @@ jobs:
           service_account: ${{"{{"}} steps.target.outputs.identity {{"}}"}}
       - uses: google-github-actions/setup-gcloud@{{.GcloudAction}}
       # What the environment can be restored to, from its deployment records (the newest two
-      # hundred, through the version trigger's _RECORDS_BUCKET): every release that was live,
-      # when, with its cut and the pre-release backup that holds the database as it was before
-      # its migrations (fourteen days); and every generation of the database a restore made,
-      # from which backup, when, the generation it left as the forensic copy and that copy's
-      # forensic backup (thirty days). A generation's own history reaches back the placement's
+      # hundred, through the version trigger's _RECORDS_BUCKET): every run that went live,
+      # with its release, its kind (a release, a rollback and the release it left, a restore
+      # and what it restored), when, its cut and its backup, a release's run carrying the
+      # pre-release backup that holds the database as it was before its migrations (fourteen
+      # days), a restore's run the forensic backup of the data it replaced (thirty days) and
+      # a rollback's none; and every generation of the database a restore made, from which
+      # backup, when, the generation it left as the forensic copy and that copy's forensic
+      # backup (thirty days). A generation's own history reaches back the placement's
       # spannerRetention (seven days unless it says otherwise) while the generation exists;
       # the backups are the fixed points. Written into this run's summary.
       - name: The releases, backups and generations
@@ -752,11 +758,11 @@ jobs:
               | ($live | last) as $now
               | "Live: \($now.version // "nothing") since \($now.timestamp // "") on database generation \($now.database.generation // 1) (\($now.database.name // "the first database" | split("/") | last)).",
                 "",
-                "### Releases that were live, newest first (restore with before <release> for the data as it was before that release)",
+                "### Runs that went live, newest first (restore with before <release> for the data as it was before that release\u0027s first run; a restore\u0027s row carries the forensic backup of the data it replaced, a rollback\u0027s none)",
                 "",
-                "| release | live since | build | cut | pre-release backup | data as of | expires |",
-                "|---|---|---|---|---|---|---|",
-                ($live | reverse[] | "| \(.version)\(if .build == $now.build then " (live)" else "" end) | \(.timestamp) | \(.build[0:8]) | \(.cut // "") | \(.releaseBackup.name // "none" | split("/") | last) | \(.releaseBackup.versionTime // "") | \(.releaseBackup.expireTime // "") |")' records.json
+                "| release | run | live since | build | cut | backup | data as of | expires |",
+                "|---|---|---|---|---|---|---|---|",
+                ($live | reverse[] | "| \(.version)\(if .build == $now.build then " (live)" else "" end) | \(if .rollback != null then "rollback from \(.rollback.from)" elif .restore != null then "restore (\(.restore.kind // "" | split("/") | last))" else "release" end) | \(.timestamp) | \(.build[0:8]) | \(.cut // "") | \(.releaseBackup.name // "none" | split("/") | last) | \(.releaseBackup.versionTime // "") | \(.releaseBackup.expireTime // "") |")' records.json
             echo
             echo "### Database generations a restore made, oldest first (restore with backup <name> or @<moment>, and database <name> for a moment in an earlier generation)"
             echo
