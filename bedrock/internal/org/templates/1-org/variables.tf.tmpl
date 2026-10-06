@@ -78,6 +78,12 @@ variable "github_infrastructure_team" {
   default     = "{{.GithubInfrastructureTeam}}"
 }
 
+variable "ci_large_runner" {
+  description = "The larger runner the applications' CI runs its test legs and image build on, a runner label or a runner group, set as the organization's Actions variable CI_LARGE_RUNNER. Empty for GitHub's standard runner and no variable."
+  type        = string
+  default     = "{{.CiLargeRunner}}"
+}
+
 variable "github_organization" {
   description = "The GitHub organization that holds the application repositories."
   type        = string

@@ -1345,22 +1345,22 @@ func TestReleaseBackupsAndRetention(t *testing.T) {
 	}{
 		{
 			name:         "nothing set: production keeps release backups, every environment seven days",
-			wantTriggers: []string{"resource \"google_cloudbuild_trigger\" \"rollback\" {\n  count = local.identities.repository_id == null || local.is_pr || !contains([\"prd\"], var.environment) ? 0 : 1\n", "  name     = \"${local.name}-${local.primary_region_code}-${local.app}-rollback\"\n  disabled = true\n", "# The rollback trigger, in prd alone"},
+			wantTriggers: []string{"resource \"google_cloudbuild_trigger\" \"rollback\" {\n  count = local.identities.repository_id == null || local.is_pr ? 0 : 1\n", "  name     = \"${local.name}-${local.primary_region_code}-${local.app}-rollback\"\n  disabled = true\n", "# The rollback trigger, in every environment"},
 			wantLocals:   []string{"spanner_retention = { tst = \"7d\", stg = \"7d\", prd = \"7d\" }"},
-			wantSubs:     []string{"    _ROLLBACK                = \"\"", "    _ROLLBACK_FROM           = \"\"", "    _REASON                  = \"\""},
+			wantSubs:     []string{"    _ROLLBACK                = \"\"", "    _REASON                  = \"\"", "    _MAINTENANCE             = \"\""},
 		},
 		{
 			name:         "two environments keep release backups and one keeps thirty-six hours",
 			backups:      []string{"tst", "prd"},
 			retention:    map[string]string{"tst": "36h"},
-			wantTriggers: []string{"!contains([\"tst\", \"prd\"], var.environment) ? 0 : 1\n", "# The rollback trigger, in tst and prd alone"},
+			wantTriggers: []string{"local.is_pr ? 0 : 1\n", "# The rollback trigger, in every environment"},
 			wantLocals:   []string{"spanner_retention = { tst = \"36h\", stg = \"7d\", prd = \"7d\" }"},
 		},
 		{
 			name:          "no environment keeps release backups",
 			backups:       []string{},
-			wantTriggers:  []string{"!contains([], var.environment) ? 0 : 1\n"},
-			absentTrigger: []string{"in prd alone"},
+			wantTriggers:  []string{"local.is_pr ? 0 : 1\n", "# The rollback trigger, in every environment"},
+			absentTrigger: []string{"in prd alone", "_ROLLBACK_FROM"},
 		},
 	}
 	for _, tt := range tests {

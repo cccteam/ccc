@@ -190,15 +190,16 @@ and what its absence means:
   at a release build. The first environment. Absent, none; production is never seeded.
 - `releaseBackups`: the environments whose release builds keep a backup of the database
   as of the cut, the moment before the release's migrations run, for fourteen days, so
-  `bedrock rollback` can return the environment to the release before it on that
-  release's last data (bedrock rollback, below). Not written. Absent, production alone.
+  `bedrock restore --before <release>` can return the database to the state before that
+  release (bedrock restore, below). Not written. Absent, production alone.
 - `spannerRetention`: how far back each environment's database keeps its past, by
   environment (`{"prd": "7d"}`), one hour to seven days (`1h` to `168h`, or `1d` to
-  `7d`): the version retention period of the Spanner database, which bounds a rollback
-  to a moment (`bedrock rollback --at`) and what a backup taken as of a past moment can
+  `7d`): the version retention period of the Spanner database, which bounds a restore
+  to a moment (`bedrock restore --at`) and what a backup taken as of a past moment can
   hold. Not written. Absent, or for an environment it leaves out, seven days.
 - `projects`: each environment project's `id` and `number`, by which the operations
-  workflow, started from GitHub (`bedrock restore`, `bedrock rerun`, `bedrock rollback`),
+  workflow, started from GitHub (`bedrock restore`, `bedrock rerun`, `bedrock rollback`,
+  `bedrock backups`, `bedrock maintenance`),
   names the environment's identity provider and operations identity. From the organization's
   `projects` and `projectNumbers`, 1-org's outputs. An environment without an entry
   cannot be operated from GitHub.
@@ -463,6 +464,15 @@ It also refuses:
   (the line's next patch is taken) nor passed by the hotfix check (the feature's
   migrations are what the environment would be restored to). Off, a feature opens a new
   line, a fix bumps the patch and a breaking change the minor.
+- a Cloud Armor policy removed in one step: an environment's policy is on while
+  `cloud_armor` in `terraform.tfvars` names the environment with `"preview"` or
+  `"enforce"`, attached to the backend services, and removing the entry detaches the
+  policy and destroys it in one apply, which fails while the policy is attached. The
+  check reads the default branch's `terraform.tfvars` (origin's copy, or the local branch;
+  the infrastructure workflow fetches the branch before it runs) and refuses an
+  environment on there whose entry the working tree removes: set it to `"off"` first
+  (the policy kept, detached), merge and apply, then remove the entry. Outside a git
+  working tree, or without the default branch to read, nothing is compared.
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
@@ -609,7 +619,7 @@ thing one step hands the next. In order:
   the versions tst's live record of the release and production's live record say they
   applied (the highest schema migration's index in each; both records are read as the
   build, production's from the bucket its 2-env lets this environment's deploy identity
-  read, and it also names production's live database and the backup a rollback restored it
+  read, and it also names production's live database and the backup a restore put it there
   from), restores staging's database from
   production's newest backup before it deploys there, as a restore run the release asked
   for, and so does a release when staging's own live record lists a migration file the
@@ -766,10 +776,10 @@ thing one step hands the next. In order:
   restores that one); the plan then recreates the
   memberships the drop took with it, and the migrate command applies whatever production's
   backup predates. Production's live database is the one its deployment record names
-  (`_RESTORE_DATABASE`, read by the operations workflow): after a rollback, the generation
-  restored into, not the stack's first database, and while that generation has no backup
-  of its own (the next release or the schedule takes one) the backup it was restored from
-  stands in (`_RESTORE_DATABASE_BACKUP`, the record's `rollback.backup`); a record written
+  (`_RESTORE_DATABASE`, read by the operations workflow): after a restore to a backup, the
+  generation restored into, not the stack's first database, and while that generation has
+  no backup of its own (the next release or the schedule takes one) the backup it was
+  restored from stands in (`_RESTORE_DATABASE_BACKUP`, the record's `restore.backup`); a record written
   before database generations names none, and production's first database is read. The
   backup and the moment its data is from reach the record
   (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`). While the application is in maintenance the
@@ -1201,10 +1211,10 @@ canceled; the queue resumes once the release serves (`deploy maintenance off`, w
 resumes a queue an earlier run's maintenance left paused, so a restore run that failed
 after maintenance on is healed by the next release that deploys; a pull-request build
 leaves the environment's queue as it is, since a restore may be in maintenance while
-the pull request builds). The run refuses the instruction in production. `bedrock restore` starts it from GitHub (below).
+the pull request builds). The run refuses this form of the instruction in production, whose database is restored to a backup alone. `bedrock restore` starts it from GitHub (below).
 For the environment on production's instance the database is not emptied but restored
 from the most recent backup of production's live database (the generation its deployment
-record names; after a rollback, the backup the generation was restored from while it has
+record names; after a restore to a backup, the one the generation was restored from while it has
 none of its own; a backup Spanner is still taking, a release's started minutes earlier, is
 waited for, before the maintenance page goes up), at production's schema: the plan step drops it and restores it under
 its own name as the apply identity, and the migrations production's backup predates then
@@ -1276,38 +1286,84 @@ anywhere: `bedrock rerun` is its door.
 
 ## bedrock restore
 
-`restore <env> [<release>]` restores an environment to a release, started from GitHub:
-developers authenticate to GitHub and nowhere else, and nobody sets up a cloud tool to
-operate an environment. Staging runs a release against production's data before
-production does: a release that carries migrations production has not applied restores
-staging from production's newest backup in its own build (the staging rehearsal, decided
-by the resolve step from the versions the records say tst and production applied), so
-between releases staging sits at production's release, and the failure expected there is
-a migration meeting production's data. `restore stg` is the manual way to bring staging's
-data current between releases, migrations or not, and the way back to production's
-release after a failed release there. So an environment restored from
-production's backup (one on production's instance, off the seed list) may leave the
-release out: the workflow's job reads production's live release from production's
-deployment records, says which, and runs it; a release named is run as named, and the
-job says whether it is production's. The first environment and a seeded one restore to
-an empty database, which has no production state to return to, so they name their
-release. The command checks that the environment is not production (which `bedrock
-rollback`, below, returns to an earlier release), that a release named exists, and that
-the placement records the environment's project
-(`projects`, the id and the number, which `bedrock org register` writes into the
-application's first placement), then
-dispatches the repository's operations workflow (`.github/workflows/operations.yml`,
-rendered and owned by bedrock) as the person signed in to gh, and prints where to watch
-it; the Run workflow button on the Actions tab starts the same job. The job runs in the
-GitHub Environment named after the target environment, which the organization's `1-org`
-layer declares so that it deploys from the default branch alone (the workflow file a
-restore runs is the committed one; a reviewer for an environment is the repository's
-setting to add). It holds no key: it exchanges GitHub's short-lived token for the
-environment's operations identity through the environment's workload identity pool
-(`2-env`), whose provider trusts tokens of the organization's repositories alone, from
-the operations workflow file, run in that Environment, and whose binding on the identity
-narrows that to the application's own repository. With that identity, which may start
-the environment's triggers and read the builds they start and nothing else (`1-org`'s
+`restore <env> [<release>] [--reason <why>] [--before <release> | --at <moment> | --backup <name>] [--of <database>]`
+returns an environment's database, started from GitHub: developers authenticate to GitHub
+and nowhere else, and nobody sets up a cloud tool to operate an environment. It is the
+database step after a release that went wrong: the code's rollback (`bedrock rollback`,
+below) comes first, and when the database is wrong too, or the migration itself was the
+fault, the restore follows in a run of its own. The two are never one run. There are two
+kinds.
+
+**A restore to a backup**, in any environment, production included. `--before <release>`
+restores that release's pre-release backup, the database as it was before that release's
+migrations (every release build in an environment on the placement's `releaseBackups`
+starts one as of its cut, kept fourteen days); `--at <moment>` restores a backup made as
+of the moment (RFC 3339), of the live database or, with `--of <database>`, of an earlier
+generation whose history holds the moment (a generation's history begins when it was
+restored, so a moment before the last restore is in the generation that restore left);
+`--backup <name>` restores any backup on the instance by its resource name, a forensic
+backup to undo a restore, say. `bedrock backups <env>` lists what there is. The command
+prints the statement (what the database returns to, on which release, asked for by whom
+and why), asks for the environment's name typed, and dispatches the repository's
+operations workflow as the person signed in to gh. The workflow's job reads the
+environment's deployment records for the live release, which stays unless the command
+named one, and, for `--before`, the release's cut from its record, prints them, and runs
+the environment's version trigger for the release with the backup (or `@<moment>`) as
+`_RESTORE`, the generation as `_RESTORE_DATABASE`, the reason and the requester, waiting
+for the build to its end: production's build waits for its approval in Cloud Build as a
+release does, and thirty minutes without one the job cancels it. The build, as the deploy
+identity: the resolve step says what returns; the application goes into maintenance
+whatever the window; the stack plan, as the apply identity, finds the chosen backup (or
+starts one as of the moment, kept fourteen days), refuses one that does not exist or
+belongs to another application before anything is started, waits for it to be READY,
+then starts the forensic backup of the live database (`<db>-forensic-<stamp>`, thirty
+days; a backup start Spanner refuses because it is taking another waits for its turn),
+restores the chosen backup into the database's next generation (`<db>-2`, then `-3`),
+writes the generation beside the deployment records (`<app>/database/<env>/<n>.json`),
+imports the restored database into the stack and plans with `database_generation =
+<n>`; the apply points the service at it; the release's migrations run on it, which is
+nothing when the backup is at the release's schema and the release's own files when it
+is ahead; the release deploys and takes the traffic; the record names the requester, the
+approver, the reason, the backup restored and the moment its data is from, the forensic
+backup, the database restored into and the one kept, with the forensic backup standing
+as the run's release backup so a later restore to this release's last data finds it. The
+live database stays, drop-protected, as the forensic copy: writes made after the
+backup's moment are in it alone. No database an earlier run left is ever put back into
+service, and nothing is dropped: a restore to the wrong place is followed by another
+restore, from whichever generation holds the moment. Every later plan, a pull request's
+included, reads the generation its records name, so the stack keeps pointing at the
+restored database and the earlier generations stay protected; their removal is a later
+item.
+
+**The environment's own restore**, below production. Staging runs a release against
+production's data before production does: a release that carries migrations production
+has not applied restores staging from production's newest backup in its own build (the
+staging rehearsal, decided by the resolve step from the versions the records say tst and
+production applied), so between releases staging sits at production's release, and the
+failure expected there is a migration meeting production's data. `restore stg` with no
+source is the manual way to bring staging's data current between releases, migrations or
+not, and the way back to production's release after a failed release there. So an
+environment restored from production's backup (one on production's instance, off the
+seed list) may leave the release out: the workflow's job reads production's live release
+from production's deployment records, says which, and runs it; a release named is run as
+named, and the job says whether it is production's. The first environment and a seeded
+one restore to an empty database, which has no production state to return to, so they
+name their release. The command checks that the environment is not production (whose
+database is restored to a backup alone), that a release named exists, and that the
+placement records the environment's project (`projects`, the id and the number, which
+`bedrock org register` writes into the application's first placement), then dispatches
+the operations workflow (`.github/workflows/operations.yml`, rendered and owned by
+bedrock) as the person signed in to gh, and prints where to watch it; the Run workflow
+button on the Actions tab starts the same job. The job runs in the GitHub Environment
+named after the target environment, which the organization's `1-org` layer declares so
+that it deploys from the default branch alone (the workflow file a restore runs is the
+committed one; a reviewer for an environment is the repository's setting to add). It
+holds no key: it exchanges GitHub's short-lived token for the environment's operations
+identity through the environment's workload identity pool (`2-env`), whose provider
+trusts tokens of the organization's repositories alone, from the operations workflow
+file, run in that Environment, and whose binding on the identity narrows that to the
+application's own repository. With that identity, which may start the environment's
+triggers and read the builds they start and nothing else (`1-org`'s
 `cloudBuildTriggerRunner`), the job runs the environment's version trigger for the
 release with `_RESTORE` and `_REQUESTER`, and waits for the build to its end, an
 approval in Cloud Build included. The build does the work as the deploy identity, as
@@ -1318,72 +1374,79 @@ for is not wired: the job stops before touching anything and says what to record
 
 ## bedrock rollback
 
-`rollback <env> --reason <why> [--to <release>] [--at <moment>]` returns an environment
-to an earlier release on the data of that release's last moment, started from GitHub. It
-is for production, where a release that went wrong is taken back and its data with it;
-an environment on production's instance returns to production's release with `bedrock
-restore` instead, and the command names that when asked for such an environment.
+`rollback <env> --reason <why> [--to <release>]` returns an environment to an earlier
+release with nothing of the database, started from GitHub. It is the first answer to a
+release that went wrong, in any environment: a schema change migrates forward in a way
+the running code still works with, so the earlier release runs on the database as the
+release left it. When the database is wrong too, `bedrock restore` returns it, in a run
+of its own, after this one. A release that cannot migrate that way is marked breaking
+(its outlets no longer answer the environment's release), goes under maintenance,
+migrates, deploys and comes out; a problem found after it is a restore, and the writes
+since the release are lost with it.
 
-**The release backup.** In the environments the placement's `releaseBackups` names
-(production unless it says otherwise), every release build starts a backup of the
-database as of the cut, the moment before the release's migrations run, kept fourteen
-days (`deploy backup`, after the maintenance step and before the migrations; a failure to
-start it stops the build). Spanner takes one backup of a database at a time, so a
-breaking release waits, before its maintenance page goes up, for a backup Spanner is
-still taking (the last release's, or the schedule's) to complete, and its own then starts
-at once after maintenance. The record carries the cut, the backup's name and when it
-expires. The release before it can therefore be returned to on its own data: the backup
-the first release after it started holds that release's last moment. The database keeps
-its past for the placement's `spannerRetention` (seven days unless it says otherwise),
-so a backup can also be taken as of any moment inside that window.
-
-**The command.** It checks the environment and the inputs (a reason is required and may
-not carry `|`; `--to` names a release that exists; `--at` is an RFC 3339 moment; one of
-the two or neither), prints the statement (what returns to what, on which data, asked
-for by whom and why), asks for the environment's name typed, and dispatches the
-repository's operations workflow as the person signed in to gh with the action
-`rollback`, the reason, the release (`--to`, or none) and the backup (`@<moment>` for
-`--at`, or none). The command changes nothing itself.
+**The command** checks the environment and the inputs (a reason is required and may not
+carry `|`; `--to` names a release that exists), prints the statement (what returns to
+what, asked for by whom and why), asks for the environment's name typed, and dispatches
+the repository's operations workflow as the person signed in to gh with the action
+`rollback`, the reason and the release (`--to`, or none). The command changes nothing
+itself.
 
 **The workflow's job** runs in the GitHub Environment named after the environment; no
 Environment waits for a reviewer, since the build the job starts waits for its approval
 in Cloud Build where the environment requires one, as a release does, and the record the
-run writes names the approver. The job refuses
-an environment that keeps no release backup, reads the environment's newest deployment
-records (through the version trigger's `_RECORDS_BUCKET`; the operations identity reads
-the bucket) for the live release, which the environment leaves, and, unless named, the
-release to return to (the release live before the live one) and the backup to restore
-(the pre-release backup of the first release after the one returned to), prints the
-statement with them, and runs the environment's **rollback trigger**
-(`<prefix>-<env>-<region>-<app>-rollback`, disabled for events and run by this job
-alone; never the release trigger) for the release returned to with `_ROLLBACK`,
-`_ROLLBACK_FROM`, `_REASON` and `_REQUESTER`. The build waits for its approval in Cloud
-Build as a release does; thirty minutes without one and the job cancels it, so a
-rollback nobody approved is not left waiting.
+run writes names the approver. The job reads the environment's newest deployment records
+(through the version trigger's `_RECORDS_BUCKET`; the operations identity reads the
+bucket) for the live release, which the environment leaves, and, unless named, the
+release to return to (the release live before the live one), prints the statement with
+them, and runs the environment's **rollback trigger**
+(`<prefix>-<env>-<region>-<app>-rollback`, in every environment, disabled for events and
+run by this job alone; never the release trigger) for the release returned to with
+`_ROLLBACK` (the release left), `_REASON` and `_REQUESTER`. The build waits for its
+approval in Cloud Build as a release does; thirty minutes without one and the job
+cancels it, so a rollback nobody approved is not left waiting.
 
-**The build**, as the deploy identity: the resolve step prints the statement first; the
-application goes into maintenance whatever the window; the stack plan, as the apply
-identity, finds the chosen backup (or starts one as of the moment, kept fourteen days)
-and refuses one that does not exist or belongs to another application before anything
-is started, waits for the chosen backup to be READY (often it is the release's own
-backup as of its cut, still being taken: Spanner takes one backup of a database at a
-time, and a backup runs twenty minutes or more however small the database), then starts
-the forensic backup of the live database (`<db>-forensic-<stamp>`, thirty days; a
-backup start Spanner refuses because it is taking another, a scheduled one say, waits
-for its turn, as does a release build's backup as of the cut), restores the chosen
-backup into the database's
-next generation (`<db>-2`, then `-3`), writes the generation beside the deployment
-records (`<app>/database/<env>/<n>.json`), imports the restored database into the stack
-and plans with `database_generation = <n>`; the apply points the service at it; the
-release's migrations run on it (nothing applies when the backup is at the release's
-schema); the release deploys and takes the traffic; the record names the requester, the
-approver, the reason, the release left, both backups and both databases, the forensic backup standing
-as the run's release backup so a later rollback from this release finds its last data.
-The live database stays, drop-protected, as the forensic copy: writes made after the
-backup's moment are in it alone. A release backup's name ends in the build's first
-eight characters, so a release run again keeps a backup of its own cut. Every later plan, a pull request's included, reads the generation its records
-name, so the stack keeps pointing at the restored database and the earlier generations
-stay protected; their removal is a later item.
+**The build**, as the deploy identity, is the earlier release's build again: the resolve
+step prints the statement first and switches the migrations off; the release check, the
+guard and the image build run as for any release (the image is reused when the commit
+built one); the stack is applied as that release had it, at the database's generation as
+it is; no backup is taken and nothing is restored; the release deploys the way a release
+deploys, behind the maintenance page where the return is breaking for the environment's
+clients and never waiting for a window; traffic moves; and the record names the
+requester, the approver, the reason and the release left, and lists the migrations the
+database holds, by the record live when the rollback ran, since the rollback applied
+none, so the release guard and the staging rehearsal read the environment where it is.
+
+## bedrock backups
+
+`backups <env>` lists, in the summary of an operations workflow run, what an
+environment's database can be restored to: every release that was live there, when,
+with its cut and the pre-release backup that holds the database as it was before that
+release's migrations (fourteen days); and every generation of the database a restore
+made, from which backup, when, the generation it left as the forensic copy and that
+copy's forensic backup (thirty days). A generation's own history reaches back the
+placement's `spannerRetention` while the generation exists; the backups are the fixed
+points. The command dispatches the workflow's `list` action as the person signed in to
+gh and prints where to read the summary; the job reads the deployment records as the
+operations identity, and nothing on the developer's machine touches the cloud. From the
+listing, `bedrock restore` takes `--before <release>`, `--backup <name>` or `--at
+<moment>` (with `--of <database>` for a moment in an earlier generation).
+
+## bedrock maintenance
+
+`maintenance off <env>` takes an application out of the maintenance a failed run left it
+in: a run that put the maintenance page up and then stopped (a restore refused at its
+plan, a cancelled build) leaves every region's traffic on the maintenance revision and
+the task queue paused. The command dispatches the workflow's `maintenance` action as the
+person signed in to gh; the job reads the environment's live release from its deployment
+records and runs its build with `_MAINTENANCE=off`, which the resolve step turns into the
+skip facts: every step stands down, and the last one moves each service's traffic back
+to the revision the maintenance revision displaced (named by the label the maintenance
+step put on it, `bedrock-displaced`; for a maintenance revision from a build before the
+label, the service's latest ready revision when that is another one) and resumes the
+queue the earlier run left paused. Nothing deploys and no record is written; production's
+build waits for its approval in Cloud Build as a release does. The other way out is to
+run the release again (`bedrock rerun`), which deploys and ends the maintenance on the
+way, and is the answer when the failed run should be finished rather than undone.
 
 ## bedrock rerun
 
@@ -1705,8 +1768,11 @@ installation token, minted in the run; a person applying by hand uses their own 
 App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
 by its slug) and also records the slug (`githubReleaseAppSlug`, the name in the app's
 address, `github.com/apps/<slug>`), which each application's placement names as the
-author of its releases, the default branch (`githubDefaultBranch`) and the team
-(`githubInfrastructureTeam`, empty for none). A repository that existed before the layer
+author of its releases, the default branch (`githubDefaultBranch`), the team
+(`githubInfrastructureTeam`, empty for none) and the larger runner the applications' CI
+runs its test legs and image build on (`ciLargeRunner`, a runner label or a runner group
+set as the organization's Actions variable `CI_LARGE_RUNNER`; empty for the standard
+runner). A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
 `hotfix` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person

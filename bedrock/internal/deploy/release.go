@@ -165,7 +165,7 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	case env[restoreFact] != "":
 		fmt.Fprintf(out, "Restore run: %s's database is replaced before %s deploys, so what it holds is not compared with the hotfix.\n", subs[envSub], subs[tagSub])
 	case env[rollbackFact] != "":
-		fmt.Fprintf(out, "Rollback run: %s returns to %s on a database restored from a backup, so what it holds is not compared with the hotfix.\n", subs[envSub], subs[tagSub])
+		fmt.Fprintf(out, "Rollback run: %s returns to %s, a release that ran there, on its database as it is; the hotfix check is a release's.\n", subs[envSub], subs[tagSub])
 	default:
 		if err := hotfixGate(ctx, clients.Storage, subs, w, hotfix, out); err != nil {
 			return err

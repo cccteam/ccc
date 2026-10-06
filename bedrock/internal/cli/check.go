@@ -59,6 +59,14 @@ file (zz_gen_release.json, which the resource generator writes: without it no re
 breaking and the window never holds a run), when that file does not read, and when a dated
 slot has passed. A malformed setting is refused, as render refuses it.
 
+Cloud Armor: an environment's policy is on while cloud_armor in terraform.tfvars names the
+environment with "preview" or "enforce", attached to the backend services, and removing the
+entry detaches the policy and destroys it in one apply, which fails while the policy is
+attached. The check reads the default branch's terraform.tfvars (origin's copy, or the local
+branch) and refuses an environment on there whose entry the working tree removes: set it to
+"off" first (the policy kept, detached), merge and apply, then remove the entry. Outside a
+git working tree, or without the default branch to read, nothing is compared.
+
 The secrets that track latest: it names each secret whose version in an environment's
 secret_versions in terraform.tfvars is the word latest in place of a version number, one
 line per secret and environment, and says so when none does. Pinning is the default and
@@ -81,7 +89,7 @@ is read from --placement, or from placement.json in the stack directory.`,
 			if err != nil {
 				return err
 			}
-			report, err := check.Run(m, dir, appDir)
+			report, err := check.Run(cmd.Context(), m, dir, appDir)
 			if err != nil {
 				return err
 			}

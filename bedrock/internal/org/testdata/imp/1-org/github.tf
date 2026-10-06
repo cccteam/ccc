@@ -51,6 +51,11 @@
 # an application takes the workflow (impulse render) before this layer is
 # applied, or its pull requests block.
 #
+# The organization's one Actions variable, CI_LARGE_RUNNER, names the larger
+# runner every application's CI runs its test legs and image build on (a
+# runner label or a runner group, var.ci_large_runner); while the variable is
+# absent those jobs run on GitHub's standard runner, as the other jobs do.
+#
 # GitHub features this uses on a private repository: rulesets with required
 # status checks and required reviewers, and deployment branch policies on
 # Environments. Nothing here asks GitHub about the organization's plan; a
@@ -135,6 +140,14 @@ locals {
     for pair in setproduct(var.applications, local.operations_environments) :
     "${pair[0]}-${pair[1]}" => { app = pair[0], environment = pair[1] }
   }
+}
+
+resource "github_actions_organization_variable" "ci_large_runner" {
+  count = var.ci_large_runner == "" ? 0 : 1
+
+  variable_name = "CI_LARGE_RUNNER"
+  visibility    = "all"
+  value         = var.ci_large_runner
 }
 
 resource "github_repository" "app" {

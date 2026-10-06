@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -211,10 +212,22 @@ type Restore struct {
 	// Cleared lists what the run emptied instead of replacing: the Firestore database
 	// whose documents it deleted.
 	Cleared []string `json:"cleared,omitempty"`
-	// Backup is the backup of production's database a production-backup restore restored
-	// from, and BackupTime the moment its data is from.
+	// Backup is the backup the restore restored from (production's newest for a
+	// production-backup restore; the one named, made as of the moment, or the release's
+	// pre-release backup for a generation restore), and BackupTime the moment its data
+	// is from.
 	Backup     string `json:"backup,omitempty"`
 	BackupTime string `json:"backupTime,omitempty"`
+	// Forensic, Database, Kept, Generation and PreviousGeneration are a generation
+	// restore's: the forensic backup taken of the live database as the restore began,
+	// the database the backup was restored into (the current generation), the one left
+	// as the forensic copy, and their generation numbers. Absent for an empty or
+	// production-backup restore, which replaces the database in place.
+	Forensic           string `json:"forensic,omitempty"`
+	Database           string `json:"database,omitempty"`
+	Kept               string `json:"kept,omitempty"`
+	Generation         int    `json:"generation,omitempty"`
+	PreviousGeneration int    `json:"previousGeneration,omitempty"`
 }
 
 // maintenanceOf reads the maintenance a run went through from its facts; nil when it
@@ -240,6 +253,11 @@ func restoreOf(env map[string]string) *Restore {
 		return nil
 	}
 	r := &Restore{Kind: env[restoreFact], Requester: env[requesterFact], Reason: env[restoreReasonFact], Backup: env[backupFact], BackupTime: env[backupTimeFact]}
+	if env[restoreIntoFact] != "" {
+		r.Forensic, r.Database, r.Kept = env[restoreForensicFact], env[restoreIntoFact], env[restoreKeptFact]
+		r.Generation, _ = strconv.Atoi(env[databaseGenerationFact])
+		r.PreviousGeneration, _ = strconv.Atoi(env[previousGenerationFact])
+	}
 	if env[restoredFact] != "" {
 		r.Replaced = strings.Split(env[restoredFact], ",")
 	}
@@ -548,16 +566,28 @@ func WriteRecord(ctx context.Context, open StoreFunc, req *RecordRequest, out io
 
 		return nil
 	}
-	data, err := req.Record.JSON()
-	if err != nil {
-		return err
-	}
 	store, err := open(ctx)
 	if err != nil {
 		return err
 	}
 	defer store.Close()
-
+	// A rollback applies no migration, so its record lists what the database holds by
+	// the record live when the rollback ran, not the files of the earlier release's tree:
+	// the release guard and the staging rehearsal read the environment where it is.
+	if req.Record.Rollback != nil {
+		live, err := newestLiveRelease(ctx, store, req.Bucket, req.Record.App, req.Record.Env)
+		if err != nil {
+			return err
+		}
+		if live != nil {
+			req.Record.Migrations = live.Migrations
+			fmt.Fprintf(out, "The record lists the migrations the database holds by the live record of %s (build %s), since a rollback applies none.\n", live.Version, live.Build)
+		}
+	}
+	data, err := req.Record.JSON()
+	if err != nil {
+		return err
+	}
 	if err := store.Write(ctx, req.Bucket, req.Object, data); err != nil {
 		return err
 	}

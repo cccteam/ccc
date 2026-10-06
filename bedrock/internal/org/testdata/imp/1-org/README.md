@@ -381,6 +381,15 @@ team, given after the last push, so no author merges a check change alone.
 The team and its members are the organization's own setting; this layer
 reads it.
 
+When `ci_large_runner` names a larger runner (a runner label or a runner group
+of the organization; empty by default), the layer sets it as the
+organization's Actions variable `CI_LARGE_RUNNER`, which every application's
+CI workflow reads for its two test legs and its image build, the jobs that
+take the most machine; the other jobs, and those three while the variable is
+absent, run on GitHub's standard runner. The runner itself is the
+organization's own setting (a larger hosted runner or a runner group); this
+layer names it.
+
 GitHub features this uses, on a private repository: rulesets with required
 status checks and required reviewers, and deployment branch policies on
 Environments. The layer asks GitHub nothing about the organization's plan; a

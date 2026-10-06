@@ -137,6 +137,11 @@ type Placement struct {
 	// whose approval a change to an application's workflow and Cloud Build files
 	// needs; empty for none.
 	GithubInfrastructureTeam string `json:"githubInfrastructureTeam,omitempty"`
+	// CiLargeRunner names the larger runner the applications' CI runs its test legs and
+	// image build on: a runner label or a runner group of the organization, set once as
+	// the organization's Actions variable CI_LARGE_RUNNER, which every application's
+	// workflow reads. Empty for GitHub's standard runner, and no variable.
+	CiLargeRunner string `json:"ciLargeRunner,omitempty"`
 	// SourceRepo is this repository's name, the source_repo label every resource carries.
 	SourceRepo string `json:"sourceRepo"`
 	// StateBucket is the seeded state bucket every backend block names; empty until the

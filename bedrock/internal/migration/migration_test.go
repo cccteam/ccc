@@ -325,7 +325,7 @@ func TestRenumber(t *testing.T) {
 				masterWithTwo(r)
 			},
 			branch:  "main",
-			wantErr: "no main branch to read the committed migrations from",
+			wantErr: "no main branch to read here",
 		},
 	}
 	for _, tt := range tests {

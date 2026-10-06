@@ -23,18 +23,22 @@ import (
 // first, so the release's action is run), and the three operations on an environment's
 // migrations.
 const (
-	actionInput    = "action"
-	releaseInput   = "release"
-	tableInput     = "table"
-	versionInput   = "version"
-	reasonInput    = "reason"
-	backupInput    = "backup"
-	actionRestore  = "restore"
-	actionRun      = "run"
-	actionRollback = "rollback"
-	actionVersion  = "version"
-	actionRerun    = "rerun"
-	actionForce    = "force"
+	actionInput       = "action"
+	releaseInput      = "release"
+	tableInput        = "table"
+	versionInput      = "version"
+	reasonInput       = "reason"
+	backupInput       = "backup"
+	beforeInput       = "before"
+	databaseInput     = "database"
+	actionRestore     = "restore"
+	actionRun         = "run"
+	actionRollback    = "rollback"
+	actionList        = "list"
+	actionMaintenance = "maintenance"
+	actionVersion     = "version"
+	actionRerun       = "rerun"
+	actionForce       = "force"
 )
 
 // releaseTagRE is a release tag, v<major>.<minor>.<patch>.

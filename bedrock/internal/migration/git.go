@@ -1,5 +1,6 @@
-// git.go is what the renumber asks git: where the default branch is, what it holds under
-// a directory, which files are tracked, and the renames of the tracked ones.
+// git.go is what the renumber asks git (through gitcmd): what the default branch holds
+// under a directory, which files are tracked, the renames of the tracked ones, and how
+// far a branch is from its base.
 
 package migration
 
@@ -12,43 +13,14 @@ import (
 	"strings"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/gitcmd"
 )
-
-// git runs one git command in the repository and returns its output; a failure carries
-// what git said.
-func git(ctx context.Context, root string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
-	out, err := cmd.Output()
-	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && len(exit.Stderr) > 0 {
-			return "", errors.Newf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(exit.Stderr)))
-		}
-
-		return "", errors.Wrapf(err, "git %s", strings.Join(args, " "))
-	}
-
-	return string(out), nil
-}
-
-// defaultRef is the ref holding the default branch's tree: origin's copy of the branch
-// when the repository has one (what a pull-request build compares against), else the
-// local branch. Neither is an error: the committed sequence has to come from somewhere.
-func defaultRef(ctx context.Context, root, branch string) (ref, commit string, err error) {
-	for _, ref := range []string{"refs/remotes/origin/" + branch, "refs/heads/" + branch} {
-		out, err := git(ctx, root, "rev-parse", "--verify", "--quiet", "--short", ref)
-		if err == nil {
-			return ref, strings.TrimSpace(out), nil
-		}
-	}
-
-	return "", "", errors.Newf("no %s branch to read the committed migrations from: neither origin/%s nor a local %s exists here (fetch first, or the placement names the wrong default branch)", branch, branch, branch)
-}
 
 // treeFiles names the files directly under the directory in the ref's tree; none when
 // the tree has no such directory.
 func treeFiles(ctx context.Context, root, ref, dir string) (map[string]bool, error) {
-	out, err := git(ctx, root, "ls-tree", "-r", "--name-only", ref, "--", dir)
+	out, err := gitcmd.Output(ctx, root, "ls-tree", "-r", "--name-only", ref, "--", dir)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +32,7 @@ func treeFiles(ctx context.Context, root, ref, dir string) (map[string]bool, err
 // those are moved with git mv, so the index follows; an untracked file is renamed on
 // disk alone.
 func trackedFiles(ctx context.Context, root, dir string) (map[string]bool, error) {
-	out, err := git(ctx, root, "ls-files", "--", dir)
+	out, err := gitcmd.Output(ctx, root, "ls-files", "--", dir)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +55,7 @@ func under(listing, dir string) map[string]bool {
 
 // gitMove renames a tracked file, staging the rename.
 func gitMove(ctx context.Context, root, from, to string) error {
-	_, err := git(ctx, root, "mv", "--", from, to)
+	_, err := gitcmd.Output(ctx, root, "mv", "--", from, to)
 
 	return err
 }
@@ -115,12 +87,12 @@ var lineRE = regexp.MustCompile(`^hotfix/\d+\.\d+\.x$`)
 // is the number of commits HEAD has beyond the branch; a branch that is not an
 // ancestor of HEAD is not followed, and a tie goes to the default branch.
 func followedBranch(ctx context.Context, root, defaultBranch string) (string, error) {
-	out, err := git(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/hotfix/", "refs/heads/hotfix/")
+	out, err := gitcmd.Output(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/hotfix/", "refs/heads/hotfix/")
 	if err != nil {
 		return "", errors.Wrap(err, "git for-each-ref")
 	}
 	followed, nearest := defaultBranch, -1
-	if ref, _, err := defaultRef(ctx, root, defaultBranch); err == nil {
+	if ref, _, err := gitcmd.DefaultRef(ctx, root, defaultBranch); err == nil {
 		nearest = distance(ctx, root, ref)
 	}
 	seen := map[string]bool{}
@@ -130,7 +102,7 @@ func followedBranch(ctx context.Context, root, defaultBranch string) (string, er
 			continue
 		}
 		seen[line] = true
-		ref, _, err := defaultRef(ctx, root, line)
+		ref, _, err := gitcmd.DefaultRef(ctx, root, line)
 		if err != nil {
 			continue
 		}
@@ -145,10 +117,10 @@ func followedBranch(ctx context.Context, root, defaultBranch string) (string, er
 // distance is the number of commits HEAD has beyond the ref, or -1 when the ref is not
 // an ancestor of HEAD.
 func distance(ctx context.Context, root, ref string) int {
-	if _, err := git(ctx, root, "merge-base", "--is-ancestor", ref, "HEAD"); err != nil {
+	if _, err := gitcmd.Output(ctx, root, "merge-base", "--is-ancestor", ref, "HEAD"); err != nil {
 		return -1
 	}
-	out, err := git(ctx, root, "rev-list", "--count", ref+"..HEAD")
+	out, err := gitcmd.Output(ctx, root, "rev-list", "--count", ref+"..HEAD")
 	if err != nil {
 		return -1
 	}

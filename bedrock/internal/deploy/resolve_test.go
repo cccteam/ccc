@@ -123,15 +123,17 @@ func buildFor(t *testing.T, subs map[string]string) string {
 type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token string
 	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Seed  bool
-	ReloadReason, Restore, Requester, RestoreReason              string
+	// MaintenanceOff is the maintenance instruction (bedrock maintenance off).
+	MaintenanceOff                                  bool
+	ReloadReason, Restore, Requester, RestoreReason string
 	// RestoreDatabase and RestoreDatabaseBackup are production's live database and the
 	// backup a rollback restored it from, for a restore from production's backup.
 	RestoreDatabase, RestoreDatabaseBackup string
 	// KeepsReleaseBackups says the environment is on the checkout placement's
 	// releaseBackups list (production alone unless it says otherwise).
 	KeepsReleaseBackups bool
-	// Rollback, RollbackFrom and RollbackReason are a rollback run's instruction.
-	Rollback, RollbackFrom, RollbackReason string
+	// Rollback and RollbackReason are a rollback run's instruction.
+	Rollback, RollbackReason string
 	// Migration is the migration operation in words, empty for none.
 	Migration string
 	// Declared are the declared substitutions' names and Values their values, as the
@@ -148,7 +150,7 @@ func summarize(f *Facts) outcome {
 	o := outcome{
 		Version: f.Version, Release: f.Release, Image: f.Image, ImageTag: f.ImageTag, CommitTag: f.CommitTag, Comment: f.Comment, Token: f.Token,
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Seed: f.Seed, KeepsReleaseBackups: f.KeepsReleaseBackups,
-		Rollback: f.Rollback, RollbackFrom: f.RollbackFrom, RollbackReason: f.RollbackReason,
+		Rollback: f.Rollback, RollbackReason: f.RollbackReason, MaintenanceOff: f.MaintenanceOff,
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
 		RestoreDatabase: f.RestoreDatabase, RestoreDatabaseBackup: f.RestoreDatabaseBackup,
 		Values: f.declared, BuildSecrets: f.BuildSecrets, BuildArguments: f.BuildArguments,
@@ -222,7 +224,7 @@ var (
 	widgetsUp     = Migration{Dir: "schema/migrations", Name: "000002_Widgets.up.sql", Hash: hashOf("create table widgets")}
 	failedUp      = Migration{Dir: "schema/migrations", Name: "000003_Failed.up.sql", Hash: hashOf("alter table a")}
 	productionRec = func(applied ...Migration) string {
-		data, err := json.Marshal(Record{App: "harbor", Env: "prd", Version: "v1.2.2", Build: "b-5", Timestamp: "2026-10-05T10:00:00Z", Status: Live, Migrations: applied, Database: &DatabaseRef{Name: "projects/p-spn/instances/shared-spanner/databases/harbor-prd-db-3", Generation: 3}, Rollback: &Rollback{Backup: "projects/p-spn/instances/shared-spanner/backups/harbor-prd-db-2-pre-v1-2-2"}})
+		data, err := json.Marshal(Record{App: "harbor", Env: "prd", Version: "v1.2.2", Build: "b-5", Timestamp: "2026-10-05T10:00:00Z", Status: Live, Migrations: applied, Database: &DatabaseRef{Name: "projects/p-spn/instances/shared-spanner/databases/harbor-prd-db-3", Generation: 3}, Restore: &Restore{Kind: "projects/p-spn/instances/shared-spanner/backups/harbor-prd-db-2-pre-v1-2-2", Backup: "projects/p-spn/instances/shared-spanner/backups/harbor-prd-db-2-pre-v1-2-2", Database: "projects/p-spn/instances/shared-spanner/databases/harbor-prd-db-3", Generation: 3, PreviousGeneration: 2}})
 		if err != nil {
 			panic(err)
 		}
@@ -491,9 +493,9 @@ func TestResolve(t *testing.T) {
 			wantOut: []string{"Restore run: stg's database is replaced (production-backup) before v1.2.3 deploys, asked for by octocat."},
 		},
 		{
-			name:    "production is never restored by a run",
+			name:    "production is never emptied by a run",
 			subs:    tagBuild(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat", "_ENV": "prd"}),
-			wantErr: "_RESTORE=empty in prd: production is never restored by a run",
+			wantErr: "_RESTORE=empty in prd: production's database is never emptied by a run; it is restored to a backup (bedrock restore --before, --at or --backup)",
 		},
 		{
 			name:    "production's backup goes into stg alone",
@@ -503,7 +505,7 @@ func TestResolve(t *testing.T) {
 		{
 			name:    "an unknown restore is refused",
 			subs:    tagBuild(map[string]string{restoreSub: "yesterday", requesterSub: "octocat"}),
-			wantErr: `unknown _RESTORE "yesterday" (the restores are empty and production-backup)`,
+			wantErr: `unknown _RESTORE "yesterday" (the restores are empty, production-backup, a backup's resource name (projects/<p>/instances/<i>/backups/<b>) and @<moment>)`,
 		},
 		{
 			name:    "a restore names who asked",
@@ -522,7 +524,7 @@ func TestResolve(t *testing.T) {
 			want: withComment(tag, "", func(o *outcome) {
 				o.Requester, o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "octocat", "v1.2.3-prd", "deadbeefcafe-prd", true
 			}),
-			wantOut: []string{"Rerun: v1.2.3 runs again in prd, asked for by octocat.", "Release backup: prd keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock rollback restores it."},
+			wantOut: []string{"Rerun: v1.2.3 runs again in prd, asked for by octocat.", "Release backup: prd keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock restore --before returns to it."},
 		},
 		{
 			name:     "a pull-request build is not rerun through the door",
@@ -809,83 +811,127 @@ func TestResolve(t *testing.T) {
 			}),
 		},
 		{
-			name: "a rollback in production names the backup, the release it leaves, who asked and why, and prints the statement first",
-			subs: tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", rollbackFromSub: "v1.2.4", reasonSub: "v1.2.4 mangled the invoices", requesterSub: "octocat", "_ENV": "prd"}),
+			name: "a rollback names the release it leaves, who asked and why, runs no migration, and prints the statement first",
+			subs: tagBuild(map[string]string{rollbackSub: "v1.2.4", reasonSub: "v1.2.4 mangled the invoices", requesterSub: "octocat", "_ENV": "prd"}),
 			want: withComment(tag, "", func(o *outcome) {
 				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
-				o.Rollback, o.RollbackFrom, o.RollbackReason, o.Requester = "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", "v1.2.4", "v1.2.4 mangled the invoices", "octocat"
+				o.Rollback, o.RollbackReason, o.Requester, o.RunMigrations = "v1.2.4", "v1.2.4 mangled the invoices", "octocat", false
 			}),
 			wantOut: []string{
 				"=== ROLLBACK of prd: harbor returns to v1.2.3 from v1.2.4, asked for by octocat: v1.2.4 mangled the invoices ===",
-				"The application goes into maintenance. The live database is kept as the forensic copy and a backup of it is taken as of now. the backup imp-prd-gbl-harbor-db-pre-v1-2-4 is restored into the database's next generation; v1.2.3's migrations run on it (nothing applies when the backup is at v1.2.3's schema); v1.2.3 deploys and takes the traffic; the record names all of it. Writes made after the backup's moment are in the forensic copy alone.",
+				"Nothing of the database: it stays as v1.2.4 left it, every migration it holds applied, and v1.2.3 runs on it. No migration runs, no backup is taken, nothing is restored; v1.2.3's build runs again and deploys as a release does. The database is returned by bedrock restore, in a run of its own.",
 			},
 		},
 		{
-			name: "a rollback to a moment names it",
-			subs: tagBuild(map[string]string{rollbackSub: "@2026-10-05T04:00:00Z", rollbackFromSub: "v1.2.4", reasonSub: "bad data since four", requesterSub: "octocat", "_ENV": "prd"}),
+			name: "a rollback in an environment off the releaseBackups list is a rollback like any other: it needs no backup",
+			subs: tagBuild(map[string]string{rollbackSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat"}),
 			want: withComment(tag, "", func(o *outcome) {
-				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
-				o.Rollback, o.RollbackFrom, o.RollbackReason, o.Requester = "@2026-10-05T04:00:00Z", "v1.2.4", "bad data since four", "octocat"
+				o.Rollback, o.RollbackReason, o.Requester, o.RunMigrations = "v1.2.4", "why", "octocat", false
 			}),
-			wantOut: []string{"a backup made as of 2026-10-05T04:00:00Z is restored into the database's next generation"},
-		},
-		{
-			name:    "a rollback in an environment off the releaseBackups list is refused, naming bedrock restore",
-			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat"}),
-			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b in tst: the placement's releaseBackups list (prd) does not name it, so no release backup exists there to return to; bedrock restore serves it",
 		},
 		{
 			name:    "a rollback on a pull-request build is refused",
-			subs:    prBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why"}),
-			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b on a pull-request build: a rollback is a release build's instruction",
+			subs:    prBuild(map[string]string{rollbackSub: "v1.2.4", reasonSub: "why"}),
+			wantErr: "_ROLLBACK=v1.2.4 on a pull-request build: a rollback is a release build's instruction",
 		},
 		{
-			name:    "a rollback with a restore is refused",
-			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat", restoreSub: restoreEmpty}),
-			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b with _RESTORE=empty: a rollback restores a backup into the database's next generation and a restore replaces the database; a run does one",
+			name:    "a rollback with a restore is refused: one run after the other",
+			subs:    tagBuild(map[string]string{rollbackSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat", restoreSub: restoreEmpty}),
+			wantErr: "_ROLLBACK=v1.2.4 with _RESTORE=empty: a rollback returns the code and a restore the database; a run does one, and both means one run after the other",
 		},
 		{
 			name:    "a rollback without a reason is refused",
-			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", requesterSub: "octocat", "_ENV": "prd"}),
-			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b gives no reason (_REASON): a rollback says why it was asked for",
+			subs:    tagBuild(map[string]string{rollbackSub: "v1.2.4", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK=v1.2.4 gives no reason (_REASON): a rollback says why it was asked for",
 		},
 		{
 			name:    "a rollback without a requester is refused",
-			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", rollbackFromSub: "v1.2.4", reasonSub: "why", "_ENV": "prd"}),
-			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b names no requester (_REQUESTER): a rollback says who asked for it",
+			subs:    tagBuild(map[string]string{rollbackSub: "v1.2.4", reasonSub: "why", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK=v1.2.4 names no requester (_REQUESTER): a rollback says who asked for it",
 		},
 		{
-			name:    "a rollback that names no release it leaves is refused",
-			subs:    tagBuild(map[string]string{rollbackSub: "projects/spn/instances/i/backups/b", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
-			wantErr: "_ROLLBACK=projects/spn/instances/i/backups/b names no release it leaves (_ROLLBACK_FROM)",
+			name:    "a rollback whose release left is not a release tag is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "last-week", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: `_ROLLBACK="last-week" is not a release tag (v<major>.<minor>.<patch>): the release the environment leaves`,
 		},
 		{
-			name:    "a rollback moment that is not RFC 3339 is refused",
-			subs:    tagBuild(map[string]string{rollbackSub: "@yesterday", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
-			wantErr: "_ROLLBACK=@yesterday: the moment after @ is not RFC 3339 (2026-10-05T04:30:00Z)",
+			name:    "a rollback that leaves the release it is of is refused",
+			subs:    tagBuild(map[string]string{rollbackSub: "v1.2.3", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_ROLLBACK=v1.2.3 is the release this build is of: a rollback returns to an earlier release",
 		},
 		{
-			name:    "a rollback instruction that is neither a backup nor a moment is refused",
-			subs:    tagBuild(map[string]string{rollbackSub: "last-week", rollbackFromSub: "v1.2.4", reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
-			wantErr: `_ROLLBACK="last-week" is neither a backup's resource name (projects/<p>/instances/<i>/backups/<b>) nor @<moment>`,
+			name: "a restore to a backup in production names it, who asked and why",
+			subs: tagBuild(map[string]string{restoreSub: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", requesterSub: "octocat", reasonSub: "the migration mangled the invoices", "_ENV": "prd"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
+				o.Restore, o.Requester, o.RestoreReason = "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", "octocat", "the migration mangled the invoices"
+			}),
+			wantOut: []string{"Restore run: prd's database is replaced (projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4) before v1.2.3 deploys, asked for by octocat."},
 		},
 		{
-			name:    "a reason or a release left without a rollback is refused",
-			subs:    tagBuild(map[string]string{reasonSub: "why", requesterSub: "octocat", "_ENV": "prd"}),
-			wantErr: "_ROLLBACK_FROM or _REASON without _ROLLBACK: a rollback names the backup it restores",
+			name: "a restore to a moment names the generation the backup is taken of",
+			subs: tagBuild(map[string]string{restoreSub: "@2026-10-05T04:00:00Z", restoreDatabaseSub: "imp-prd-gbl-harbor-db", requesterSub: "octocat", "_ENV": "prd"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
+				o.Restore, o.Requester, o.RestoreDatabase = "@2026-10-05T04:00:00Z", "octocat", "imp-prd-gbl-harbor-db"
+			}),
+		},
+		{
+			name:    "production is never emptied by a run",
+			subs:    tagBuild(map[string]string{restoreSub: restoreEmpty, requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_RESTORE=empty in prd: production's database is never emptied by a run; it is restored to a backup (bedrock restore --before, --at or --backup)",
+		},
+		{
+			name:    "a restore moment that is not RFC 3339 is refused",
+			subs:    tagBuild(map[string]string{restoreSub: "@yesterday", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: "_RESTORE=@yesterday: the moment after @ is not RFC 3339 (2026-10-05T04:30:00Z)",
+		},
+		{
+			name:    "a restore instruction that is none of the four is refused",
+			subs:    tagBuild(map[string]string{restoreSub: "last-week", requesterSub: "octocat", "_ENV": "prd"}),
+			wantErr: `unknown _RESTORE "last-week" (the restores are empty, production-backup, a backup's resource name (projects/<p>/instances/<i>/backups/<b>) and @<moment>)`,
+		},
+		{
+			name: "the maintenance instruction makes the run take the application out of maintenance and deploy nothing",
+			subs: tagBuild(map[string]string{maintenanceSub: "off", requesterSub: "octocat", "_ENV": "prd"}),
+			want: withComment(tag, "", func(o *outcome) {
+				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
+				o.MaintenanceOff, o.Requester, o.RunMigrations, o.ShiftTraffic = true, "octocat", false, false
+			}),
+			wantOut: []string{"RUN_MIGRATIONS=false SHIFT_TRAFFIC=false"},
+		},
+		{
+			name:    "an unknown maintenance instruction is refused",
+			subs:    tagBuild(map[string]string{maintenanceSub: "on", requesterSub: "octocat"}),
+			wantErr: `unknown _MAINTENANCE "on" (the instruction is off)`,
+		},
+		{
+			name:    "the maintenance instruction on a pull-request build is refused",
+			subs:    prBuild(map[string]string{maintenanceSub: "off"}),
+			wantErr: "_MAINTENANCE=off on a pull-request build: a pull-request build never goes into maintenance",
+		},
+		{
+			name:    "the maintenance instruction with a restore is refused",
+			subs:    tagBuild(map[string]string{maintenanceSub: "off", requesterSub: "octocat", restoreSub: restoreEmpty}),
+			wantErr: "_MAINTENANCE=off with a restore, a rollback or a migration operation: the run that ends a maintenance does nothing else",
+		},
+		{
+			name:    "the maintenance instruction without a requester is refused",
+			subs:    tagBuild(map[string]string{maintenanceSub: "off"}),
+			wantErr: "_MAINTENANCE=off names no requester (_REQUESTER): the run says who asked for it",
 		},
 		{
 			name:      "an environment the placement's releaseBackups list names keeps a backup as of the cut, production or not",
 			subs:      tagBuild(nil),
 			placement: strings.TrimSuffix(testPlacement(""), "}\n") + `, "releaseBackups": ["tst"]}` + "\n",
 			want:      withComment(tag, "", func(o *outcome) { o.KeepsReleaseBackups = true }),
-			wantOut:   []string{"Release backup: tst keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock rollback restores it."},
+			wantOut:   []string{"Release backup: tst keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock restore --before returns to it."},
 		},
 		{
 			name:    "an environment off the list keeps none, and the log names the list",
 			subs:    tagBuild(nil),
 			want:    withComment(tag, "", func(*outcome) {}),
-			wantOut: []string{"Release backup: tst is not on the placement's releaseBackups list (prd), so this run keeps no backup as of the cut and bedrock rollback does not serve it."},
+			wantOut: []string{"Release backup: tst is not on the placement's releaseBackups list (prd), so this run keeps no backup as of the cut and bedrock restore --before does not serve it there."},
 		},
 		{
 			name:     "a pull-request build compares the tree with its own records, not with the environment's live release",

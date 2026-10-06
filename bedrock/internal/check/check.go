@@ -5,6 +5,7 @@ package check
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -112,6 +113,11 @@ type Report struct {
 	// not drift: the check stays clean, so the refusal at run start is never the first
 	// sign.
 	Maintenance []MaintenanceFinding
+	// CloudArmor are the environments whose Cloud Armor entry in terraform.tfvars the
+	// working tree removes while the default branch has the policy on ("preview" or
+	// "enforce"): removing the entry detaches the policy and destroys it in one apply,
+	// which fails while the policy is attached, so the entry goes to "off" first.
+	CloudArmor []CloudArmorFinding
 	// Latest are the secrets an environment's secret_versions in terraform.tfvars lets
 	// track the newest version (the word latest in place of a version number), in
 	// promotion order and then by name. Information, not drift: pinning is the default and
@@ -138,16 +144,17 @@ type MaintenanceFinding struct {
 // required build secret declared, every job's binary built, reserved stages holding
 // their install alone, every declared build argument declared by the Dockerfile, release
 // lines that a feature release opens, a changelog section for every accepted title type,
-// and release-please's files in place.
+// release-please's files in place, and no Cloud Armor policy removed in one step.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
 // owned files at the application root with appDir's. It also reads the schema migrations
 // directory and the seed directory beside it for a sequence the migrate command could not
-// apply in order.
-func Run(m *derive.Model, dir, appDir string) (*Report, error) {
+// apply in order, and the stack's placement against the default branch's for a Cloud
+// Armor policy removed in one step.
+func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, error) {
 	files, err := render.Render(m)
 	if err != nil {
 		return nil, err
@@ -206,13 +213,29 @@ func Run(m *derive.Model, dir, appDir string) (*Report, error) {
 		return nil, err
 	}
 	r.Maintenance = scanMaintenance(m, appDir, time.Now())
+	if err := r.scanPlacement(ctx, m, dir); err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+// scanPlacement reads the stack's terraform.tfvars for a Cloud Armor policy the tree
+// removes in one step (against the default branch's copy) and for the secrets that track
+// latest.
+func (r *Report) scanPlacement(ctx context.Context, m *derive.Model, dir string) error {
+	armor, err := scanCloudArmor(ctx, dir, m.Placement.DefaultBranch)
+	if err != nil {
+		return err
+	}
+	r.CloudArmor = armor
 	latest, err := scanLatest(dir, m.Placement.Environments)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	r.Latest = latest
 
-	return r, nil
+	return nil
 }
 
 // scanRelease reads release-please's configuration at the application root for the
@@ -451,6 +474,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, rs := range r.ReleaseSections {
 		fmt.Fprintf(w, "  refused  %s: %s\n", rs.Path, rs.Problem())
+	}
+	for _, ca := range r.CloudArmor {
+		fmt.Fprintf(w, "  refused  cloud_armor in terraform.tfvars removes %s in one step: at %s the environment is %q, and removing the entry detaches the policy from the backend services and destroys it in one apply, which fails while the policy is attached; set it to \"off\" first (the policy kept, detached), merge and apply, then remove the entry\n", ca.Environment, ca.Ref, ca.Mode)
 	}
 	for _, path := range r.ReleaseFiles {
 		fmt.Fprintf(w, "  refused  %s is missing at the application root: the release workflow reads it, and without it no release is cut and nothing reaches an environment; bedrock render seeds it when absent\n", path)

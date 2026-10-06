@@ -123,9 +123,9 @@ func TestNewRecordRequest(t *testing.T) {
 		wantErr      string
 	}{
 		{
-			name: "a rollback run records who asked and why, the release left, the backups, the database restored into and the one kept",
+			name: "a rollback run records who asked and why and the release left, with the database's generation as it is",
 			files: map[string]string{
-				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport ROLLBACK=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport ROLLBACK_FROM=\"v1.2.4\"\nexport APPROVER=\"approver@example.com\"\nexport APPROVED_AT=\"2026-10-05T03:05:00Z\"\nexport APPROVAL_COMMENT=\"go\"\nexport ROLLBACK_REASON=\"v1.2.4 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport ROLLBACK_BACKUP=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport ROLLBACK_BACKUP_TIME=\"2026-10-05T03:00:00Z\"\nexport ROLLBACK_FORENSIC=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-forensic-20261005-0430\"\nexport ROLLBACK_DATABASE=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"\nexport ROLLBACK_KEPT=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db\"\nexport DATABASE_GENERATION=\"2\"\nexport DATABASE_PREVIOUS_GENERATION=\"1\"\nexport MIGRATE_DATABASES='[\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"]'\n",
+				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"\"\nexport ROLLBACK=\"v1.2.4\"\nexport APPROVER=\"approver@example.com\"\nexport APPROVED_AT=\"2026-10-05T03:05:00Z\"\nexport APPROVAL_COMMENT=\"go\"\nexport ROLLBACK_REASON=\"v1.2.4 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport DATABASE_GENERATION=\"2\"\nexport MIGRATE_DATABASES='[\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"]'\n",
 				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`,
 				RevisionsFile:   revisionsLines,
 			},
@@ -135,8 +135,23 @@ func TestNewRecordRequest(t *testing.T) {
 			wantRequester: "octocat",
 			wantDatabase:  &DatabaseRef{Name: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2", Generation: 2},
 			wantApproval:  &Approval{Approver: "approver@example.com", At: "2026-10-05T03:05:00Z", Comment: "go"},
-			wantRollback: &Rollback{
-				Requester: "octocat", Reason: "v1.2.4 mangled the invoices", From: "v1.2.4",
+			wantRollback:  &Rollback{Requester: "octocat", Reason: "v1.2.4 mangled the invoices", From: "v1.2.4"},
+		},
+		{
+			name: "a restore to a backup records who asked and why, the backups, the database restored into and the one kept",
+			files: map[string]string{
+				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport RESTORE=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport APPROVER=\"approver@example.com\"\nexport APPROVED_AT=\"2026-10-05T03:05:00Z\"\nexport APPROVAL_COMMENT=\"go\"\nexport RESTORE_REASON=\"v1.2.4 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_BACKUP=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4\"\nexport RESTORE_BACKUP_TIME=\"2026-10-05T03:00:00Z\"\nexport RESTORE_FORENSIC=\"projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-forensic-20261005-0430\"\nexport RESTORE_INTO=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"\nexport RESTORE_KEPT=\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db\"\nexport DATABASE_GENERATION=\"2\"\nexport DATABASE_PREVIOUS_GENERATION=\"1\"\nexport MIGRATE_DATABASES='[\"projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2\"]'\n",
+				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`,
+				RevisionsFile:   revisionsLines,
+			},
+			wantObject:    "harbor/prd/v1.2.3/b-1.json",
+			wantStatus:    Live,
+			wantRegions:   "us-central1,us-west3",
+			wantRequester: "octocat",
+			wantDatabase:  &DatabaseRef{Name: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2", Generation: 2},
+			wantApproval:  &Approval{Approver: "approver@example.com", At: "2026-10-05T03:05:00Z", Comment: "go"},
+			wantRestore: &Restore{
+				Kind: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", Requester: "octocat", Reason: "v1.2.4 mangled the invoices",
 				Backup: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-pre-v1-2-4", BackupTime: "2026-10-05T03:00:00Z", Forensic: "projects/spn/instances/i/backups/imp-prd-gbl-harbor-db-forensic-20261005-0430",
 				Database: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2", Kept: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db", Generation: 2, PreviousGeneration: 1,
 			},

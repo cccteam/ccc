@@ -61,6 +61,10 @@ jobs:
           chmod 0755 "$RUNNER_TEMP/bedrock"
           "$RUNNER_TEMP/bedrock" --version
 {{- end}}
+      # The checks that compare the tree with the default branch (a Cloud Armor policy
+      # removed in one step) read origin's copy of it, which the checkout alone lacks.
+      - name: The default branch, for the checks that compare against it
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/{{.P.DefaultBranch}}:refs/remotes/origin/{{.P.DefaultBranch}}"
       - name: bedrock check
         run: |
           "$RUNNER_TEMP/bedrock" check

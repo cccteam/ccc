@@ -839,11 +839,13 @@ func (v *view) environments() {
 // operationsEnv is one environment as the operations workflow addresses it: its
 // project, the workload identity provider and the operations identity (both named
 // after the project, as 2-env creates them), the version trigger, the restore a run
-// makes there, and the log bucket holding the application's build logs, where the
-// migration's lines are (named as the application stack names it). Wired is false for
-// an environment the placement records no project for. Restorable is false for
-// production, which is never restored by a run and whose migrations are the platform
-// operator's: a rerun of a release and a rollback alone reach it.
+// makes there (an empty database, or production's backup; none for production, whose
+// database is restored to a backup alone), the rollback trigger, and the log bucket
+// holding the application's build logs, where the migration's lines are (named as the
+// application stack names it). Wired is false for an environment the placement records
+// no project for. Restorable is false for production, whose own restore does not exist:
+// a restore to a backup, a rerun and a rollback reach it, and its migrations are the
+// platform operator's.
 type operationsEnv struct {
 	Env        string
 	Wired      bool
@@ -854,8 +856,8 @@ type operationsEnv struct {
 	Trigger    string
 	Restore    string
 	Logs       string
-	// Rollback is the environment's rollback trigger, which bedrock rollback runs; empty
-	// for an environment whose release builds keep no release backup.
+	// Rollback is the environment's rollback trigger, which bedrock rollback runs: the
+	// earlier release's build again with nothing of the database, in every environment.
 	Rollback string
 }
 
@@ -866,9 +868,10 @@ const (
 	gcloudAction = "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
 )
 
-// operations lists the environments the operations workflow acts on: every one, a
-// rerun reaching production, a rollback the environments whose release builds keep a
-// release backup, and the rest every environment but production.
+// operations lists the environments the operations workflow acts on: every one; a
+// rerun, a rollback, a restore to a backup, the listing and the maintenance step reach
+// production, and the environment's own restore and the migration operations every
+// environment but production.
 func (v *view) operations() {
 	v.AuthAction, v.GcloudAction = authAction, gcloudAction
 	v.PrimaryRegion = v.P.Regions[0].Name
@@ -881,9 +884,7 @@ func (v *view) operations() {
 		if o.Restorable {
 			o.Restore = v.P.RestoreKind(env)
 		}
-		if v.P.KeepsReleaseBackups(env) {
-			o.Rollback = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-rollback"
-		}
+		o.Rollback = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-rollback"
 		if project, ok := v.P.Project(env); ok {
 			o.Wired = true
 			o.Project = project.ID

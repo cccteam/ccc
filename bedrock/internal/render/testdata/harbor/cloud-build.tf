@@ -55,13 +55,13 @@ locals {
     _APPLY_IDENTITY          = local.identities.apply_identity_email # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
     _TASKS_QUEUE             = local.tasks_queue                     # the task queue a maintenance step pauses while the database is replaced or migrated and resumes after traffic moves
     _FILE_STORES             = "google_storage_bucket.files[0]"      # the file stores' buckets as this stack addresses them, comma-separated; a restore run in tst replaces them with the database
-    _ROLLBACK                = ""                                    # a rollback run's data (bedrock rollback, on the rollback trigger alone): the backup it restores into the database's next generation, by name, or @<moment> for a backup made as of that moment, or empty for the live release's pre-release backup
-    _ROLLBACK_FROM           = ""                                    # the release the rollback leaves, the environment's live release when it was asked for; the record carries it
-    _REASON                  = ""                                    # why the rollback was asked for; its first step prints it and the record carries it
-    _RESTORE                 = ""                                    # a restore run's instruction (empty, or production-backup): the environment's database is replaced before the release deploys; set by bedrock restore when it runs the trigger, never on a tag's own build, and refused in prd
+    _ROLLBACK                = ""                                    # a rollback run (bedrock rollback, on the rollback trigger alone): the release the environment leaves; the earlier release's build runs again with nothing of the database, no migration run and no backup taken
+    _REASON                  = ""                                    # why the rollback or the restore was asked for; the first step prints it and the record carries it
+    _RESTORE                 = ""                                    # a restore run's instruction: empty or production-backup (the database replaced in place, below production), or a backup's resource name or @<moment> (restored into the database's next generation, the live database kept as the forensic copy; production included)
     _REQUESTER               = ""                                    # who asked for the restore or the migration operation; the record carries it
-    _RESTORE_DATABASE        = ""                                    # production's live database for a restore from its backup, read by the operations workflow from production's deployment record (after a rollback, the generation restored into); empty, production's first database is read
+    _RESTORE_DATABASE        = ""                                    # production's live database for a restore from its backup (read by the operations workflow from production's deployment records), or, for a restore as of a moment, the earlier generation the backup is taken of
     _RESTORE_DATABASE_BACKUP = ""                                    # the backup production's live generation was restored from (its record's rollback.backup), restored while the generation has no backup of its own; empty otherwise
+    _MAINTENANCE             = ""                                    # off: the run takes the application out of a maintenance an earlier run left on (traffic back to the revision the maintenance revision displaced, the queue resumed) and does nothing else (bedrock maintenance off)
     _MIGRATE_ACTION          = ""                                    # a migration operation (version, rerun or force) the operations workflow asks the migrate command for (bedrock migration); empty on a tag's own build
     _MIGRATE_TABLE           = ""                                    # the migrations table a force sets: schema, or data; empty means schema
     _MIGRATE_VERSION         = ""                                    # the version a force sets: an integer, or -1 for no version
@@ -152,20 +152,19 @@ resource "google_cloudbuild_trigger" "version" {
 }
 
 # ---------------------------------------------------------------------------
-# The rollback trigger, in prd alone: the environments whose
-# release builds keep a backup as of their cut (placement.json's
-# releaseBackups). bedrock rollback runs it, through the operations workflow,
-# at the release the environment returns to, with the backup to restore
-# (_ROLLBACK), the release it leaves (_ROLLBACK_FROM), who asked (_REQUESTER)
-# and why (_REASON); the release's pipeline then restores the backup into the
-# database's next generation, points this stack at it, deploys the release and
-# records all of it. Disabled: no push, tag or comment ever starts it, a manual
-# run does. Its name says what it is in the console and in the approval it
-# waits for where a release waits for one.
+# The rollback trigger, in every environment. bedrock rollback runs it, through
+# the operations workflow, at the release the environment returns to, with the
+# release it leaves (_ROLLBACK), who asked (_REQUESTER) and why (_REASON); the
+# release's pipeline then runs that release's build again with nothing of the
+# database (no migration, no backup, the generation unchanged), deploys it and
+# records it. The database is returned by bedrock restore, in a run of its own
+# on the version trigger. Disabled: no push, tag or comment ever starts it, a
+# manual run does. Its name says what it is in the console and in the approval
+# it waits for where a release waits for one.
 # ---------------------------------------------------------------------------
 
 resource "google_cloudbuild_trigger" "rollback" {
-  count = local.identities.repository_id == null || local.is_pr || !contains(["prd"], var.environment) ? 0 : 1
+  count = local.identities.repository_id == null || local.is_pr ? 0 : 1
 
   project  = local.project_id
   location = local.primary_region

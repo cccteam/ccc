@@ -69,13 +69,13 @@ func TestStartReleaseBackup(t *testing.T) {
 			name:    "a restore run takes none",
 			env:     strings.Replace(keeping, "RESTORE=\"\"", "RESTORE=\"production-backup\"", 1),
 			subs:    subs,
-			wantOut: []string{"No release backup: a restore run replaces the database (production-backup), so there is no state before the migrations to keep."},
+			wantOut: []string{"No release backup: a restore run returns the database (production-backup), so there is no state before the migrations to keep; a generation restore's forensic backup stands in the record as this run's."},
 		},
 		{
 			name:    "a rollback run takes none",
 			env:     strings.Replace(keeping, "ROLLBACK=\"\"", "ROLLBACK=\"projects/spn/instances/imp-spn-gbl-spanner/backups/imp-prd-gbl-harbor-db-pre-v1-2-2\"", 1),
 			subs:    subs,
-			wantOut: []string{"No release backup: a rollback restores a backup into the database's next generation; the state before it is that backup, and the live database stays as the forensic copy."},
+			wantOut: []string{"No release backup: a rollback changes nothing of the database: no migration runs, and the database stays as the live release left it."},
 		},
 		{
 			name:    "a run that deploys nothing takes none",

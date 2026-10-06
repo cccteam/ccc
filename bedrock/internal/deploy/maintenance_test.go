@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 // fakeTasks records the queue verbs it was asked for.
@@ -386,6 +388,105 @@ func TestMaintenanceOff(t *testing.T) {
 				t.Fatalf("MaintenanceOff() error = %v", err)
 			}
 			containsAll(t, out.String(), tt.wantOut...)
+			if diff := cmp.Diff(tt.wantVerbs, tasks.verbs); diff != "" {
+				t.Errorf("queue verbs (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestEndLeftMaintenance(t *testing.T) {
+	t.Parallel()
+
+	const (
+		service = "projects/tst-project/locations/us-central1/services/harbor-app"
+		queue   = "projects/tst-project/locations/us-central1/queues/harbor-tasks"
+		env     = "export MAINTENANCE_OFF=\"true\"\nexport SKIP_DEPLOY=\"true\"\nexport SERVICES=\"us-central1=harbor-app\"\nexport VERSION=\"v0.2.2\"\n"
+	)
+	maintenanceRevision := func(displaced string) map[string]any {
+		doc := map[string]any{"containers": []any{map[string]any{"env": []any{map[string]any{keyName: derive.MaintenanceVariable, keyValue: maintenanceOn}}}}}
+		if displaced != "" {
+			doc["labels"] = map[string]any{displacedLabel: displaced}
+		}
+
+		return doc
+	}
+	tests := []struct {
+		name      string
+		resources map[string]map[string]any
+		state     string
+		wantOut   []string
+		wantBack  string
+		wantVerbs []string
+		wantErr   string
+	}{
+		{
+			name: "traffic goes back to the revision the maintenance revision displaced, and the paused queue resumes",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision("harbor-app-00007"),
+			},
+			state:     "PAUSED",
+			wantOut:   []string{"=== Maintenance off: tst, asked for by octocat ===", "harbor-app in us-central1: the maintenance revision harbor-app-00008-maint displaced harbor-app-00007 (its bedrock-displaced label); traffic goes back to it.", "harbor-app in us-central1 serves harbor-app-00007 again; the maintenance revision harbor-app-00008-maint takes no traffic.", "Queue harbor-tasks was left paused by an earlier run's maintenance; resumed (RUNNING)"},
+			wantBack:  "harbor-app-00007",
+			wantVerbs: []string{"state harbor-tasks", "resume harbor-tasks"},
+		},
+		{
+			name: "a maintenance revision from a build before the label sends traffic to the latest ready revision when that is another one",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00009"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision(""),
+			},
+			wantOut:   []string{"names no revision it displaced (a build before the label); traffic goes back to the latest ready revision, harbor-app-00009."},
+			wantBack:  "harbor-app-00009",
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "a service not in maintenance is left as it is",
+			resources: map[string]map[string]any{
+				service:                                 {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00007", keyPercent: float64(100)}}},
+				service + "/revisions/harbor-app-00007": {"containers": []any{map[string]any{"env": []any{}}}},
+			},
+			wantOut:   []string{"harbor-app in us-central1 is not in maintenance: harbor-app-00007 serves, with " + derive.MaintenanceVariable + " unset."},
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "a maintenance revision that names no displaced revision and is the latest ready one is refused, naming the rerun",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision(""),
+			},
+			wantErr: "harbor-app in us-central1: the maintenance revision harbor-app-00008-maint names no revision it displaced and is the latest ready revision itself; run the release again instead (bedrock rerun), which deploys and ends the maintenance",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "_TASKS_QUEUE": queue, "_REQUESTER": "octocat"}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: env, BuildFile: buildFor(t, subs)})
+			tasks := &fakeTasks{state: tt.state}
+			run := newFakeRun(tt.resources)
+			var out strings.Builder
+			err := MaintenanceOff(t.Context(), &Clients{Tasks: tasks.open, Run: run.open}, w, &out)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("MaintenanceOff() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("MaintenanceOff() error = %v\n%s", err, out.String())
+			}
+			containsAll(t, out.String(), tt.wantOut...)
+			back := ""
+			if traffic, ok := run.patched[service][keyTraffic].([]any); ok && len(traffic) > 0 {
+				first, _ := traffic[0].(map[string]any)
+				back = text(first, keyRevision)
+			}
+			if back != tt.wantBack {
+				t.Errorf("traffic went to %q, want %q", back, tt.wantBack)
+			}
 			if diff := cmp.Diff(tt.wantVerbs, tasks.verbs); diff != "" {
 				t.Errorf("queue verbs (-want +got):\n%s", diff)
 			}

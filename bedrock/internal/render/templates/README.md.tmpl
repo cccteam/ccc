@@ -116,14 +116,17 @@ from `2-env`'s state.
   protection on, a weekly full backup (Sundays 02:00 UTC) and a daily
   incremental one (02:00 UTC), each kept 90 days. In {{.ReleaseBackupsProse}}, every
   release build also starts a backup of the database as of the cut, the moment
-  before its migrations run, kept fourteen days, which `bedrock rollback`
-  restores into the database's next generation (`{{.Prefix}}-<env>-gbl-{{.App}}-db-2`,
-  then `-3`): the stack points at the generation the deployment records name
-  (`var.database_generation`) and keeps the earlier ones, drop-protected, as
-  forensic copies. The rollback trigger `{{.Prefix}}-<env>-<region>-{{.App}}-rollback`,
-  disabled for events and run by the operations workflow alone, runs it. The
-  database keeps its past for the placement's `spannerRetention` (seven days
-  unless it says otherwise).
+  before its migrations run, kept fourteen days, which `bedrock restore --before`
+  returns the database to, into its next generation (`{{.Prefix}}-<env>-gbl-{{.App}}-db-2`,
+  then `-3`), as `--at` and `--backup` do from a moment or any backup: the stack
+  points at the generation the deployment records name (`var.database_generation`)
+  and keeps the earlier ones, drop-protected, as forensic copies, and a moment
+  in an earlier generation's history is taken as a backup of that generation.
+  `bedrock rollback` returns the code alone, through the rollback trigger
+  `{{.Prefix}}-<env>-<region>-{{.App}}-rollback`, disabled for events and run by the
+  operations workflow alone, and touches no database. The database keeps its
+  past for the placement's `spannerRetention` (seven days unless it says
+  otherwise).
 {{- range .FileStores}}
 - **{{.Title}}** `{{$.Prefix}}-<env>-<location code>-{{$.App}}-{{.Suffix}}-<project number>`
   (`{{.Variable.Declaration}}` names it to the processes that construct the
@@ -443,8 +446,14 @@ substitutions and this stack's outputs:
   restore run (what replaces the environment's database, and who asked), with
   `_RESTORE_DATABASE` and `_RESTORE_DATABASE_BACKUP` on a restore from
   production's backup (production's live database by its deployment record,
-  the generation a rollback restored into, and the backup it was restored from,
-  which stands in while the generation has no backup of its own), the
+  the generation a restore put it in, and the backup it was restored from,
+  which stands in while the generation has no backup of its own), `_RESTORE`
+  a backup's name or `@<moment>` on a restore to a backup (any environment,
+  production included: the backup is restored into the database's next
+  generation and the live database kept as the forensic copy), `_ROLLBACK`,
+  `_REASON` and the requester on a rollback (the release left; the earlier
+  release's build again with nothing of the database), `_MAINTENANCE=off` on
+  the run that only takes the application out of maintenance, the
   requester alone on a rerun (`bedrock rerun`: the release's tag build again,
   production included);
   `_MIGRATE_ACTION`, `_MIGRATE_TABLE` and `_MIGRATE_VERSION`, empty on a tag's

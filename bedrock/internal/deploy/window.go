@@ -47,6 +47,9 @@ const (
 	// slotInMaintenance names the opening of an environment that is in maintenance
 	// already: the gate counts the window as open.
 	slotInMaintenance = "in maintenance"
+	// slotRollback is the slot a rollback run opens for itself: it goes now, whatever the
+	// window, behind the maintenance page where the return is breaking.
+	slotRollback = "rollback"
 	// whenLayout spells a moment in the window's zone.
 	whenLayout = "Monday 2006-01-02 15:04 MST"
 )
@@ -180,6 +183,15 @@ func windowCheck(ctx context.Context, clients *Clients, w Workspace, build *Buil
 
 		return nil
 	}
+	if env[rollbackFact] != "" {
+		if d.Breaking {
+			fmt.Fprintf(out, "The gate is open to a rollback: %s returns to %s now, behind the maintenance page since the return is breaking for %s (%s).\n", environment, tag, environment, d.Reason)
+		} else {
+			fmt.Fprintf(out, "The gate is open to a rollback: %s returns to %s now, the rolling way.\n", environment, tag)
+		}
+
+		return nil
+	}
 	if !written {
 		return errors.Newf("%s%s has no maintenance setting in %s and %s is a breaking release (%s). Write \"maintenance\": {%q: %q} for a release at any time, or the client's windows, and release again.", rejected, environment, filepath.Join(stackDir, placementFile), tag, d.Reason, environment, derive.MaintenanceAnytime)
 	}
@@ -190,11 +202,6 @@ func windowCheck(ctx context.Context, clients *Clients, w Workspace, build *Buil
 	fmt.Fprintf(out, "Maintenance window: %s is a %s for %s (%s); the window is %s.\n", tag, kind, environment, d.Reason, setting.String())
 	if env[restoreFact] != "" {
 		fmt.Fprintf(out, "The gate is open to a restore run: %s's database is replaced behind the maintenance page whatever the window says.\n", environment)
-
-		return nil
-	}
-	if env[rollbackFact] != "" {
-		fmt.Fprintf(out, "The gate is open to a rollback run: %s returns to %s behind the maintenance page whatever the window says.\n", environment, tag)
 
 		return nil
 	}
@@ -298,6 +305,11 @@ func WaitForWindow(ctx context.Context, clients *Clients, w Workspace, out io.Wr
 		fmt.Fprintf(out, "The gate is open: %s is in maintenance already (this run put it there before its database was replaced).\n", environment)
 
 		return w.Append(openedFacts(clients.now(), 0, slotInMaintenance))
+	}
+	if env[rollbackFact] != "" {
+		fmt.Fprintf(out, "The gate is open: a rollback goes now, so %s returns to %s without waiting for a window.\n", environment, build.Substitutions[tagSub])
+
+		return w.Append(openedFacts(clients.now(), 0, slotRollback))
 	}
 	if service, on, err := serviceInMaintenance(ctx, clients, build); err != nil || on {
 		if on {

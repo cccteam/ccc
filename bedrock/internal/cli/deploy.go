@@ -797,7 +797,11 @@ maintenance revision and deploys the rolling way; a pull-request build never goe
 task queue paused by maintenance on is resumed, against the new release. The maintenance revisions
 stay, with no traffic, as any old revision does. A run that was not in maintenance has nothing to
 end, except a queue an earlier run's maintenance left paused (a restore run that failed after
-maintenance on), which it resumes: the release this run deployed serves now.`,
+maintenance on), which it resumes: the release this run deployed serves now. In a run started by
+bedrock maintenance off (_MAINTENANCE=off, the MAINTENANCE_OFF fact), nothing deployed: it moves
+each service's traffic back to the revision the maintenance revision displaced (the revision the
+bedrock-displaced label names, or the latest ready revision when that is another one) and resumes
+the queue, which is the way out of a maintenance a failed run left on.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.MaintenanceOff(cmd.Context(), d.deploy, deploy.Workspace(offWorkspace), cmd.OutOrStdout())

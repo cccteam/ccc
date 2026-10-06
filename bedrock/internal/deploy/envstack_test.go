@@ -249,7 +249,8 @@ func TestPlanEnvironmentStack(t *testing.T) {
 	const (
 		quillDatabase     = "projects/p-spn/instances/shared-spanner/databases/p-stg-gbl-quill-db"
 		releaseBackupName = "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pre-v1-2-3"
-		rollbackEnv       = "export SKIP_DEPLOY=\"\"\nexport MAINTENANCE=\"true\"\nexport ROLLBACK=\"" + releaseBackupName + "\"\nexport ROLLBACK_FROM=\"v1.2.3\"\nexport ROLLBACK_REASON=\"v1.2.3 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
+		generationEnv     = "export SKIP_DEPLOY=\"\"\nexport MAINTENANCE=\"true\"\nexport RESTORE=\"" + releaseBackupName + "\"\nexport RESTORE_REASON=\"v1.2.3 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
+		rollbackEnv       = "export SKIP_DEPLOY=\"\"\nexport ROLLBACK=\"v1.2.4\"\nexport ROLLBACK_REASON=\"v1.2.4 mangled the invoices\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
 		restoreEnv        = "export SKIP_DEPLOY=\"\"\nexport RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
 		stateList         = "google_spanner_database.quill[0]\ngoogle_firestore_database.firestore\ngoogle_storage_bucket.files\ngoogle_cloud_run_v2_service.app[\"uc1\"]\n"
 	)
@@ -441,7 +442,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          strings.Replace(restoreEnv, "empty", "production-backup", 1) + "export RESTORE_SOURCE_DATABASE=\"projects/p-spn/instances/shared-spanner/databases/p-prd-gbl-quill-db-3\"\nexport RESTORE_SOURCE_BACKUP=\"projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-2-pre-v0-16-3\"\n",
 			state:        "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-2-pre-v0-16-3", VersionTime: "2026-10-05T18:03:57Z", CreateTime: "2026-10-05T18:04:00Z", State: BackupReady},
-			wantOut:      []string{"p-prd-gbl-quill-db-3 has no backup of its own yet (a rollback restored it from p-prd-gbl-quill-db-2-pre-v0-16-3, and no release or schedule has taken one since): that backup, whose data its own began as, is restored.", "stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-2-pre-v0-16-3 (data as of 2026-10-05T18:03:57Z)", "Tests passed"},
+			wantOut:      []string{"p-prd-gbl-quill-db-3 has no backup of its own yet (a restore put it there from p-prd-gbl-quill-db-2-pre-v0-16-3, and no release or schedule has taken one since): that backup, whose data its own began as, is restored.", "stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-2-pre-v0-16-3 (data as of 2026-10-05T18:03:57Z)", "Tests passed"},
 			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", planLine, showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
@@ -475,111 +476,143 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantErr:  "_RESTORE=production-backup: shared-spanner has no backup of production's database p-prd-gbl-quill-db; stg keeps its database",
 		},
 		{
-			name:         "a rollback run finds the backup, starts the forensic backup, restores into generation 2, writes the generation beside the records, imports the database and plans at it, in maintenance",
+			name:         "a restore to a backup finds it, starts the forensic backup, restores into generation 2, writes the generation beside the records, imports the database and plans at it, in maintenance",
 			subs:         rollbackSubs(),
 			pins:         enabledPins(),
-			env:          rollbackEnv,
+			env:          generationEnv,
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
-			wantOut:      []string{"Forensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z, kept thirty days; p-stg-gbl-quill-db itself stays, protected, as the forensic copy.", "=== Rollback: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3 (data as of 2026-10-04T02:00:00Z) into p-stg-gbl-quill-db-2, generation 2 of quill's database ===", "Restored p-stg-gbl-quill-db-2 from p-stg-gbl-quill-db-pre-v1-2-3; Spanner optimizes it in the background and it serves meanwhile.", `Imported p-stg-gbl-quill-db-2 into the stack as google_spanner_database.restored["2"]; the plan points the stack at generation 2.`, "Tests passed"},
+			wantOut:      []string{"Forensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z, kept thirty days; p-stg-gbl-quill-db itself stays, protected, as the forensic copy.", "=== Restore: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3 (data as of 2026-10-04T02:00:00Z) into p-stg-gbl-quill-db-2, generation 2 of quill's database ===", "Restored p-stg-gbl-quill-db-2 from p-stg-gbl-quill-db-pre-v1-2-3; Spanner optimizes it in the background and it serves meanwhile.", `Imported p-stg-gbl-quill-db-2 into the stack as google_spanner_database.restored["2"]; the plan points the stack at generation 2.`, "Tests passed"},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
 			wantFacts: map[string]string{
-				databaseGenerationFact: "2", previousGenerationFact: "1", rollbackBackupFact: releaseBackupName, rollbackBackupTimeFact: "2026-10-04T02:00:00Z",
-				rollbackForensicFact: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-forensic-20261005-0430", rollbackDatabaseFact: quillDatabase + "-2", rollbackKeptFact: quillDatabase,
+				databaseGenerationFact: "2", previousGenerationFact: "1", backupFact: releaseBackupName, backupTimeFact: "2026-10-04T02:00:00Z",
+				restoreForensicFact: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-forensic-20261005-0430", restoreIntoFact: quillDatabase + "-2", restoreKeptFact: quillDatabase,
 				// The forensic backup stands as the run's release backup in the record.
 				cutFact: "2026-10-05T04:30:00Z", releaseBackupFact: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-forensic-20261005-0430", releaseBackupTimeFact: "2026-10-05T04:30:00Z", releaseBackupExpiresFact: "2026-11-04T04:30:00Z",
 			},
 			wantObject: "gs://records/quill/database/stg/2.json",
 		},
 		{
-			name:         "a rollback waits for a backup Spanner is still taking, and starts the forensic backup once it is READY",
+			name:         "a restore waits for a backup Spanner is still taking, and starts the forensic backup once it is READY",
 			subs:         rollbackSubs(),
 			pins:         enabledPins(),
-			env:          rollbackEnv,
+			env:          generationEnv,
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			creating:     2,
-			wantOut:      []string{"Waiting for p-stg-gbl-quill-db-pre-v1-2-3: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Rollback: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
+			wantOut:      []string{"Waiting for p-stg-gbl-quill-db-pre-v1-2-3: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Restore: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
 			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
 		},
 		{
-			name:         "a rollback waits to start the forensic backup while Spanner takes another backup of the database",
+			name:         "a restore waits to start the forensic backup while Spanner takes another backup of the database",
 			subs:         rollbackSubs(),
 			pins:         enabledPins(),
-			env:          rollbackEnv,
+			env:          generationEnv,
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			pending:      2,
-			wantOut:      []string{"Waiting to start the forensic backup p-stg-gbl-quill-db-forensic-20261005-0430: Spanner is taking another backup of p-stg-gbl-quill-db, and takes one at a time (0s so far); it starts when that one completes.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Rollback: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
+			wantOut:      []string{"Waiting to start the forensic backup p-stg-gbl-quill-db-forensic-20261005-0430: Spanner is taking another backup of p-stg-gbl-quill-db, and takes one at a time (0s so far); it starts when that one completes.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Restore: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
 		},
 		{
-			name:         "a rollback to a moment starts a backup as of it and restores that",
+			name:         "a restore to a moment starts a backup of the live database as of it and restores that",
 			subs:         rollbackSubs(),
 			pins:         enabledPins(),
-			env:          strings.Replace(rollbackEnv, releaseBackupName, "@2026-10-04T02:00:00Z", 1),
+			env:          strings.Replace(generationEnv, releaseBackupName, "@2026-10-04T02:00:00Z", 1),
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200", Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
-			wantOut:      []string{"Point in time: p-stg-gbl-quill-db-pit-20261004-0200 is made as of 2026-10-04T02:00:00Z, kept fourteen days; the rollback waits for it.", "=== Rollback: stg is restored from p-stg-gbl-quill-db-pit-20261004-0200 (data as of 2026-10-04T02:00:00Z) into p-stg-gbl-quill-db-2, generation 2 of quill's database ==="},
+			wantOut:      []string{"Point in time: p-stg-gbl-quill-db-pit-20261004-0200 is made of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z, kept fourteen days; the restore waits for it.", "=== Restore: stg is restored from p-stg-gbl-quill-db-pit-20261004-0200 (data as of 2026-10-04T02:00:00Z) into p-stg-gbl-quill-db-2, generation 2 of quill's database ==="},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantCreated:  []string{"p-stg-gbl-quill-db-pit-20261004-0200 of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z until 2026-10-19T04:30:00Z", "p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-2 from projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200",
 		},
 		{
-			name:         "a second rollback restores into generation 3 from the generation-2 database, told by the generation object",
+			name:         "a second restore restores into generation 3 from the generation-2 database, told by the generation object",
 			subs:         withSub(rollbackSubs(), migrateDatabasesSub, `["`+quillDatabase+`-2"]`),
 			pins:         enabledPins(),
-			env:          rollbackEnv,
+			env:          generationEnv,
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			objects:      map[string]string{"gs://records/quill/database/stg/2.json": "{}"},
-			wantOut:      []string{"Generation 2: a rollback restored stg's database into its generation 2 (gs://records/quill/database/stg/2.json); the plan points the stack at it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
+			wantOut:      []string{"Generation 2: a restore put stg's database into its generation 2 (gs://records/quill/database/stg/2.json); the plan points the stack at it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", strings.Replace(planLine, "generation=1", "generation=3", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantRestored: "p-stg-gbl-quill-db-3 from " + releaseBackupName,
-			wantFacts:    map[string]string{databaseGenerationFact: "3", previousGenerationFact: "2", rollbackKeptFact: quillDatabase + "-2", rollbackDatabaseFact: quillDatabase + "-3"},
+			wantFacts:    map[string]string{databaseGenerationFact: "3", previousGenerationFact: "2", restoreKeptFact: quillDatabase + "-2", restoreIntoFact: quillDatabase + "-3"},
 			wantObject:   "gs://records/quill/database/stg/3.json",
 		},
 		{
-			name:      "a release build after a rollback plans at the generation the rollback wrote",
+			name:      "a rollback run plans at the generation as it is: nothing restored, no backup started, no maintenance",
+			subs:      rollbackSubs(),
+			pins:      enabledPins(),
+			env:       rollbackEnv,
+			wantOut:   []string{"Plan: 2 to add, 1 to change, 1 to destroy.", "Tests passed"},
+			wantTofu:  []string{initLine, planLine, showLine},
+			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantFacts: map[string]string{databaseGenerationFact: "1"},
+		},
+		{
+			name:         "a restore to a moment held by an earlier generation backs that generation up and restores it into a new one, the live generation kept",
+			subs:         withSub(rollbackSubs(), migrateDatabasesSub, `["`+quillDatabase+`-2"]`),
+			pins:         enabledPins(),
+			env:          strings.Replace(generationEnv, releaseBackupName, "@2026-10-04T02:00:00Z", 1) + "export RESTORE_SOURCE_DATABASE=\"p-stg-gbl-quill-db\"\n",
+			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200", Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
+			objects:      map[string]string{"gs://records/quill/database/stg/2.json": "{}"},
+			wantOut:      []string{"Point in time: p-stg-gbl-quill-db-pit-20261004-0200 is made of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z, kept fourteen days; the restore waits for it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", strings.Replace(planLine, "generation=1", "generation=3", 1) + " -var maintenance=1", showLine},
+			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantCreated:  []string{"p-stg-gbl-quill-db-pit-20261004-0200 of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z until 2026-10-19T04:30:00Z", "p-stg-gbl-quill-db-2-forensic-20261005-0430 of p-stg-gbl-quill-db-2 as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
+			wantRestored: "p-stg-gbl-quill-db-3 from projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200",
+			wantFacts:    map[string]string{databaseGenerationFact: "3", previousGenerationFact: "2", restoreKeptFact: quillDatabase + "-2", restoreIntoFact: quillDatabase + "-3"},
+		},
+		{
+			name:      "a release build after a restore plans at the generation the restore wrote",
 			subs:      rollbackSubs(),
 			pins:      enabledPins(),
 			objects:   map[string]string{"gs://records/quill/database/stg/2.json": "{}"},
-			wantOut:   []string{"Generation 2: a rollback restored stg's database into its generation 2 (gs://records/quill/database/stg/2.json); the plan points the stack at it.", "Tests passed"},
+			wantOut:   []string{"Generation 2: a restore put stg's database into its generation 2 (gs://records/quill/database/stg/2.json); the plan points the stack at it.", "Tests passed"},
 			wantTofu:  []string{initLine, strings.Replace(planLine, "generation=1", "generation=2", 1), showLine},
 			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantFacts: map[string]string{databaseGenerationFact: "2"},
 		},
 		{
-			name:     "a rollback to a backup the instance does not hold is refused before any backup is started",
+			name:     "a restore to a backup the instance does not hold is refused before any backup is started",
 			subs:     rollbackSubs(),
 			pins:     enabledPins(),
-			env:      rollbackEnv,
+			env:      generationEnv,
 			wantTofu: []string{initLine},
-			wantErr:  "_ROLLBACK=" + releaseBackupName + ": there is no such backup on shared-spanner",
+			wantErr:  "_RESTORE=" + releaseBackupName + ": there is no such backup on shared-spanner",
 		},
 		{
-			name:     "a rollback to a backup of another application's database is refused",
+			name:     "a restore to a backup of another application's database is refused",
 			subs:     rollbackSubs(),
 			pins:     enabledPins(),
-			env:      rollbackEnv,
+			env:      generationEnv,
 			backup:   &Backup{Name: releaseBackupName, Database: "projects/p-spn/instances/shared-spanner/databases/p-stg-gbl-other-db", State: BackupReady},
 			wantTofu: []string{initLine},
-			wantErr:  "_ROLLBACK=" + releaseBackupName + " is a backup of p-stg-gbl-other-db, not of this application's database (p-stg-gbl-quill-db)",
+			wantErr:  "_RESTORE=" + releaseBackupName + " is a backup of p-stg-gbl-other-db, not of this application's database (p-stg-gbl-quill-db)",
 		},
 		{
-			name:     "a rollback on a build whose trigger names no records bucket is refused before anything",
+			name:     "a restore to a backup on a build whose trigger names no records bucket is refused before anything",
 			subs:     tagSubs(),
 			pins:     enabledPins(),
-			env:      rollbackEnv,
+			env:      generationEnv,
 			backup:   &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady},
 			wantTofu: []string{initLine},
-			wantErr:  "build.json carries no _RECORDS_BUCKET: a rollback writes the database's generation beside the deployment records, so the run refuses before touching anything",
+			wantErr:  "build.json carries no _RECORDS_BUCKET: a restore writes the database's generation beside the deployment records, so the run refuses before touching anything",
+		},
+		{
+			name:     "a run under the skip facts plans nothing (the maintenance instruction)",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			env:      "export SKIP_DEPLOY=\"true\"\nexport SKIP_REASON=\"Skipped: this run takes stg out of a maintenance an earlier run left on (bedrock maintenance off, asked for by octocat) and deploys nothing.\"\n",
+			wantOut:  []string{"Skipped: this run takes stg out of a maintenance an earlier run left on (bedrock maintenance off, asked for by octocat) and deploys nothing."},
+			wantTofu: []string{initLine},
 		},
 		{
 			name:     "a tag build plans, tests and appends the summary",
@@ -716,7 +749,8 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			if env[restoredFact] != tt.wantReplaced {
 				t.Errorf("%s = %q, want %q", restoredFact, env[restoredFact], tt.wantReplaced)
 			}
-			if env[backupFact] != tt.wantBackup {
+			// A generation restore's backup is checked through wantFacts; the replace path's here.
+			if tt.wantRestored == "" && env[backupFact] != tt.wantBackup {
 				t.Errorf("%s = %q, want %q", backupFact, env[backupFact], tt.wantBackup)
 			}
 			if tt.wantBackup != "" && (spanner.dropped != "projects/p-spn/instances/shared-spanner/databases/p-stg-gbl-quill-db" || spanner.restored != "p-stg-gbl-quill-db from "+tt.wantBackup) {
@@ -746,12 +780,12 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				if err := json.Unmarshal([]byte(store.objects[tt.wantObject]), &note); err != nil {
 					t.Fatalf("%s: %v", tt.wantObject, err)
 				}
-				want := generationNote{Requester: "octocat", Reason: "v1.2.3 mangled the invoices", From: "v1.2.3", Build: "b-1", Release: subs[tagSub], At: "2026-10-05T04:30:00Z"}
+				want := generationNote{Requester: "octocat", Reason: "v1.2.3 mangled the invoices", Build: "b-1", Release: subs[tagSub], At: "2026-10-05T04:30:00Z"}
 				want.Generation, want.Database, want.Backup, want.Kept = note.Generation, note.Database, note.Backup, note.Kept
 				if diff := cmp.Diff(want, note); diff != "" {
 					t.Errorf("%s (-want +got):\n%s", tt.wantObject, diff)
 				}
-				if note.Database != env[rollbackDatabaseFact] || note.Kept != env[rollbackKeptFact] || note.Backup != env[rollbackBackupFact] || strconv.Itoa(note.Generation) != env[databaseGenerationFact] {
+				if note.Database != env[restoreIntoFact] || note.Kept != env[restoreKeptFact] || note.Backup != env[backupFact] || strconv.Itoa(note.Generation) != env[databaseGenerationFact] {
 					t.Errorf("the generation note (%+v) and the facts disagree", note)
 				}
 			}
@@ -1139,7 +1173,7 @@ func TestPlanEnvironments(t *testing.T) {
 			}(),
 			pins:     enabledPins(),
 			objects:  map[string]string{"gs://records-prd/quill/database/prd/2.json": "{}"},
-			wantOut:  []string{"Generation 2: a rollback restored prd's database into its generation 2 (gs://records-prd/quill/database/prd/2.json); the plan points the stack at it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantOut:  []string{"Generation 2: a restore put prd's database into its generation 2 (gs://records-prd/quill/database/prd/2.json); the plan points the stack at it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
 			wantTofu: []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst"), initOf("stg", "p-stg"), planOf("stg"), showOf("stg"), initOf("prd", "p-prd"), strings.Replace(planOf("prd"), "generation=1", "generation=2", 1), showOf("prd")},
 		},
 		{

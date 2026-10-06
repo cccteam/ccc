@@ -57,6 +57,10 @@ jobs:
             -e GOINSECURE= \
             "$GO_IMAGE" install -ldflags="-s -w" "github.com/cccteam/ccc/bedrock@$BEDROCK_VERSION"
           "$RUNNER_TEMP/bedrock" --version
+      # The checks that compare the tree with the default branch (a Cloud Armor policy
+      # removed in one step) read origin's copy of it, which the checkout alone lacks.
+      - name: The default branch, for the checks that compare against it
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/master:refs/remotes/origin/master"
       - name: bedrock check
         run: |
           "$RUNNER_TEMP/bedrock" check

@@ -22,6 +22,8 @@ import (
 	"strconv"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/gitcmd"
 )
 
 // Options names the repository, the directories and the branch.
@@ -101,7 +103,7 @@ func Renumber(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	ref, commit, err := defaultRef(ctx, opts.Root, branch)
+	ref, commit, err := gitcmd.DefaultRef(ctx, opts.Root, branch)
 	if err != nil {
 		return nil, err
 	}

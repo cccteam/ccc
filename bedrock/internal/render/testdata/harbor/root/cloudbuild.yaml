@@ -250,9 +250,10 @@ steps:
   # In prd (placement.json's releaseBackups), a release that applies
   # its migrations first takes a backup of the database as of this moment, the cut, kept
   # fourteen days, as the apply identity, and goes on without waiting for it: what bedrock
-  # rollback restores into the database's next generation when the release goes wrong. A
-  # backup that cannot start stops the run here, before any migration ran. Any other run
-  # (another environment, no migration, a restore, a rollback) says so and does nothing.
+  # restore --before returns the database to when the release goes wrong, into the
+  # database's next generation. A backup that cannot start stops the run here, before any
+  # migration ran. Any other run (another environment, no migration, a restore, a rollback,
+  # which changes nothing of the database) says so and does nothing.
   - id: StartReleaseBackup
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock

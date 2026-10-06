@@ -44,6 +44,10 @@ jobs:
           echo "$BEDROCK_SHA256  $RUNNER_TEMP/bedrock" | sha256sum --check -
           chmod 0755 "$RUNNER_TEMP/bedrock"
           "$RUNNER_TEMP/bedrock" --version
+      # The checks that compare the tree with the default branch (a Cloud Armor policy
+      # removed in one step) read origin's copy of it, which the checkout alone lacks.
+      - name: The default branch, for the checks that compare against it
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/master:refs/remotes/origin/master"
       - name: bedrock check
         run: |
           "$RUNNER_TEMP/bedrock" check

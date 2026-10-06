@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"path"
 	"strconv"
@@ -87,6 +88,11 @@ type maintenance struct {
 // database the maintenance step chose and waited for before the maintenance page went up
 // (a production-backup restore).
 const restoreReadyBackupFact = "RESTORE_READY_BACKUP"
+
+// displacedLabel is the label a maintenance revision carries naming the revision that
+// served when it took the traffic, so that a run which only ends the maintenance (bedrock
+// maintenance off) knows where the traffic goes back to.
+const displacedLabel = "bedrock-displaced"
 
 // MaintenanceOn puts the application into maintenance when the run needs it. The step
 // stands at two places in the pipeline: before the stack is planned, where a restore run
@@ -183,8 +189,6 @@ func maintenanceCause(env map[string]string, window bool, environment string, ou
 	switch {
 	case !window && env[restoreFact] != "":
 		return fmt.Sprintf("%s's database is replaced (%s) before %s deploys, so the application serves its maintenance page meanwhile", environment, env[restoreFact], version), true
-	case !window && env[rollbackFact] != "":
-		return fmt.Sprintf("%s is rolled back to %s from %s (a backup restored into the database's next generation), so the application serves its maintenance page meanwhile", environment, version, env[rollbackFromFact]), true
 	case !window:
 		fmt.Fprintln(out, "No maintenance: this run keeps the application serving (a restore run starts its maintenance revision here, and a breaking release starts its own once its window is open).")
 
@@ -330,7 +334,7 @@ func spannerAsApplyIdentity(ctx context.Context, clients *Clients, subs map[stri
 // build's running job executions are canceled, and the old revisions' requests in flight
 // are let finish. What it did goes into the facts.
 func (m *maintenance) quiesce(ctx context.Context, facts map[string]string, previous []Revision, moved time.Time) error {
-	restore := m.env[restoreFact] != "" || m.env[rollbackFact] != ""
+	restore := m.env[restoreFact] != ""
 	if queue := m.build.Substitutions[tasksQueueSub]; queue != "" {
 		if err := m.pauseQueue(ctx, queue, restore); err != nil {
 			return err
@@ -361,6 +365,9 @@ func MaintenanceOff(ctx context.Context, clients *Clients, w Workspace, out io.W
 	build, err := w.Build()
 	if err != nil {
 		return err
+	}
+	if env[maintenanceOffFact] == trueValue {
+		return endLeftMaintenance(ctx, clients, build, env, out)
 	}
 	if env[maintenanceFact] != trueValue {
 		// The queue the trigger names is the environment's, which a pull-request build
@@ -396,6 +403,83 @@ func MaintenanceOff(ctx context.Context, clients *Clients, w Workspace, out io.W
 	fmt.Fprintf(out, "=== Maintenance off: %s serves %s; the maintenance revision(s) %s take no traffic ===\n", build.Substitutions[envSub], env[versionFact], env[maintenanceRevisionsFact])
 
 	return nil
+}
+
+// endLeftMaintenance is the whole of a run under the maintenance instruction (bedrock
+// maintenance off): for every service the trigger names, when a maintenance revision
+// serves (the maintenance variable set on it), all traffic goes back to the revision it
+// displaced, named by the label the maintenance step put on it, or, for a maintenance
+// revision from a build before the label, to the service's latest ready revision when
+// that is another one; then the queue an earlier run left paused is resumed. A service
+// not in maintenance is left as it is, and said.
+func endLeftMaintenance(ctx context.Context, clients *Clients, build *Build, env map[string]string, out io.Writer) error {
+	run, err := clients.Run(ctx)
+	if err != nil {
+		return err
+	}
+	subs := build.Substitutions
+	fmt.Fprintf(out, "=== Maintenance off: %s, asked for by %s ===\n", subs[envSub], subs[requesterSub])
+	for _, entry := range strings.Split(env[services], ",") {
+		region, service, err := target(services, entry)
+		if err != nil {
+			return err
+		}
+		name := serviceName(subs[projectSub], region, service)
+		doc, err := run.Get(ctx, name)
+		if err != nil {
+			return err
+		}
+		serving := servingRevision(doc)
+		if serving == "" {
+			fmt.Fprintf(out, "%s in %s serves no revision; nothing to move.\n", service, region)
+
+			continue
+		}
+		revision, err := run.Get(ctx, name+"/revisions/"+serving)
+		if err != nil {
+			return errors.Wrapf(err, "reading the revision %s of %s", serving, service)
+		}
+		if !revisionInMaintenance(revision) {
+			fmt.Fprintf(out, "%s in %s is not in maintenance: %s serves, with %s unset.\n", service, region, serving, derive.MaintenanceVariable)
+
+			continue
+		}
+		back := text(revision, "labels."+displacedLabel)
+		switch {
+		case back != "":
+			fmt.Fprintf(out, "%s in %s: the maintenance revision %s displaced %s (its %s label); traffic goes back to it.\n", service, region, serving, back, displacedLabel)
+		case shortName(text(doc, "latestReadyRevision")) != "" && shortName(text(doc, "latestReadyRevision")) != serving:
+			back = shortName(text(doc, "latestReadyRevision"))
+			fmt.Fprintf(out, "%s in %s: the maintenance revision %s names no revision it displaced (a build before the label); traffic goes back to the latest ready revision, %s.\n", service, region, serving, back)
+		default:
+			return errors.Newf("%s in %s: the maintenance revision %s names no revision it displaced and is the latest ready revision itself; run the release again instead (bedrock rerun), which deploys and ends the maintenance", service, region, serving)
+		}
+		if err := shiftAll(ctx, run, name, back); err != nil {
+			return errors.Wrapf(err, "moving %s's traffic in %s back to %s", service, region, back)
+		}
+		fmt.Fprintf(out, "%s in %s serves %s again; the maintenance revision %s takes no traffic.\n", service, region, back, serving)
+	}
+
+	return resumeLeftPaused(ctx, clients, subs[tasksQueueSub], env[versionFact], out)
+}
+
+// revisionInMaintenance says whether a revision runs with the maintenance variable set:
+// its first container's environment names it with the on value.
+func revisionInMaintenance(revision map[string]any) bool {
+	containers, _ := revision["containers"].([]any)
+	if len(containers) == 0 {
+		return false
+	}
+	container, _ := containers[0].(map[string]any)
+	vars, _ := container["env"].([]any)
+	for _, entry := range vars {
+		v, _ := entry.(map[string]any)
+		if text(v, keyName) == derive.MaintenanceVariable && text(v, keyValue) == maintenanceOn {
+			return true
+		}
+	}
+
+	return false
 }
 
 // resumeLeftPaused resumes the application's queue when an earlier run's maintenance
@@ -446,11 +530,13 @@ func (m *maintenance) deployRevisions(ctx context.Context, image string, labels 
 		if err != nil {
 			return nil, nil, err
 		}
+		labeled := maps.Clone(labels)
 		if serving := servingRevision(doc); serving != "" {
 			previous = append(previous, Revision{Region: region, Service: service, Revision: serving})
+			labeled[displacedLabel] = serving
 		}
 		m.timeout = requestTimeout(doc)
-		revision, _, err := deployMaintenanceRevision(ctx, m.run, name, doc, image, labels)
+		revision, _, err := deployMaintenanceRevision(ctx, m.run, name, doc, image, labeled)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "the maintenance revision in region %s", region)
 		}

@@ -231,6 +231,10 @@ linters:
           - gosec
         path: internal/migration/git\.go
         text: G204
+      - linters:
+          - gosec
+        path: internal/gitcmd/gitcmd\.go
+        text: G204
       # deploy resolve reads the build's id, project and location from the process
       # environment, as the pipeline sets them; its command test sets them with
       # t.Setenv, which forbids t.Parallel.

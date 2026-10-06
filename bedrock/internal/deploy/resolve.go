@@ -82,17 +82,22 @@ const (
 	approverFact        = "APPROVER"
 	approvedAtFact      = "APPROVED_AT"
 	approvalCommentFact = "APPROVAL_COMMENT"
-	// rollbackSub, rollbackFromSub and reasonSub are a rollback run's instruction, which
-	// bedrock rollback sets on the rollback trigger alone: the backup to restore (a name,
-	// @<moment>, or empty for the live release's pre-release backup), the release the
-	// rollback leaves, and why; rollbackFact, rollbackFromFact and rollbackReasonFact
-	// carry them to the steps, rollbackFact holding the backup's resource name once resolved.
+	// rollbackSub and reasonSub are a rollback run's instruction, which bedrock rollback
+	// sets on the rollback trigger alone: the release the environment leaves (its live
+	// release when the rollback was asked for) and why; rollbackFact and
+	// rollbackReasonFact carry them to the steps. reasonSub is also a restore's reason,
+	// when the person gave one (restoreReasonFact carries it).
 	rollbackSub        = "_ROLLBACK"
-	rollbackFromSub    = "_ROLLBACK_FROM"
 	reasonSub          = "_REASON"
 	rollbackFact       = "ROLLBACK"
-	rollbackFromFact   = "ROLLBACK_FROM"
 	rollbackReasonFact = "ROLLBACK_REASON"
+	// maintenanceSub is the maintenance instruction (bedrock maintenance off, through the
+	// operations workflow): off makes the run take the application out of a maintenance an
+	// earlier run left on, in its last step, and do nothing else; maintenanceOffFact
+	// carries it, and the skip facts make every other step stand down.
+	maintenanceSub     = "_MAINTENANCE"
+	maintenanceOffFact = "MAINTENANCE_OFF"
+	maintenanceOff     = "off"
 	// keepsReleaseBackupsFact says the environment is on the placement's releaseBackups
 	// list in the checkout: the release build takes a backup as of its cut (deploy backup).
 	keepsReleaseBackupsFact = "KEEPS_RELEASE_BACKUPS"
@@ -339,29 +344,35 @@ type Facts struct {
 	// in the tree.
 	ReloadReason string
 	Down         bool
-	// Restore is a release build's restore instruction (empty, or production-backup):
-	// the environment's database is replaced before the release deploys, and Requester
-	// says who asked. A requester with no restore and no migration operation is a rerun
+	// Restore is a release build's restore instruction: empty or production-backup (the
+	// environment's database is replaced in place before the release deploys), or a
+	// backup's resource name or @<moment> (restored into the database's next generation,
+	// the live database kept as the forensic copy); Requester says who asked. A requester with no restore and no migration operation is a rerun
 	// (bedrock rerun: the release's tag build again, production included), and the
 	// record names them. Both empty for a tag's own build.
 	Restore   string
 	Requester string
 	// RestoreDatabase and RestoreDatabaseBackup are production's live database and the
-	// backup it was restored from, for a restore from production's backup; see
+	// backup it was restored from, for a restore from production's backup; for a restore
+	// as of a moment, RestoreDatabase is the database the backup is taken of (an earlier
+	// generation whose history holds the moment; empty for the live one). See
 	// restoreDatabaseSub.
 	RestoreDatabase       string
 	RestoreDatabaseBackup string
-	// RestoreReason is set with Restore when the build decided the restore itself (the
-	// seed changed in an environment on the placement's seed list); empty for a restore
-	// a person asked for.
+	// RestoreReason is why: what the person who asked said (_REASON), or, when the build
+	// decided the restore itself (the seed changed in an environment on the placement's
+	// seed list; the staging rehearsal), its own sentence.
 	RestoreReason string
-	// Rollback is a rollback run's instruction (rollback.go): the backup restored into the
-	// database's next generation, by resource name or as @<moment>; RollbackFrom the
-	// release the environment leaves and RollbackReason why, with Requester saying who
-	// asked. All empty for any other run.
+	// Rollback is a rollback run's instruction (rollback.go): the release the environment
+	// leaves, with RollbackReason why and Requester saying who asked. The run applies no
+	// migration (RunMigrations is false) and touches nothing of the database. Both empty
+	// for any other run.
 	Rollback       string
-	RollbackFrom   string
 	RollbackReason string
+	// MaintenanceOff says the run takes the application out of a maintenance an earlier
+	// run left on and deploys nothing (bedrock maintenance off): every step but the last
+	// is skipped, and Requester says who asked.
+	MaintenanceOff bool
 	// Approver is who approved the build in Cloud Build where its trigger required an
 	// approval (a release, a rerun or a rollback in an environment on placement.json's
 	// approvals), ApprovedAt when, and ApprovalComment what they wrote; the record names
@@ -513,16 +524,25 @@ func newFacts(data []byte) (*Facts, error) {
 	if err := f.migration(); err != nil {
 		return nil, err
 	}
+	if err := f.maintenanceInstruction(); err != nil {
+		return nil, err
+	}
 
 	return f, nil
 }
 
-// restore reads the restore instruction. A restore is a release build's: it replaces the
+// restore reads the restore instruction. A restore is a release build's: it returns the
 // environment's database before the release deploys, so a pull-request build, whose
-// database is its own and recreated on /gcbrun reload-db, carries none; production is
-// never restored by a run; the instruction names one of the two restores, and who asked.
-// An empty database is any environment's but production's; production's backup is
-// restored into stg, the environment on production's instance where its backups are. A
+// database is its own and recreated on /gcbrun reload-db, carries none. The instruction
+// is one of four: empty, an empty database (any environment's but production's);
+// production-backup, production's newest backup restored into stg, the environment on
+// production's instance where its backups are; a backup's resource name, or @<moment> for
+// a backup made as of it, restored into the database's next generation with the live
+// database kept as the forensic copy (any environment's, production included: bedrock
+// restore --backup, --at and --before, the last resolved to the release's pre-release
+// backup by the workflow's job). _RESTORE_DATABASE names production's live database for a
+// production-backup restore and, for a moment, the database the backup is taken of (an
+// earlier generation whose history holds the moment; empty for the live one). A
 // requester with no restore and no migration operation is a rerun: the operations
 // workflow ran the release's version trigger again with nothing but who asked (bedrock
 // rerun), in any environment, production included, and the build runs as the tag's did.
@@ -541,27 +561,86 @@ func (f *Facts) restore() error {
 	if f.Tag == "" {
 		return errors.Newf("%s=%s on a pull-request build: a restore is a release build's instruction; a pull request's own database is recreated with /gcbrun reload-db", restoreSub, restore)
 	}
-	if f.Environment == prdEnvironment {
-		return errors.Newf("%s=%s in %s: production is never restored by a run", restoreSub, restore, prdEnvironment)
-	}
-	switch restore {
-	case restoreEmpty:
-	case restoreBackup:
+	switch {
+	case restore == restoreEmpty:
+		if f.Environment == prdEnvironment {
+			return errors.Newf("%s=%s in %s: production's database is never emptied by a run; it is restored to a backup (bedrock restore --before, --at or --backup)", restoreSub, restore, prdEnvironment)
+		}
+	case restore == restoreBackup:
 		if f.Environment != stgEnvironment {
 			return errors.Newf("%s=%s in %s: production's backup is restored into %s, the environment on production's instance; %s is restored to an empty database (%s=%s)", restoreSub, restore, f.Environment, stgEnvironment, f.Environment, restoreSub, restoreEmpty)
 		}
+	case generationRestore(restore):
+		if moment, ok := strings.CutPrefix(restore, restoreMomentPrefix); ok {
+			if _, err := time.Parse(time.RFC3339, moment); err != nil {
+				return errors.Newf("%s=%s: the moment after @ is not RFC 3339 (2026-10-05T04:30:00Z)", restoreSub, restore)
+			}
+		}
 	default:
-		return errors.Newf("unknown %s %q (the restores are %s and %s)", restoreSub, restore, restoreEmpty, restoreBackup)
+		return errors.Newf("unknown %s %q (the restores are %s, %s, a backup's resource name (projects/<p>/instances/<i>/backups/<b>) and @<moment>)", restoreSub, restore, restoreEmpty, restoreBackup)
 	}
 	if requester == "" {
 		return errors.Newf("%s=%s names no requester (%s): a restore says who asked for it", restoreSub, restore, requesterSub)
 	}
-	f.Restore, f.Requester = restore, requester
+	f.Restore, f.Requester, f.RestoreReason = restore, requester, f.Substitutions[reasonSub]
+	if restore == restoreBackup || strings.HasPrefix(restore, restoreMomentPrefix) {
+		f.RestoreDatabase = f.Substitutions[restoreDatabaseSub]
+	}
 	if restore == restoreBackup {
-		f.RestoreDatabase, f.RestoreDatabaseBackup = f.Substitutions[restoreDatabaseSub], f.Substitutions[restoreDatabaseBackupSub]
+		f.RestoreDatabaseBackup = f.Substitutions[restoreDatabaseBackupSub]
 	}
 
 	return nil
+}
+
+// maintenanceInstruction reads the maintenance instruction: off, on a release build with
+// who asked, and no restore, rollback or migration operation beside it. The run then
+// takes the application out of maintenance in its last step and deploys nothing: every
+// other step reads the skip facts and stands down.
+func (f *Facts) maintenanceInstruction() error {
+	instruction, requester := f.Substitutions[maintenanceSub], f.Substitutions[requesterSub]
+	if instruction == "" {
+		return nil
+	}
+	switch {
+	case instruction != maintenanceOff:
+		return errors.Newf("unknown %s %q (the instruction is %s)", maintenanceSub, instruction, maintenanceOff)
+	case f.Tag == "":
+		return errors.Newf("%s=%s on a pull-request build: a pull-request build never goes into maintenance", maintenanceSub, instruction)
+	case f.Restore != "" || f.Rollback != "" || f.Migration != nil:
+		return errors.Newf("%s=%s with a restore, a rollback or a migration operation: the run that ends a maintenance does nothing else", maintenanceSub, instruction)
+	case requester == "":
+		return errors.Newf("%s=%s names no requester (%s): the run says who asked for it", maintenanceSub, instruction, requesterSub)
+	}
+	f.MaintenanceOff, f.Requester, f.RunMigrations, f.ShiftTraffic = true, requester, false, false
+
+	return nil
+}
+
+// flagIf is the true flag when set, and nothing otherwise, for a fact other steps read as
+// set or empty.
+func flagIf(set bool) string {
+	if set {
+		return trueValue
+	}
+
+	return ""
+}
+
+// skipReasonOf is why every step but the last stands down, when one does.
+func skipReasonOf(f *Facts) string {
+	if f.MaintenanceOff {
+		return fmt.Sprintf("Skipped: this run takes %s out of a maintenance an earlier run left on (bedrock maintenance off, asked for by %s) and deploys nothing.", f.Environment, f.Requester)
+	}
+
+	return ""
+}
+
+// generationRestore says the restore instruction names a backup, by its resource name or
+// as @<moment>, to restore into the database's next generation (rollback.go), as against
+// an empty or production-backup restore, which replaces the database in place.
+func generationRestore(instruction string) bool {
+	return strings.HasPrefix(instruction, restoreMomentPrefix) || (strings.HasPrefix(instruction, "projects/") && strings.Contains(instruction, databaseBackupsSegment))
 }
 
 // migration reads the migration operation (bedrock migration version|rerun|force, through
@@ -752,13 +831,10 @@ func (f *Facts) releaseBackups(source string, out io.Writer) error {
 		return err
 	}
 	f.KeepsReleaseBackups = placement.KeepsReleaseBackups(f.Environment)
-	if f.Rollback != "" && !f.KeepsReleaseBackups {
-		return errors.Newf("%s=%s in %s: the placement's releaseBackups list (%s) does not name it, so no release backup exists there to return to; bedrock restore serves it", rollbackSub, f.Rollback, f.Environment, strings.Join(placement.ReleaseBackupEnvironments(), ", "))
-	}
 	if f.KeepsReleaseBackups {
-		fmt.Fprintf(out, "Release backup: %s keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock rollback restores it.\n", f.Environment)
+		fmt.Fprintf(out, "Release backup: %s keeps a backup of its database as of the cut, the moment before the migrations run (placement.json's releaseBackups); bedrock restore --before returns to it.\n", f.Environment)
 	} else {
-		fmt.Fprintf(out, "Release backup: %s is not on the placement's releaseBackups list (%s), so this run keeps no backup as of the cut and bedrock rollback does not serve it.\n", f.Environment, strings.Join(placement.ReleaseBackupEnvironments(), ", "))
+		fmt.Fprintf(out, "Release backup: %s is not on the placement's releaseBackups list (%s), so this run keeps no backup as of the cut and bedrock restore --before does not serve it there.\n", f.Environment, strings.Join(placement.ReleaseBackupEnvironments(), ", "))
 	}
 
 	return nil
@@ -890,8 +966,8 @@ func (f *Facts) rehearsal(ctx context.Context, open StoreFunc, source string, ou
 	if production.Database != nil {
 		f.RestoreDatabase = production.Database.Name
 	}
-	if production.Rollback != nil {
-		f.RestoreDatabaseBackup = production.Rollback.Backup
+	if production.Restore != nil && production.Restore.Database != "" {
+		f.RestoreDatabaseBackup = production.Restore.Backup
 	}
 	fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, %s.\n", f.Environment, f.Restore, f.Tag, f.RestoreReason)
 
@@ -1298,7 +1374,6 @@ func (f *Facts) environment() string {
 		{restoreSourceBackupFact, f.RestoreDatabaseBackup},
 		{restoreReasonFact, f.RestoreReason},
 		{rollbackFact, f.Rollback},
-		{rollbackFromFact, f.RollbackFrom},
 		{rollbackReasonFact, f.RollbackReason},
 		{approverFact, f.Approver},
 		{approvedAtFact, f.ApprovedAt},
@@ -1306,7 +1381,9 @@ func (f *Facts) environment() string {
 		{seedFact, flag(f.Seed)},
 		{keepsReleaseBackupsFact, flag(f.KeepsReleaseBackups)},
 		{buildSecretsFact, f.BuildSecrets},
-		{skipDeploy, ""},
+		{skipDeploy, flagIf(f.MaintenanceOff)},
+		{skipReasonFact, skipReasonOf(f)},
+		{maintenanceOffFact, flag(f.MaintenanceOff)},
 		{imageFact, f.Image},
 		{imageTagFact, f.ImageTag},
 		{commitTagFact, f.CommitTag},

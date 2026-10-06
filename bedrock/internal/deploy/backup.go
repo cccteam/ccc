@@ -141,9 +141,9 @@ func noReleaseBackup(env map[string]string) string {
 	case env[keepsReleaseBackupsFact] != trueValue:
 		return "the environment is not on the placement's releaseBackups list, so no backup is taken as of the cut and bedrock rollback does not serve it."
 	case env[rollbackFact] != "":
-		return "a rollback restores a backup into the database's next generation; the state before it is that backup, and the live database stays as the forensic copy."
+		return "a rollback changes nothing of the database: no migration runs, and the database stays as the live release left it."
 	case env[restoreFact] != "":
-		return "a restore run replaces the database (" + env[restoreFact] + "), so there is no state before the migrations to keep."
+		return "a restore run returns the database (" + env[restoreFact] + "), so there is no state before the migrations to keep; a generation restore's forensic backup stands in the record as this run's."
 	case env[runMigrationsFact] != trueValue:
 		return "this run applies no migration, so the database stays as the live release left it."
 	}

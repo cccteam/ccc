@@ -133,6 +133,11 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
+	if env[skipDeploy] == trueValue {
+		fmt.Fprintln(out, skipped(env))
+
+		return nil
+	}
 	generation, err := s.planGeneration(ctx, clients, subs, env, w)
 	if err != nil {
 		return err
@@ -157,20 +162,11 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if live != "" {
 		args = append(args, varFlag, "maintenance="+live)
 	}
-	switch env[restoreFact] {
-	case "":
-	case restoreBackup:
-		if err := s.restoreFromBackup(ctx, subs, env, w); err != nil {
-			return err
-		}
-	default:
-		replace, err := s.replaceForRestore(ctx, subs, env, env[seedFact] == trueValue, w)
-		if err != nil {
-			return err
-		}
-		args = append(args, replace...)
+	restore, err := s.restoreArguments(ctx, subs, env, w)
+	if err != nil {
+		return err
 	}
-	if err := s.tofu(ctx, args...); err != nil {
+	if err := s.tofu(ctx, append(args, restore...)...); err != nil {
 		return err
 	}
 	shown, err := s.tofuOutput(ctx, "show", "-json", plan)
@@ -190,6 +186,21 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	}
 
 	return w.Append(map[string]string{stackPlanFact: p.Summary()})
+}
+
+// restoreArguments are the plan's arguments for the run's restore: none without one and
+// none for a restore to a backup, which planGeneration placed; the backup's import for
+// the restore from production's backup; the database's replacement for the environment's
+// own restore.
+func (s *stack) restoreArguments(ctx context.Context, subs, env map[string]string, w Workspace) ([]string, error) {
+	switch {
+	case env[restoreFact] == "" || generationRestore(env[restoreFact]):
+		return nil, nil
+	case env[restoreFact] == restoreBackup:
+		return nil, s.restoreFromBackup(ctx, subs, env, w)
+	default:
+		return s.replaceForRestore(ctx, subs, env, env[seedFact] == trueValue, w)
+	}
 }
 
 // liveMaintenance is the value the plan declares for the maintenance variable: 1 in a
@@ -295,7 +306,7 @@ func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]st
 // productionBackup is the backup a production-backup restore takes: the one the
 // maintenance step chose and waited for before the maintenance page went up
 // (RESTORE_READY_BACKUP); else production's newest, READY or still being taken; else,
-// while the live generation has none of its own, the backup a rollback restored it from
+// while the live generation has none of its own, the backup a restore put it there from
 // (restoredFromBackup); nil when there is none at all.
 func productionBackup(ctx context.Context, store Spanner, facts map[string]string, instance, productionDB string, out io.Writer) (*Backup, error) {
 	if name := facts[restoreReadyBackupFact]; name != "" {
@@ -364,7 +375,7 @@ func restoredFromBackup(ctx context.Context, store Spanner, facts map[string]str
 	if backup == nil || backup.State != BackupReady {
 		return nil, nil
 	}
-	fmt.Fprintf(out, "%s has no backup of its own yet (a rollback restored it from %s, and no release or schedule has taken one since): that backup, whose data its own began as, is restored.\n", path.Base(productionDB), path.Base(name))
+	fmt.Fprintf(out, "%s has no backup of its own yet (a restore put it there from %s, and no release or schedule has taken one since): that backup, whose data its own began as, is restored.\n", path.Base(productionDB), path.Base(name))
 
 	return backup, nil
 }
@@ -436,6 +447,13 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 	if err != nil || !ok {
 		return err
 	}
+	if env, err := w.Environment(); err != nil {
+		return err
+	} else if env[skipDeploy] == trueValue {
+		fmt.Fprintln(out, skipped(env))
+
+		return nil
+	}
 	data, err := os.ReadFile(filepath.Join(string(w), StackPlanJSONFile))
 	if err != nil {
 		return errors.Wrapf(err, "os.ReadFile(): %s (deploy stack plan writes it)", StackPlanJSONFile)
@@ -460,7 +478,7 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 	if err != nil {
 		return err
 	}
-	if env[restoreFact] == "" && env[rollbackFact] == "" {
+	if env[restoreFact] == "" {
 		return nil
 	}
 
@@ -468,15 +486,16 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 }
 
 // planGeneration is the generation of the database the plan is told, left as a fact for
-// the record: what the last rollback wrote, or 1; a rollback run restores its backup into
-// the next one first, so the plan points the stack at the restored database.
+// the record: what the last generation restore wrote, or 1; a generation restore (a
+// backup by name or @<moment>) restores its backup into the next one first, so the plan
+// points the stack at the restored database. A rollback changes nothing here.
 func (s *stack) planGeneration(ctx context.Context, clients *Clients, subs, env map[string]string, w Workspace) (int, error) {
 	generation, err := s.generation(ctx, clients.Storage, subs, subs[envSub])
 	if err != nil {
 		return 0, err
 	}
-	if env[rollbackFact] != "" {
-		if generation, err = s.rollback(ctx, subs, env, w, generation, clients.now()); err != nil {
+	if generationRestore(env[restoreFact]) {
+		if generation, err = s.restoreGeneration(ctx, subs, env, w, generation, clients.now()); err != nil {
 			return 0, err
 		}
 	}
@@ -510,7 +529,7 @@ func (s *stack) generation(ctx context.Context, open StoreFunc, subs map[string]
 		return 0, err
 	}
 	if generation > 1 {
-		fmt.Fprintf(s.out, "Generation %d: a rollback restored %s's database into its generation %d (gs://%s/%s); the plan points the stack at it.\n", generation, env, generation, bucket, generationObject(subs[appSub], env, generation))
+		fmt.Fprintf(s.out, "Generation %d: a restore put %s's database into its generation %d (gs://%s/%s); the plan points the stack at it.\n", generation, env, generation, bucket, generationObject(subs[appSub], env, generation))
 	}
 
 	return generation, nil
