@@ -55,7 +55,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.59.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/cccteam/ccc/cache v0.1.8-0.20261004224052-9715e2d9b371 // indirect
+	github.com/cccteam/ccc/cache v0.2.0 // indirect
 	github.com/cccteam/ccc/pkg v0.1.4 // indirect
 	github.com/cccteam/ccc/securehash v0.0.13 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
