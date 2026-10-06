@@ -102,6 +102,13 @@ func newService(t *testing.T, now func() time.Time) *livefirestore.Service {
 func newServiceIn(t *testing.T, database string, opts ...livefirestore.Option) *livefirestore.Service {
 	t.Helper()
 
+	// The signals suites wait two minutes (settle) for a signal to arrive, and a listener
+	// that is established and then silent is covered by the reconcile read, whose default
+	// period of five minutes sits above that wait: the suites run the service with a period
+	// below it, so a silent stream costs them one period, as it costs an application in
+	// production, instead of the suite. A test that sets its own period passes it after this
+	// one and wins.
+	opts = append([]livefirestore.Option{livefirestore.WithReconcileEvery(20 * time.Second)}, opts...)
 	svc, err := livefirestore.New(t.Context(), livefirestore.Config{
 		ProjectID:    testProject,
 		DatabaseID:   database,
