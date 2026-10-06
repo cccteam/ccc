@@ -1,0 +1,8 @@
+CREATE TABLE Tenants (
+  Id STRING(64) NOT NULL,
+  Name STRING(MAX) NOT NULL,
+
+  CONSTRAINT CK_Tenants_Id CHECK (REGEXP_CONTAINS(Id, r'^[a-z][a-z0-9-]{1,62}$')),
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX TenantsByName ON Tenants(Name);

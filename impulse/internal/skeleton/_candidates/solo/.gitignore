@@ -1,0 +1,5 @@
+.ccc-cache/
+.overmind.sock
+.envrc
+go.work
+go.work.sum

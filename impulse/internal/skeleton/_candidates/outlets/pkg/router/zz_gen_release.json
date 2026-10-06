@@ -1,0 +1,13 @@
+{
+  "outlets": {
+    "default": {
+      "oldestAnswered": "0.0.1"
+    },
+    "machines": {
+      "kind": "api-key"
+    },
+    "portal": {
+      "oldestAnswered": "0.0.1"
+    }
+  }
+}

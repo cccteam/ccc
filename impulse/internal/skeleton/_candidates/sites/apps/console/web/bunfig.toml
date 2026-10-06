@@ -1,0 +1,14 @@
+[install]
+# @cccteam/resource-angular and @cccteam/resource-firestore name @cccteam/resource as a peer
+# dependency, and the Firestore feed names firebase as one. Left to itself bun installs a
+# second copy for each beneath the library, and TypeScript then sees two declarations of every
+# client type. This application depends on the client and on firebase directly (and the
+# overrides entry in package.json pins the client peer to the same version), so peers are not
+# auto-installed; every peer this application needs is a direct dependency.
+peer = false
+# A newly published package version is not installed until it has been public for seven
+# days, which keeps a compromised release from reaching this application before it is
+# noticed and pulled.
+minimumReleaseAge = 604800
+# CCC's own packages are exempt from the release-age guard: the guard is against the registry at large.
+minimumReleaseAgeExcludes = ["@cccteam/resource", "@cccteam/resource-angular", "@cccteam/resource-firestore"]

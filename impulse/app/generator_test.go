@@ -1,0 +1,265 @@
+package app
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
+
+const programHead = `package main
+
+import (
+	"context"
+
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func main() {
+	_, _ = generation.NewResourceGenerator(
+		context.Background(),
+		"pkg/resources",
+		[]string{"file://schema/migrations"},
+`
+
+const programTail = `
+	)
+}
+`
+
+func TestParseGeneratorProblems(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		options      string
+		wantProblems []string
+	}{
+		{
+			name:    "clean program",
+			options: `generation.GenerateHandlers("app"), generation.WithConcealedDomains(),`,
+		},
+		{
+			name:         "unknown option",
+			options:      `generation.WithFrobnicator("x"),`,
+			wantProblems: []string{"unknown option generation.WithFrobnicator"},
+		},
+		{
+			name:         "retired option",
+			options:      `generation.WithDomainRoute("tenants"),`,
+			wantProblems: []string{"retired option generation.WithDomainRoute: the tenant segment derives from the tenant record, the resource struct annotated @tenant; remove the option and annotate the record"},
+		},
+		{
+			name:         "non-literal argument",
+			options:      `generation.GenerateHandlers(dir),`,
+			wantProblems: []string{"GenerateHandlers argument dir is not a literal"},
+		},
+		{
+			name:         "too few arguments",
+			options:      `generation.GenerateRoutes("pkg/router"),`,
+			wantProblems: []string{"GenerateRoutes takes 2 argument(s), found 1"},
+		},
+		{
+			name:         "too many arguments",
+			options:      `generation.WithRPC("pkg/rpc", "extra"),`,
+			wantProblems: []string{"WithRPC takes 1 argument(s), found 2"},
+		},
+		{
+			name:    "WithTypes may be given more than once",
+			options: `generation.WithTypes("pkg/telemetry"), generation.WithTypes("pkg/cms"),`,
+		},
+		{
+			name:         "wrong literal kind",
+			options:      `generation.WithConsolidatedHandlers("resources", "yes"),`,
+			wantProblems: []string{`WithConsolidatedHandlers argument "yes" should be a bool literal`},
+		},
+		{
+			name:    "the router options with a flavor identifier",
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.Password), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
+		},
+		{
+			name:    "the oldest answered release as a string or as this release",
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.Password), generation.WebApp("/"), generation.OldestAnswered("1.5.0")), generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.OIDCAzure), generation.OldestAnswered(generation.ThisRelease)),`,
+		},
+		{
+			name:         "an oldest answered release that is another identifier",
+			options:      `generation.GenerateRoutes("pkg/router", "api", generation.OldestAnswered(generation.Latest)),`,
+			wantProblems: []string{`OldestAnswered argument generation.Latest should be a release string literal ("1.5.0") or generation.ThisRelease`},
+		},
+		{
+			name:         "an oldest answered release that is not a string",
+			options:      `generation.GenerateRoutes("pkg/router", "api", generation.OldestAnswered(true)),`,
+			wantProblems: []string{`OldestAnswered argument true should be a release string literal ("1.5.0") or generation.ThisRelease`},
+		},
+		{
+			name:         "an auth flavor that is not one of the generation package's",
+			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.LDAP)),`,
+			wantProblems: []string{"Auth argument generation.LDAP should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"},
+		},
+		{
+			name:         "an auth flavor written as a string",
+			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", "password")),`,
+			wantProblems: []string{`Auth argument "password" should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)`},
+		},
+		{
+			name:         "ts option at top level",
+			options:      `generation.GenerateEnums(),`,
+			wantProblems: []string{"GenerateEnums is a TSOption, but a ResourceOption is expected here"},
+		},
+		{
+			name:         "resource option nested in typescript",
+			options:      `generation.GenerateTypescript("gui/src", generation.WithRPC("pkg/rpc")),`,
+			wantProblems: []string{"WithRPC is a ResourceOption, but a TSOption is expected here"},
+		},
+		{
+			name:         "not a call",
+			options:      `myOption,`,
+			wantProblems: []string{"expected a ResourceOption call, found myOption"},
+		},
+		{
+			name:         "call from another package",
+			options:      `other.Option(),`,
+			wantProblems: []string{"expected a generation.<Option>() call, found other.Option(...)"},
+		},
+		{
+			name:    "manual registrations are composites",
+			options: `generation.WithManualResources(generation.ManualRegistration{Resource: "Beacons"}),`,
+		},
+		{
+			name:         "bool map with string value",
+			options:      `generation.CaserInitialismOverrides(map[string]bool{"ID": true}), generation.WithPluralOverrides(map[string]bool{"a": true}),`,
+			wantProblems: []string{"WithPluralOverrides argument map[string]bool{...} should be a map[string]string literal"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			g, err := parseGenerator("main.go", []byte(programHead+tt.options+programTail))
+			if err != nil {
+				t.Fatalf("parseGenerator() error = %v", err)
+			}
+			if g == nil {
+				t.Fatal("parseGenerator() = nil, want a generator")
+			}
+			if len(g.Problems) != len(tt.wantProblems) {
+				t.Fatalf("got %d problems, want %d:\n%s", len(g.Problems), len(tt.wantProblems), problems(g))
+			}
+			for i, want := range tt.wantProblems {
+				if !strings.Contains(g.Problems[i].Message, want) {
+					t.Errorf("problem %d = %q, want containing %q", i, g.Problems[i].Message, want)
+				}
+				if !strings.HasPrefix(g.Problems[i].Pos, "main.go:") {
+					t.Errorf("problem %d position = %q, want main.go:<line>", i, g.Problems[i].Pos)
+				}
+			}
+		})
+	}
+}
+
+func TestParseGeneratorNotAProgram(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "no generation import",
+			src:  "package main\n\nfunc main() { NewResourceGenerator() }\nfunc NewResourceGenerator() {}\n",
+		},
+		{
+			name: "import without the call",
+			src:  "package main\n\nimport _ \"github.com/cccteam/ccc/resource/generation\"\n\nfunc main() {}\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			g, err := parseGenerator("main.go", []byte(tt.src))
+			if err != nil {
+				t.Fatalf("parseGenerator() error = %v", err)
+			}
+			if g != nil {
+				t.Errorf("parseGenerator() = %+v, want nil", g)
+			}
+		})
+	}
+}
+
+func TestParseEnvTagsSecret(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		src     string
+		want    []EnvTag
+		wantErr string
+	}{
+		{
+			name: "the secret tag marks the variable",
+			src:  "package config\n\ntype dataConfig struct {\n\tCookieKey string `env:\"APP_COOKIE_KEY\" secret:\"true\"`\n\tClientID string `env:\"APP_CLIENT_ID\"`\n\tLicenseKey string `env:\"APP_LICENSE_KEY\" secret:\"false\"`\n}\n",
+			want: []EnvTag{
+				{File: "pkg/config/data.go", Line: 4, Name: "APP_COOKIE_KEY", Secret: true},
+				{File: "pkg/config/data.go", Line: 5, Name: "APP_CLIENT_ID"},
+				{File: "pkg/config/data.go", Line: 6, Name: "APP_LICENSE_KEY"},
+			},
+		},
+		{
+			name:    "another value is refused",
+			src:     "package config\n\ntype dataConfig struct {\n\tCookieKey string `env:\"APP_COOKIE_KEY\" secret:\"yes\"`\n}\n",
+			wantErr: `pkg/config/data.go:4: secret:"yes" on APP_COOKIE_KEY: the secret tag takes "true" or "false"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseEnvTags("pkg/config/data.go", []byte(tt.src))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("parseEnvTags() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseEnvTags() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseEnvTags() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseEnvTag(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		value  string
+		want   EnvTag
+		wantOK bool
+	}{
+		{name: "plain", value: "APP_HOST", want: EnvTag{Name: "APP_HOST"}, wantOK: true},
+		{name: "required", value: "APP_KEY,required", want: EnvTag{Name: "APP_KEY", Required: true}, wantOK: true},
+		{name: "default", value: "APP_PORT,default=8080", want: EnvTag{Name: "APP_PORT", HasDefault: true}, wantOK: true},
+		{name: "default with expansion", value: "APP_X, default=$APP_Y", want: EnvTag{Name: "APP_X", HasDefault: true}, wantOK: true},
+		{name: "prefix only", value: ",prefix=APP_", wantOK: false},
+		{name: "empty", value: "", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := parseEnvTag(tt.value)
+			if ok != tt.wantOK || got != tt.want {
+				t.Errorf("parseEnvTag(%q) = (%+v, %v), want (%+v, %v)", tt.value, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}

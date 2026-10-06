@@ -1,0 +1,364 @@
+# The application's CI on every pull request, rendered by impulse and owned by it: impulse
+# render rewrites this file from the code, and impulse check compares the committed file
+# with what it renders, so a hand edit fails the check. To change a check, change the code
+# the jobs read, or move the impulse pin (go get -tool github.com/cccteam/ccc/impulse@<version>,
+# then go tool impulse render); never this file. Every action is pinned by commit with its
+# tag in a comment, and the pins move with impulse releases, so dependabot must not run over
+# this file. The jobs' ids are the check names a repository rule requires: title, go, web,
+# image, secrets and migrations. The go-<leg> jobs (build, the two test legs, the two lint
+# legs, vuln, semgrep, check) run at once and report beside them, and go, the gate, fails
+# when any of them did; one angular-<workspace> job per browser workspace reports beside
+# them too, and web fails when any of those did. The test legs and the image build run on
+# the larger runner the variable CI_LARGE_RUNNER names (a label or a runner group, set on
+# the repository or the organization) and on GitHub's standard runner while it is unset;
+# every other job runs on the standard runner. The pins fix the engines, not what they
+# know: govulncheck reads vuln.go.dev, Grype downloads its vulnerability database and Semgrep
+# fetches its registry rules when the job runs, so this file at an old pin still finds a
+# vulnerability published after it; TruffleHog's detectors, golangci-lint's linters and the
+# actions move with impulse releases.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  # The pull request's title is a conventional commit line: the one the squash merge carries and release-please reads.
+  title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            feature
+            fix
+            perf
+            revert
+            docs
+            deps
+            upgrade
+            infra
+            config
+            style
+            chore
+            refactor
+            cleanup
+            test
+            build
+            ci
+
+  # The Go legs: eight jobs that run at once, each reporting on its own, with go, the gate, after them. This one builds and vets the module, without tags and with skipAuth (the tag that simulates the directory an OIDC auth signs in through).
+  go-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go build
+        run: |
+          go build ./...
+          go build -tags skipAuth ./...
+      - name: go vet
+        run: |
+          go vet ./...
+          go vet -tags skipAuth ./...
+
+  # The tests under the race detector, without tags, on the larger runner when the variable CI_LARGE_RUNNER names one (a runner label or a runner group, set on the repository or the organization) and on GitHub's standard runner while it is unset.
+  go-test:
+    runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go test
+        run: go test -race -timeout 20m ./...
+
+  # The tests under the race detector with skipAuth, on the larger runner as go-test is.
+  go-test-skipauth:
+    runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go test (skipAuth)
+        run: go test -race -timeout 20m -tags skipAuth ./...
+
+  # golangci-lint at the version the skeleton's .golangci.yml is written for, without tags.
+  go-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          args: --timeout 5m
+
+  # golangci-lint with skipAuth.
+  go-lint-skipauth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: golangci-lint (skipAuth)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          args: --timeout 5m --build-tags skipAuth
+
+  # govulncheck over the module, without tags and with skipAuth; it reads vuln.go.dev when the job runs.
+  go-vuln:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -tags skipAuth ./...
+
+  # Semgrep over the findings the pull request introduces: its baseline is the pull request's base, so a hotfix-line pull request diffs against its own base.
+  go-semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Semgrep, the findings this pull request introduces
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          docker run --rm -v "$PWD:/src" semgrep/semgrep@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b \
+            semgrep ci --config auto --max-target-bytes 500000 --baseline-commit "$(git merge-base HEAD "origin/$BASE_REF")" # 1.179.0
+
+  # impulse check with its regeneration (the generators start the Spanner emulator in a container, which the runner has), failing on a tree the checks changed, since what they regenerated or rewrote is not committed.
+  go-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: impulse check
+        run: go tool impulse check
+      - name: The tree is clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The checks changed the tree: what follows was regenerated or rewritten and is not committed. Run go generate ./... and go tool impulse render, then commit the result."
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+
+  # The Go gate, one fixed name over the go-<leg> jobs so a repository rule can require it: it fails when any of them did not succeed.
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs:
+      - go-build
+      - go-test
+      - go-test-skipauth
+      - go-lint
+      - go-lint-skipauth
+      - go-vuln
+      - go-semgrep
+      - go-check
+    steps:
+      - name: Every Go job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: |
+          if [ "$FAILED" = "true" ]; then
+            echo "A Go job did not succeed:"
+            echo "$RESULTS"
+            exit 1
+          fi
+          echo "every Go job succeeded"
+
+  # The browser workspace at web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.
+  angular-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - run: bun ci
+      - run: bun run build
+      - run: bun run lint
+      - run: bun run test
+
+  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs:
+      - angular-web
+    steps:
+      - name: Every browser workspace job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: |
+          if [ "$FAILED" = "true" ]; then
+            echo "A browser workspace job did not succeed:"
+            echo "$RESULTS"
+            exit 1
+          fi
+          echo "every browser workspace job succeeded"
+
+  # The container image, once the application has a Dockerfile (bedrock seeds it), on the larger runner when CI_LARGE_RUNNER names one: hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
+  image:
+    runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Is there a Dockerfile
+        id: dockerfile
+        run: echo "present=${{ hashFiles('Dockerfile') != '' }}" >> "$GITHUB_OUTPUT"
+      - name: hadolint
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: info
+      - name: docker build
+        if: steps.dockerfile.outputs.present == 'true'
+        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" -t application:ci .
+      - name: Grype
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: application:ci
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+  # TruffleHog over the whole history reachable from the pull request's head: a secret confirmed live, or one whose check could not finish, fails.
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@f446421baf832d6356c42c1743d99abff52ff334 # v3.95.7
+        with:
+          version: 3.95.7
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --results=verified,unknown
+
+  # A committed migration is never modified or deleted: against the pull request's base, schema/migrations gains files only.
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: No committed migration is modified or deleted
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASE_REF"
+          changed="$(git diff --no-renames --diff-filter=MD --name-only "origin/$BASE_REF...HEAD" -- schema/migrations/)"
+          if [ -n "$changed" ]; then
+            echo "A committed migration is never modified or deleted; write a new migration instead. Modified or deleted against $BASE_REF:"
+            echo "$changed"
+            exit 1
+          fi
+          echo "schema/migrations: no committed migration is modified or deleted against $BASE_REF"

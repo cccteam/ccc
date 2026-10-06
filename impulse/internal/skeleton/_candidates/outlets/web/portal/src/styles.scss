@@ -1,0 +1,17 @@
+// The @cccteam/resource-angular components' cross-cutting classes and variables (the
+// field grid, the read-only and edit-mode treatments, the sticky list header).
+@use '@cccteam/resource-angular/styles';
+
+/* Global styles for the console. */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background-color: #f6f7fb;
+}
+
+.page-content {
+  padding: 16px 24px;
+}
