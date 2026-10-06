@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.0](https://github.com/cccteam/ccc/compare/v0.3.3...v0.4.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* The global domain and global resource sentinels are gone. A permission check, a permission digest and the foothold question take a Scope (GlobalScope() or DomainScope(domain)); where a membership or a custom role is held is a PolicyScope (GlobalPolicyScope(), DomainPolicyScope(domain) or EveryDomainPolicyScope()), and RoleCollection is keyed by PolicyScope. A PolicyScope cannot be passed where a Scope is expected and nothing converts one into a Scope; code that did so fails to compile. The casbin wire-format helpers are removed and have no replacement in this package.
+
+### Features
+
+* a condition on an Update grant compares the proposed value against the row's current value, and wall-clock windows (timeOfDay and dayOfWeek) fold in the engine. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* AttributeType is the comparison-type vocabulary for attributes, subject sets and values, so a comparison across types is refused at parse where before every such check silently failed. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* Environment and Decision are the check seam the ABAC engine answers through, and Decisions.ConditionalResources lists the resources whose answer depends on a condition. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* PermissionDigest is the structural payload that enumerates a session's grants, served to the browser by the generated permission-digest endpoint. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* PolicyScope is where policy is held: the global partition, one tenant domain, or every tenant domain (EveryDomainPolicyScope()), so a membership held in every domain reaches a tenant the store holds no other row in; RoleCollection is keyed by it. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* Principal is the session subject, a user or a role with the kind structural; PermissionMask is the allowlist an impersonated session carries, and MaskPermissions only narrows. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* Scope carries the axis its domain belongs to, read by Axis(). ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* Scope is the partition a request is in, the global partition (GlobalScope()) or one tenant domain (DomainScope(domain)), and replaces the global domain and resource sentinels; no domain string reads as the global partition, and a tenant named global is an ordinary tenant. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* the casbin wire-format helpers are deleted. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* the condition expression language lives in accesstypes/condition: the AST, the parser, the fact folder and the evaluation rules, with a reference evaluator in conditiontest over a row image. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* the condition package answers whether one condition set covers another, counting a condition that implies another as covered under a closed set of same-attribute rules. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+* the parser refuses now compared against a number, a boolean or a bare subject. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+
 ## [0.3.3](https://github.com/cccteam/ccc/compare/v0.3.2...v0.3.3) (2026-08-19)
 
 
