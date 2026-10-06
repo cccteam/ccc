@@ -294,7 +294,9 @@ jobs:
             # database step, with the environment left in maintenance on the new generation. Refused here.
             if [ -n "${moment:-}" ]; then
               held=$(jq -r --arg m "$moment" '[.[] | select(.timestamp <= $m)] | last | [.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0' records.json)
-              heldBy=$(jq -r --arg m "$moment" '[.[] | select(.timestamp <= $m)] | last | "\(.version // "?") (live since \(.timestamp // "?"))"' records.json)
+              # the run that applied the held migration: the earliest record at or before the moment whose
+              # migrations reach it (a rollback's or a restore's record lists what the database holds, not what it applied)
+              heldBy=$(jq -r --arg m "$moment" --argjson h "${held:-0}" '[.[] | select(.timestamp <= $m) | select(([.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0) == $h)] | first | "\(.version // "?") (live since \(.timestamp // "?"))"' records.json)
               target=$(jq -r --arg v "$RELEASE" '[.[] | select(.version == $v and .rollback == null and .restore == null)] | first // ([.[] | select(.version == $v)] | last) | [.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0' records.json)
               if [ "${held:-0}" -gt "${target:-0}" ]; then
                 echo "::error::the data as of $moment holds migration $held, applied under $heldBy, and $RELEASE applies migrations up to $target: the migrate command would refuse the restored database as ahead of its files, after the database step. Name a moment before migration $held was applied, or run the release that applied it again first (bedrock rerun $ENVIRONMENT <release>) and restore under it."
