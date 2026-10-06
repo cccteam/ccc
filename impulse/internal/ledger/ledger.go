@@ -6,10 +6,9 @@
 // go.mod and committing each release as it goes; the pin is the checkpoint, and nothing
 // else records progress.
 //
-// The ledger records releases from the first published impulse beta on. It is empty until
-// that beta is cut, and its first entry is written when it is. A breaking change in
-// resource, access, session or accesstypes after that is not done until the impulse
-// release that carries it records a recipe for it here, or says none is needed.
+// The ledger records releases from the first published impulse release, v0.1.0, on. A
+// breaking change in resource, access, session or accesstypes after it is not done until the
+// impulse release that carries it records a recipe for it here, or says none is needed.
 package ledger
 
 import (
@@ -63,9 +62,22 @@ type Recipe interface {
 	Meaning() string
 }
 
-// Releases are the recorded impulse releases, oldest first. Empty until the first
-// published impulse beta is cut (see the package comment).
-var Releases = []Release{}
+// firstRelease is the impulse release the ledger starts at.
+const firstRelease = "v0.1.0"
+
+// Releases are the recorded impulse releases, oldest first.
+var Releases = []Release{
+	{
+		Version: firstRelease,
+		Pins: map[string]string{
+			"github.com/cccteam/access":          "v0.10.1",
+			"github.com/cccteam/ccc/accesstypes": "v0.6.0",
+			"github.com/cccteam/ccc/resource":    "v0.11.0",
+			"github.com/cccteam/session":         "v0.12.0",
+		},
+		Note: "the first impulse release; an application created by it stands here already",
+	},
+}
 
 // PinNames lists the module paths a release pins, sorted.
 func (r *Release) PinNames() []string {
