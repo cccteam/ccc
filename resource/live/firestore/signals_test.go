@@ -1,6 +1,7 @@
 package firestore_test
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -128,6 +129,14 @@ func logSnapshots(svc *livefirestore.Service) *snapshotLog {
 	return l
 }
 
+// count is the number of snapshots received.
+func (l *snapshotLog) count() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return len(l.seen)
+}
+
 func (l *snapshotLog) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -155,15 +164,71 @@ func atLeast(n int) expect {
 	return expect{n: n, floor: true}
 }
 
-// logSnapshotsOnFailure prints what each instance's listener received when the test
-// fails, so a wait that ran out is read off the snapshots that did or did not arrive.
-func logSnapshotsOnFailure(t *testing.T, first, second *snapshotLog) {
+// instance is one service under test with the log of the snapshots its listener received.
+type instance struct {
+	svc *livefirestore.Service
+	log *snapshotLog
+}
+
+// explainOnFailure prints, when the test fails, what each instance's listener received,
+// what the signals document holds when read back through each instance's own client
+// with a plain get, and what a fresh listener opened on the database receives first, so
+// a wait that ran out is read off three facts rather than guessed at: a kind the document
+// lacks is a write that never landed; a kind the document holds that the instance's
+// listener never received, while a fresh listener's first snapshot carries it, is an
+// update the emulator did not deliver on an established stream (the listener having
+// received its first, empty snapshot). The service is not changed for the test: a
+// listener that ends with an error is reopened; one that falls silent is not detected,
+// and whether that is the emulator's or the service's is what the three facts decide.
+func explainOnFailure(t *testing.T, database, emulator string, instances ...instance) {
 	t.Helper()
 	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("the first instance's snapshots: %s\nthe second instance's snapshots: %s", first, second)
+		if !t.Failed() {
+			return
 		}
+		// t.Context() is done once Cleanup runs; the diagnosis has its own allowance.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		for i, in := range instances {
+			times, err := livefirestore.ReadSignals(ctx, in.svc)
+			t.Logf("instance %d: its listener received %s; the document read back through its own client holds %s (error: %v)", i+1, in.log, formatTimes(times), err)
+		}
+		fresh, err := livefirestore.New(ctx, livefirestore.Config{ProjectID: testProject, DatabaseID: database, EmulatorHost: emulator})
+		if err != nil {
+			t.Logf("a fresh listener could not be opened: %v", err)
+
+			return
+		}
+		defer func() {
+			if err := fresh.Close(); err != nil {
+				t.Logf("closing the fresh listener: %v", err)
+			}
+		}()
+		freshLog := logSnapshots(fresh)
+		stop, err := fresh.Subscribe(live.KindFeatures, func() {})
+		if err != nil {
+			t.Logf("a fresh listener could not subscribe: %v", err)
+
+			return
+		}
+		defer stop()
+		for freshLog.count() == 0 && ctx.Err() == nil {
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Logf("a fresh listener on the same database received %s within %s", freshLog, 30*time.Second)
 	})
+}
+
+// formatTimes writes the kinds a read of the document holds the way snapshotLog writes
+// a snapshot, so the two read alike.
+func formatTimes(times map[live.Kind]time.Time) string {
+	kinds := make([]string, 0, len(times))
+	for kind, at := range times {
+		kinds = append(kinds, string(kind)+"@"+at.UTC().Format("15:04:05.000000"))
+	}
+	sort.Strings(kinds)
+
+	return "{" + strings.Join(kinds, " ") + "}"
 }
 
 // checkCounts compares the counts with the expectations and explains a mismatch with
@@ -325,7 +390,7 @@ func TestService_signals(t *testing.T) {
 			first := newServiceIn(t, database)
 			second := newServiceIn(t, database)
 			firstLog, secondLog := logSnapshots(first), logSnapshots(second)
-			logSnapshotsOnFailure(t, firstLog, secondLog)
+			explainOnFailure(t, database, firestoreEmulator(t), instance{first, firstLog}, instance{second, secondLog})
 			checkCounts(t, "signal counts", tt.want, tt.run(t, first, second), firstLog, secondLog)
 		})
 	}
@@ -345,7 +410,7 @@ func TestService_signals_reopen(t *testing.T) {
 	first := newServiceIn(t, database, backoff)
 	second := newServiceIn(t, database, backoff)
 	firstLog, secondLog := logSnapshots(first), logSnapshots(second)
-	logSnapshotsOnFailure(t, firstLog, secondLog)
+	explainOnFailure(t, database, firestoreEmulator(t), instance{first, firstLog}, instance{second, secondLog})
 	firstFeatures := subscribe(t, first, live.KindFeatures)
 	firstTenants := subscribe(t, first, live.KindTenants)
 	firstPolicy := subscribe(t, first, live.KindPolicy)
