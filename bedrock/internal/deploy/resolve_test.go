@@ -201,7 +201,7 @@ const (
 // stagingTag is a tag build in stg with the records the staging rehearsal reads named:
 // tst's as the previous environment's, production's by the buckets and plan identities.
 func stagingTag(overrides map[string]string) map[string]string {
-	subs := tagBuild(map[string]string{"_ENV": "stg", "_RECORDS_BUCKET": "stg-records", "_PREVIOUS_ENV": "tst", "_PREVIOUS_RECORDS_BUCKET": "tst-records", "_RECORDS_BUCKETS": "tst=tst-records,stg=stg-records,prd=prd-records", "_PLAN_IDENTITIES": "tst=tst-plan@p.iam,stg=stg-plan@p.iam,prd=prd-plan@p.iam", "_MIGRATIONS_DIR": "schema/migrations"})
+	subs := tagBuild(map[string]string{"_ENV": "stg", "_RECORDS_BUCKET": "stg-records", "_PREVIOUS_ENV": "tst", "_PREVIOUS_RECORDS_BUCKET": "tst-records", "_RECORDS_BUCKETS": "tst=tst-records,stg=stg-records,prd=prd-records", "_MIGRATIONS_DIR": "schema/migrations"})
 	for name, value := range overrides {
 		if value == "" {
 			delete(subs, name)
@@ -336,7 +336,10 @@ func TestResolve(t *testing.T) {
 		tree        map[string]string
 		placement   string
 		noPlacement bool
-		tfvars      string
+		// denied are the buckets the store refuses to list, as Cloud Storage refuses
+		// a read without a grant.
+		denied []string
+		tfvars string
 		// commentsErr fails the comment read; mintErr fails the token.
 		commentsErr error
 		mintErr     error
@@ -1026,12 +1029,21 @@ func TestResolve(t *testing.T) {
 			wantOut: []string{"Restore run: stg's database is replaced (production-backup) before v1.2.3 deploys, stg's database holds schema/migrations/000003_Failed.up.sql"},
 		},
 		{
-			name:    "staging rehearsal: a trigger that names no plan identities reads nothing, and staging deploys as it stands",
-			subs:    stagingTag(map[string]string{"_PLAN_IDENTITIES": ""}),
+			name:    "staging rehearsal: a trigger that names no records buckets reads nothing, and staging deploys as it stands",
+			subs:    stagingTag(map[string]string{"_RECORDS_BUCKETS": ""}),
 			records: rehearsing,
 			tree:    rehearsalTree,
 			want:    staged,
-			wantOut: []string{"Staging rehearsal: the records of tst and prd are not named (_PREVIOUS_ENV, _PREVIOUS_RECORDS_BUCKET, _RECORDS_BUCKETS, _PLAN_IDENTITIES); stg deploys as it stands."},
+			wantOut: []string{"Staging rehearsal: the records of tst and prd are not named (_PREVIOUS_ENV, _PREVIOUS_RECORDS_BUCKET, _RECORDS_BUCKETS); stg deploys as it stands."},
+		},
+		{
+			name:    "staging rehearsal: production's records denied to the build are said and left, and staging deploys as it stands",
+			subs:    stagingTag(nil),
+			records: rehearsing,
+			denied:  []string{"prd-records"},
+			tree:    rehearsalTree,
+			want:    staged,
+			wantOut: []string{"Staging rehearsal: prd's deployment records could not be read as the build (", "googleapi: Error 403: stg-deploy@p.iam does not have storage.objects.list access to the Google Cloud Storage bucket prd-records); stg deploys as it stands. Production's records bucket lets this environment's deploy identity read once production's 2-env is applied at this bedrock."},
 		},
 		{
 			name:    "staging rehearsal: no tst record of the release yet is left to the release check",
@@ -1075,7 +1087,7 @@ func TestResolve(t *testing.T) {
 
 			builds := &fakeBuilds{build: buildFor(t, tt.subs), token: "tok", mintErr: tt.mintErr}
 			comments := &fakeComments{bodies: tt.comments, err: tt.commentsErr}
-			store := &memoryStore{objects: tt.records}
+			store := &memoryStore{objects: tt.records, denied: tt.denied}
 			clients := &Clients{Builds: builds.open, Comments: comments.read, Storage: store.open, StorageAs: store.openAs}
 			tree := maps.Clone(tt.tree)
 			if tree == nil {

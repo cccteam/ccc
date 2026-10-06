@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -388,6 +389,8 @@ type memoryStore struct {
 	objects    map[string]string
 	fail       error
 	identities []string
+	// denied are the buckets a list is refused on, as Cloud Storage refuses one without a grant.
+	denied []string
 }
 
 func (m *memoryStore) open(context.Context) (Store, error) {
@@ -411,6 +414,9 @@ func (m *memoryStore) Write(_ context.Context, bucket, object string, data []byt
 }
 
 func (m *memoryStore) List(_ context.Context, bucket, prefix string) ([]string, error) {
+	if slices.Contains(m.denied, bucket) {
+		return nil, errors.Newf("googleapi: Error 403: stg-deploy@p.iam does not have storage.objects.list access to the Google Cloud Storage bucket %s", bucket)
+	}
 	var names []string
 	for path := range m.objects {
 		if object, ok := strings.CutPrefix(path, "gs://"+bucket+"/"); ok && strings.HasPrefix(object, prefix) {

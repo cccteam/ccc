@@ -469,7 +469,7 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			want: []string{
 				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
 				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members },\n",
-				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, values(local.next_deploy_members), [local.team_group]) },\n",
+				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]) },\n",
 				// In production, the lower environments' operations identities read the records
 				// for a restore from production's backup that names no release.
 				"  records_lower_ops_members = local.next_environment != \"\" ? [] : [\n    for pair in setproduct([for env, next in var.next_environment : env if next != \"\"], var.applications) :\n    \"serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com\"\n  ]\n",
@@ -1012,7 +1012,7 @@ func TestSpannerGrants(t *testing.T) {
 			path: "2-env/records.tf",
 			want: []string{
 				`records_ops_members = [for app in var.applications : google_service_account.operations[app].member]`,
-				`concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, values(local.next_deploy_members), [local.team_group])`,
+				`concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group])`,
 			},
 		},
 		{

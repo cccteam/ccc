@@ -240,6 +240,11 @@ project with it); in tst also `cloudBuildTriggerRunner`, since Cloud Scheduler
 runs the application's sweep trigger as this identity. Bounded grants:
 `roles/storage.objectCreator` and `roles/storage.objectViewer` on its own
 environment's records bucket, as bindings of the bucket's policy (`records.tf`;
+for the environment before production, the one on production's instance, also
+`roles/storage.objectViewer` on production's records bucket: the staging
+rehearsal reads production's live record to see whether a release carries
+migrations production has not applied, and restores from production's newest
+backup first when it does;
 a record is written once and read back: the
 stale-database check of a pull-request build reads the pull request's newest
 record, and the environment's live version is in its newest live record;

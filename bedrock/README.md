@@ -607,9 +607,10 @@ thing one step hands the next. In order:
   itself, the staging rehearsal: staging runs a release against production's data before
   production does, so a release that carries migrations production has not applied, by
   the versions tst's live record of the release and production's live record say they
-  applied (the highest schema migration's index in each; tst's record is read as the
-  build, production's as production's plan identity, which also names production's live
-  database and the backup a rollback restored it from), restores staging's database from
+  applied (the highest schema migration's index in each; both records are read as the
+  build, production's from the bucket its 2-env lets this environment's deploy identity
+  read, and it also names production's live database and the backup a rollback restored it
+  from), restores staging's database from
   production's newest backup before it deploys there, as a restore run the release asked
   for, and so does a release when staging's own live record lists a migration file the
   release does not carry as applied (a failed release's), so that staging sits at

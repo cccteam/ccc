@@ -69,10 +69,20 @@ locals {
     for pair in setproduct([for env, next in var.next_environment : env if next != ""], var.applications) :
     "serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com"
   ]
+  # In production, the deploy identities of the environment before it (the one
+  # on production's instance) read the records too: the staging rehearsal. A
+  # release's build there reads production's live record to see whether the
+  # release carries migrations production has not applied, and restores its
+  # database from production's newest backup first when it does (bedrock deploy
+  # resolve). Named the way the lower operations identities are.
+  records_rehearsal_members = local.next_environment != "" || local.previous_environment == null ? [] : [
+    for app in var.applications :
+    "serviceAccount:${local.prefix}-${local.previous_environment}-gbl-${app}-deploy@${local.org.project_ids[local.previous_environment]}.iam.gserviceaccount.com"
+  ]
   records_bindings = [
     for b in [
       { role = "roles/storage.objectCreator", members = local.records_deploy_members },
-      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, values(local.next_deploy_members), [local.team_group]) },
+      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]) },
     ] : b if length(b.members) > 0
   ]
 }

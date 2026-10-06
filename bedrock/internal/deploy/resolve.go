@@ -466,7 +466,7 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 	if err := f.seedChanged(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
-	if err := f.rehearsal(ctx, clients.Storage, clients.StorageAs, req.Source, out); err != nil {
+	if err := f.rehearsal(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
 	f.tags()
@@ -830,25 +830,27 @@ func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, 
 // is restored as well when its own live record lists a migration file the release does
 // not carry as applied (a failed release's, stagingAhead): between releases staging sits
 // at production's release, and the hotfix check would refuse the release otherwise.
-// tst's record is read as the build, as the gate reads it; production's as production's
-// plan identity (_RECORDS_BUCKETS and _PLAN_IDENTITIES name the buckets and
-// identities), as the hotfix preview reads every environment's; production's record also
-// names its live database and the backup a rollback restored it from, which the restore
-// needs (RESTORE_SOURCE_DATABASE, RESTORE_SOURCE_BACKUP). A build in any other
-// environment, a pull request's, a restore or rollback asked for already, a migration
-// operation and a run that applies no migration decide nothing here; a missing tst record
-// is left to the gate, which refuses the release; production with no live record (the
-// first release ever) has no data to run against, and staging deploys as it stands.
-func (f *Facts) rehearsal(ctx context.Context, open StoreFunc, openAs StoreAsFunc, source string, out io.Writer) error {
+// Both records are read as the build: tst's as the gate reads it, production's from the
+// bucket _RECORDS_BUCKETS names, which production's 2-env lets this environment's deploy
+// identity read; production's record also names its live database and the backup a
+// rollback restored it from, which the restore needs (RESTORE_SOURCE_DATABASE,
+// RESTORE_SOURCE_BACKUP). A read production's bucket refuses (the grant arrives with
+// production's 2-env, applied before the first release that rehearses; a release that
+// came before it would otherwise never reach production) is said and left: staging
+// deploys as it stands. A build in any other environment, a pull request's, a restore or
+// rollback asked for already, a migration operation and a run that applies no migration
+// decide nothing here; a missing tst record is left to the gate, which refuses the
+// release; production with no live record (the first release ever) has no data to run
+// against, and staging deploys as it stands.
+func (f *Facts) rehearsal(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
 	if f.Tag == "" || f.Environment != stgEnvironment || f.Restore != "" || f.Rollback != "" || f.Migration != nil || !f.RunMigrations {
 		return nil
 	}
 	subs := f.Substitutions
-	previous, previousBucket, app, dir := subs[previousEnvSub], subs[previousRecordsSub], subs[appSub], subs[migrationsSub]
-	buckets, identities := pairs(subs[recordsBucketsSub]), pairs(subs[planIdentitiesSub])
-	bucket, identity := buckets[prdEnvironment], identities[prdEnvironment]
-	if previous == "" || previousBucket == "" || app == "" || bucket == "" || identity == "" {
-		fmt.Fprintf(out, "Staging rehearsal: the records of %s and %s are not named (%s, %s, %s, %s); %s deploys as it stands.\n", previous, prdEnvironment, previousEnvSub, previousRecordsSub, recordsBucketsSub, planIdentitiesSub, f.Environment)
+	previous, previousBucket, app := subs[previousEnvSub], subs[previousRecordsSub], subs[appSub]
+	bucket := pairs(subs[recordsBucketsSub])[prdEnvironment]
+	if previous == "" || previousBucket == "" || app == "" || bucket == "" {
+		fmt.Fprintf(out, "Staging rehearsal: the records of %s and %s are not named (%s, %s, %s); %s deploys as it stands.\n", previous, prdEnvironment, previousEnvSub, previousRecordsSub, recordsBucketsSub, f.Environment)
 
 		return nil
 	}
@@ -866,36 +868,23 @@ func (f *Facts) rehearsal(ctx context.Context, open StoreFunc, openAs StoreAsFun
 
 		return nil
 	}
-	production, err := previewLive(ctx, openAs, app, prdEnvironment, bucket, identity)
+	production, err := newestLiveRelease(ctx, store, bucket, app, prdEnvironment)
 	if err != nil {
-		return err
+		if !deniedRead(err) {
+			return err
+		}
+		fmt.Fprintf(out, "Staging rehearsal: %s's deployment records could not be read as the build (%v); %s deploys as it stands. Production's records bucket lets this environment's deploy identity read once production's 2-env is applied at this bedrock.\n", prdEnvironment, err, f.Environment)
+
+		return nil
 	}
 	if production == nil {
 		fmt.Fprintf(out, "Staging rehearsal: %s has no live deployment record, so there is no production data to run %s against; %s deploys as it stands.\n", prdEnvironment, f.Tag, f.Environment)
 
 		return nil
 	}
-	releaseVersion, productionVersion := migrationVersion(release.Migrations, dir), migrationVersion(production.Migrations, dir)
-	versions := fmt.Sprintf("%s applied version %d, build %s; %s runs version %d, release %s, build %s", previous, releaseVersion, release.Build, prdEnvironment, productionVersion, production.Version, production.Build)
-	var reason string
-	switch {
-	case releaseVersion > productionVersion:
-		reason = fmt.Sprintf("%s carries migrations %s has not applied (%s), so %s's database is restored from production's newest backup and the release runs against production's data before production does", f.Tag, prdEnvironment, versions, f.Environment)
-	default:
-		staging, err := newestLiveRelease(ctx, store, subs[recordsBucket], app, f.Environment)
-		if err != nil {
-			return err
-		}
-		ahead, err := stagingAhead(source, staging, f.Tag)
-		if err != nil {
-			return err
-		}
-		if ahead == "" {
-			fmt.Fprintf(out, "Staging rehearsal: %s carries no migration %s has not applied (%s); %s deploys as it stands, on its database as it is.\n", f.Tag, prdEnvironment, versions, f.Environment)
-
-			return nil
-		}
-		reason = fmt.Sprintf("%s, so %s's database is restored from production's newest backup to production's state (%s) before the release deploys", ahead, f.Environment, versions)
+	reason, err := f.rehearsalReason(ctx, store, source, release, production, out)
+	if err != nil || reason == "" {
+		return err
 	}
 	f.Restore, f.Requester, f.RestoreReason = restoreBackup, "release "+f.Tag, reason
 	if production.Database != nil {
@@ -907,6 +896,47 @@ func (f *Facts) rehearsal(ctx context.Context, open StoreFunc, openAs StoreAsFun
 	fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, %s.\n", f.Environment, f.Restore, f.Tag, f.RestoreReason)
 
 	return nil
+}
+
+// rehearsalReason is why staging's database is restored before the release deploys
+// (the release carries migrations production has not applied, or staging's database
+// holds a migration the release does not carry), or "" when staging deploys as it
+// stands, which it says.
+func (f *Facts) rehearsalReason(ctx context.Context, store Store, source string, release, production *Record, out io.Writer) (string, error) {
+	subs := f.Substitutions
+	previous, app, dir := subs[previousEnvSub], subs[appSub], subs[migrationsSub]
+	releaseVersion, productionVersion := migrationVersion(release.Migrations, dir), migrationVersion(production.Migrations, dir)
+	versions := fmt.Sprintf("%s applied version %d, build %s; %s runs version %d, release %s, build %s", previous, releaseVersion, release.Build, prdEnvironment, productionVersion, production.Version, production.Build)
+	var reason string
+	switch {
+	case releaseVersion > productionVersion:
+		reason = fmt.Sprintf("%s carries migrations %s has not applied (%s), so %s's database is restored from production's newest backup and the release runs against production's data before production does", f.Tag, prdEnvironment, versions, f.Environment)
+	default:
+		staging, err := newestLiveRelease(ctx, store, subs[recordsBucket], app, f.Environment)
+		if err != nil {
+			return "", err
+		}
+		ahead, err := stagingAhead(source, staging, f.Tag)
+		if err != nil {
+			return "", err
+		}
+		if ahead == "" {
+			fmt.Fprintf(out, "Staging rehearsal: %s carries no migration %s has not applied (%s); %s deploys as it stands, on its database as it is.\n", f.Tag, prdEnvironment, versions, f.Environment)
+
+			return "", nil
+		}
+		reason = fmt.Sprintf("%s, so %s's database is restored from production's newest backup to production's state (%s) before the release deploys", ahead, f.Environment, versions)
+	}
+
+	return reason, nil
+}
+
+// deniedRead says whether an error is Cloud Storage refusing the read for want of a
+// grant (a 403, or the permission named), as against any other failure.
+func deniedRead(err error) bool {
+	text := err.Error()
+
+	return strings.Contains(text, "403") || strings.Contains(text, "PERMISSION_DENIED") || strings.Contains(text, "does not have storage.objects")
 }
 
 // migrationVersion is the version a record's migration list stands for: the highest
