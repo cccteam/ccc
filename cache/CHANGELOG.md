@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0](https://github.com/cccteam/ccc/compare/cache/v0.1.7...cache/v0.2.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* Every Cache must be closed. A second Cache opened over the same root waits for the first one's Close, in another process and in the same one, where before they ran at once and raced. The cache root now holds a .lock file; a cache directory kept under version control should ignore it. ([#826](https://github.com/cccteam/ccc/issues/826))
+
+### Features
+
+* cache.New takes an exclusive advisory lock on the file .lock at the cache root and holds it until Close; when another process holds it, New prints one line naming the root and waits, and the operating system releases the lock when its process ends, so a killed process leaves nothing stale. ([#826](https://github.com/cccteam/ccc/issues/826)) ([a1ea145](https://github.com/cccteam/ccc/commit/a1ea14572f7370eaebccdd97731f51d52508045f))
+
+
+### Bug Fixes
+
+* DeleteAll empties the root but keeps the root folder and the lock file, so a store after it succeeds, and Keys leaves the lock file out. ([#826](https://github.com/cccteam/ccc/issues/826)) ([a1ea145](https://github.com/cccteam/ccc/commit/a1ea14572f7370eaebccdd97731f51d52508045f))
+* Store and New tolerate a directory another process created between their stat and their mkdir. ([#826](https://github.com/cccteam/ccc/issues/826)) ([a1ea145](https://github.com/cccteam/ccc/commit/a1ea14572f7370eaebccdd97731f51d52508045f))
+* Store writes the value to a temporary file beside the key and renames it over the key, so two processes storing the same key at once both succeed and a reader never sees a partial file. ([#826](https://github.com/cccteam/ccc/issues/826)) ([a1ea145](https://github.com/cccteam/ccc/commit/a1ea14572f7370eaebccdd97731f51d52508045f))
+
 ## [0.1.7](https://github.com/cccteam/ccc/compare/cache/v0.1.6...cache/v0.1.7) (2026-08-19)
 
 
