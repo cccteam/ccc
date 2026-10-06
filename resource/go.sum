@@ -58,10 +58,10 @@ github.com/MicahParks/keyfunc v1.9.0 h1:lhKd5xrFHLNOWrDc4Tyb/Q1AJ4LCzQ48GVJyVIID
 github.com/MicahParks/keyfunc v1.9.0/go.mod h1:IdnCilugA0O/99dW+/MkvlyrsX8+L8+x95xuVNtM5jw=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/cccteam/ccc v0.3.2 h1:scPc3gv/AnTsrc21et8Ak3lFZrH6I9G2j2fjGEgP/pQ=
-github.com/cccteam/ccc v0.3.2/go.mod h1:21wWddh6x5UEJ1FrF23gqZhhxRpDUchGjZjNBmrGgmM=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69 h1:0fe0lq0YXk2VcJIEBLAlQC4Gw5qHydImx5Uh4h15tbI=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20261002070616-07965d34ca69/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
+github.com/cccteam/ccc v0.3.3 h1:MsKD9c+a5P6mHYj6xaw1lYM90iORVdjArCHdXFqIEsA=
+github.com/cccteam/ccc v0.3.3/go.mod h1:mMvs+AvedNa8vOADImamEAUqnsxhPlvnXYjFVV+/SeY=
+github.com/cccteam/ccc/accesstypes v0.6.0 h1:LJSRAV0j4c8GkIw+akpd+2050STqdGO0+bqJ2U9H5UU=
+github.com/cccteam/ccc/accesstypes v0.6.0/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
 github.com/cccteam/ccc/cache v0.1.8-0.20261004224052-9715e2d9b371 h1:fPB0CuICu5aHfXayCkIf07ANQx+HVbSVNULCrlAssgQ=
 github.com/cccteam/ccc/cache v0.1.8-0.20261004224052-9715e2d9b371/go.mod h1:vF4DzLZ5q42iJoSfc5b1LDzFkdcs3guE7h1Edlt08Es=
 github.com/cccteam/ccc/pkg v0.1.4 h1:5KI2fUTSFXyUZsBE0+KUqZ9fFpCaI8oneralVyUPVlI=
