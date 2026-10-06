@@ -1,0 +1,1 @@
+ALTER TABLE DroidReports DROP COLUMN Frame;

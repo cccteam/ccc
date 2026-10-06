@@ -4,16 +4,13 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/go-playground/errors/v5"
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := removeGeneratedFiles(r.rpc.Dir(), prefix); err != nil {
-		return err
-	}
+	r.output.registerOutput(r.rpc.Dir(), prefix)
 
 	begin := time.Now()
 
@@ -31,7 +28,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 }
 
 func (r *resourceGenerator) generateRPCMethod(rpc *rpcMethodInfo) error {
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpc.Name())))
+	fileName := generatedGoFileName(fileStem(rpc.Name()))
 	destinationFilePath := filepath.Join(r.rpc.Dir(), fileName)
 
 	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rpcFileTemplate:%q", rpc.Name()), rpcFileTemplate, &rpcFileData{
@@ -47,21 +44,52 @@ func (r *resourceGenerator) generateRPCMethod(rpc *rpcMethodInfo) error {
 
 func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpcMethod.Name())))
+	fileName := generatedGoFileName(fileStem(rpcMethod.Name()))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), rpcHandlerTemplate, &rpcHandlerData{
+	template := rpcHandlerTemplate
+	if rpcMethod.Upload != nil {
+		// The multipart intake is its own frame.
+		template = rpcUploadHandlerTemplate
+	}
+
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), template, &rpcHandlerData{
 		Source:              r.rpc.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		RPCMethod:           rpcMethod,
 		Package:             r.handler.Package(),
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
+		ResourcesPackage:    r.resource.Package(),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	log.Printf("Generated RPC handler file in %s: %s", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
+// generateScheduledHandler writes a scheduled method's handler beside the RPC handlers:
+// the frame Cloud Scheduler's verified call runs, with no session, no permission check
+// and no request body.
+func (r *resourceGenerator) generateScheduledHandler(method *rpcMethodInfo) error {
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(fileStem(method.Name())))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("scheduledHandlerTemplate:%q", method.Name()), scheduledHandlerTemplate, &rpcHandlerData{
+		Source:              r.rpc.Dir(),
+		LocalPackageImports: r.localPackageImports(),
+		RPCMethod:           method,
+		Package:             r.handler.Package(),
+		ApplicationName:     r.applicationName,
+		ReceiverName:        r.receiverName,
+		ResourcesPackage:    r.resource.Package(),
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+
+	log.Printf("Generated scheduled handler file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

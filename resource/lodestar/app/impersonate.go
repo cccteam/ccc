@@ -1,0 +1,113 @@
+package app
+
+import (
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/httpio"
+	"github.com/cccteam/session"
+	"github.com/cccteam/session/sessioninfo"
+	"github.com/go-playground/errors/v5"
+)
+
+// The principal kinds the mint route accepts and the watch desk reports.
+const (
+	kindUser = "user"
+	kindRole = "role"
+)
+
+// impersonateRequest is the mint route's body: view as a user (read-only by
+// default) or act as a role.
+type impersonateRequest struct {
+	// Kind is "user" or "role".
+	Kind string `json:"kind"`
+	// Principal is the user or role name.
+	Principal string `json:"principal"`
+	// Mask lists the permissions the session keeps; empty means the kind's default —
+	// List and Read for a user, unrestricted for a role.
+	Mask []accesstypes.Permission `json:"mask"`
+	// Reason is free text recorded on the impersonation record.
+	Reason string `json:"reason"`
+}
+
+// viewAsMaxDuration is the hard cap on every minted session: two hours, however long the
+// idle timeout would otherwise let it live.
+const viewAsMaxDuration = 2 * time.Hour
+
+// impersonateResponse names the session that was minted.
+type impersonateResponse struct {
+	SessionID ccc.UUID `json:"sessionId"`
+}
+
+// Impersonate mints an impersonated session on behalf of the authenticated actor: a
+// "view as" session that operates as another user under a List, Read mask, or an
+// "act as" session that operates as a role. Authorization stays with the app — the
+// two manual Execute registrations (resources.ViewAsUser, resources.AssumeRole),
+// checked in the global scope and held by the Governor and the Marshal only; the
+// library refuses chaining (an impersonated session cannot mint another) and writes
+// the record atomically with the session. The response cookie replaces the actor's
+// session; the actor's own session is linked as the source. A view-as session carries
+// a two-hour hard cap (MaxDuration), which the banner counts down.
+//
+// Demonstrates: impersonation.view-as, impersonation.act-as-role, impersonation.mask, impersonation.max-duration, @manualAddResource.execute, impersonation.identity-proof, impersonation.session-permissions.
+func (a *App) Impersonate() http.HandlerFunc {
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx := r.Context()
+
+		var req impersonateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessagef("decoding request: %s", err))
+		}
+		if req.Principal == "" {
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage("principal is required"))
+		}
+
+		// An empty request list falls back to the kind's default mask: view-as is
+		// read-only, act-as-role is unrestricted (the role's grants are the limit).
+		var gate accesstypes.Resource
+		var principal accesstypes.Principal
+		var mask accesstypes.PermissionMask
+		switch req.Kind {
+		case kindUser:
+			gate = resources.ViewAsUser
+			principal = accesstypes.UserPrincipal(accesstypes.User(req.Principal))
+			readOnly := accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.List, accesstypes.Read)
+			mask = accesstypes.MaskPermissions(readOnly, req.Mask...)
+		case kindRole:
+			gate = resources.AssumeRole
+			principal = accesstypes.RolePrincipal(accesstypes.Role(req.Principal))
+			mask = accesstypes.MaskPermissions(accesstypes.AllowAll(), req.Mask...)
+		default:
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessagef("kind %q must be user or role", req.Kind))
+		}
+
+		perms := a.UserPermissions(r)
+		env := accesstypes.NewEnvironment().WithNow(time.Now())
+		decisions, err := perms.Check(ctx, env, accesstypes.GlobalScope(), accesstypes.Execute, gate)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.UserPermissions.Check()"))
+		}
+		if !decisions[gate].IsGranted() {
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewForbiddenMessagef("user %s does not have Execute on %s", perms.User(), gate))
+		}
+
+		info := sessioninfo.FromCtx(ctx)
+		id, err := a.API().StartImpersonatedSession(ctx, w, &session.ImpersonationRequest{
+			Actor:           info.Username,
+			SourceSessionID: ccc.NullUUID{UUID: info.ID, Valid: !info.ID.IsNil()},
+			Principal:       principal,
+			Mask:            mask,
+			Reason:          req.Reason,
+			MaxDuration:     viewAsMaxDuration,
+		})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.PasswordAuthAPI.StartImpersonatedSession()"))
+		}
+
+		return httpio.NewEncoder(w).Ok(impersonateResponse{SessionID: id})
+	})
+}

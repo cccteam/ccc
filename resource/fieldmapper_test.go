@@ -32,6 +32,10 @@ func TestNewFieldMapper(t *testing.T) {
 					"field1": "Field1",
 					"field2": "Field2",
 				},
+				fieldToJSONName: map[accesstypes.Field]string{
+					"Field1": "field1",
+					"Field2": "field2",
+				},
 				fields: []accesstypes.Field{
 					"Field1",
 					"Field2",
@@ -202,6 +206,7 @@ func Test_tagToFieldMap(t *testing.T) {
 		args       args
 		want       map[string]accesstypes.Field
 		wantFields []accesstypes.Field
+		wantFormer map[string]string
 		wantErr    bool
 	}{
 		{
@@ -301,20 +306,65 @@ func Test_tagToFieldMap(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			name: "a former wire name maps to the field beside its current name",
+			args: args{
+				v: struct {
+					ID       string `json:"id"`
+					Headline string `json:"headline" formerly:"title"`
+				}{},
+			},
+			want: map[string]accesstypes.Field{
+				"id":       "ID",
+				"headline": "Headline",
+				"title":    "Headline",
+			},
+			wantFields: []accesstypes.Field{
+				"ID",
+				"Headline",
+			},
+			wantFormer: map[string]string{"title": "headline"},
+		},
+		{
+			name: "a former wire name that is another field's name is refused",
+			args: args{
+				v: struct {
+					Headline string `json:"headline" formerly:"body"`
+					Body     string `json:"body"`
+				}{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "a former wire name two fields share is refused",
+			args: args{
+				v: struct {
+					Headline string `json:"headline" formerly:"title"`
+					Body     string `json:"body"     formerly:"title"`
+				}{},
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, gotFileds, err := tagToFieldMap(tt.args.v)
+			mapper, err := tagToFieldMap(tt.args.v)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("tagToFieldMap() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if tt.wantErr {
+				return
+			}
+			if diff := cmp.Diff(tt.want, mapper.jsonTagToFields); diff != "" {
 				t.Errorf("tagToFieldMap() mismatch (-want +got):\n%s", diff)
 			}
-			if diff := cmp.Diff(tt.wantFields, gotFileds); diff != "" {
+			if diff := cmp.Diff(tt.wantFields, mapper.fields); diff != "" {
 				t.Errorf("tagToFieldMap() fields mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantFormer, mapper.FormerNames()); diff != "" {
+				t.Errorf("FormerNames() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

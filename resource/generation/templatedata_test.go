@@ -88,8 +88,9 @@ type Widget struct {
 
 // Test_formatGoBytes_usesPayloadScope verifies formatGoBytes resolves imports
 // from the payload's typeImports: the import path below is not resolvable any
-// other way (not declared, not stdlib, not a local package), so its presence in
-// the output proves the payload scope was used.
+// other way (not declared, not stdlib, not a derived package), so its presence in
+// the output proves the payload scope was used, and its absence from the scope is
+// the unresolved-qualifier error (the goimports fall-back is gone).
 func Test_formatGoBytes_usesPayloadScope(t *testing.T) {
 	t.Parallel()
 
@@ -101,10 +102,10 @@ type Widget struct {
 `
 
 	tests := []struct {
-		name         string
-		data         any
-		wantImport   string
-		wantNoImport string
+		name       string
+		data       any
+		wantImport string
+		wantErr    string
 	}{
 		{
 			name:       "payload scope resolves the import",
@@ -112,9 +113,9 @@ type Widget struct {
 			wantImport: `import fakepkg "example.com/fake/v2"`,
 		},
 		{
-			name:         "payload without the qualifier in scope falls back to goimports",
-			data:         scopedPayload{},
-			wantNoImport: "example.com/fake",
+			name:    "payload without the qualifier in scope is the unresolved-qualifier error",
+			data:    scopedPayload{},
+			wantErr: "import resolution for widget.go (template test) cannot resolve qualifier(s) [fakepkg]",
 		},
 	}
 
@@ -124,16 +125,63 @@ type Widget struct {
 
 			c := &client{}
 			got, err := c.formatGoBytes("widget.go", "test", []byte(src), tt.data)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("formatGoBytes() error = nil, want one containing %q", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("formatGoBytes() error = %v, want one containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
 			if err != nil {
 				t.Fatalf("formatGoBytes() error = %v", err)
 			}
 
-			if tt.wantImport != "" && !strings.Contains(string(got), tt.wantImport) {
+			if !strings.Contains(string(got), tt.wantImport) {
 				t.Errorf("formatGoBytes() should add the payload-scoped import; got:\n%s", got)
 			}
+		})
+	}
+}
 
-			if tt.wantNoImport != "" && strings.Contains(string(got), tt.wantNoImport) {
-				t.Errorf("formatGoBytes() should not resolve %s without it in scope; got:\n%s", tt.wantNoImport, got)
+// Test_rpcTypeImports_result pins that the RPC handler's type imports cover the
+// result's leaf packages: the response mirror declares them, and a result reaching
+// time.Time (or decimal.Decimal) fell back to goimports before this.
+func Test_rpcTypeImports_result(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "wirefixture"))
+	result, err := walkFixture(t, structs, "Shared")
+	if err != nil {
+		t.Fatalf("walkFixture(Shared) error = %v", err)
+	}
+	request, err := walkFixture(t, structs, "Reading")
+	if err != nil {
+		t.Fatalf("walkFixture(Reading) error = %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		method   *rpcMethodInfo
+		wantPath string
+	}{
+		{name: "the result's packages are declared", method: &rpcMethodInfo{Struct: structs["Shared"], Result: result}, wantPath: "time"},
+		{name: "the request's packages are declared", method: &rpcMethodInfo{Struct: structs["Reading"], Request: request}, wantPath: "time"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var found bool
+			for _, imp := range rpcTypeImports(nil, tt.method) {
+				if imp.path == tt.wantPath {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("rpcTypeImports() = %v, want %q among them", rpcTypeImports(nil, tt.method), tt.wantPath)
 			}
 		})
 	}

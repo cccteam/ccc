@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -19,9 +21,9 @@ func TestNewSetData(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			name: "list request struct",
+			name: "list request struct registers every field with the endpoint permission",
 			fields: []FieldTags{
-				{Field: "ID", JSON: "id", Perm: "List"},
+				{Field: "ID", JSON: "id", Perm: "-"},
 				{Field: "Name", JSON: "name"},
 				{Field: "Secret", JSON: "-", Perm: ""},
 			},
@@ -29,16 +31,42 @@ func TestNewSetData(t *testing.T) {
 			want: SetData{
 				Permissions: []accesstypes.Permission{accesstypes.List},
 				TagPermissions: accesstypes.TagPermissions{
-					"id":   {accesstypes.List},
-					"name": {accesstypes.NullPermission},
+					"id":   {accesstypes.NullPermission},
+					"name": {accesstypes.List},
 				},
-				ImmutableFields: map[accesstypes.Tag]struct{}{},
+				ImmutableFields:  map[accesstypes.Tag]struct{}{},
+				PositionalFields: map[accesstypes.Tag]struct{}{},
 			},
 		},
 		{
-			name: "patch request struct with immutable field",
+			name: "a positional field is recorded by its tag",
 			fields: []FieldTags{
-				{Field: "Name", JSON: "name", Perm: "Create,Update"},
+				{Field: "ID", JSON: "id", Perm: "-"},
+				{Field: "Fee", JSON: "fee", Masking: "positional"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.List},
+			want: SetData{
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				TagPermissions: accesstypes.TagPermissions{
+					"id":  {accesstypes.NullPermission},
+					"fee": {accesstypes.List},
+				},
+				ImmutableFields:  map[accesstypes.Tag]struct{}{},
+				PositionalFields: map[accesstypes.Tag]struct{}{"fee": {}},
+			},
+		},
+		{
+			name: "a masking value the generator never writes is rejected",
+			fields: []FieldTags{
+				{Field: "Fee", JSON: "fee", Masking: "sideways"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.List},
+			wantErr:     true,
+		},
+		{
+			name: "patch request struct strips Update from the immutable tag",
+			fields: []FieldTags{
+				{Field: "Name", JSON: "name"},
 				{Field: "Code", JSON: "code", Immutable: true},
 			},
 			permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete},
@@ -46,13 +74,22 @@ func TestNewSetData(t *testing.T) {
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Update},
 				TagPermissions: accesstypes.TagPermissions{
 					"name": {accesstypes.Create, accesstypes.Update},
-					"code": {accesstypes.Update},
+					"code": {accesstypes.Create},
 				},
-				ImmutableFields: map[accesstypes.Tag]struct{}{"code": {}},
+				ImmutableFields:  map[accesstypes.Tag]struct{}{"code": {}},
+				PositionalFields: map[accesstypes.Tag]struct{}{},
 			},
 		},
 		{
-			name: "delete permission in tag is rejected",
+			name: "stale permission tag is rejected",
+			fields: []FieldTags{
+				{Field: "Name", JSON: "name", Perm: "List"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.List},
+			wantErr:     true,
+		},
+		{
+			name: "stale Delete tag is rejected",
 			fields: []FieldTags{
 				{Field: "Name", JSON: "name", Perm: "Delete"},
 			},
@@ -62,15 +99,23 @@ func TestNewSetData(t *testing.T) {
 		{
 			name: "mixed mutating and non-mutating permissions are rejected",
 			fields: []FieldTags{
-				{Field: "Name", JSON: "name", Perm: "Read"},
+				{Field: "Name", JSON: "name"},
 			},
-			permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete},
+			permissions: []accesstypes.Permission{accesstypes.Read, accesstypes.Update},
 			wantErr:     true,
 		},
 		{
-			name: "permission on field without json tag is rejected",
+			name: "permission tag on json-hidden field is rejected",
 			fields: []FieldTags{
 				{Field: "Name", JSON: "-", Perm: "Read"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.Read},
+			wantErr:     true,
+		},
+		{
+			name: "enforced field without json tag is rejected",
+			fields: []FieldTags{
+				{Field: "Name", JSON: ""},
 			},
 			permissions: []accesstypes.Permission{accesstypes.Read},
 			wantErr:     true,
@@ -101,21 +146,21 @@ func TestCollectionBuilder_Data(t *testing.T) {
 	b := NewCollectionBuilder()
 
 	listSet, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "List"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.List)
 	if err != nil {
 		t.Fatalf("NewSetData() error = %v", err)
 	}
 	readSet, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "Read"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.Read)
 	if err != nil {
 		t.Fatalf("NewSetData() error = %v", err)
 	}
 	patchSet, err := NewSetData([]FieldTags{
-		{Field: "Name", JSON: "name", Perm: "Create,Update"},
+		{Field: "Name", JSON: "name"},
 		{Field: "Code", JSON: "code", Immutable: true},
 	}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 	if err != nil {
@@ -156,9 +201,9 @@ func TestCollectionBuilder_Data(t *testing.T) {
 			Scope:       scope,
 			Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 			Tags: []TagData{
-				{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Update}},
-				{Name: "id", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
-				{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update}},
+				{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Create}},
+				{Name: "id"},
+				{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 			},
 			ImmutableTags: []accesstypes.Tag{"code"},
 		},
@@ -247,6 +292,58 @@ func TestNewGeneratedCollection_validation(t *testing.T) {
 			}}},
 		},
 		{
+			name: "positional masking on a registered tag",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "id"}, {Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: MaskingPositional}},
+				Order:       []accesstypes.Tag{"fee"},
+				QueryKeys:   []accesstypes.Tag{"fee"},
+			}}},
+		},
+		{
+			name: "concealing spelled out is the default",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: MaskingConcealing}},
+			}}},
+		},
+		{
+			name: "an unknown masking behavior",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: "sideways"}},
+			}}},
+			wantErr: true,
+		},
+		{
+			name: "an order naming a tag the resource lacks",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}}},
+				Order:       []accesstypes.Tag{"deadline"},
+			}}},
+			wantErr: true,
+		},
+		{
+			name: "a query key naming a tag the resource lacks",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}}},
+				QueryKeys:   []accesstypes.Tag{"deadline"},
+			}}},
+			wantErr: true,
+		},
+		{
 			name:    "empty resource name",
 			data:    CollectionData{Resources: []CollectionResource{{Scope: scope}}},
 			wantErr: true,
@@ -306,7 +403,7 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 
 	b := NewCollectionBuilder()
 	set, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "List"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.List)
 	if err != nil {
@@ -318,6 +415,27 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 	if err := b.AddMethodResource(accesstypes.GlobalPermissionScope, accesstypes.Execute, "DoThing"); err != nil {
 		t.Fatalf("AddMethodResource() error = %v", err)
 	}
+	if err := b.AddResourceSet(accesstypes.GlobalPermissionScope, "Summaries", set); err != nil {
+		t.Fatalf("AddResourceSet() error = %v", err)
+	}
+	b.SetResourceComputed(accesstypes.GlobalPermissionScope, "Summaries")
+	if err := b.AddMethodResource(accesstypes.GlobalPermissionScope, accesstypes.Execute, "ShipWidget"); err != nil {
+		t.Fatalf("AddMethodResource() error = %v", err)
+	}
+	b.SetMethodTransition(accesstypes.GlobalPermissionScope, "ShipWidget", TransitionData{Target: "Widgets", From: []string{"packed", "labeled"}, To: "shipped"})
+	listed, err := NewSetData([]FieldTags{
+		{Field: "ID", JSON: "id", Perm: "-"},
+		{Field: "Name", JSON: "name"},
+		{Field: "Fee", JSON: "fee", Masking: "positional"},
+		{Field: "Deadline", JSON: "deadline"},
+	}, accesstypes.List)
+	if err != nil {
+		t.Fatalf("NewSetData() error = %v", err)
+	}
+	if err := b.AddResourceSet(accesstypes.DomainPermissionScope, "Missions", listed); err != nil {
+		t.Fatalf("AddResourceSet() error = %v", err)
+	}
+	b.SetResourceQueryKeys(accesstypes.DomainPermissionScope, "Missions", []accesstypes.Tag{"deadline"}, []accesstypes.Tag{"fee", "name"})
 
 	data := b.Data()
 	g, err := NewGeneratedCollection(data)
@@ -327,6 +445,67 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 
 	if diff := cmp.Diff(data, g.Data()); diff != "" {
 		t.Errorf("GeneratedCollection.Data() round trip mismatch (-want +got):\n%s", diff)
+	}
+
+	missions := data.Resources[slices.IndexFunc(data.Resources, func(r CollectionResource) bool { return r.Name == "Missions" })]
+	wantMissions := CollectionResource{
+		Name:        "Missions",
+		Scope:       accesstypes.DomainPermissionScope,
+		Permissions: []accesstypes.Permission{accesstypes.List},
+		Tags: []TagData{
+			{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.List}},
+			{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: MaskingPositional},
+			{Name: "id"},
+			{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
+		},
+		Order:     []accesstypes.Tag{"deadline"},
+		QueryKeys: []accesstypes.Tag{"fee", "name"},
+	}
+	if diff := cmp.Diff(wantMissions, missions); diff != "" {
+		t.Errorf("Missions collection data mismatch (-want +got):\n%s", diff)
+	}
+	order, keys := g.ConcealingKeys(accesstypes.DomainPermissionScope, "Missions")
+	if diff := cmp.Diff([]accesstypes.Tag{"deadline"}, order); diff != "" {
+		t.Errorf("ConcealingKeys(Missions) order mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]accesstypes.Tag{"name"}, keys); diff != "" {
+		t.Errorf("ConcealingKeys(Missions) keys mismatch (-want +got):\n%s", diff)
+	}
+	if order, keys := g.ConcealingKeys(accesstypes.GlobalPermissionScope, "Widgets"); order != nil || keys != nil {
+		t.Errorf("ConcealingKeys(Widgets) = %v, %v, want none for a resource declaring no keys", order, keys)
+	}
+	if got := g.FieldMasking(accesstypes.DomainPermissionScope, "Missions", "fee"); got != MaskingPositional {
+		t.Errorf("FieldMasking(fee) = %q, want positional", got)
+	}
+	if got := g.FieldMasking(accesstypes.DomainPermissionScope, "Missions", "deadline"); got != MaskingConcealing {
+		t.Errorf("FieldMasking(deadline) = %q, want concealing", got)
+	}
+
+	wantTransitions := []TransitionMethod{{Method: "ShipWidget", Transition: TransitionData{Target: "Widgets", From: []string{"packed", "labeled"}, To: "shipped"}}}
+	if diff := cmp.Diff(wantTransitions, g.TransitionsOnto("Widgets")); diff != "" {
+		t.Errorf("TransitionsOnto(Widgets) mismatch (-want +got):\n%s", diff)
+	}
+	if got := g.TransitionsOnto("Summaries"); got != nil {
+		t.Errorf("TransitionsOnto(Summaries) = %v, want none", got)
+	}
+
+	tests := []struct {
+		name string
+		res  accesstypes.Resource
+		want bool
+	}{
+		{name: "computed resource answers true", res: "Summaries", want: true},
+		{name: "computed field resource answers as its base", res: "Summaries.total", want: true},
+		{name: "table-backed resource answers false", res: "Widgets", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := g.IsComputedResource(accesstypes.GlobalPermissionScope, tt.res); got != tt.want {
+				t.Errorf("IsComputedResource(%s) = %t, want %t", tt.res, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -339,14 +518,14 @@ func TestGeneratedCollection_readMethods(t *testing.T) {
 	// production code takes (in-run vs. deserialized-from-generated-code) can never
 	// diverge.
 	listSet, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "List"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.List)
 	if err != nil {
 		t.Fatalf("NewSetData() error = %v", err)
 	}
 	patchSet, err := NewSetData([]FieldTags{
-		{Field: "Name", JSON: "name", Perm: "Create,Update"},
+		{Field: "Name", JSON: "name"},
 		{Field: "Code", JSON: "code", Immutable: true},
 	}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 	if err != nil {
@@ -398,6 +577,82 @@ func TestGeneratedCollection_readMethods(t *testing.T) {
 	}
 }
 
+// TestGeneratedCollection_TypescriptDataExcluding pins the outlet filter's collection
+// half: excluding a resource removes it, its tags, and any permission or scope only
+// it carried, while excluding nothing returns exactly TypescriptData.
+func TestGeneratedCollection_TypescriptDataExcluding(t *testing.T) {
+	t.Parallel()
+
+	widgetSet, err := NewSetData([]FieldTags{
+		{Field: "ID", JSON: "id", Perm: "-"},
+		{Field: "Name", JSON: "name"},
+	}, accesstypes.List)
+	if err != nil {
+		t.Fatalf("NewSetData() error = %v", err)
+	}
+	gadgetSet, err := NewSetData([]FieldTags{
+		{Field: "Code", JSON: "code"},
+	}, accesstypes.Update)
+	if err != nil {
+		t.Fatalf("NewSetData() error = %v", err)
+	}
+
+	b := NewCollectionBuilder()
+	if err := b.AddResourceSet(accesstypes.GlobalPermissionScope, "Widgets", widgetSet); err != nil {
+		t.Fatalf("registering Widgets: %v", err)
+	}
+	if err := b.AddResourceSet(accesstypes.DomainPermissionScope, "Gadgets", gadgetSet); err != nil {
+		t.Fatalf("registering Gadgets: %v", err)
+	}
+	if err := b.AddMethodResource(accesstypes.GlobalPermissionScope, accesstypes.Execute, "DoThing"); err != nil {
+		t.Fatalf("AddMethodResource() error = %v", err)
+	}
+	g := b.GeneratedCollection()
+
+	tests := []struct {
+		name     string
+		excluded []accesstypes.Resource
+		want     *TypescriptData
+	}{
+		{
+			name: "excluding nothing returns the unfiltered data",
+			want: g.TypescriptData(),
+		},
+		{
+			name:     "excluding the sole domain resource drops its tags; the permission and scope vocabulary stays whole",
+			excluded: []accesstypes.Resource{"Gadgets"},
+			want: &TypescriptData{
+				Permissions:      []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Execute, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Resources:        []accesstypes.Resource{"Widgets"},
+				Methods:          []accesstypes.Resource{"DoThing"},
+				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}},
+				PermissionScopes: []accesstypes.PermissionScope{accesstypes.DomainPermissionScope, accesstypes.GlobalPermissionScope},
+			},
+		},
+		{
+			name:     "excluding a method drops it from the methods; the permission vocabulary stays whole",
+			excluded: []accesstypes.Resource{"DoThing"},
+			want: &TypescriptData{
+				Permissions:      []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Execute, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Resources:        []accesstypes.Resource{"Gadgets", "Widgets"},
+				Methods:          []accesstypes.Resource{},
+				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}, "Gadgets": {"code"}},
+				PermissionScopes: []accesstypes.PermissionScope{accesstypes.DomainPermissionScope, accesstypes.GlobalPermissionScope},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, g.TypescriptDataExcluding(tt.excluded...)); diff != "" {
+				t.Errorf("TypescriptDataExcluding() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestGeneratedCollection_HasPermission(t *testing.T) {
 	t.Parallel()
 
@@ -429,5 +684,154 @@ func TestGeneratedCollection_HasPermission(t *testing.T) {
 				t.Errorf("HasPermission(%s, %s, %s) = %v, want %v", tt.scope, tt.permission, tt.resource, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestGeneratedCollection_methodTargets pins the @target carriage (§12): a
+// transition registers its target implicitly, a plain target registers
+// directly, MethodTarget answers per scope, and MethodsTargeting merges both
+// forms sorted by method — the capability envelope's Execute candidates.
+func TestGeneratedCollection_methodTargets(t *testing.T) {
+	t.Parallel()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{
+		{
+			Name:        "Tasks",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Read},
+		},
+		{
+			Name:        "CloseTask",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+			Transition:  &TransitionData{Target: "Tasks", From: []string{"open"}, To: "closed"},
+		},
+		{
+			Name:        "NudgeTask",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+			Target:      "Tasks",
+		},
+		{
+			Name:        "RunReport",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	if target, ok := g.MethodTarget(accesstypes.DomainPermissionScope, "CloseTask"); !ok || target != "Tasks" {
+		t.Errorf("MethodTarget(CloseTask) = %q, %v; want Tasks, true (a transition registers its target)", target, ok)
+	}
+	if target, ok := g.MethodTarget(accesstypes.DomainPermissionScope, "NudgeTask"); !ok || target != "Tasks" {
+		t.Errorf("MethodTarget(NudgeTask) = %q, %v; want Tasks, true", target, ok)
+	}
+	if _, ok := g.MethodTarget(accesstypes.DomainPermissionScope, "RunReport"); ok {
+		t.Error("MethodTarget(RunReport) = true, want false (no @target row)")
+	}
+	if _, ok := g.MethodTarget(accesstypes.GlobalPermissionScope, "CloseTask"); ok {
+		t.Error("MethodTarget answered across scopes, want per-scope")
+	}
+
+	methods := g.MethodsTargeting("Tasks")
+	if len(methods) != 2 || methods[0].Method != "CloseTask" || methods[1].Method != "NudgeTask" {
+		t.Fatalf("MethodsTargeting(Tasks) = %+v, want [CloseTask NudgeTask]", methods)
+	}
+	if methods[0].Transition == nil || methods[0].Transition.To != "closed" {
+		t.Errorf("MethodsTargeting(Tasks)[0].Transition = %+v, want the declared edge", methods[0].Transition)
+	}
+	if methods[1].Transition != nil {
+		t.Errorf("MethodsTargeting(Tasks)[1].Transition = %+v, want nil for the plain form", methods[1].Transition)
+	}
+
+	// The serializable round trip carries both forms.
+	data := collectionDataFrom(g)
+	var closeTask, nudge *CollectionResource
+	for i := range data.Resources {
+		switch data.Resources[i].Name {
+		case "CloseTask":
+			closeTask = &data.Resources[i]
+		case "NudgeTask":
+			nudge = &data.Resources[i]
+		}
+	}
+	if closeTask == nil || closeTask.Target != "Tasks" || closeTask.Transition == nil {
+		t.Errorf("round-tripped CloseTask = %+v, want Target and Transition", closeTask)
+	}
+	if nudge == nil || nudge.Target != "Tasks" || nudge.Transition != nil {
+		t.Errorf("round-tripped NudgeTask = %+v, want Target only", nudge)
+	}
+}
+
+// TestGeneratedCollection_membersOf pins the workflow-membership surface the
+// create-under-parent affordance rides (§11): MembersOf answers the immediate
+// hop only, sorted, and the Parent field round-trips.
+func TestGeneratedCollection_membersOf(t *testing.T) {
+	t.Parallel()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{
+		{
+			Name:        "Tasks",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Read},
+		},
+		{
+			Name:        "TaskNotes",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      "Tasks",
+		},
+		{
+			Name:        "TaskLines",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      "Tasks",
+		},
+		{
+			// A second-level member: its affordance rides TaskLines, never Tasks.
+			Name:        "TaskLineItems",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      "TaskLines",
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	if got := g.MembersOf("Tasks"); len(got) != 2 || got[0] != "TaskLines" || got[1] != "TaskNotes" {
+		t.Errorf("MembersOf(Tasks) = %v, want [TaskLines TaskNotes] (immediate hop only, sorted)", got)
+	}
+	if got := g.MembersOf("TaskLines"); len(got) != 1 || got[0] != "TaskLineItems" {
+		t.Errorf("MembersOf(TaskLines) = %v, want [TaskLineItems]", got)
+	}
+	if got := g.MembersOf("TaskNotes"); len(got) != 0 {
+		t.Errorf("MembersOf(TaskNotes) = %v, want empty", got)
+	}
+
+	data := collectionDataFrom(g)
+	for i := range data.Resources {
+		if data.Resources[i].Name == "TaskLines" && data.Resources[i].Parent != "Tasks" {
+			t.Errorf("round-tripped TaskLines.Parent = %q, want Tasks", data.Resources[i].Parent)
+		}
+	}
+}
+
+// TestNewGeneratedCollection_targetMismatch pins the consistency check: a
+// method whose Target disagrees with its transition's target is invalid data.
+func TestNewGeneratedCollection_targetMismatch(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{{
+		Name:        "CloseTask",
+		Scope:       accesstypes.DomainPermissionScope,
+		Permissions: []accesstypes.Permission{accesstypes.Execute},
+		Transition:  &TransitionData{Target: "Tasks", From: []string{"open"}, To: "closed"},
+		Target:      "Widgets",
+	}}})
+	if err == nil || !strings.Contains(err.Error(), "its transition targets") {
+		t.Errorf("NewGeneratedCollection() error = %v, want the target-mismatch rejection", err)
 	}
 }

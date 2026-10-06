@@ -1,0 +1,66 @@
+package resources
+
+import "github.com/cccteam/ccc/accesstypes"
+
+// ShipsLogEntries is the ship's log page's resource: a hand-written, SECTOR-scoped list
+// handler over the DataChangeEvents table the change-tracked resources (Missions,
+// Refits, Ships) write into. There is no generated handler (the table is library
+// infrastructure, not a schema resource), so the permission registration the generator
+// cannot derive is declared manually, with the scope argument: @manualAddResource(List,
+// domain) puts List into the generated permission collection in the domain scope
+// (the role file validates against it when the auth opens, the TypeScript permission
+// constants include it) and the handler in the app package checks it. It carries no
+// outlet annotation: the route is mounted on the default outlet only, so the portal's
+// TypeScript target does not carry it.
+//
+// Demonstrates: @manualAddResource, @manualAddResource.scope, change-tracking.
+//
+// @manualAddResource(List, domain)
+const ShipsLogEntries accesstypes.Resource = "ShipsLogEntries"
+
+// ClientStatements is the portal's per-company statement over the change log: bookings,
+// fee changes, completions, settlements. It is the first manual registration that names
+// a non-default outlet: @outlet(portal) keeps it in the portal's constants and drops it
+// from the console's, and the hand-written route under the portal prefix scopes itself
+// to the caller's company through ClientContacts, since a manual resource has no
+// bindings for a condition to reference. Its grant is Granted, never Conditional.
+//
+// Demonstrates: @manualAddResource.outlet, @manualAddResource.scope.
+//
+// @manualAddResource(List, domain)
+// @outlet(portal)
+const ClientStatements accesstypes.Resource = "ClientStatements"
+
+// ViewAsUser gates the impersonation mint route's "view as" moment: minting a session
+// that operates as another user, read-only. It is the first manual EXECUTE registration;
+// the constant reaches the generated TypeScript Methods constants, so the crew roster
+// checks Execute on it by the generated name, never a hand-typed string.
+//
+// Demonstrates: @manualAddResource.execute, impersonation.view-as.
+//
+// @manualAddResource(Execute)
+const ViewAsUser accesstypes.Resource = "ViewAsUser"
+
+// AssumeRole gates the impersonation mint route's "act as a role" moment: minting a
+// session that operates as a role, with subject still bound to the actor.
+//
+// Demonstrates: @manualAddResource.execute, impersonation.act-as-role.
+//
+// @manualAddResource(Execute)
+const AssumeRole accesstypes.Resource = "AssumeRole"
+
+// RoleMemberships is the console's role-membership routes' resource: who holds a role in
+// a sector, and seating and unseating crew in it. The routes are the access library's
+// user-management handlers mounted behind the application's own checks, since the
+// handlers check nothing themselves, so the permission is declared here, three manual
+// registrations on one constant, all in the domain scope: List opens a role's roster,
+// Create seats a user, Delete unseats one. SectorMarshal holds all three, so the marshal
+// seats crew at Anvil and nowhere else. A seat written through them is a policy write
+// that the crew engine announces to every instance through the live service.
+//
+// Demonstrates: auth.user-management, @manualAddResource.scope.
+//
+// @manualAddResource(List, domain)
+// @manualAddResource(Create, domain)
+// @manualAddResource(Delete, domain)
+const RoleMemberships accesstypes.Resource = "RoleMemberships"

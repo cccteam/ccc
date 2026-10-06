@@ -6,38 +6,59 @@ import (
 	"log"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 )
 
-func createSpannerDB(ctx context.Context, emulatorVersion string, migrationSourceURLs []string) (*initiator.SpannerDB, error) {
+// createSpannerDB starts the emulator container and migrates the generator's database
+// in it. The container is the caller's to release through releaseSpannerContainer once
+// the database is read: the generator runs in a process that may have the testcontainers
+// reaper disabled (the owned CI workflow does), so nothing else stops the container.
+func createSpannerDB(ctx context.Context, emulatorVersion string, migrationSourceURLs []string) (*initiator.SpannerDB, *initiator.SpannerContainer, error) {
 	log.Println("Starting Spanner Container...")
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, emulatorVersion)
 	if err != nil {
-		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
+		return nil, nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
 	}
 
 	db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
 	if err != nil {
-		return nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
+		releaseSpannerContainer(ctx, spannerContainer)
+
+		return nil, nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
 	}
 
 	log.Println("Starting Spanner Migration...")
 	for _, migrationSource := range migrationSourceURLs {
 		if err := db.MigrateUp(migrationSource); err != nil {
-			return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
+			releaseSpannerContainer(ctx, spannerContainer)
+
+			return nil, nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
 		}
 	}
 
-	return db, nil
+	return db, spannerContainer, nil
+}
+
+// releaseSpannerContainer closes the container's clients and terminates the container
+// itself; a failure is logged, since the generator's output does not depend on it.
+func releaseSpannerContainer(ctx context.Context, spannerContainer *initiator.SpannerContainer) {
+	if err := spannerContainer.Close(); err != nil {
+		log.Print(errors.Wrap(err, "initiator.SpannerContainer.Close()"))
+	}
+	if err := spannerContainer.Terminate(ctx); err != nil {
+		log.Print(errors.Wrap(err, "testcontainers.Container.Terminate()"))
+	}
 }
 
 func (c *client) runSpanner(ctx context.Context, emulatorVersion string, migrationSourceURL []string) error {
-	db, err := createSpannerDB(ctx, emulatorVersion, migrationSourceURL)
+	db, spannerContainer, err := createSpannerDB(ctx, emulatorVersion, migrationSourceURL)
 	if err != nil {
 		return err
 	}
+	defer releaseSpannerContainer(ctx, spannerContainer)
 
 	tableMap, err := createTableMapUsingQuery(ctx, db.Client)
 	if err != nil {
@@ -76,8 +97,10 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		table, ok := schemaMetadata[results[i].TableName]
 		if !ok {
 			table = &tableMetadata{
-				Columns:       make(map[string]columnMeta),
-				IsInterleaved: results[i].IsInterleaved,
+				Columns:         make(map[string]columnMeta),
+				IsInterleaved:   results[i].IsInterleaved,
+				ParentTable:     valueOrEmpty(results[i].ParentTable),
+				OnDeleteCascade: valueOrEmpty(results[i].OnDeleteAction) == cascadeDeleteAction,
 			}
 		}
 
@@ -85,7 +108,48 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		schemaMetadata[results[i].TableName] = table
 	}
 
+	indexResults, err := queryIndexSchema(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range indexResults {
+		// An index on a table the column query did not report (a view, a system
+		// table) has no metadata to join.
+		table, ok := schemaMetadata[indexResults[i].TableName]
+		if !ok {
+			continue
+		}
+		table.addIndexResult(&indexResults[i])
+	}
+
+	for _, table := range schemaMetadata {
+		table.deriveIndexFlags()
+	}
+
 	return schemaMetadata, nil
+}
+
+const (
+	// primaryKeyIndexType is INFORMATION_SCHEMA.INDEXES.INDEX_TYPE for a table's key.
+	primaryKeyIndexType = "PRIMARY_KEY"
+	// descendingOrdering is INFORMATION_SCHEMA.INDEX_COLUMNS.COLUMN_ORDERING for a key
+	// column declared DESC.
+	descendingOrdering = "DESC"
+	// cascadeDeleteAction is INFORMATION_SCHEMA.TABLES.ON_DELETE_ACTION for an
+	// interleaved child declared ON DELETE CASCADE, and
+	// INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS.DELETE_RULE for a foreign key declared
+	// so; the other value both spell is NO ACTION.
+	cascadeDeleteAction = "CASCADE"
+)
+
+// valueOrEmpty reads a nullable information-schema string, "" for NULL.
+func valueOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+
+	return *s
 }
 
 const tableMapQuery string = `WITH DEPENDENCIES AS (
@@ -112,7 +176,10 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 			WHEN 1 THEN MAX(kcu4.COLUMN_NAME)
 			WHEN 2 THEN MAX(kcu2.COLUMN_NAME)
 			ELSE NULL
-			END) AS REFERENCED_COLUMN
+			END) AS REFERENCED_COLUMN,
+			-- The delete rule of the column's foreign key, NULL on a key column with none; a
+			-- column in two foreign keys reads CASCADE when either cascades (MIN sorts it first).
+			MIN(rc.DELETE_RULE) AS DELETE_RULE
 		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu1 -- All columns that are Primary Key or Foreign Key
 		JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME -- Identify whether column is Primary Key or Foreign Key
 		-- All unique constraints (e.g. PK_Persons) referenced by foreign key constraints (e.g. FK_PersonPhones_PersonId)
@@ -137,35 +204,62 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		(d.IS_FOREIGN_KEY > 0 and d.IS_FOREIGN_KEY IS NOT NULL) as IS_FOREIGN_KEY,
 		d.REFERENCED_TABLE,
 		d.REFERENCED_COLUMN,
-		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
-		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
+		d.DELETE_RULE,
 		c.GENERATION_EXPRESSION,
 		c.ORDINAL_POSITION,
 		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
 		c.COLUMN_DEFAULT IS NOT NULL AS HAS_DEFAULT,
 		t.PARENT_TABLE_NAME IS NOT NULL AS IS_INTERLEAVED,
+		t.PARENT_TABLE_NAME,
+		t.ON_DELETE_ACTION,
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 			AND t.TABLE_TYPE = 'BASE TABLE'
 		LEFT JOIN INFORMATION_SCHEMA.VIEWS v ON c.TABLE_NAME = v.TABLE_NAME
 		LEFT JOIN DEPENDENCIES d ON c.TABLE_NAME = d.TABLE_NAME
 			AND c.COLUMN_NAME = d.COLUMN_NAME
-		LEFT JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON c.COLUMN_NAME = ic.COLUMN_NAME
-			AND c.TABLE_NAME = ic.TABLE_NAME
-		LEFT JOIN INFORMATION_SCHEMA.INDEXES i ON ic.INDEX_NAME = i.INDEX_NAME 
 	WHERE 
 		c.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
 		AND c.COLUMN_NAME NOT LIKE '%_HIDDEN'
 		AND v.TABLE_NAME IS NULL
-	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
-	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
-	IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT, t.PARENT_TABLE_NAME
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
+
+// indexMapQuery reads every index's composition: one row per index column, the
+// primary key included as its PRIMARY_KEY index, keyed on table and index name (an
+// index name is unique per database but PRIMARY_KEY is every table's). Key columns
+// carry an ordinal position and ordering; a stored column carries neither.
+const indexMapQuery string = `SELECT
+		i.TABLE_NAME,
+		i.INDEX_NAME,
+		i.INDEX_TYPE,
+		i.IS_UNIQUE,
+		i.IS_NULL_FILTERED,
+		i.SPANNER_IS_MANAGED,
+		ic.COLUMN_NAME,
+		ic.ORDINAL_POSITION,
+		ic.COLUMN_ORDERING
+	FROM INFORMATION_SCHEMA.INDEXES i
+		JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON ic.TABLE_NAME = i.TABLE_NAME
+			AND ic.INDEX_NAME = i.INDEX_NAME
+	WHERE
+		i.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
+	ORDER BY i.TABLE_NAME, i.INDEX_NAME, ic.ORDINAL_POSITION`
 
 func queryInformationSchema(ctx context.Context, db *spanner.Client) ([]informationSchemaResult, error) {
 	stmt := spanner.Statement{SQL: tableMapQuery}
 
 	var result []informationSchemaResult
+	if err := spxscan.Select(ctx, db.Single(), &result, stmt); err != nil {
+		return nil, errors.Wrap(err, "spxscan.Select()")
+	}
+
+	return result, nil
+}
+
+func queryIndexSchema(ctx context.Context, db *spanner.Client) ([]indexSchemaResult, error) {
+	stmt := spanner.Statement{SQL: indexMapQuery}
+
+	var result []indexSchemaResult
 	if err := spxscan.Select(ctx, db.Single(), &result, stmt); err != nil {
 		return nil, errors.Wrap(err, "spxscan.Select()")
 	}
@@ -195,6 +289,11 @@ func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]*enu
 
 	enumResults := make(map[string][]*enumData, len(results))
 	for _, tnr := range results {
+		// The library's feature flags table carries a Description column too, keyed by
+		// name: it is the flags' row, never an enumeration.
+		if tnr.TableName == string(resource.FeatureFlagsResource) {
+			continue
+		}
 		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
 
 		var results []*enumData

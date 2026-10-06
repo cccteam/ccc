@@ -1,0 +1,2 @@
+-- Join-path tenancy, two hops: SquadronMemberships in Anvil through Squadrons.WingId then Wings.SectorId (mirrors the renderer's shape).
+SELECT SquadronId, UserId FROM SquadronMemberships WHERE (EXISTS (SELECT 1 FROM `Squadrons` `ca1` WHERE `ca1`.`Id` = `SquadronMemberships`.`SquadronId` AND EXISTS (SELECT 1 FROM `Wings` `ca2` WHERE `ca2`.`Id` = `ca1`.`WingId` AND `ca2`.`SectorId` = 'anvil'))) ORDER BY `UserId` ASC, `SquadronId` ASC LIMIT 26

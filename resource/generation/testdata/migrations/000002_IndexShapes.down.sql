@@ -1,0 +1,9 @@
+DROP INDEX SeatsByNote;
+DROP INDEX SeatsByOrderIdRow;
+DROP TABLE Seats;
+DROP INDEX OrdersByNote;
+DROP INDEX OrdersByExternalRef;
+DROP INDEX OrdersByReference;
+DROP INDEX OrdersByTenantIdPlacedAt;
+DROP TABLE Orders;
+DROP TABLE Tenants;

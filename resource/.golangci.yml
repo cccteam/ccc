@@ -59,8 +59,12 @@ linters:
             - $all
           allow:
             - $gostd
+            - aidanwoods.dev/go-paseto
             - cloud.google.com/go/civil
+            - cloud.google.com/go/firestore
             - cloud.google.com/go/spanner
+            - cloud.google.com/go/storage
+            - firebase.google.com/go/v4
             - github.com/cccteam
             - github.com/cloudspannerecosystem/memefish
             - github.com/cloudspannerecosystem/memefish/ast
@@ -70,11 +74,20 @@ linters:
             - github.com/go-playground/errors/v5
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
+            - github.com/googleapis/gax-go/v2
+            - github.com/moby/moby/api/types/container
+            - github.com/moby/moby/api/types/network
+            - github.com/testcontainers/testcontainers-go
             - github.com/google/uuid
             - github.com/jackc/pgx/v5/pgxpool
             - github.com/momaek/formattag/align
             - github.com/shopspring/decimal
             - go.uber.org/mock/gomock
+            - golang.org/x/crypto/hkdf
+            - golang.org/x/sync/errgroup
+            - google.golang.org/api/googleapi
+            - google.golang.org/api/idtoken
+            - golang.org/x/mod/semver
             - go/ast
             - go/constant
             - go/format
@@ -83,6 +96,14 @@ linters:
             - go/types
             - golang.org/x/tools/go/packages
             - golang.org/x/tools/imports
+            - google.golang.org/api/iterator
+            - google.golang.org/api/option
+            - google.golang.org/api/transport/http
+            - google.golang.org/grpc
+            - google.golang.org/grpc/codes
+            - google.golang.org/grpc/credentials/insecure
+            - google.golang.org/grpc/status
+            - google.golang.org/protobuf/types/known/structpb
     dupl:
       threshold: 100
     exhaustive:
@@ -108,6 +129,9 @@ linters:
       config:
         # Generated source files are written world-readable, matching os.Create defaults
         G306: '0644'
+        # The atomic write creates its temporary file at 0600 and sets the generated
+        # file's mode before the rename
+        G302: '0644'
     godox:
       keywords:
         - TODO
@@ -155,18 +179,41 @@ linters:
           - cyclop
           - nestif
         path: _test\.go
+      # Property tests use a seeded math/rand generator on purpose: failures
+      # must reproduce; nothing here is security-sensitive randomness.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G404
       - linters:
           - paralleltest
         path: options_test\.go
         text: TestApplicationName
+      # The generation cache tests run the generator, which changes the process's working
+      # directory to the root of the module it runs in, so they set it with t.Chdir, which
+      # a parallel test may not call.
       - linters:
-          - gomoddirectives
-        path: go\.mod
-        text: golang-migrate
+          - paralleltest
+        path: generation/cache_test\.go
+      # The live tests' harness starts the Firestore emulator in a container: the
+      # executable is the podman LookPath found, the rules file is copied into the
+      # harness's own temporary directory and mounted from there, and the container
+      # id comes from podman itself. Nothing here is input a person supplies.
+
       - linters:
           - funlen
         path: resourceset\.go
         text: permissionsFromTags
+      # The cursor payload's keys are one letter each on purpose: the token
+      # rides in every page URL, and its shape is the design's wire contract.
+      - linters:
+          - tagliatelle
+        path: cursor\.go
+      # An io.Reader passes io.EOF through unwrapped, or io.Copy never ends.
+      - linters:
+          - wrapcheck
+        path: upload\.go
+        text: 'io.Reader'
       - linters:
           - gocritic
         path: query_decoder_test\.go
