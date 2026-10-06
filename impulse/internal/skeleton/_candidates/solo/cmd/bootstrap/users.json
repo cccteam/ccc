@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "user": "admin",
+      "password": "password",
+      "roles": {
+        "global": [
+          "Administrator_Global",
+          "FeatureAdministrator"
+        ],
+        "everyDomain": [],
+        "domains": {}
+      }
+    }
+  ]
+}
