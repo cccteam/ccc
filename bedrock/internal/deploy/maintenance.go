@@ -468,9 +468,12 @@ func endLeftMaintenance(ctx context.Context, clients *Clients, build *Build, env
 
 // sayDatabaseState says what the application comes back to: a restore canceled after it
 // dropped the environment's database leaves Spanner restoring the backup for twenty
-// minutes or so, and the revision traffic went back to answers errors until the database
-// is READY, so the run says so rather than ending on traffic alone. The database is the
-// one the triggers name for the migrate command; a trigger that names none says nothing.
+// minutes or so, and a restored database has no memberships until the run's stack
+// applies, so the revision traffic went back to cannot start on it (the lab's staging
+// failed its startup probe for an hour after its database was READY) until bedrock
+// rerun finishes the run; the step says so rather than ending on traffic alone. The
+// database is the one the triggers name for the migrate command; a trigger that names
+// none says nothing.
 func sayDatabaseState(ctx context.Context, clients *Clients, subs map[string]string, out io.Writer) error {
 	if subs[migrateDatabasesSub] == "" {
 		return nil
@@ -490,14 +493,16 @@ func sayDatabaseState(ctx context.Context, clients *Clients, subs map[string]str
 	switch {
 	case d == nil:
 		fmt.Fprintf(out, "The database %s is gone: a restore dropped it and stopped before the backup was restored; the application answers errors until bedrock rerun runs the release again or a restore makes it.\n", path.Base(database))
-	case d.State == DatabaseReady || d.State == DatabaseReadyOptimizing:
+	case (d.State == DatabaseReady || d.State == DatabaseReadyOptimizing) && d.RestoredFrom == "":
 		fmt.Fprintf(out, "The database %s is %s; the application serves on it.\n", path.Base(database), d.State)
+	case d.State == DatabaseReady || d.State == DatabaseReadyOptimizing:
+		fmt.Fprintf(out, "The database %s is %s, restored from %s. A restore run stopped before its stack applied leaves it without its memberships, and the application cannot start on it (its instances fail their startup probe): bedrock rerun finishes the run, whose apply gives the database its memberships, runs the migrations where the backup's schema is behind the release, and deploys.\n", path.Base(database), d.State, path.Base(d.RestoredFrom))
 	default:
 		from := ""
 		if d.RestoredFrom != "" {
 			from = " (Spanner is restoring it from " + path.Base(d.RestoredFrom) + ")"
 		}
-		fmt.Fprintf(out, "The database %s is %s%s: the application answers errors until Spanner has finished, about twenty minutes for a restore here, and serves on the restored data then; bedrock rerun runs the release again, with its migrations, where the backup's schema is behind the release.\n", path.Base(database), d.State, from)
+		fmt.Fprintf(out, "The database %s is %s%s: the application answers errors until Spanner has finished, about twenty minutes for a restore here, and cannot start on it until the run is finished, since a restored database has no memberships until the stack applies; bedrock rerun finishes the run, whose apply gives the database its memberships, runs the migrations where the backup's schema is behind the release, and deploys.\n", path.Base(database), d.State, from)
 	}
 
 	return nil
