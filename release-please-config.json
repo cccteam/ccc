@@ -26,6 +26,7 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
+      "last-release-sha": "f5b1a08daba43e3f94f0cc01a1304c4b09054fd1",
       "exclude-paths": [".github", "accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer", "middleware", "impulse", "bedrock"]
     },
     "accesstypes": {
