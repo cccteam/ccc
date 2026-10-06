@@ -198,12 +198,16 @@ steps:
   # is paused (and purged, since its tasks refer to rows about to go), the serving build's
   # job executions are canceled, and the old revision's requests in flight finish. Any
   # other run keeps the application serving, and the step does nothing; a breaking release
-  # goes into maintenance after the wait for its window (MaintenanceOnWindow).
+  # goes into maintenance after the wait for its window (MaintenanceOnWindow). A restore
+  # from production's backup (the staging rehearsal, bedrock restore stg) first waits here
+  # for that backup to be READY, and a backup Spanner is still taking (the release before
+  # this one deployed minutes ago) takes twenty to thirty minutes, so the timeout covers a
+  # whole backup; a run that waits for nothing is done in a minute.
   - id: MaintenanceOnRestore
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
     args: [deploy, maintenance, "on"]
-    timeout: 900s
+    timeout: 3600s
     waitFor: [BuildImage, {{if .HasHook "after-down"}}HookAfterDown{{else}}ApplyPullRequestStack{{end}}]
 
   # A tag build only: the environment's stack planned and applied as the apply identity,

@@ -216,7 +216,7 @@ func TestPipelineOrder(t *testing.T) {
 
 	order := []string{"ValidateRelease", "CheckRelease", "BuildImage", "MaintenanceOnRestore", "PlanEnvironmentStack", "ApplyEnvironmentStack", "CreateJobs", "PreflightMigrations", "WaitForWindow", "MaintenanceOnWindow", "RunMigrations", "DeployServiceNoTraffic", "ShiftTraffic", "MaintenanceOff", "SweepJobs", "WriteDeploymentRecord"}
 	jobSteps := []string{"CreateJobs", "SweepJobs"}
-	timeouts := map[string]string{"ValidateRelease": "300s", "BuildImage": "1800s", "PlanEnvironmentStack": "7200s", "PreflightMigrations": "1200s", "WaitForWindow": "86400s", "MaintenanceOnWindow": "900s", "RunMigrations": "2400s", "DeployServiceNoTraffic": "1200s", "ShiftTraffic": "600s"}
+	timeouts := map[string]string{"ValidateRelease": "300s", "BuildImage": "1800s", "MaintenanceOnRestore": "3600s", "PlanEnvironmentStack": "7200s", "PreflightMigrations": "1200s", "WaitForWindow": "86400s", "MaintenanceOnWindow": "900s", "RunMigrations": "2400s", "DeployServiceNoTraffic": "1200s", "ShiftTraffic": "600s"}
 	tests := []struct {
 		name string
 		file string
