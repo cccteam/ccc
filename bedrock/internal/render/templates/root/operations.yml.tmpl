@@ -281,7 +281,27 @@ jobs:
               fi
               echo "$BEFORE's cut: ${backup##*/} (data as of $moment), the database as it was before $BEFORE's migrations."
             fi
-            case "$backup" in @*) echo "A backup as of ${backup#@} is made${DATABASE:+ of $DATABASE} and restored." ;; esac
+            case "$backup" in @*) moment=${backup#@}; echo "A backup as of $moment is made${DATABASE:+ of $DATABASE} and restored." ;; esac
+            # A backup named by its resource name has its moment in the records when a run took it (a
+            # release's cut, a restore's forensic backup) or restored from it; one the records do not
+            # know is left to the apply.
+            if [ -z "${moment:-}" ]; then
+              moment=$(jq -r --arg b "$backup" '[.[] | (.releaseBackup | select(. != null and .name == $b) | .versionTime), (.restore | select(. != null and .backup == $b) | .backupTime)] | map(select(. != null and . != "")) | first // empty' records.json)
+            fi
+            # The data as of the moment holds the schema the database held then (the newest live record at or
+            # before it lists the migrations the database held), and the release restored under must be at
+            # that schema or above it: the migrate command refuses a database ahead of its files, after the
+            # database step, with the environment left in maintenance on the new generation. Refused here.
+            if [ -n "${moment:-}" ]; then
+              held=$(jq -r --arg m "$moment" '[.[] | select(.timestamp <= $m)] | last | [.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0' records.json)
+              heldBy=$(jq -r --arg m "$moment" '[.[] | select(.timestamp <= $m)] | last | "\(.version // "?") (live since \(.timestamp // "?"))"' records.json)
+              target=$(jq -r --arg v "$RELEASE" '[.[] | select(.version == $v and .rollback == null and .restore == null)] | first // ([.[] | select(.version == $v)] | last) | [.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0' records.json)
+              if [ "${held:-0}" -gt "${target:-0}" ]; then
+                echo "::error::the data as of $moment holds migration $held, applied under $heldBy, and $RELEASE applies migrations up to $target: the migrate command would refuse the restored database as ahead of its files, after the database step. Name a moment before migration $held was applied, or run the release that applied it again first (bedrock rerun $ENVIRONMENT <release>) and restore under it."
+                exit 1
+              fi
+              echo "The data as of $moment holds migration ${held:-0}; $RELEASE applies migrations up to ${target:-0}, so its migrate command runs on the restored database where it is behind."
+            fi
             echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
             echo "instruction=$backup" >> "$GITHUB_OUTPUT"
             echo "database=$DATABASE" >> "$GITHUB_OUTPUT"

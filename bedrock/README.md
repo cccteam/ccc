@@ -1307,7 +1307,12 @@ prints the statement (what the database returns to, on which release, asked for 
 and why), asks for the environment's name typed, and dispatches the repository's
 operations workflow as the person signed in to gh. The workflow's job reads the
 environment's deployment records for the live release, which stays unless the command
-named one, and, for `--before`, the release's cut from its record, prints them, and runs
+named one, and, for `--before`, the release's cut from its first run as a release, prints
+them, refuses a moment whose data holds a migration above the release's (the newest
+record at or before the moment lists what the database held then; the migrate command
+would refuse the restored database as ahead of its files after the database step, with
+the environment left in maintenance), naming the migration, the release that applied it
+and the two ways on (a moment before it, or that release run again first), and runs
 the environment's version trigger for the release with the backup (or `@<moment>`) as
 `_RESTORE`, the generation as `_RESTORE_DATABASE`, the reason and the requester, waiting
 for the build to its end: production's build waits for its approval in Cloud Build as a
@@ -1326,7 +1331,8 @@ nothing when the backup is at the release's schema and the release's own files w
 is ahead; the release deploys and takes the traffic; the record names the requester, the
 approver, the reason, the backup restored and the moment its data is from, the forensic
 backup, the database restored into and the one kept, with the forensic backup standing
-as the run's release backup so a later restore to this release's last data finds it. The
+as the run's backup, which `bedrock backups` lists for a later restore to this release's
+last data. The
 live database stays, drop-protected, as the forensic copy: writes made after the
 backup's moment are in it alone. No database an earlier run left is ever put back into
 service, and nothing is dropped: a restore to the wrong place is followed by another
