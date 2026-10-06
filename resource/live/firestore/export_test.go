@@ -17,6 +17,25 @@ func DropListener(s *Service) {
 	s.dropListener()
 }
 
+// StallFirstSnapshots makes the next n listeners' first snapshots go unseen, as a stream
+// that never speaks would leave them, so a test can watch the first snapshot bound
+// reopen the listener.
+func StallFirstSnapshots(s *Service, n int) {
+	s.stallFirstSnapshots(n)
+}
+
+// IgnoreListenerSnapshots drops every snapshot the service's listener delivers, so a test
+// can watch the reconcile reads wake the subscriptions on their own.
+func IgnoreListenerSnapshots(s *Service) {
+	s.ignoreListenerSnapshots()
+}
+
+// LateReopens is how many listeners the service reopened for a first snapshot that
+// never came.
+func LateReopens(s *Service) int {
+	return s.lateReopenCount()
+}
+
 // SignalsIdle reports whether no signal write is in flight for any kind.
 func SignalsIdle(s *Service) bool {
 	return s.signalsIdle()

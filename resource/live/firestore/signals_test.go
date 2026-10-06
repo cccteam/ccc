@@ -542,3 +542,56 @@ func TestService_Signal_failure(t *testing.T) {
 	signal(t, fresh, live.KindFeatures)
 	features.waitFor(t, "the fresh client's features subscription", 1)
 }
+
+// TestService_signals_firstSnapshotBound pins the first bound on a listener's silence: a
+// listener whose first snapshot never arrives is taken as never established and reopened
+// after the bound, and the reopened listener's first snapshot wakes the subscriptions
+// made before it.
+func TestService_signals_firstSnapshotBound(t *testing.T) {
+	t.Parallel()
+
+	database := databaseFor(t)
+	svc := newServiceIn(t, database, livefirestore.WithReopenBackoff(time.Second, time.Second), livefirestore.WithFirstSnapshotWithin(5*time.Second))
+	log := logSnapshots(svc)
+	explainOnFailure(t, database, firestoreEmulator(t), instance{svc, log})
+	// The document holds the kind before any listener opens, so the first snapshot a
+	// listener delivers wakes the subscription; the first listener's is swallowed, as a
+	// stream that never speaks would leave it.
+	signal(t, svc, live.KindFeatures)
+	livefirestore.StallFirstSnapshots(svc, 1)
+	features := subscribe(t, svc, live.KindFeatures)
+	features.waitFor(t, "the features subscription, through the reopened listener", 1)
+	if got := livefirestore.LateReopens(svc); got < 1 {
+		t.Errorf("LateReopens() = %d, want at least 1: the subscription woke without the bound reopening the listener", got)
+	}
+	// The reopened listener is a working one: a later signal reaches it at once.
+	signal(t, svc, live.KindFeatures)
+	features.waitFor(t, "the features subscription", 2)
+}
+
+// TestService_signals_reconcile pins the second bound: whatever the listener delivers,
+// the subscriber's own read of the document every period fires the kinds that advanced,
+// and never a kind that did not, so a stream silent without ending costs one period of
+// staleness at most.
+func TestService_signals_reconcile(t *testing.T) {
+	t.Parallel()
+
+	database := databaseFor(t)
+	first := newServiceIn(t, database, livefirestore.WithReconcileEvery(2*time.Second))
+	second := newServiceIn(t, database)
+	firstLog, secondLog := logSnapshots(first), logSnapshots(second)
+	explainOnFailure(t, database, firestoreEmulator(t), instance{first, firstLog}, instance{second, secondLog})
+	// The first instance's listener is made a silent one: it delivers nothing, so what
+	// its subscriptions hear, they hear from the reconcile reads.
+	livefirestore.IgnoreListenerSnapshots(first)
+	firstFeatures := subscribe(t, first, live.KindFeatures)
+	firstTenants := subscribe(t, first, live.KindTenants)
+	secondFeatures := subscribe(t, second, live.KindFeatures)
+	signal(t, second, live.KindFeatures)
+	secondFeatures.waitFor(t, "the second instance's features subscription", 1)
+	firstFeatures.waitFor(t, "the first instance's features subscription, through the reconcile read", 1)
+	signal(t, second, live.KindFeatures)
+	firstFeatures.waitFor(t, "the first instance's features subscription, through the next reconcile read", 2)
+	checkCounts(t, "signal counts after the reconcile reads", []expect{atLeast(2), none(), atLeast(1)},
+		settled(firstFeatures, firstTenants, secondFeatures), firstLog, secondLog)
+}

@@ -38,7 +38,13 @@ the first snapshot against no time seen, so a subscription made before it is wok
 once for the kinds the document already holds and misses nothing written after it was
 made, and a subscription made after it hears only the signals after it. A listener Firestore ends is reopened with backoff, and the
 reopened listener's first snapshot is compared the same way, so a kind that advanced
-while the listener was down wakes once. The features kind carries the feature flag
+while the listener was down wakes once. Two bounds hold the listener to its word: a
+listener without its first snapshot within thirty seconds is taken as never established
+and reopened (Firestore sends the first snapshot as soon as the listen is established),
+and every five minutes the subscriber reads the document itself and fires the kinds that
+advanced, so a stream that has gone silent without ending, which the emulator did under
+load while a fresh listener saw the write within seconds, costs at most five minutes of
+staleness (`WithFirstSnapshotWithin`, `WithReconcileEvery`). The features kind carries the feature flag
 flips. No client reads it; the rules deny everything outside the change sets, and the
 document needs no index and no time-to-live.
 

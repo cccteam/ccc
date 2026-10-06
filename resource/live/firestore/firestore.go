@@ -120,6 +120,24 @@ func WithReopenBackoff(first, most time.Duration) Option {
 	}
 }
 
+// WithFirstSnapshotWithin sets how long a signals listener may go without its first
+// snapshot before it is taken as never established and reopened; FirstSnapshotWithin by
+// default. Tests shorten it.
+func WithFirstSnapshotWithin(d time.Duration) Option {
+	return func(s *Service) {
+		s.signals.firstWithin = d
+	}
+}
+
+// WithReconcileEvery sets how often the subscriber reads the signals document itself,
+// firing the kinds that advanced whatever its listener delivered; ReconcileEvery by
+// default. Tests shorten it.
+func WithReconcileEvery(d time.Duration) Option {
+	return func(s *Service) {
+		s.signals.reconcileEvery = d
+	}
+}
+
 // New opens the service on the configured database. In production the Firestore
 // client and the Firebase Admin SDK authenticate with the application's default
 // credentials; the custom tokens are signed through the IAM credentials API with the

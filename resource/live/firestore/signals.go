@@ -10,6 +10,8 @@ import (
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // The reopen backoff: how long the subscriber waits before reopening a listener
@@ -17,6 +19,19 @@ import (
 const (
 	ReopenFirst = time.Second
 	ReopenMost  = 30 * time.Second
+)
+
+// The two bounds on a listener's silence. Firestore sends a listener's first snapshot
+// as soon as the listen is established, so a listener without one after
+// FirstSnapshotWithin is taken as never established and reopened (an established
+// stream that has gone silent was seen on the emulator under load, where a fresh
+// listener on the same database saw the write within seconds). And whatever a stream
+// does, every ReconcileEvery the subscriber reads the document itself and fires the
+// kinds that advanced, so a silent stream costs at most that much staleness.
+const (
+	FirstSnapshotWithin = 30 * time.Second
+	ReconcileEvery      = 5 * time.Minute
+	reconcileReadWithin = 30 * time.Second
 )
 
 // The signals document's fields under each kind.
@@ -50,6 +65,21 @@ type signalsState struct {
 	endListener context.CancelFunc
 	reopenFirst time.Duration
 	reopenMost  time.Duration
+	// firstWithin bounds a listener's first snapshot and reconcileEvery paces the
+	// subscriber's own reads of the document; lateReopens counts the listeners reopened
+	// for a first snapshot that never came.
+	firstWithin    time.Duration
+	reconcileEvery time.Duration
+	lateReopens    int
+	// fireMu serializes the deliveries of the listener and the reconcile reads, so the
+	// subscriptions of one snapshot run in order and never beside another's.
+	fireMu sync.Mutex
+	// stallFirst and ignoreListener are the package's tests' hooks: stallFirst is how
+	// many listeners' first snapshots are swallowed as a stream that never speaks would
+	// swallow them, and ignoreListener drops every snapshot the listener delivers so the
+	// reconcile reads alone wake the subscriptions.
+	stallFirst     int
+	ignoreListener bool
 }
 
 // signalWrite is one kind's coalescing state.
@@ -61,11 +91,13 @@ type signalWrite struct {
 // newSignalsState returns the empty state with the default backoff.
 func newSignalsState() signalsState {
 	return signalsState{
-		writes:      make(map[live.Kind]*signalWrite),
-		consumers:   make(map[live.Kind]map[int]func()),
-		seen:        make(map[live.Kind]time.Time),
-		reopenFirst: ReopenFirst,
-		reopenMost:  ReopenMost,
+		writes:         make(map[live.Kind]*signalWrite),
+		consumers:      make(map[live.Kind]map[int]func()),
+		seen:           make(map[live.Kind]time.Time),
+		reopenFirst:    ReopenFirst,
+		reopenMost:     ReopenMost,
+		firstWithin:    FirstSnapshotWithin,
+		reconcileEvery: ReconcileEvery,
 	}
 }
 
@@ -212,6 +244,7 @@ func (s *Service) startListening() error {
 	s.signals.listening = true
 	s.signals.endListener = end
 	go s.listen(snapshots, end)
+	go s.reconcile()
 
 	return nil
 }
@@ -233,7 +266,7 @@ func (s *Service) openListener() (*cloudfirestore.DocumentSnapshotIterator, cont
 func (s *Service) listen(snapshots *cloudfirestore.DocumentSnapshotIterator, end context.CancelFunc) {
 	delay := s.signals.reopenFirst
 	for {
-		delivered, err := s.deliver(snapshots)
+		delivered, late, err := s.deliver(snapshots, end)
 		snapshots.Stop()
 		end()
 		if s.lifetime.Err() != nil {
@@ -242,7 +275,15 @@ func (s *Service) listen(snapshots *cloudfirestore.DocumentSnapshotIterator, end
 		if delivered {
 			delay = s.signals.reopenFirst
 		}
-		logger.FromCtx(s.lifetime).Errorf("live: the signals listener ended; reopening in %s: %v", delay, err)
+		switch {
+		case late:
+			s.signals.mu.Lock()
+			s.signals.lateReopens++
+			s.signals.mu.Unlock()
+			logger.FromCtx(s.lifetime).Warnf("live: the signals listener delivered no first snapshot within %s and is taken as never established; reopening in %s", s.signals.firstWithin, delay)
+		default:
+			logger.FromCtx(s.lifetime).Errorf("live: the signals listener ended; reopening in %s: %v", delay, err)
+		}
 		select {
 		case <-s.lifetime.Done():
 			return
@@ -257,15 +298,81 @@ func (s *Service) listen(snapshots *cloudfirestore.DocumentSnapshotIterator, end
 }
 
 // deliver fires the kinds each snapshot advances until the listener ends, reporting
-// whether it delivered any snapshot and why it ended.
-func (s *Service) deliver(snapshots *cloudfirestore.DocumentSnapshotIterator) (bool, error) {
-	delivered := false
+// whether it delivered any snapshot, whether it ended for want of a first snapshot
+// within the bound (the watchdog ends the listener itself, through end), and why it
+// ended otherwise.
+func (s *Service) deliver(snapshots *cloudfirestore.DocumentSnapshotIterator, end context.CancelFunc) (delivered, late bool, err error) {
+	watchdog := time.AfterFunc(s.signals.firstWithin, end)
+	first := true
 	for {
 		snapshot, err := snapshots.Next()
 		if err != nil {
-			return delivered, errors.Wrap(err, "firestore.DocumentSnapshotIterator.Next()")
+			if first && !watchdog.Stop() {
+				return delivered, true, nil
+			}
+
+			return delivered, false, errors.Wrap(err, "firestore.DocumentSnapshotIterator.Next()")
+		}
+		if first && s.swallowFirst() {
+			continue
+		}
+		if first {
+			watchdog.Stop()
+			first = false
 		}
 		delivered = true
+		if s.listenerIgnored() {
+			continue
+		}
+		s.fire(snapshot)
+	}
+}
+
+// swallowFirst is the tests' stalled stream: it takes one of the first snapshots the
+// tests asked to have swallowed, and reports whether this one was.
+func (s *Service) swallowFirst() bool {
+	s.signals.mu.Lock()
+	defer s.signals.mu.Unlock()
+	if s.signals.stallFirst == 0 {
+		return false
+	}
+	s.signals.stallFirst--
+
+	return true
+}
+
+// listenerIgnored reports the tests' hook that drops the listener's snapshots.
+func (s *Service) listenerIgnored() bool {
+	s.signals.mu.Lock()
+	defer s.signals.mu.Unlock()
+
+	return s.signals.ignoreListener
+}
+
+// reconcile is the subscriber's own reading of the document, every reconcileEvery
+// under the service's lifetime: the kinds whose time advanced past the last seen fire
+// as a snapshot's would, so a listener that has gone silent without ending (never
+// seen on Firestore itself, seen on the emulator under load) costs at most one period
+// of staleness. A read that fails is logged and the next period reads again.
+func (s *Service) reconcile() {
+	ticker := time.NewTicker(s.signals.reconcileEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.lifetime.Done():
+			return
+		case <-ticker.C:
+		}
+		ctx, cancel := context.WithTimeout(s.lifetime, reconcileReadWithin)
+		snapshot, err := s.signalsDoc().Get(ctx)
+		cancel()
+		if err != nil && status.Code(err) != codes.NotFound {
+			if s.lifetime.Err() == nil {
+				logger.FromCtx(s.lifetime).Errorf("live: the signals reconcile read failed; the next is in %s: %v", s.signals.reconcileEvery, err)
+			}
+
+			continue
+		}
 		s.fire(snapshot)
 	}
 }
@@ -273,6 +380,8 @@ func (s *Service) deliver(snapshots *cloudfirestore.DocumentSnapshotIterator) (b
 // fire runs the subscriptions of every kind whose time the snapshot advanced past the
 // last seen, in subscription order, and notes the new times.
 func (s *Service) fire(snapshot *cloudfirestore.DocumentSnapshot) {
+	s.signals.fireMu.Lock()
+	defer s.signals.fireMu.Unlock()
 	times := signalTimes(snapshot)
 	s.signals.mu.Lock()
 	if s.signals.onSnapshot != nil {
@@ -339,6 +448,31 @@ func (s *Service) dropListener() {
 	if end != nil {
 		end()
 	}
+}
+
+// stallFirstSnapshots makes the next n listeners' first snapshots go unseen, as a
+// stream that never speaks would leave them, so the package's tests watch the first
+// snapshot bound reopen the listener.
+func (s *Service) stallFirstSnapshots(n int) {
+	s.signals.mu.Lock()
+	defer s.signals.mu.Unlock()
+	s.signals.stallFirst = n
+}
+
+// ignoreListenerSnapshots drops every snapshot the listener delivers, so the package's
+// tests watch the reconcile reads wake the subscriptions on their own.
+func (s *Service) ignoreListenerSnapshots() {
+	s.signals.mu.Lock()
+	defer s.signals.mu.Unlock()
+	s.signals.ignoreListener = true
+}
+
+// lateReopenCount is how many listeners were reopened for a first snapshot that never came.
+func (s *Service) lateReopenCount() int {
+	s.signals.mu.Lock()
+	defer s.signals.mu.Unlock()
+
+	return s.signals.lateReopens
 }
 
 // signalsIdle reports whether no signal write is in flight for any kind.
