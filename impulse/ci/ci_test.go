@@ -479,11 +479,11 @@ func TestCompare(t *testing.T) {
 				return a
 			},
 			want: &ci.Difference{
-				Line: 268,
+				Line: 277,
 				Want: "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.",
 				Got:  "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace.",
 			},
-			wantText: `.github/workflows/ci.yml:268: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."`,
+			wantText: `.github/workflows/ci.yml:277: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."`,
 		},
 		{
 			name: "a file that ends early",

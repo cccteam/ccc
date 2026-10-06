@@ -58,7 +58,7 @@ func TestCIWorkflow(t *testing.T) {
 				}
 			},
 			want: Result{Name: ciWorkflow{}.Name(), Status: Fail, Summary: ".github/workflows/ci.yml differs from what impulse renders from the code", Details: []string{
-				`.github/workflows/ci.yml:266: the code renders "      - run: bun run test"; the file has ""`,
+				`.github/workflows/ci.yml:275: the code renders "      - run: bun run test"; the file has ""`,
 				"run impulse render (go tool impulse render) to rewrite it; the file is impulse's: change the code or impulse, not the file",
 			}},
 		},
