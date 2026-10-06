@@ -257,7 +257,7 @@ func resourceModuleDir(ctx context.Context, env *Env) (dir, problem string) {
 	out, err := env.Exec.Run(ctx, env.App.Root, nil, "go", "list", "-m", "-f", "{{.Dir}}", resourceModule)
 	dir = strings.TrimSpace(string(out))
 	if err == nil && dir == "" {
-		if _, err := env.Exec.Run(ctx, env.App.Root, nil, "go", "mod", "download", resourceModule); err == nil {
+		if _, downloadErr := env.Exec.Run(ctx, env.App.Root, nil, "go", "mod", "download", resourceModule); downloadErr == nil {
 			out, err = env.Exec.Run(ctx, env.App.Root, nil, "go", "list", "-m", "-f", "{{.Dir}}", resourceModule)
 			dir = strings.TrimSpace(string(out))
 		}
