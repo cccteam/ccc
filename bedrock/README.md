@@ -1447,8 +1447,12 @@ records and runs its build with `_MAINTENANCE=off`, which the resolve step turns
 skip facts: every step stands down, and the last one moves each service's traffic back
 to the revision the maintenance revision displaced (named by the label the maintenance
 step put on it, `bedrock-displaced`; for a maintenance revision from a build before the
-label, the service's latest ready revision when that is another one) and resumes the
-queue the earlier run left paused. Nothing deploys and no record is written; production's
+label, the service's latest ready revision when that is another one), says what the
+application comes back to (the environment's database READY, or still being restored by
+the cancelled run, in which case the application answers errors until Spanner has
+finished, about twenty minutes here, and `bedrock rerun` runs the release again with its
+migrations where the backup's schema is behind it) and resumes the queue the earlier run
+left paused. Nothing deploys and no record is written; production's
 build waits for its approval in Cloud Build as a release does. The other way out is to
 run the release again (`bedrock rerun`), which deploys and ends the maintenance on the
 way, and is the answer when the failed run should be finished rather than undone.

@@ -1024,6 +1024,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 // backups it was asked to create; refuse, when set, is the error every create answers.
 type fakeSpanner struct {
 	backup   *Backup
+	database *Database
 	dropped  string
 	restored string
 	created  []string
@@ -1085,6 +1086,14 @@ func (f *fakeSpanner) CreateBackup(_ context.Context, instance, backupID, databa
 	f.created = append(f.created, backupID+" of "+path.Base(database)+" as of "+versionTime.Format(time.RFC3339)+" until "+expireTime.Format(time.RFC3339))
 
 	return instance + "/operations/op-" + backupID, nil
+}
+
+func (f *fakeSpanner) Database(_ context.Context, name string) (*Database, error) {
+	if f.database == nil || f.database.Name != name {
+		return nil, nil
+	}
+
+	return f.database, nil
 }
 
 func (f *fakeSpanner) Backup(_ context.Context, name string) (*Backup, error) {

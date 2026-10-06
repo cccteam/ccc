@@ -47,6 +47,21 @@ const (
 	BackupCreating = "CREATING"
 )
 
+// Database is a Spanner database as its state matters here: READY (or READY_OPTIMIZING,
+// serving while Spanner finishes a restore's optimization) serves, and CREATING is a
+// restore still in progress, from the backup RestoredFrom names.
+type Database struct {
+	Name         string
+	State        string
+	RestoredFrom string
+}
+
+// Spanner's database states that serve.
+const (
+	DatabaseReady           = "READY"
+	DatabaseReadyOptimizing = "READY_OPTIMIZING"
+)
+
 // Spanner drops and restores databases and lists backups: the v1 API, or a fake in tests.
 type Spanner interface {
 	// LatestBackup is the most recently created backup of the database
@@ -66,6 +81,10 @@ type Spanner interface {
 	CreateBackup(ctx context.Context, instance, backupID, database string, versionTime, expireTime time.Time) (string, error)
 	// Backup reads one backup by resource name; nil when there is none.
 	Backup(ctx context.Context, name string) (*Backup, error)
+	// Database reads one database by resource name (projects/<p>/instances/<i>/databases/<d>):
+	// its state and, for one a restore made, the backup it was restored from; nil when
+	// there is none.
+	Database(ctx context.Context, name string) (*Database, error)
 }
 
 // SpannerAsFunc opens Spanner as an impersonated identity: the apply identity, which holds
@@ -148,6 +167,25 @@ func (s *spanner) Backup(ctx context.Context, name string) (*Backup, error) {
 	}
 
 	return &Backup{Name: text(b, keyName), VersionTime: text(b, "versionTime"), CreateTime: text(b, "createTime"), Database: text(b, keyDatabase), State: text(b, "state"), ExpireTime: text(b, "expireTime")}, nil
+}
+
+func (s *spanner) Database(ctx context.Context, name string) (*Database, error) {
+	d, err := s.call(ctx, http.MethodGet, "/v1/"+name, nil)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+	restored := ""
+	if info, ok := d["restoreInfo"].(map[string]any); ok {
+		if backup, ok := info["backupInfo"].(map[string]any); ok {
+			restored = text(backup, "backup")
+		}
+	}
+
+	return &Database{Name: text(d, keyName), State: text(d, "state"), RestoredFrom: restored}, nil
 }
 
 func (s *spanner) DropDatabase(ctx context.Context, database string) error {

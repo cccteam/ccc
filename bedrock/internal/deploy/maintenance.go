@@ -459,8 +459,48 @@ func endLeftMaintenance(ctx context.Context, clients *Clients, build *Build, env
 		}
 		fmt.Fprintf(out, "%s in %s serves %s again; the maintenance revision %s takes no traffic.\n", service, region, back, serving)
 	}
+	if err := sayDatabaseState(ctx, clients, subs, out); err != nil {
+		return err
+	}
 
 	return resumeLeftPaused(ctx, clients, subs[tasksQueueSub], env[versionFact], out)
+}
+
+// sayDatabaseState says what the application comes back to: a restore canceled after it
+// dropped the environment's database leaves Spanner restoring the backup for twenty
+// minutes or so, and the revision traffic went back to answers errors until the database
+// is READY, so the run says so rather than ending on traffic alone. The database is the
+// one the triggers name for the migrate command; a trigger that names none says nothing.
+func sayDatabaseState(ctx context.Context, clients *Clients, subs map[string]string, out io.Writer) error {
+	if subs[migrateDatabasesSub] == "" {
+		return nil
+	}
+	database, _, err := currentDatabase(subs)
+	if err != nil {
+		return err
+	}
+	store, err := spannerAsApplyIdentity(ctx, clients, subs)
+	if err != nil {
+		return err
+	}
+	d, err := store.Database(ctx, database)
+	if err != nil {
+		return errors.Wrapf(err, "reading the database %s", path.Base(database))
+	}
+	switch {
+	case d == nil:
+		fmt.Fprintf(out, "The database %s is gone: a restore dropped it and stopped before the backup was restored; the application answers errors until bedrock rerun runs the release again or a restore makes it.\n", path.Base(database))
+	case d.State == DatabaseReady || d.State == DatabaseReadyOptimizing:
+		fmt.Fprintf(out, "The database %s is %s; the application serves on it.\n", path.Base(database), d.State)
+	default:
+		from := ""
+		if d.RestoredFrom != "" {
+			from = " (Spanner is restoring it from " + path.Base(d.RestoredFrom) + ")"
+		}
+		fmt.Fprintf(out, "The database %s is %s%s: the application answers errors until Spanner has finished, about twenty minutes for a restore here, and serves on the restored data then; bedrock rerun runs the release again, with its migrations, where the backup's schema is behind the release.\n", path.Base(database), d.State, from)
+	}
+
+	return nil
 }
 
 // revisionInMaintenance says whether a revision runs with the maintenance variable set:

@@ -411,15 +411,39 @@ func TestEndLeftMaintenance(t *testing.T) {
 
 		return doc
 	}
+	const database = "projects/p-spn/instances/shared-spanner/databases/harbor-db"
 	tests := []struct {
 		name      string
 		resources map[string]map[string]any
 		state     string
+		database  *Database
 		wantOut   []string
 		wantBack  string
 		wantVerbs []string
 		wantErr   string
 	}{
+		{
+			name: "a database still being restored by the canceled run is said, with the backup and the way the release's migrations follow",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision("harbor-app-00007"),
+			},
+			database:  &Database{Name: database, State: "CREATING", RestoredFrom: "projects/p-spn/instances/shared-spanner/backups/prd-harbor-db-pre-v0-2-2-abc"},
+			wantOut:   []string{"The database harbor-db is CREATING (Spanner is restoring it from prd-harbor-db-pre-v0-2-2-abc): the application answers errors until Spanner has finished, about twenty minutes for a restore here, and serves on the restored data then; bedrock rerun runs the release again, with its migrations, where the backup's schema is behind the release."},
+			wantBack:  "harbor-app-00007",
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "a database that is ready is said to serve",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision("harbor-app-00007"),
+			},
+			database:  &Database{Name: database, State: "READY_OPTIMIZING"},
+			wantOut:   []string{"The database harbor-db is READY_OPTIMIZING; the application serves on it."},
+			wantBack:  "harbor-app-00007",
+			wantVerbs: []string{"state harbor-tasks"},
+		},
 		{
 			name: "traffic goes back to the revision the maintenance revision displaced, and the paused queue resumes",
 			resources: map[string]map[string]any{
@@ -463,11 +487,15 @@ func TestEndLeftMaintenance(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "_TASKS_QUEUE": queue, "_REQUESTER": "octocat"}
+			if tt.database != nil {
+				subs["_MIGRATE_DATABASES"], subs["_APPLY_IDENTITY"] = `["`+database+`"]`, "apply@tst-project.iam.gserviceaccount.com"
+			}
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: env, BuildFile: buildFor(t, subs)})
 			tasks := &fakeTasks{state: tt.state}
 			run := newFakeRun(tt.resources)
+			spanner := &fakeSpanner{database: tt.database}
 			var out strings.Builder
-			err := MaintenanceOff(t.Context(), &Clients{Tasks: tasks.open, Run: run.open}, w, &out)
+			err := MaintenanceOff(t.Context(), &Clients{Tasks: tasks.open, Run: run.open, SpannerAs: spanner.open}, w, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("MaintenanceOff() error = %v, want %q", err, tt.wantErr)
