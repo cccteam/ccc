@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +83,11 @@ type maintenance struct {
 	timeout time.Duration
 }
 
+// restoreReadyBackupFact names, for the plan step, the backup of production's live
+// database the maintenance step chose and waited for before the maintenance page went up
+// (a production-backup restore).
+const restoreReadyBackupFact = "RESTORE_READY_BACKUP"
+
 // MaintenanceOn puts the application into maintenance when the run needs it. The step
 // stands at two places in the pipeline: before the stack is planned, where a restore run
 // (whose database is replaced by the plan) goes into maintenance; and after the gate
@@ -94,7 +100,11 @@ type maintenance struct {
 // queue is paused (and, on a restore, purged), the running executions of the serving
 // build's job are canceled, and the old revision's requests in flight are let finish:
 // its active instances are read until none is, or until the service's request timeout
-// has passed since traffic moved. Any other run keeps the application serving: an
+// has passed since traffic moved. What can wait, waits before any of that, with the
+// application serving (waitBeforeMaintenance): a restore from production's backup waits
+// for production's newest backup to be READY, and a breaking release that takes a
+// release backup waits for Spanner to be free of another backup of the database, since
+// either wait would otherwise run behind the maintenance page. Any other run keeps the application serving: an
 // ordinary release inside a window under releases all deploys the rolling way, with no
 // maintenance revision, no probe, no pause and no cancel.
 func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, window bool, out io.Writer) error {
@@ -121,11 +131,8 @@ func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, window bo
 	if !ok {
 		return nil
 	}
-	if env[imageFact] == "" || env[digestFact] == "" {
-		return errors.Newf("%s names no image digest (IMAGE, IMAGE_DIGEST): the image build writes it", EnvironmentFile)
-	}
-	if env[services] == "" {
-		return errors.Newf("%s names no services (SERVICES): the resolve step writes them", EnvironmentFile)
+	if err := beforeMaintenance(ctx, clients, w, subs, env, window, out); err != nil {
+		return err
 	}
 	if window {
 		slot, err := windowStillOpen(ctx, clients, w, build, env)
@@ -197,6 +204,125 @@ func maintenanceCause(env map[string]string, window bool, environment string, ou
 
 		return "", false
 	}
+}
+
+// beforeMaintenance is what comes before the maintenance page goes up: the facts the
+// step needs (the image digest the image build wrote, the services the resolve step
+// wrote), then the waits (waitBeforeMaintenance), whose facts are appended.
+func beforeMaintenance(ctx context.Context, clients *Clients, w Workspace, subs, env map[string]string, window bool, out io.Writer) error {
+	if env[imageFact] == "" || env[digestFact] == "" {
+		return errors.Newf("%s names no image digest (IMAGE, IMAGE_DIGEST): the image build writes it", EnvironmentFile)
+	}
+	if env[services] == "" {
+		return errors.Newf("%s names no services (SERVICES): the resolve step writes them", EnvironmentFile)
+	}
+	waited, err := waitBeforeMaintenance(ctx, clients, subs, env, window, out)
+	if err != nil {
+		return err
+	}
+	if len(waited) == 0 {
+		return nil
+	}
+
+	return w.Append(waited)
+}
+
+// waitBeforeMaintenance is what the run waits for before the maintenance page goes up,
+// with the application still serving: at the restore position, a restore from
+// production's backup waits for the backup it will restore (readyProductionBackup) and
+// names it for the plan step; at the window position, a breaking release that takes a
+// release backup after maintenance waits for Spanner to be free of another backup of
+// the database (freeOfBackups), so the backup step starts at once. The facts answered
+// are appended to the environment; nothing else waits here.
+func waitBeforeMaintenance(ctx context.Context, clients *Clients, subs, env map[string]string, window bool, out io.Writer) (map[string]string, error) {
+	switch {
+	case !window && env[restoreFact] == restoreBackup:
+		return readyProductionBackup(ctx, clients, subs, env, out)
+	case window && noReleaseBackup(env) == "":
+		return nil, freeOfBackups(ctx, clients, subs, env, out)
+	}
+
+	return nil, nil
+}
+
+// readyProductionBackup is a production-backup restore's wait before the maintenance
+// page goes up: production's live database by its record (RESTORE_SOURCE_DATABASE), the
+// backup the restore takes (productionBackup: the newest, or the one a rollback restored
+// the generation from), waited for until READY as the apply identity, and named for the
+// plan step (RESTORE_READY_BACKUP), which restores that one. A record that names no
+// database (written before database generations) leaves the choice and the wait to the
+// plan step, which reads production's first database from the stack's state; said on
+// out. No backup at all is refused here, before anything stops serving.
+func readyProductionBackup(ctx context.Context, clients *Clients, subs, env map[string]string, out io.Writer) (map[string]string, error) {
+	productionDB := env[restoreSourceDatabaseFact]
+	if productionDB == "" {
+		fmt.Fprintln(out, "Production's record names no database (written before database generations): the plan step reads production's first database from the stack's state and waits for its backup there, if it must.")
+
+		return nil, nil
+	}
+	i := strings.Index(productionDB, "/databases/")
+	if i < 0 {
+		return nil, errors.Newf("%s=%s: production's live database %s is not a database's resource name", restoreSub, restoreBackup, productionDB)
+	}
+	instance := productionDB[:i]
+	store, err := spannerAsApplyIdentity(ctx, clients, subs)
+	if err != nil {
+		return nil, err
+	}
+	backup, err := productionBackup(ctx, store, env, instance, productionDB, out)
+	if err != nil {
+		return nil, err
+	}
+	if backup == nil {
+		return nil, errors.Newf("%s=%s: %s has no backup of production's database %s; %s keeps its database and stays serving", restoreSub, restoreBackup, path.Base(instance), path.Base(productionDB), subs[envSub])
+	}
+	if backup.State != BackupReady {
+		fmt.Fprintf(out, "Before maintenance: production's newest backup %s is still being taken; the wait is here, with %s serving.\n", path.Base(backup.Name), subs[envSub])
+	}
+	if backup, err = readyBackup(ctx, clients, store, backup, out); err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(out, "Production's backup %s (data as of %s) is READY; the plan step restores it.\n", path.Base(backup.Name), backup.VersionTime)
+
+	return map[string]string{restoreReadyBackupFact: backup.Name}, nil
+}
+
+// freeOfBackups is a breaking release's wait before the maintenance page goes up, when
+// the run takes a release backup after it: Spanner takes one backup of a database at a
+// time, so one it is still taking (the last release's, or the schedule's) would hold the
+// backup step, and the maintenance page with it; the wait is here instead, with the
+// application serving, and the backup step then starts at once.
+func freeOfBackups(ctx context.Context, clients *Clients, subs, env map[string]string, out io.Writer) error {
+	database, instance, err := spannerDatabase(env)
+	if err != nil {
+		return err
+	}
+	store, err := spannerAsApplyIdentity(ctx, clients, subs)
+	if err != nil {
+		return err
+	}
+	backup, err := store.LatestBackup(ctx, instance, database)
+	if err != nil {
+		return errors.Wrapf(err, "listing the backups of %s", path.Base(database))
+	}
+	if backup == nil || backup.State == BackupReady {
+		return nil
+	}
+	fmt.Fprintf(out, "Before maintenance: Spanner is taking another backup of %s (%s); the release backup can start when it completes, so the wait is here, with %s serving.\n", path.Base(database), path.Base(backup.Name), subs[envSub])
+	_, err = readyBackup(ctx, clients, store, backup, out)
+
+	return err
+}
+
+// spannerAsApplyIdentity opens Spanner as the apply identity the build's trigger names
+// (_APPLY_IDENTITY), which holds database admin on the environment's instance.
+func spannerAsApplyIdentity(ctx context.Context, clients *Clients, subs map[string]string) (Spanner, error) {
+	identity := subs[applyIdentitySub]
+	if identity == "" {
+		return nil, errors.Newf("%s names no apply identity (%s): the stack's triggers carry it", BuildFile, applyIdentitySub)
+	}
+
+	return clients.SpannerAs(ctx, identity)
 }
 
 // quiesce stops what the application does on its own once its traffic is on the

@@ -22,6 +22,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/migration"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
@@ -465,6 +466,9 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 	if err := f.seedChanged(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
+	if err := f.rehearsal(ctx, clients.Storage, clients.StorageAs, req.Source, out); err != nil {
+		return nil, err
+	}
 	f.tags()
 	f.report(out)
 
@@ -810,6 +814,145 @@ func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, 
 	fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, %s.\n", f.Environment, f.Restore, f.Tag, f.RestoreReason)
 
 	return nil
+}
+
+// rehearsal is staging's part in a release: staging runs a release against production's
+// data before production does, so a release that carries migrations production has not
+// applied restores staging's database from production's newest backup before it deploys
+// there, as a restore run asked for by the release itself (RESTORE=production-backup,
+// the steps a restore from GitHub takes), and a release without such migrations deploys
+// to staging as it stands, since there may be things to see against production's data
+// anyway. Whether migrations will run is read from applied versions, never from the
+// files in the image: tst's live record of this release lists the migrations tst applied
+// when the release deployed there (the highest schema migration's index is the release's
+// version, migrationVersion), and production's newest live record lists what production
+// applied; the release's version above production's means migrations will run. Staging
+// is restored as well when its own live record lists a migration file the release does
+// not carry as applied (a failed release's, stagingAhead): between releases staging sits
+// at production's release, and the hotfix check would refuse the release otherwise.
+// tst's record is read as the build, as the gate reads it; production's as production's
+// plan identity (_RECORDS_BUCKETS and _PLAN_IDENTITIES name the buckets and
+// identities), as the hotfix preview reads every environment's; production's record also
+// names its live database and the backup a rollback restored it from, which the restore
+// needs (RESTORE_SOURCE_DATABASE, RESTORE_SOURCE_BACKUP). A build in any other
+// environment, a pull request's, a restore or rollback asked for already, a migration
+// operation and a run that applies no migration decide nothing here; a missing tst record
+// is left to the gate, which refuses the release; production with no live record (the
+// first release ever) has no data to run against, and staging deploys as it stands.
+func (f *Facts) rehearsal(ctx context.Context, open StoreFunc, openAs StoreAsFunc, source string, out io.Writer) error {
+	if f.Tag == "" || f.Environment != stgEnvironment || f.Restore != "" || f.Rollback != "" || f.Migration != nil || !f.RunMigrations {
+		return nil
+	}
+	subs := f.Substitutions
+	previous, previousBucket, app, dir := subs[previousEnvSub], subs[previousRecordsSub], subs[appSub], subs[migrationsSub]
+	buckets, identities := pairs(subs[recordsBucketsSub]), pairs(subs[planIdentitiesSub])
+	bucket, identity := buckets[prdEnvironment], identities[prdEnvironment]
+	if previous == "" || previousBucket == "" || app == "" || bucket == "" || identity == "" {
+		fmt.Fprintf(out, "Staging rehearsal: the records of %s and %s are not named (%s, %s, %s, %s); %s deploys as it stands.\n", previous, prdEnvironment, previousEnvSub, previousRecordsSub, recordsBucketsSub, planIdentitiesSub, f.Environment)
+
+		return nil
+	}
+	store, err := open(ctx)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	release, err := newestRecordWhere(ctx, store, previousBucket, app+"/"+previous+"/"+f.Tag+"/", func(r *Record) bool { return r.Status == Live })
+	if err != nil {
+		return err
+	}
+	if release == nil {
+		fmt.Fprintf(out, "Staging rehearsal: %s has no live deployment record of %s yet; the release check decides whether %s may reach %s.\n", previous, f.Tag, f.Tag, f.Environment)
+
+		return nil
+	}
+	production, err := previewLive(ctx, openAs, app, prdEnvironment, bucket, identity)
+	if err != nil {
+		return err
+	}
+	if production == nil {
+		fmt.Fprintf(out, "Staging rehearsal: %s has no live deployment record, so there is no production data to run %s against; %s deploys as it stands.\n", prdEnvironment, f.Tag, f.Environment)
+
+		return nil
+	}
+	releaseVersion, productionVersion := migrationVersion(release.Migrations, dir), migrationVersion(production.Migrations, dir)
+	versions := fmt.Sprintf("%s applied version %d, build %s; %s runs version %d, release %s, build %s", previous, releaseVersion, release.Build, prdEnvironment, productionVersion, production.Version, production.Build)
+	var reason string
+	switch {
+	case releaseVersion > productionVersion:
+		reason = fmt.Sprintf("%s carries migrations %s has not applied (%s), so %s's database is restored from production's newest backup and the release runs against production's data before production does", f.Tag, prdEnvironment, versions, f.Environment)
+	default:
+		staging, err := newestLiveRelease(ctx, store, subs[recordsBucket], app, f.Environment)
+		if err != nil {
+			return err
+		}
+		ahead, err := stagingAhead(source, staging, f.Tag)
+		if err != nil {
+			return err
+		}
+		if ahead == "" {
+			fmt.Fprintf(out, "Staging rehearsal: %s carries no migration %s has not applied (%s); %s deploys as it stands, on its database as it is.\n", f.Tag, prdEnvironment, versions, f.Environment)
+
+			return nil
+		}
+		reason = fmt.Sprintf("%s, so %s's database is restored from production's newest backup to production's state (%s) before the release deploys", ahead, f.Environment, versions)
+	}
+	f.Restore, f.Requester, f.RestoreReason = restoreBackup, "release "+f.Tag, reason
+	if production.Database != nil {
+		f.RestoreDatabase = production.Database.Name
+	}
+	if production.Rollback != nil {
+		f.RestoreDatabaseBackup = production.Rollback.Backup
+	}
+	fmt.Fprintf(out, "Restore run: %s's database is replaced (%s) before %s deploys, %s.\n", f.Environment, f.Restore, f.Tag, f.RestoreReason)
+
+	return nil
+}
+
+// migrationVersion is the version a record's migration list stands for: the highest
+// index among the schema migrations (the files under dir; the seed's are left out when
+// dir is named), 0 when the list has none.
+func migrationVersion(applied []Migration, dir string) int {
+	version := 0
+	for _, m := range applied {
+		if dir != "" && m.Dir != dir {
+			continue
+		}
+		match := migration.NameRE.FindStringSubmatch(m.Name)
+		if match == nil {
+			continue
+		}
+		if idx, err := strconv.Atoi(match[1]); err == nil && idx > version {
+			version = idx
+		}
+	}
+
+	return version
+}
+
+// stagingAhead says what staging's database holds, by its live record, that the release's
+// tree does not carry as applied: a migration file missing from the tree or with other
+// content (a failed release's, which never reached production), or nothing. The record
+// names the release live when it was written, not the one that applied each file.
+func stagingAhead(source string, live *Record, tag string) (string, error) {
+	if live == nil {
+		return "", nil
+	}
+	for _, m := range upFirst(live.Migrations) {
+		hash, err := hashFile(filepath.Join(source, filepath.FromSlash(m.Dir), m.Name))
+		if err != nil {
+			return "", err
+		}
+		file := path.Join(m.Dir, m.Name)
+		switch {
+		case hash == "":
+			return fmt.Sprintf("%s's database holds %s (in %s's record), which %s does not carry", stgEnvironment, file, live.Version, tag), nil
+		case hash != m.Hash:
+			return fmt.Sprintf("%s's database holds %s with other content than %s carries (by %s's record)", stgEnvironment, file, tag, live.Version), nil
+		}
+	}
+
+	return "", nil
 }
 
 // newestRecord reads the records under the prefix and returns the newest that lists

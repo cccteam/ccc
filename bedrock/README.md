@@ -745,8 +745,10 @@ thing one step hands the next. In order:
   production's instance) the plan step first drops the environment's database and
   restores it, under its own name, from the most recent backup of production's live
   database on the instance they share, as the apply identity (a backup Spanner is still
-  taking, the release backup a release started minutes earlier, is that backup: the step
-  waits for it, as a rollback does, since it holds the newest data); the plan then recreates the
+  taking, the release backup a release started minutes earlier, is that backup, since it
+  holds the newest data: the maintenance step chooses it and waits for it before the
+  maintenance page goes up, then names it for the plan step, `RESTORE_READY_BACKUP`, which
+  restores that one); the plan then recreates the
   memberships the drop took with it, and the migrate command applies whatever production's
   backup predates. Production's live database is the one its deployment record names
   (`_RESTORE_DATABASE`, read by the operations workflow): after a rollback, the generation
@@ -1188,7 +1190,7 @@ For the environment on production's instance the database is not emptied but res
 from the most recent backup of production's live database (the generation its deployment
 record names; after a rollback, the backup the generation was restored from while it has
 none of its own; a backup Spanner is still taking, a release's started minutes earlier, is
-waited for), at production's schema: the plan step drops it and restores it under
+waited for, before the maintenance page goes up), at production's schema: the plan step drops it and restores it under
 its own name as the apply identity, and the migrations production's backup predates then
 apply. The environment's file objects are kept, and its Firestore documents are deleted
 as in every restore.
@@ -1307,7 +1309,10 @@ restore` instead, and the command names that when asked for such an environment.
 (production unless it says otherwise), every release build starts a backup of the
 database as of the cut, the moment before the release's migrations run, kept fourteen
 days (`deploy backup`, after the maintenance step and before the migrations; a failure to
-start it stops the build). The record carries the cut, the backup's name and when it
+start it stops the build). Spanner takes one backup of a database at a time, so a
+breaking release waits, before its maintenance page goes up, for a backup Spanner is
+still taking (the last release's, or the schedule's) to complete, and its own then starts
+at once after maintenance. The record carries the cut, the backup's name and when it
 expires. The release before it can therefore be returned to on its own data: the backup
 the first release after it started holds that release's last moment. The database keeps
 its past for the placement's `spannerRetention` (seven days unless it says otherwise),

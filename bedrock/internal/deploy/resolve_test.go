@@ -124,6 +124,9 @@ type outcome struct {
 	Version, Release, Image, ImageTag, CommitTag, Comment, Token string
 	SharedDB, ReloadDB, Down, RunMigrations, ShiftTraffic, Seed  bool
 	ReloadReason, Restore, Requester, RestoreReason              string
+	// RestoreDatabase and RestoreDatabaseBackup are production's live database and the
+	// backup a rollback restored it from, for a restore from production's backup.
+	RestoreDatabase, RestoreDatabaseBackup string
 	// KeepsReleaseBackups says the environment is on the checkout placement's
 	// releaseBackups list (production alone unless it says otherwise).
 	KeepsReleaseBackups bool
@@ -147,6 +150,7 @@ func summarize(f *Facts) outcome {
 		SharedDB: f.SharedDB, ReloadDB: f.ReloadDB, Down: f.Down, RunMigrations: f.RunMigrations, ShiftTraffic: f.ShiftTraffic, Seed: f.Seed, KeepsReleaseBackups: f.KeepsReleaseBackups,
 		Rollback: f.Rollback, RollbackFrom: f.RollbackFrom, RollbackReason: f.RollbackReason,
 		ReloadReason: f.ReloadReason, Restore: f.Restore, Requester: f.Requester, RestoreReason: f.RestoreReason, Declared: f.Declared,
+		RestoreDatabase: f.RestoreDatabase, RestoreDatabaseBackup: f.RestoreDatabaseBackup,
 		Values: f.declared, BuildSecrets: f.BuildSecrets, BuildArguments: f.BuildArguments,
 	}
 	if f.Migration != nil {
@@ -192,6 +196,46 @@ const (
 	// seedChangedReason is the reason the build gives when the live release's seed is
 	// no longer in the tree as applied.
 	seedChangedReason = "the seed changed since v1.2.2 applied it (build b-0): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start"
+)
+
+// stagingTag is a tag build in stg with the records the staging rehearsal reads named:
+// tst's as the previous environment's, production's by the buckets and plan identities.
+func stagingTag(overrides map[string]string) map[string]string {
+	subs := tagBuild(map[string]string{"_ENV": "stg", "_RECORDS_BUCKET": "stg-records", "_PREVIOUS_ENV": "tst", "_PREVIOUS_RECORDS_BUCKET": "tst-records", "_RECORDS_BUCKETS": "tst=tst-records,stg=stg-records,prd=prd-records", "_PLAN_IDENTITIES": "tst=tst-plan@p.iam,stg=stg-plan@p.iam,prd=prd-plan@p.iam", "_MIGRATIONS_DIR": "schema/migrations"})
+	for name, value := range overrides {
+		if value == "" {
+			delete(subs, name)
+
+			continue
+		}
+		subs[name] = value
+	}
+
+	return subs
+}
+
+// The records the rehearsal cases read: tst applied the release v1.2.3 with migrations 1
+// and 2, production runs v1.2.2 with migration 1 on its third database generation, and
+// staging runs v1.2.2 too.
+var (
+	initUp        = Migration{Dir: "schema/migrations", Name: "000001_Init.up.sql", Hash: hashOf("create table a")}
+	widgetsUp     = Migration{Dir: "schema/migrations", Name: "000002_Widgets.up.sql", Hash: hashOf("create table widgets")}
+	failedUp      = Migration{Dir: "schema/migrations", Name: "000003_Failed.up.sql", Hash: hashOf("alter table a")}
+	productionRec = func(applied ...Migration) string {
+		data, err := json.Marshal(Record{App: "harbor", Env: "prd", Version: "v1.2.2", Build: "b-5", Timestamp: "2026-10-05T10:00:00Z", Status: Live, Migrations: applied, Database: &DatabaseRef{Name: "projects/p-spn/instances/shared-spanner/databases/harbor-prd-db-3", Generation: 3}, Rollback: &Rollback{Backup: "projects/p-spn/instances/shared-spanner/backups/harbor-prd-db-2-pre-v1-2-2"}})
+		if err != nil {
+			panic(err)
+		}
+
+		return string(data)
+	}
+	rehearsing = map[string]string{
+		"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp, widgetsUp),
+		"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp),
+		"gs://stg-records/harbor/stg/v1.2.2/b-6.json": liveRecordWith("stg", "v1.2.2", "b-6", "2026-10-05T11:00:00Z", initUp),
+	}
+	rehearsalTree     = map[string]string{"schema/migrations/000001_Init.up.sql": "create table a", "schema/migrations/000002_Widgets.up.sql": "create table widgets"}
+	rehearsalVersions = "tst applied version 2, build b-7; prd runs version 1, release v1.2.2, build b-5"
 )
 
 // seededTag is a tag build in an environment on the placement's seed list, with the
@@ -278,6 +322,8 @@ func TestResolve(t *testing.T) {
 	}
 	// seeded is a tag build's outcome where the placement in the checkout seeds tst.
 	seeded := withComment(tag, "", func(o *outcome) { o.Seed = true })
+	// staged is a tag build's outcome in stg (the staging rehearsal cases).
+	staged := withComment(tag, "", func(o *outcome) { o.ImageTag, o.CommitTag = "v1.2.3-stg", "deadbeefcafe-stg" })
 	tests := []struct {
 		name     string
 		subs     map[string]string
@@ -940,6 +986,78 @@ func TestResolve(t *testing.T) {
 			wantErr: "_SERVICES names the Cloud Run services this build updates; it is empty",
 		},
 		{
+			name:    "staging rehearsal: a release with a migration production has not applied restores staging from production's newest backup, named by production's record",
+			subs:    stagingTag(nil),
+			records: rehearsing,
+			tree:    rehearsalTree,
+			want: withComment(staged, "", func(o *outcome) {
+				o.Restore, o.Requester = restoreBackup, "release v1.2.3"
+				o.RestoreReason = "v1.2.3 carries migrations prd has not applied (" + rehearsalVersions + "), so stg's database is restored from production's newest backup and the release runs against production's data before production does"
+				o.RestoreDatabase, o.RestoreDatabaseBackup = "projects/p-spn/instances/shared-spanner/databases/harbor-prd-db-3", "projects/p-spn/instances/shared-spanner/backups/harbor-prd-db-2-pre-v1-2-2"
+			}),
+			wantOut: []string{"Restore run: stg's database is replaced (production-backup) before v1.2.3 deploys, v1.2.3 carries migrations prd has not applied (" + rehearsalVersions + ")"},
+		},
+		{
+			name: "staging rehearsal: a release whose migrations production has applied deploys to staging as it stands",
+			subs: stagingTag(nil),
+			records: map[string]string{
+				"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp),
+				"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp),
+				"gs://stg-records/harbor/stg/v1.2.2/b-6.json": liveRecordWith("stg", "v1.2.2", "b-6", "2026-10-05T11:00:00Z", initUp),
+			},
+			tree:    rehearsalTree,
+			want:    staged,
+			wantOut: []string{"Staging rehearsal: v1.2.3 carries no migration prd has not applied (tst applied version 1, build b-7; prd runs version 1, release v1.2.2, build b-5); stg deploys as it stands, on its database as it is."},
+		},
+		{
+			name: "staging rehearsal: staging ahead of the release (a failed release's migration) is restored to production's state",
+			subs: stagingTag(nil),
+			records: map[string]string{
+				"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp),
+				"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp),
+				"gs://stg-records/harbor/stg/v1.2.9/b-8.json": liveRecordWith("stg", "v1.2.9", "b-8", "2026-10-06T00:30:00Z", initUp, failedUp),
+			},
+			tree: rehearsalTree,
+			want: withComment(staged, "", func(o *outcome) {
+				o.Restore, o.Requester = restoreBackup, "release v1.2.3"
+				o.RestoreReason = "stg's database holds schema/migrations/000003_Failed.up.sql (in v1.2.9's record), which v1.2.3 does not carry, so stg's database is restored from production's newest backup to production's state (tst applied version 1, build b-7; prd runs version 1, release v1.2.2, build b-5) before the release deploys"
+				o.RestoreDatabase, o.RestoreDatabaseBackup = "projects/p-spn/instances/shared-spanner/databases/harbor-prd-db-3", "projects/p-spn/instances/shared-spanner/backups/harbor-prd-db-2-pre-v1-2-2"
+			}),
+			wantOut: []string{"Restore run: stg's database is replaced (production-backup) before v1.2.3 deploys, stg's database holds schema/migrations/000003_Failed.up.sql"},
+		},
+		{
+			name:    "staging rehearsal: a trigger that names no plan identities reads nothing, and staging deploys as it stands",
+			subs:    stagingTag(map[string]string{"_PLAN_IDENTITIES": ""}),
+			records: rehearsing,
+			tree:    rehearsalTree,
+			want:    staged,
+			wantOut: []string{"Staging rehearsal: the records of tst and prd are not named (_PREVIOUS_ENV, _PREVIOUS_RECORDS_BUCKET, _RECORDS_BUCKETS, _PLAN_IDENTITIES); stg deploys as it stands."},
+		},
+		{
+			name:    "staging rehearsal: no tst record of the release yet is left to the release check",
+			subs:    stagingTag(nil),
+			records: map[string]string{"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp)},
+			tree:    rehearsalTree,
+			want:    staged,
+			wantOut: []string{"Staging rehearsal: tst has no live deployment record of v1.2.3 yet; the release check decides whether v1.2.3 may reach stg."},
+		},
+		{
+			name:    "staging rehearsal: production without a live record has no data to run against",
+			subs:    stagingTag(nil),
+			records: map[string]string{"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp, widgetsUp)},
+			tree:    rehearsalTree,
+			want:    staged,
+			wantOut: []string{"Staging rehearsal: prd has no live deployment record, so there is no production data to run v1.2.3 against; stg deploys as it stands."},
+		},
+		{
+			name:       "staging rehearsal: a build in tst decides nothing",
+			subs:       tagBuild(map[string]string{"_RECORDS_BUCKET": "tst-records", "_RECORDS_BUCKETS": "tst=tst-records,prd=prd-records", "_PLAN_IDENTITIES": "prd=prd-plan@p.iam"}),
+			records:    rehearsing,
+			tree:       rehearsalTree,
+			want:       tag,
+			wantNotOut: []string{"Staging rehearsal", "Restore run"},
+		},
+		{
 			name:    "a failed mint says which connection",
 			subs:    tagBuild(nil),
 			mintErr: errors.New("Cloud Build answered HTTP 403 to POST /v2/...: denied"),
@@ -958,7 +1076,7 @@ func TestResolve(t *testing.T) {
 			builds := &fakeBuilds{build: buildFor(t, tt.subs), token: "tok", mintErr: tt.mintErr}
 			comments := &fakeComments{bodies: tt.comments, err: tt.commentsErr}
 			store := &memoryStore{objects: tt.records}
-			clients := &Clients{Builds: builds.open, Comments: comments.read, Storage: store.open}
+			clients := &Clients{Builds: builds.open, Comments: comments.read, Storage: store.open, StorageAs: store.openAs}
 			tree := maps.Clone(tt.tree)
 			if tree == nil {
 				tree = map[string]string{}

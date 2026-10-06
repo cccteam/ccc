@@ -221,7 +221,7 @@ func (s *stack) rollback(ctx context.Context, subs, facts map[string]string, w W
 	if err != nil {
 		return 0, err
 	}
-	if backup, err = s.readyBackup(ctx, store, backup); err != nil {
+	if backup, err = readyBackup(ctx, s.clients, store, backup, s.out); err != nil {
 		return 0, err
 	}
 	stamp := now.UTC().Format(backupStamp)
@@ -292,13 +292,13 @@ func (s *stack) chosenBackup(ctx context.Context, store Spanner, instance, datab
 // or an environment's from production's backup) needs a READY backup, and a backup just
 // started (a point in time's, or a release backup the release build started minutes ago)
 // is CREATING for a while.
-func (s *stack) readyBackup(ctx context.Context, store Spanner, backup *Backup) (*Backup, error) {
+func readyBackup(ctx context.Context, clients *Clients, store Spanner, backup *Backup, out io.Writer) (*Backup, error) {
 	waited := time.Duration(0)
 	for backup.State != BackupReady {
 		if waited == 0 || waited%backupWaitSays == 0 {
-			fmt.Fprintf(s.out, "Waiting for %s: Spanner is still taking it (%s after %s); a restore needs a READY backup.\n", path.Base(backup.Name), backup.State, waited.Round(time.Minute))
+			fmt.Fprintf(out, "Waiting for %s: Spanner is still taking it (%s after %s); a restore needs a READY backup.\n", path.Base(backup.Name), backup.State, waited.Round(time.Minute))
 		}
-		if err := s.clients.sleep()(ctx, backupWaitPoll); err != nil {
+		if err := clients.sleep()(ctx, backupWaitPoll); err != nil {
 			return nil, err
 		}
 		waited += backupWaitPoll

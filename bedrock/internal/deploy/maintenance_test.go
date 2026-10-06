@@ -127,6 +127,8 @@ func TestMaintenanceOn(t *testing.T) {
 	)
 	subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_JOBS_JOB": "us-central1=harbor-jobs", "_TASKS_QUEUE": queue}
 	running := map[string]any{keyName: jobTemplate + "-v0-2-1/executions/harbor-jobs-v0-2-1-abc", "startTime": "2026-10-01T10:00:00Z"}
+	// production is a restore from production's backup, whose record names production's live database.
+	production := strings.Replace(restoring, "empty", "production-backup", 1) + "export RESTORE_SOURCE_DATABASE=\"projects/p-spn/instances/shared-spanner/databases/p-prd-gbl-harbor-db-3\"\n"
 	ended := map[string]any{keyName: jobTemplate + "-v0-2-1/executions/harbor-jobs-v0-2-1-def", "completionTime": "2026-10-01T10:01:00Z"}
 	tests := []struct {
 		name    string
@@ -146,6 +148,10 @@ func TestMaintenanceOn(t *testing.T) {
 		wantCanceled       []string
 		wantMaintenanceVar bool
 		wantErr            string
+		// backup is the one backup Spanner holds; creating how many reads of it answer
+		// CREATING before READY.
+		backup   *Backup
+		creating int
 	}{
 		{
 			name:    "a run without a restore keeps the application serving",
@@ -194,6 +200,36 @@ func TestMaintenanceOn(t *testing.T) {
 			wantEnv: []string{"export MAINTENANCE=\"true\"\n", "export MAINTENANCE_CANCELED=\"0\"\n"},
 		},
 		{
+			name:     "a restore from production's backup waits for production's newest backup before the maintenance page goes up, and names it for the plan step",
+			env:      production,
+			subs:     map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_APPLY_IDENTITY": "harbor-tofu@tst-project.iam.gserviceaccount.com"},
+			answers:  []probeAnswer{{status: http.StatusServiceUnavailable, marker: "1"}},
+			backup:   &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-harbor-db-3-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
+			creating: 1,
+			wantOut: []string{
+				"Before maintenance: production's newest backup p-prd-gbl-harbor-db-3-20261001 is still being taken; the wait is here, with tst serving.",
+				"Waiting for p-prd-gbl-harbor-db-3-20261001: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.",
+				"Production's backup p-prd-gbl-harbor-db-3-20261001 (data as of 2026-10-01T02:00:00Z) is READY; the plan step restores it.",
+				"=== Maintenance on: tst's database is replaced (production-backup) before v0.2.2 deploys",
+				"Maintenance is on: 1 revision(s) serve the maintenance page",
+			},
+			wantEnv: []string{"export RESTORE_READY_BACKUP=\"projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-harbor-db-3-20261001\"\n", "export MAINTENANCE=\"true\"\n"},
+		},
+		{
+			name:    "a restore from production's backup with no backup at all is refused before anything stops serving",
+			env:     production,
+			subs:    map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_APPLY_IDENTITY": "harbor-tofu@tst-project.iam.gserviceaccount.com"},
+			wantErr: "_RESTORE=production-backup: shared-spanner has no backup of production's database p-prd-gbl-harbor-db-3; tst keeps its database and stays serving",
+		},
+		{
+			name:    "a restore whose record names no database leaves the choice and the wait to the plan step",
+			env:     strings.Replace(restoring, "empty", "production-backup", 1),
+			subs:    map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_APPLY_IDENTITY": "harbor-tofu@tst-project.iam.gserviceaccount.com"},
+			answers: []probeAnswer{{status: http.StatusServiceUnavailable, marker: "1"}},
+			wantOut: []string{"Production's record names no database (written before database generations): the plan step reads production's first database from the stack's state and waits for its backup there, if it must.", "Maintenance is on: 1 revision(s) serve the maintenance page"},
+			wantEnv: []string{"export MAINTENANCE=\"true\"\n"},
+		},
+		{
 			name:    "a pull-request build never goes into maintenance",
 			env:     restoring,
 			subs:    map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "_PR_NUMBER": "7"},
@@ -222,7 +258,8 @@ func TestMaintenanceOn(t *testing.T) {
 			if len(tt.answers) == 0 {
 				probe.answers = []probeAnswer{{status: http.StatusBadGateway}}
 			}
-			clients := &Clients{Run: run.open, Tasks: tasks.open, Metrics: metrics.open, Storage: store.open, HTTP: &http.Client{Transport: probe}, Sleep: noSleep}
+			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating}
+			clients := &Clients{Run: run.open, Tasks: tasks.open, Metrics: metrics.open, Storage: store.open, SpannerAs: spanner.open, HTTP: &http.Client{Transport: probe}, Sleep: noSleep}
 			var out strings.Builder
 			err := MaintenanceOn(t.Context(), clients, w, false, &out)
 			if tt.wantErr != "" {

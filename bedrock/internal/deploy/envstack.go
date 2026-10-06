@@ -234,8 +234,10 @@ var stateAttribute = regexp.MustCompile(`(?m)^\s*(project|instance|name)\s*=\s*"
 // production's live database on the instance the two share, as the apply identity (which
 // holds database admin on that instance). A backup Spanner is still taking (the release
 // backup a release started minutes ago) is that backup, since it holds the newest data:
-// the build waits for it as a rollback does (readyBackup) rather than taking an older
-// one or refusing. Production's live database is the one its
+// the maintenance step chose it and waited for it before the maintenance page went up
+// (RESTORE_READY_BACKUP), and this step restores that one; without the choice (a record
+// naming no database) this step chooses and waits here (readyBackup) rather than taking
+// an older one or refusing. Production's live database is the one its
 // deployment record names (productionDatabase): after a rollback, the generation restored
 // into, whose own backups begin with the next release or schedule, so while it has none
 // the backup it was restored from stands in (restoredFromBackup). The database's address
@@ -267,19 +269,14 @@ func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]st
 	if err != nil {
 		return err
 	}
-	backup, err := store.LatestBackup(ctx, instance, productionDB)
+	backup, err := productionBackup(ctx, store, facts, instance, productionDB, s.out)
 	if err != nil {
-		return errors.Wrapf(err, "listing the backups of %s", path.Base(productionDB))
-	}
-	if backup == nil {
-		if backup, err = restoredFromBackup(ctx, store, facts, productionDB, s.out); err != nil {
-			return err
-		}
+		return err
 	}
 	if backup == nil {
 		return errors.Newf("%s=%s: %s has no backup of production's database %s; %s keeps its database", restoreSub, restoreBackup, attributes["instance"], path.Base(productionDB), env)
 	}
-	if backup, err = s.readyBackup(ctx, store, backup); err != nil {
+	if backup, err = readyBackup(ctx, s.clients, store, backup, s.out); err != nil {
 		return err
 	}
 	fmt.Fprintf(s.out, "=== Restore (%s, asked for by %s): %s's database %s is dropped and restored from production's backup %s (data as of %s); the migrations production's backup predates then apply ===\n", restoreBackup, requester, env, attributes["name"], path.Base(backup.Name), backup.VersionTime)
@@ -293,6 +290,34 @@ func (s *stack) restoreFromBackup(ctx context.Context, subs, facts map[string]st
 	fmt.Fprintf(s.out, "Restored %s from %s; the plan recreates its memberships.\n", attributes["name"], path.Base(backup.Name))
 
 	return w.Append(map[string]string{restoredFact: address, backupFact: backup.Name, backupTimeFact: backup.VersionTime})
+}
+
+// productionBackup is the backup a production-backup restore takes: the one the
+// maintenance step chose and waited for before the maintenance page went up
+// (RESTORE_READY_BACKUP); else production's newest, READY or still being taken; else,
+// while the live generation has none of its own, the backup a rollback restored it from
+// (restoredFromBackup); nil when there is none at all.
+func productionBackup(ctx context.Context, store Spanner, facts map[string]string, instance, productionDB string, out io.Writer) (*Backup, error) {
+	if name := facts[restoreReadyBackupFact]; name != "" {
+		backup, err := store.Backup(ctx, name)
+		if err != nil {
+			return nil, errors.Wrapf(err, "reading the backup %s", path.Base(name))
+		}
+		if backup == nil {
+			return nil, errors.Newf("%s=%s: the backup %s the maintenance step waited for went away", restoreSub, restoreBackup, path.Base(name))
+		}
+
+		return backup, nil
+	}
+	backup, err := store.LatestBackup(ctx, instance, productionDB)
+	if err != nil {
+		return nil, errors.Wrapf(err, "listing the backups of %s", path.Base(productionDB))
+	}
+	if backup != nil {
+		return backup, nil
+	}
+
+	return restoredFromBackup(ctx, store, facts, productionDB, out)
 }
 
 // productionDatabase names production's live database for a restore from its backup: the

@@ -23,10 +23,12 @@ func TestMaintenanceOnWindow(t *testing.T) {
 		serving     = "export SKIP_DEPLOY=\"\"\nexport SERVICES=\"us-central1=harbor-app\"\nexport IMAGE=\"reg/harbor\"\nexport IMAGE_DIGEST=\"sha256:abc\"\nexport VERSION=\"v0.2.2\"\nexport RESTORE=\"\"\n"
 		breaking    = serving + "export WINDOW_NEEDED=\"true\"\nexport WINDOW_BREAKING=\"true\"\nexport WINDOW_REASON=\"the default outlet answers 0.2.2 at the oldest, and tst runs v0.2.1, which it turns away\"\n"
 		ordinary    = serving + "export WINDOW_NEEDED=\"true\"\nexport WINDOW_BREAKING=\"\"\nexport WINDOW_REASON=\"every release waits for tst's window (releases: all)\"\n"
-		weekly      = `{"tst": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`
-		live        = `{"app":"harbor","env":"tst","version":"v0.2.1","status":"live","build":"b-0","timestamp":"2026-10-01T10:00:00Z"}`
+		// backingUp is a breaking release that takes its release backup after maintenance.
+		backingUp = breaking + "export RUN_MIGRATIONS=\"true\"\nexport KEEPS_RELEASE_BACKUPS=\"true\"\nexport ROLLBACK=\"\"\nexport MIGRATE_DATABASES='[\"projects/spn/instances/shared-spanner/databases/p-tst-gbl-harbor-db\"]'\n"
+		weekly    = `{"tst": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`
+		live      = `{"app":"harbor","env":"tst","version":"v0.2.1","status":"live","build":"b-0","timestamp":"2026-10-01T10:00:00Z"}`
 	)
-	subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_JOBS_JOB": "us-central1=harbor-jobs", "_TASKS_QUEUE": queue, "_SERVICES": "us-central1=harbor-app"}
+	subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_APPLY_IDENTITY": "harbor-tofu@tst-project.iam.gserviceaccount.com", "_JOBS_JOB": "us-central1=harbor-jobs", "_TASKS_QUEUE": queue, "_SERVICES": "us-central1=harbor-app"}
 	// running is the serving build's execution, made afresh per case: a cancel marks it ended.
 	running := func() map[string]any {
 		return map[string]any{keyName: jobTemplate + "-v0-2-1/executions/harbor-jobs-v0-2-1-abc", "startTime": "2026-10-01T10:00:00Z"}
@@ -47,7 +49,29 @@ func TestMaintenanceOnWindow(t *testing.T) {
 		wantPatches  int
 		wantProbed   int
 		wantErr      string
+		// backup is the one backup Spanner holds of the database; creating how many reads
+		// of it answer CREATING before READY.
+		backup   *Backup
+		creating int
 	}{
+		{
+			name:      "a breaking release that takes its release backup waits, before the maintenance page goes up, for the backup Spanner is still taking",
+			env:       backingUp,
+			placement: `{"tst": "anytime"}`,
+			backup:    &Backup{Name: "projects/spn/instances/shared-spanner/backups/p-tst-gbl-harbor-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
+			creating:  1,
+			wantOut: []string{
+				"Before maintenance: Spanner is taking another backup of p-tst-gbl-harbor-db (p-tst-gbl-harbor-db-20261001); the release backup can start when it completes, so the wait is here, with tst serving.",
+				"Waiting for p-tst-gbl-harbor-db-20261001: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.",
+				"Second look at the window: tst's window is open (anytime); maintenance begins.",
+				"Maintenance is on: 1 revision(s) serve the maintenance page; the database may be replaced or migrated.",
+			},
+			wantEnv:      []string{"export MAINTENANCE=\"true\"\n"},
+			wantVerbs:    []string{"pause harbor-tasks"},
+			wantCanceled: []string{jobTemplate + "-v0-2-1/executions/harbor-jobs-v0-2-1-abc"},
+			wantPatches:  2,
+			wantProbed:   1,
+		},
 		{
 			name:      "a breaking release inside an open window takes every maintenance step, the queue paused and not purged",
 			env:       breaking,
@@ -132,7 +156,8 @@ func TestMaintenanceOnWindow(t *testing.T) {
 			store := &memoryStore{objects: map[string]string{"gs://tst-records/harbor/tst/v0.2.1/b-0.json": live}}
 			probe := &probeAnswers{answers: []probeAnswer{{status: http.StatusServiceUnavailable, marker: "1"}}}
 			clock := &fakeClock{now: chicago(10, 5, 10, 0)}
-			clients := &Clients{Run: run.open, Tasks: tasks.open, Metrics: metrics.open, Storage: store.open, HTTP: &http.Client{Transport: probe}, Sleep: clock.Sleep, Now: clock.Now}
+			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating}
+			clients := &Clients{Run: run.open, Tasks: tasks.open, Metrics: metrics.open, Storage: store.open, SpannerAs: spanner.open, HTTP: &http.Client{Transport: probe}, Sleep: clock.Sleep, Now: clock.Now}
 			var out strings.Builder
 			err := MaintenanceOn(t.Context(), clients, w, true, &out)
 			if tt.wantErr != "" {
