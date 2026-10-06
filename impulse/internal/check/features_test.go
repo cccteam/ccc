@@ -63,7 +63,18 @@ const (
 	featureGated    = "package resources\n\n// Debrief is gated.\n//\n// @resource\n// @feature(Debriefs)\ntype Debrief struct {\n\tID string `spanner:\"Id\"`\n}\n"
 	featureRead     = "package app\n\nimport \"example.com/harbor/pkg/resources\"\n\nvar on = resources.Debriefs\n"
 	goListResource  = "go list -m -f {{.Dir}} github.com/cccteam/ccc/resource"
+	goDownload      = "go mod download github.com/cccteam/ccc/resource"
 )
+
+// downloadedLater answers go list with no directory until go mod download ran, as a
+// module cache that does not hold the resource module yet does.
+func downloadedLater(moduleDir string) map[string]fakeAnswer {
+	answers := map[string]fakeAnswer{}
+	answers[goListResource] = fakeAnswer{out: "\n", run: func() { answers[goListResource] = fakeAnswer{out: moduleDir + "\n"} }}
+	answers[goDownload] = fakeAnswer{}
+
+	return answers
+}
 
 func TestFeatureFlags(t *testing.T) {
 	t.Parallel()
@@ -138,6 +149,13 @@ func TestFeatureFlags(t *testing.T) {
 			wantCalls: []string{goListResource},
 		},
 		{
+			name:       "a module the cache does not hold yet is downloaded first",
+			files:      generated,
+			answers:    downloadedLater(moduleDir),
+			wantStatus: Pass, wantSummary: "FeatureFlags and FeatureFlagChanges match the resource module's statements; no flag declared",
+			wantCalls: []string{goListResource, goDownload, goListResource},
+		},
+		{
 			name:       "the migration is missing",
 			files:      without(generated, "schema/migrations/000005_FeatureFlags.up.sql"),
 			answers:    map[string]fakeAnswer{goListResource: {out: moduleDir + "\n"}},
@@ -164,7 +182,7 @@ func TestFeatureFlags(t *testing.T) {
 			answers:    map[string]fakeAnswer{goListResource: {out: "go: module github.com/cccteam/ccc/resource: not a known dependency\n", err: errExit}},
 			wantStatus: Fail, wantSummary: "1 feature flag problem(s)",
 			wantDetails: []string{
-				"the resource module's source could not be found (go list -m -f {{.Dir}} github.com/cccteam/ccc/resource): go: module github.com/cccteam/ccc/resource: not a known dependency; run go mod download and check again",
+				"the resource module's source could not be found (go list -m -f {{.Dir}} github.com/cccteam/ccc/resource): go: module github.com/cccteam/ccc/resource: not a known dependency",
 			},
 			wantCalls: []string{goListResource},
 		},

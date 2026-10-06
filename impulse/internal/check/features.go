@@ -249,13 +249,24 @@ func libraryFeatureDDL(ctx context.Context, env *Env) (statements map[string]str
 }
 
 // resourceModuleDir asks go list where the resource module's source is: its directory
-// in the module cache, or the checkout a replace or a workspace points at. A module go
-// list cannot place is the problem returned.
+// in the module cache, or the checkout a replace or a workspace points at. A module the
+// cache does not hold yet (a fresh checkout, a CI job that built nothing before the
+// check) is downloaded first, since go list names no directory for it. A module go list
+// still cannot place is the problem returned.
 func resourceModuleDir(ctx context.Context, env *Env) (dir, problem string) {
 	out, err := env.Exec.Run(ctx, env.App.Root, nil, "go", "list", "-m", "-f", "{{.Dir}}", resourceModule)
 	dir = strings.TrimSpace(string(out))
-	if err != nil || dir == "" || strings.ContainsAny(dir, "\n") {
-		return "", fmt.Sprintf("the resource module's source could not be found (go list -m -f {{.Dir}} %s): %s; run go mod download and check again", resourceModule, dir)
+	if err == nil && dir == "" {
+		if _, err := env.Exec.Run(ctx, env.App.Root, nil, "go", "mod", "download", resourceModule); err == nil {
+			out, err = env.Exec.Run(ctx, env.App.Root, nil, "go", "list", "-m", "-f", "{{.Dir}}", resourceModule)
+			dir = strings.TrimSpace(string(out))
+		}
+	}
+	if err != nil || strings.ContainsAny(dir, "\n") {
+		return "", fmt.Sprintf("the resource module's source could not be found (go list -m -f {{.Dir}} %s): %s", resourceModule, dir)
+	}
+	if dir == "" {
+		return "", fmt.Sprintf("the resource module's source could not be found: go list -m -f {{.Dir}} %s names no directory, after go mod download", resourceModule)
 	}
 
 	return dir, ""
