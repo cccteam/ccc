@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.9...accesstypes/v0.6.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* The global domain and global resource sentinels are gone. A permission check, a permission digest and the foothold question take a Scope (GlobalScope() or DomainScope(domain)); where a membership or a custom role is held is a PolicyScope (GlobalPolicyScope(), DomainPolicyScope(domain) or EveryDomainPolicyScope()), and RoleCollection is keyed by PolicyScope. A PolicyScope cannot be passed where a Scope is expected and nothing converts one into a Scope; code that did so fails to compile. The casbin wire-format helpers are removed and have no replacement in this package.
+
+### Features
+
+* Scope is the partition a request is in, the global partition (GlobalScope()) or one tenant domain (DomainScope(domain)), and replaces the global domain and resource sentinels; no domain string reads as the global partition, and a tenant named global is an ordinary tenant. ([f5b1a08](https://github.com/cccteam/ccc/commit/f5b1a08daba43e3f94f0cc01a1304c4b09054fd1))
+
 ## [0.5.9](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.8...accesstypes/v0.5.9) (2026-08-19)
 
 
