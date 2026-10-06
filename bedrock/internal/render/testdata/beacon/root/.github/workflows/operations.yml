@@ -1,0 +1,829 @@
+# beacon's operations, started from GitHub and run by the environment's pipeline: a restore of an
+# environment's database, a release run again, a rollback of the code, a listing of what a restore
+# can return to, the end of a maintenance an earlier run left on, and the operations on an
+# environment's migrations (the migration version, a rerun of the migrations, a forced version).
+# Rendered by bedrock and
+# owned by it (bedrock render rewrites this file, bedrock check compares it). Each job runs in the
+# GitHub Environment named after the target environment, which deploys from master
+# alone (declared by the organization's 1-org layer, one per environment), exchanges its GitHub
+# token for the environment's operations identity through Workload Identity Federation (no key
+# exists anywhere; the environment's provider trusts tokens of this repository, this workflow file
+# and that Environment alone), and runs the environment's version trigger for the release with the
+# instruction. Everything that changes the environment happens inside that run, as the deploy
+# identity, as for any release. The identity here starts the trigger, reads how the build went and,
+# below production, reads the lines the migrate command wrote into the build's log (through the
+# view over the bucket holding this application's build logs, and no other log), and nothing else.
+# Started by bedrock restore <env>, bedrock rerun <env> <release>, bedrock rollback <env> --reason,
+# bedrock backups <env>, bedrock maintenance off <env>, bedrock migration version|rerun|force, or
+# the Run workflow button; a release waits for its approval in Cloud Build as any release does, a
+# rerun, a restore, a rollback and the maintenance step in production included.
+#
+# restore (tst, stg, or prd): two kinds. The environment's own restore (tst or stg;
+# production has none): the application goes into maintenance, the database is replaced (an empty
+# one, which the migrations then fill, and the seed where the placement's seed list names the
+# environment, or production's most recent backup), the migrations run on
+# the build worker against the replaced database, the revision deploys, traffic moves, and the
+# record names the requester. An environment restored from production's backup returns to
+# production's live release unless another is named: the job reads production's deployment records
+# (through the version trigger's _RECORDS_BUCKETS) for the release live there, and says when the
+# release named differs from it. The first environment and a seeded one restore to an empty
+# database, which has no production state to return to, so they name their release. A restore to a
+# backup (every environment, production included): the backup named, one made as of the moment
+# given (@<RFC 3339 moment>, of the live database or of the earlier generation the database input
+# names), or the pre-release backup of the release the before input names (the database as it was
+# before that release's migrations, from the environment's own records) is restored into the
+# database's next generation, the live database kept, protected, as the forensic copy with a
+# backup of it taken as of now; the environment's live release runs on it unless another is named,
+# and its migrations run there where the backup's schema is behind it. No database an earlier run
+# left is ever put back into service, and nothing is dropped: a restore to the wrong place is
+# followed by another restore. The reason input, if given, reaches the record.
+#
+# rollback (tst, stg, or prd): the environment returns to an earlier release with nothing of
+# the database. The job reads the environment's deployment records for the live release (what the
+# environment leaves) and, unless the inputs name it, the release to return to (the release live
+# before it), prints the statement, runs the environment's rollback trigger (never the release
+# trigger) for the release returned to with _ROLLBACK (the release left), _REASON and _REQUESTER,
+# and waits for the build: thirty minutes without the approval in Cloud Build and the job cancels
+# the build, so a rollback nobody approved is not left waiting. The build runs the earlier
+# release's pipeline again with no migration, no backup and no restore, the generation unchanged,
+# deploys it the way a release deploys (behind the maintenance page where the return is breaking,
+# never waiting for a window), and records it with the migrations the database holds, the approver
+# included. The first answer to a release that went wrong; the database, when it is wrong too, is
+# returned by a restore, one run after the other.
+#
+# list (tst, stg, or prd): what the environment can be restored to, from its deployment
+# records, written into the run's summary: every release that was live with its cut and the
+# pre-release backup that holds the database as it was before it, and every generation of the
+# database a restore made, from which backup, the generation it left as the forensic copy and that
+# copy's forensic backup. Nothing runs.
+#
+# maintenance (tst, stg, or prd): the live release's build runs with _MAINTENANCE=off and does
+# nothing but take the application out of a maintenance an earlier run left on: traffic back to
+# the revision the maintenance revision displaced, the queue resumed; every other step is skipped
+# and no record is written. A failed run is run again with the run action instead, which deploys
+# and ends the maintenance on the way.
+#
+# run (tst, stg, or prd): the release's tag build runs again from the start with no
+# instruction, as its tag ran it: the image is built, the stack applied, the migrations run (a
+# migration that stopped at a statement continues from it once the cause is fixed), the revision
+# deploys, traffic moves, and the record names the requester. The one door to production, where
+# the migrations' rerun does not reach; nobody runs a trigger by hand.
+#
+# version (tst or stg): the migrate command prints what each migrations table says about
+# the database (no version, a version, or dirty at one with the progress recorded) and nothing else
+# deploys. rerun: the release runs again, so the migrate command continues a file that stopped from
+# its failed statement once the cause is fixed, and its lines print here. force: the migrate command
+# sets a migrations table to the version given (-1 for no version), prints the row before and
+# after, then the migrations run and the release continues; the record names the table, the
+# version and the requester. The command's lines, read from the build's log, print in the run's
+# summary. Production's migrations are the platform operator's: none of the three runs there.
+#
+# Each job's name is static: GitHub prints a skipped job's name as written, its expressions
+# unrendered, in the run's summary, so a name carrying the inputs read as its template on the two
+# jobs the action skipped. The steps' lines carry the release and the environment.
+name: operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
+        type: choice
+        required: true
+        default: restore
+        options:
+          - restore
+          - run
+          - rollback
+          - list
+          - maintenance
+          - version
+          - rerun
+          - force
+      environment:
+        description: The environment (tst, stg, or prd)
+        type: choice
+        required: true
+        options:
+          - tst
+          - stg
+          - prd
+      release:
+        description: "The release (v<major>.<minor>.<patch>, one that exists). Empty, for a restore from production's backup, means production's live release; for a restore to a backup, the environment's live release; for a rollback, the release live before the live one"
+        type: string
+        required: false
+        default: ""
+      reason:
+        description: "For rollback and restore: why, in a sentence; the statement and the record carry it"
+        type: string
+        default: ""
+      backup:
+        description: "For restore: the backup to restore into the database's next generation, by its resource name (projects/<p>/instances/<i>/backups/<b>) or @<RFC 3339 moment> for a backup made as of then; empty, with no before, means the environment's own restore (an empty database, or production's backup)"
+        type: string
+        default: ""
+      before:
+        description: "For restore: the release whose pre-release backup to restore (the database as it was before that release's migrations), in place of backup"
+        type: string
+        default: ""
+      database:
+        description: "For restore to a moment: the database the backup is taken of, an earlier generation whose history holds the moment (its name, as list prints it); empty for the live one"
+        type: string
+        default: ""
+      table:
+        description: "For force: the migrations table to set"
+        type: choice
+        default: schema
+        options:
+          - schema
+          - data
+      version:
+        description: "For force: the version the database is at (an integer 0 or above, or -1 for no version)"
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  restore:
+    name: restore the environment
+    if: ${{ inputs.action == 'restore' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      BACKUP: ${{ inputs.backup }}
+      BEFORE: ${{ inputs.before }}
+      DATABASE: ${{ inputs.database }}
+      REASON: ${{ inputs.reason }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      PRODUCTION: prd
+      APP: beacon
+    steps:
+      # The inputs say which restore this is: a backup named, @<moment> or a release's cut
+      # (before) is a generation restore, which any environment takes, production included,
+      # the live database kept as the forensic copy; otherwise the environment's own restore
+      # (an empty database, or production's backup, replaced in place), which production
+      # has none of. Then the environment's values, from the placement's projects: an
+      # environment the placement records no project for is not wired, and the run stops
+      # before touching anything.
+      - name: The environment's project, identity, trigger and restore
+        id: target
+        run: |
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          case "$REASON" in
+            *'|'*) echo "::error::the reason carries a | character, which the build's substitutions cannot; say it another way"; exit 1 ;;
+          esac
+          case "$RELEASE" in
+            ""|v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          case "$BEFORE" in
+            ""|v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::before names a release tag (v<major>.<minor>.<patch>), not $BEFORE"; exit 1 ;;
+          esac
+          case "$BACKUP" in
+            ""|projects/*/instances/*/backups/*|@*) ;;
+            *) echo "::error::$BACKUP is neither a backup's resource name (projects/<p>/instances/<i>/backups/<b>) nor @<RFC 3339 moment>"; exit 1 ;;
+          esac
+          if [ -n "$BACKUP" ] && [ -n "$BEFORE" ]; then
+            echo "::error::backup and before name the backup two ways: give one"
+            exit 1
+          fi
+          restore=$(eval "printf '%s' \"\${RESTORE_$ENVIRONMENT}\"")
+          kind=generation
+          if [ -z "$BACKUP" ] && [ -z "$BEFORE" ]; then
+            kind=own
+            if [ "$ENVIRONMENT" = "$PRODUCTION" ]; then
+              echo "::error::$ENVIRONMENT is production, whose database is restored to a backup: name one (backup), a moment (backup, as @<moment>) or a release's cut (before); the list action shows them. An empty database is never made there, and a hotfix is based on the release production runs (bedrock hotfix start)."
+              exit 1
+            fi
+            if [ -z "$RELEASE" ] && [ "$restore" != production-backup ]; then
+              echo "::error::$ENVIRONMENT restores to an empty database ($restore), which has no production state to return to: name the release to run"
+              exit 1
+            fi
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          for name in project provider identity trigger restore; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The release the restore runs, and the backup. A generation restore runs the
+      # environment's live release by its own deployment records (through the version
+      # trigger's _RECORDS_BUCKET) unless the inputs name one, and restores the backup named,
+      # one made as of the moment, or, for before, that release's pre-release backup from its
+      # record. A restore from production's backup runs production's live release, read from
+      # production's deployment records (through _RECORDS_BUCKETS), unless the inputs name
+      # one, in which case the job says whether it is production's. An environment restored
+      # to an empty database runs the release named.
+      - name: The release the restore runs, and the backup
+        id: release
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          RESTORE: ${{ steps.target.outputs.restore }}
+          KIND: ${{ steps.target.outputs.kind }}
+        run: |
+          if [ "$KIND" = generation ]; then
+            bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
+            if [ -z "$bucket" ]; then
+              echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
+              exit 1
+            fi
+            objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -80 | awk '{print $3}')
+            if [ -z "$objects" ]; then
+              echo "::error::$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing is live there to restore under"
+              exit 1
+            fi
+            gcloud storage cat $objects | jq -s '[.[] | select(.status == "live")] | sort_by(.timestamp)' > records.json
+            live=$(jq -r 'last | .version // empty' records.json)
+            if [ -z "$live" ]; then
+              echo "::error::no release is live in $ENVIRONMENT by its deployment records: name the release to run"
+              exit 1
+            fi
+            if [ -z "$RELEASE" ]; then
+              echo "No release named: $ENVIRONMENT stays on $live, its live release by its deployment records."
+              RELEASE=$live
+            elif [ "$RELEASE" != "$live" ]; then
+              echo "$RELEASE differs from $ENVIRONMENT's live release, $live: $RELEASE runs on the restored database, and its migrations run there where the backup's schema is behind it."
+            fi
+            backup=$BACKUP
+            if [ -n "$BEFORE" ]; then
+              # The release's first run as a release: a rollback to it writes a record of its version with no
+              # backup, and a restore under it writes one whose backup is the forensic copy of the data the
+              # restore replaced, neither the data as it was before the release's migrations.
+              backup=$(jq -r --arg v "$BEFORE" '[.[] | select(.version == $v and .rollback == null and .restore == null and .releaseBackup != null)] | first | .releaseBackup.name // empty' records.json)
+              moment=$(jq -r --arg v "$BEFORE" '[.[] | select(.version == $v and .rollback == null and .restore == null and .releaseBackup != null)] | first | .releaseBackup.versionTime // empty' records.json)
+              if [ -z "$backup" ]; then
+                echo "::error::no record of $BEFORE in $ENVIRONMENT names a pre-release backup (the release never ran there, ran on a bedrock before release backups, or the environment keeps none): name a backup or @<moment>; the list action shows what there is"
+                exit 1
+              fi
+              echo "$BEFORE's cut: ${backup##*/} (data as of $moment), the database as it was before $BEFORE's migrations."
+            fi
+            case "$backup" in @*) moment=${backup#@}; echo "A backup as of $moment is made${DATABASE:+ of $DATABASE} and restored." ;; esac
+            # A backup named by its resource name has its moment in the records when a run took it (a
+            # release's cut, a restore's forensic backup) or restored from it; one the records do not
+            # know is left to the apply.
+            if [ -z "${moment:-}" ]; then
+              moment=$(jq -r --arg b "$backup" '[.[] | (.releaseBackup | select(. != null and .name == $b) | .versionTime), (.restore | select(. != null and .backup == $b) | .backupTime)] | map(select(. != null and . != "")) | first // empty' records.json)
+            fi
+            # The data as of the moment holds the schema the database held then (the newest live record at or
+            # before it lists the migrations the database held), and the release restored under must be at
+            # that schema or above it: the migrate command refuses a database ahead of its files, after the
+            # database step, with the environment left in maintenance on the new generation. Refused here.
+            if [ -n "${moment:-}" ]; then
+              held=$(jq -r --arg m "$moment" '[.[] | select(.timestamp <= $m)] | last | [.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0' records.json)
+              # the run that applied the held migration: the earliest record at or before the moment whose
+              # migrations reach it (a rollback's or a restore's record lists what the database holds, not what it applied)
+              heldBy=$(jq -r --arg m "$moment" --argjson h "${held:-0}" '[.[] | select(.timestamp <= $m) | select(([.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0) == $h)] | first | "\(.version // "?") (live since \(.timestamp // "?"))"' records.json)
+              target=$(jq -r --arg v "$RELEASE" '[.[] | select(.version == $v and .rollback == null and .restore == null)] | first // ([.[] | select(.version == $v)] | last) | [.migrations[]?.name | select(endswith(".up.sql")) | .[0:6] | tonumber] | max // 0' records.json)
+              if [ "${held:-0}" -gt "${target:-0}" ]; then
+                echo "::error::the data as of $moment holds migration $held, applied under $heldBy, and $RELEASE applies migrations up to $target: the migrate command would refuse the restored database as ahead of its files, after the database step. Name a moment before migration $held was applied, or run the release that applied it again first (bedrock rerun $ENVIRONMENT <release>) and restore under it."
+                exit 1
+              fi
+              echo "The data as of $moment holds migration ${held:-0}; $RELEASE applies migrations up to ${target:-0}, so its migrate command runs on the restored database where it is behind."
+            fi
+            echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+            echo "instruction=$backup" >> "$GITHUB_OUTPUT"
+            echo "database=$DATABASE" >> "$GITHUB_OUTPUT"
+            echo "source_backup=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$RESTORE" != production-backup ]; then
+            echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+            echo "instruction=$RESTORE" >> "$GITHUB_OUTPUT"
+            echo "database=" >> "$GITHUB_OUTPUT"
+            echo "source_backup=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKETS)' | tr ',' '\n' | sed -n "s/^$PRODUCTION=//p")
+          if [ -z "$bucket" ]; then
+            echo "::error::the version trigger $TRIGGER names no records bucket for $PRODUCTION (_RECORDS_BUCKETS): the stack has not been applied with this bedrock yet"
+            exit 1
+          fi
+          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$PRODUCTION/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -40 | awk '{print $3}')
+          record=$( [ -n "$objects" ] && gcloud storage cat $objects | jq -c -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | reverse | .[0] // empty' )
+          live=$(printf '%s' "$record" | jq -r '.version // empty')
+          database=$(printf '%s' "$record" | jq -r '.database.name // empty')
+          source=$(printf '%s' "$record" | jq -r '(.restore | select(. != null and .database != null) | .backup) // .rollback.backup // empty')
+          if [ -z "$live" ]; then
+            echo "::error::no release is live in $PRODUCTION by its deployment records (gs://$bucket/$APP/$PRODUCTION/): name the release to run"
+            exit 1
+          fi
+          if [ -z "$RELEASE" ]; then
+            echo "No release named: $ENVIRONMENT returns to $live, production's live release by its deployment records, on production's backup."
+            RELEASE=$live
+          elif [ "$RELEASE" = "$live" ]; then
+            echo "$RELEASE is production's live release: $ENVIRONMENT returns to it on production's backup."
+          else
+            echo "$RELEASE differs from production's live release, $live: $ENVIRONMENT runs $RELEASE on production's backup, whose data is at $live's schema or before it."
+          fi
+          # Production's live database, by the same record: after a generation restore it
+          # is the generation restored into, not the stack's first database, and until a
+          # release or the schedule backs the generation up, the backup it was restored from
+          # stands in for its own. A record written before database generations names none,
+          # and the build reads production's first database, as every such record meant.
+          if [ -n "$database" ]; then
+            echo "Production's live database by its record: ${database##*/}$( [ -n "$source" ] && echo ", restored from ${source##*/}" ). Its most recent backup is restored, or that backup while it has none of its own."
+          else
+            echo "Production's record names no database (written before database generations): production's first database is read."
+          fi
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+          echo "instruction=$RESTORE" >> "$GITHUB_OUTPUT"
+          echo "database=$database" >> "$GITHUB_OUTPUT"
+          echo "source_backup=$source" >> "$GITHUB_OUTPUT"
+      # The version trigger's build with the restore instruction, waited for to its end: a
+      # release in an environment that waits for an approval in Cloud Build waits here too,
+      # production's every time; thirty minutes without one and the job cancels it.
+      - name: Run the version trigger with the restore instruction
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          RELEASE: ${{ steps.release.outputs.release }}
+          INSTRUCTION: ${{ steps.release.outputs.instruction }}
+          DATABASE: ${{ steps.release.outputs.database }}
+          SOURCE_BACKUP: ${{ steps.release.outputs.source_backup }}
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "^|^_RESTORE=$INSTRUCTION|_REQUESTER=$REQUESTER|_REASON=$REASON|_RESTORE_DATABASE=$DATABASE|_RESTORE_DATABASE_BACKUP=$SOURCE_BACKUP" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT restores it to $RELEASE ($INSTRUCTION), asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          pending=0
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $RELEASE on its restored database."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING)
+                pending=$((pending + 30))
+                if [ "$pending" -ge 1800 ]; then
+                  gcloud builds cancel "$build" --region "$REGION" --project "$PROJECT" --quiet > /dev/null
+                  echo "::error::Build $build waited thirty minutes for its approval in Cloud Build and was cancelled; nothing changed. Ask again when an approver is ready."
+                  exit 1
+                fi
+                echo "Build $build is pending its approval in Cloud Build ($pending s)." ;;
+              *) pending=0 ;;
+            esac
+            sleep 30
+          done
+
+
+  run:
+    name: run the release again
+    if: ${{ inputs.action == 'run' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+    steps:
+      # The environment's values, from the placement's projects, production's included: an
+      # environment the placement records no project for is not wired, and the run stops
+      # before touching anything.
+      - name: The environment's project, identity and trigger
+        id: target
+        run: |
+          case "$RELEASE" in
+            "") echo "::error::run names the release to run again (v<major>.<minor>.<patch>)"; exit 1 ;;
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The version trigger's build again, with nothing but who asked, waited for to its end:
+      # a release in an environment that waits for an approval in Cloud Build waits here too,
+      # production's every time.
+      - name: Run the version trigger again
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT runs $RELEASE again, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $RELEASE."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+
+  migration:
+    name: the migrations' operation
+    if: ${{ inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      ACTION: ${{ inputs.action }}
+      TABLE: ${{ inputs.table }}
+      VERSION: ${{ inputs.version }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      PRODUCTION: prd
+    steps:
+      # Production first; then the environment's values, from the placement's projects, and
+      # the inputs checked before anything runs: a force names its version, and nothing else
+      # takes one.
+      - name: The environment's project, identity, trigger and log bucket
+        id: target
+        run: |
+          if [ "$ENVIRONMENT" = "$PRODUCTION" ]; then
+            echo "::error::$ENVIRONMENT is production: no migration operation runs there, since production's migrations are the platform operator's (the README, When the migration fails); a release is run again in production with the run action (bedrock rerun)"
+            exit 1
+          fi
+          case "$RELEASE" in
+            "") echo "::error::$ACTION names the release the migrations are at (v<major>.<minor>.<patch>)"; exit 1 ;;
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          if [ "$ACTION" = force ]; then
+            if ! printf '%s' "$VERSION" | grep -Eq '^(-1|0|[1-9][0-9]*)$'; then
+              echo "::error::force needs the version the database is at: an integer 0 or above, or -1 for no version (got \"$VERSION\")"
+              exit 1
+            fi
+          elif [ -n "$VERSION" ]; then
+            echo "::error::a version goes with force alone: $ACTION takes none"
+            exit 1
+          fi
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger logs; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The version trigger's build with the operation, waited for to its end (an approval in
+      # Cloud Build included); then the lines the build's migration steps wrote, read from the
+      # bucket holding this application's build logs (the identity reads that view and no other
+      # log) by the build's id and the steps' names, and printed here and in the run's summary,
+      # whether the build succeeded or failed.
+      - name: Run the version trigger with the migration operation
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          LOGS: ${{ steps.target.outputs.logs }}
+        run: |
+          substitutions="_MIGRATE_ACTION=$ACTION,_REQUESTER=$REQUESTER"
+          if [ "$ACTION" = force ]; then
+            substitutions="$substitutions,_MIGRATE_TABLE=$TABLE,_MIGRATE_VERSION=$VERSION"
+          fi
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$RELEASE" --region "$REGION" --project "$PROJECT" \
+            --substitutions "$substitutions" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT: $ACTION on the migrations at $RELEASE, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS|FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) break ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+          lines=$(gcloud logging read "resource.type=\"build\" AND resource.labels.build_id=\"$build\" AND labels.build_step=~\"(Preflight|Run)Migrations\" AND timestamp>=\"$started\"" \
+            --bucket "$LOGS" --location global --view _AllLogs --project "$PROJECT" --order asc --format 'value(textPayload)')
+          {
+            echo "## $ACTION on $ENVIRONMENT's migrations at $RELEASE"
+            echo
+            echo "Build $build ended $status, asked for by $REQUESTER."
+            echo
+            echo '```'
+            printf '%s\n' "${lines:-no line of the migration steps reached Cloud Logging yet}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "--- the migration steps wrote ---"
+          printf '%s\n' "${lines:-no line of the migration steps reached Cloud Logging yet}"
+          echo "---"
+          case "$status" in
+            SUCCESS) echo "Build $build succeeded." ;;
+            *) echo "::error::Build $build ended $status; the migration's lines are above and in the summary."; exit 1 ;;
+          esac
+
+  rollback:
+    name: roll the environment back
+    if: ${{ inputs.action == 'rollback' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE: ${{ inputs.release }}
+      REASON: ${{ inputs.reason }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      APP: beacon
+    steps:
+      # The inputs are checked before anything runs: a reason, and a release of the right
+      # shape or none; then the environment's values, from the placement's projects.
+      - name: The environment's project, identity, triggers and inputs
+        id: target
+        run: |
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          if [ -z "$REASON" ]; then
+            echo "::error::a rollback says why it was asked for: give the reason"
+            exit 1
+          fi
+          case "$REASON" in
+            *'|'*) echo "::error::the reason carries a | character, which the build's substitutions cannot; say it another way"; exit 1 ;;
+          esac
+          case "$RELEASE" in
+            ""|v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$RELEASE is not a release tag (v<major>.<minor>.<patch>)"; exit 1 ;;
+          esac
+          for name in project provider identity trigger rollback; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # What the rollback returns to, from the environment's deployment records (the newest
+      # forty, read through the version trigger's _RECORDS_BUCKET): the live release is what
+      # the environment leaves; the release returned to is the one named or the release live
+      # before the live one. Then the statement, the whole of what the run does, before
+      # anything happens: nothing of the database.
+      - name: What the rollback returns to
+        id: plan
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+        run: |
+          bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
+          if [ -z "$bucket" ]; then
+            echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
+            exit 1
+          fi
+          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -40 | awk '{print $3}')
+          if [ -z "$objects" ]; then
+            echo "::error::$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing is live there to return from"
+            exit 1
+          fi
+          gcloud storage cat $objects | jq -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | reverse' > records.json
+          from=$(jq -r '.[0].version // empty' records.json)
+          if [ -z "$from" ]; then
+            echo "::error::no release is live in $ENVIRONMENT by its deployment records: nothing to return from"
+            exit 1
+          fi
+          to=$RELEASE
+          if [ -z "$to" ]; then
+            to=$(jq -r --arg from "$from" '[.[] | select(.version != $from)] | .[0].version // empty' records.json)
+            if [ -z "$to" ]; then
+              echo "::error::$from is the only release the records say was live in $ENVIRONMENT: there is no earlier release to return to"
+              exit 1
+            fi
+          fi
+          if [ "$to" = "$from" ]; then
+            echo "::error::$to is the live release in $ENVIRONMENT: a rollback returns to an earlier one (bedrock rerun runs the live release again)"
+            exit 1
+          fi
+          toTime=$(jq -r --arg to "$to" '[.[] | select(.version == $to)] | .[0].timestamp // empty' records.json)
+          if [ -z "$toTime" ]; then
+            echo "::error::$to was never live in $ENVIRONMENT by its deployment records: a rollback returns to a release that ran there"
+            exit 1
+          fi
+          echo "=== ROLLBACK of $ENVIRONMENT: $APP returns to $to from $from, asked for by $REQUESTER: $REASON ==="
+          echo "Nothing of the database: it stays as $from left it, every migration it holds applied, and $to runs on it. No migration runs, no backup is taken, nothing is restored; $to's build runs again and deploys as a release does. The database is returned by the restore action, in a run of its own."
+          {
+            echo "## Rollback of $ENVIRONMENT to $to from $from"
+            echo
+            echo "Asked for by $REQUESTER: $REASON"
+            echo
+            echo "Nothing of the database: it stays as $from left it, and $to runs on it. The restore action returns the database, in a run of its own."
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s=%s\n' from "$from" to "$to" >> "$GITHUB_OUTPUT"
+      # The rollback trigger's build for the release returned to, waited for to its end. It
+      # waits for its approval in Cloud Build as a release does; thirty minutes without one
+      # and the build is cancelled, so a rollback nobody approved is not left waiting.
+      - name: Run the rollback trigger
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          ROLLBACK: ${{ steps.target.outputs.rollback }}
+          FROM: ${{ steps.plan.outputs.from }}
+          TO: ${{ steps.plan.outputs.to }}
+        run: |
+          build=$(gcloud builds triggers run "$ROLLBACK" --tag "$TO" --region "$REGION" --project "$PROJECT" \
+            --substitutions "^|^_ROLLBACK=$FROM|_REASON=$REASON|_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT returns it to $TO from $FROM, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          pending=0
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $TO on its database as it is."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING)
+                pending=$((pending + 30))
+                if [ "$pending" -ge 1800 ]; then
+                  gcloud builds cancel "$build" --region "$REGION" --project "$PROJECT" --quiet > /dev/null
+                  echo "::error::Build $build waited thirty minutes for its approval in Cloud Build and was cancelled; nothing changed. Ask again when an approver is ready."
+                  exit 1
+                fi
+                echo "Build $build is pending its approval in Cloud Build ($pending s)." ;;
+              *) pending=0 ;;
+            esac
+            sleep 30
+          done
+
+  list:
+    name: list the releases, backups and generations
+    if: ${{ inputs.action == 'list' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      REGION: us-central1
+      APP: beacon
+    steps:
+      - name: The environment's project, identity and trigger
+        id: target
+        run: |
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # What the environment can be restored to, from its deployment records (the newest two
+      # hundred, through the version trigger's _RECORDS_BUCKET): every run that went live,
+      # with its release, its kind (a release, a rollback and the release it left, a restore
+      # and what it restored), when, its cut and its backup, a release's run carrying the
+      # pre-release backup that holds the database as it was before its migrations (fourteen
+      # days), a restore's run the forensic backup of the data it replaced (thirty days) and
+      # a rollback's none; and every generation of the database a restore made, from which
+      # backup, when, the generation it left as the forensic copy and that copy's forensic
+      # backup (thirty days). A generation's own history reaches back the placement's
+      # spannerRetention (seven days unless it says otherwise) while the generation exists;
+      # the backups are the fixed points. Written into this run's summary.
+      - name: The releases, backups and generations
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+        run: |
+          bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
+          if [ -z "$bucket" ]; then
+            echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
+            exit 1
+          fi
+          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -200 | awk '{print $3}')
+          if [ -z "$objects" ]; then
+            echo "$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing ran there yet."
+            exit 0
+          fi
+          gcloud storage cat $objects | jq -s '.' > records.json
+          {
+            echo "## $APP in $ENVIRONMENT: what a restore can return to"
+            echo
+            jq -r '([.[] | select(.status == "live")] | sort_by(.timestamp)) as $live
+              | ($live | last) as $now
+              | "Live: \($now.version // "nothing") since \($now.timestamp // "") on database generation \($now.database.generation // 1) (\($now.database.name // "the first database" | split("/") | last)).",
+                "",
+                "### Runs that went live, newest first (restore with before <release> for the data as it was before that release\u0027s first run; a restore\u0027s row carries the forensic backup of the data it replaced, a rollback\u0027s none)",
+                "",
+                "| release | run | live since | build | cut | backup | data as of | expires |",
+                "|---|---|---|---|---|---|---|---|",
+                ($live | reverse[] | "| \(.version)\(if .build == $now.build then " (live)" else "" end) | \(if .rollback != null then "rollback from \(.rollback.from)" elif .restore != null then "restore (\(.restore.kind // "" | split("/") | last))" else "release" end) | \(.timestamp) | \(.build[0:8]) | \(.cut // "") | \(.releaseBackup.name // "none" | split("/") | last) | \(.releaseBackup.versionTime // "") | \(.releaseBackup.expireTime // "") |")' records.json
+            echo
+            echo "### Database generations a restore made, oldest first (restore with backup <name> or @<moment>, and database <name> for a moment in an earlier generation)"
+            echo
+            echo "| generation | database | restored from | data as of | at | left as the forensic copy | forensic backup |"
+            echo "|---|---|---|---|---|---|---|"
+            jq -r 'def g: if .restore != null and .restore.database != null then .restore else .rollback end;
+              [.[] | select((.restore != null and .restore.database != null) or (.rollback != null and .rollback.database != null))] | sort_by(.timestamp)[]
+              | "| \(g.generation) | \(g.database | split("/") | last) | \(g.backup | split("/") | last) | \(g.backupTime // "") | \(.timestamp) | \(g.kept | split("/") | last) | \(g.forensic // "" | split("/") | last) |"' records.json
+            echo
+            echo "A generation's own history reaches back the placement's spannerRetention from now while the generation exists; the backups above are the fixed points, the cuts for fourteen days and the forensic backups for thirty."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  maintenance:
+    name: take the application out of maintenance
+    if: ${{ inputs.action == 'maintenance' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      APP: beacon
+    steps:
+      - name: The environment's project, identity and trigger
+        id: target
+        run: |
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          for name in project provider identity trigger; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The live release, from the environment's deployment records: its build runs with the
+      # maintenance instruction, and the pipeline's last step takes the application out of
+      # maintenance (traffic back to the revision the maintenance revision displaced, the
+      # queue resumed) with every other step skipped; nothing deploys and no record is
+      # written. Waited for to its end, an approval in Cloud Build included.
+      - name: Run the version trigger with the maintenance instruction
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+        run: |
+          bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
+          if [ -z "$bucket" ]; then
+            echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
+            exit 1
+          fi
+          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -40 | awk '{print $3}')
+          live=$( [ -n "$objects" ] && gcloud storage cat $objects | jq -r -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | last | .version // empty' )
+          if [ -z "$live" ]; then
+            echo "::error::no release is live in $ENVIRONMENT by its deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing to take out of maintenance"
+            exit 1
+          fi
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$live" --region "$REGION" --project "$PROJECT" \
+            --substitutions "^|^_MAINTENANCE=off|_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT takes $APP out of maintenance on $live, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          pending=0
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT serves $live again."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING)
+                pending=$((pending + 30))
+                if [ "$pending" -ge 1800 ]; then
+                  gcloud builds cancel "$build" --region "$REGION" --project "$PROJECT" --quiet > /dev/null
+                  echo "::error::Build $build waited thirty minutes for its approval in Cloud Build and was cancelled; nothing changed. Ask again when an approver is ready."
+                  exit 1
+                fi
+                echo "Build $build is pending its approval in Cloud Build ($pending s)." ;;
+              *) pending=0 ;;
+            esac
+            sleep 30
+          done

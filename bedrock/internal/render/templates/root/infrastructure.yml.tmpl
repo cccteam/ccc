@@ -1,0 +1,79 @@
+# {{.App}}'s infrastructure check on every pull request and on the default branch, rendered by
+# bedrock and owned by it (bedrock render rewrites this file, bedrock check compares it). The
+# stack under infrastructure/ and the pipeline files at the root are rendered from the code
+# by bedrock; this job takes the bedrock the placement pins (bedrockVersion: the same one the
+# pipeline runs), renders afresh and fails when a committed owned file differs from what the
+# code declares, then checks the stack's formatting and validity. A release's binary is
+# downloaded from bedrock's GitHub Release and verified against bedrockSha256; a commit is
+# built with go install in the Go image the pipeline builds it in, and verified by Go's
+# checksum database. bedrock runs on the runner, which has the Go toolchain the check reads
+# the code with; no cloud identity is involved.
+name: infrastructure
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [{{.P.DefaultBranch}}]
+
+concurrency:
+  group: infrastructure-${{"{{"}} github.ref {{"}}"}}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  check:
+    name: bedrock check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+{{- if .CommitPin}}
+      BEDROCK_VERSION: {{.P.BedrockVersion}}
+      GO_IMAGE: {{.GoImage}}
+{{- else}}
+      BEDROCK_URL: {{.BedrockURL}}
+      BEDROCK_SHA256: {{.P.BedrockSHA256}}
+{{- end}}
+      OPENTOFU_VERSION: 1.12.6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+{{- if .CommitPin}}
+      # The runner's Go is the application's, from its go.mod, which may be older than
+      # bedrock's; the commit is built in the pipeline's Go image instead.
+      - name: The pinned bedrock, built from its commit
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/out" \
+            -e GOBIN=/out \
+{{.GoInstallDockerEnv}}
+            "$GO_IMAGE" install -ldflags="-s -w" "{{.BedrockModule}}@$BEDROCK_VERSION"
+          "$RUNNER_TEMP/bedrock" --version
+{{- else}}
+      - name: The pinned bedrock, from its release
+        run: |
+          curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 -o "$RUNNER_TEMP/bedrock" "$BEDROCK_URL"
+          echo "$BEDROCK_SHA256  $RUNNER_TEMP/bedrock" | sha256sum --check -
+          chmod 0755 "$RUNNER_TEMP/bedrock"
+          "$RUNNER_TEMP/bedrock" --version
+{{- end}}
+      # The checks that compare the tree with the default branch (a Cloud Armor policy
+      # removed in one step) read origin's copy of it, which the checkout alone lacks.
+      - name: The default branch, for the checks that compare against it
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/{{.P.DefaultBranch}}:refs/remotes/origin/{{.P.DefaultBranch}}"
+      - name: bedrock check
+        run: |
+          "$RUNNER_TEMP/bedrock" check
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{"{{"}} env.OPENTOFU_VERSION {{"}}"}}
+      - name: tofu fmt
+        working-directory: infrastructure
+        run: tofu fmt -check -diff
+      - name: tofu validate
+        working-directory: infrastructure
+        run: tofu init -backend=false -input=false && tofu validate

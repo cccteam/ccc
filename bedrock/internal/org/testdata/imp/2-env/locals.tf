@@ -1,0 +1,220 @@
+locals {
+  org = data.terraform_remote_state.org.outputs
+
+  prefix         = local.org.prefix
+  project_id     = local.org.project_ids[var.environment]
+  project_number = local.org.project_numbers[var.environment]
+
+  region                = local.org.gcp_region
+  secondary_region      = local.org.gcp_secondary_region
+  region_code           = local.org.region_code
+  secondary_region_code = local.org.secondary_region_code
+
+  # Naming convention: {prefix}-{environment}-{region|gbl}-{purpose}. Service
+  # accounts, buckets, and the multi-region Spanner instance are gbl; the Cloud
+  # Build connection is regional and carries the region code.
+  name = "${local.prefix}-${var.environment}"
+
+  is_tst = var.environment == "tst"
+
+  # The environment after this one in the promotion order, and its deploy
+  # identities (by application), which may read this environment's deployment
+  # records: the record gate. Empty after the last environment, and until the
+  # next environment's 2-env has been applied.
+  next_environment    = var.next_environment[var.environment]
+  next_deploy_members = try({ for app, a in data.terraform_remote_state.next_env[0].outputs.applications : app => a.deploy_identity_member }, {})
+
+  # The environment before this one in the promotion order (null for the
+  # first), whose 2-env state an application stack reads for the record gate.
+  previous_environment = one([for k, v in var.next_environment : k if v == var.environment])
+
+  # tst's deploy identities (by application): they run every pull-request
+  # build, which plans each environment's application stack as that
+  # environment's plan identity, so each of them may impersonate this
+  # environment's plan identity of its own application. Read from tst's 2-env
+  # state; in tst they are this layer's own.
+  tst_deploy_members = local.is_tst ? { for app in var.applications : app => google_service_account.deploy[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.deploy_identity_member }, {})
+
+  # The upstream states an application stack reads outputs from (its
+  # initialize.tf): the foundation, every environment (the plan identities a
+  # pull-request build impersonates, the previous environment's records bucket
+  # for the record gate), and 2-shr. The apply and plan identities get object
+  # read on exactly these.
+  upstream_state_prefixes = concat(
+    ["1-org"],
+    [for env in sort(keys(var.next_environment)) : "2-env/${env}"],
+    ["2-shr"],
+  )
+
+  labels = {
+    terraform             = "true"
+    terraform_source_path = "2-env"
+    source_repo           = "imp-impulse-infrastructure"
+    environment           = var.environment
+    bedrock-lab           = "true"
+  }
+
+  apps = toset(var.applications)
+
+  # The Spanner instance every application in this environment puts its
+  # database on: tst has its own (spanner.tf), stg and prd share the one 2-spn
+  # creates in the spn project (2-spn outputs project_id and instance_name).
+  instance_project = local.own_instance ? local.project_id : try(data.terraform_remote_state.spn.outputs.project_id, local.org.project_ids["spn"])
+  instance_name    = local.own_instance ? google_spanner_instance.tst[0].name : try(data.terraform_remote_state.spn.outputs.instance_name, null)
+  # The instance's configuration by its short name (regional-<region>, or a
+  # multi-region such as nam10): an application stack puts its file stores
+  # where the database is, from this.
+  instance_config = local.own_instance ? local.spanner_config : try(data.terraform_remote_state.spn.outputs.spanner_config, null)
+  # Where an application stack puts its file stores: with the database, named
+  # by the location's code as the stack's locals.tf derives it (the region's
+  # code for a regional instance, the configuration's own name for a
+  # multi-region one), so the apply identity's bucket grant (identities.tf)
+  # admits that name beside gbl, the name a stack rendered by an older bedrock
+  # gave them.
+  files_location_code = local.instance_config == null ? null : (startswith(local.instance_config, "regional-") ? lookup({ (local.region) = local.region_code, (local.secondary_region) = local.secondary_region_code }, trimprefix(local.instance_config, "regional-"), null) : local.instance_config)
+  files_bucket_codes  = distinct(compact(["gbl", local.files_location_code]))
+
+  # Container images live in the shr project, one repository per application
+  # (2-shr output repository_names: application code => repository ID). The
+  # writer grant on a repository is 2-shr's, from its pushers variable, fed by
+  # this layer's applications output; nothing here touches the shr project.
+  repositories = try(data.terraform_remote_state.shr.outputs.repository_names, {})
+
+  # A shared VPC is opt-in (no VPC connector, no NAT); 2-net
+  # publishes shared_vpc_id, always null today. If it ever is a network, the
+  # application apply identities get compute.networkUser so a stack can attach
+  # a Cloud Run service to it.
+  shared_vpc = try(data.terraform_remote_state.net.outputs.shared_vpc_id, null)
+
+  # The two principals in the net project that use this environment's backend
+  # services across projects, as 2-net publishes them; derived from 1-org when
+  # 2-net has not been applied yet (the values are the same either way).
+  net_lb_service_user = try(data.terraform_remote_state.net.outputs.load_balancer_service_user, "serviceAccount:${local.org.layer_service_accounts["net"]}")
+  net_compute_agent   = try(data.terraform_remote_state.net.outputs.compute_service_agent, "serviceAccount:service-${local.org.project_numbers["net"]}@compute-system.iam.gserviceaccount.com")
+
+  # The GitHub token secret behind the Cloud Build connection, without its
+  # version: the IAM grant is on the secret.
+  # The Cloud Build connection exists once both GitHub values are set; until
+  # then the environment applies without it (cloud-build.tf).
+  connected = var.github_app_installation_id != null && var.github_oauth_token_secret_version != null
+  # The token secret's resource name, without its version, in either of the two
+  # shapes Secret Manager uses. The console's host-connection flow writes a
+  # regional secret in the connection's region
+  # (projects/P/locations/L/secrets/N), so the accessor grant is the regional
+  # resource; a global secret (projects/P/secrets/N) added by hand still works.
+  github_token_parts    = local.connected ? split("/", var.github_oauth_token_secret_version) : []
+  github_token_regional = length(local.github_token_parts) == 8
+  github_token_location = local.github_token_regional ? local.github_token_parts[3] : null
+  github_token_project  = local.connected ? local.github_token_parts[1] : null
+  github_token_secret   = local.connected ? local.github_token_parts[local.github_token_regional ? 5 : 3] : null
+
+  # Role sets. Project-level roles are the price of a shared environment
+  # project; the design brief tests how far IAM conditions on
+  # resource names can bound them to the application's own prefix.
+
+  # The application apply identity applies the application's stack as itself: it shapes
+  # Cloud Run, identities, buckets, schedules, queues, secrets (as containers,
+  # never payloads), triggers, monitoring, and the load balancer's application
+  # side (the serverless network endpoint groups and backend services the
+  # stack makes in this project for its own application: loadBalancerAdmin,
+  # which a tag build's plan of the environment's stack needs to read them)
+  # for its own application. Its database admin grant is on the Spanner
+  # instance (identities.tf), not here, and so are its Cloud Storage grants:
+  # storage admin under a condition naming the application's own buckets, and
+  # the organization's storageBucketCreator role for what Cloud Storage checks
+  # on the project. serviceUsageConsumer is what lets it
+  # use the environment project as its quota project (user_project_override
+  # in the stack), since nothing in this layer can grant it that on the boot
+  # project. With a Firestore database the stack also releases the database's
+  # security rules (firebaserules.admin) and makes the web API key its
+  # browsers present (apiKeysAdmin); the indexes and time-to-live policies are
+  # datastore.owner's.
+  apply_project_roles = [
+    "roles/serviceusage.serviceUsageConsumer",
+    "roles/run.admin",
+    "roles/compute.loadBalancerAdmin",
+    "roles/iam.serviceAccountAdmin",
+    "roles/iam.serviceAccountUser",
+    "roles/cloudscheduler.admin",
+    "roles/cloudtasks.queueAdmin",
+    "roles/datastore.owner",
+    "roles/firebaserules.admin",
+    "roles/serviceusage.apiKeysAdmin",
+    "roles/cloudbuild.builds.editor",
+    "roles/logging.admin",
+    "roles/monitoring.admin",
+    "roles/resourcemanager.projectIamAdmin",
+    local.org.secret_container_admin_role,
+  ]
+
+  # The deploy identity runs every build and deploy and never writes
+  # infrastructure: new revisions, build logs, the migrations (the release's
+  # migrate command, run on the build worker as this identity, with database
+  # admin on the application's own database granted by the application's
+  # stack), and the job it makes per build from the stack's template job for
+  # the job process, whose IAM policy it copies from its template
+  # (runJobPolicyAdmin, 1-org's custom role, since run.developer cannot set a
+  # job's policy). Its
+  # monitoring.viewer reads the metrics a maintenance step waits on (the old
+  # revision's active instances, before the database is replaced or
+  # migrated). cloudBuildBuildReader, 1-org's custom role, reads the build it
+  # runs in (the pipeline's first step), which is all a build needs of Cloud
+  # Build: roles/cloudbuild.builds.builder, the cloud's bundle for a build's
+  # service account, would carry every object of every bucket in the project
+  # with it, the deployment records and the applications' file stores among
+  # them. In tst, Cloud Scheduler runs each application's sweep trigger as its
+  # deploy identity, so there it also holds cloudBuildTriggerRunner. Its
+  # bounded grants are elsewhere: creator and viewer in the records bucket's
+  # policy (records.tf), accessor on the build-time secrets (identities.tf);
+  # writer on its
+  # image repository is 2-shr's grant (var.pushers there), and Service Account
+  # User on the runtime identities is granted where they are created, in the
+  # application stack.
+  deploy_project_roles = concat([
+    "roles/serviceusage.serviceUsageConsumer",
+    "roles/run.developer",
+    "roles/logging.logWriter",
+    "roles/monitoring.viewer",
+    local.org.run_job_policy_admin_role,
+    local.org.cloud_build_build_reader_role,
+  ], local.is_tst ? [local.org.cloud_build_trigger_runner_role] : [])
+
+  # The application plan identity plans the application's stack for this
+  # environment on a pull request and writes nothing: applicationPlanReader,
+  # 1-org's custom role, reads the resources the stack declares and nothing of
+  # their data (roles/viewer, the cloud's bundle for a reader, would read the
+  # rows of a database in this project; the records bucket and the file stores
+  # carry no default grant to the project's basic roles, their policies being
+  # set whole, so no project role reads a record or an uploaded file); securityReviewer
+  # reads the IAM policies the stack's grants are refreshed from (a bucket's,
+  # a queue's); and serviceUsageConsumer uses the project as its quota project,
+  # the same as the apply identity.
+  plan_project_roles = [
+    "roles/serviceusage.serviceUsageConsumer",
+    local.org.application_plan_reader_role,
+    "roles/iam.securityReviewer",
+  ]
+
+  # app x role pairs, so for_each can grant several roles per identity.
+  apply_grants = {
+    for pair in setproduct(var.applications, local.apply_project_roles) :
+    "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
+  }
+  plan_grants = {
+    for pair in setproduct(var.applications, local.plan_project_roles) :
+    "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
+  }
+
+  deploy_grants = {
+    for pair in setproduct(var.applications, local.deploy_project_roles) :
+    "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
+  }
+
+  build_secret_grants = {
+    for pair in flatten([
+      for app, secrets in var.build_time_secrets : [
+        for s in secrets : { key = "${app}__${s}", app = app, secret = s }
+      ]
+    ]) : pair.key => pair
+  }
+}

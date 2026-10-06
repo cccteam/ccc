@@ -1,0 +1,426 @@
+# ---------------------------------------------------------------------------
+# Per-application identities
+#
+# Three service accounts per application, in the environment project, mirroring
+# 1-org's layer/plan pair one level down:
+#
+#   {{.Prefix}}-<env>-gbl-<app>-tofu    applies the application's stack (state slot 3-app/<app>) for this environment
+#   {{.Prefix}}-<env>-gbl-<app>-deploy  runs every build and deploy of the application
+#   {{.Prefix}}-<env>-gbl-<app>-plan    plans the application's stack for this environment on a pull request; reads, never writes
+#
+# None has keys (org policy forbids them); all run from Cloud Build. The
+# design brief's "Who may do what" table is the source of each role set, and
+# every set is a starting hypothesis to tighten by reading denials.
+# ---------------------------------------------------------------------------
+
+resource "google_service_account" "apply" {
+  for_each = local.apps
+
+  project      = local.project_id
+  account_id   = "${local.name}-gbl-${each.key}-tofu"
+  display_name = "OpenTofu SA - ${local.name}-gbl-${each.key}"
+  description  = "Application apply identity for ${each.key} in ${var.environment}. Applies 3-app/${each.key} from Cloud Build."
+}
+
+resource "google_service_account" "deploy" {
+  for_each = local.apps
+
+  project      = local.project_id
+  account_id   = "${local.name}-gbl-${each.key}-deploy"
+  display_name = "Deploy SA - ${local.name}-gbl-${each.key}"
+  description  = "Deploy identity for ${each.key} in ${var.environment}. Runs the application's Cloud Build triggers; never writes infrastructure."
+}
+
+resource "google_service_account" "plan" {
+  for_each = local.apps
+
+  project      = local.project_id
+  account_id   = "${local.name}-gbl-${each.key}-plan"
+  display_name = "Plan SA - ${local.name}-gbl-${each.key}"
+  description  = "Plan identity for ${each.key} in ${var.environment}. Plans 3-app/${each.key} for this environment on a pull request, from tst's Cloud Build; reads, never writes."
+}
+
+# ---------------------------------------------------------------------------
+# Application apply identity
+# ---------------------------------------------------------------------------
+
+resource "google_project_iam_member" "apply" {
+  # checkov:skip=CKV_GCP_49: automation identity with a named role set on one shared project, no keys, runs only from Cloud Build.
+  for_each = local.apply_grants
+
+  project = local.project_id
+  role    = each.value.role
+  member  = google_service_account.apply[each.value.app].member
+}
+
+# Grants on the environment's own instance (var.spanner_instances, placement
+# own), bounded to each application's own database and backups; for an
+# environment on the shared instance the same grants are 2-spn's, from its
+# database_admins variable, which takes this layer's
+# applications[*].apply_identity_member. Creating a database and listing what
+# the instance holds are checked on the instance, so the organization's
+# spannerDatabaseCreator role is held without condition; databaseAdmin and
+# backupAdmin are conditioned on the resource's name: the application's
+# environment database ("<prefix>-<env>-gbl-<app>-") and, in tst, its
+# pull-request databases ("<app>-pr<number>-db"), with the schedules and
+# operations under them, and the backups taken from them. Nothing on the
+# instance itself, and nothing of another application's.
+locals {
+  instance_path = local.own_instance ? "projects/${local.instance_project}/instances/${local.instance_name}" : null
+}
+
+resource "google_spanner_instance_iam_member" "apply_database_creator" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = local.org.spanner_database_creator_role
+  member   = google_service_account.apply[each.key].member
+}
+
+resource "google_spanner_instance_iam_member" "apply_database_admin" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = "roles/spanner.databaseAdmin"
+  member   = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} databases"
+    description = "The application's own database in this environment and its pull-request databases, with the schedules and operations under them."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\") || resource.name.startsWith(\"${local.instance_path}/databases/${each.key}-pr\")"
+  }
+}
+
+# The backup schedules a production stack makes on its database are read and
+# changed with spanner.backupSchedules.*, which databaseAdmin does not carry
+# (2-spn grants the same on the shared instance). Backups are named after the
+# database they are taken from.
+resource "google_spanner_instance_iam_member" "apply_backup_admin" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = "roles/spanner.backupAdmin"
+  member   = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} backups"
+    description = "The application's own databases in this environment and the backups taken from them."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\") || resource.name.startsWith(\"${local.instance_path}/databases/${each.key}-pr\") || resource.name.startsWith(\"${local.instance_path}/backups/${local.name}-gbl-${each.key}-\")"
+  }
+}
+
+# A rollback (bedrock rollback) restores a backup the application's own
+# release build took, as of its cut, into the database's next generation on the
+# same instance, as the apply identity: spanner.backups.restoreDatabase on the
+# backup, which restoreAdmin alone carries, bounded to the application's own
+# backups in this environment (2-spn grants the same on the shared instance).
+resource "google_spanner_instance_iam_member" "apply_restore_admin" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = "roles/spanner.restoreAdmin"
+  member   = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} restores"
+    description = "The application's own backups in this environment, which a rollback restores into the database's next generation."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.name}-gbl-${each.key}-\")"
+  }
+}
+
+# Cloud Storage: the application's own buckets. Its stack names its file
+# stores "<prefix>-<env>-<where the database is>-<app>-files-<project number>"
+# (files-<name> for a named store; the location's code is locals.tf's
+# files_location_code, and gbl where an older bedrock rendered the stack) and
+# a pull-request stack's "<prefix>-<env>-<location>-<app>-pr<N>-files-<project
+# number>" (the stack's locals.tf), so storage admin is held under a condition
+# admitting every bucket whose name starts with the application's segment
+# under either location name, with the objects in it: nothing of another
+# application's buckets, and nothing of the records bucket, whose policy
+# (records.tf) names no apply identity.
+# Creating a bucket is checked on the project (storage.buckets.create: the
+# bucket does not exist yet), as is listing the project's buckets, so no
+# bucket's name can admit them: the organization's storageBucketCreator role
+# is held without condition, as spannerDatabaseCreator is on the instance.
+resource "google_project_iam_member" "apply_bucket_creator" {
+  for_each = local.apps
+
+  project = local.project_id
+  role    = local.org.storage_bucket_creator_role
+  member  = google_service_account.apply[each.key].member
+}
+
+resource "google_project_iam_member" "apply_storage_admin" {
+  for_each = local.apps
+
+  project = local.project_id
+  role    = "roles/storage.admin"
+  member  = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} buckets"
+    description = "The application's own buckets in this environment: its file stores and its pull-request stacks' file stores, with their objects."
+    expression  = join(" || ", [for code in local.files_bucket_codes : "resource.name.startsWith(\"projects/_/buckets/${local.name}-${code}-${each.key}-\")"])
+  }
+}
+
+# Cloud Armor: the application's own security policy, which its stack makes
+# when the placement turns Cloud Armor on (its cloud-armor.tf,
+# "<prefix>-<env>-gbl-<app>-armor") and attaches to its backend services.
+# Compute checks a policy's create on the policy's own name, so security admin
+# is held under a condition admitting the application's segment: nothing of
+# another application's policies, and nothing else the role reaches (the
+# project's firewall rules, SSL policies).
+resource "google_project_iam_member" "apply_security_policy_admin" {
+  for_each = local.apps
+
+  project = local.project_id
+  role    = "roles/compute.securityAdmin"
+  member  = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${each.key} ${var.environment} security policies"
+    description = "The application's own Cloud Armor security policies in this environment."
+    expression  = "resource.name.startsWith(\"projects/${local.project_id}/global/securityPolicies/${local.name}-gbl-${each.key}-\")"
+  }
+}
+
+# Only when 2-net publishes a shared VPC: a stack that attaches a Cloud Run
+# service to it needs the apply identity to use the network. This organization runs
+# without one (no connector, no NAT), so this is normally empty.
+resource "google_project_iam_member" "apply_network_user" {
+  for_each = { for app in var.applications : app => app if local.shared_vpc != null }
+
+  project = local.project_id
+  role    = "roles/compute.networkUser"
+  member  = google_service_account.apply[each.key].member
+}
+
+# ---------------------------------------------------------------------------
+# Application deploy identity
+# ---------------------------------------------------------------------------
+
+resource "google_project_iam_member" "deploy" {
+  for_each = local.deploy_grants
+
+  project = local.project_id
+  role    = each.value.role
+  member  = google_service_account.deploy[each.value.app].member
+}
+
+# Writer on the application's own image repository in shr is 2-shr's grant:
+# its pushers variable lists this identity's member (output applications),
+# added after this layer has created it. The warning below fires while 2-shr
+# does not know the application at all.
+check "repositories_registered" {
+  assert {
+    condition     = alltrue([for app in var.applications : contains(keys(local.repositories), app)])
+    error_message = "An application has no image repository in 2-shr's repository_names output yet. Add it to 2-shr's applications, and its deploy identity member to 2-shr's pushers."
+  }
+}
+
+# ---------------------------------------------------------------------------
+# The application's slot in the state bucket
+#
+# The apply identity reads and writes its own state under
+# 3-app/<app>/<env>/ (the pull-request stacks sit below it, at
+# 3-app/<app>/<env>/pr<N>/) and reads the upstream states its stack takes
+# outputs from (local.upstream_state_prefixes). Both are conditions on the
+# object name. Listing cannot be conditioned (a list is a request on the
+# bucket, not on an object), so it is granted on its own, unconditionally,
+# through legacyBucketReader: the identity can name every object in the
+# bucket and open only its own. The bucket is the boot project's; this layer
+# grants on it because this layer creates the identity (a grant on an
+# identity that does not exist is refused), with the bucket's policy
+# authority 1-org gives each environment layer identity (1-org/workflow.tf).
+# ---------------------------------------------------------------------------
+
+resource "google_storage_bucket_iam_member" "apply_state_list" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.legacyBucketReader"
+  member = google_service_account.apply[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "apply_state_slot" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectUser"
+  member = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${local.name}-${each.key}-state-slot"
+    description = "The application's own state prefix in ${var.environment}, pull-request stacks included."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/3-app/${each.key}/${var.environment}/\")"
+  }
+}
+
+resource "google_storage_bucket_iam_member" "apply_state_upstream" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${local.name}-${each.key}-upstream-state"
+    description = "The upstream states the application stack reads outputs from."
+    expression  = join(" || ", [for p in local.upstream_state_prefixes : "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/${p}/\")"])
+  }
+}
+
+# Create and read on the deployment records are bindings of the records
+# bucket's policy (records.tf), which this layer sets whole. The deploy writes
+# its record once and reads its own environment's records: the newest record
+# of a pull request, for the stale-database check of a pull-request build that
+# migrates; the environment's newest live record, where its live version is.
+# Neither role overwrites or deletes a record, and the bucket's versioning
+# keeps the history. None of the deploy identity's project roles (locals.tf)
+# reaches a bucket since roles/cloudbuild.builds.builder gave way to
+# cloudBuildBuildReader, and the apply identity it may act as holds storage
+# admin under a condition naming the application's own buckets (above), so a
+# record is written once. The plan identity's read of the records (a
+# pull-request build against a hotfix line previews what each environment's
+# release check will say to the line's next release, as that environment's
+# plan identity) is a binding of the same policy.
+
+# The deploy identity may act as the apply identity: a release's tag build
+# applies the environment's application stack (plan, tests, apply, as the
+# apply identity) after the image build and before the migrations, and in tst
+# the pull-request build applies the application's pull-request stack (its own
+# state prefix, short names) before it deploys into it, and destroys it on
+# /gcbrun down or when the pull request closes. The deploy identity itself
+# never applies: everything that touches infrastructure runs as the apply
+# identity.
+resource "google_service_account_iam_member" "deploy_impersonates_apply" {
+  for_each = local.apps
+
+  service_account_id = google_service_account.apply[each.key].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = google_service_account.deploy[each.key].member
+}
+
+# In tst only: the deploy identity may act as itself. Cloud Scheduler runs the
+# application's sweep trigger (tst only) as the deploy identity, and running a
+# trigger whose builds run as a service account needs iam.serviceAccounts.actAs
+# on that account, which no builder role carries. Without it every scheduled
+# sweep was refused (PERMISSION_DENIED, from the first one on 2026-09-27).
+resource "google_service_account_iam_member" "deploy_runs_sweep" {
+  for_each = local.is_tst ? local.apps : toset([])
+
+  service_account_id = google_service_account.deploy[each.key].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = google_service_account.deploy[each.key].member
+}
+
+# The next environment's deploy identities read this environment's deployment
+# records (that environment's pipeline admits a release only after a live
+# record of it exists here: the record gate) through a binding of the records
+# bucket's policy (records.tf), from local.next_deploy_members.
+
+# ---------------------------------------------------------------------------
+# Application plan identity
+#
+# A pull-request build plans the application's stack for every environment, so
+# the plan a reviewer approves is the plan of each environment, and it does so
+# as that environment's plan identity: a reader. On the project it holds the
+# custom role applicationPlanReader (the reads of the resource types the stack
+# declares, and nothing of their data; locals.tf) beside roles/iam.securityReviewer
+# for the IAM policies the stack's grants are refreshed through; on the state
+# bucket, the list and a read of
+# the application's own state prefix and of the upstream states, the same
+# prefixes the apply identity reads, and no write (the plan runs without the
+# state lock). tst's deploy identity of the same application may impersonate
+# it, since tst's Cloud Build runs the pull-request builds; nothing else may.
+# ---------------------------------------------------------------------------
+
+resource "google_project_iam_member" "plan" {
+  for_each = local.plan_grants
+
+  project = local.project_id
+  role    = each.value.role
+  member  = google_service_account.plan[each.value.app].member
+}
+
+# On the environment's own instance, the plan identity reads the application's
+# database, its grants and its backup schedules with the organization's
+# spannerPlanReader role; on the shared instance the same grant is 2-spn's,
+# from its database_planners.
+resource "google_spanner_instance_iam_member" "plan_spanner_reader" {
+  for_each = { for app in var.applications : app => app if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = local.org.spanner_plan_reader_role
+  member   = google_service_account.plan[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "plan_state_list" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.legacyBucketReader"
+  member = google_service_account.plan[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "plan_state_read" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.plan[each.key].member
+
+  condition {
+    title       = "${local.name}-${each.key}-plan-state"
+    description = "The application's own state prefix in ${var.environment} and the upstream states its stack reads."
+    expression  = join(" || ", concat(["resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/3-app/${each.key}/${var.environment}/\")"], [for p in local.upstream_state_prefixes : "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/${p}/\")"]))
+  }
+}
+
+resource "google_service_account_iam_member" "tst_deploy_impersonates_plan" {
+  for_each = local.tst_deploy_members
+
+  service_account_id = google_service_account.plan[each.key].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = each.value
+}
+
+# Accessor on the named build-time secrets only (var.build_time_secrets),
+# never on a runtime secret: those are read by the runtime identities, which
+# the application stack grants. Empty by default.
+resource "google_secret_manager_secret_iam_member" "deploy_build_secrets" {
+  for_each = local.build_secret_grants
+
+  project   = local.project_id
+  secret_id = each.value.secret
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.deploy[each.value.app].member
+}
+
+# The deploy identity holds nothing on a Spanner instance: pull-request
+# databases are created and dropped by the pull-request stack, which runs as
+# the apply identity (above), and its one other touch of a database, the
+# migrations it runs on the build worker, is through database admin on the
+# application's own database, a member of that database's policy the
+# application's stack grants.
+
+# Service Account User on the application's runtime identities is granted in
+# the application's stack, where those identities are created: the deploy identity may act
+# as this application's services and jobs and no other's.
+
+# The application apply identity binds the public-invoker tag to its own Cloud
+# Run services, which is what lets it grant allUsers roles/run.invoker there
+# under the environment folder's domain policy. tagUser on the value is 1-org's
+# grant, where the tag is owned (its public-invokers.auto.tfvars names this
+# identity), since setting the value's policy is the tag owner's right.
+
+# The people who own the secret values hold no standing grant: a member of the
+# environment's team group asks for the secret operator entitlement
+# (team-group.tf) for the time it takes to create a container ahead of the
+# release that first reads it (bedrock secret add) and to add a version.

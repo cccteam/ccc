@@ -1,0 +1,299 @@
+version: '2'
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - funlen
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - tparallel
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+    - wrapcheck
+  settings:
+    cyclop:
+      max-complexity: 25
+    depguard:
+      rules:
+        main:
+          files:
+            - $all
+          allow:
+            - $gostd
+            - github.com/cccteam
+            - github.com/go-playground/errors/v5
+            - github.com/google/go-cmp
+            - github.com/spf13/cobra
+            - github.com/spf13/pflag
+            # domain add asks Cloud Domains (the client, with its option package for the
+            # quota project) and edits the placement with the HCL library and its value type.
+            - cloud.google.com/go/domains
+            # deploy record writes the deployment record to the records bucket.
+            - cloud.google.com/go/storage
+            # deploy resolve reads the build and mints its GitHub token through the Cloud
+            # Build REST API with the process's default credentials.
+            - golang.org/x/oauth2/google
+            - google.golang.org/api/option
+            # The tests of a stack's plan read a secret version's state as the identity
+            # the plan ran as, impersonated with the deploy identity's credentials.
+            - google.golang.org/api/impersonate
+            # A restore run deletes a Firestore database's documents through the Firestore
+            # REST API as the apply identity, impersonated the same way; the token source
+            # becomes the HTTP client that calls it.
+            - golang.org/x/oauth2
+            - github.com/hashicorp/hcl/v2
+            - github.com/zclconf/go-cty
+            # secret pin asks Secret Manager whether the version it pins exists and is
+            # enabled, through the same option package for the quota project, and lists
+            # the containers and versions to choose from; it finds the environment
+            # project by its labels through Cloud Resource Manager. Both clients page
+            # their answers through the iterator package.
+            - cloud.google.com/go/secretmanager
+            # org check lists the people holding roles/owner on the environment projects:
+            # it reads each project's IAM policy through the Cloud Resource Manager
+            # client, whose request and policy types are the IAM API's.
+            - cloud.google.com/go/iam/apiv1/iampb
+            - cloud.google.com/go/resourcemanager
+            - google.golang.org/api/iterator
+            # org preflight asks which of the bootstrap administrator's permissions the
+            # caller holds: on the organization through the Cloud Resource Manager client
+            # above, on the billing account through Cloud Billing's REST client.
+            - google.golang.org/api/cloudbilling
+            # org check lists the API keys of the environment projects through the API
+            # Keys REST client, naming each key that carries no API restriction.
+            - google.golang.org/api/apikeys
+            # In the application layout the application is named by the module at the
+            # repository root, read from its go.mod with the same parser impulse's
+            # reader uses.
+            - golang.org/x/mod/modfile
+            # The tool's own version: upgrade and the pin check tell a release (v0.4.0)
+            # from the pseudo-version Go stamps on a build from a checkout.
+            - golang.org/x/mod/module
+            - golang.org/x/mod/semver
+            # secret add tells a container Secret Manager does not know (NotFound, the
+            # gRPC status of the client's error) from a refusal, and asks for the value at
+            # the terminal without echo.
+            - google.golang.org/grpc/codes
+            - google.golang.org/grpc/status
+            - golang.org/x/term
+            # domain check reads the apps domain's zone and its records through the Cloud
+            # DNS API (a 404 from it, through googleapi's error, is a zone not made yet),
+            # and tells a domain that can be registered from a label of one by the public
+            # suffix list.
+            - google.golang.org/api/dns/v1
+            - google.golang.org/api/googleapi
+            - golang.org/x/net/publicsuffix
+    exhaustive:
+      default-signifies-exhaustive: true
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      settings:
+        hugeParam:
+          # deps, the command tree's seams, is passed by value on purpose: one copy per
+          # command, never mutated. It holds fourteen fields, 128 bytes.
+          sizeThreshold: 160
+    gocyclo:
+      min-complexity: 25
+    godox:
+      keywords:
+        - TODO
+        - BUG
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 10
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+        use-field-name: true
+    wrapcheck:
+      # Errors from the tool's own packages and from impulse's reader carry their own
+      # context; wrapping them again would only prefix the user-facing message.
+      ignore-package-globs:
+        - github.com/cccteam/ccc/bedrock/*
+        - github.com/cccteam/ccc/impulse/*
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .Cause(
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - funlen
+          - gochecknoglobals
+          - gochecknoinits
+          - goconst
+          - gocyclo
+          - mnd
+          - nlreturn
+          - scopelint
+          - gocognit
+          - cyclop
+          - nestif
+          - prealloc
+        path: _test\.go
+      # render writes a stack a person applies and reads: 0755 directories and 0644
+      # files are the conventional modes, not a leak. Writes go through an os.Root.
+      - linters:
+          - gosec
+        path: internal/render/render\.go
+        text: G30[16]
+      # git names a blob by the SHA-1 of its content; the migration guard computes it to
+      # compare a file with the one the default branch holds, which is naming, not
+      # cryptography.
+      - linters:
+          - gosec
+        path: internal/migration/sequence\.go
+        text: G(401|505)
+      # upgrade rewrites the placement, a file of the repository a person reads: 0644.
+      - linters:
+          - gosec
+        path: internal/derive/placement\.go
+        text: G306
+      # The role constants name what a variable is for; the one named after the
+      # admin credentials holds the words, not a credential.
+      - linters:
+          - gosec
+        path: internal/derive/derive\.go
+        text: G101
+      # Tests edit copies of the committed stack under their own temporary directory,
+      # and build git repositories there for the migration renumber.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G(703|204)
+      # The migration renumber asks git about the repository it runs in (the default
+      # branch's tree, the tracked files) and moves tracked files with git mv: running
+      # git with the repository's own paths is the command's purpose.
+      - linters:
+          - gosec
+        path: internal/migration/git\.go
+        text: G204
+      - linters:
+          - gosec
+        path: internal/gitcmd/gitcmd\.go
+        text: G204
+      # deploy resolve reads the build's id, project and location from the process
+      # environment, as the pipeline sets them; its command test sets them with
+      # t.Setenv, which forbids t.Parallel.
+      - linters:
+          - paralleltest
+        path: internal/cli/cli_test\.go
+        text: TestDeployResolve
+      # upgrade writes a bedrock binary and then runs it. When a parallel test forks in
+      # between, the child holds the new file open until it execs, and running the binary
+      # fails with "text file busy" (ETXTBSY, golang/go#22315). The upgrade test runs
+      # alone, before the parallel tests resume, so no fork can come between.
+      - linters:
+          - paralleltest
+        path: internal/cli/upgrade_test\.go
+        text: TestUpgrade
+      # The GitHub API's JSON is snake_case, and so is the plan tofu show -json writes;
+      # the client, its stand-in, the release listing and the plan guard write the wire
+      # names as they are defined.
+      - linters:
+          - tagliatelle
+        path: internal/(github/|release/|deploy/guardplan\.go)
+      # tokenEnv names the variable a token is read from; it holds no token.
+      - linters:
+          - gosec
+        path: internal/(github/github|release/release|deploy/talk)\.go
+        text: G101
+      # release fetches the tool's own binary: its directory and the file itself take
+      # the conventional modes of a program (0755), not a leak.
+      - linters:
+          - gosec
+        path: internal/release/release\.go
+        text: G30[12]
+      # The deploy steps run the programs they drive (tofu for a pull request's stack,
+      # docker for the image build, bash for an application's hook script), with
+      # arguments the step builds: running them is the runner's purpose.
+      - linters:
+          - gosec
+        path: internal/deploy/exec\.go
+        text: G204
+      # upgrade runs the bedrock it fetched and verified, with the render's own paths.
+      - linters:
+          - gosec
+        path: internal/cli/upgrade\.go
+        text: G204
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

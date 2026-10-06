@@ -1,0 +1,426 @@
+# {{.App}}'s deploy pipeline: the Cloud Build steps that take one commit into one environment,
+# in the sequence CCC's deployments use. Rendered by bedrock from its pipeline template and
+# owned by it: bedrock render rewrites this file and bedrock check compares it with the code,
+# so a change belongs in bedrock, never here.
+#
+# Every step but the first runs one bedrock command. The first gets the bedrock the placement
+# pins: a release's binary, downloaded and verified against its checksum, or a commit, built
+# with go install and verified by Go's checksum database. Each step after it runs that bedrock
+# in the image whose tool it drives (gcloud's for most, OpenTofu's for the pull request's
+# stack, docker's for the image build). The steps share the workspace, which is the checkout:
+# resolve writes the facts (environment.sh) and the build (build.json), and each step reads
+# them, does one thing, and appends what it learned. No step after the first installs
+# anything. What each command does in full: bedrock deploy <command> --help.
+#
+#   FetchBedrock              the pinned bedrock: a release verified against its checksum, or a commit built with go install
+#   ResolveDeploymentTarget   what is deployed and where (deploy resolve)
+#   ValidateRelease           whether this release may deploy here, and whether it waits for the maintenance window (deploy validate-release)
+#   GuardMigrations           the migrations are one sequence, unchanged once committed (deploy guard-migrations)
+#   PlanEnvironments          a pull request's preview: the stack planned and tested for every environment, as each one's plan identity (deploy plan-environments)
+#   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
+#   CheckRelease              a release already built from this commit is reused (deploy check-release)
+#   BuildImage                one image per environment, built fresh from the commit over the registry's dependency caches and pushed (deploy build-image)
+#   MaintenanceOnRestore      a restore run's maintenance revision, before its database is replaced (deploy maintenance on)
+#   *EnvironmentStack         a tag build's apply of the environment's stack: planned, tested and applied as the apply identity (deploy stack)
+{{- if .Jobs}}
+#   CreateJobs                this build's job for the job process, from the stack's template job on this image; not run (deploy jobs)
+{{- end}}
+#   PreflightMigrations       a window release's migrate command run once with -version before the wait: the command, its configuration and the database answer with nothing changed (deploy migrate --preflight)
+#   WaitForWindow             a window release's wait, inside the run, until the environment's maintenance window opens (deploy window)
+#   MaintenanceOnWindow       a breaking release's maintenance revision, once the window is open (deploy maintenance on --window)
+#   RunMigrations             the release's migrate command, taken out of the image, run once on this worker as the deploy identity (deploy migrate)
+#   DeployServiceNoTraffic    a new revision in every region, receiving no traffic yet (deploy service)
+#   ShiftTraffic              every region to 100 percent on its new revision (deploy shift-traffic)
+#   MaintenanceOff            the task queue resumed against the release, when the run was in maintenance (deploy maintenance off)
+{{- if .Jobs}}
+#   SweepJobs                 the builds' jobs nothing runs any more are deleted (deploy sweep-jobs)
+{{- end}}
+#   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
+#   TalkBack                  the pull request is told what the build did (deploy talk-back)
+#   Hook*                     the application's own hooks, one step per stage it implements (deploy hook <stage>)
+#
+# The revision template (variables, secret mounts, identity, scaling) belongs to the
+# application's infrastructure layer; a deploy changes the image and stamps its labels,
+# nothing else, so a later apply of that layer and a deploy never fight over the same fields.
+#
+# Two kinds of trigger run it (README.md, "Deploying"): a version trigger per environment, on
+# a release tag; and the pull-request trigger for {{.Integration}}, started by a "/gcbrun" comment,
+# which stands the pull request's own environment up (or down, on "/gcbrun down").
+#
+# The steps run in the order written, a step with no waitFor waiting for every step before it,
+# except for two lanes that run side by side: the pull request's stack (its plan, guard and
+# apply) and the image (the release check and the build), joined again at the restore run's
+# maintenance step. A window release (one that turns away the release the environment runs,
+# or any release where the environment's setting says all) builds its image and applies its stack,
+# then waits inside the run for the environment's maintenance window; the window holds only
+# maintenance, the migrations and the rollout.
+
+steps:
+{{- if .CommitPin}}
+  # The bedrock every later step runs: the commit the placement pins (bedrockVersion, a
+  # commit pin), built with go install in the Go image pinned by digest into the home
+  # directory the steps share. Go's checksum database verifies the module, and bedrock's
+  # go.sum its dependencies, in place of a checksum in the placement. The one place a
+  # bedrock version appears; bedrock upgrade moves it.
+{{- else}}
+  # The bedrock every later step runs: the release the placement pins (bedrockVersion),
+  # downloaded from its GitHub Release into the home directory the steps share and verified
+  # against the placement's checksum (bedrockSha256) before anything runs it. The one place
+  # a bedrock version appears; bedrock upgrade moves it.
+{{- end}}
+{{.FetchBedrockStep}}
+  # What is deployed and where: the trigger's kind, the environment, the /gcbrun comment's
+  # options, the image and its tags. Writes environment.sh, build.json and build-args.txt.
+  - id: ResolveDeploymentTarget
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, resolve]
+    env: ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
+    timeout: 300s
+
+  # A tag build: the tag is a release cut by the release app, its commit is on the
+  # default branch (or tips its hotfix line), and the previous environment runs it live.
+  # Then the maintenance window: the release is breaking when the oldest release its
+  # outlets still answer (the release file beside the generated router) is newer than the
+  # one this environment runs, and a breaking release, or any release where the setting
+  # says all, waits for the environment's window; what can never proceed (production
+  # without a setting, an opening further away than the build can wait) is refused here.
+  # A pull-request build previews both: from each environment's live record read as its
+  # plan identity, where a hotfix line's next release will be refused, and which
+  # environments will hold the release for their window.
+  - id: ValidateRelease
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, validate-release{{if .RouterDir}}, --router-dir, {{.RouterDir}}{{end}}]
+    timeout: 300s
+
+  # The schema migrations and the seed are each one contiguous sequence, and in a
+  # pull-request build unchanged against the default branch; a refusal names the fix.
+  - id: GuardMigrations
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, guard-migrations]
+    timeout: 300s
+
+  # A pull-request build only: the stack planned for every environment, each as that
+  # environment's plan identity (a reader, without the state lock), with the tests a tag
+  # build runs before its apply; the summaries go on the pull request, and a failing plan
+  # or test fails the build. The plan the reviewer approves is each environment's.
+  - id: PlanEnvironments
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, plan-environments]
+    timeout: 1800s
+    waitFor: [GuardMigrations]
+
+  # A pull-request build only: the stack applied into the pull request's own prefix as the
+  # apply identity. The plan is saved, the guard lets only the pull request's own resources
+  # through, and the apply applies exactly that plan (a destroy on /gcbrun down).
+  - id: PlanPullRequestStack
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-stack, plan]
+    timeout: 900s
+    waitFor: [PlanEnvironments]
+
+  - id: GuardPullRequestPlan
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-stack, guard]
+    timeout: 300s
+    waitFor: [PlanPullRequestStack]
+
+  - id: ApplyPullRequestStack
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-stack, apply]
+    timeout: 1800s
+    waitFor: [GuardPullRequestPlan]
+{{- if .HasHook "after-down"}}
+
+  # The application's hook after a teardown: {{.HookSource "after-down"}}.
+  - id: HookAfterDown
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, after-down]
+    timeout: 900s
+    waitFor: [ApplyPullRequestStack]
+{{- end}}
+
+  # The image lane runs beside the pull request's stack: from the pull request's plan on
+  # (which marks a teardown, so no image is built for one), the release check and the
+  # image build take their time while the guard and the apply take theirs, and the
+  # maintenance step waits for both lanes. In a tag build the stack steps say so and end
+  # at once, so the lane costs nothing there.
+  # Whether the image build runs: a release already built from this commit is reused, and
+  # a release tag naming another build is refused.
+  - id: CheckRelease
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, check-release]
+    timeout: 300s
+    waitFor: [PlanPullRequestStack]
+{{- if .HasHook "before-build"}}
+
+  # The application's hook before the image build: {{.HookSource "before-build"}}. Build
+  # arguments it appends to build-args.txt (NAME=value lines) reach the build.
+  - id: HookBeforeBuild
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, before-build]
+    timeout: 900s
+    waitFor: [CheckRelease]
+{{- end}}
+
+  # The image, built from the commit's Dockerfile with the declared build arguments and
+  # build secrets, pushed under <release>-<env> and <commit>-<env>. The Dockerfile's two
+  # dependency stages are built first and their layers alone exported to the registry's
+  # cache (cache-<commit>-go, cache-<commit>-web, written once per commit and read by the
+  # builds after: this commit's and the live release's); the compile and the bundles are
+  # built fresh in every environment and never exported. The migrate command (/migrate) is
+  # taken out of the image for the migration steps after it{{if .HookProgram}}, and the hooks
+  # program (/hooks) for the hook steps{{end}}.
+{{- if .BuildArguments}}
+  # The build arguments placement.json declares are values the stack makes, and a pull
+  # request's own stack makes its own: in a pull-request build the image waits for that
+  # stack's apply and carries its values ({{.BuildArgumentList}}).
+{{- end}}
+  - id: BuildImage
+    name: {{.DockerImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, build-image{{if .HookProgram}}, --hooks{{end}}]
+    timeout: 1800s
+    waitFor: [{{if .HasHook "before-build"}}HookBeforeBuild{{else}}CheckRelease{{end}}{{if .BuildArguments}}, ApplyPullRequestStack{{end}}]
+
+  # A run that replaces the database (a restore run) puts the application into maintenance
+  # first: the release's image starts as a revision with the maintenance variable set, in
+  # every region, is probed for its 503 with the marker, and takes all traffic; the task queue
+  # is paused (and purged, since its tasks refer to rows about to go), the serving build's
+  # job executions are canceled, and the old revision's requests in flight finish. Any
+  # other run keeps the application serving, and the step does nothing; a breaking release
+  # goes into maintenance after the wait for its window (MaintenanceOnWindow). A restore
+  # from production's backup (the staging rehearsal, bedrock restore stg) first waits here
+  # for that backup to be READY, and a backup Spanner is still taking (the release before
+  # this one deployed minutes ago) takes twenty to thirty minutes, so the timeout covers a
+  # whole backup; a run that waits for nothing is done in a minute.
+  - id: MaintenanceOnRestore
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, maintenance, "on"]
+    timeout: 3600s
+    waitFor: [BuildImage, {{if .HasHook "after-down"}}HookAfterDown{{else}}ApplyPullRequestStack{{end}}]
+
+  # A tag build only: the environment's stack planned and applied as the apply identity,
+  # after the image build (a failed build changes no infrastructure) and before the
+  # migrations (what they need, the database, the deploy identity's grant on it, a bucket,
+  # exists first, and the stack's substitutions output then carries the variables the
+  # migrate command runs with). The plan is this build's own, summarized in the log and
+  # the deployment record;
+  # the tests run before the apply, and a failure leaves the stack unapplied.
+  # A restore run waits in this step for Spanner to restore the database from the backup,
+  # which takes as long as the backup is large (a quarter of an hour for a database with
+  # almost nothing in it); a plan without a restore takes seconds, so the long timeout costs
+  # nothing, and the build's own timeout stays the cap.
+  - id: PlanEnvironmentStack
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, stack, plan]
+    timeout: 7200s
+
+  - id: ApplyEnvironmentStack
+    name: {{.OpenTofuImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, stack, apply]
+    timeout: 1800s
+
+{{- if .Jobs}}
+
+  # This build's job for the job process ({{.Jobs.Dir}}), made from the stack's template job
+  # on this image and named after the version; only the running service starts it. Made
+  # before the migrations: a failure here leaves the database untouched.
+  - id: CreateJobs
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, jobs]
+    timeout: 600s
+{{- end}}
+
+  # A window release only: the release's migrate command, taken out of the image, run once
+  # with -version on this worker before the wait, so the command starts, its configuration
+  # loads and the database answers before the window is entered; nothing is applied. Any
+  # other run says so and does nothing.
+  - id: PreflightMigrations
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, migrate, --preflight{{if .Version}}, --version-variable, {{.Version.Name}}{{end}}]
+    timeout: 1200s
+
+  # A window release only: the wait, inside the run, until the environment's maintenance
+  # window opens (the checkout's placement, "maintenance"), with the image built and the
+  # stack applied, so the window holds only maintenance, the migrations and the rollout. The
+  # step prints when the run proceeds; an opening further away than the build can wait
+  # stops the run here with nothing changed. A run in maintenance already passes at once.
+  # Its timeout is the build's: the wait is bounded by the build's remaining time.
+  - id: WaitForWindow
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, window]
+    timeout: {{.PipelineTimeout}}
+
+  # A breaking release, once its window is open: the maintenance revision, as the restore
+  # run's above (probed, then all traffic, the queue paused, the executions canceled, the
+  # requests in flight finished), after a second look at the window, which must still be
+  # open. An ordinary release inside a window deploys the rolling way and the step does
+  # nothing; a run in maintenance already has nothing more to start.
+  - id: MaintenanceOnWindow
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, maintenance, "on", --window]
+    timeout: 900s
+
+  # In {{.ReleaseBackupsProse}} (placement.json's releaseBackups), a release that applies
+  # its migrations first takes a backup of the database as of this moment, the cut, kept
+  # fourteen days, as the apply identity, and goes on without waiting for it: what bedrock
+  # restore --before returns the database to when the release goes wrong, into the
+  # database's next generation. A backup that cannot start stops the run here, before any
+  # migration ran. Any other run (another environment, no migration, a restore, a rollback,
+  # which changes nothing of the database) says so and does nothing.
+  - id: StartReleaseBackup
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, backup]
+    timeout: 600s
+{{- if .HasHook "before-migrate"}}
+
+  # The application's hook before the migrations: {{.HookSource "before-migrate"}}.
+  - id: HookBeforeMigrate
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, before-migrate{{if .HookByProgram "before-migrate"}}, --program{{end}}]
+    timeout: 900s
+{{- end}}
+
+  # The release's migrate command, taken out of the image by BuildImage, run once on this
+  # worker as the deploy identity with the variables the stack derives for it (its lines
+  # are this build's log); with the seed in a pull request and in the environments the
+  # seed list of the placement in this checkout names.
+  - id: RunMigrations
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, migrate{{if .Version}}, --version-variable, {{.Version.Name}}{{end}}]
+    timeout: 2400s
+{{- if .HasHook "after-migrate"}}
+
+  # The application's hook after the migrations: {{.HookSource "after-migrate"}}.
+  - id: HookAfterMigrate
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, after-migrate{{if .HookByProgram "after-migrate"}}, --program{{end}}]
+    timeout: 900s
+{{- end}}
+
+  # A new revision in every region, receiving no traffic yet, tagged "next" (or the pull
+  # request's tag) so it can be reached before traffic moves.
+  - id: DeployServiceNoTraffic
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, service]
+    timeout: 1200s
+{{- if .HasHook "before-traffic"}}
+
+  # The application's hook before traffic moves: {{.HookSource "before-traffic"}}. NEXT_URL
+  # and REVISION_URLS reach the new revision while the old one still serves; a failing hook
+  # stops the build with the old revision serving.
+  - id: HookBeforeTraffic
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, before-traffic{{if .HookByProgram "before-traffic"}}, --program{{end}}]
+    timeout: 900s
+{{- end}}
+
+  # Every region to 100 percent on its new revision; a pull request's revision stays under
+  # its tag.
+  - id: ShiftTraffic
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, shift-traffic]
+    timeout: 600s
+
+  # Maintenance over, when the run was in it: the task queue is resumed against the new
+  # release. The maintenance revisions stay, with no traffic, as any old revision does. A
+  # run that was not in maintenance still resumes a queue an earlier run's maintenance
+  # left paused (a restore run that failed after maintenance on): the release serves now.
+  # A pull-request build leaves the queue as it is: it is the environment's, not the pull
+  # request's, and a restore of the environment may be in maintenance meanwhile.
+  - id: MaintenanceOff
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, maintenance, "off"]
+    timeout: 300s
+{{- if .Jobs}}
+
+  # The builds' jobs nothing runs any more are deleted: a job of the job process whose
+  # version no revision in any region carries. A job with an execution running, or made in
+  # the last three hours, stays; the template always stays.
+  - id: SweepJobs
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, sweep-jobs]
+    timeout: 600s
+{{- end}}
+{{- if .HasHook "after-traffic"}}
+
+  # The application's hook after traffic moved: {{.HookSource "after-traffic"}}. A failing
+  # hook fails the build before the record is written, so the gate never sees the release.
+  - id: HookAfterTraffic
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, hook, after-traffic{{if .HookByProgram "after-traffic"}}, --program{{end}}]
+    timeout: 900s
+{{- end}}
+
+  # The record of what now runs, in the records bucket; the next environment's gate reads it.
+  - id: WriteDeploymentRecord
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, record]
+    timeout: 300s
+
+  # A pull-request build only, as the deployer app: a GitHub deployment carrying the
+  # environment's URL and a comment with the release and the database mode.
+  - id: TalkBack
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, talk-back]
+    timeout: 120s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+{{- if .BuildMachine}}
+  # The placement's buildMachine. The whole run is on it, a window release's wait
+  # included: Cloud Build has no per-step machine. Its vCPUs divide the project's CPU
+  # quota for the default pool into the builds the project runs at once.
+  machineType: {{.BuildMachine}}
+{{- end}}
+  # The bedrock deploy steps read the build's substitutions through the API, so this file
+  # names none of the ones the trigger passes; without this, Cloud Build refuses a build
+  # for a substitution key the file does not mention (the operations workflow's
+  # _RESTORE, _REQUESTER and _MIGRATE_* among them).
+  substitutionOption: ALLOW_LOOSE
+
+# The whole run: Cloud Build's ceiling, so that a window release may wait inside the run
+# for the environment's maintenance window (the approver approves by day, the run proceeds
+# at night on its own). Every step keeps its own timeout, so a hung step still fails on
+# time and only the wait uses the headroom; a build that waits for no window ends when its
+# steps do.
+timeout: {{.PipelineTimeout}}
+
+# Defaults a trigger may override. _PR_NUMBER is not one of them: the pull-request
+# event sets it, and a default here would win over the event and leave it empty
+# (the first triggered pull-request build, 2026-09-26). The version trigger passes
+# _PR_NUMBER as the empty string itself. Everything else (the target: _ENV, _APP,
+# _PROJECT, the services and the job, the registry, the records bucket, the
+# connection) comes from the trigger, which the application's infrastructure layer
+# creates with those values; every build starts from a trigger.
+substitutions:
+  _DEFAULT_BRANCH: master

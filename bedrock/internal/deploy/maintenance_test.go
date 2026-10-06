@@ -1,0 +1,534 @@
+package deploy
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/go-cmp/cmp"
+
+	"github.com/cccteam/ccc/bedrock/internal/derive"
+)
+
+// fakeTasks records the queue verbs it was asked for.
+type fakeTasks struct {
+	verbs []string
+	fail  error
+	// state is what State answers; RUNNING when unset.
+	state string
+}
+
+func (f *fakeTasks) State(_ context.Context, queue string) (string, error) {
+	f.verbs = append(f.verbs, "state "+shortName(queue))
+	if f.state == "" {
+		return "RUNNING", nil
+	}
+
+	return f.state, nil
+}
+
+func (f *fakeTasks) open(context.Context) (Tasks, error) {
+	return f, nil
+}
+
+func (f *fakeTasks) Pause(_ context.Context, queue string) (string, error) {
+	return f.verb("pause", queue)
+}
+
+func (f *fakeTasks) Purge(_ context.Context, queue string) (string, error) {
+	return f.verb("purge", queue)
+}
+
+func (f *fakeTasks) Resume(_ context.Context, queue string) (string, error) {
+	return f.verb("resume", queue)
+}
+
+func (f *fakeTasks) verb(verb, queue string) (string, error) {
+	if f.fail != nil {
+		return "", f.fail
+	}
+	f.verbs = append(f.verbs, verb+" "+shortName(queue))
+	if verb == "resume" {
+		return "RUNNING", nil
+	}
+
+	return "PAUSED", nil
+}
+
+// fakeMetrics answers the active instances per revision: the counts, in order, for every
+// read of a revision; a revision it does not list reports no point.
+type fakeMetrics struct {
+	counts map[string][]int
+	reads  int
+	fail   error
+}
+
+func (f *fakeMetrics) open(context.Context) (Metrics, error) {
+	return f, nil
+}
+
+func (f *fakeMetrics) ActiveInstances(_ context.Context, _, revision string, _ time.Duration) (count int, known bool, err error) {
+	f.reads++
+	if f.fail != nil {
+		return 0, false, f.fail
+	}
+	counts, ok := f.counts[revision]
+	if !ok || len(counts) == 0 {
+		return 0, false, nil
+	}
+	count = counts[0]
+	if len(counts) > 1 {
+		f.counts[revision] = counts[1:]
+	}
+
+	return count, true, nil
+}
+
+// probeAnswers is an HTTP transport answering the probe URL with a status and a marker,
+// in order; the last answer repeats.
+type probeAnswers struct {
+	answers []probeAnswer
+	asked   int
+}
+
+type probeAnswer struct {
+	status int
+	marker string
+}
+
+func (p *probeAnswers) RoundTrip(req *http.Request) (*http.Response, error) {
+	a := p.answers[min(p.asked, len(p.answers)-1)]
+	p.asked++
+	resp := &http.Response{StatusCode: a.status, Header: http.Header{}, Body: http.NoBody, Request: req}
+	if a.marker != "" {
+		resp.Header.Set(maintenanceHeader, a.marker)
+	}
+
+	return resp, nil
+}
+
+// noSleep is the clients' waiting in tests: none.
+func noSleep(context.Context, time.Duration) error {
+	return nil
+}
+
+func TestMaintenanceOn(t *testing.T) {
+	t.Parallel()
+
+	const (
+		central     = "projects/tst-project/locations/us-central1/services/harbor-app"
+		jobTemplate = "projects/tst-project/locations/us-central1/jobs/harbor-jobs"
+		queue       = "projects/tst-project/locations/us-central1/queues/harbor-tasks"
+		restoring   = "export SKIP_DEPLOY=\"\"\nexport SERVICES=\"us-central1=harbor-app\"\nexport IMAGE=\"reg/harbor\"\nexport IMAGE_DIGEST=\"sha256:abc\"\nexport VERSION=\"v0.2.2\"\nexport RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n"
+		serving     = "export SKIP_DEPLOY=\"\"\nexport SERVICES=\"us-central1=harbor-app\"\nexport IMAGE=\"reg/harbor\"\nexport IMAGE_DIGEST=\"sha256:abc\"\nexport VERSION=\"v0.2.2\"\nexport RESTORE=\"\"\n"
+		live        = `{"app":"harbor","env":"tst","version":"v0.2.1","status":"live","build":"b-0","timestamp":"2026-10-01T10:00:00Z"}`
+	)
+	subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_JOBS_JOB": "us-central1=harbor-jobs", "_TASKS_QUEUE": queue}
+	running := map[string]any{keyName: jobTemplate + "-v0-2-1/executions/harbor-jobs-v0-2-1-abc", "startTime": "2026-10-01T10:00:00Z"}
+	// production is a restore from production's backup, whose record names production's live database.
+	production := strings.Replace(restoring, "empty", "production-backup", 1) + "export RESTORE_SOURCE_DATABASE=\"projects/p-spn/instances/shared-spanner/databases/p-prd-gbl-harbor-db-3\"\n"
+	ended := map[string]any{keyName: jobTemplate + "-v0-2-1/executions/harbor-jobs-v0-2-1-def", "completionTime": "2026-10-01T10:01:00Z"}
+	tests := []struct {
+		name    string
+		env     string
+		subs    map[string]string
+		answers []probeAnswer
+		// executions are the serving build's job executions; records the live records.
+		executions []map[string]any
+		records    map[string]string
+		counts     map[string][]int
+		wantOut    []string
+		// wantEnv are the maintenance facts the step leaves; wantVerbs the queue verbs, in
+		// order; wantCanceled the executions canceled; wantMaintenanceVar says the new
+		// revision carries the variable set to 1 and the traffic moved to it.
+		wantEnv            []string
+		wantVerbs          []string
+		wantCanceled       []string
+		wantMaintenanceVar bool
+		wantErr            string
+		// backup is the one backup Spanner holds; creating how many reads of it answer
+		// CREATING before READY.
+		backup   *Backup
+		creating int
+	}{
+		{
+			name:    "a run without a restore keeps the application serving",
+			env:     serving,
+			subs:    subs,
+			wantOut: []string{"No maintenance: this run keeps the application serving"},
+		},
+		{
+			name:       "a restore run starts the maintenance revision, probes it, moves traffic, pauses and purges the queue, cancels the running execution and waits out the old revision",
+			env:        restoring,
+			subs:       subs,
+			answers:    []probeAnswer{{status: http.StatusOK}, {status: http.StatusServiceUnavailable, marker: "1"}},
+			executions: []map[string]any{running, ended},
+			records:    map[string]string{"gs://tst-records/harbor/tst/v0.2.1/b-0.json": live, "gs://tst-records/harbor/tst/pr5-abc0123/b-8.json": strings.NewReplacer("v0.2.1", "pr5@abc0123", "b-0", "b-8", "10:00:00Z", "11:00:00Z").Replace(live)},
+			counts:     map[string][]int{"harbor-app-00007-prev": {2, 0}},
+			wantOut: []string{
+				"=== Maintenance on: tst's database is replaced (empty) before v0.2.2 deploys",
+				"Maintenance revision [harbor-app-00008-new] deployed to [harbor-app] in [us-central1] under the tag [next], with APP_MAINTENANCE=1 and no traffic.",
+				"Probe passed: https://harbor-tst-next.example.dev/ answered 503 with X-Maintenance: 1 from the maintenance revision.",
+				"Traffic in [us-central1] moved to the maintenance revision",
+				"Queue harbor-tasks paused (PAUSED)",
+				"Queue harbor-tasks purged",
+				"Canceled the running execution harbor-jobs-v0-2-1-abc of v0.2.1's job",
+				"2 active instance(s) still finish requests on the old revision(s); waiting.",
+				"Requests in flight finished: no active instance on the old revision(s)",
+				"Maintenance is on: 1 revision(s) serve the maintenance page",
+			},
+			wantEnv:            []string{"export MAINTENANCE=\"true\"\n", "export MAINTENANCE_QUEUE=\"" + queue + "\"\n", "export MAINTENANCE_PURGED=\"true\"\n", "export MAINTENANCE_CANCELED=\"1\"\n"},
+			wantVerbs:          []string{"pause harbor-tasks", "purge harbor-tasks"},
+			wantCanceled:       []string{jobTemplate + "-v0-2-1/executions/harbor-jobs-v0-2-1-abc"},
+			wantMaintenanceVar: true,
+		},
+		{
+			name:    "a maintenance revision that ignores the variable stops the run before traffic moves",
+			env:     restoring,
+			subs:    subs,
+			answers: []probeAnswer{{status: http.StatusOK}},
+			wantErr: "Build REJECTED: the maintenance revision ignores APP_MAINTENANCE: https://harbor-tst-next.example.dev/ answered 200 with X-Maintenance: \"\" after 3m0s; the application's main does not check maintenance.Requested() before it builds its configuration (impulse check maintenance-switch names the fix). Traffic did not move.",
+		},
+		{
+			name:    "without a queue, a job process or a live record there is nothing to pause or cancel, and no reported instance ends the wait at once",
+			env:     restoring,
+			subs:    map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records"},
+			answers: []probeAnswer{{status: http.StatusServiceUnavailable, marker: "1"}},
+			wantOut: []string{"No task queue to pause: the stack names none (_TASKS_QUEUE).", "No job executions to cancel: the application has no job process (_JOBS_JOB).", "Requests in flight finished: no active instance reported on the old revision(s)"},
+			wantEnv: []string{"export MAINTENANCE=\"true\"\n", "export MAINTENANCE_CANCELED=\"0\"\n"},
+		},
+		{
+			name:     "a restore from production's backup waits for production's newest backup before the maintenance page goes up, and names it for the plan step",
+			env:      production,
+			subs:     map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_APPLY_IDENTITY": "harbor-tofu@tst-project.iam.gserviceaccount.com"},
+			answers:  []probeAnswer{{status: http.StatusServiceUnavailable, marker: "1"}},
+			backup:   &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-harbor-db-3-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
+			creating: 1,
+			wantOut: []string{
+				"Before maintenance: production's newest backup p-prd-gbl-harbor-db-3-20261001 is still being taken; the wait is here, with tst serving.",
+				"Waiting for p-prd-gbl-harbor-db-3-20261001: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.",
+				"Production's backup p-prd-gbl-harbor-db-3-20261001 (data as of 2026-10-01T02:00:00Z) is READY; the plan step restores it.",
+				"=== Maintenance on: tst's database is replaced (production-backup) before v0.2.2 deploys",
+				"Maintenance is on: 1 revision(s) serve the maintenance page",
+			},
+			wantEnv: []string{"export RESTORE_READY_BACKUP=\"projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-harbor-db-3-20261001\"\n", "export MAINTENANCE=\"true\"\n"},
+		},
+		{
+			name:    "a restore from production's backup with no backup at all is refused before anything stops serving",
+			env:     production,
+			subs:    map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_APPLY_IDENTITY": "harbor-tofu@tst-project.iam.gserviceaccount.com"},
+			wantErr: "_RESTORE=production-backup: shared-spanner has no backup of production's database p-prd-gbl-harbor-db-3; tst keeps its database and stays serving",
+		},
+		{
+			name:    "a restore whose record names no database leaves the choice and the wait to the plan step",
+			env:     strings.Replace(restoring, "empty", "production-backup", 1),
+			subs:    map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "COMMIT_SHA": "deadbeef", "REPO_NAME": "harbor", "_HOSTNAME": "harbor-tst.example.dev", "_APP": "harbor", "_RECORDS_BUCKET": "tst-records", "_APPLY_IDENTITY": "harbor-tofu@tst-project.iam.gserviceaccount.com"},
+			answers: []probeAnswer{{status: http.StatusServiceUnavailable, marker: "1"}},
+			wantOut: []string{"Production's record names no database (written before database generations): the plan step reads production's first database from the stack's state and waits for its backup there, if it must.", "Maintenance is on: 1 revision(s) serve the maintenance page"},
+			wantEnv: []string{"export MAINTENANCE=\"true\"\n"},
+		},
+		{
+			name:    "a pull-request build never goes into maintenance",
+			env:     restoring,
+			subs:    map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "_PR_NUMBER": "7"},
+			wantOut: []string{"No maintenance: a pull-request build never goes into maintenance."},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, tt.subs)})
+			resources := map[string]map[string]any{central: serviceDoc(central)}
+			if len(tt.executions) > 0 {
+				resources[jobTemplate+"-v0-2-1"] = map[string]any{keyName: jobTemplate + "-v0-2-1"}
+				for _, e := range tt.executions {
+					resources[text(e, keyName)] = e
+				}
+			}
+			run := newFakeRun(resources)
+			tasks := &fakeTasks{}
+			metrics := &fakeMetrics{counts: tt.counts}
+			store := &memoryStore{objects: map[string]string{}}
+			for p, c := range tt.records {
+				store.objects[p] = c
+			}
+			probe := &probeAnswers{answers: tt.answers}
+			if len(tt.answers) == 0 {
+				probe.answers = []probeAnswer{{status: http.StatusBadGateway}}
+			}
+			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating}
+			clients := &Clients{Run: run.open, Tasks: tasks.open, Metrics: metrics.open, Storage: store.open, SpannerAs: spanner.open, HTTP: &http.Client{Transport: probe}, Sleep: noSleep}
+			var out strings.Builder
+			err := MaintenanceOn(t.Context(), clients, w, false, &out)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("MaintenanceOn() error = %v, want %q", err, tt.wantErr)
+				}
+				if len(run.patches[central]) > 1 {
+					t.Errorf("traffic moved after a failed probe: %d patches", len(run.patches[central]))
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("MaintenanceOn() error = %v; output:\n%s", err, out.String())
+			}
+			containsAll(t, out.String(), tt.wantOut...)
+			if diff := cmp.Diff(tt.wantVerbs, tasks.verbs); diff != "" {
+				t.Errorf("queue verbs (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantCanceled, run.canceled); diff != "" {
+				t.Errorf("canceled (-want +got):\n%s", diff)
+			}
+			if tt.wantMaintenanceVar {
+				template, _ := run.patches[central][0][keyTemplate].(map[string]any)
+				container, err := firstContainer(template)
+				if err != nil {
+					t.Fatal(err)
+				}
+				vars, _ := container["env"].([]any)
+				var value string
+				for _, v := range vars {
+					if m, _ := v.(map[string]any); text(m, keyName) == "APP_MAINTENANCE" {
+						value = text(m, "value")
+					}
+				}
+				if value != "1" {
+					t.Errorf("APP_MAINTENANCE = %q on the maintenance revision, want 1", value)
+				}
+				traffic, _ := run.patches[central][len(run.patches[central])-1][keyTraffic].([]any)
+				if first, _ := traffic[0].(map[string]any); text(first, keyRevision) != "harbor-app-00008-new" || first[keyPercent] != fullTraffic {
+					t.Errorf("traffic after the move = %v", traffic)
+				}
+			}
+			if len(tt.wantEnv) > 0 {
+				data, err := os.ReadFile(filepath.Join(string(w), EnvironmentFile))
+				if err != nil {
+					t.Fatal(err)
+				}
+				containsAll(t, string(data), tt.wantEnv...)
+			}
+		})
+	}
+}
+
+func TestMaintenanceOff(t *testing.T) {
+	t.Parallel()
+
+	const queue = "projects/tst-project/locations/us-central1/queues/harbor-tasks"
+	tests := []struct {
+		name string
+		env  string
+		// queue is the queue the build's stack names (_TASKS_QUEUE); state what it is in.
+		queue string
+		state string
+		// pullRequest is the build's _PR_NUMBER: set, the build is a pull request's.
+		pullRequest string
+		wantOut     []string
+		wantVerbs   []string
+	}{
+		{
+			name:    "a run that was not in maintenance has nothing to end",
+			env:     "export MAINTENANCE=\"\"\nexport VERSION=\"v0.2.2\"\n",
+			wantOut: []string{"No maintenance to end: the application served throughout."},
+		},
+		{
+			name:        "a pull-request build leaves the environment's paused queue alone",
+			env:         "export MAINTENANCE=\"\"\nexport VERSION=\"pr70@a6c3d70\"\n",
+			queue:       queue,
+			state:       "PAUSED",
+			pullRequest: "70",
+			wantOut:     []string{"No maintenance to end: a pull-request build never goes into maintenance, and the environment's queue is left as it is."},
+		},
+		{
+			name:      "a run that was not in maintenance leaves a delivering queue alone",
+			env:       "export MAINTENANCE=\"\"\nexport VERSION=\"v0.2.2\"\n",
+			queue:     queue,
+			wantOut:   []string{"No maintenance to end: the application served throughout."},
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name:      "a run that was not in maintenance resumes a queue an earlier run's maintenance left paused",
+			env:       "export MAINTENANCE=\"\"\nexport VERSION=\"v0.2.4\"\n",
+			queue:     queue,
+			state:     "PAUSED",
+			wantOut:   []string{"Queue harbor-tasks was left paused by an earlier run's maintenance; resumed (RUNNING): tasks are delivered again, to v0.2.4.", "No maintenance to end: the application served throughout."},
+			wantVerbs: []string{"state harbor-tasks", "resume harbor-tasks"},
+		},
+		{
+			name:      "the queue is resumed and maintenance is over",
+			env:       "export MAINTENANCE=\"true\"\nexport MAINTENANCE_QUEUE=\"" + queue + "\"\nexport MAINTENANCE_REVISIONS=\"us-central1=harbor-app-00008-maint\"\nexport VERSION=\"v0.2.2\"\n",
+			wantOut:   []string{"Queue harbor-tasks resumed (RUNNING): tasks are delivered again, to v0.2.2.", "=== Maintenance off: tst serves v0.2.2; the maintenance revision(s) us-central1=harbor-app-00008-maint take no traffic ==="},
+			wantVerbs: []string{"resume harbor-tasks"},
+		},
+		{
+			name:    "without a queue nothing is resumed",
+			env:     "export MAINTENANCE=\"true\"\nexport MAINTENANCE_REVISIONS=\"us-central1=harbor-app-00008-maint\"\nexport VERSION=\"v0.2.2\"\n",
+			wantOut: []string{"=== Maintenance off: tst serves v0.2.2"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst"}
+			if tt.queue != "" {
+				subs["_TASKS_QUEUE"] = tt.queue
+			}
+			if tt.pullRequest != "" {
+				subs["_PR_NUMBER"] = tt.pullRequest
+			}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFor(t, subs)})
+			tasks := &fakeTasks{state: tt.state}
+			var out strings.Builder
+			if err := MaintenanceOff(t.Context(), &Clients{Tasks: tasks.open}, w, &out); err != nil {
+				t.Fatalf("MaintenanceOff() error = %v", err)
+			}
+			containsAll(t, out.String(), tt.wantOut...)
+			if diff := cmp.Diff(tt.wantVerbs, tasks.verbs); diff != "" {
+				t.Errorf("queue verbs (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestEndLeftMaintenance(t *testing.T) {
+	t.Parallel()
+
+	const (
+		service = "projects/tst-project/locations/us-central1/services/harbor-app"
+		queue   = "projects/tst-project/locations/us-central1/queues/harbor-tasks"
+		env     = "export MAINTENANCE_OFF=\"true\"\nexport SKIP_DEPLOY=\"true\"\nexport SERVICES=\"us-central1=harbor-app\"\nexport VERSION=\"v0.2.2\"\n"
+	)
+	maintenanceRevision := func(displaced string) map[string]any {
+		doc := map[string]any{"containers": []any{map[string]any{"env": []any{map[string]any{keyName: derive.MaintenanceVariable, keyValue: maintenanceOn}}}}}
+		if displaced != "" {
+			doc["labels"] = map[string]any{displacedLabel: displaced}
+		}
+
+		return doc
+	}
+	const database = "projects/p-spn/instances/shared-spanner/databases/harbor-db"
+	tests := []struct {
+		name      string
+		resources map[string]map[string]any
+		state     string
+		database  *Database
+		wantOut   []string
+		wantBack  string
+		wantVerbs []string
+		wantErr   string
+	}{
+		{
+			name: "a database still being restored by the canceled run is said, with the backup and the way the release's migrations follow",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision("harbor-app-00007"),
+			},
+			database:  &Database{Name: database, State: "CREATING", RestoredFrom: "projects/p-spn/instances/shared-spanner/backups/prd-harbor-db-pre-v0-2-2-abc"},
+			wantOut:   []string{"The database harbor-db is CREATING (Spanner is restoring it from prd-harbor-db-pre-v0-2-2-abc): the application answers errors until Spanner has finished, about twenty minutes for a restore here, and cannot start on it until the run is finished, since a restored database has no memberships until the stack applies; bedrock rerun finishes the run, whose apply gives the database its memberships, runs the migrations where the backup's schema is behind the release, and deploys."},
+			wantBack:  "harbor-app-00007",
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "a database that is ready but was restored names the backup and the rerun that gives it its memberships",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision("harbor-app-00007"),
+			},
+			database:  &Database{Name: database, State: "READY", RestoredFrom: "projects/p-spn/instances/shared-spanner/backups/prd-harbor-db-pre-v0-2-2-abc"},
+			wantOut:   []string{"The database harbor-db is READY, restored from prd-harbor-db-pre-v0-2-2-abc. A restore run stopped before its stack applied leaves it without its memberships, and the application cannot start on it (its instances fail their startup probe): bedrock rerun finishes the run, whose apply gives the database its memberships, runs the migrations where the backup's schema is behind the release, and deploys."},
+			wantBack:  "harbor-app-00007",
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "a database that is ready is said to serve",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision("harbor-app-00007"),
+			},
+			database:  &Database{Name: database, State: "READY_OPTIMIZING"},
+			wantOut:   []string{"The database harbor-db is READY_OPTIMIZING; the application serves on it."},
+			wantBack:  "harbor-app-00007",
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "traffic goes back to the revision the maintenance revision displaced, and the paused queue resumes",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision("harbor-app-00007"),
+			},
+			state:     "PAUSED",
+			wantOut:   []string{"=== Maintenance off: tst, asked for by octocat ===", "harbor-app in us-central1: the maintenance revision harbor-app-00008-maint displaced harbor-app-00007 (its bedrock-displaced label); traffic goes back to it.", "harbor-app in us-central1 serves harbor-app-00007 again; the maintenance revision harbor-app-00008-maint takes no traffic.", "Queue harbor-tasks was left paused by an earlier run's maintenance; resumed (RUNNING)"},
+			wantBack:  "harbor-app-00007",
+			wantVerbs: []string{"state harbor-tasks", "resume harbor-tasks"},
+		},
+		{
+			name: "a maintenance revision from a build before the label sends traffic to the latest ready revision when that is another one",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00009"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision(""),
+			},
+			wantOut:   []string{"names no revision it displaced (a build before the label); traffic goes back to the latest ready revision, harbor-app-00009."},
+			wantBack:  "harbor-app-00009",
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "a service not in maintenance is left as it is",
+			resources: map[string]map[string]any{
+				service:                                 {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00007", keyPercent: float64(100)}}},
+				service + "/revisions/harbor-app-00007": {"containers": []any{map[string]any{"env": []any{}}}},
+			},
+			wantOut:   []string{"harbor-app in us-central1 is not in maintenance: harbor-app-00007 serves, with " + derive.MaintenanceVariable + " unset."},
+			wantVerbs: []string{"state harbor-tasks"},
+		},
+		{
+			name: "a maintenance revision that names no displaced revision and is the latest ready one is refused, naming the rerun",
+			resources: map[string]map[string]any{
+				service: {"trafficStatuses": []any{map[string]any{keyRevision: "harbor-app-00008-maint", keyPercent: float64(100)}}, "latestReadyRevision": service + "/revisions/harbor-app-00008-maint"},
+				service + "/revisions/harbor-app-00008-maint": maintenanceRevision(""),
+			},
+			wantErr: "harbor-app in us-central1: the maintenance revision harbor-app-00008-maint names no revision it displaced and is the latest ready revision itself; run the release again instead (bedrock rerun), which deploys and ends the maintenance",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "_TASKS_QUEUE": queue, "_REQUESTER": "octocat"}
+			if tt.database != nil {
+				subs["_MIGRATE_DATABASES"], subs["_APPLY_IDENTITY"] = `["`+database+`"]`, "apply@tst-project.iam.gserviceaccount.com"
+			}
+			w := workspaceFiles(t, map[string]string{EnvironmentFile: env, BuildFile: buildFor(t, subs)})
+			tasks := &fakeTasks{state: tt.state}
+			run := newFakeRun(tt.resources)
+			spanner := &fakeSpanner{database: tt.database}
+			var out strings.Builder
+			err := MaintenanceOff(t.Context(), &Clients{Tasks: tasks.open, Run: run.open, SpannerAs: spanner.open}, w, &out)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("MaintenanceOff() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("MaintenanceOff() error = %v\n%s", err, out.String())
+			}
+			containsAll(t, out.String(), tt.wantOut...)
+			back := ""
+			if traffic, ok := run.patched[service][keyTraffic].([]any); ok && len(traffic) > 0 {
+				first, _ := traffic[0].(map[string]any)
+				back = text(first, keyRevision)
+			}
+			if back != tt.wantBack {
+				t.Errorf("traffic went to %q, want %q", back, tt.wantBack)
+			}
+			if diff := cmp.Diff(tt.wantVerbs, tasks.verbs); diff != "" {
+				t.Errorf("queue verbs (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

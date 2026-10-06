@@ -1,0 +1,195 @@
+# ---------------------------------------------------------------------------
+# Shared Spanner instance
+#
+# One instance for stg and prd, in its own project, so the cost of a
+# multi-region instance is paid once and the instance outlives any one
+# application. tst holds its own instance in its own project (pull-request
+# databases come and go there), so nothing here is reachable from a
+# pull-request build. Databases are not created here: each application's
+# layer creates its own databases on this instance, in stg and in prd, and
+# grants on them. No autoscaler: 100 processing units is the floor for a
+# multi-region instance and 200 the ceiling by decision, and an autoscaler
+# would only move between the two. A multi-region instance is Enterprise
+# Plus edition by Google's rule, about $225 a month at 100 processing units
+# (2026-09-25 catalog), against $66 for a regional Standard instance; that
+# difference is why tst (2-env) runs a regional instance and this one, the
+# production topology, is the multi-region one.
+# ---------------------------------------------------------------------------
+
+locals {
+  edition = coalesce(var.edition, startswith(var.spanner_config, "regional-") ? "STANDARD" : "ENTERPRISE_PLUS")
+}
+
+resource "google_spanner_instance" "shared" {
+  project          = local.project_id
+  name             = "${local.name_prefix}-spanner"
+  display_name     = "Shared Spanner instance"
+  config           = var.spanner_config
+  processing_units = var.processing_units
+  edition          = local.edition
+  labels           = local.labels
+
+  # The databases on this instance belong to the application layers. A plan
+  # here must never be able to delete them, so the instance refuses to go
+  # while any database exists, and refuses to go at all below.
+  force_destroy = false
+
+  # NONE, so whether a database gets a backup schedule is decided per database
+  # by the layer that creates it (prd yes, and the rest as each application
+  # chooses). Left unset, Spanner attaches its own daily schedule to every new
+  # database, which the first prd apply showed beside the layer's two.
+  default_backup_schedule_type = "NONE"
+
+  # Deleting the instance takes a deliberate two-step change: remove this
+  # block, then destroy.
+  lifecycle {
+    prevent_destroy = true
+
+    precondition {
+      condition     = startswith(var.spanner_config, "regional-") || local.edition == "ENTERPRISE_PLUS"
+      error_message = "A multi-region configuration (${var.spanner_config}) needs the ENTERPRISE_PLUS edition; leave edition unset."
+    }
+  }
+}
+
+# Instance-level grants, bounded to each application's own database and
+# backups. Creating a database and listing what the instance holds are checked
+# on the instance, so every apply identity holds the organization's
+# spannerDatabaseCreator role here without condition; the admin roles are
+# conditioned on the resource's name, so an identity reaches its own database
+# ("<prefix>-<environment>-gbl-<application>-", with the schedules and
+# operations under it) and its own backups, and nothing of another
+# environment's or another application's. stg's identity can neither drop
+# production's database nor restore over it; it may restore from production's
+# backups alone (restore_admin below).
+locals {
+  instance_path = "projects/${local.project_id}/instances/${google_spanner_instance.shared.name}"
+
+  # The names each member's grants are bounded to.
+  own_databases = { for m, v in var.database_admins : m => "${local.instance_path}/databases/${local.prefix}-${v.environment}-gbl-${v.application}-" }
+  own_backups   = { for m, v in var.database_admins : m => "${local.instance_path}/backups/${local.prefix}-${v.environment}-gbl-${v.application}-" }
+}
+
+resource "google_spanner_instance_iam_member" "database_creator" {
+  for_each = var.database_admins
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = local.org.spanner_database_creator_role
+  member   = each.key
+}
+
+resource "google_spanner_instance_iam_member" "database_admin" {
+  for_each = var.database_admins
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = "roles/spanner.databaseAdmin"
+  member   = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} database"
+    description = "The application's own database in this environment, with the schedules and operations under it."
+    expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\")"
+  }
+}
+
+# The backup schedules a production stack makes on its database are read and
+# changed with spanner.backupSchedules.*, which databaseAdmin does not carry:
+# the first tag build that planned a production stack as its apply identity
+# was refused the schedule's read. backupAdmin carries them, and the backups,
+# which are named after the database they are taken from.
+resource "google_spanner_instance_iam_member" "backup_admin" {
+  for_each = var.database_admins
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = "roles/spanner.backupAdmin"
+  member   = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} backups"
+    description = "The application's own database in this environment and the backups taken from it."
+    expression  = "resource.name.startsWith(\"${local.own_databases[each.key]}\") || resource.name.startsWith(\"${local.own_backups[each.key]}\")"
+  }
+}
+
+# A restore creates a database from a backup on this instance as the
+# environment's apply identity: spanner.backups.restoreDatabase on the backup,
+# which neither databaseAdmin nor backupAdmin carries and restoreAdmin adds
+# alone (the other permissions restoreAdmin carries, the roles above already
+# hold). Two restores exist. A restore from production's backup (bedrock
+# restore) creates the environment's database afresh from a backup of
+# production's: production's backups of the same application, for the
+# identities with restore_from set. A rollback (bedrock rollback) restores a
+# backup the application's own release build took, as of its cut, into the
+# database's next generation: the application's own backups in the
+# environment, for every identity. Nothing restores over an existing database
+# (Spanner refuses it), and production's identity reaches production's backups
+# alone.
+resource "google_spanner_instance_iam_member" "restore_admin" {
+  for_each = var.database_admins
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = "roles/spanner.restoreAdmin"
+  member   = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} restores"
+    description = each.value.restore_from != "" ? "The application's own backups in this environment, which a rollback restores, and production's backups of it, which this environment's database is restored from." : "The application's own backups in this environment, which a rollback restores into the database's next generation."
+    expression  = each.value.restore_from != "" ? "resource.name.startsWith(\"${local.own_backups[each.key]}\") || resource.name.startsWith(\"${local.instance_path}/backups/${local.prefix}-${each.value.restore_from}-gbl-${each.value.application}-\")" : "resource.name.startsWith(\"${local.own_backups[each.key]}\")"
+  }
+}
+
+# The plan identities read the databases, their IAM policies and their backup
+# schedules when a pull-request build plans the environment's stack, and write
+# nothing: the organization's spannerPlanReader role (1-org).
+resource "google_spanner_instance_iam_member" "plan_reader" {
+  for_each = toset(var.database_planners)
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = local.org.spanner_plan_reader_role
+  member   = each.value
+}
+
+# The metric writer role, for the Spanner client's metrics. The client in each
+# application's processes (the site, the job process, and the migrate command
+# the pipeline runs on the build worker as the deploy identity) writes its
+# client-side metrics (operation and attempt latency, counts) to Cloud
+# Monitoring in the project that owns the instance, this one, and logs a
+# denial at every export without roles/monitoring.metricWriter here. The
+# runtime identities are the application stack's and do not exist when this
+# layer runs, so the stack grants the role on this project (its spanner.tf),
+# as each member's apply identity. The member holds
+# roles/resourcemanager.projectIamAdmin here under a condition that admits a
+# change to the grants of that one role and of no other
+# (iam.googleapis.com/modifiedGrantsByRole), so it can give itself or anyone
+# else nothing more; a request that changes no grant, such as the read of the
+# policy a plan and an apply make, carries no roles and is admitted.
+resource "google_project_iam_member" "metric_writer_granter" {
+  for_each = var.database_admins
+
+  project = local.project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
+  member  = each.key
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} metric writer grants"
+    description = "Grants and removes roles/monitoring.metricWriter on this project, and no other role, for the application's Spanner clients."
+    expression  = "api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly(['roles/monitoring.metricWriter'])"
+  }
+}
+
+# A pull-request build plans the environment's stack as the plan identity,
+# which refreshes the stack's metric writer grants here through this project's
+# IAM policy: roles/iam.securityReviewer, the read of IAM policies, as the plan
+# identities hold it on their environment projects.
+resource "google_project_iam_member" "plan_policy_reader" {
+  for_each = toset(var.database_planners)
+
+  project = local.project_id
+  role    = "roles/iam.securityReviewer"
+  member  = each.value
+}

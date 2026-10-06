@@ -1,0 +1,36 @@
+# Local .terraform directories, including the per-environment backend caches
+# the environment layers keep with TF_DATA_DIR (.terraform.tst/ and so on)
+.terraform/
+.terraform.*/
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Saved plans
+*.tfplan
+
+# tf-gcp-setup ignores *.tfvars because they usually hold secrets. Here each
+# layer's terraform.tfvars is committed on purpose: it holds nothing but IDs,
+# and the values a layer was bootstrapped with belong in the repository rather
+# than on one laptop. Keep secrets out of them.
+
+# Override files are for local experiments and are not checked in
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Transient lock info files created by tofu apply
+.terraform.tfstate.lock.info
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# .terraform.lock.hcl is NOT ignored. The first `tofu init` in each layer
+# writes it; commit it so every run resolves the same provider builds.
