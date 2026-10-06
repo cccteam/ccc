@@ -47,9 +47,23 @@ const (
 )
 
 // FixedChecks are the job ids every application's workflow carries, in the file's order
-// with the browser jobs left out (they follow go and are per application; web, the gate
-// over them, follows them and is fixed). A required-checks rule names these.
-var FixedChecks = []string{"title", "go", "web", "image", "secrets", "migrations"}
+// with the Go legs and the browser jobs left out (the legs precede go, the gate over them;
+// the browser jobs follow go and are per application, and web, the gate over them,
+// follows them and is fixed). A required-checks rule names these.
+var FixedChecks = []string{"title", goGate, "web", "image", "secrets", "migrations"}
+
+// goGate is the id of the gate over the Go legs.
+const goGate = "go"
+
+// GoJobs are the Go legs, in the file's order: the jobs the go gate needs, each running at
+// once with the others. go-test, go-test-skipauth and image run on the larger runner the
+// variable LargeRunnerVariable names when it is set.
+var GoJobs = []string{"go-build", "go-test", "go-test-skipauth", "go-lint", "go-lint-skipauth", "go-vuln", "go-semgrep", "go-check"}
+
+// LargeRunnerVariable is the GitHub Actions variable (on the repository or the
+// organization) naming the larger runner the test legs and the image build run on: a
+// runner label or a runner group. Unset, those jobs run on GitHub's standard runner.
+const LargeRunnerVariable = "CI_LARGE_RUNNER"
 
 // TitleTypes are the conventional-commit types the title check accepts, in the order the
 // workflow lists them: first the types a merge of which releases (feat and feature a
@@ -112,14 +126,17 @@ func jobID(dir string) string {
 }
 
 // Checks lists the job ids of the workflow Render produces for the application, in the
-// file's order: title, go, one job per browser workspace, web, image, secrets,
-// migrations. These are the check names the pull request reports.
+// file's order: title, the Go legs, go, one job per browser workspace, web, image,
+// secrets, migrations. These are the check names the pull request reports.
 func Checks(a *app.App) []string {
 	workspaces := Workspaces(a)
-	checks := make([]string, 0, len(FixedChecks)+len(workspaces))
+	checks := make([]string, 0, len(FixedChecks)+len(GoJobs)+len(workspaces))
 	for _, c := range FixedChecks {
+		if c == goGate {
+			checks = append(checks, GoJobs...)
+		}
 		checks = append(checks, c)
-		if c == "go" {
+		if c == goGate {
 			for _, w := range workspaces {
 				checks = append(checks, w.Job)
 			}
@@ -139,6 +156,7 @@ var workflow = template.Must(template.New("ci.yml").Delims("[[", "]]").Parse(sou
 // data is what the template reads.
 type data struct {
 	Workspaces    []Workspace
+	GoJobs        []string
 	TitleTypes    []string
 	GolangciLint  string
 	Bun           string
@@ -154,6 +172,7 @@ func Render(a *app.App) ([]byte, error) {
 	var b bytes.Buffer
 	d := data{
 		Workspaces:    Workspaces(a),
+		GoJobs:        GoJobs,
 		TitleTypes:    TitleTypes,
 		GolangciLint:  GolangciLint,
 		Bun:           Bun,

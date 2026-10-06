@@ -99,10 +99,10 @@ func TestChecksAreTheRenderedJobs(t *testing.T) {
 		candidate string
 		want      []string
 	}{
-		{name: "solo", candidate: "solo", want: []string{"title", "go", "angular-web", "web", "image", "secrets", "migrations"}},
-		{name: "tenanted", candidate: "tenanted", want: []string{"title", "go", "angular-web", "web", "image", "secrets", "migrations"}},
-		{name: "outlets", candidate: "outlets", want: []string{"title", "go", "angular-web", "web", "image", "secrets", "migrations"}},
-		{name: "sites", candidate: "sites", want: []string{"title", "go", "angular-console", "angular-portal", "web", "image", "secrets", "migrations"}},
+		{name: "solo", candidate: "solo", want: []string{"title", "go-build", "go-test", "go-test-skipauth", "go-lint", "go-lint-skipauth", "go-vuln", "go-semgrep", "go-check", "go", "angular-web", "web", "image", "secrets", "migrations"}},
+		{name: "tenanted", candidate: "tenanted", want: []string{"title", "go-build", "go-test", "go-test-skipauth", "go-lint", "go-lint-skipauth", "go-vuln", "go-semgrep", "go-check", "go", "angular-web", "web", "image", "secrets", "migrations"}},
+		{name: "outlets", candidate: "outlets", want: []string{"title", "go-build", "go-test", "go-test-skipauth", "go-lint", "go-lint-skipauth", "go-vuln", "go-semgrep", "go-check", "go", "angular-web", "web", "image", "secrets", "migrations"}},
+		{name: "sites", candidate: "sites", want: []string{"title", "go-build", "go-test", "go-test-skipauth", "go-lint", "go-lint-skipauth", "go-vuln", "go-semgrep", "go-check", "go", "angular-console", "angular-portal", "web", "image", "secrets", "migrations"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -257,6 +257,86 @@ func TestWebGate(t *testing.T) {
 	}
 }
 
+// TestGoGate: the workflow carries one go job, fixed in name so a repository rule can
+// require it, over the Go legs: it needs every leg in GoJobs' order, runs whether they
+// passed or not, and fails on any result but success; the legs carry no needs of their
+// own, so they run at once.
+func TestGoGate(t *testing.T) {
+	t.Parallel()
+
+	rendered, err := ci.Render(&app.App{})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	got := job(rendered, "go")
+	if got == "" {
+		t.Fatal("the rendered workflow has no go job")
+	}
+	needs := "    needs:\n"
+	for _, leg := range ci.GoJobs {
+		needs += "      - " + leg + "\n"
+	}
+	head := "  go:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    if: ${{ always() }}\n" + needs + "    steps:\n"
+	if !strings.HasPrefix(got, head) {
+		t.Errorf("the go job opens with\n%s\nwant\n%s", got, head)
+	}
+	for _, want := range []string{
+		"FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}",
+		`if [ "$FAILED" = "true" ]; then`,
+		"exit 1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the go job lacks %q:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(string(rendered), "\n  # The Go gate, one fixed name over the go-<leg> jobs") {
+		t.Error("the go job carries no comment saying what it gates")
+	}
+	for _, leg := range ci.GoJobs {
+		legJob := job(rendered, leg)
+		if legJob == "" {
+			t.Errorf("the rendered workflow has no %s job", leg)
+
+			continue
+		}
+		if strings.Contains(legJob, "needs:") {
+			t.Errorf("the %s leg waits on another job; the legs run at once:\n%s", leg, legJob)
+		}
+	}
+}
+
+// TestLargeRunner: the two test legs and the image build run on the runner the
+// CI_LARGE_RUNNER variable names, GitHub's standard runner while it is unset, and no
+// other job reads the variable.
+func TestLargeRunner(t *testing.T) {
+	t.Parallel()
+
+	rendered, err := ci.Render(&app.App{WebApps: []app.WebApp{{Dir: "web"}}})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	const large = "    runs-on: ${{ vars." + ci.LargeRunnerVariable + " || 'ubuntu-latest' }}\n"
+	onLarge := map[string]bool{"go-test": true, "go-test-skipauth": true, "image": true}
+	for _, id := range jobIDs(t, rendered) {
+		j := job(rendered, id)
+		if j == "" {
+			t.Fatalf("no %s job", id)
+		}
+		if got, want := strings.Contains(j, large), onLarge[id]; got != want {
+			t.Errorf("%s runs on the larger runner = %v, want %v:\n%s", id, got, want, j)
+		}
+		if !onLarge[id] && !strings.Contains(j, "    runs-on: ubuntu-latest\n") {
+			t.Errorf("%s does not run on the standard runner:\n%s", id, j)
+		}
+	}
+	if strings.Count(string(rendered), large) != len(onLarge) {
+		t.Errorf("the larger runner's runs-on appears %d times, want %d", strings.Count(string(rendered), large), len(onLarge))
+	}
+	if !strings.Contains(string(rendered), "variable "+ci.LargeRunnerVariable) {
+		t.Errorf("the header says nothing of the variable %s", ci.LargeRunnerVariable)
+	}
+}
+
 // TestTitleTypes: the title job accepts exactly TitleTypes, in their order, so the list
 // bedrock reads for release-please's sections is the list the check enforces.
 func TestTitleTypes(t *testing.T) {
@@ -385,8 +465,8 @@ func TestCompare(t *testing.T) {
 
 				return a
 			},
-			want:     &ci.Difference{Line: 22, Want: "  cancel-in-progress: true", Got: "  cancel-in-progress: false"},
-			wantText: `.github/workflows/ci.yml:22: the code renders "  cancel-in-progress: true"; the file has "  cancel-in-progress: false"`,
+			want:     &ci.Difference{Line: 27, Want: "  cancel-in-progress: true", Got: "  cancel-in-progress: false"},
+			wantText: `.github/workflows/ci.yml:27: the code renders "  cancel-in-progress: true"; the file has "  cancel-in-progress: false"`,
 		},
 		{
 			name: "a workspace without its job",
@@ -399,11 +479,11 @@ func TestCompare(t *testing.T) {
 				return a
 			},
 			want: &ci.Difference{
-				Line: 145,
+				Line: 268,
 				Want: "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.",
 				Got:  "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace.",
 			},
-			wantText: `.github/workflows/ci.yml:145: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."`,
+			wantText: `.github/workflows/ci.yml:268: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."`,
 		},
 		{
 			name: "a file that ends early",
@@ -415,14 +495,14 @@ func TestCompare(t *testing.T) {
 					t.Fatal(err)
 				}
 				lines := strings.Split(string(data), "\n")
-				if err := os.WriteFile(a.Abs(ci.File), []byte(strings.Join(lines[:15], "\n")+"\n"), 0o600); err != nil {
+				if err := os.WriteFile(a.Abs(ci.File), []byte(strings.Join(lines[:20], "\n")+"\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 
 				return a
 			},
-			want:     &ci.Difference{Line: 16, Want: "on:", Got: ""},
-			wantText: `.github/workflows/ci.yml:16: the code renders "on:"; the file has ""`,
+			want:     &ci.Difference{Line: 21, Want: "on:", Got: ""},
+			wantText: `.github/workflows/ci.yml:21: the code renders "on:"; the file has ""`,
 		},
 	}
 	for _, tt := range tests {

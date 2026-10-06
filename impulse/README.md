@@ -220,18 +220,28 @@ every change, whoever opens it, so the gate covers every job:
   (bedrock's `check` refuses one without), since release-please drops a merge whose type
   has no section exactly as it drops a hidden one; an application seeded before `upgrade`,
   `infra`, `config` and `cleanup` had sections adds the four by hand.
-- `go`: the module builds, vets and passes its tests under the race detector, without tags
-  and with `skipAuth` (the tag that simulates the directory an OIDC auth signs in through);
-  then, each step reporting on its own, golangci-lint at the version the skeleton's
-  `.golangci.yml` is written for (with and without the tag), govulncheck, Semgrep over the
-  findings the pull request introduces (its baseline is the pull request's base branch, so
-  a hotfix-line pull request diffs against its own base), `go tool impulse check` with its
-  regeneration (the generators start the Spanner emulator in a container, which the runner
-  has), and a tree the checks left clean. The pins fix the engines, not what they know:
-  govulncheck reads vuln.go.dev, Grype (in `image`) downloads its vulnerability database
-  and Semgrep fetches its registry rules when the job runs, so a workflow at an old pin
-  still finds a vulnerability published after it; TruffleHog's detectors, golangci-lint's
-  linters and the actions move with impulse releases.
+- `go-build`, `go-test`, `go-test-skipauth`, `go-lint`, `go-lint-skipauth`, `go-vuln`,
+  `go-semgrep` and `go-check`, the Go legs, run at once and each reports on its own: the
+  module builds and vets without tags and with `skipAuth` (the tag that simulates the
+  directory an OIDC auth signs in through); its tests run under the race detector, one leg
+  per tag; golangci-lint runs at the version the skeleton's `.golangci.yml` is written
+  for, one leg per tag; govulncheck; Semgrep over the findings the pull request introduces
+  (its baseline is the pull request's base branch, so a hotfix-line pull request diffs
+  against its own base); and `go tool impulse check` with its regeneration (the generators
+  start the Spanner emulator in a container, which the runner has), failing on a tree the
+  checks changed. The pins fix the engines, not what they know: govulncheck reads
+  vuln.go.dev, Grype (in `image`) downloads its vulnerability database and Semgrep fetches
+  its registry rules when the job runs, so a workflow at an old pin still finds a
+  vulnerability published after it; TruffleHog's detectors, golangci-lint's linters and
+  the actions move with impulse releases.
+- `go`: the gate over the Go legs, one fixed name a repository rule can require. It needs
+  every leg, runs whether they passed or not, and fails when any of them did not succeed.
+- The larger runner: the two test legs and `image`, the jobs that take the most machine,
+  run on the runner the GitHub Actions variable `CI_LARGE_RUNNER` names, a runner label or
+  a runner group set on the repository or the organization (an organization sets it once
+  for every application; bedrock's organization placement declares it, `ciLargeRunner`).
+  While the variable is unset they run on GitHub's standard runner, as every other job
+  does.
 - `angular-<workspace>`, one per browser workspace (`angular-web` for the flat workspace,
   `angular-<site>` for a site's at `apps/<site>/web`): Bun at the version that wrote
   `bun.lock` installs from the lockfile exactly (`bun ci`), then the package scripts build,
