@@ -6,6 +6,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
