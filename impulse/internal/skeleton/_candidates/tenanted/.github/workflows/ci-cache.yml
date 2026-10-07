@@ -2,13 +2,13 @@
 # (main or master) or a hotfix branch. Rendered by impulse and owned by it as
 # .github/workflows/ci.yml is: impulse render rewrites both from the code, impulse check
 # compares the committed files with what it renders, and the pins move with impulse
-# releases, so dependabot must not run over this file either. Each Go job here builds what
-# the pull request job of the same id builds, at the branch's head, and saves the Go
-# module cache and build cache under that job's key with this commit's; a pull request
-# run restores the newest entry of its lineage, so its first run starts from the branch it
-# targets and compiles what it changed and nothing else. The image job builds the
-# Dockerfile's two download stages into BuildKit's cache for the pull request's image job
-# to read. Nothing here checks anything: the branch was checked on its pull request.
+# releases, so dependabot must not run over this file either. Each job here does what the
+# pull request job of the same id does, at the branch's head (the test legs run the tests,
+# since what a test builds as it runs is in the cache only when it ran), and saves the Go
+# module cache and build cache under that job's key with this commit's; a pull request run
+# restores the newest entry of its lineage, so its first run starts from the branch it
+# targets and compiles what it changed and nothing else. Nothing here gates anything: the
+# branch was checked on its pull request, and a failure here is the squash commit's own.
 name: CI cache
 
 on:
@@ -69,14 +69,22 @@ jobs:
             ~/.cache/go-build
           key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
-  # The race-instrumented build of the tests without tags, as go-test builds it: the test binaries compile and do not run, since the tests ran on the pull request and only the compile carries over.
+  # The tests under the race detector, without tags, as go-test runs them.
   go-test:
     runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
@@ -97,8 +105,8 @@ jobs:
           restore-keys: |
             go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-
-      - name: go test (compile only)
-        run: go test -race -c -o "$(mktemp -d)" ./...
+      - name: go test
+        run: go test -race -count=1 -timeout 20m ./...
       - name: Save the Go caches
         # Under this commit's key, so the next pull request run restores this entry as the
         # newest of its lineage; a cancelled run saves nothing.
@@ -110,14 +118,22 @@ jobs:
             ~/.cache/go-build
           key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
-  # The same with skipAuth, as go-test-skipauth builds it.
+  # The same with skipAuth, as go-test-skipauth runs them.
   go-test-skipauth:
     runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
@@ -138,8 +154,8 @@ jobs:
           restore-keys: |
             go-test-skipauth-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-test-skipauth-${{ runner.os }}-
-      - name: go test (skipAuth, compile only)
-        run: go test -race -c -o "$(mktemp -d)" -tags skipAuth ./...
+      - name: go test (skipAuth)
+        run: go test -race -count=1 -timeout 20m -tags skipAuth ./...
       - name: Save the Go caches
         # Under this commit's key, so the next pull request run restores this entry as the
         # newest of its lineage; a cancelled run saves nothing.
@@ -150,38 +166,3 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
           key: ${{ steps.go-cache.outputs.cache-primary-key }}
-
-  # The Dockerfile's two download stages into BuildKit's cache, once the application has a Dockerfile; nothing else of the image builds here.
-  image:
-    runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Is there a Dockerfile
-        id: dockerfile
-        run: echo "present=${{ hashFiles('Dockerfile') != '' }}" >> "$GITHUB_OUTPUT"
-      # A BuildKit builder of its own (the daemon's cannot export a cache), and the Actions cache's address and token in the environment, for the build's cache reads and writes.
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        if: steps.dockerfile.outputs.present == 'true'
-      - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
-        if: steps.dockerfile.outputs.present == 'true'
-      - name: docker build, the download stages
-        if: steps.dockerfile.outputs.present == 'true'
-        run: |
-          set -euo pipefail
-          from=()
-          # The Dockerfile's two reserved download stages (go-modules, web-packages; bedrock
-          # seeds them) build first, each reading and writing the Actions cache under its own
-          # scope. A stage holds its lockfile copy and its one download command, and BuildKit
-          # addresses a layer by its inputs, so a cached layer is served only for the same
-          # lockfile; what it holds is verified at download. A stage the Dockerfile lacks is
-          # skipped.
-          for stage in go-modules web-packages; do
-            if grep -qE "^FROM .+ AS ${stage}$" Dockerfile; then
-              docker buildx build --target "$stage" --cache-from "type=gha,scope=$stage" --cache-to "type=gha,scope=$stage,mode=max" --output type=cacheonly .
-              from+=(--cache-from "type=gha,scope=$stage")
-            fi
-          done
-          echo "cached ${#from[@]} stage(s)"

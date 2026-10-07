@@ -415,9 +415,9 @@ func header(t *testing.T, rendered []byte) string {
 
 // TestTestCache: the test legs run every test (go test -count=1) unless the line says
 // test-cache=on, and then they restore the files' modification times from git before
-// the run, so Go's cached results can match; the cache-filling workflow's test jobs
-// compile the test binaries without running them unless the results are reused, and
-// then they run the tests. The header says which.
+// the run, so Go's cached results can match; the cache-filling workflow's test jobs run
+// the same command, with the modification times restored when the results are reused.
+// The header says which.
 func TestTestCache(t *testing.T) {
 	t.Parallel()
 
@@ -466,14 +466,11 @@ func TestTestCache(t *testing.T) {
 				if warm == "" {
 					t.Fatalf("the cache-filling workflow has no %s job", leg)
 				}
-				if strings.Contains(warm, mtimes) != tt.on || strings.Contains(warm, "TESTCONTAINERS_RYUK_DISABLED") != tt.on || strings.Contains(warm, "fetch-depth: 0") != tt.on {
-					t.Errorf("the cache-filling %s runs the tests = %v, want %v:\n%s", leg, !tt.on, tt.on, warm)
+				if !strings.Contains(warm, want) || !strings.Contains(warm, "TESTCONTAINERS_RYUK_DISABLED") || !strings.Contains(warm, "fetch-depth: 0") {
+					t.Errorf("the cache-filling %s does not run the tests as the pull request's does (%q):\n%s", leg, want, warm)
 				}
-				if strings.Contains(warm, " -c -o \"$(mktemp -d)\"") == tt.on {
-					t.Errorf("the cache-filling %s compiles the tests without running them = %v, want %v:\n%s", leg, !tt.on, tt.on, warm)
-				}
-				if tt.on && !strings.Contains(warm, want) {
-					t.Errorf("the cache-filling %s lacks %q:\n%s", leg, want, warm)
+				if strings.Contains(warm, mtimes) != tt.on {
+					t.Errorf("the cache-filling %s restores the modification times = %v, want %v:\n%s", leg, !tt.on, tt.on, warm)
 				}
 			}
 			header := header(t, pr)
@@ -544,11 +541,11 @@ func TestCacheSteps(t *testing.T) {
 			}
 		}
 	}
-	wantWarm := []string{"go-build", "go-test", "go-test-skipauth", "image"}
+	wantWarm := []string{"go-build", "go-test", "go-test-skipauth"}
 	if diff := cmp.Diff(wantWarm, jobIDs(t, cache)); diff != "" {
 		t.Errorf("the cache-filling workflow's jobs mismatch (-want +got):\n%s", diff)
 	}
-	for _, id := range wantWarm[:3] {
+	for _, id := range wantWarm {
 		j := job(cache, id)
 		if !strings.Contains(j, restore) || !strings.Contains(j, save) || !strings.Contains(j, "        if: ${{ !cancelled() }}\n") {
 			t.Errorf("the cache-filling %s does not restore and save unconditionally:\n%s", id, j)
@@ -562,20 +559,10 @@ func TestCacheSteps(t *testing.T) {
 			t.Errorf("the cache-filling workflow lacks %q", text)
 		}
 	}
-	image := job(cache, "image")
-	for _, text := range []string{"docker/setup-buildx-action@", "crazy-max/ghaction-github-runtime@", "--cache-to \"type=gha,scope=$stage,mode=max\" --output type=cacheonly .", "echo \"cached ${#from[@]} stage(s)\""} {
-		if !strings.Contains(image, text) {
-			t.Errorf("the cache-filling image job lacks %q:\n%s", text, image)
-		}
-	}
-	if strings.Contains(image, "--load") || strings.Contains(image, "Grype") {
-		t.Errorf("the cache-filling image job builds the whole image:\n%s", image)
-	}
+	// The image build is not cached: a plain docker build, no builder of its own.
 	prImage := job(pr, "image")
-	for _, text := range []string{"docker/setup-buildx-action@", "crazy-max/ghaction-github-runtime@", "--cache-to \"type=gha,scope=$stage,mode=max\" --output type=cacheonly .", `docker buildx build "${from[@]}" --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" --load -t application:ci .`, "anchore/scan-action@"} {
-		if !strings.Contains(prImage, text) {
-			t.Errorf("the image job lacks %q:\n%s", text, prImage)
-		}
+	if !strings.Contains(prImage, `        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" -t application:ci .`+"\n") || strings.Contains(prImage, "buildx") || strings.Contains(prImage, "cache") {
+		t.Errorf("the image job is not the plain build:\n%s", prImage)
 	}
 }
 

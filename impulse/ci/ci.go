@@ -14,12 +14,13 @@
 // each verified against it when read, and the Go build cache is addressed by the hash of
 // an action's inputs (the toolchain, the flags, the sources, the dependencies' outputs),
 // so an entry from an older commit is either exactly what the current one would compute
-// or unused; the jobs restore the nearest entry they find for that reason. The image
-// build's two download stages are cached by BuildKit, which serves a layer only for the
-// same lockfile. Go's cached test results are the one reuse whose inputs Go cannot see
-// in full (a test that reads a running emulator, say), so they are off unless the
-// application's //impulse:ci line turns them on. Nothing else is cached: the vulnerability
-// databases, Semgrep's rules and the emulator images are fetched when the job runs.
+// or unused; the jobs restore the nearest entry they find for that reason. Go's cached
+// test results are the one reuse whose inputs Go cannot see in full (a test that reads a
+// running emulator, say), so they are off unless the application's //impulse:ci line
+// turns them on. Nothing else is cached: the image build compiles fresh by design (its
+// download stages are a minute of the job, and the Actions cache's export of them cost
+// more than it saved), and the vulnerability databases, Semgrep's rules and the emulator
+// images are fetched when the job runs.
 package ci
 
 import (
@@ -45,8 +46,10 @@ const File = ".github/workflows/ci.yml"
 
 // CacheFile is where the cache-filling workflow lives: the run after a push to the
 // default branch (main or master) or a hotfix branch that builds and tests at the
-// branch's head and saves the caches under the same keys the pull request jobs restore,
-// so a pull request's first run starts from the branch it targets.
+// branch's head, as the pull request jobs do, and saves the caches under the same keys
+// they restore, so a pull request's first run starts from the branch it targets. The
+// tests run rather than compile, since what a test builds as it runs (the generators'
+// tests build code) is in the cache only when it ran.
 const CacheFile = ".github/workflows/ci-cache.yml"
 
 // Files are the workflows impulse owns, in the order Write writes and Compare reads them.
@@ -268,9 +271,8 @@ var sources embed.FS
 
 // workflows are the templates, one per owned file, over the application's workspaces,
 // its settings and the tool versions, with steps.tmpl's definitions of the steps both
-// files carry (the restore and the save of the Go caches, the files' modification times,
-// the image build's cached stages). The delimiters are [[ and ]] so GitHub's ${{ }}
-// expressions read as themselves.
+// files carry (the restore and the save of the Go caches, the files' modification
+// times). The delimiters are [[ and ]] so GitHub's ${{ }} expressions read as themselves.
 var workflows = template.Must(template.New("workflows").Delims("[[", "]]").Funcs(template.FuncMap{"list": List}).ParseFS(sources, "ci.yml.tmpl", "ci-cache.yml.tmpl", "steps.tmpl"))
 
 // List writes names as prose: a; a and b; a, b and c.

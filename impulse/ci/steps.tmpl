@@ -77,17 +77,3 @@ place. */]]
                   os.utime(d or '.', (t, t))
           EOF
 [[- end]]
-[[- define "image-stages"]]
-          # The Dockerfile's two reserved download stages (go-modules, web-packages; bedrock
-          # seeds them) build first, each reading and writing the Actions cache under its own
-          # scope. A stage holds its lockfile copy and its one download command, and BuildKit
-          # addresses a layer by its inputs, so a cached layer is served only for the same
-          # lockfile; what it holds is verified at download. A stage the Dockerfile lacks is
-          # skipped.
-          for stage in go-modules web-packages; do
-            if grep -qE "^FROM .+ AS ${stage}$" Dockerfile; then
-              docker buildx build --target "$stage" --cache-from "type=gha,scope=$stage" --cache-to "type=gha,scope=$stage,mode=max" --output type=cacheonly .
-              from+=(--cache-from "type=gha,scope=$stage")
-            fi
-          done
-[[- end]]

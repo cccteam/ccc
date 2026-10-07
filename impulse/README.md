@@ -256,10 +256,9 @@ so the gate covers every job:
   failed browser build, lint or test blocks the merge; an application without a browser
   workspace gets a `web` that needs nothing and passes with nothing to check.
 - `image`: once the application has a Dockerfile (bedrock seeds it), hadolint over it, the
-  build (its two download stages from the cache, the compile and the bundles fresh), and
-  Grype over the built image, failing on a high or critical vulnerability. Without a
-  Dockerfile the job passes with nothing to build, so the check exists on every pull
-  request.
+  build, and Grype over the built image, failing on a high or critical vulnerability.
+  Without a Dockerfile the job passes with nothing to build, so the check exists on every
+  pull request.
 - `secrets`: TruffleHog over the whole history reachable from the pull request's head; a
   secret confirmed live, or one whose check could not finish, fails.
 - `migrations`: against the base branch, `schema/migrations` gains files only; a committed
@@ -268,20 +267,22 @@ so the gate covers every job:
 The caches. A pull request's `go-build`, `go-test` and `go-test-skipauth` restore the Go
 module cache and build cache from the nearest entry saved under their own job's key (the
 same `go.sum` first, then any), and `go-vuln` and `go-check` restore `go-build`'s, whose
-compile they share; `image` reads the Dockerfile's two download stages (`go-modules`,
-`web-packages`) from BuildKit's cache. None of these can serve a stale result: a module is
-verified against `go.sum` when read, a Go build output is addressed by the hash of its
-inputs (the toolchain, the flags, the sources, the dependencies' outputs), and a BuildKit
-layer by the lockfile it copied, so an entry from an older commit is either exactly what
-this commit computes or unused. The entries come from `ci-cache.yml`: after each push to
-the default branch or a hotfix branch it builds what those jobs build, at the branch's
-head, and saves under their keys with the commit's, so a pull request's first run starts
-from the branch it targets and compiles what it changed and nothing else. A pull request
-run saves an entry of its own only when it found none for its `go.sum` (a dependency
+compile they share. Neither cache can serve a stale result: a module is verified against
+`go.sum` when read, and a build output is addressed by the hash of its inputs (the
+toolchain, the flags, the sources, the dependencies' outputs), so an entry from an older
+commit is either exactly what this commit computes or unused. The entries come from
+`ci-cache.yml`: after each push to the default branch or a hotfix branch it builds and
+tests what those jobs build and test, at the branch's head (the tests run rather than
+compile, since what a test builds as it runs is in the cache only when it ran), and
+saves under their keys with the commit's, so a pull request's first run starts from the
+branch it targets and compiles what it changed and nothing else. A pull request run
+saves an entry of its own only when it found none for its `go.sum` (a dependency
 change), so the caches grow with merges, not with pushes; GitHub keeps the newest ten
-gigabytes and drops an entry unused for a week. Nothing else is cached: govulncheck,
-Grype and Semgrep fetch their databases and rules when the job runs, the emulator images
-are pulled, and the lint legs keep setup-go's cache and golangci-lint's own.
+gigabytes and drops an entry unused for a week. Nothing else is cached: the image build
+compiles fresh by design (its download stages are a minute of the job, and exporting
+them to the Actions cache cost more than it saved), govulncheck, Grype and Semgrep fetch
+their databases and rules when the job runs, the emulator images are pulled, and the lint
+legs keep setup-go's cache and golangci-lint's own.
 
 Go's cached test results are the one reuse whose inputs Go cannot see in full, so the test
 legs run every test (`go test -count=1`) unless the application turns the reuse on. Go
@@ -291,8 +292,8 @@ emulator's image holds. An application whose tests' inputs are all in the tree, 
 environment or pinned by digest turns it on with the `//impulse:ci` line, and then the
 test legs restore every tracked file's modification time from git before the run (the
 checkout gives every file the time of the checkout, which would miss every result that
-read a file) and `ci-cache.yml` runs the tests on the branch, so a pull request reuses
-the results of the packages it did not touch.
+read a file) and `ci-cache.yml`'s test runs on the branch save their results, so a pull
+request reuses the results of the packages it did not touch.
 
 The `//impulse:ci` line is a comment line in any non-test Go file of the application, at
 most one in the tree:
