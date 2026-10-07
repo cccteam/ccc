@@ -97,7 +97,7 @@ func (c *MockClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
 }
 
 // PostgresReadOnlyTransaction panics because it is not implemented for the MockClient.
-func (c *MockClient) PostgresReadOnlyTransaction() any {
+func (c *MockClient) PostgresReadOnlyTransaction() PostgresQuerier {
 	panic("MockClient.PostgresReadOnlyTransaction() should never be called.")
 }
 
@@ -184,7 +184,7 @@ func (c *MockReadWriteTransaction) BufferStruct(p PatchSetMetadata) error {
 }
 
 // PostgresReadOnlyTransaction panics because it is not implemented for the MockReadWriteTransaction.
-func (c *MockReadWriteTransaction) PostgresReadOnlyTransaction() any {
+func (c *MockReadWriteTransaction) PostgresReadOnlyTransaction() PostgresQuerier {
 	panic("MockReadWriteTransaction.PostgresReadOnlyTransaction() should never be called.")
 }
 

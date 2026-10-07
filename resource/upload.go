@@ -298,9 +298,9 @@ func (u *Upload) readError(err error, during string) error {
 // of an upload whose transaction did not commit and returns cause, the failure that
 // ended it, so the frame answers with the original refusal. The delete runs detached
 // from the request's cancellation under its own timeout, and only when nothing
-// committed: when the Spanner client reports the commit's outcome as unknown
-// (*spanner.TransactionOutcomeUnknownError, a deadline or a cancel after the commit was
-// sent), the rows may hold the keys, so the objects are kept and the keys logged for
+// committed: when the client reports the commit's outcome as unknown
+// (*spanner.TransactionOutcomeUnknownError, or the Postgres client's, a deadline or a cancel
+// after the commit was sent), the rows may hold the keys, so the objects are kept and the keys logged for
 // the orphaned-file cleanup, which removes them if no row claims them. A delete
 // failure is noted on the cause: the objects it left are the cleanup's too.
 func DiscardUpload(ctx context.Context, store FileStore, keys []string, cause error) error {
@@ -317,11 +317,13 @@ func DiscardUpload(ctx context.Context, store FileStore, keys []string, cause er
 }
 
 // commitOutcomeUnknown reports a failure after which the transaction may have
-// committed: the Spanner client's outcome-unknown error, wrapped at any depth.
+// committed: the Spanner client's outcome-unknown error or the Postgres client's, wrapped
+// at any depth.
 func commitOutcomeUnknown(err error) bool {
-	var unknown *spanner.TransactionOutcomeUnknownError
+	var spannerUnknown *spanner.TransactionOutcomeUnknownError
+	var postgresUnknown *commitOutcomeUnknownError
 
-	return errors.As(err, &unknown)
+	return errors.As(err, &spannerUnknown) || errors.As(err, &postgresUnknown)
 }
 
 // FormatByteSize renders a byte count the way @upload declares it: whole

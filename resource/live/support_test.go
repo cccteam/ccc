@@ -40,7 +40,7 @@ func (*bufferingTxn) SpannerReadOnlyTransaction() spxapi.Querier {
 	return nil
 }
 
-func (*bufferingTxn) PostgresReadOnlyTransaction() any {
+func (*bufferingTxn) PostgresReadOnlyTransaction() resource.PostgresQuerier {
 	return nil
 }
 

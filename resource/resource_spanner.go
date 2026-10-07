@@ -115,7 +115,7 @@ func (c *SpannerClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
 }
 
 // PostgresReadOnlyTransaction panics because it is not implemented for the SpannerClient.
-func (c *SpannerClient) PostgresReadOnlyTransaction() any {
+func (c *SpannerClient) PostgresReadOnlyTransaction() PostgresQuerier {
 	panic("SpannerClient.PostgresReadOnlyTransaction() should never be called.")
 }
 
@@ -360,7 +360,7 @@ func (c *SpannerReadOnlyTransaction) SpannerReadOnlyTransaction() spxapi.Querier
 }
 
 // PostgresReadOnlyTransaction panics because it is not implemented for the SpannerReadOnlyTransaction.
-func (c *SpannerReadOnlyTransaction) PostgresReadOnlyTransaction() any {
+func (c *SpannerReadOnlyTransaction) PostgresReadOnlyTransaction() PostgresQuerier {
 	panic("SpannerReadOnlyTransaction.PostgresReadOnlyTransaction() should never be called.")
 }
 
@@ -516,6 +516,6 @@ func (c *SpannerReadWriteTransaction) BufferStruct(patch PatchSetMetadata) error
 }
 
 // PostgresReadOnlyTransaction panics because it is not implemented for the SpannerReadWriteTransaction.
-func (c *SpannerReadWriteTransaction) PostgresReadOnlyTransaction() any {
+func (c *SpannerReadWriteTransaction) PostgresReadOnlyTransaction() PostgresQuerier {
 	panic("SpannerReadWriteTransaction.PostgresReadOnlyTransaction() should never be called.")
 }

@@ -28,12 +28,12 @@ var _ PatchSetMetadata = (*DataChangeEvent)(nil)
 
 // DataChangeEvent represents a record of a change made to a database table.
 type DataChangeEvent struct {
-	TableName   accesstypes.Resource `spanner:"TableName"`
-	RowID       string               `spanner:"RowId"`
-	Sequence    int                  `spanner:"Sequence"`
-	EventTime   time.Time            `spanner:"EventTime"`
-	EventSource string               `spanner:"EventSource"`
-	ChangeSet   spanner.NullJSON     `spanner:"ChangeSet"`
+	TableName   accesstypes.Resource `spanner:"TableName"   postgres:"TableName"`
+	RowID       string               `spanner:"RowId"       postgres:"RowId"`
+	Sequence    int                  `spanner:"Sequence"    postgres:"Sequence"`
+	EventTime   time.Time            `spanner:"EventTime"   postgres:"EventTime"`
+	EventSource string               `spanner:"EventSource" postgres:"EventSource"`
+	ChangeSet   spanner.NullJSON     `spanner:"ChangeSet"   postgres:"ChangeSet"`
 }
 
 // PatchType returns the PatchType for DataChangeEvent

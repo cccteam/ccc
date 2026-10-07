@@ -15,7 +15,7 @@ func newReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 		}
 	case *PostgresClient, *PostgresReadWriteTransaction, *PostgresReadOnlyTransaction:
 		return &postgresReader[Resource]{
-			readTxn: func() any { return txn.PostgresReadOnlyTransaction() },
+			readTxn: func() PostgresQuerier { return txn.PostgresReadOnlyTransaction() },
 		}
 	case *MockClient:
 		return selectMock[Resource](t.ReadOnlyMocks())

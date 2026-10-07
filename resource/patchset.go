@@ -637,7 +637,9 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn ReadWriteTransa
 func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
-		if !errors.Is(err, spxapi.ErrNotFound) {
+		// The row is not there: the write inserts it. The readers answer a missing row
+		// as NotFound; spxapi.ErrNotFound is the scan's own sentinel for it.
+		if !httpio.HasNotFound(err) && !errors.Is(err, spxapi.ErrNotFound) {
 			return err
 		}
 		changeSet, err = p.insertChangeSet()
@@ -1227,4 +1229,21 @@ func PatchSetDiff(opts ...cmp.Option) func(a, b PatchSetComparer) string {
 
 		return ""
 	}
+}
+
+// dbKeyColumns names the primary key's database columns for dbType, in key order. A
+// buffered patch names its key by Go field; the Postgres runtime writes by column.
+func (p *PatchSet[Resource]) dbKeyColumns(dbType DBType) ([]string, error) {
+	fields := p.querySet.rMeta.dbFieldMap(dbType)
+	parts := p.PrimaryKey().Parts()
+	columns := make([]string, 0, len(parts))
+	for _, part := range parts {
+		f, ok := fields[part.Key]
+		if !ok {
+			return nil, errors.Newf("field %s not found in struct", part.Key)
+		}
+		columns = append(columns, f.ColumnName)
+	}
+
+	return columns, nil
 }

@@ -627,7 +627,7 @@ func (x *noQueryTxn) DBType() DBType { return SpannerDBType }
 
 func (x *noQueryTxn) SpannerReadOnlyTransaction() spxapi.Querier { return refusingQuerier{t: x.t} }
 
-func (x *noQueryTxn) PostgresReadOnlyTransaction() any {
+func (x *noQueryTxn) PostgresReadOnlyTransaction() PostgresQuerier {
 	panic("noQueryTxn.PostgresReadOnlyTransaction() should never be called")
 }
 

@@ -17,10 +17,10 @@ import (
 // fileRow is a resource with two @file keys as the generator would declare them: one
 // NOT NULL, one nullable.
 type fileRow struct {
-	ID       string  `spanner:"Id"`
-	Title    string  `spanner:"Title"`
-	StoreKey string  `spanner:"StoreKey"`
-	ThumbKey *string `spanner:"ThumbKey"`
+	ID       string  `spanner:"Id"       postgres:"Id"`
+	Title    string  `spanner:"Title"    postgres:"Title"`
+	StoreKey string  `spanner:"StoreKey" postgres:"StoreKey"`
+	ThumbKey *string `spanner:"ThumbKey" postgres:"ThumbKey"`
 }
 
 func (fileRow) Resource() accesstypes.Resource {
@@ -37,8 +37,8 @@ type docStore struct{ Store }
 // typedFileRow is a resource with a typed @file key, as the generator declares one for
 // a column typed resource.Key[docStore]: the key names the store docs.
 type typedFileRow struct {
-	ID     string        `spanner:"Id"`
-	DocKey Key[docStore] `spanner:"DocKey"`
+	ID     string        `spanner:"Id"     postgres:"Id"`
+	DocKey Key[docStore] `spanner:"DocKey" postgres:"DocKey"`
 }
 
 func (typedFileRow) Resource() accesstypes.Resource {
@@ -96,7 +96,7 @@ func (*bufferingTxn) SpannerReadOnlyTransaction() spxapi.Querier {
 	return nil
 }
 
-func (*bufferingTxn) PostgresReadOnlyTransaction() any {
+func (*bufferingTxn) PostgresReadOnlyTransaction() PostgresQuerier {
 	return nil
 }
 

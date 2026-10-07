@@ -1,6 +1,10 @@
 package resource
 
-import "cloud.google.com/go/spanner"
+import (
+	"cloud.google.com/go/spanner"
+	"github.com/go-playground/errors/v5"
+	"github.com/jackc/pgx/v5"
+)
 
 // DBType represents the type of database, such as Spanner or PostgreSQL.
 type DBType string
@@ -53,6 +57,18 @@ func (s *Statement) SpannerStatement() spanner.Statement {
 		SQL:    s.SQL,
 		Params: s.Params,
 	}
+}
+
+// PostgresStatement converts the generic Statement into the SQL text and the named
+// arguments pgx runs: pgx rewrites the statement's @name placeholders into positional
+// parameters, so the statements the generators render run as they are.
+func (s *Statement) PostgresStatement() (string, pgx.NamedArgs, error) {
+	args, err := postgresStatementArgs(s.Params)
+	if err != nil {
+		return "", nil, errors.Wrap(err, "postgresStatementArgs()")
+	}
+
+	return s.SQL, args, nil
 }
 
 // Columns is a string representing a comma-separated list of database column names.
