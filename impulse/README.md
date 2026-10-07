@@ -296,10 +296,15 @@ read a file) and `ci-cache.yml`'s test runs on the branch save their results, so
 request reuses the results of the packages it did not touch.
 
 The `//impulse:ci` line is a comment line in any non-test Go file of the application, at
-most one in the tree:
+most one in the tree. It is a directive in Go's sense (no space after `//`), so gofmt
+keeps it as written; at the end of a doc comment gofmt wants a blank `//` line before it,
+as it does for `//go:generate`:
 
 ```go
+// main serves the application.
+//
 // The CI choices: the test legs and the image build on the larger runner, the test results reused.
+//
 //impulse:ci large-runner=go-test,go-test-skipauth,image test-cache=on
 package main
 ```

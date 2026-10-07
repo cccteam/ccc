@@ -156,7 +156,9 @@ type Directive struct {
 //
 //	//impulse:ci large-runner=go-test,go-test-skipauth,image test-cache=on
 //
-// with each setting at most once and in any order. large-runner lists the CI jobs that
+// with each setting at most once and in any order (a directive in Go's sense, which
+// gofmt keeps as written and, at the end of a doc comment, sets off with a blank //
+// line). large-runner lists the CI jobs that
 // run on the larger runner the variable CI_LARGE_RUNNER names (or none, for no job);
 // test-cache is on or off. A setting the line leaves out keeps impulse's default (the
 // ci package states them); a line with a setting it does not know, or a second line in
