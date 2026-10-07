@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/go-playground/errors/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 // This file renders a buffered patch as the Postgres statement that applies it. Spanner
@@ -44,6 +46,10 @@ type postgresMutation struct {
 	// what is the write as an error names it: the patch type and the row it addresses.
 	what string
 	stmt *Statement
+	// sql and args are the statement as pgx runs it, converted once when the write is
+	// buffered (PostgresReadWriteTransaction.buffer) and run at flush.
+	sql  string
+	args pgx.NamedArgs
 	// mustAffectRow is set for an update: Spanner refuses an update of a row that does
 	// not exist at commit, so Postgres refuses an UPDATE that matched no row.
 	mustAffectRow bool
@@ -144,13 +150,7 @@ func renderPostgresMutation(patch PatchSetMetadata, values map[string]any) (*pos
 // sortedColumns returns the column names of values in a fixed order, so the same patch
 // always renders the same statement.
 func sortedColumns(values map[string]any) []string {
-	columns := make([]string, 0, len(values))
-	for column := range values {
-		columns = append(columns, column)
-	}
-	slices.Sort(columns)
-
-	return columns
+	return slices.Sorted(maps.Keys(values))
 }
 
 // quoteAll quotes each identifier.
@@ -214,16 +214,18 @@ func setAssignments(g *sqlGenerator, values map[string]any, keyColumns []string,
 	return assignments
 }
 
-// renderKeyPredicate renders the WHERE locating a row by its primary key.
+// renderKeyPredicate renders the WHERE locating a row by its primary key. A key part that
+// is the commit-timestamp placeholder renders as the transaction's timestamp, as Spanner
+// resolves it to the commit time: an update keyed by it addresses the row an insert in the
+// same transaction keyed by it, which wrote now() too. Bound as it is, it would match no
+// row.
 func renderKeyPredicate(g *sqlGenerator, keyColumns []string, keyValues []KeyPart, params map[string]any) (string, error) {
 	if len(keyColumns) == 0 {
 		return "", errors.New("a write that addresses a row needs the primary key")
 	}
 	terms := make([]string, len(keyColumns))
 	for i, column := range keyColumns {
-		name := fmt.Sprintf("p%d", len(params))
-		params[name] = keyValues[i].Value
-		terms[i] = fmt.Sprintf("%s = @%s", g.quoteIdentifier(column), name)
+		terms[i] = fmt.Sprintf("%s = %s", g.quoteIdentifier(column), valueExpression(keyValues[i].Value, params))
 	}
 
 	return strings.Join(terms, " AND "), nil

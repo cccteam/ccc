@@ -18,6 +18,7 @@ import (
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 )
@@ -573,8 +574,12 @@ func TestPostgresClient_ExecuteFunc(t *testing.T) {
 
 			return &pgconn.PgError{Code: pgSerializationFailure}
 		})
-		if err == nil || attempts != postgresMaxAttempts {
-			t.Errorf("ExecuteFunc() = %v after %d attempts, want an error after %d", err, attempts, postgresMaxAttempts)
+		if !httpio.HasConflict(err) || attempts != postgresMaxAttempts {
+			t.Errorf("ExecuteFunc() = %v after %d attempts, want a Conflict after %d", err, attempts, postgresMaxAttempts)
+		}
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) {
+			t.Errorf("ExecuteFunc() = %v, want the last attempt's error as the cause", err)
 		}
 	})
 }
@@ -674,5 +679,114 @@ func TestPostgresClient_ExecuteFunc_concurrent(t *testing.T) {
 	}
 	if got.Weight != workers {
 		t.Errorf("Weight = %d, want %d: a transaction's increment was lost", got.Weight, workers)
+	}
+}
+
+// TestQueryPostgresCheckRow pins the check-row read against the statements the write
+// checks render: a statement that selects more columns than the caller checks (the pure
+// RBAC partitioned mutation's "TRUE AS g0", checked zero times) still finds the row, a
+// NULL reads as false, and one that selects fewer is an error rather than a wrong answer.
+func TestQueryPostgresCheckRow(t *testing.T) {
+	t.Parallel()
+
+	_, client := postgresDatabase(t, "pg-check-row")
+	ctx := t.Context()
+
+	tests := []struct {
+		name      string
+		sql       string
+		columns   int
+		wantFound bool
+		want      []bool
+		wantErr   bool
+	}{
+		{name: "a row with no checks is found", sql: "SELECT TRUE AS g0", columns: 0, wantFound: true, want: []bool{}},
+		{name: "the leading columns are the checks", sql: "SELECT TRUE AS g1, NULL::boolean AS g2, FALSE AS zz", columns: 2, wantFound: true, want: []bool{true, false}},
+		{name: "no row is not found", sql: "SELECT TRUE AS g0 WHERE FALSE", columns: 1},
+		{name: "fewer columns than checks is an error", sql: "SELECT TRUE AS g0", columns: 2, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			checks, found, err := queryPostgresCheckRow(ctx, client.PostgresReadOnlyTransaction(), &Statement{SQL: tt.sql, Params: map[string]any{}}, tt.columns)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("queryPostgresCheckRow() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if found != tt.wantFound {
+				t.Errorf("found = %v, want %v", found, tt.wantFound)
+			}
+			if diff := cmp.Diff(tt.want, checks, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("checks mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestPostgresClient_readInsideList pins that a function may Read inside its loop over a
+// List on the same transaction, as it may on Spanner: the transaction's one connection
+// carries one result set at a time, so the List is read whole before its first row is
+// handed out.
+func TestPostgresClient_readInsideList(t *testing.T) {
+	t.Parallel()
+
+	_, client := postgresDatabase(t, "pg-read-inside-list")
+	ctx := t.Context()
+	seen := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	ids := []string{"8a6570c8-1e51-4870-9def-3f68d0447d09", "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"}
+	for i, id := range ids {
+		if err := createGadget(ctx, client, &pgGadget{ID: mustCCCUUID(t, id), Name: fmt.Sprintf("g%d", i), Ratio: 1, Price: decimal.NewFromInt(1), Seen: seen, Made: civil.Date{Year: 2026, Month: time.May, Day: 6}}); err != nil {
+			t.Fatalf("create error = %v", err)
+		}
+	}
+
+	for name, run := range map[string]func(func(ctx context.Context, txn ReadOnlyTransaction) error) error{
+		"in a read-write transaction": func(f func(ctx context.Context, txn ReadOnlyTransaction) error) error {
+			return client.ExecuteFunc(ctx, func(ctx context.Context, txn ReadWriteTransaction) error { return f(ctx, txn) })
+		},
+		"in a read-only transaction": func(f func(ctx context.Context, txn ReadOnlyTransaction) error) error {
+			txn := client.ReadOnlyTransaction()
+			defer txn.Close()
+
+			return f(ctx, txn)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var read []string
+			err := run(func(ctx context.Context, txn ReadOnlyTransaction) error {
+				gadgets, err := listGadgets(ctx, txn, nil)
+				if err != nil {
+					return err
+				}
+				for _, g := range gadgets {
+					if _, err := readGadget(ctx, txn, g.ID); err != nil {
+						return err
+					}
+				}
+				qSet := NewQuerySet(NewMetadata[pgGadget]())
+				qSet.AddField("ID")
+				qSet.AddField("Name")
+				qSet.SetSortFields([]SortField{{Field: "Name"}})
+				for row, err := range qSet.List(ctx, txn) {
+					if err != nil {
+						return err
+					}
+					if _, err := readGadget(ctx, txn, row.Data.ID); err != nil {
+						return errors.Wrap(err, "Read() inside the List loop")
+					}
+					read = append(read, row.Data.Name)
+				}
+
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if diff := cmp.Diff([]string{"g0", "g1", "g2"}, read); diff != "" {
+				t.Errorf("names read inside the loop mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

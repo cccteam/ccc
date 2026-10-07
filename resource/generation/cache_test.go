@@ -256,6 +256,13 @@ func Test_newClient_postgres(t *testing.T) {
 	if !strings.HasPrefix(cachePath, "postgres"+string(filepath.Separator)) {
 		t.Errorf("schemaCachePath() = %q, want it under postgres", cachePath)
 	}
+	// With the schema unchanged and cached, the second client reads no database: a table
+	// planted in the cache, which no migration declares, is what it finds.
+	planted := maps.Clone(c.tableMap)
+	planted["PlantedInCache"] = &tableMetadata{}
+	if err := c.genCache.Store(cachePath, tableMapCache, planted); err != nil {
+		t.Fatalf("cache.Cache.Store() error = %v", err)
+	}
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
@@ -270,15 +277,25 @@ func Test_newClient_postgres(t *testing.T) {
 		t.Errorf("Spanner and PostgreSQL share the cache path %q", cachePath)
 	}
 
-	// With the schema unchanged and cached, the second client reads no database: an image
-	// version no registry has would fail a container start, and it does not.
-	cached, err := newClient(t.Context(), "pkg/resources", migrations, []option{WithPostgres("no-such-image-version")})
+	// The image version is part of the key: the same migrations under a later PostgreSQL
+	// are read again rather than served from this version's cache.
+	laterClient := &client{migrationSourceURLs: migrations, postgresVersion: "18"}
+	laterPath, err := laterClient.schemaCachePath()
+	if err != nil {
+		t.Fatalf("schemaCachePath() error = %v", err)
+	}
+	if laterPath == cachePath {
+		t.Errorf("PostgreSQL 17 and 18 share the cache path %q", cachePath)
+	}
+
+	// The second client, over the same version and the unchanged migrations, finds the planted table.
+	cached, err := newClient(t.Context(), "pkg/resources", migrations, []option{WithPostgres("17")})
 	if err != nil {
 		t.Fatalf("newClient() over the cached schema error = %v", err)
 	}
 	defer cached.Close()
-	if diff := cmp.Diff(slices.Sorted(maps.Keys(c.tableMap)), slices.Sorted(maps.Keys(cached.tableMap))); diff != "" {
-		t.Errorf("the cached table map differs from the one read (-read +cached):\n%s", diff)
+	if diff := cmp.Diff(slices.Sorted(maps.Keys(planted)), slices.Sorted(maps.Keys(cached.tableMap))); diff != "" {
+		t.Errorf("the second client's table map is not the cached one (-cached +got):\n%s", diff)
 	}
 }
 

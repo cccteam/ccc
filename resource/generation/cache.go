@@ -198,21 +198,24 @@ func (c *client) loadAllCachedData() (bool, error) {
 
 // schemaCachePath is where the table map and the enumeration values of the application's
 // migrations are cached: apart for each database, since the same migrations name a
-// different schema in each.
+// different schema in each, and for PostgreSQL apart for each image version, since a later
+// server may report the same migrations differently and the migration files alone decide
+// whether the cache is read.
 func (c *client) schemaCachePath() (string, error) {
 	var concatenatedPaths strings.Builder
 	for _, migrationSource := range c.migrationSourceURLs {
 		concatenatedPaths.WriteString(migrationSource)
 	}
 
-	hashedPaths, err := hashString(concatenatedPaths.String())
-	if err != nil {
-		return "", err
-	}
-
 	database := "spanner"
 	if c.postgresVersion != "" {
 		database = "postgres"
+		concatenatedPaths.WriteString("\x00" + c.postgresVersion)
+	}
+
+	hashedPaths, err := hashString(concatenatedPaths.String())
+	if err != nil {
+		return "", err
 	}
 
 	return filepath.Join(database, fmt.Sprintf("%x", hashedPaths)), nil

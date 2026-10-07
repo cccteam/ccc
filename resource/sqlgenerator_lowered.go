@@ -47,7 +47,8 @@ const (
 // meets another or a function: a comparison of two bound values, or a proposed value
 // against a literal, fails with an undetermined type. Spanner types each parameter from
 // its Go value, so the Postgres statement says what the value is: a registry made for
-// Postgres renders each placeholder under a CAST to the type of its value.
+// Postgres records the type of each value a lowered comparison binds, and the comparison
+// renders the placeholder under a CAST to it where nothing else types it (placeholderStyle).
 type paramRegistry struct {
 	dbType     DBType
 	paramCount int
@@ -84,11 +85,40 @@ func (r *paramRegistry) bind(value any) string {
 	return "@" + r.allocate(value, false)
 }
 
-// bindTyped allocates a placeholder for a value a lowered comparison renders: on Postgres
-// it carries the CAST to the value's type, since the other operand may be a parameter
-// too.
+// placeholderStyle is how a lowered comparison renders a parameter on Postgres, which
+// types a parameter from what it meets.
+type placeholderStyle int
+
+// The styles differ for strings alone. A number, an instant or a boolean keeps its CAST
+// beside a column too: Postgres compares the column in the parameter's type, so a NUMERIC
+// beside an integer column compares exactly, as on Spanner, where a bare parameter would
+// have to become an integer first. A string's CAST to TEXT would fail beside a column of
+// another type that a condition states as a string: a uuid, an enumeration, a JSON
+// document.
+const (
+	// placeholderTyped renders the parameter under a CAST to its value's type, a string
+	// under the byte-order collation: the other operand is a parameter or a function, so
+	// nothing else types it.
+	placeholderTyped placeholderStyle = iota
+	// placeholderInferred renders a string parameter bare: the column or scalar subquery
+	// on the other side types it.
+	placeholderInferred
+	// placeholderOrdered renders a string parameter bare under the byte-order collation:
+	// the other side types it, and the comparison orders, which the condition language
+	// does by code point.
+	placeholderOrdered
+)
+
+// bindTyped allocates a placeholder for a value a lowered comparison renders where
+// nothing else types it: on Postgres it carries the CAST to the value's type.
 func (r *paramRegistry) bindTyped(value any) string {
-	return r.placeholder(r.allocate(value, true))
+	return r.bindStyled(value, placeholderTyped)
+}
+
+// bindStyled allocates a placeholder for a value a lowered comparison renders, in the
+// style the comparison calls for.
+func (r *paramRegistry) bindStyled(value any, style placeholderStyle) string {
+	return r.placeholder(r.allocate(value, true), style)
 }
 
 // bindName allocates a typed parameter for value and returns its name, without the @,
@@ -98,28 +128,60 @@ func (r *paramRegistry) bindName(value any) string {
 }
 
 // placeholder renders a parameter's name as the statement names it: @-prefixed, and under
-// the CAST its type calls for where one was recorded.
-func (r *paramRegistry) placeholder(name string) string {
+// the CAST or the collation its recorded type and the style call for.
+func (r *paramRegistry) placeholder(name string, style placeholderStyle) string {
 	cast, ok := r.casts[name]
 	switch {
 	case !ok:
 		return "@" + name
-	case cast == postgresText:
-		// The condition language compares strings by code point, as Spanner does; a
-		// locale collation would answer a comparison of two parameters, or of a column in
-		// one, differently. An explicit collation wins over a column's.
-		return fmt.Sprintf(`(CAST(@%s AS %s) COLLATE "C")`, name, cast)
-	default:
+	case cast != postgresText:
 		return fmt.Sprintf("CAST(@%s AS %s)", name, cast)
+	case style == placeholderInferred:
+		return "@" + name
+	case style == placeholderOrdered:
+		// The condition language compares strings by code point, as Spanner does; a
+		// locale collation would order a comparison of two parameters, or of a column in
+		// one, differently. An explicit collation wins over a column's.
+		return fmt.Sprintf(`(@%s COLLATE "C")`, name)
+	default:
+		return fmt.Sprintf(`(CAST(@%s AS %s) COLLATE "C")`, name, cast)
 	}
 }
 
 // reference records the statement's use of a named parameter, fixed or bound, and
-// returns the placeholder to render.
+// returns the placeholder to render, typed where its value's type was recorded.
 func (r *paramRegistry) reference(name string) string {
-	r.named[name] = struct{}{}
+	return r.referenceStyled(name, placeholderTyped)
+}
 
-	return r.placeholder(name)
+// referenceStyled records the statement's use of a named parameter and returns the
+// placeholder to render in the style the comparison calls for.
+//
+// A bound string referenced bare, where the other operand types it, renders a copy of
+// its own: pgx sends a named parameter as one positional parameter, and Postgres deduces
+// one type for it, so a proposed value compared once beside a uuid column and once under
+// its CAST to TEXT would be refused with inconsistent types. Each bare use takes its type
+// from its own operand.
+func (r *paramRegistry) referenceStyled(name string, style placeholderStyle) string {
+	r.named[name] = struct{}{}
+	if style != placeholderTyped && r.casts[name] == postgresText {
+		if value, ok := r.boundValue(name); ok {
+			return r.placeholder(r.allocate(value, true), style)
+		}
+	}
+
+	return r.placeholder(name, style)
+}
+
+// boundValue returns the value bound under name, if the registry bound it.
+func (r *paramRegistry) boundValue(name string) (any, bool) {
+	for _, param := range r.params {
+		if param.Name == name {
+			return param.Value, true
+		}
+	}
+
+	return nil, false
 }
 
 // paramValue normalizes a value for query-parameter typing. Spanner types a query
@@ -219,6 +281,23 @@ func namedComparand(name string) comparand {
 
 func subqueryComparand(subquery *scalarSubqueryNode) comparand {
 	return comparand{kind: comparandSubquery, subquery: subquery}
+}
+
+// typesOperand reports whether the comparand types the other side of a comparison for
+// Postgres: a column and a scalar subquery do, a parameter does not.
+func (c *comparand) typesOperand() bool {
+	return c.kind == comparandColumn || c.kind == comparandSubquery
+}
+
+// isOrderingOperator reports whether the SQL operator orders its operands rather than
+// testing their equality.
+func isOrderingOperator(op string) bool {
+	switch op {
+	case "<", sqlLessEq, ">", sqlGreaterEq:
+		return true
+	default:
+		return false
+	}
 }
 
 // loweredComparisonNode relates two comparands with a relational operator.
@@ -339,11 +418,20 @@ func (s *sqlGenerator) generateLowered(node ExpressionNode, registry *paramRegis
 }
 
 func (s *sqlGenerator) generateLoweredComparisonSQL(n *loweredComparisonNode) (string, error) {
-	left, err := s.renderComparand(&n.left)
+	// A parameter beside a column or a subquery is typed by it; one beside another
+	// parameter says its own type.
+	style := placeholderTyped
+	if n.left.typesOperand() || n.right.typesOperand() {
+		style = placeholderInferred
+		if isOrderingOperator(n.op) {
+			style = placeholderOrdered
+		}
+	}
+	left, err := s.renderComparand(&n.left, style)
 	if err != nil {
 		return "", err
 	}
-	right, err := s.renderComparand(&n.right)
+	right, err := s.renderComparand(&n.right, style)
 	if err != nil {
 		return "", err
 	}
@@ -351,14 +439,16 @@ func (s *sqlGenerator) generateLoweredComparisonSQL(n *loweredComparisonNode) (s
 	return fmt.Sprintf("%s %s %s", left, n.op, right), nil
 }
 
-func (s *sqlGenerator) renderComparand(c *comparand) (string, error) {
+// renderComparand renders one side of a comparison; a parameter renders in the given
+// style.
+func (s *sqlGenerator) renderComparand(c *comparand, style placeholderStyle) (string, error) {
 	switch c.kind {
 	case comparandColumn:
 		return s.renderColumnRef(c.column), nil
 	case comparandValue:
-		return s.registry.bindTyped(c.value), nil
+		return s.registry.bindStyled(c.value, style), nil
 	case comparandNamed:
-		return s.registry.reference(c.named), nil
+		return s.registry.referenceStyled(c.named, style), nil
 	case comparandSubquery:
 		return s.renderScalarSubquery(c.subquery)
 	default:
@@ -375,13 +465,20 @@ func (s *sqlGenerator) renderColumnRef(ref columnRef) string {
 }
 
 func (s *sqlGenerator) generateLoweredInSQL(n *loweredInNode) (string, error) {
-	left, err := s.renderComparand(&n.left)
+	// The lowering admits no bound value on the left, so a left parameter is a proposed
+	// value, which says its own type; the list's values are typed by a column on the
+	// left and say their own type beside a parameter.
+	left, err := s.renderComparand(&n.left, placeholderTyped)
 	if err != nil {
 		return "", err
 	}
+	style := placeholderTyped
+	if n.left.typesOperand() {
+		style = placeholderInferred
+	}
 	placeholders := make([]string, 0, len(n.values))
 	for _, v := range n.values {
-		placeholders = append(placeholders, s.registry.bindTyped(v))
+		placeholders = append(placeholders, s.registry.bindStyled(v, style))
 	}
 	op := "IN"
 	if n.negated {
@@ -392,7 +489,8 @@ func (s *sqlGenerator) generateLoweredInSQL(n *loweredInNode) (string, error) {
 }
 
 func (s *sqlGenerator) generateLoweredNullTestSQL(n *loweredNullTestNode) (string, error) {
-	left, err := s.renderComparand(&n.left)
+	// A bare parameter has no type for IS NULL to test; a proposed value says its own.
+	left, err := s.renderComparand(&n.left, placeholderTyped)
 	if err != nil {
 		return "", err
 	}
@@ -413,7 +511,7 @@ func (s *sqlGenerator) generateNotSQL(n *notNode) (string, error) {
 }
 
 func (s *sqlGenerator) generateNullGuardSQL(n *nullGuardNode) (string, error) {
-	value, err := s.renderComparand(&n.value)
+	value, err := s.renderComparand(&n.value, placeholderTyped)
 	if err != nil {
 		return "", err
 	}

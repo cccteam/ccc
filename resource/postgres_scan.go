@@ -10,6 +10,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // This file is the Postgres counterpart of the Spanner reader's row handling: running a
@@ -217,8 +218,34 @@ func readPostgresRow[Resource Resourcer](ctx context.Context, querier PostgresQu
 	return scanPostgresRow[Resource](rows, targets, stmt)
 }
 
-// listPostgresRows iterates the statement's rows.
+// listPostgresRows iterates the statement's rows. Through a transaction the rows are read
+// whole before the first is yielded: a transaction runs its queries on one connection,
+// which pgx hands to one result set at a time, so a Read inside the loop over a List,
+// which a Spanner transaction permits, would otherwise find the connection busy. The pool
+// gives each query a connection of its own, so through it the rows stream.
 func listPostgresRows[Resource Resourcer](ctx context.Context, querier PostgresQuerier, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	if _, pooled := querier.(*pgxpool.Pool); pooled {
+		return streamPostgresRows[Resource](ctx, querier, stmt)
+	}
+
+	return func(yield func(*Row[Resource], error) bool) {
+		collected, err := collectPostgresRows[Resource](ctx, querier, stmt)
+		if err != nil {
+			yield(nil, err)
+
+			return
+		}
+		for _, row := range collected {
+			if !yield(row, nil) {
+				return
+			}
+		}
+	}
+}
+
+// streamPostgresRows yields each row as it is scanned, holding the result set open until
+// the iteration ends.
+func streamPostgresRows[Resource Resourcer](ctx context.Context, querier PostgresQuerier, stmt *Statement) iter.Seq2[*Row[Resource], error] {
 	return func(yield func(*Row[Resource], error) bool) {
 		rows, err := queryPostgres(ctx, querier, stmt)
 		if err != nil {
@@ -253,6 +280,38 @@ func listPostgresRows[Resource Resourcer](ctx context.Context, querier PostgresQ
 	}
 }
 
+// collectPostgresRows runs the statement and scans every row, releasing the result set
+// before it returns.
+func collectPostgresRows[Resource Resourcer](ctx context.Context, querier PostgresQuerier, stmt *Statement) ([]*Row[Resource], error) {
+	rows, err := queryPostgres(ctx, querier, stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var (
+		targets   []postgresTarget
+		collected []*Row[Resource]
+	)
+	for rows.Next() {
+		if targets == nil {
+			if targets, err = planPostgresColumns[Resource](rows.FieldDescriptions(), stmt); err != nil {
+				return nil, err
+			}
+		}
+		row, err := scanPostgresRow[Resource](rows, targets, stmt)
+		if err != nil {
+			return nil, err
+		}
+		collected = append(collected, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "pgx.Rows.Next()")
+	}
+
+	return collected, nil
+}
+
 // countPostgresRows runs a statement whose single row and column is a count.
 func countPostgresRows(ctx context.Context, querier PostgresQuerier, stmt *Statement) (int64, error) {
 	rows, err := queryPostgres(ctx, querier, stmt)
@@ -277,7 +336,9 @@ func countPostgresRows(ctx context.Context, querier PostgresQuerier, stmt *State
 }
 
 // queryPostgresCheckRow reads a check-SELECT's first row: its leading boolean columns, a
-// NULL read as false.
+// NULL read as false. The row may carry more columns than the caller asks for (a statement
+// with no condition to check still selects one, to find the row); pgx scans a row whole,
+// so the extra columns take a nil destination, which pgx skips whatever their type.
 func queryPostgresCheckRow(ctx context.Context, querier PostgresQuerier, stmt *Statement, columns int) (checks []bool, found bool, err error) {
 	rows, err := queryPostgres(ctx, querier, stmt)
 	if err != nil {
@@ -293,8 +354,12 @@ func queryPostgresCheckRow(ctx context.Context, querier PostgresQuerier, stmt *S
 		return nil, false, nil
 	}
 
+	selected := len(rows.FieldDescriptions())
+	if selected < columns {
+		return nil, false, errors.Newf("the check statement selects %d columns, %d checks were expected", selected, columns)
+	}
 	scanned := make([]*bool, columns)
-	dests := make([]any, columns)
+	dests := make([]any, selected)
 	for i := range scanned {
 		dests[i] = &scanned[i]
 	}

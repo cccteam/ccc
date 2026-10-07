@@ -211,7 +211,7 @@ func TestExecuteGate_postgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteGate.checkStatement() error = %v", err)
 	}
-	wantSQL := `SELECT (("enforcementResources"."Owner" = @subject AND "enforcementResources"."State" NOT IN ((CAST(@_c1 AS TEXT) COLLATE "C"), (CAST(@_c2 AS TEXT) COLLATE "C")))) AS g0 FROM "enforcementResources" WHERE "Id" = @zzTargetKey`
+	wantSQL := `SELECT (("enforcementResources"."Owner" = @subject AND "enforcementResources"."State" NOT IN (@_c1, @_c2))) AS g0 FROM "enforcementResources" WHERE "Id" = @zzTargetKey`
 	if got := normalizeSQL(stmt.SQL); got != wantSQL {
 		t.Errorf("ExecuteGate.checkStatement() SQL =\n%s\nwant\n%s", got, wantSQL)
 	}

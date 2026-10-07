@@ -1074,6 +1074,64 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	return stmt, nil
 }
 
+// visibilityStmt renders a check-SELECT that locates the row by its primary key alone and
+// selects, as its one column, whether the read conditions and the tenancy admit it. It
+// returns nil when neither restricts the read, so any row under the key is one the caller
+// may read.
+func (q *QuerySet[Resource]) visibilityStmt(dbType DBType) (*Statement, error) {
+	plan, err := q.readConditionPlan()
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.readConditionPlan()")
+	}
+
+	registry := newParamRegistry(dbType)
+	var predicates []string
+	if plan != nil {
+		rendered, err := q.renderReadConditions(dbType, plan, registry)
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.renderReadConditions()")
+		}
+		if rendered.rowPredicate != "" {
+			predicates = append(predicates, rendered.rowPredicate)
+		}
+	}
+	tenancy, err := q.tenancyPredicate(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.tenancyPredicate()")
+	}
+	if tenancy != "" {
+		predicates = append(predicates, tenancy)
+	}
+	if len(predicates) == 0 {
+		return nil, nil
+	}
+
+	where, err := q.where(dbType, nil, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.where()")
+	}
+	if where.SQL == "" {
+		// With no key the statement would find any row in the table.
+		return nil, errors.Newf("%s: locating the row needs its primary key, and none is set", q.Resource())
+	}
+
+	withClause, query, subqueryParams := q.query(dbType)
+	for k, v := range subqueryParams {
+		if _, ok := where.Params[k]; ok {
+			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
+		}
+		where.Params[k] = v
+	}
+	if err := q.mergeRegistryParams(registry, where.Params); err != nil {
+		return nil, err
+	}
+
+	return &Statement{
+		SQL:    fmt.Sprintf("%s SELECT (%s) AS g0 FROM %s %s", withClause, strings.Join(predicates, " AND "), query, where.SQL),
+		Params: where.Params,
+	}, nil
+}
+
 // pageClauses renders the statement's ORDER BY and LIMIT.
 func (q *QuerySet[Resource]) pageClauses(dbType DBType, rendered *renderedReadConditions) (orderByClause, limitClause string, err error) {
 	orderByClause, err = q.buildOrderByClause(dbType, rendered)

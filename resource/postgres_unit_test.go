@@ -448,6 +448,120 @@ func TestParamRegistry_typedPlaceholders(t *testing.T) {
 	})
 }
 
+// TestLoweredComparison_postgresTyping pins where a lowered comparison says a parameter's
+// type on Postgres: beside a column or a subquery a string is bare, since the column types
+// it and a CAST to TEXT would fail against a uuid or an enumeration, while a number keeps
+// its CAST so an integer column compares exactly against a decimal; a string an ordering
+// operator compares to a column keeps the byte-order collation; and beside another
+// parameter, where nothing types it, every parameter carries its CAST.
+func TestLoweredComparison_postgresTyping(t *testing.T) {
+	t.Parallel()
+
+	owner := columnComparand("T", "Owner")
+	subquery := subqueryComparand(&scalarSubqueryNode{table: "Users", alias: "u", column: "Tier", where: &truthNode{value: true}})
+	tests := []struct {
+		name string
+		// proposed binds a proposed value first, as the lowering binds one, which the
+		// case's named comparand _c1 refers to.
+		proposed bool
+		node     ExpressionNode
+		want     string
+	}{
+		{
+			name: "a column equals a string: bare, the column types it",
+			node: &loweredComparisonNode{left: owner, op: "=", right: valueComparand("u1")},
+			want: `"T"."Owner" = @_c1`,
+		},
+		{
+			name: "a column equals a number: the CAST holds, the column compares in the number's type",
+			node: &loweredComparisonNode{left: owner, op: "=", right: valueComparand(decimal.RequireFromString("1.5"))},
+			want: `"T"."Owner" = CAST(@_c1 AS NUMERIC)`,
+		},
+		{
+			name: "a column is ordered against a string: bare under the byte-order collation",
+			node: &loweredComparisonNode{left: owner, op: "<", right: valueComparand("m")},
+			want: `"T"."Owner" < (@_c1 COLLATE "C")`,
+		},
+		{
+			name: "a column is ordered against a number: the CAST holds, nothing to collate",
+			node: &loweredComparisonNode{left: owner, op: sqlGreaterEq, right: valueComparand(int64(3))},
+			want: `"T"."Owner" >= CAST(@_c1 AS BIGINT)`,
+		},
+		{
+			name: "a subquery equals a string: bare, the subquery types it",
+			node: &loweredComparisonNode{left: subquery, op: "=", right: valueComparand("gold")},
+			want: `(SELECT "u"."Tier" FROM "Users" "u" WHERE TRUE) = @_c1`,
+		},
+		{
+			proposed: true,
+			name:     "a proposed value equals a string: both parameters, so both carry their type",
+			node:     &loweredComparisonNode{left: namedComparand("_c1"), op: "=", right: valueComparand("open")},
+			want:     `(CAST(@_c1 AS TEXT) COLLATE "C") = (CAST(@_c2 AS TEXT) COLLATE "C")`,
+		},
+		{
+			proposed: true,
+			name:     "a proposed value against the subject: the proposed value carries its type",
+			node:     &loweredComparisonNode{left: namedComparand("_c1"), op: "=", right: namedComparand(subjectParamName)},
+			want:     `(CAST(@_c1 AS TEXT) COLLATE "C") = @subject`,
+		},
+		{
+			proposed: true,
+			name:     "a proposed value against a column: a bare copy of its own, the column types it",
+			node:     &loweredComparisonNode{left: owner, op: "<>", right: namedComparand("_c1")},
+			want:     `"T"."Owner" <> @_c2`,
+		},
+		{
+			// pgx sends one named parameter as one positional parameter, which Postgres
+			// types once: a bare use beside a uuid column and a CAST to TEXT of the same
+			// parameter would be refused with inconsistent types.
+			proposed: true,
+			name:     "a proposed value used typed and bare: the bare use is a copy",
+			node: &LogicalOpNode{
+				Left:     &loweredComparisonNode{left: namedComparand("_c1"), op: "=", right: namedComparand(subjectParamName)},
+				Operator: OperatorAnd,
+				Right:    &loweredComparisonNode{left: subquery, op: "=", right: namedComparand("_c1")},
+			},
+			want: `(CAST(@_c1 AS TEXT) COLLATE "C") = @subject AND (SELECT "u"."Tier" FROM "Users" "u" WHERE TRUE) = @_c2`,
+		},
+		{
+			name: "a column in a list: the list is bare",
+			node: &loweredInNode{left: owner, values: []any{"a", "b"}},
+			want: `"T"."Owner" IN (@_c1, @_c2)`,
+		},
+		{
+			proposed: true,
+			name:     "a proposed value in a list: every parameter carries its type",
+			node:     &loweredInNode{left: namedComparand("_c1"), negated: true, values: []any{"a"}},
+			want:     `(CAST(@_c1 AS TEXT) COLLATE "C") NOT IN ((CAST(@_c2 AS TEXT) COLLATE "C"))`,
+		},
+		{
+			proposed: true,
+			name:     "a proposed value tested for NULL carries its type",
+			node:     &loweredNullTestNode{left: namedComparand("_c1")},
+			want:     `(CAST(@_c1 AS TEXT) COLLATE "C") IS NULL`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			registry := newParamRegistry(PostgresDBType)
+			if tt.proposed {
+				if name := registry.bindName("proposed"); name != "_c1" {
+					t.Fatalf("bindName() = %q, want _c1", name)
+				}
+			}
+			got, err := newSQLGenerator(PostgreSQL).generateLowered(tt.node, registry)
+			if err != nil {
+				t.Fatalf("generateLowered() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("generateLowered() =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}
+
 // scanTarget is what a column scans into, for the adapters' tests.
 type scanTarget struct {
 	id    ccc.UUID

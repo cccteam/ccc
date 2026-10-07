@@ -81,7 +81,8 @@ func (c *PostgresClient) PostgresReadOnlyTransaction() PostgresQuerier {
 // ExecuteFunc executes a function within a read-write transaction, serializable as
 // Spanner's are. A transaction that loses to a concurrent one (a serialization failure
 // or a deadlock) runs the function again, up to postgresMaxAttempts times, as Spanner's
-// client runs it again when the transaction aborts.
+// client runs it again when the transaction aborts; one that loses every attempt answers
+// a 409 the caller can retry on.
 //
 // As with Spanner's, the writes a function buffers are applied when it returns and
 // before the commit, in the order they were buffered, and the function's own reads do not
@@ -117,7 +118,10 @@ func (c *PostgresClient) ExecuteFunc(ctx context.Context, f func(ctx context.Con
 		}
 	}
 
-	return err
+	// Every attempt lost to a concurrent transaction. The caller can act on that by
+	// trying again, so it answers as a conflict rather than as the server's text; the
+	// last attempt's error stays the cause, for the log.
+	return httpio.NewConflictMessageWithError(err, "The request conflicted with concurrent requests and could not be completed. Please try again.")
 }
 
 // backoff is how long to wait after the given attempt lost: the base doubled for each
@@ -369,6 +373,9 @@ func (c *PostgresReadWriteTransaction) DataChangeEventIndex(res accesstypes.Reso
 
 // PostgresReadOnlyTransaction returns the transaction, which runs the reader's queries.
 // The writes the function has buffered are not applied yet, so its reads do not see them.
+// The transaction holds one connection, which carries one result set at a time; the
+// readers read each result whole before they hand a row out (listPostgresRows), so a
+// Read inside a loop over a List runs as it does on Spanner.
 func (c *PostgresReadWriteTransaction) PostgresReadOnlyTransaction() PostgresQuerier {
 	return c.txn
 }
@@ -394,7 +401,9 @@ func (c *PostgresReadWriteTransaction) buffer(r PatchSetMetadata, values map[str
 	if err != nil {
 		return err
 	}
-	if _, _, err := mutation.stmt.PostgresStatement(); err != nil {
+	// The parameters convert here, once: a value the statement cannot bind is refused as
+	// the patch is buffered, and flush runs what was converted.
+	if mutation.sql, mutation.args, err = mutation.stmt.PostgresStatement(); err != nil {
 		return err
 	}
 
@@ -409,11 +418,7 @@ func (c *PostgresReadWriteTransaction) buffer(r PatchSetMetadata, values map[str
 // matches no row is refused as Spanner refuses an update of a row that does not exist.
 func (c *PostgresReadWriteTransaction) flush(ctx context.Context) error {
 	for _, mutation := range c.pending {
-		sql, args, err := mutation.stmt.PostgresStatement()
-		if err != nil {
-			return err
-		}
-		tag, err := c.txn.Exec(ctx, sql, args)
+		tag, err := c.txn.Exec(ctx, mutation.sql, mutation.args)
 		if err != nil {
 			return errors.Wrapf(err, "pgx.Tx.Exec(%s)", mutation.describe())
 		}

@@ -232,3 +232,75 @@ func TestPatchSet_writeCheckStatement(t *testing.T) {
 		})
 	}
 }
+
+// TestQuerySet_visibilityStmt pins the read an upsert guards its target with: the row
+// located by its key alone, selecting whether the read conditions and the tenancy admit
+// it; no statement when nothing restricts the read; and an error, not a read of any row,
+// when the key is not set.
+func TestQuerySet_visibilityStmt(t *testing.T) {
+	t.Parallel()
+
+	id := mustUUIDFromString("8a6570c8-1e51-4870-9def-3f68d0447d09")
+	tests := []struct {
+		name       string
+		key        bool
+		restricted bool
+		wantSQL    string
+		wantNil    bool
+		wantErr    string
+	}{
+		{
+			name: "a partitioned read selects whether the tenancy admits the row", key: true, restricted: true,
+			wantSQL: "SELECT ((`enforcementResources`.`Station` = @domain)) AS g0 FROM enforcementResources WHERE `Id` = @_id",
+		},
+		{name: "an unrestricted read needs no statement", key: true, wantNil: true},
+		{name: "no key is an error", restricted: true, wantErr: "needs its primary key"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[enforcementResource, enforcementPatchRequest](accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+			p := NewPatchSet(NewMetadata[enforcementResource]()).SetPatchType(CreateOrUpdatePatchType)
+			if tt.key {
+				p.SetKey("ID", id)
+			}
+			p.querySet.env = accesstypes.EnvironmentAt(time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC))
+			p.EnableUserPermissionEnforcement(rSet, renderStubPermissions{}, testScope, accesstypes.Update)
+			if tt.restricted {
+				p.querySet.collection = writeCheckCollection(t)
+				p.querySet.conditionalDecisions = accesstypes.Decisions{
+					enforcedResource + ".public": conditionalOn(enforcedResource+".public", "owner = subject"),
+				}
+			}
+
+			stmt, err := p.querySet.visibilityStmt(SpannerDBType)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("visibilityStmt() error = %v, want containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("visibilityStmt() error = %v", err)
+			}
+			if tt.wantNil {
+				if stmt != nil {
+					t.Fatalf("visibilityStmt() = %q, want nil", stmt.SQL)
+				}
+
+				return
+			}
+			if stmt == nil {
+				t.Fatalf("visibilityStmt() = nil, want a statement")
+			}
+			if got := normalizeSQL(stmt.SQL); got != tt.wantSQL {
+				t.Errorf("visibilityStmt() SQL =\n%s\nwant\n%s", got, tt.wantSQL)
+			}
+		})
+	}
+}

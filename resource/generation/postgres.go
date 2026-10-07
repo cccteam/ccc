@@ -401,8 +401,9 @@ func postgresSchemaResults(columns []postgresColumnRow, keys []postgresKeyRow) (
 }
 
 // postgresTypeLength matches the length or precision a type declares: varchar(64),
-// numeric(12,2).
-var postgresTypeLength = regexp.MustCompile(`^([a-z ]+?)(?:\((\d+)(?:,\s*\d+)?\))?(\[\])?$`)
+// numeric(12,2), and the time types, whose precision sits inside the name:
+// timestamp(3) with time zone.
+var postgresTypeLength = regexp.MustCompile(`^([a-z ]+?)(?:\((\d+)(?:,\s*\d+)?\))?( with(?:out)? time zone)?(\[\])?$`)
 
 // postgresColumnType states a PostgreSQL column's type as format_type spells it in the
 // vocabulary the generator parses (see the file's comment). A type with no counterpart
@@ -414,7 +415,7 @@ func postgresColumnType(formatted string) (string, error) {
 	if m == nil {
 		return "", errors.Newf("column type %q is not one the schema read understands", formatted)
 	}
-	name, length, array := m[1], m[2], m[3] != ""
+	name, length, array := m[1]+m[3], m[2], m[4] != ""
 
 	var scalar string
 	switch name {
@@ -486,7 +487,11 @@ func fetchPostgresEnumValues(ctx context.Context, pool *pgxpool.Pool) (map[strin
 			continue
 		}
 
-		rows, err := pool.Query(ctx, fmt.Sprintf(`SELECT DISTINCT CAST("Id" AS TEXT), CAST("Description" AS TEXT) FROM %s ORDER BY 1`, pgx.Identifier{name}.Sanitize()))
+		// The read mirrors the Spanner one, SELECT DISTINCT Id, Description ORDER BY Id:
+		// the rows are distinct on the Id itself and come in its order, so an
+		// integer-keyed enumeration generates in numeric order on both databases. The Id
+		// is cast to text only outside the DISTINCT, which would otherwise order the text.
+		rows, err := pool.Query(ctx, fmt.Sprintf(`SELECT CAST(e."Id" AS TEXT), e.description FROM (SELECT DISTINCT "Id", CAST("Description" AS TEXT) AS description FROM %s) e ORDER BY e."Id"`, pgx.Identifier{name}.Sanitize()))
 		if err != nil {
 			return nil, errors.Wrapf(err, "pgxpool.Pool.Query(%s)", name)
 		}
