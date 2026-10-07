@@ -212,6 +212,9 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 	if err := resolveOptions(r, opts); err != nil {
 		return nil, err
 	}
+	if r.genHandlerTests && c.postgresVersion != "" {
+		return nil, errors.New("GenerateHandlerTests writes a suite that runs over the Spanner emulator, and is not available with WithPostgres")
+	}
 	for _, dir := range []packageDir{r.handler, r.router} {
 		if dir != "" {
 			c.outputs = append(c.outputs, dir)

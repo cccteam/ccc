@@ -474,7 +474,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 		}
 
 		for _, field := range resource.Fields {
-			spannerTag, _ := field.LookupTag(spannerTagKey)
+			spannerTag, _ := columnTag(field)
 			nullability, ok := nullableFields[spannerTag]
 			if !ok {
 				continue
@@ -560,9 +560,9 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
 	for _, field := range pStruct.Fields() {
-		spannerTag, ok := field.LookupTag(spannerTagKey)
+		spannerTag, ok := columnTag(field)
 		if !ok {
-			field.AddError("missing spanner tag")
+			field.AddError("missing spanner or postgres tag")
 
 			continue
 		}
@@ -576,7 +576,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
-			field.AddError("spanner tag does not match any table columns")
+			field.AddError("column tag does not match any table columns")
 
 			continue
 		}
@@ -687,9 +687,9 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations 
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
 	var keyCount int64
 	for i, field := range pStruct.Fields() {
-		_, ok := field.LookupTag(spannerTagKey)
+		_, ok := columnTag(field)
 		if !ok {
-			field.AddError("missing spanner tag")
+			field.AddError("missing spanner or postgres tag")
 
 			continue
 		}
@@ -1195,7 +1195,7 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 		if field.IsSlice() {
 			continue
 		}
-		spannerTag, _ := field.LookupTag(spannerTagKey)
+		spannerTag, _ := columnTag(field)
 		if nullableFields[spannerTag] != table.Columns[spannerTag].IsNullable {
 			errRow := fmt.Sprintf("| %-32s | %13t | %15t |", spannerTag, nullableFields[spannerTag], table.Columns[spannerTag].IsNullable)
 			errRows = append(errRows, errRow)
@@ -1230,7 +1230,7 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 	nullableFields := make(map[string]bool)
 	var missingTags []string
 	for _, field := range pStruct.Fields() {
-		spannerTag, ok := field.LookupTag(spannerTagKey)
+		spannerTag, ok := columnTag(field)
 		if !ok {
 			missingTags = append(missingTags, field.Name())
 		}
@@ -1278,7 +1278,7 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 			msg.WriteString(missingTags[i])
 		}
 
-		return nil, errors.Newf("struct %s fields missing spanner tags: [%s]", pStruct.Name(), msg.String())
+		return nil, errors.Newf("struct %s fields missing spanner or postgres tags: [%s]", pStruct.Name(), msg.String())
 	}
 
 	return nullableFields, nil

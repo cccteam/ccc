@@ -1,0 +1,10 @@
+DROP TABLE "Typed";
+DROP TYPE "Mood";
+DROP DOMAIN "Slug";
+DROP TABLE "Statuses";
+DROP TABLE "ShapeNoteTags";
+DROP TABLE "ShapeNotes";
+DROP TABLE "Shapes";
+DROP TABLE "Attachments";
+DROP TABLE "OrderNotes";
+DROP TABLE "OrderLines";

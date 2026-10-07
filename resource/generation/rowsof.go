@@ -110,7 +110,7 @@ func tableKey(res *resourceInfo) []keyColumn {
 	})
 	key := make([]keyColumn, 0, len(fields))
 	for _, f := range fields {
-		column, _ := f.LookupTag(spannerTagKey)
+		column, _ := columnTag(f)
 		key = append(key, keyColumn{Field: f.Name(), Type: f.Type(), Column: column})
 	}
 
@@ -121,7 +121,7 @@ func tableKey(res *resourceInfo) []keyColumn {
 func virtualKey(res *resourceInfo) []keyColumn {
 	key := make([]keyColumn, 0, len(res.Fields))
 	for _, f := range res.PrimaryKeys() {
-		column, _ := f.LookupTag(spannerTagKey)
+		column, _ := columnTag(f)
 		key = append(key, keyColumn{Field: f.Name(), Type: f.Type(), Column: column})
 	}
 

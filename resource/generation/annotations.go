@@ -6,6 +6,9 @@ package generation
 // sourceStructTagKeys below.
 const (
 	spannerTagKey = "spanner"
+	// postgresTagKey names the same column as spannerTagKey does, for an application on
+	// PostgreSQL (WithPostgres). A field carries either, or both naming one column.
+	postgresTagKey = "postgres"
 	// permTagKey is no longer author vocabulary: field permissions are enforced
 	// structurally from the endpoint permission, and a perm tag on a source struct is a
 	// generation error (validateNoPermTags). The generator still writes this key into
@@ -24,6 +27,7 @@ const (
 // README.md completeness test. Add every new tag-key constant here.
 var sourceStructTagKeys = []string{
 	spannerTagKey,
+	postgresTagKey,
 	conditionsTagKey,
 	defaultCreateFnTagKey,
 	outputOnlyUpdateFnTagKey,
@@ -86,3 +90,17 @@ const (
 	// (resourceField.FormerlyTag); the decoders answer the former name as the current.
 	formerlyOutTagKey = "formerly"
 )
+
+// columnTag returns the column a source struct field maps to: its spanner tag, or the
+// postgres tag of an application on PostgreSQL. A field that carries both names one
+// column by both.
+func columnTag(f interface {
+	LookupTag(key string) (string, bool)
+},
+) (string, bool) {
+	if column, ok := f.LookupTag(spannerTagKey); ok {
+		return column, true
+	}
+
+	return f.LookupTag(postgresTagKey)
+}

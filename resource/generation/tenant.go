@@ -189,7 +189,7 @@ func (r *resourceGenerator) generateTenants() error {
 	begin := time.Now()
 	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(tenantRosterOutputName))
 
-	keyColumn, _ := tenant.PrimaryKey().LookupTag(spannerTagKey)
+	keyColumn, _ := columnTag(tenant.PrimaryKey())
 	if err := r.writeFormattedGoFile(destinationFilePath, "tenantsTemplate", tenantsTemplate, &tenantsData{
 		Source:    r.resource.Dir(),
 		Package:   r.handler.Package(),

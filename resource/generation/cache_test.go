@@ -203,15 +203,100 @@ func newCacheTestModule(t *testing.T) string {
 func copyFixtureMigrations(t *testing.T) string {
 	t.Helper()
 
+	return copyMigrations(t, "migrations")
+}
+
+// copyMigrations copies one of the fixture migration directories under testdata.
+func copyMigrations(t *testing.T, name string) string {
+	t.Helper()
+
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller() failed")
 	}
-	fixture := filepath.Join(filepath.Dir(thisFile), "testdata", "migrations")
+	fixture := filepath.Join(filepath.Dir(thisFile), "testdata", name)
 	dir := t.TempDir()
 	if err := os.CopyFS(dir, os.DirFS(fixture)); err != nil {
 		t.Fatalf("os.CopyFS() error = %v", err)
 	}
 
 	return "file://" + dir
+}
+
+// Test_newClient_postgres runs the client over PostgreSQL as the generator does: WithPostgres
+// reads the schema through a container, and the table map is cached apart from Spanner's, so
+// the second client over the same migrations loads it without one. The client keeps its cache
+// at the root of the module it runs in, found from the working directory, which belongs to the
+// whole process: no t.Parallel here.
+func Test_newClient_postgres(t *testing.T) {
+	t.Chdir(newCacheTestModule(t))
+	if testing.Short() {
+		t.Skip("reading the schema requires a PostgreSQL container")
+	}
+
+	migrations := []string{copyMigrations(t, "postgresmigrations")}
+
+	c, err := newClient(t.Context(), "pkg/resources", migrations, []option{WithPostgres("17")})
+	if err != nil {
+		t.Fatalf("newClient() error = %v", err)
+	}
+	if c.postgresVersion != "17" {
+		t.Errorf("postgresVersion = %q, want 17", c.postgresVersion)
+	}
+	if _, ok := c.tableMap["Orders"]; !ok {
+		t.Fatalf("the table map has no Orders: %v", len(c.tableMap))
+	}
+	if err := c.populateCache(); err != nil {
+		t.Fatalf("populateCache() error = %v", err)
+	}
+	cachePath, err := c.schemaCachePath()
+	if err != nil {
+		t.Fatalf("schemaCachePath() error = %v", err)
+	}
+	if !strings.HasPrefix(cachePath, "postgres"+string(filepath.Separator)) {
+		t.Errorf("schemaCachePath() = %q, want it under postgres", cachePath)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	// The same migrations over Spanner would not find these entries.
+	spannerClient := &client{migrationSourceURLs: migrations}
+	spannerPath, err := spannerClient.schemaCachePath()
+	if err != nil {
+		t.Fatalf("schemaCachePath() error = %v", err)
+	}
+	if spannerPath == cachePath {
+		t.Errorf("Spanner and PostgreSQL share the cache path %q", cachePath)
+	}
+
+	// With the schema unchanged and cached, the second client reads no database: an image
+	// version no registry has would fail a container start, and it does not.
+	cached, err := newClient(t.Context(), "pkg/resources", migrations, []option{WithPostgres("no-such-image-version")})
+	if err != nil {
+		t.Fatalf("newClient() over the cached schema error = %v", err)
+	}
+	defer cached.Close()
+	if diff := cmp.Diff(slices.Sorted(maps.Keys(c.tableMap)), slices.Sorted(maps.Keys(cached.tableMap))); diff != "" {
+		t.Errorf("the cached table map differs from the one read (-read +cached):\n%s", diff)
+	}
+}
+
+// Test_NewResourceGenerator_postgresRefusesHandlerTests pins that the handler test suite,
+// which runs over the Spanner emulator, is refused with PostgreSQL.
+func Test_NewResourceGenerator_postgresRefusesHandlerTests(t *testing.T) {
+	t.Chdir(newCacheTestModule(t))
+	if testing.Short() {
+		t.Skip("reading the schema requires a PostgreSQL container")
+	}
+
+	g, err := NewResourceGenerator(t.Context(), "pkg/resources", []string{copyMigrations(t, "postgresmigrations")},
+		WithPostgres("17"), GenerateHandlers("handlers"), GenerateRoutes("routes", "/api"), GenerateHandlerTests("handlertests"))
+	if err == nil {
+		_ = g.Close()
+		t.Fatal("NewResourceGenerator() error = nil, want the handler tests refused")
+	}
+	if !strings.Contains(err.Error(), "not available with WithPostgres") {
+		t.Errorf("NewResourceGenerator() error = %v, want it to say the handler tests are not available with WithPostgres", err)
+	}
 }

@@ -109,7 +109,7 @@ error, and a stale one in a generated request struct fails Set construction at s
 | Tag | Where | Effect |
 | --- | --- | --- |
 | `spanner:"ColumnName"` | every field of `@resource`/`@virtual` structs | Maps the field to its Spanner column. Required — a missing tag or unknown column is a generation error, and field nullability must match the column's: a pointer or a Null wrapper on a nullable column, a plain value on a NOT NULL one. A slice-typed field follows the column's nullability, since a Go slice has one form: the Spanner client reads NULL into a nil slice and writes nil as NULL, so `[]byte` types a nullable `BYTES` column and a NOT NULL one alike, as `[]T` does an `ARRAY<T>` (section 12, nullable slices). A pointer to a slice is refused. |
-| `postgres:"ColumnName"` | every field of a resource a PostgreSQL application serves | Maps the field to its PostgreSQL column, as `spanner` does to its Spanner one, and the runtime reads it wherever it renders or scans a statement over PostgreSQL (section 20). A resource names the same column in both tags; one served by a single database carries that database's tag alone. The generator does not read it yet. |
+| `postgres:"ColumnName"` | every field of a resource a PostgreSQL application serves | Maps the field to its PostgreSQL column, as `spanner` does to its Spanner one, and the runtime reads it wherever it renders or scans a statement over PostgreSQL (section 20). A resource names the same column in both tags; one served by a single database carries that database's tag alone. The generator reads it too, in place of `spanner`, when the field carries no `spanner` tag (section 20). |
 | `conditions:"…"` | resource fields | Comma-separated list of field conditions, see below. Values match exactly (no spaces); a value the generator does not recognize is refused, with the nearest recognized one suggested. |
 | `default_create_fn:"pkg.Func"` | resource fields | The generated create path calls the referenced function to populate the field when the request doesn't supply it. A field with a default function is not treated as required. |
 | `output_only_update_fn:"pkg.Func"` | resource fields | The generated update path sets the field by calling the referenced function on **every** update; implies output-only. This is the *mechanical enforcement stamp* — a field whose meaning is "this row was updated", like `UpdatedAt`. A timestamp with domain meaning (a "last serviced" written by one business transition) is not an update function: it is an explicit update in the code that owns the business event — see [Ship.LastRefitAt](lodestar/pkg/resources/ships.go). Declaring an update function on any field also gives the resource a generated `New<Resource>Touch(keys…)`: an update carried entirely by the update functions, running the full update pipeline (permission check, stamps, write conditions, change events) with no caller-set fields — the only way to express "bump the row" (an update patch with no fields set is a silent no-op). Example: [Ship.UpdatedAt](lodestar/pkg/resources/ships.go) using `resource.CommitTimestampPtr`. |
@@ -1846,15 +1846,32 @@ the tables); and the tenant roster. The same differential that proves the Spanne
 statements mean what the condition text says runs them over PostgreSQL
 (`TestSemanticDifferential_postgres`), against the same reference evaluator.
 
-**What does not.** The Resource Generator introspects a Spanner schema and reads the
-`spanner` tag; it does not read a PostgreSQL schema or the `postgres` tag yet, so a
-PostgreSQL application declares its resource structs with both tags (section 2) and wires
-the generated code to the PostgreSQL client. A resource's column types are the ones
-PostgreSQL's driver reads: the base kinds, `time.Time`, `civil.Date`, `decimal.Decimal`,
-slices of them as arrays, and any type that implements the Spanner client's `Encoder` and
-`Decoder` (`ccc.UUID`, the nullable enums, the JSON types the generator writes), which the
-runtime reads for PostgreSQL as it does for Spanner: a JSON column is handed to a `Decoder`
-as its text.
+**The generator.** `generation.WithPostgres(version)` makes PostgreSQL the application's
+database: the schema migrations run in a `postgres` container (image `postgres:17` unless a
+version is named) in place of the Spanner emulator, and the generator reads the schema from
+PostgreSQL's system catalogs into the facts it reads from Spanner's `INFORMATION_SCHEMA`:
+each column's nullability, key and foreign-key membership, default and type, each foreign
+key's delete rule, and each table's B-tree indexes (a partial index counts as null-filtered,
+`INCLUDE` as `STORING`; an expression index serves no column and is not read). Source structs
+name their columns by the `postgres` tag, or by `spanner` where a struct carries both. A
+column's type is read as the Spanner type it corresponds to, which the value limits the
+decoder enforces and the JSON storage methods the generator writes already read: `varchar(n)`
+and `char(n)` are `STRING(n)`, `text` `STRING(MAX)`, the integers `INT64`, `numeric` `NUMERIC`
+(whatever its precision: the decoder sizes it as Spanner's, and PostgreSQL rounds to the
+column's scale), `jsonb` and `json` `JSON`, `bytea` `BYTES(MAX)`, arrays `ARRAY<...>`, a domain
+its base type and an enumeration `STRING(MAX)`; a type with no counterpart keeps its own name.
+PostgreSQL has no interleaved tables, and creates no index for a foreign key, so a foreign key
+column is indexed only when an index leads with it, and the index warning of section 9 names
+the index it wants, spelled as Spanner's DDL (quote the names for PostgreSQL). The suite `GenerateHandlerTests` writes runs over the Spanner emulator
+and is refused with `WithPostgres`; the schema is cached apart from Spanner's.
+
+**What does not.** A PostgreSQL application's generated handlers run unchanged against the
+PostgreSQL client. The enumeration read assumes the table's columns are named `Id` and
+`Description`, as Spanner's does. A resource's column types are the ones PostgreSQL's driver
+reads: the base kinds, `time.Time`, `civil.Date`, `decimal.Decimal`, slices of them as arrays,
+and any type that implements the Spanner client's `Encoder` and `Decoder` (`ccc.UUID`, the
+nullable enums, the JSON types the generator writes), which the runtime reads for PostgreSQL
+as it does for Spanner: a JSON column is handed to a `Decoder` as its text.
 
 **Transactions.** `PostgresClient.ExecuteFunc` runs the function in a serializable
 transaction, as Spanner's are, and runs it again, up to ten times with a short jittered

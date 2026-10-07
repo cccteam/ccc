@@ -171,13 +171,13 @@ func (c *client) isSchemaClean() (bool, error) {
 }
 
 func (c *client) loadAllCachedData() (bool, error) {
-	spannerCachePath, err := c.spannerCachePath()
+	schemaCachePath, err := c.schemaCachePath()
 	if err != nil {
 		return false, err
 	}
 
 	c.tableMap = make(map[string]*tableMetadata)
-	if ok, err := c.genCache.Load(spannerCachePath, tableMapCache, &c.tableMap); err != nil {
+	if ok, err := c.genCache.Load(schemaCachePath, tableMapCache, &c.tableMap); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", tableMapCache)
 	} else if !ok {
 		return false, nil
@@ -187,7 +187,7 @@ func (c *client) loadAllCachedData() (bool, error) {
 	}
 
 	c.enumValues = make(map[string][]*enumData)
-	if ok, err := c.genCache.Load(spannerCachePath, enumValueCache, &c.enumValues); err != nil {
+	if ok, err := c.genCache.Load(schemaCachePath, enumValueCache, &c.enumValues); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", enumValueCache)
 	} else if !ok {
 		return false, nil
@@ -196,7 +196,10 @@ func (c *client) loadAllCachedData() (bool, error) {
 	return true, nil
 }
 
-func (c *client) spannerCachePath() (string, error) {
+// schemaCachePath is where the table map and the enumeration values of the application's
+// migrations are cached: apart for each database, since the same migrations name a
+// different schema in each.
+func (c *client) schemaCachePath() (string, error) {
 	var concatenatedPaths strings.Builder
 	for _, migrationSource := range c.migrationSourceURLs {
 		concatenatedPaths.WriteString(migrationSource)
@@ -207,7 +210,12 @@ func (c *client) spannerCachePath() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join("spanner", fmt.Sprintf("%x", hashedPaths)), nil
+	database := "spanner"
+	if c.postgresVersion != "" {
+		database = "postgres"
+	}
+
+	return filepath.Join(database, fmt.Sprintf("%x", hashedPaths)), nil
 }
 
 func (c *client) populateCache() error {
@@ -216,12 +224,12 @@ func (c *client) populateCache() error {
 		concatenatedPaths += migrationSource
 	}
 
-	spannerCachePath, err := c.spannerCachePath()
+	schemaCachePath, err := c.schemaCachePath()
 	if err != nil {
 		return err
 	}
 
-	if err := c.genCache.Store(spannerCachePath, tableMapCache, c.tableMap); err != nil {
+	if err := c.genCache.Store(schemaCachePath, tableMapCache, c.tableMap); err != nil {
 		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
@@ -229,7 +237,7 @@ func (c *client) populateCache() error {
 		return err
 	}
 
-	if err := c.genCache.Store(spannerCachePath, enumValueCache, c.enumValues); err != nil {
+	if err := c.genCache.Store(schemaCachePath, enumValueCache, c.enumValues); err != nil {
 		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
