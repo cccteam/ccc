@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/cccteam/ccc/compare/securehash/v0.0.14...securehash/v0.0.15) (2026-10-07)
+
+
+### Code Upgrade
+
+* **deps:** every module's Go dependencies move to their latest releases in one change, in place of dependabot's four open pull requests, with the cccteam pins kept at their releases and tracer's semconv import moved to the version the OpenTelemetry SDK's default resource is built on, which its own check requires, while the Google Cloud trace exporter and propagator stay at their current versions, since their later versions carry a deprecation notice that is a change of design for another day ([#837](https://github.com/cccteam/ccc/issues/837)) ([8eda1cf](https://github.com/cccteam/ccc/commit/8eda1cfe6b1b01887ecc826d6bfcb6aece5a011c))
+
 ## [0.0.14](https://github.com/cccteam/ccc/compare/securehash/v0.0.13...securehash/v0.0.14) (2026-08-19)
 
 
