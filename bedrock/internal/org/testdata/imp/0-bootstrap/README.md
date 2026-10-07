@@ -372,10 +372,12 @@ pipeline those rights. Once, by a person:
    (read and write), Metadata (read); the provider reads a repository's
    environments and their branch policies on the Actions permission and
    writes them on Administration. Organization permissions: Administration
-   (read and write) and Variables (read and write), the second for the
-   organization's `CI_LARGE_RUNNER` variable, which 1-org sets when the
-   placement names a larger runner (`ciLargeRunner`); without it that apply
-   is refused 403. Where can this app be installed: only this account. Create it, and note the App ID on its settings page. A
+   (read and write), Variables (read and write) and Self-hosted runners (read
+   and write); the second is for the organization's `CI_LARGE_RUNNER`
+   variable, which 1-org sets when the placement names a larger runner
+   (`ciLargeRunner`), and the third for the runner and its runner group, which
+   1-org creates when the placement sizes it (`ciLargeRunnerSize`); without
+   them that apply is refused 403. Where can this app be installed: only this account. Create it, and note the App ID on its settings page. A
    permission added later is accepted on the installation: the
    organization's Settings, Third-party Access, GitHub Apps, the app.
 2. On the app's settings page: Private keys, Generate a private key. The

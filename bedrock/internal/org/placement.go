@@ -137,11 +137,21 @@ type Placement struct {
 	// whose approval a change to an application's workflow and Cloud Build files
 	// needs; empty for none.
 	GithubInfrastructureTeam string `json:"githubInfrastructureTeam,omitempty"`
-	// CiLargeRunner names the larger runner the applications' CI runs its test legs and
-	// image build on: a runner label or a runner group of the organization, set once as
-	// the organization's Actions variable CI_LARGE_RUNNER, which every application's
-	// workflow reads. Empty for GitHub's standard runner, and no variable.
+	// CiLargeRunner names the larger runner the applications' CI runs the jobs its
+	// //impulse:ci line chooses on (the two test legs and the image build without a
+	// line): a runner's name, a runner label or a runner group of the organization, set
+	// once as the organization's Actions variable CI_LARGE_RUNNER, which every
+	// application's workflow reads. Empty for GitHub's standard runner, and no variable.
 	CiLargeRunner string `json:"ciLargeRunner,omitempty"`
+	// CiLargeRunnerSize, when set, has 1-org create the larger runner itself: a
+	// GitHub-hosted runner named CiLargeRunner, of this machine size as GitHub lists them
+	// (4-core, 8-core, 16-core, 32-core, 64-core, 96-core, or an arm- size), on GitHub's
+	// current Ubuntu, in a runner group of the application repositories alone. Empty
+	// when CiLargeRunner names a runner or a group the organization already has.
+	CiLargeRunnerSize string `json:"ciLargeRunnerSize,omitempty"`
+	// CiLargeRunnerMaximum caps how many of the created runner run at once (GitHub's
+	// maximum_runners), the spend's ceiling; 0 leaves GitHub's default.
+	CiLargeRunnerMaximum int `json:"ciLargeRunnerMaximum,omitempty"`
 	// SourceRepo is this repository's name, the source_repo label every resource carries.
 	SourceRepo string `json:"sourceRepo"`
 	// StateBucket is the seeded state bucket every backend block names; empty until the
@@ -289,6 +299,9 @@ func (p *Placement) Validate() error {
 	if err := p.validateGithubApps(); err != nil {
 		return err
 	}
+	if err := p.validateCiLargeRunner(); err != nil {
+		return err
+	}
 	if err := p.validateProjects(); err != nil {
 		return err
 	}
@@ -338,6 +351,39 @@ func (p *Placement) validateGithubApps() error {
 	}
 	if p.GithubInfrastructureKeyVersion != "" && !projectNumberRE.MatchString(p.GithubInfrastructureKeyVersion) {
 		return errors.Newf("githubInfrastructureKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubInfrastructureKeyVersion)
+	}
+
+	return nil
+}
+
+// The shapes of a GitHub-hosted runner's name and machine size.
+var (
+	hostedRunnerNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+	machineSizeRE      = regexp.MustCompile(`^(arm-)?\d+-core$`)
+)
+
+// validateCiLargeRunner refuses a machine size without the runner's name, a name the
+// created runner cannot carry, a size that is not one of GitHub's shapes, and a cap
+// without a size (it caps the runner this layer creates).
+func (p *Placement) validateCiLargeRunner() error {
+	if p.CiLargeRunnerSize == "" {
+		if p.CiLargeRunnerMaximum != 0 {
+			return errors.Newf("ciLargeRunnerMaximum %d caps the runner 1-org creates, and ciLargeRunnerSize is empty: set the size, or drop the cap", p.CiLargeRunnerMaximum)
+		}
+
+		return nil
+	}
+	if !machineSizeRE.MatchString(p.CiLargeRunnerSize) {
+		return errors.Newf("ciLargeRunnerSize %q is not a GitHub machine size (4-core, 8-core, 16-core, 32-core, 64-core, 96-core, or arm-4-core and up; GET /orgs/<org>/actions/hosted-runners/machine-sizes lists them)", p.CiLargeRunnerSize)
+	}
+	if p.CiLargeRunner == "" {
+		return errors.Newf("ciLargeRunnerSize %s names the runner 1-org creates, and ciLargeRunner, its name, is empty", p.CiLargeRunnerSize)
+	}
+	if !hostedRunnerNameRE.MatchString(p.CiLargeRunner) {
+		return errors.Newf("ciLargeRunner %q cannot name a GitHub-hosted runner (1 to 64 of letters, digits, '.', '-' and '_')", p.CiLargeRunner)
+	}
+	if p.CiLargeRunnerMaximum < 0 {
+		return errors.Newf("ciLargeRunnerMaximum %d is negative", p.CiLargeRunnerMaximum)
 	}
 
 	return nil
