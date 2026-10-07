@@ -73,7 +73,7 @@ func renderOnce(t *testing.T, expr condition.Expr, collection *GeneratedCollecti
 		partitioned: true,
 		proposed:    newProposedOverlay(proposed),
 	}
-	registry := newParamRegistry()
+	registry := newParamRegistry(SpannerDBType)
 
 	sql, err := lowerToSQL(expr, lctx, newSQLGenerator(Spanner), registry)
 	if err != nil {

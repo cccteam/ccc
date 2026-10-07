@@ -42,24 +42,84 @@ const (
 // filter and lowered conditions coexist in one statement); fixed named
 // parameters are recorded so the statement builder knows which values the
 // statement needs; table aliases stay unique across every fragment.
+//
+// Postgres types a parameter from the context it meets, and cannot where a parameter
+// meets another or a function: a comparison of two bound values, or a proposed value
+// against a literal, fails with an undetermined type. Spanner types each parameter from
+// its Go value, so the Postgres statement says what the value is: a registry made for
+// Postgres renders each placeholder under a CAST to the type of its value.
 type paramRegistry struct {
+	dbType     DBType
 	paramCount int
 	aliasCount int
 	params     []QueryParam
 	named      map[string]struct{}
+	// casts are the Postgres types of the bound values by name, empty where the value's
+	// type is not known (a NULL).
+	casts map[string]string
 }
 
-func newParamRegistry() *paramRegistry {
-	return &paramRegistry{named: make(map[string]struct{})}
+func newParamRegistry(dbType DBType) *paramRegistry {
+	return &paramRegistry{dbType: dbType, named: make(map[string]struct{}), casts: make(map[string]string)}
+}
+
+// allocate binds value under a fresh name, typed when the caller renders the value
+// where Postgres cannot infer its type from the other operand.
+func (r *paramRegistry) allocate(value any, typed bool) string {
+	r.paramCount++
+	name := fmt.Sprintf("_c%d", r.paramCount)
+	bound := paramValue(value)
+	r.params = append(r.params, QueryParam{Name: name, Value: bound})
+	if typed && r.dbType == PostgresDBType {
+		if cast := postgresCast(bound); cast != "" {
+			r.casts[name] = cast
+		}
+	}
+
+	return name
 }
 
 // bind allocates a placeholder for value and returns it, @-prefixed.
 func (r *paramRegistry) bind(value any) string {
-	r.paramCount++
-	name := fmt.Sprintf("_c%d", r.paramCount)
-	r.params = append(r.params, QueryParam{Name: name, Value: paramValue(value)})
+	return "@" + r.allocate(value, false)
+}
 
-	return "@" + name
+// bindTyped allocates a placeholder for a value a lowered comparison renders: on Postgres
+// it carries the CAST to the value's type, since the other operand may be a parameter
+// too.
+func (r *paramRegistry) bindTyped(value any) string {
+	return r.placeholder(r.allocate(value, true))
+}
+
+// bindName allocates a typed parameter for value and returns its name, without the @,
+// for a caller that renders it later through reference.
+func (r *paramRegistry) bindName(value any) string {
+	return r.allocate(value, true)
+}
+
+// placeholder renders a parameter's name as the statement names it: @-prefixed, and under
+// the CAST its type calls for where one was recorded.
+func (r *paramRegistry) placeholder(name string) string {
+	cast, ok := r.casts[name]
+	switch {
+	case !ok:
+		return "@" + name
+	case cast == postgresText:
+		// The condition language compares strings by code point, as Spanner does; a
+		// locale collation would answer a comparison of two parameters, or of a column in
+		// one, differently. An explicit collation wins over a column's.
+		return fmt.Sprintf(`(CAST(@%s AS %s) COLLATE "C")`, name, cast)
+	default:
+		return fmt.Sprintf("CAST(@%s AS %s)", name, cast)
+	}
+}
+
+// reference records the statement's use of a named parameter, fixed or bound, and
+// returns the placeholder to render.
+func (r *paramRegistry) reference(name string) string {
+	r.named[name] = struct{}{}
+
+	return r.placeholder(name)
 }
 
 // paramValue normalizes a value for query-parameter typing. Spanner types a query
@@ -68,8 +128,9 @@ func (r *paramRegistry) bind(value any) string {
 // meets a NUMERIC column — a masked-cell filler's CASE and a post-image comparison
 // both fail with a type mismatch. big.Rat and NullNumeric carry the NUMERIC typing
 // the column context requires. (Mutations are unaffected: the server types mutation
-// values from the target column.) The mapping is Spanner-shaped; revisit alongside
-// the Postgres runtime.
+// values from the target column.) The mapping is Spanner-shaped: the Postgres runtime
+// converts the values back at its boundary (postgresValue), and a lowered comparison
+// binds them under a CAST (bindTyped).
 func paramValue(value any) any {
 	switch v := value.(type) {
 	case decimal.Decimal:
@@ -89,14 +150,6 @@ func paramValue(value any) any {
 	default:
 		return value
 	}
-}
-
-// reference records the statement's use of a fixed named parameter and
-// returns it, @-prefixed.
-func (r *paramRegistry) reference(name string) string {
-	r.named[name] = struct{}{}
-
-	return "@" + name
 }
 
 // alias allocates a statement-unique table alias.
@@ -303,7 +356,7 @@ func (s *sqlGenerator) renderComparand(c *comparand) (string, error) {
 	case comparandColumn:
 		return s.renderColumnRef(c.column), nil
 	case comparandValue:
-		return s.registry.bind(c.value), nil
+		return s.registry.bindTyped(c.value), nil
 	case comparandNamed:
 		return s.registry.reference(c.named), nil
 	case comparandSubquery:
@@ -328,7 +381,7 @@ func (s *sqlGenerator) generateLoweredInSQL(n *loweredInNode) (string, error) {
 	}
 	placeholders := make([]string, 0, len(n.values))
 	for _, v := range n.values {
-		placeholders = append(placeholders, s.registry.bind(v))
+		placeholders = append(placeholders, s.registry.bindTyped(v))
 	}
 	op := "IN"
 	if n.negated {

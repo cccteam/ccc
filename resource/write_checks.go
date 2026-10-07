@@ -6,12 +6,10 @@ import (
 	"slices"
 	"strings"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/accesstypes/condition"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
-	"google.golang.org/api/iterator"
 )
 
 // This file renders the write rules of the ABAC design plan (§05, Evaluation)
@@ -139,52 +137,38 @@ func (p *PatchSet[Resource]) enforceWriteConditions(ctx context.Context, txn Rea
 	if len(groups) == 0 && !tenancy.needsQuery() {
 		return nil
 	}
-	if txn.DBType() != SpannerDBType {
-		return errors.Newf("conditional grant and tenancy enforcement is not implemented for %s", txn.DBType())
-	}
-
 	stmt, err := p.writeCheckStatement(txn.DBType(), groups, tenancy)
 	if err != nil {
 		return err
 	}
 
-	it := txn.SpannerReadOnlyTransaction().Query(ctx, stmt.SpannerStatement())
-	defer it.Stop()
-
-	row, err := it.Next()
+	checks := len(groups)
+	if tenancy.insertPathTerm() {
+		checks++
+	}
+	held, found, err := queryCheckRow(ctx, txn, stmt, checks)
 	if err != nil {
-		if errors.Is(err, iterator.Done) {
-			// Update and delete locate the target row; no row is NotFound,
-			// kept distinguishable from a failing condition's Forbidden.
-			return httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().RowID())
-		}
-
-		return errors.Wrap(err, "spanner.RowIterator.Next()")
+		return err
+	}
+	if !found {
+		// Update and delete locate the target row; no row is NotFound,
+		// kept distinguishable from a failing condition's Forbidden.
+		return httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().RowID())
 	}
 
 	q := p.querySet
 	for i, group := range groups {
-		var passed spanner.NullBool
-		if err := row.Column(i, &passed); err != nil {
-			return errors.Wrap(err, "spanner.Row.Column()")
-		}
-		if !passed.Valid || !passed.Bool {
+		if !held[i] {
 			return httpio.NewForbiddenMessagef("scope (%s), user (%s): (%s) on %s is conditionally granted and the condition does not hold for this row",
 				q.scope, q.userPermissions.User(), q.requiredPermission, group.resources)
 		}
 	}
 
-	if tenancy.insertPathTerm() {
-		var inPartition spanner.NullBool
-		if err := row.Column(len(groups), &inPartition); err != nil {
-			return errors.Wrap(err, "spanner.Row.Column()")
-		}
-		if !inPartition.Valid || !inPartition.Bool {
-			// The proposed foreign key does not land in the request's
-			// partition: the referenced row does not exist in this
-			// partition's world.
-			return httpio.NewNotFoundMessagef("%s: referenced %s row not found", p.Resource(), tenancy.hopTable())
-		}
+	if tenancy.insertPathTerm() && !held[len(groups)] {
+		// The proposed foreign key does not land in the request's
+		// partition: the referenced row does not exist in this
+		// partition's world.
+		return httpio.NewNotFoundMessagef("%s: referenced %s row not found", p.Resource(), tenancy.hopTable())
 	}
 
 	return nil
@@ -203,8 +187,11 @@ func (p *PatchSet[Resource]) writeCheckStatement(dbType DBType, groups []writeCh
 		return nil, errors.Newf("resource %s carries conditional decisions but no generated collection is wired to render them", q.Resource())
 	}
 
-	gen := newSQLGenerator(Spanner)
-	registry := newParamRegistry()
+	gen, err := loweredSQLGenerator(dbType)
+	if err != nil {
+		return nil, err
+	}
+	registry := newParamRegistry(dbType)
 
 	insert := p.patchType == CreatePatchType
 	proposed, err := p.proposedValues(dbType, insert)
@@ -271,7 +258,7 @@ func (p *PatchSet[Resource]) writeCheckStatement(dbType DBType, groups []writeCh
 			terms = append(terms, "TRUE AS g0")
 		}
 
-		sql = fmt.Sprintf("SELECT %s FROM %s %s", strings.Join(terms, ", "), q.Resource(), where.SQL)
+		sql = fmt.Sprintf("SELECT %s FROM %s %s", strings.Join(terms, ", "), identifierIn(dbType, string(q.Resource())), where.SQL)
 	}
 
 	if err := p.mergeCheckParams(registry, where.Params); err != nil {

@@ -347,7 +347,7 @@ func (o *proposedOverlay) param(column string, registry *paramRegistry) (string,
 	if !ok {
 		return "", false
 	}
-	param := strings.TrimPrefix(registry.bind(value), "@")
+	param := registry.bindName(value)
 	o.params[column] = param
 
 	return param, true

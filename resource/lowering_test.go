@@ -236,7 +236,7 @@ func TestLowerCondition_rendering(t *testing.T) {
 			if tt.proposed != nil {
 				ctx.proposed = newProposedOverlay(tt.proposed)
 			}
-			registry := newParamRegistry()
+			registry := newParamRegistry(SpannerDBType)
 
 			node, err := lowerCondition(expr, ctx, registry)
 			if tt.wantErrContain != "" {
@@ -285,7 +285,7 @@ func TestLowerCondition_statementScope(t *testing.T) {
 	collection := loweringFixtureCollection(t)
 	bindings, _ := collection.Bindings(accesstypes.DomainPermissionScope, "MaintenanceTasks")
 	ctx := &loweringContext{outer: "t", bindings: bindings, collection: collection}
-	registry := newParamRegistry()
+	registry := newParamRegistry(SpannerDBType)
 	generator := newSQLGenerator(Spanner)
 
 	first, err := condition.Parse("state = 'open'")

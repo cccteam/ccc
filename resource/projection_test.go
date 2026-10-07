@@ -84,7 +84,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" ELSE @_c1 END AS "Fee", "Note", ` +
 				`ARRAY_REMOVE(ARRAY[CASE WHEN "projectionResources"."Owner" = @subject THEN NULL ELSE 'fee' END], NULL) AS "zzMaskedFields" ` +
-				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+				`FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(0)},
 		},
@@ -96,7 +96,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 				"FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END DESC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" ` +
-				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+				`FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END DESC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
@@ -111,7 +111,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			wantSpanner: "SELECT Id, Name, Fee, Note FROM projectionResources " +
 				"WHERE `Fee` > @_p1 AND (`projectionResources`.`Station` = @domain) AND (`projectionResources`.`Owner` = @subject) " +
 				"ORDER BY `Fee` ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Name", "Fee", "Note" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id", "Name", "Fee", "Note" FROM "projectionResources" ` +
 				`WHERE "Fee" > @_p1 AND ("projectionResources"."Station" = @domain) AND ("projectionResources"."Owner" = @subject) ` +
 				`ORDER BY "Fee" ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_p1": 5},
@@ -127,7 +127,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			// no ORDER BY and no LIMIT.
 			wantSpanner: "SELECT Id, Name FROM projectionResources " +
 				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_p1 AND (`projectionResources`.`Station` = @domain)",
-			wantPostgres: `SELECT "Id", "Name" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id", "Name" FROM "projectionResources" ` +
 				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_p1 AND ("projectionResources"."Station" = @domain)`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_p1": 5},
 		},
@@ -137,7 +137,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id FROM projectionResources " +
 				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND (`projectionResources`.`Station` = @domain)",
-			wantPostgres: `SELECT "Id" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id" FROM "projectionResources" ` +
 				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND ("projectionResources"."Station" = @domain)`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
@@ -149,7 +149,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			wantSpanner: "SELECT Id, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END AS zzCursorFee FROM projectionResources " +
 				"WHERE (`projectionResources`.`Station` = @domain) AND (CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NOT NULL OR (CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND `Id` > @_c1)) " +
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" FROM "projectionResources" ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND ((CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND "Id" > @_c1)) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": id},
@@ -164,7 +164,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 				"CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_c1 OR " +
 				"(CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END = @_c1 AND `Id` > @_c2)) " +
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" FROM "projectionResources" ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND (` +
 				`(CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_c1 OR CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL) OR ` +
 				`(CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END = @_c1 AND "Id" > @_c2)) ` +

@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -189,11 +188,9 @@ func TestTenantRoster_Start_unsupportedDatabase(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		dbType  DBType
-		wantErr error
+		name   string
+		dbType DBType
 	}{
-		{name: "Postgres renders the statement and refuses the read", dbType: PostgresDBType, wantErr: errTenantRosterUnsupportedDatabase},
 		{name: "an unknown type is refused at the statement", dbType: DBType("oracle")},
 	}
 
@@ -205,9 +202,6 @@ func TestTenantRoster_Start_unsupportedDatabase(t *testing.T) {
 			err := r.Start(t.Context())
 			if err == nil {
 				t.Fatal("Start() = nil, want an error")
-			}
-			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
-				t.Errorf("Start() error = %v, want %v", err, tt.wantErr)
 			}
 			if r.Has("alpha") {
 				t.Error("a roster whose start failed holds alpha")

@@ -459,6 +459,21 @@ func (r *Metadata[Resource]) dbFieldMap(dbType DBType) map[accesstypes.Field]dbF
 	return r.dbMap[dbType]
 }
 
+// fieldByColumn finds the struct field a column belongs to, by whichever database's tags
+// name it first: a resource names a column alike in every database it is tagged for, and
+// the tenant binding names its key by column alone, in no one database's terms.
+func (r *Metadata[Resource]) fieldByColumn(column string) (accesstypes.Field, dbFieldMetadata, bool) {
+	for _, dbType := range dbTypes() {
+		for _, field := range r.dbFields[dbType] {
+			if meta := r.dbMap[dbType][field]; meta.ColumnName == column {
+				return field, meta, true
+			}
+		}
+	}
+
+	return "", dbFieldMetadata{}, false
+}
+
 // DBFields returns all field names for a given database type in struct
 // declaration order — deterministic, so default field sets and generated
 // query column order are stable across processes.

@@ -102,13 +102,7 @@ func (p *PatchSet[Resource]) mutationTenancy() (*mutationTenancy, error) {
 // value, and a mismatch is a programming error.
 func (p *PatchSet[Resource]) verifyTenantKey(t *mutationTenancy) error {
 	q := p.querySet
-	fieldMap := q.rMeta.dbFieldMap(SpannerDBType)
-	for _, field := range q.rMeta.DBFields(SpannerDBType) {
-		meta := fieldMap[field]
-		if meta.ColumnName != t.binding.Column {
-			continue
-		}
-
+	if field, meta, ok := q.rMeta.fieldByColumn(t.binding.Column); ok {
 		var proposed any
 		switch {
 		case p.IsSet(field):
@@ -212,12 +206,7 @@ func (p *PatchSet[Resource]) stampTenantKey() error {
 		return nil
 	}
 
-	fieldMap := q.rMeta.dbFieldMap(SpannerDBType)
-	for _, field := range q.rMeta.DBFields(SpannerDBType) {
-		meta := fieldMap[field]
-		if meta.ColumnName != bindings.Domain.Column {
-			continue
-		}
+	if field, meta, ok := q.rMeta.fieldByColumn(bindings.Domain.Column); ok {
 		value, err := tenantKeyValue(meta.fieldType, domain)
 		if err != nil {
 			return errors.Wrapf(err, "stamping tenant key %s on %s", field, q.resourceSet.BaseResource())

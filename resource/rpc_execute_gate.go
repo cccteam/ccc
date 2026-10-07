@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/accesstypes/condition"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
-	"google.golang.org/api/iterator"
 )
 
 // This file evaluates row-referencing Execute conditions (ABAC design plan
@@ -156,35 +154,23 @@ func (g *ExecuteGate) Enforce(ctx context.Context, txn ReadWriteTransaction, tar
 	if g == nil || g.cond == nil {
 		return nil
 	}
-	if txn.DBType() != SpannerDBType {
-		return errors.Newf("execute-condition enforcement is not implemented for %s", txn.DBType())
-	}
 	if g.collection == nil {
 		return errors.Newf("method %s carries a conditional Execute decision but no generated collection is wired to render it", g.method)
 	}
 
-	stmt, err := g.checkStatement(target, pkValue)
+	stmt, err := g.checkStatement(txn.DBType(), target, pkValue)
 	if err != nil {
 		return err
 	}
 
-	it := txn.SpannerReadOnlyTransaction().Query(ctx, stmt.SpannerStatement())
-	defer it.Stop()
-
-	row, err := it.Next()
+	held, found, err := queryCheckRow(ctx, txn, stmt, 1)
 	if err != nil {
-		if errors.Is(err, iterator.Done) {
-			return httpio.NewNotFoundMessagef("%s %v does not exist", target.Label, pkValue)
-		}
-
-		return errors.Wrap(err, "spanner.RowIterator.Next()")
+		return err
 	}
-
-	var passed spanner.NullBool
-	if err := row.Column(0, &passed); err != nil {
-		return errors.Wrap(err, "spanner.Row.Column()")
+	if !found {
+		return httpio.NewNotFoundMessagef("%s %v does not exist", target.Label, pkValue)
 	}
-	if !passed.Valid || !passed.Bool {
+	if !held[0] {
 		return httpio.NewForbiddenMessagef("%s may not run against %s %v", g.method, target.Label, pkValue)
 	}
 
@@ -204,35 +190,20 @@ func (g *ExecuteGate) VerifyTenancy(ctx context.Context, txn ReadWriteTransactio
 	if g == nil {
 		return errors.New("tenancy verification requires the decoder's ExecuteGate")
 	}
-	if txn.DBType() != SpannerDBType {
-		return errors.Newf("tenancy verification is not implemented for %s", txn.DBType())
-	}
 	if g.collection == nil {
 		return errors.Newf("method %s verifies tenancy against the generated collection, but none is wired", g.method)
 	}
 
-	stmt, err := g.tenancyStatement(target, pkValue)
+	stmt, err := g.tenancyStatement(txn.DBType(), target, pkValue)
 	if err != nil {
 		return err
 	}
 
-	it := txn.SpannerReadOnlyTransaction().Query(ctx, stmt.SpannerStatement())
-	defer it.Stop()
-
-	row, err := it.Next()
+	held, found, err := queryCheckRow(ctx, txn, stmt, 1)
 	if err != nil {
-		if errors.Is(err, iterator.Done) {
-			return httpio.NewNotFoundMessagef("%s %v does not exist", target.Label, pkValue)
-		}
-
-		return errors.Wrap(err, "spanner.RowIterator.Next()")
+		return err
 	}
-
-	var inTenant spanner.NullBool
-	if err := row.Column(0, &inTenant); err != nil {
-		return errors.Wrap(err, "spanner.Row.Column()")
-	}
-	if !inTenant.Valid || !inTenant.Bool {
+	if !found || !held[0] {
 		return httpio.NewNotFoundMessagef("%s %v does not exist", target.Label, pkValue)
 	}
 
@@ -242,7 +213,7 @@ func (g *ExecuteGate) VerifyTenancy(ctx context.Context, txn ReadWriteTransactio
 // tenancyStatement renders the tenancy check-SELECT from the target's domain
 // binding: the bare form compares the tenant column, the path form walks the
 // binding hops as the same EXISTS chain conditions lower through.
-func (g *ExecuteGate) tenancyStatement(target ExecuteTarget, pkValue any) (*Statement, error) {
+func (g *ExecuteGate) tenancyStatement(dbType DBType, target ExecuteTarget, pkValue any) (*Statement, error) {
 	bindings, _ := g.collection.Bindings(g.collection.Scope(target.Resource), target.Resource)
 	if bindings.Domain == nil {
 		return nil, errors.Newf("method %s: target %s declares no domain binding to verify tenancy against", g.method, target.Resource)
@@ -252,7 +223,7 @@ func (g *ExecuteGate) tenancyStatement(target ExecuteTarget, pkValue any) (*Stat
 		return nil, errors.Newf("method %s: tenancy verification requires a partitioned request", g.method)
 	}
 
-	registry := newParamRegistry()
+	registry := newParamRegistry(dbType)
 	outer := string(target.Resource)
 	tenantColumn := columnComparand(outer, bindings.Domain.Column)
 
@@ -265,7 +236,7 @@ func (g *ExecuteGate) tenancyStatement(target ExecuteTarget, pkValue any) (*Stat
 		predicate = wrap(&loweredComparisonNode{left: terminal, op: "=", right: namedComparand(domainParamName)})
 	}
 
-	gen, err := loweredSQLGenerator(SpannerDBType)
+	gen, err := loweredSQLGenerator(dbType)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +251,7 @@ func (g *ExecuteGate) tenancyStatement(target ExecuteTarget, pkValue any) (*Stat
 	}
 
 	return &Statement{
-		SQL:    fmt.Sprintf("SELECT (%s) AS g0 FROM %s WHERE %s = @%s", sql, target.Resource, target.PKColumn, targetKeyParamName),
+		SQL:    fmt.Sprintf("SELECT (%s) AS g0 FROM %s WHERE %s = @%s", sql, identifierIn(dbType, string(target.Resource)), identifierIn(dbType, target.PKColumn), targetKeyParamName),
 		Params: params,
 	}, nil
 }
@@ -288,7 +259,7 @@ func (g *ExecuteGate) tenancyStatement(target ExecuteTarget, pkValue any) (*Stat
 // checkStatement renders the gate's check-SELECT: the condition lowered
 // against the target resource's bindings as one boolean, the row located by
 // its primary key.
-func (g *ExecuteGate) checkStatement(target ExecuteTarget, pkValue any) (*Statement, error) {
+func (g *ExecuteGate) checkStatement(dbType DBType, target ExecuteTarget, pkValue any) (*Statement, error) {
 	bindings, _ := g.collection.Bindings(g.collection.Scope(target.Resource), target.Resource)
 	_, partitioned := g.scope.Domain()
 	lctx := &loweringContext{
@@ -298,11 +269,11 @@ func (g *ExecuteGate) checkStatement(target ExecuteTarget, pkValue any) (*Statem
 		partitioned: partitioned,
 	}
 
-	gen, err := loweredSQLGenerator(SpannerDBType)
+	gen, err := loweredSQLGenerator(dbType)
 	if err != nil {
 		return nil, err
 	}
-	registry := newParamRegistry()
+	registry := newParamRegistry(dbType)
 
 	sql, err := lowerToSQL(g.cond, lctx, gen, registry)
 	if err != nil {
@@ -325,7 +296,7 @@ func (g *ExecuteGate) checkStatement(target ExecuteTarget, pkValue any) (*Statem
 	}
 
 	return &Statement{
-		SQL:    fmt.Sprintf("SELECT (%s) AS g0 FROM %s WHERE %s = @%s", sql, target.Resource, target.PKColumn, targetKeyParamName),
+		SQL:    fmt.Sprintf("SELECT (%s) AS g0 FROM %s WHERE %s = @%s", sql, identifierIn(dbType, string(target.Resource)), identifierIn(dbType, target.PKColumn), targetKeyParamName),
 		Params: params,
 	}, nil
 }
