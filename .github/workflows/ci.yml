@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   golang-ci:
-    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@74c938ae7451119cec59b5693f2c5acc02842d64 # v8.0.0
+    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@c48f939824e4ae536a0e83d960ed5735d77f3de3 # cccteam/github-workflows#180 head, proof only
     with:
       build-tags: '["", "dev"]'
       golangci-lint-version: 'v2.12.2'
