@@ -40,6 +40,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/accesstypes/condition"
 	"github.com/cccteam/ccc/accesstypes/condition/conditiontest"
+	"github.com/cccteam/httpio"
 	"github.com/shopspring/decimal"
 )
 
@@ -694,7 +695,7 @@ type semanticTally struct {
 // the sets, the list decoder, the pools, and the tally.
 type semanticHarness struct {
 	tally      semanticTally
-	client     *spanner.Client
+	db         semanticDatabase
 	collection *GeneratedCollection
 	listSet    *Set[semanticParcel]
 	patchSet   *Set[semanticParcel]
@@ -704,7 +705,7 @@ type semanticHarness struct {
 	writeVocab conditiontest.Vocabulary
 }
 
-func newSemanticHarness(t *testing.T, client *spanner.Client) *semanticHarness {
+func newSemanticHarness(t *testing.T, db semanticDatabase) *semanticHarness {
 	t.Helper()
 
 	collection := semanticCollection(t)
@@ -724,7 +725,7 @@ func newSemanticHarness(t *testing.T, client *spanner.Client) *semanticHarness {
 	decoder.WithPaging(Paging{DefaultLimit: 2 * semanticRowsPerCase})
 
 	return &semanticHarness{
-		client:     client,
+		db:         db,
 		collection: collection,
 		listSet:    listSet,
 		patchSet:   patchSet,
@@ -761,23 +762,14 @@ func (c *semanticCase) report() string {
 func TestSemanticDifferential(t *testing.T) {
 	t.Parallel()
 
-	container := spannerEmulator(t)
+	runSemanticDifferential(t, newSpannerSemanticDatabase(t))
+}
+
+// runSemanticDifferential runs the seeded cases against the database.
+func runSemanticDifferential(t *testing.T, db semanticDatabase) {
+	t.Helper()
+
 	ctx := context.Background()
-	db, err := container.CreateDatabase(ctx, "semantic-differential")
-	if err != nil {
-		t.Fatalf("initiator.SpannerContainer.CreateDatabase() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := db.DropDatabase(context.Background()); err != nil {
-			t.Error(err)
-		}
-		if err := db.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	if err := db.MigrateUp("file://testdata/semantic/schema"); err != nil {
-		t.Fatalf("initiator.SpannerDB.MigrateUp() error = %v", err)
-	}
 
 	// Cases run one at a time and each removes its rows when done: the
 	// emulator evaluates a two-hop correlated subquery by scanning the
@@ -786,18 +778,18 @@ func TestSemanticDifferential(t *testing.T) {
 	// take it minutes per read. One world at a time keeps a case under a
 	// second; the partition predicate still isolates the case's rows, and the
 	// requester's membership in another partition still has to be excluded.
-	h := newSemanticHarness(t, db.Client)
+	h := newSemanticHarness(t, db)
 	for i := range semanticCases {
 		c := h.drawCase(t, i)
-		if _, err := h.client.Apply(ctx, c.world.mutations()); err != nil {
-			t.Fatalf("%s\nspanner.Client.Apply() error = %v", c.report(), err)
+		if err := db.insertWorld(ctx, c.world); err != nil {
+			t.Fatalf("%s\nsemanticDatabase.insertWorld() error = %v", c.report(), err)
 		}
 
 		h.checkRead(t, c)
 		h.checkWrites(t, c)
 
-		if _, err := h.client.Apply(ctx, c.world.deletions()); err != nil {
-			t.Fatalf("%s\nspanner.Client.Apply(deletions) error = %v", c.report(), err)
+		if err := db.removeWorld(ctx, c.world); err != nil {
+			t.Fatalf("%s\nsemanticDatabase.removeWorld() error = %v", c.report(), err)
 		}
 	}
 
@@ -949,11 +941,14 @@ func (h *semanticHarness) expectRead(t *testing.T, c *semanticCase, shape *seman
 		expected = append(expected, e)
 	}
 
-	// Spanner orders NULL first ascending and last descending; the key
-	// breaks ties.
+	// Spanner orders NULL first ascending and last descending, PostgreSQL the
+	// reverse; the key breaks ties.
 	sort.SliceStable(expected, func(i, j int) bool {
 		if shape.sort {
 			order := compareSemantic(expected[i].key, expected[j].key)
+			if (expected[i].key == nil) != (expected[j].key == nil) && h.db.dbType() == PostgresDBType {
+				order = -order
+			}
 			if shape.desc {
 				order = -order
 			}
@@ -982,7 +977,7 @@ func (h *semanticHarness) checkRead(t *testing.T, c *semanticCase) {
 	qSet.env = c.world.env()
 
 	var rows []*Row[semanticParcel]
-	for row, err := range qSet.List(t.Context(), NewSpannerClient(h.client)) {
+	for row, err := range qSet.List(t.Context(), h.db.client()) {
 		if err != nil {
 			t.Fatalf("%s\nread %s: List() error = %v", c.report(), target, err)
 		}
@@ -990,7 +985,7 @@ func (h *semanticHarness) checkRead(t *testing.T, c *semanticCase) {
 	}
 
 	statement := func() string {
-		stmt, err := qSet.stmt(SpannerDBType)
+		stmt, err := qSet.stmt(h.db.dbType())
 		if err != nil {
 			return err.Error()
 		}
@@ -1138,7 +1133,7 @@ func (h *semanticHarness) newPatch(c *semanticCase, patchType PatchType, perm ac
 func (h *semanticHarness) checkGroups(t *testing.T, c *semanticCase, what string, ps *PatchSet[semanticParcel], forbidden bool, image *conditiontest.Image) {
 	t.Helper()
 
-	err := ps.checkPermissions(t.Context(), SpannerDBType)
+	err := ps.checkPermissions(t.Context(), h.db.dbType())
 	if forbidden {
 		if err == nil || !strings.Contains(err.Error(), "does not have") {
 			t.Fatalf("%s\n%s: the static gate admitted a mutation touching a Denied column (error = %v)", c.report(), what, err)
@@ -1162,16 +1157,14 @@ func (h *semanticHarness) checkGroups(t *testing.T, c *semanticCase, what string
 	if err != nil {
 		t.Fatalf("%s\n%s: mutationTenancy() error = %v", c.report(), what, err)
 	}
-	stmt, err := ps.writeCheckStatement(SpannerDBType, groups, tenancy)
+	stmt, err := ps.writeCheckStatement(h.db.dbType(), groups, tenancy)
 	if err != nil {
 		t.Fatalf("%s\n%s: writeCheckStatement() error = %v", c.report(), what, err)
 	}
 
-	it := h.client.Single().Query(t.Context(), stmt.SpannerStatement())
-	defer it.Stop()
-	row, err := it.Next()
-	if err != nil {
-		t.Fatalf("%s\n%s: check statement failed: %v\n%s\nparams: %v", c.report(), what, err, stmt.SQL, stmt.Params)
+	held, found, err := h.db.runCheck(t.Context(), stmt, len(groups))
+	if err != nil || !found {
+		t.Fatalf("%s\n%s: check statement failed (row found %v): %v\n%s\nparams: %v", c.report(), what, found, err, stmt.SQL, stmt.Params)
 	}
 	switch ps.patchType {
 	case UpdatePatchType:
@@ -1182,12 +1175,9 @@ func (h *semanticHarness) checkGroups(t *testing.T, c *semanticCase, what string
 		h.tally.deleteGroups += len(groups)
 	default:
 	}
+	allPermit := true
 	for i, group := range groups {
-		var passed spanner.NullBool
-		if err := row.Column(i, &passed); err != nil {
-			t.Fatalf("%s\n%s: spanner.Row.Column(%d) error = %v", c.report(), what, i, err)
-		}
-		got := passed.Valid && passed.Bool
+		got := held[i]
 		truth, err := conditiontest.Evaluate(group.expr, image)
 		if err != nil {
 			t.Fatalf("%s\n%s: Evaluate(%s) error = %v", c.report(), what, group.expr.String(), err)
@@ -1196,6 +1186,20 @@ func (h *semanticHarness) checkGroups(t *testing.T, c *semanticCase, what string
 			t.Fatalf("%s\n%s: group %d (%s) = %v (NULL read as false), the evaluator finds %s\n%s\nparams: %v",
 				c.report(), what, i+1, group.source, got, truth, stmt.SQL, stmt.Params)
 		}
+		allPermit = allPermit && got
+	}
+
+	// The enforcement the write path runs reads the same booleans through the
+	// transaction: every group holding admits the mutation, any other is Forbidden.
+	err = h.db.client().ExecuteFunc(t.Context(), func(ctx context.Context, txn ReadWriteTransaction) error {
+		return ps.enforceWriteConditions(ctx, txn)
+	})
+	switch {
+	case allPermit && err != nil:
+		t.Fatalf("%s\n%s: enforceWriteConditions() refused a mutation every group admits: %v", c.report(), what, err)
+	case !allPermit && !httpio.HasForbidden(err):
+		t.Fatalf("%s\n%s: enforceWriteConditions() error = %v, want Forbidden for a group that does not hold", c.report(), what, err)
+	default:
 	}
 }
 
@@ -1269,4 +1273,13 @@ func (h *semanticHarness) checkDelete(t *testing.T, c *semanticCase, p *semantic
 	ps := h.newPatch(c, DeletePatchType, accesstypes.Delete, p.ID)
 	forbidden := c.decisions[accesstypes.Delete][semanticResource].IsDenied()
 	h.checkGroups(t, c, fmt.Sprintf("delete %s", p.ID), ps, forbidden, c.world.image(p, nil))
+}
+
+// TestSemanticDifferential_postgres runs the same seeded cases against PostgreSQL: the
+// statements the package renders for it must mean what the condition text says, as
+// Spanner's do.
+func TestSemanticDifferential_postgres(t *testing.T) {
+	t.Parallel()
+
+	runSemanticDifferential(t, newPostgresSemanticDatabase(t))
 }

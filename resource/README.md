@@ -1,6 +1,7 @@
 # resource
 
-The `resource` module provides permission-enforced CRUD over Spanner-backed resources:
+The `resource` module provides permission-enforced CRUD over Spanner-backed resources,
+and the `resource` package's runtime runs over PostgreSQL too (section 20):
 the `resource` package is the runtime (query decoding, permission enforcement, patch
 sets), and `resource/generation` is the Resource Generator that turns annotated source
 structs and schema migrations into handlers, routes, request structs, and TypeScript —
@@ -108,6 +109,7 @@ error, and a stale one in a generated request struct fails Set construction at s
 | Tag | Where | Effect |
 | --- | --- | --- |
 | `spanner:"ColumnName"` | every field of `@resource`/`@virtual` structs | Maps the field to its Spanner column. Required — a missing tag or unknown column is a generation error, and field nullability must match the column's: a pointer or a Null wrapper on a nullable column, a plain value on a NOT NULL one. A slice-typed field follows the column's nullability, since a Go slice has one form: the Spanner client reads NULL into a nil slice and writes nil as NULL, so `[]byte` types a nullable `BYTES` column and a NOT NULL one alike, as `[]T` does an `ARRAY<T>` (section 12, nullable slices). A pointer to a slice is refused. |
+| `postgres:"ColumnName"` | every field of a resource a PostgreSQL application serves | Maps the field to its PostgreSQL column, as `spanner` does to its Spanner one, and the runtime reads it wherever it renders or scans a statement over PostgreSQL (section 20). A resource names the same column in both tags; one served by a single database carries that database's tag alone. The generator does not read it yet. |
 | `conditions:"…"` | resource fields | Comma-separated list of field conditions, see below. Values match exactly (no spaces); a value the generator does not recognize is refused, with the nearest recognized one suggested. |
 | `default_create_fn:"pkg.Func"` | resource fields | The generated create path calls the referenced function to populate the field when the request doesn't supply it. A field with a default function is not treated as required. |
 | `output_only_update_fn:"pkg.Func"` | resource fields | The generated update path sets the field by calling the referenced function on **every** update; implies output-only. This is the *mechanical enforcement stamp* — a field whose meaning is "this row was updated", like `UpdatedAt`. A timestamp with domain meaning (a "last serviced" written by one business transition) is not an update function: it is an explicit update in the code that owns the business event — see [Ship.LastRefitAt](lodestar/pkg/resources/ships.go). Declaring an update function on any field also gives the resource a generated `New<Resource>Touch(keys…)`: an update carried entirely by the update functions, running the full update pipeline (permission check, stamps, write conditions, change events) with no caller-set fields — the only way to express "bump the row" (an update patch with no fields set is a silent no-op). Example: [Ship.UpdatedAt](lodestar/pkg/resources/ships.go) using `resource.CommitTimestampPtr`. |
@@ -730,6 +732,18 @@ the commit, so the same request answers 404 whatever the resource's shape. A req
 deletes children and their parent in one transaction still succeeds in either order,
 because nothing is checked before the commit.
 
+On PostgreSQL the same refusals arrive from the write that broke the constraint, or from
+the commit when the constraint is deferred (section 20), and the translation keys on the
+SQLSTATE alone, never on the message text, with the same sentences:
+
+| SQLSTATE | Answers as |
+| --- | --- |
+| `23503` `foreign_key_violation`, `23502` `not_null_violation`, `22001` `string_data_right_truncation` | `FailedPrecondition` |
+| `23505` `unique_violation` | `AlreadyExists` |
+| `23514` `check_violation`, `22003` `numeric_value_out_of_range` | `OutOfRange` |
+| an `UPDATE` that matched no row | `NotFound` |
+| anything else | passes through unchanged |
+
 ## 11. Value limits from the schema
 
 A value the column cannot hold answers 400 naming the field when the request is decoded,
@@ -1186,10 +1200,11 @@ other's files, and where the framework can see it (the stores it opens know thei
 location) two stores on one location are refused where the client is built.
 
 **Wiring.** The resource client is the one wiring point: `resource.NewSpannerClient(db,
-resource.WithFileStore(files), resource.WithNamedFileStore[resources.Documents](docs))`,
+resource.WithFileStore(files), resource.WithNamedFileStore[resources.Documents](docs))`
+(`resource.NewPostgresClient` takes the same options),
 each store at most once, a second wiring of one store refused with a panic naming it, as
 a duplicate route is. The generated handlers read a store off the client
-(`Client.FileStore(name)`, nil when none is wired; the Postgres client holds none), and
+(`Client.FileStore(name)`, nil when none is wired), and
 the generated router refuses to start when a store the package uses is not wired: every
 `@file` column's store, routed or not, and every `@upload`'s. An unwired store would
 otherwise surface on the first upload, file request or releasing delete; the message
@@ -1811,3 +1826,68 @@ the release file (section 8), and that is where the application's stack reads th
 renders one Cloud Scheduler job per scheduled route in every environment, never in a
 pull-request stack, calling `https://<the environment's canonical hostname><path>` with a
 token of the invoker identity it creates, and sets `APP_SCHEDULER_INVOKER` on the service.
+
+## 20. Running on PostgreSQL
+
+The runtime serves resources over PostgreSQL as it does over Spanner: build the client
+from a `pgx` pool and hand it to the same patch sets, query sets, decoders and generated
+frames.
+
+```go
+client := resource.NewPostgresClient(pool,
+	resource.WithFileStore(files), resource.WithNamedFileStore[resources.Documents](docs))
+```
+
+**What runs.** Reads (`Read`, `List`, `Count`, paging by cursor, the visible projection,
+cell masking, capabilities); writes (create, update, create-or-update, delete, change
+events, file releases, the live pages' touched rows); conditional grants and structural
+tenancy on reads and writes; the Execute gate; feature flags (`FeatureFlagsDDL` renders
+the tables); and the tenant roster. The same differential that proves the Spanner
+statements mean what the condition text says runs them over PostgreSQL
+(`TestSemanticDifferential_postgres`), against the same reference evaluator.
+
+**What does not.** The Resource Generator introspects a Spanner schema and reads the
+`spanner` tag; it does not read a PostgreSQL schema or the `postgres` tag yet, so a
+PostgreSQL application declares its resource structs with both tags (section 2) and wires
+the generated code to the PostgreSQL client. A resource's column types are the ones
+PostgreSQL's driver reads: the base kinds, `time.Time`, `civil.Date`, `decimal.Decimal`,
+slices of them as arrays, and any type that implements the Spanner client's `Encoder` and
+`Decoder` (`ccc.UUID`, the nullable enums, the JSON types the generator writes), which the
+runtime reads for PostgreSQL as it does for Spanner: a JSON column is handed to a `Decoder`
+as its text.
+
+**Transactions.** `PostgresClient.ExecuteFunc` runs the function in a serializable
+transaction, as Spanner's are, and runs it again, up to ten times with a short jittered
+backoff, when it loses to a concurrent one (SQLSTATE `40001`, `40P01`); Spanner's client
+retries until the context ends, and the bound keeps a function that can never win from
+holding its request that long. Spanner applies the writes a function buffers
+when it returns, and its reads do not see them; the PostgreSQL client matches: `BufferMap`
+and `BufferStruct` queue a statement, the function's reads see the transaction's snapshot,
+and the statements run, in the order they were buffered, when the function returns, before
+the commit. Code that reads the row it is about to change (the change events, the file
+release) therefore reads the row as it was. A commit that fails without the server's
+answer (a lost connection, a deadline) is reported as one whose outcome is unknown, so an
+upload keeps its objects, as it does for Spanner. `ReadOnlyTransaction()` is a
+repeatable-read, read-only transaction begun with its first query; close it.
+
+**Statements.** Identifiers are quoted, so a table and a column are created in the case
+the `Resource()` and the `postgres` tag spell: `CREATE TABLE "Ships" ("Id" TEXT ...)`.
+Parameters are `@name` placeholders that `pgx` rewrites. A parameter a lowered condition
+compares carries a `CAST` to its value's type, since PostgreSQL types a parameter from its
+context and cannot where two meet; a decimal literal compares as `NUMERIC`, so an integer
+column is compared exactly. A commit timestamp column (`spanner.CommitTimestamp` in a
+patch) is written `now()`, the transaction's timestamp, in the same transaction for every
+row it writes.
+
+**Collation.** The condition language compares strings by code point, as Spanner does, and
+the statements say so for the values they bind (`COLLATE "C"`). PostgreSQL orders a text
+column by the column's own collation, which a default database sets to a locale (`closed`
+before `Open`), so a list sorted or paged by a text column follows it: consistent within the
+database, and different from Spanner's byte order. Declare `COLLATE "C"` on the columns an
+application wants ordered as Spanner orders them. `NULL` sorts first ascending on Spanner
+and last ascending on PostgreSQL; the cursor predicate follows each database's own
+placement.
+
+**Tests.** The PostgreSQL tests run in a container (`postgres:17`), started on first
+demand and skipped under `go test -short`, as the emulator's are.
+

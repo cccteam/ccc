@@ -24,24 +24,24 @@ const semanticResource = accesstypes.Resource("Parcels")
 
 // semanticParcel is the checked resource: the row as the database stores it.
 type semanticParcel struct {
-	ID          ccc.UUID            `spanner:"Id"`
-	Depot       string              `spanner:"Depot"`
-	Label       string              `spanner:"Label"`
-	Note        *string             `spanner:"Note"`
-	Weight      int64               `spanner:"Weight"`
-	Pieces      *int64              `spanner:"Pieces"`
-	Ratio       float64             `spanner:"Ratio"`
-	Density     *float64            `spanner:"Density"`
-	Price       decimal.Decimal     `spanner:"Price"`
-	Fee         decimal.NullDecimal `spanner:"Fee"`
-	Fragile     bool                `spanner:"Fragile"`
-	Insured     *bool               `spanner:"Insured"`
-	ShippedAt   time.Time           `spanner:"ShippedAt"`
-	DeliveredAt *time.Time          `spanner:"DeliveredAt"`
-	ShipDate    civil.Date          `spanner:"ShipDate"`
-	DueDate     *civil.Date         `spanner:"DueDate"`
-	CarrierID   *string             `spanner:"CarrierId"`
-	RouteID     *string             `spanner:"RouteId"`
+	ID          ccc.UUID            `spanner:"Id"          postgres:"Id"`
+	Depot       string              `spanner:"Depot"       postgres:"Depot"`
+	Label       string              `spanner:"Label"       postgres:"Label"`
+	Note        *string             `spanner:"Note"        postgres:"Note"`
+	Weight      int64               `spanner:"Weight"      postgres:"Weight"`
+	Pieces      *int64              `spanner:"Pieces"      postgres:"Pieces"`
+	Ratio       float64             `spanner:"Ratio"       postgres:"Ratio"`
+	Density     *float64            `spanner:"Density"     postgres:"Density"`
+	Price       decimal.Decimal     `spanner:"Price"       postgres:"Price"`
+	Fee         decimal.NullDecimal `spanner:"Fee"         postgres:"Fee"`
+	Fragile     bool                `spanner:"Fragile"     postgres:"Fragile"`
+	Insured     *bool               `spanner:"Insured"     postgres:"Insured"`
+	ShippedAt   time.Time           `spanner:"ShippedAt"   postgres:"ShippedAt"`
+	DeliveredAt *time.Time          `spanner:"DeliveredAt" postgres:"DeliveredAt"`
+	ShipDate    civil.Date          `spanner:"ShipDate"    postgres:"ShipDate"`
+	DueDate     *civil.Date         `spanner:"DueDate"     postgres:"DueDate"`
+	CarrierID   *string             `spanner:"CarrierId"   postgres:"CarrierId"`
+	RouteID     *string             `spanner:"RouteId"     postgres:"RouteId"`
 }
 
 func (semanticParcel) Resource() accesstypes.Resource { return semanticResource }
@@ -244,39 +244,39 @@ func semanticVocabulary(t *testing.T, collection *GeneratedCollection, postImage
 
 // The related tables' rows, as the harness writes them.
 type semanticHub struct {
-	ID     string  `spanner:"Id"`
-	Region *string `spanner:"Region"`
+	ID     string  `spanner:"Id"     postgres:"Id"`
+	Region *string `spanner:"Region" postgres:"Region"`
 }
 
 type semanticCarrier struct {
-	ID   string  `spanner:"Id"`
-	Code *string `spanner:"Code"`
+	ID   string  `spanner:"Id"   postgres:"Id"`
+	Code *string `spanner:"Code" postgres:"Code"`
 }
 
 type semanticRoute struct {
-	ID    string  `spanner:"Id"`
-	HubID *string `spanner:"HubId"`
+	ID    string  `spanner:"Id"    postgres:"Id"`
+	HubID *string `spanner:"HubId" postgres:"HubId"`
 }
 
 type semanticMembership struct {
-	ID     string  `spanner:"Id"`
-	UserID string  `spanner:"UserId"`
-	Depot  string  `spanner:"Depot"`
-	Team   *string `spanner:"Team"`
-	Tier   *int64  `spanner:"Tier"`
-	HubID  *string `spanner:"HubId"`
+	ID     string  `spanner:"Id"     postgres:"Id"`
+	UserID string  `spanner:"UserId" postgres:"UserId"`
+	Depot  string  `spanner:"Depot"  postgres:"Depot"`
+	Team   *string `spanner:"Team"   postgres:"Team"`
+	Tier   *int64  `spanner:"Tier"   postgres:"Tier"`
+	HubID  *string `spanner:"HubId"  postgres:"HubId"`
 }
 
 type semanticProfile struct {
-	UserID       string              `spanner:"UserId"`
-	Nickname     *string             `spanner:"Nickname"`
-	Quota        *int64              `spanner:"Quota"`
-	Rate         *float64            `spanner:"Rate"`
-	Allowance    decimal.NullDecimal `spanner:"Allowance"`
-	Active       *bool               `spanner:"Active"`
-	ClearedUntil *time.Time          `spanner:"ClearedUntil"`
-	StartDate    *civil.Date         `spanner:"StartDate"`
-	HomeHubID    *string             `spanner:"HomeHubId"`
+	UserID       string              `spanner:"UserId"       postgres:"UserId"`
+	Nickname     *string             `spanner:"Nickname"     postgres:"Nickname"`
+	Quota        *int64              `spanner:"Quota"        postgres:"Quota"`
+	Rate         *float64            `spanner:"Rate"         postgres:"Rate"`
+	Allowance    decimal.NullDecimal `spanner:"Allowance"    postgres:"Allowance"`
+	Active       *bool               `spanner:"Active"       postgres:"Active"`
+	ClearedUntil *time.Time          `spanner:"ClearedUntil" postgres:"ClearedUntil"`
+	StartDate    *civil.Date         `spanner:"StartDate"    postgres:"StartDate"`
+	HomeHubID    *string             `spanner:"HomeHubId"    postgres:"HomeHubId"`
 }
 
 // semanticValue converts a stored Go value to the evaluator's storage
