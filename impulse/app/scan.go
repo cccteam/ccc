@@ -603,9 +603,14 @@ var ciDirectiveRE = regexp.MustCompile(`^//impulse:ci(?:\s+(.*?))?\s*$`)
 
 // The //impulse:ci settings.
 const (
-	ciLargeRunner = "large-runner"
-	ciTestCache   = "test-cache"
+	ciLargeRunner   = "large-runner"
+	ciTestCache     = "test-cache"
+	ciDefaultBranch = "default-branch"
 )
+
+// branchNameRE is the shape of a branch name the line may declare: git's rules in
+// outline (no leading dot or dash, no spaces, no .., no trailing slash).
+var branchNameRE = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._/-]*[A-Za-z0-9_]$|^[A-Za-z0-9_]$`)
 
 // findCIDirective returns the file's //impulse:ci line, parsed, nil without one, and an
 // error for a second line in the file or a setting it cannot read.
@@ -640,7 +645,7 @@ func parseCIDirective(settings string) (*CIDirective, error) {
 	for _, field := range strings.Fields(settings) {
 		name, value, ok := strings.Cut(field, "=")
 		if !ok || value == "" {
-			return nil, errors.Newf("%q is not a name=value setting (the settings are %s=<job>,<job>,... or none, and %s=on or off)", field, ciLargeRunner, ciTestCache)
+			return nil, errors.Newf("%q is not a name=value setting (the settings are %s=<job>,<job>,... or none, %s=on or off, and %s=<branch>)", field, ciLargeRunner, ciTestCache, ciDefaultBranch)
 		}
 		if seen[name] {
 			return nil, errors.Newf("%s is set twice", name)
@@ -660,8 +665,13 @@ func parseCIDirective(settings string) (*CIDirective, error) {
 			default:
 				return nil, errors.Newf("%s=%s: the value is on or off", name, value)
 			}
+		case ciDefaultBranch:
+			if !branchNameRE.MatchString(value) || strings.Contains(value, "..") {
+				return nil, errors.Newf("%s=%s: the value is a branch name", name, value)
+			}
+			d.DefaultBranch = value
 		default:
-			return nil, errors.Newf("%q is not a setting (the settings are %s and %s)", name, ciLargeRunner, ciTestCache)
+			return nil, errors.Newf("%q is not a setting (the settings are %s, %s and %s)", name, ciLargeRunner, ciTestCache, ciDefaultBranch)
 		}
 	}
 

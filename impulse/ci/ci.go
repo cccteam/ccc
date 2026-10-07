@@ -116,12 +116,24 @@ var DefaultLargeRunner = []string{goTest, goTestSkipAuth, image}
 // the jobs not on the larger runner always.
 const StandardRunner = "ubuntu-latest"
 
+// DefaultBranches are the names the cache-filling workflow runs on when the application's
+// //impulse:ci line declares no default-branch: GitHub's two usual names, of which a
+// repository has one, so the other is never pushed to. HotfixBranches is the pattern of
+// the hotfix lines bedrock's hotfix command creates, which the workflow runs on too.
+var (
+	DefaultBranches = []string{"main", "master"}
+	HotfixBranches  = "hotfix/**"
+)
+
 // Settings are what the application's //impulse:ci line decides, with impulse's defaults
 // where the line, or the application, says nothing.
 type Settings struct {
 	// LargeRunner are the jobs that run on the runner LargeRunnerVariable names, by job
 	// id: DefaultLargeRunner, or the line's large-runner (none is an empty list).
 	LargeRunner []string
+	// DefaultBranches are the branches the cache-filling workflow runs on besides the
+	// hotfix lines: DefaultBranches, or the one branch the line's default-branch names.
+	DefaultBranches []string
 	// TestCache reports that the test legs reuse Go's cached test results, which carry
 	// over between runs in the saved build cache: off (go test -count=1) unless the line
 	// says test-cache=on. Go reuses a passed test's result when the test binary, the
@@ -135,12 +147,15 @@ type Settings struct {
 // defaults, and refuses a large-runner job the workflow does not render: a job id must
 // be one of Checks(a) and not a gate (go and web run nothing).
 func SettingsOf(a *app.App) (Settings, error) {
-	s := Settings{LargeRunner: DefaultLargeRunner}
+	s := Settings{LargeRunner: DefaultLargeRunner, DefaultBranches: DefaultBranches}
 	if a.CI == nil {
 		return s, nil
 	}
 	if a.CI.TestCache != nil {
 		s.TestCache = *a.CI.TestCache
+	}
+	if a.CI.DefaultBranch != "" {
+		s.DefaultBranches = []string{a.CI.DefaultBranch}
 	}
 	if a.CI.LargeRunner == nil {
 		return s, nil
@@ -296,6 +311,9 @@ type data struct {
 	RunsOn map[string]string
 	// LargeJobs are the jobs on the larger runner, for the header's sentence.
 	LargeJobs []string
+	// Branches is the cache-filling workflow's push trigger's branch list, as YAML:
+	// the default branches and the hotfix lines.
+	Branches string
 	// TestCache is the test-cache setting; TestFlags is what it adds to go test's
 	// flags: -count=1 (then a space) while the cached results are off, nothing while on.
 	TestCache bool
@@ -357,6 +375,7 @@ func render(a *app.App, file string) ([]byte, error) {
 		TitleTypes:    TitleTypes,
 		RunsOn:        runsOn(rendered, settings),
 		LargeJobs:     settings.LargeRunner,
+		Branches:      branchList(settings.DefaultBranches),
 		TestCache:     settings.TestCache,
 		Cache:         make(map[string]CachedJob, len(CachedJobs)),
 		GolangciLint:  GolangciLint,
@@ -378,6 +397,12 @@ func render(a *app.App, file string) ([]byte, error) {
 	}
 
 	return b.Bytes(), nil
+}
+
+// branchList writes the push trigger's branch list: the default branches bare, the
+// hotfix pattern quoted, as GitHub's workflow syntax wants them.
+func branchList(defaults []string) string {
+	return "[" + strings.Join(defaults, ", ") + ", '" + HotfixBranches + "']"
 }
 
 // Outcome reports what Write did.

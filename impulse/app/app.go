@@ -160,9 +160,10 @@ type Directive struct {
 // gofmt keeps as written and, at the end of a doc comment, sets off with a blank //
 // line). large-runner lists the CI jobs that
 // run on the larger runner the variable CI_LARGE_RUNNER names (or none, for no job);
-// test-cache is on or off. A setting the line leaves out keeps impulse's default (the
-// ci package states them); a line with a setting it does not know, or a second line in
-// the tree, is an error at discovery.
+// test-cache is on or off; default-branch names the repository's default branch when
+// it is neither main nor master, so the cache-filling workflow runs on it. A setting the
+// line leaves out keeps impulse's default (the ci package states them); a line with a
+// setting it does not know, or a second line in the tree, is an error at discovery.
 type CIDirective struct {
 	File string
 	Line int
@@ -171,6 +172,9 @@ type CIDirective struct {
 	LargeRunner []string
 	// TestCache is the test-cache value, on or off; nil when the line does not set it.
 	TestCache *bool
+	// DefaultBranch is the default-branch value, a branch name; empty when the line
+	// does not set it (main and master need no setting).
+	DefaultBranch string
 }
 
 // OutletMember is one struct annotated @outlet(...).

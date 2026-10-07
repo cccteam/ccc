@@ -484,6 +484,47 @@ func TestTestCache(t *testing.T) {
 	}
 }
 
+// TestDefaultBranch: the cache-filling workflow runs on main, master and the hotfix lines
+// unless the //impulse:ci line declares the default branch, and then on that branch and
+// the hotfix lines.
+func TestDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ci   *app.CIDirective
+		want string
+	}{
+		{name: "no line", want: "    branches: [main, master, 'hotfix/**']\n"},
+		{name: "a line without the setting", ci: &app.CIDirective{TestCache: boolPtr(true)}, want: "    branches: [main, master, 'hotfix/**']\n"},
+		{name: "a declared default branch", ci: &app.CIDirective{DefaultBranch: "trunk"}, want: "    branches: [trunk, 'hotfix/**']\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := &app.App{WebApps: []app.WebApp{{Dir: "web"}}, CI: tt.ci}
+			settings, err := ci.SettingsOf(a)
+			if err != nil {
+				t.Fatalf("SettingsOf() error = %v", err)
+			}
+			cache, err := ci.RenderFile(a, ci.CacheFile)
+			if err != nil {
+				t.Fatalf("RenderFile(CacheFile) error = %v", err)
+			}
+			if !strings.Contains(string(cache), "  push:\n"+tt.want) {
+				t.Errorf("the cache-filling workflow's trigger lacks %q:\n%s", tt.want, cache)
+			}
+			if want := "[" + strings.Join(settings.DefaultBranches, ", ") + ", 'hotfix/**']"; !strings.Contains(tt.want, want) {
+				t.Errorf("SettingsOf().DefaultBranches = %v, not what the trigger names", settings.DefaultBranches)
+			}
+			if pr, err := ci.Render(a); err != nil || strings.Contains(string(pr), "branches:") {
+				t.Errorf("the pull request workflow names branches, or did not render: %v", err)
+			}
+		})
+	}
+}
+
 // TestCacheSteps: the Go legs restore the Go caches from the lineage CachedJobs names
 // (their own for go-build and the test legs, go-build's for go-vuln and go-check), the
 // ones that save do so only when their go.sum had no entry, the lint legs and the rest
