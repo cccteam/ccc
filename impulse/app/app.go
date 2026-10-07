@@ -82,6 +82,10 @@ type App struct {
 	Auths []Auth
 	// GoGenerate are the //go:generate directives in the tree.
 	GoGenerate []Directive
+	// CI is the application's //impulse:ci line, or nil without one: what its CI
+	// workflow does where the code alone does not decide (which jobs run on the larger
+	// runner, whether Go's test cache is used). At most one in the tree.
+	CI *CIDirective
 	// MainPackages are the root-relative directories holding a package main.
 	MainPackages []string
 	// AuthPackages are the auths: the packages under an auth directory constructing a
@@ -145,6 +149,26 @@ type Directive struct {
 	Line int
 	// Command is the directive's command line.
 	Command string
+}
+
+// CIDirective is the //impulse:ci line: a comment line in any non-test Go file of the
+// application, of the form
+//
+//	//impulse:ci large-runner=go-test,go-test-skipauth,image test-cache=on
+//
+// with each setting at most once and in any order. large-runner lists the CI jobs that
+// run on the larger runner the variable CI_LARGE_RUNNER names (or none, for no job);
+// test-cache is on or off. A setting the line leaves out keeps impulse's default (the
+// ci package states them); a line with a setting it does not know, or a second line in
+// the tree, is an error at discovery.
+type CIDirective struct {
+	File string
+	Line int
+	// LargeRunner lists the jobs the line puts on the larger runner, by job id; empty
+	// (and non-nil) for large-runner=none, nil when the line does not set it.
+	LargeRunner []string
+	// TestCache is the test-cache value, on or off; nil when the line does not set it.
+	TestCache *bool
 }
 
 // OutletMember is one struct annotated @outlet(...).

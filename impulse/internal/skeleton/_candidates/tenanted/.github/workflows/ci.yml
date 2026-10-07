@@ -8,14 +8,27 @@
 # image, secrets and migrations. The go-<leg> jobs (build, the two test legs, the two lint
 # legs, vuln, semgrep, check) run at once and report beside them, and go, the gate, fails
 # when any of them did; one angular-<workspace> job per browser workspace reports beside
-# them too, and web fails when any of those did. The test legs and the image build run on
+# them too, and web fails when any of those did. The jobs go-test, go-test-skipauth and image run on
 # the larger runner the variable CI_LARGE_RUNNER names (a label or a runner group, set on
 # the repository or the organization) and on GitHub's standard runner while it is unset;
-# every other job runs on the standard runner. The pins fix the engines, not what they
-# know: govulncheck reads vuln.go.dev, Grype downloads its vulnerability database and Semgrep
-# fetches its registry rules when the job runs, so this file at an old pin still finds a
-# vulnerability published after it; TruffleHog's detectors, golangci-lint's linters and the
-# actions move with impulse releases.
+# every other job runs on the standard runner. The application's //impulse:ci line
+# chooses the jobs on the larger runner (large-runner=<job>,<job> or none) and whether the
+# test legs reuse Go's cached test results (test-cache=on or off); without the line the
+# two test legs and the image build run on the larger runner and the test results are not
+# reused (go test -count=1).
+#
+# The caches. The build and test legs restore the Go module cache and build cache from the
+# nearest entry saved under their job's key (ci-cache.yml saves one after each push to the
+# default branch or a hotfix branch; a pull request run saves one of its own only when it
+# found none for its go.sum), and the image build reads the Dockerfile's two download
+# stages from BuildKit's cache. None of these serves a stale result: a module is verified
+# against go.sum when read, a Go build output is addressed by the hash of its inputs, and a
+# BuildKit layer by its lockfile; an entry from an older commit is either what this one
+# computes or unused. The pins fix the engines, not what they know: govulncheck reads
+# vuln.go.dev, Grype downloads its vulnerability database and Semgrep fetches its registry
+# rules when the job runs, so this file at an old pin still finds a vulnerability published
+# after it; TruffleHog's detectors, golangci-lint's linters and the actions move with
+# impulse releases.
 name: CI
 
 on:
@@ -59,7 +72,7 @@ jobs:
             build
             ci
 
-  # The Go legs: eight jobs that run at once, each reporting on its own, with go, the gate, after them. This one builds and vets the module, without tags and with skipAuth (the tag that simulates the directory an OIDC auth signs in through).
+  # The Go legs: eight jobs that run at once, each reporting on its own, with go, the gate, after them. This one builds and vets the module, without tags and with skipAuth (the tag that simulates the directory an OIDC auth signs in through), restoring its own Go caches and saving them when its go.sum had none.
   go-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -70,7 +83,23 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-build-${{ runner.os }}-
       - name: go build
         run: |
           go build ./...
@@ -79,8 +108,20 @@ jobs:
         run: |
           go vet ./...
           go vet -tags skipAuth ./...
+      - name: Save the Go caches
+        # Only when no entry for this go.sum was found (a dependency change, or a cold
+        # repository): the entries the branch's own run saves after a merge carry the rest,
+        # so the caches grow with merges, not with pushes. A failed test still saves what
+        # compiled; a cancelled run saves nothing.
+        if: ${{ !cancelled() && !startsWith(steps.go-cache.outputs.cache-matched-key, format('go-build-{0}-{1}-', runner.os, hashFiles('go.sum'))) }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
-  # The tests under the race detector, without tags, on the larger runner when the variable CI_LARGE_RUNNER names one (a runner label or a runner group, set on the repository or the organization) and on GitHub's standard runner while it is unset.
+  # The tests under the race detector, without tags, restoring the leg's own Go caches (the race-instrumented build) and saving them when its go.sum had none.
   go-test:
     runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
@@ -99,11 +140,39 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-
       - name: go test
-        run: go test -race -timeout 20m ./...
+        run: go test -race -count=1 -timeout 20m ./...
+      - name: Save the Go caches
+        # Only when no entry for this go.sum was found (a dependency change, or a cold
+        # repository): the entries the branch's own run saves after a merge carry the rest,
+        # so the caches grow with merges, not with pushes. A failed test still saves what
+        # compiled; a cancelled run saves nothing.
+        if: ${{ !cancelled() && !startsWith(steps.go-cache.outputs.cache-matched-key, format('go-test-{0}-{1}-', runner.os, hashFiles('go.sum'))) }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
-  # The tests under the race detector with skipAuth, on the larger runner as go-test is.
+  # The tests under the race detector with skipAuth, with the leg's own Go caches as go-test has.
   go-test-skipauth:
     runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
@@ -122,9 +191,37 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-skipauth-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-skipauth-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-skipauth-${{ runner.os }}-
       - name: go test (skipAuth)
-        run: go test -race -timeout 20m -tags skipAuth ./...
+        run: go test -race -count=1 -timeout 20m -tags skipAuth ./...
+      - name: Save the Go caches
+        # Only when no entry for this go.sum was found (a dependency change, or a cold
+        # repository): the entries the branch's own run saves after a merge carry the rest,
+        # so the caches grow with merges, not with pushes. A failed test still saves what
+        # compiled; a cancelled run saves nothing.
+        if: ${{ !cancelled() && !startsWith(steps.go-cache.outputs.cache-matched-key, format('go-test-skipauth-{0}-{1}-', runner.os, hashFiles('go.sum'))) }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
   # golangci-lint at the version the skeleton's .golangci.yml is written for, without tags.
   go-lint:
@@ -162,7 +259,7 @@ jobs:
           version: v2.12.2
           args: --timeout 5m --build-tags skipAuth
 
-  # govulncheck over the module, without tags and with skipAuth; it reads vuln.go.dev when the job runs.
+  # govulncheck over the module, without tags and with skipAuth; it reads vuln.go.dev when the job runs. It restores go-build's Go caches, which hold what its compile shares with the build, and saves nothing.
   go-vuln:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -173,7 +270,23 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-build-${{ runner.os }}-
       - name: govulncheck
         run: |
           go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
@@ -197,7 +310,7 @@ jobs:
           docker run --rm -v "$PWD:/src" semgrep/semgrep@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b \
             semgrep ci --config auto --max-target-bytes 500000 --baseline-commit "$(git merge-base HEAD "origin/$BASE_REF")" # 1.179.0
 
-  # impulse check with its regeneration (the generators start the Spanner emulator in a container, which the runner has), failing on a tree the checks changed, since what they regenerated or rewrote is not committed.
+  # impulse check with its regeneration (the generators start the Spanner emulator in a container, which the runner has), failing on a tree the checks changed, since what they regenerated or rewrote is not committed. It restores go-build's Go caches, as go-vuln does, and saves nothing.
   go-check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -216,7 +329,23 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-build-${{ runner.os }}-
       - name: impulse check
         run: go tool impulse check
       - name: The tree is clean
@@ -294,7 +423,7 @@ jobs:
           fi
           echo "every browser workspace job succeeded"
 
-  # The container image, once the application has a Dockerfile (bedrock seeds it), on the larger runner when CI_LARGE_RUNNER names one: hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
+  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build (its two download stages from BuildKit's cache in the Actions cache, the compile and the bundles fresh), and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
   image:
     runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
@@ -311,9 +440,30 @@ jobs:
         with:
           dockerfile: Dockerfile
           failure-threshold: info
+      # A BuildKit builder of its own (the daemon's cannot export a cache), and the Actions cache's address and token in the environment, for the build's cache reads and writes.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.dockerfile.outputs.present == 'true'
+      - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+        if: steps.dockerfile.outputs.present == 'true'
       - name: docker build
         if: steps.dockerfile.outputs.present == 'true'
-        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" -t application:ci .
+        run: |
+          set -euo pipefail
+          from=()
+          # The Dockerfile's two reserved download stages (go-modules, web-packages; bedrock
+          # seeds them) build first, each reading and writing the Actions cache under its own
+          # scope. A stage holds its lockfile copy and its one download command, and BuildKit
+          # addresses a layer by its inputs, so a cached layer is served only for the same
+          # lockfile; what it holds is verified at download. A stage the Dockerfile lacks is
+          # skipped.
+          for stage in go-modules web-packages; do
+            if grep -qE "^FROM .+ AS ${stage}$" Dockerfile; then
+              docker buildx build --target "$stage" --cache-from "type=gha,scope=$stage" --cache-to "type=gha,scope=$stage,mode=max" --output type=cacheonly .
+              from+=(--cache-from "type=gha,scope=$stage")
+            fi
+          done
+          # The whole image, reading the stages' caches and writing none, loaded into the daemon for Grype.
+          docker buildx build "${from[@]}" --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" --load -t application:ci .
       - name: Grype
         if: steps.dockerfile.outputs.present == 'true'
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0

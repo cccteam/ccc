@@ -1,0 +1,140 @@
+# The caches the pull request checks restore, filled after a push to the default branch
+# (main or master) or a hotfix branch. Rendered by impulse and owned by it as
+# .github/workflows/ci.yml is: impulse render rewrites both from the code, impulse check
+# compares the committed files with what it renders, and the pins move with impulse
+# releases, so dependabot must not run over this file either. Each Go job here builds what
+# the pull request job of the same id builds, at the branch's head, and saves the Go
+# module cache and build cache under that job's key with this commit's; a pull request
+# run restores the newest entry of its lineage, so its first run starts from the branch it
+# targets and compiles what it changed and nothing else. The image job builds the
+# Dockerfile's two download stages into BuildKit's cache for the pull request's image job
+# to read. Nothing here checks anything: the branch was checked on its pull request.
+name: CI cache
+
+on:
+  push:
+    branches: [main, master, 'hotfix/**']
+
+concurrency:
+  group: ci-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  # The build, without tags and with skipAuth, as go-build builds it.
+  go-build:
+    runs-on: [[index .RunsOn "go-build"]]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+[[- template "gocache-restore" (index .Cache "go-build")]]
+      - name: go build
+        run: |
+          go build ./...
+          go build -tags skipAuth ./...
+      - name: go vet
+        run: |
+          go vet ./...
+          go vet -tags skipAuth ./...
+[[- template "gocache-save-always" (index .Cache "go-build")]]
+
+  # The race-instrumented build of the tests without tags, as go-test builds it[[if .TestCache]], and the tests themselves, whose results the pull request's go-test reuses (test-cache=on)[[else]]: the test binaries compile and do not run, since the tests ran on the pull request and only the compile carries over[[end]].
+  go-test:
+    runs-on: [[index .RunsOn "go-test"]]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+[[- if .TestCache]]
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+[[- end]]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+[[- if .TestCache]]
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
+[[- end]]
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+[[- template "gocache-restore" (index .Cache "go-test")]]
+[[- if .TestCache]]
+[[- template "mtimes"]]
+      - name: go test
+        run: go test -race -timeout 20m ./...
+[[- else]]
+      - name: go test (compile only)
+        run: go test -race -c -o "$(mktemp -d)" ./...
+[[- end]]
+[[- template "gocache-save-always" (index .Cache "go-test")]]
+
+  # The same with skipAuth, as go-test-skipauth builds it.
+  go-test-skipauth:
+    runs-on: [[index .RunsOn "go-test-skipauth"]]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+[[- if .TestCache]]
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+[[- end]]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+[[- if .TestCache]]
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
+[[- end]]
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+[[- template "gocache-restore" (index .Cache "go-test-skipauth")]]
+[[- if .TestCache]]
+[[- template "mtimes"]]
+      - name: go test (skipAuth)
+        run: go test -race -timeout 20m -tags skipAuth ./...
+[[- else]]
+      - name: go test (skipAuth, compile only)
+        run: go test -race -c -o "$(mktemp -d)" -tags skipAuth ./...
+[[- end]]
+[[- template "gocache-save-always" (index .Cache "go-test-skipauth")]]
+
+  # The Dockerfile's two download stages into BuildKit's cache, once the application has a Dockerfile; nothing else of the image builds here.
+  image:
+    runs-on: [[index .RunsOn "image"]]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Is there a Dockerfile
+        id: dockerfile
+        run: echo "present=${{ hashFiles('Dockerfile') != '' }}" >> "$GITHUB_OUTPUT"
+      # A BuildKit builder of its own (the daemon's cannot export a cache), and the Actions cache's address and token in the environment, for the build's cache reads and writes.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.dockerfile.outputs.present == 'true'
+      - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+        if: steps.dockerfile.outputs.present == 'true'
+      - name: docker build, the download stages
+        if: steps.dockerfile.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          from=()
+[[- template "image-stages"]]
+          echo "cached ${#from[@]} stage(s)"

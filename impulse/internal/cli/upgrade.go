@@ -60,10 +60,10 @@ The ledger starts at the first published impulse beta; before it, there is nothi
 				verify: func(ctx context.Context, env *check.Env) []check.Result {
 					return check.Run(ctx, env, check.All())
 				},
-				owned: func(a *app.App) (bool, error) {
+				owned: func(a *app.App) ([]string, error) {
 					outcome, err := ci.Write(a)
 
-					return outcome.Written, err
+					return outcome.WrittenFiles(), err
 				},
 				out: cmd.OutOrStdout(),
 				err: cmd.ErrOrStderr(),
@@ -88,7 +88,7 @@ type upgrader struct {
 	// verify runs the checks on the application after a step; owned rewrites the owned
 	// files from the code and reports whether anything changed.
 	verify func(ctx context.Context, env *check.Env) []check.Result
-	owned  func(a *app.App) (bool, error)
+	owned  func(a *app.App) ([]string, error)
 	out    io.Writer
 	err    io.Writer
 }
@@ -200,8 +200,8 @@ func (u *upgrader) step(ctx context.Context, f *transitionFlags, repo handoff.Re
 	if err != nil {
 		return err
 	}
-	if written {
-		fmt.Fprintf(u.out, "Rewrote %s from the code.\n", ci.File)
+	if len(written) > 0 {
+		fmt.Fprintf(u.out, "Rewrote %s from the code.\n", ci.List(written))
 	}
 	if !f.skipGenerate {
 		if err := u.regenerate(ctx, a); err != nil {

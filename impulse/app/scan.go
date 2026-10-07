@@ -147,6 +147,19 @@ func (a *App) scanGoFile(abs, rel string) error {
 		a.GoGenerate = append(a.GoGenerate, findDirectives(rel, data)...)
 	}
 
+	if bytes.Contains(data, []byte(ciDirective)) && !generated {
+		ci, err := findCIDirective(rel, data)
+		if err != nil {
+			return err
+		}
+		if ci != nil {
+			if a.CI != nil {
+				return errors.Newf("%s:%d: a second %s line; the application has one, at %s:%d", rel, ci.Line, ciDirective, a.CI.File, a.CI.Line)
+			}
+			a.CI = ci
+		}
+	}
+
 	if bytes.HasPrefix(bytes.TrimSpace(stripLeadingComments(data)), []byte("package main")) {
 		dir := path.Dir(rel)
 		if len(a.MainPackages) == 0 || a.MainPackages[len(a.MainPackages)-1] != dir {
@@ -580,6 +593,79 @@ func findDirectives(rel string, data []byte) []Directive {
 	}
 
 	return directives
+}
+
+// ciDirective opens the //impulse:ci line.
+const ciDirective = "//impulse:ci"
+
+// ciDirectiveRE matches the line at the start of a line, with its settings after it.
+var ciDirectiveRE = regexp.MustCompile(`^//impulse:ci(?:\s+(.*?))?\s*$`)
+
+// The //impulse:ci settings.
+const (
+	ciLargeRunner = "large-runner"
+	ciTestCache   = "test-cache"
+)
+
+// findCIDirective returns the file's //impulse:ci line, parsed, nil without one, and an
+// error for a second line in the file or a setting it cannot read.
+func findCIDirective(rel string, data []byte) (*CIDirective, error) {
+	var found *CIDirective
+	line := 0
+	for l := range bytes.Lines(data) {
+		line++
+		m := ciDirectiveRE.FindSubmatch(bytes.TrimRight(l, "\r\n"))
+		if m == nil {
+			continue
+		}
+		if found != nil {
+			return nil, errors.Newf("%s:%d: a second %s line; the application has one, at %s:%d", rel, line, ciDirective, found.File, found.Line)
+		}
+		d, err := parseCIDirective(string(m[1]))
+		if err != nil {
+			return nil, errors.Wrapf(err, "%s:%d: %s", rel, line, ciDirective)
+		}
+		d.File, d.Line = rel, line
+		found = d
+	}
+
+	return found, nil
+}
+
+// parseCIDirective reads the settings after //impulse:ci: whitespace-separated
+// name=value pairs, each name at most once.
+func parseCIDirective(settings string) (*CIDirective, error) {
+	d := &CIDirective{}
+	seen := map[string]bool{}
+	for _, field := range strings.Fields(settings) {
+		name, value, ok := strings.Cut(field, "=")
+		if !ok || value == "" {
+			return nil, errors.Newf("%q is not a name=value setting (the settings are %s=<job>,<job>,... or none, and %s=on or off)", field, ciLargeRunner, ciTestCache)
+		}
+		if seen[name] {
+			return nil, errors.Newf("%s is set twice", name)
+		}
+		seen[name] = true
+		switch name {
+		case ciLargeRunner:
+			d.LargeRunner = []string{}
+			if value != "none" {
+				d.LargeRunner = strings.Split(value, ",")
+			}
+		case ciTestCache:
+			switch value {
+			case "on", "off":
+				on := value == "on"
+				d.TestCache = &on
+			default:
+				return nil, errors.Newf("%s=%s: the value is on or off", name, value)
+			}
+		default:
+			return nil, errors.Newf("%q is not a setting (the settings are %s and %s)", name, ciLargeRunner, ciTestCache)
+		}
+	}
+
+	return d, nil
 }
 
 // stripLeadingComments drops the comment lines and blank lines before a file's package

@@ -1,0 +1,93 @@
+[[/* The steps both owned workflows carry. Each definition opens with a newline and ends
+without one, so a call on its own line ([[- template "name" .]]) reads as the steps in
+place. */]]
+[[- define "gocache-restore"]]
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: [[.From]]-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            [[.From]]-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            [[.From]]-${{ runner.os }}-
+[[- end]]
+[[- define "gocache-save"]]
+      - name: Save the Go caches
+        # Only when no entry for this go.sum was found (a dependency change, or a cold
+        # repository): the entries the branch's own run saves after a merge carry the rest,
+        # so the caches grow with merges, not with pushes. A failed test still saves what
+        # compiled; a cancelled run saves nothing.
+        if: ${{ !cancelled() && !startsWith(steps.go-cache.outputs.cache-matched-key, format('[[.Job]]-{0}-{1}-', runner.os, hashFiles('go.sum'))) }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
+[[- end]]
+[[- define "gocache-save-always"]]
+      - name: Save the Go caches
+        # Under this commit's key, so the next pull request run restores this entry as the
+        # newest of its lineage; a cancelled run saves nothing.
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
+[[- end]]
+[[- define "mtimes"]]
+      - name: Restore the files' modification times from git
+        # Go reuses a cached test result only while every file the test read has the size
+        # and modification time it had, and the checkout gives every file the time of the
+        # checkout, which differs per run. Each tracked file takes the time of the last
+        # commit that touched it, and each directory the time of the last commit that
+        # touched anything under it (an entry added or deleted included); a merge commit
+        # counts against each of its parents, so a file the merge changed takes its time.
+        run: |
+          python3 - <<'EOF'
+          import os, subprocess
+          log = subprocess.run(['git', 'log', '-m', '--format=commit %ct', '--name-only', '--no-renames'], check=True, capture_output=True, text=True).stdout
+          files, dirs, t = {}, {}, 0
+          for line in log.splitlines():
+              if line.startswith('commit '):
+                  t = int(line[7:])
+              elif line:
+                  files.setdefault(line, t)
+                  d = os.path.dirname(line)
+                  while d not in dirs:
+                      dirs[d] = t
+                      if d == '':
+                          break
+                      d = os.path.dirname(d)
+          for p, t in files.items():
+              if os.path.isfile(p) and not os.path.islink(p):
+                  os.utime(p, (t, t))
+          for d, t in dirs.items():
+              if os.path.isdir(d or '.'):
+                  os.utime(d or '.', (t, t))
+          EOF
+[[- end]]
+[[- define "image-stages"]]
+          # The Dockerfile's two reserved download stages (go-modules, web-packages; bedrock
+          # seeds them) build first, each reading and writing the Actions cache under its own
+          # scope. A stage holds its lockfile copy and its one download command, and BuildKit
+          # addresses a layer by its inputs, so a cached layer is served only for the same
+          # lockfile; what it holds is verified at download. A stage the Dockerfile lacks is
+          # skipped.
+          for stage in go-modules web-packages; do
+            if grep -qE "^FROM .+ AS ${stage}$" Dockerfile; then
+              docker buildx build --target "$stage" --cache-from "type=gha,scope=$stage" --cache-to "type=gha,scope=$stage,mode=max" --output type=cacheonly .
+              from+=(--cache-from "type=gha,scope=$stage")
+            fi
+          done
+[[- end]]
