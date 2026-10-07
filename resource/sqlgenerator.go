@@ -182,7 +182,7 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		case eqStr:
 			sqlOp = "="
 		case neStr:
-			sqlOp = "<>"
+			sqlOp = sqlNotEqual
 		case gtStr:
 			sqlOp = ">"
 		case ltStr:

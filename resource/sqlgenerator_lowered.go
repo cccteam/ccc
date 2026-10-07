@@ -23,6 +23,7 @@ import (
 // SQL relational operator spellings shared by the filter path and the
 // condition lowering, and the literal an empty disjunction collapses to.
 const (
+	sqlNotEqual  = "<>"
 	sqlLessEq    = "<="
 	sqlGreaterEq = ">="
 	sqlFalse     = "FALSE"

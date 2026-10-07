@@ -133,14 +133,17 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 const (
 	// primaryKeyIndexType is INFORMATION_SCHEMA.INDEXES.INDEX_TYPE for a table's key.
 	primaryKeyIndexType = "PRIMARY_KEY"
+	// secondaryIndexType is INFORMATION_SCHEMA.INDEXES.INDEX_TYPE for any other index.
+	secondaryIndexType = "INDEX"
 	// descendingOrdering is INFORMATION_SCHEMA.INDEX_COLUMNS.COLUMN_ORDERING for a key
 	// column declared DESC.
 	descendingOrdering = "DESC"
 	// cascadeDeleteAction is INFORMATION_SCHEMA.TABLES.ON_DELETE_ACTION for an
 	// interleaved child declared ON DELETE CASCADE, and
 	// INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS.DELETE_RULE for a foreign key declared
-	// so; the other value both spell is NO ACTION.
-	cascadeDeleteAction = "CASCADE"
+	// so; the other value both spell is noActionDeleteAction.
+	cascadeDeleteAction  = "CASCADE"
+	noActionDeleteAction = "NO ACTION"
 )
 
 // valueOrEmpty reads a nullable information-schema string, "" for NULL.

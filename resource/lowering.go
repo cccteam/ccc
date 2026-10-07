@@ -526,7 +526,7 @@ func sqlCompareOp(op condition.CompareOp) (string, error) {
 	case condition.Eq:
 		return "=", nil
 	case condition.NotEq:
-		return "<>", nil
+		return sqlNotEqual, nil
 	case condition.Less:
 		return "<", nil
 	case condition.LessEq:

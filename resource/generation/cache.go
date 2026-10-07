@@ -196,6 +196,12 @@ func (c *client) loadAllCachedData() (bool, error) {
 	return true, nil
 }
 
+// The directories the schema cache keeps each database's entries under.
+const (
+	schemaCacheSpanner  = "spanner"
+	schemaCachePostgres = "postgres"
+)
+
 // schemaCachePath is where the table map and the enumeration values of the application's
 // migrations are cached: apart for each database, since the same migrations name a
 // different schema in each, and for PostgreSQL apart for each image version, since a later
@@ -207,9 +213,9 @@ func (c *client) schemaCachePath() (string, error) {
 		concatenatedPaths.WriteString(migrationSource)
 	}
 
-	database := "spanner"
+	database := schemaCacheSpanner
 	if c.postgresVersion != "" {
-		database = "postgres"
+		database = schemaCachePostgres
 		concatenatedPaths.WriteString("\x00" + c.postgresVersion)
 	}
 

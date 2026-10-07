@@ -306,7 +306,7 @@ func queryPostgresIndexes(ctx context.Context, pool *pgxpool.Pool) ([]indexSchem
 		result := indexSchemaResult{
 			TableName:      table,
 			IndexName:      index,
-			IndexType:      "INDEX",
+			IndexType:      secondaryIndexType,
 			IsUnique:       unique,
 			IsNullFiltered: partial,
 			ColumnName:     column,
@@ -314,7 +314,7 @@ func queryPostgresIndexes(ctx context.Context, pool *pgxpool.Pool) ([]indexSchem
 		if primary {
 			// Spanner names every table's key index PRIMARY_KEY; the generator reads
 			// the type, and names the index in its warnings by this.
-			result.IndexName = "PRIMARY_KEY"
+			result.IndexName = primaryKeyIndexType
 			result.IndexType = primaryKeyIndexType
 		}
 		if key {
@@ -388,7 +388,7 @@ func postgresSchemaResults(columns []postgresColumnRow, keys []postgresKeyRow) (
 				table, col = *next.referencedTable, *next.referencedColumn
 			}
 			result.ReferencedTable, result.ReferencedColumn = &table, &col
-			rule := "NO ACTION"
+			rule := noActionDeleteAction
 			if fk.deleteCascades {
 				rule = cascadeDeleteAction
 			}
@@ -399,6 +399,30 @@ func postgresSchemaResults(columns []postgresColumnRow, keys []postgresKeyRow) (
 
 	return results, nil
 }
+
+// The Spanner column types a PostgreSQL column's type is stated as, in the vocabulary the
+// generator parses, and the PostgreSQL type names the map reads them from that other
+// parts of the generator spell too.
+const (
+	spannerStringMax = "STRING(MAX)"
+	spannerUUID      = "UUID"
+	spannerInt64     = "INT64"
+	spannerFloat32   = "FLOAT32"
+	spannerFloat64   = "FLOAT64"
+	spannerNumeric   = "NUMERIC"
+	spannerBool      = "BOOL"
+	spannerTimestamp = "TIMESTAMP"
+	spannerDate      = "DATE"
+	spannerBytesMax  = "BYTES(MAX)"
+
+	pgTypeText    = "text"
+	pgTypeName    = "name"
+	pgTypeUUID    = "uuid"
+	pgTypeBigint  = "bigint"
+	pgTypeBoolean = "boolean"
+	pgTypeDate    = "date"
+	pgTypeJSON    = "json"
+)
 
 // postgresTypeLength matches the length or precision a type declares: varchar(64),
 // numeric(12,2), and the time types, whose precision sits inside the name:
@@ -421,31 +445,31 @@ func postgresColumnType(formatted string) (string, error) {
 	switch name {
 	case "character varying", "character", "bpchar":
 		if length == "" {
-			scalar = "STRING(MAX)"
+			scalar = spannerStringMax
 		} else {
 			scalar = fmt.Sprintf("STRING(%s)", length)
 		}
-	case "text", "citext", "name":
-		scalar = "STRING(MAX)"
-	case "uuid":
-		scalar = "UUID"
-	case "smallint", "integer", "bigint":
-		scalar = "INT64"
+	case pgTypeText, "citext", pgTypeName:
+		scalar = spannerStringMax
+	case pgTypeUUID:
+		scalar = spannerUUID
+	case "smallint", "integer", pgTypeBigint:
+		scalar = spannerInt64
 	case "real":
-		scalar = "FLOAT32"
+		scalar = spannerFloat32
 	case "double precision":
-		scalar = "FLOAT64"
+		scalar = spannerFloat64
 	case "numeric":
-		scalar = "NUMERIC"
-	case "boolean":
-		scalar = "BOOL"
+		scalar = spannerNumeric
+	case pgTypeBoolean:
+		scalar = spannerBool
 	case "timestamp with time zone", "timestamp without time zone":
-		scalar = "TIMESTAMP"
-	case "date":
-		scalar = "DATE"
+		scalar = spannerTimestamp
+	case pgTypeDate:
+		scalar = spannerDate
 	case "bytea":
-		scalar = "BYTES(MAX)"
-	case "json", "jsonb":
+		scalar = spannerBytesMax
+	case pgTypeJSON, "jsonb":
 		scalar = jsonSpannerType
 	default:
 		scalar = strings.ToUpper(name)

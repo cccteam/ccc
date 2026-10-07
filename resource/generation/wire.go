@@ -571,6 +571,7 @@ var handlerQualifiers = []string{contextQualifier, httpQualifier, cccQualifier, 
 // The qualifiers the import fixer and the handler templates both name.
 const (
 	bytesQualifier   = "bytes"
+	jsonQualifier    = "json"
 	contextQualifier = "context"
 	httpQualifier    = "http"
 	cccQualifier     = "ccc"

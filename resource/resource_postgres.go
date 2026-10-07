@@ -2,9 +2,10 @@ package resource
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"iter"
-	"math/rand/v2"
+	"math/big"
 	"sync"
 	"time"
 
@@ -125,14 +126,21 @@ func (c *PostgresClient) ExecuteFunc(ctx context.Context, f func(ctx context.Con
 }
 
 // backoff is how long to wait after the given attempt lost: the base doubled for each
-// earlier attempt, capped, and spread over its half to its full length.
+// earlier attempt, capped, and spread over its half to its full length. The spread is
+// drawn from crypto/rand, which the module's security scan requires of any randomness
+// outside a seeded test; should the draw fail, the wait is the full length.
 func (c *PostgresClient) backoff(attempt int) time.Duration {
 	wait := min(c.retryBackoff<<(attempt-1), postgresRetryBackoffCap)
 	if wait <= 1 {
 		return wait
 	}
 
-	return wait/2 + rand.N(wait/2+1) //nolint:gosec // a spread, not a secret
+	spread, err := rand.Int(rand.Reader, big.NewInt(int64(wait/2+1)))
+	if err != nil {
+		return wait
+	}
+
+	return wait/2 + time.Duration(spread.Int64())
 }
 
 // executeOnce runs the function in one transaction and reports whether it lost to a

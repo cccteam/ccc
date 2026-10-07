@@ -202,8 +202,16 @@ func (n *nullablePointer) Scan(src any) error {
 	return nil
 }
 
-// postgresText is the Postgres type a string parameter is cast to.
-const postgresText = "TEXT"
+// The Postgres types a bound value's CAST gives its parameter (postgresCast).
+const (
+	postgresText        = "TEXT"
+	postgresTimestamptz = "TIMESTAMPTZ"
+	postgresDate        = "DATE"
+	postgresNumeric     = "NUMERIC"
+	postgresBoolean     = "BOOLEAN"
+	postgresBigint      = "BIGINT"
+	postgresDouble      = "DOUBLE PRECISION"
+)
 
 // postgresCast names the Postgres type a bound value's CAST gives its parameter, "" where
 // the value's type is not known (a NULL) and the context must type it.
@@ -212,11 +220,11 @@ func postgresCast(value any) string {
 	case nil:
 		return ""
 	case time.Time, *time.Time:
-		return "TIMESTAMPTZ"
+		return postgresTimestamptz
 	case civil.Date, *civil.Date:
-		return "DATE"
+		return postgresDate
 	case *big.Rat, big.Rat, spanner.NullNumeric, decimal.Decimal, decimal.NullDecimal:
-		return "NUMERIC"
+		return postgresNumeric
 	}
 
 	t := reflect.TypeOf(value)
@@ -227,11 +235,11 @@ func postgresCast(value any) string {
 	case reflect.String:
 		return postgresText
 	case reflect.Bool:
-		return "BOOLEAN"
+		return postgresBoolean
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
-		return "BIGINT"
+		return postgresBigint
 	case reflect.Float32, reflect.Float64:
-		return "DOUBLE PRECISION"
+		return postgresDouble
 	default:
 		return ""
 	}
