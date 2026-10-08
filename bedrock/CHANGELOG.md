@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/cccteam/ccc/compare/bedrock/v0.1.0...bedrock/v0.1.1) (2026-10-08)
+
+
+### Features
+
+* 1-org creates the GitHub-hosted runner and its runner group for the applications (@cccteam/bedrock) ([#854](https://github.com/cccteam/ccc/issues/854)) ([e4d1fd4](https://github.com/cccteam/ccc/commit/e4d1fd4a7a8859fb9f764d9b61fa079084a96522))
+* the placement sizes the larger CI runner (ciLargeRunnerSize, ciLargeRunnerMaximum) (@cccteam/bedrock) ([#854](https://github.com/cccteam/ccc/issues/854)) ([e4d1fd4](https://github.com/cccteam/ccc/commit/e4d1fd4a7a8859fb9f764d9b61fa079084a96522))
+
 ## 0.1.0 (2026-10-06)
 
 
