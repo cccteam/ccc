@@ -28,7 +28,7 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": [".github", "accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer", "middleware", "impulse", "bedrock"]
+      "exclude-paths": [".github", "accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer", "middleware", "impulse", "bedrock", "cloud"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
@@ -51,6 +51,10 @@
     },
     "tracer": {
       "package-name": "tracer"
+    },
+    "cloud": {
+      "package-name": "cloud",
+      "initial-version": "0.1.0"
     },
     "middleware": {
       "package-name": "middleware"
