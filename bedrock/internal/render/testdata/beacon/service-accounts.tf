@@ -21,14 +21,17 @@ resource "google_service_account" "app" {
 }
 
 # The site writes request logs (coreConfig.LoggingProjectID), traces, and
-# metrics. Its database and secret grants are on those resources
-# (spanner.tf, secret-manager.tf), and so is the metric writer role on the
-# shared Spanner instance's project, where its Spanner client's metrics go in
-# an environment on that instance (spanner.tf).
+# metrics. The traces go through the Telemetry API (telemetry.tracesWriter;
+# tracer 0.2 and later) or the Cloud Trace API (cloudtrace.agent; tracer
+# before 0.2), so both are granted. Its database and secret grants are on
+# those resources (spanner.tf, secret-manager.tf), and so is the metric
+# writer role on the shared Spanner instance's project, where its Spanner
+# client's metrics go in an environment on that instance (spanner.tf).
 resource "google_project_iam_member" "app" {
   for_each = toset([
     "roles/logging.logWriter",
     "roles/cloudtrace.agent",
+    "roles/telemetry.tracesWriter",
     "roles/monitoring.metricWriter",
   ])
 

@@ -89,7 +89,7 @@ from `2-env`'s state.
 
 - **Runtime identities**, one per deployed process:
   `{{.Prefix}}-<env>-gbl-{{.App}}-app` for the site (`{{.Site.Main}}`) with
-  `roles/logging.logWriter`, `roles/cloudtrace.agent`,
+  `roles/logging.logWriter`, `roles/cloudtrace.agent`, `roles/telemetry.tracesWriter`,
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets{{if .Jobs}}; `{{.Prefix}}-<env>-gbl-{{.App}}-jobs` for the job process
   (`{{.Jobs.Dir}}`) with the site's project roles{{if .JobsReadsData}}, `roles/spanner.databaseUser`

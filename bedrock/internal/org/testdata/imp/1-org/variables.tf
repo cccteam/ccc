@@ -457,6 +457,8 @@ variable "required_apis" {
       "spanner.googleapis.com",
       "storage.googleapis.com",
       "sts.googleapis.com",
+      # The applications' traces arrive through the Telemetry API (OTLP).
+      "telemetry.googleapis.com",
     ]
     log = [
       "iam.googleapis.com",
