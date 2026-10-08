@@ -28,7 +28,7 @@ resource "google_service_account" "jobs" {
   description  = "Runtime identity of the harbor job process (cmd/jobs) in ${var.environment}."
 }
 
-# The site writes request logs (coreConfig.LoggingProjectID), traces, and
+# The site writes request logs (coreConfig.LoggingProject), traces, and
 # metrics. The traces go through the Telemetry API (telemetry.tracesWriter;
 # tracer 0.2 and later) or the Cloud Trace API (cloudtrace.agent; tracer
 # before 0.2), so both are granted. Its database and secret grants are on

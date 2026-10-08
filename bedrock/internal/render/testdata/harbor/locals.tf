@@ -224,7 +224,7 @@ locals {
   core_env = {
     # coreConfig.ServiceName (required): the name the process reports in logs.
     APP_SERVICE_NAME = local.app
-    # coreConfig.LoggingProjectID: request logs ship to Cloud Logging here.
+    # coreConfig.LoggingProject: request logs ship to Cloud Logging here.
     GOOGLE_CLOUD_LOGGING_PROJECT = local.project_id
     # coreConfig.TraceSampling: which spans are recorded (local.trace_sampling).
     APP_TRACE_SAMPLING = local.trace_sampling
