@@ -1,3 +1,8 @@
+# Every entry pins how dependabot writes its pull requests: the title becomes the squash
+# commit's subject, and release-please releases a merge by its type. chore and build are
+# hidden in our release configuration, so a bump merged under dependabot's inferred prefix
+# never reached a release; "upgrade" is a visible patch section. A release is taken up only
+# after it has been out a week, so a version pulled or superseded within days never lands.
 # Dependabot version updates.
 # Please see the documentation for all configuration options:
 # https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
@@ -8,6 +13,11 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns:
@@ -16,6 +26,11 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       go-dependencies:
         patterns:
@@ -24,6 +39,11 @@ updates:
     directory: '/accesstypes'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       go-dependencies:
         patterns:
@@ -32,6 +52,11 @@ updates:
     directory: '/resource'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       go-dependencies:
         patterns:
@@ -40,6 +65,11 @@ updates:
     directory: '/pkg'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       go-dependencies:
         patterns:
@@ -48,6 +78,11 @@ updates:
     directory: '/sns'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       go-dependencies:
         patterns:
@@ -56,6 +91,11 @@ updates:
     directory: '/securehash'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       go-dependencies:
         patterns:
@@ -64,6 +104,11 @@ updates:
     directory: '/middleware'
     schedule:
       interval: 'weekly'
+    commit-message:
+      prefix: "upgrade"
+      include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       go-dependencies:
         patterns:
