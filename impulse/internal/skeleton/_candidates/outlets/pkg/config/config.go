@@ -11,17 +11,24 @@ package config
 import (
 	"context"
 	"log"
+	"time"
 
 	"cloud.google.com/go/logging"
+	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
 
+// traceFlushTimeout bounds the wait for the spans still in hand when the process ends.
+const traceFlushTimeout = 5 * time.Second
+
 // coreConfiguration is the first level: what every process of the application shares.
 type coreConfiguration struct {
 	env           *coreConfig
 	loggingClient *logging.Client
+	// traceProvider exports the process's spans; nil without a logging project.
+	traceProvider *tracer.Provider
 }
 
 func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
@@ -37,13 +44,29 @@ func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
 			return nil, errors.Wrap(err, "logging.NewClient()")
 		}
 		conf.loggingClient = client
+		// The traces go to the logs' project under the process's service name. The
+		// provider is the global one, so every span the libraries and the generated
+		// code start (tracer.Start) is recorded through it.
+		provider, err := tracer.NewGoogleCloudTracerProvider(env.LoggingProjectID, env.ServiceName)
+		if err != nil {
+			return nil, errors.Wrap(err, "tracer.NewGoogleCloudTracerProvider()")
+		}
+		conf.traceProvider = provider
 	}
 
 	return conf, nil
 }
 
-// Close releases the level's clients.
+// Close releases the level's clients: the trace provider first, so the spans its
+// batcher still holds are sent before the logging client goes.
 func (c *coreConfiguration) Close() {
+	if c.traceProvider != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), traceFlushTimeout)
+		defer cancel()
+		if err := c.traceProvider.Shutdown(ctx); err != nil {
+			log.Print(errors.Wrap(err, "tracer.Provider.Shutdown()"))
+		}
+	}
 	if c.loggingClient != nil {
 		if err := c.loggingClient.Close(); err != nil {
 			log.Print(errors.Wrap(err, "logging.Client.Close()"))
