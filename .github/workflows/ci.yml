@@ -143,22 +143,23 @@ jobs:
           go-version-file: ccc/impulse/go.mod
           cache: false
       - name: Restore the Go caches
-        # The module cache and the build cache from the nearest saved entry of this leg's
-        # lineage (impulse's go.sum first, then any), as golang-ci's jobs do: a module is
-        # verified against go.sum when read and a build output is addressed by the hash of
-        # its inputs, so an older entry is either what this commit computes or unused. Most
-        # of "Build and vet" is the rendered application's dependencies compiling, which an
-        # entry of the lineage already holds.
+        # The module cache and the build cache from the nearest saved entry of the framework
+        # leg's lineage (impulse's go.sum first, then any), as golang-ci's jobs do: a module
+        # is verified against go.sum when read and a build output is addressed by the hash
+        # of its inputs, so an older entry is either what this commit computes or unused.
+        # Most of "Build and vet" is the rendered application's dependencies compiling, which
+        # the four candidates share and an entry of the lineage already holds; the pins leg
+        # and the head leg compile different framework modules, so each has its own lineage.
         id: go-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: impulse-${{ matrix.candidate }}-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-${{ github.sha }}
+          key: impulse-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-${{ github.sha }}
           restore-keys: |
-            impulse-${{ matrix.candidate }}-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-
-            impulse-${{ matrix.candidate }}-${{ matrix.framework }}-${{ runner.os }}-
+            impulse-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-
+            impulse-${{ matrix.framework }}-${{ runner.os }}-
       - name: Build impulse
         working-directory: ccc/impulse
         run: go build -o "$RUNNER_TEMP/impulse" .
@@ -182,8 +183,10 @@ jobs:
           "$RUNNER_TEMP/impulse" check
       - name: Save the Go caches
         # Always on master; on a pull request only when no entry for this go.sum was found.
-        # A failed test still saves what compiled; a cancelled run saves nothing.
-        if: ${{ !cancelled() && (github.event_name != 'pull_request' || !startsWith(steps.go-cache.outputs.cache-matched-key, format('impulse-{0}-{1}-{2}-{3}-', matrix.candidate, matrix.framework, runner.os, hashFiles('ccc/impulse/go.sum')))) }}
+        # The four candidates of a framework leg share the key, so the first to finish saves
+        # and the others find the entry taken, which the action reports and moves past. A
+        # failed test still saves what compiled; a cancelled run saves nothing.
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || !startsWith(steps.go-cache.outputs.cache-matched-key, format('impulse-{0}-{1}-{2}-', matrix.framework, runner.os, hashFiles('ccc/impulse/go.sum')))) }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
