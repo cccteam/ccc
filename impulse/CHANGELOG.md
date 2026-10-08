@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.1](https://github.com/cccteam/ccc/compare/impulse/v0.1.0...impulse/v0.1.1) (2026-10-08)
+
+
+### Features
+
+* ci-cache.yml fills the caches after each push to the default or a hotfix branch (@cccteam/impulse) ([#853](https://github.com/cccteam/ccc/issues/853)) ([a67c658](https://github.com/cccteam/ccc/commit/a67c6580afb9dfc025d71f9447116b8ca05b93de))
+* impulse check compares ci-cache.yml's branches with origin's default branch (@cccteam/impulse) ([#853](https://github.com/cccteam/ccc/issues/853)) ([a67c658](https://github.com/cccteam/ccc/commit/a67c6580afb9dfc025d71f9447116b8ca05b93de))
+* the //impulse:ci line's default-branch names one other than main or master (@cccteam/impulse) ([#853](https://github.com/cccteam/ccc/issues/853)) ([a67c658](https://github.com/cccteam/ccc/commit/a67c6580afb9dfc025d71f9447116b8ca05b93de))
+* the //impulse:ci line's large-runner names the jobs on the larger runner (@cccteam/impulse) ([#853](https://github.com/cccteam/ccc/issues/853)) ([a67c658](https://github.com/cccteam/ccc/commit/a67c6580afb9dfc025d71f9447116b8ca05b93de))
+* the //impulse:ci line's test-cache=on reuses Go's cached test results (@cccteam/impulse) ([#853](https://github.com/cccteam/ccc/issues/853)) ([a67c658](https://github.com/cccteam/ccc/commit/a67c6580afb9dfc025d71f9447116b8ca05b93de))
+* the build and test legs restore the Go module and build caches between runs (@cccteam/impulse) ([#853](https://github.com/cccteam/ccc/issues/853)) ([a67c658](https://github.com/cccteam/ccc/commit/a67c6580afb9dfc025d71f9447116b8ca05b93de))
+
+
+### Bug Fixes
+
+* the upgrade ledger records impulse v0.1.1, which rewrites the owned workflows (@cccteam/impulse) ([#857](https://github.com/cccteam/ccc/issues/857)) ([ddffdd7](https://github.com/cccteam/ccc/commit/ddffdd772532605cb889d78103c0f5abae248393))
+
 ## 0.1.0 (2026-10-06)
 
 
