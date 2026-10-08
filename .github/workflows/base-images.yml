@@ -11,8 +11,6 @@ on:
   schedule:
     - cron: '0 14 * * *' # Daily at 14:00 UTC, the same hour as the security scan
   workflow_dispatch:
-  push:
-    branches: [chore/base-image-scan] # temporary: one proving run on the pull request's branch, removed before merge
 
 permissions: {}
 
