@@ -1,5 +1,5 @@
 {
-  "last-release-sha": "f5b1a08daba43e3f94f0cc01a1304c4b09054fd1",
+  "last-release-sha": "406bf2f27be0738147922e64a8452448343fd138",
   "release-type": "go",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,

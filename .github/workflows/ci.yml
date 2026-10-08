@@ -15,6 +15,36 @@ jobs:
       golangci-lint-version: 'v2.12.2'
   semantic-titles:
     uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+  changes:
+    # Which parts of the tree the pull request touches, for the two jobs below: the diff
+    # against the merge base with the base branch, as golang-ci's detect-modules does for
+    # the Go modules. A job whose inputs did not change is skipped and reports success to
+    # the required checks, so an unrelated pull request takes no runner for it.
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      # 'true' when resource (Lodestar and the generator that writes its TypeScript) or
+      # this workflow changed.
+      lodestar-web: ${{ steps.paths.outputs.lodestar-web }}
+      # 'true' when impulse, a module the rendered skeletons build against at this commit
+      # (resource, tracer, cloud, accesstypes), or this workflow changed.
+      impulse: ${{ steps.paths.outputs.impulse }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Diff against the base branch
+        id: paths
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git diff --name-only "origin/$BASE...HEAD" > "$RUNNER_TEMP/changed-files"
+          touches() { grep -qE "$1" "$RUNNER_TEMP/changed-files" && echo true || echo false; }
+          {
+            echo "lodestar-web=$(touches '^(resource/|\.github/workflows/ci\.yml$)')"
+            echo "impulse=$(touches '^(impulse/|resource/|tracer/|cloud/|accesstypes/|[^/]+\.go$|go\.(mod|sum)$|\.github/workflows/ci\.yml$)')"
+          } >> "$GITHUB_OUTPUT"
+          echo "changed files: $(wc -l < "$RUNNER_TEMP/changed-files")"; cat "$GITHUB_OUTPUT"
   lodestar-web:
     # Lodestar's console and portal are built, linted, and tested against the published
     # @cccteam/resource and @cccteam/resource-angular (the versions web/package.json pins,
@@ -25,6 +55,8 @@ jobs:
     # the library itself is proven in ccc-lib's own CI and reaches this job by a version
     # bump in web/package.json.
     name: lodestar web (console + portal)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.lodestar-web == 'true') }}
     runs-on: ubuntu-latest
     env:
       # The bun that wrote resource/lodestar/web/bun.lock.
@@ -80,6 +112,8 @@ jobs:
     # outside this repository stay pinned). A generator change that breaks a template, or
     # a template that lags the generator, fails here and not in a downstream application.
     name: impulse ${{ matrix.candidate }} (${{ matrix.framework }})
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.impulse == 'true') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
