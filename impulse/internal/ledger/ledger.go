@@ -77,6 +77,20 @@ var Releases = []Release{
 		},
 		Note: "the first impulse release; an application created by it stands here already",
 	},
+	{
+		// A release that changes impulse alone pins impulse itself: the position is read
+		// from the tool directive's version as from the framework pins, so an application
+		// at v0.1.0 has this step pending and the step moves the tool pin.
+		Version: "v0.1.1",
+		Pins: map[string]string{
+			"github.com/cccteam/access":          "v0.10.1",
+			"github.com/cccteam/ccc/accesstypes": "v0.6.0",
+			"github.com/cccteam/ccc/impulse":     "v0.1.1",
+			"github.com/cccteam/ccc/resource":    "v0.11.0",
+			"github.com/cccteam/session":         "v0.12.0",
+		},
+		Note: "the CI caches: ci-cache.yml joins ci.yml among the owned files, which this step rewrites; no code change is needed",
+	},
 }
 
 // PinNames lists the module paths a release pins, sorted.
