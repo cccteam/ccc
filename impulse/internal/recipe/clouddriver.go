@@ -75,6 +75,14 @@ var appMarker = marker{text: "func (a *App) LoggerMiddleware()", what: "the App 
 // mainMarker is the sign of the old form in a main.
 var mainMarker = marker{text: "tracer.NewGoogleCloudHandler()", what: "main passes the tracing handler through the outermost hook; the generated router installs it"}
 
+// The driver's variables in the development environment template: the template that
+// documents the logging project and not the sampling is in the old form.
+const (
+	loggingProjectVariable = "GOOGLE_CLOUD_LOGGING_PROJECT"
+	traceSamplingVariable  = "APP_TRACE_SAMPLING"
+	envTemplateWhat        = "the development template does not document APP_TRACE_SAMPLING, the driver's trace sampling"
+)
+
 // Detect names what in the application is in the old form.
 func (r CloudDriver) Detect(_ context.Context, a *app.App) ([]string, error) {
 	var found []string
@@ -99,6 +107,19 @@ func (r CloudDriver) Detect(_ context.Context, a *app.App) ([]string, error) {
 		}
 		add(f.rel, data, f.markers...)
 	}
+	if a.EnvTemplate != "" {
+		data, err := os.ReadFile(a.Abs(a.EnvTemplate))
+		if err != nil {
+			return nil, errors.Wrap(err, "os.ReadFile()")
+		}
+		if !bytes.Contains(data, []byte(traceSamplingVariable)) {
+			line := 1
+			if i := bytes.Index(data, []byte(loggingProjectVariable)); i >= 0 {
+				line += bytes.Count(data[:i], []byte("\n"))
+			}
+			found = append(found, fmt.Sprintf("%s:%d: %s", a.EnvTemplate, line, envTemplateWhat))
+		}
+	}
 	mains, err := r.mains(a)
 	if err != nil {
 		return nil, err
@@ -121,6 +142,9 @@ func (r CloudDriver) Apply(_ context.Context, a *app.App, _ check.Execer) (*tran
 		return nil, err
 	}
 	if err := r.rewriteApp(a, ch); err != nil {
+		return nil, err
+	}
+	if err := r.rewriteEnvTemplate(a, ch); err != nil {
 		return nil, err
 	}
 	mains, err := r.mains(a)
@@ -196,6 +220,30 @@ func (CloudDriver) rewriteApp(a *app.App, ch *transition.Change) error {
 		return err
 	}
 	ch.Did = append(ch.Did, appFile+": LogExporter replaces LoggerMiddleware; the generated router builds the request logger from it")
+
+	return nil
+}
+
+// rewriteEnvTemplate documents the trace sampling beside the logging project in the
+// development environment template.
+func (CloudDriver) rewriteEnvTemplate(a *app.App, ch *transition.Change) error {
+	if a.EnvTemplate == "" {
+		return nil
+	}
+	src, mode, ok, err := read(a, a.EnvTemplate)
+	if err != nil || !ok || strings.Contains(src, traceSamplingVariable) {
+		return err
+	}
+	if !strings.Contains(src, loggingProjectLines) {
+		ch.Skipped = append(ch.Skipped, a.EnvTemplate+": the logging project is not documented as the skeleton documents it, so APP_TRACE_SAMPLING was not added; document it beside GOOGLE_CLOUD_LOGGING_PROJECT (all exports every request's spans, edge the ones the caller sampled)")
+
+		return nil
+	}
+	edited := strings.Replace(src, loggingProjectLines, loggingProjectLines+traceSamplingLines, 1)
+	if err := os.WriteFile(a.Abs(a.EnvTemplate), []byte(edited), mode); err != nil {
+		return errors.Wrap(err, "os.WriteFile()")
+	}
+	ch.Did = append(ch.Did, a.EnvTemplate+": APP_TRACE_SAMPLING, the driver's trace sampling, is documented beside the logging project")
 
 	return nil
 }

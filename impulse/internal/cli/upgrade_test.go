@@ -120,6 +120,15 @@ func upgradeLedger() []ledger.Step {
 	}
 }
 
+// pseudoLedger is upgradeLedger with the last step's pins at pseudo-versions, which run
+// too long for a commit subject.
+func pseudoLedger() []ledger.Step {
+	steps := upgradeLedger()
+	steps[2].Pins = map[string]string{upgradeResource: "v0.3.1-0.20261008035330-fb5dde92d6da", upgradeAccess: "v0.2.1-0.20261008034601-9d76e3c2d0b8"}
+
+	return steps
+}
+
 func passing(context.Context, *check.Env) []check.Result {
 	return []check.Result{{Name: "pins", Status: check.Pass, Summary: "ok"}}
 }
@@ -253,6 +262,18 @@ func TestUpgrade(t *testing.T) {
 			wantCalls: []string{
 				"go get github.com/cccteam/access@v0.2.0", "go mod tidy", "go generate ./...", "git add -A",
 				"git commit -q -m upgrade: access v0.2.0 -m no code change is needed",
+			},
+		},
+		{
+			name:    "pseudo-version pins name the modules alone in the subject; the versions go in the body",
+			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.3.0"),
+			steps:   pseudoLedger(),
+			running: check.Build{Version: "v0.3.0", FromModule: true},
+			verify:  passing,
+			wantOut: []string{"Committed: upgrade: access, ccc/resource."},
+			wantCalls: []string{
+				"go get github.com/cccteam/access@v0.2.1-0.20261008034601-9d76e3c2d0b8", "go get github.com/cccteam/ccc/resource@v0.3.1-0.20261008035330-fb5dde92d6da", "go mod tidy", "go generate ./...", "git add -A",
+				"git commit -q -m upgrade: access, ccc/resource -m no code change is needed\n\nPins moved: access v0.2.1-0.20261008034601-9d76e3c2d0b8, ccc/resource v0.3.1-0.20261008035330-fb5dde92d6da.",
 			},
 		},
 		{

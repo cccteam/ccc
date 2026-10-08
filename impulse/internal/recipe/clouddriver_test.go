@@ -104,6 +104,18 @@ func at(rel, src, marker string) string {
 	return fmt.Sprintf("%s:%d: ", rel, 1+strings.Count(src[:i], "\n"))
 }
 
+// envFile is the development environment template the test applications carry.
+const envFile = ".envrc.template"
+
+// envSource is the development environment template in the skeleton's form, before
+// the driver's sampling was documented.
+const envSource = `# The development environment.
+export APP_SERVICE_NAME=beacon
+export APP_VERSION=dev
+` + loggingProjectLines + `
+export GOOGLE_CLOUD_SPANNER_PROJECT=beacon-dev
+`
+
 // writeApp lays out an application with the files given and discovers it.
 func writeApp(t *testing.T, files map[string]string) *app.App {
 	t.Helper()
@@ -144,6 +156,7 @@ func TestCloudDriver(t *testing.T) {
 		configDid      = configFile + ": the core configuration embeds gcp.Settings and opens the cloud driver, which builds the log exporter and the trace provider and closes them"
 		appDid         = appFile + ": LogExporter replaces LoggerMiddleware; the generated router builds the request logger from it"
 		mainDid        = mainFile + ": the tracing handler leaves the router's hooks; the generated router installs it"
+		envDid         = envFile + ": APP_TRACE_SAMPLING, the driver's trace sampling, is documented beside the logging project"
 	)
 	tests := []struct {
 		name       string
@@ -157,16 +170,18 @@ func TestCloudDriver(t *testing.T) {
 	}{
 		{
 			name:  "the skeleton before tracing was wired",
-			files: map[string]string{configFile: before, appFile: appSource},
+			files: map[string]string{configFile: before, appFile: appSource, envFile: envSource},
 			wantDetect: []string{
 				at(configFile, before, "logging.NewClient(") + opensClient,
 				at(configFile, before, "LoggingProjectID string") + declaresProj,
 				at(appFile, appSource, "func (a *App) LoggerMiddleware()") + buildsLogger,
+				at(envFile, envSource, "GOOGLE_CLOUD_LOGGING_PROJECT") + envTemplateWhat,
 			},
-			wantDid: []string{configDid, appDid},
+			wantDid: []string{configDid, appDid, envDid},
 			wantIn: map[string][]string{
 				configFile: {"\t\"github.com/cccteam/ccc/cloud/gcp\"\n", "gcp.Open(ctx, env.Settings, env.ServiceName)", "\tgcp.Settings\n", "return c.cloud.LogExporter"},
 				appFile:    {"func (a *App) LogExporter() logger.Exporter", "\t\"net/http\"\n"},
+				envFile:    {loggingProjectLines + traceSamplingLines + "\nexport GOOGLE_CLOUD_SPANNER_PROJECT"},
 			},
 			wantOut: map[string][]string{
 				configFile: {"logging.", "cloud.google.com/go/logging", "LoggingProjectID"},
@@ -194,16 +209,19 @@ func TestCloudDriver(t *testing.T) {
 			},
 		},
 		{
-			name:  "a configuration the recipe does not know is reported, not touched",
-			files: map[string]string{configFile: unknown},
+			name:  "a configuration and a template the recipe does not know are reported, not touched",
+			files: map[string]string{configFile: unknown, envFile: "export GOOGLE_CLOUD_LOGGING_PROJECT=beacon-dev\n"},
 			wantDetect: []string{
 				at(configFile, unknown, "logging.NewClient(") + opensClient,
 				at(configFile, unknown, "LoggingProjectID string") + declaresProj,
+				envFile + ":1: " + envTemplateWhat,
 			},
 			wantSkip: []string{
 				configFile + ": the core configuration is not in a form the recipe knows, so it was not rewritten; embed gcp.Settings in coreConfig, build the level with gcp.Open (its LogExporter and Close), and drop the logging client and the trace provider",
+				envFile + ": the logging project is not documented as the skeleton documents it, so APP_TRACE_SAMPLING was not added; document it beside GOOGLE_CLOUD_LOGGING_PROJECT (all exports every request's spans, edge the ones the caller sampled)",
 			},
-			wantIn: map[string][]string{configFile: {"conf.loggingClient = client // kept by hand", "LoggingProjectID"}},
+			wantIn:  map[string][]string{configFile: {"conf.loggingClient = client // kept by hand", "LoggingProjectID"}},
+			wantOut: map[string][]string{envFile: {"APP_TRACE_SAMPLING"}},
 		},
 		{
 			name:  "an application already on the driver is left alone",

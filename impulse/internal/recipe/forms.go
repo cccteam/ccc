@@ -35,3 +35,10 @@ const (
 	tracingHookStart = "\t// Tracing runs ahead of the logger on every request, so the request log and the spans\n\t// share the trace the caller's headers name.\n\thooks := router.Hooks{Outermost: []func(http.Handler) http.Handler{tracer.NewGoogleCloudHandler()}}\n\tif err := server.New(conf.Addr()).Start(ctx, router.New(a, hooks)); err != nil {"
 	routerStart      = "\tif err := server.New(conf.Addr()).Start(ctx, router.New(a, router.Hooks{})); err != nil {"
 )
+
+// loggingProjectLines document the logging project in the development environment
+// template; the sampling's lines go after them.
+const loggingProjectLines = "# GOOGLE_CLOUD_LOGGING_PROJECT ships request logs to Cloud Logging; unset logs to the console.\n# export GOOGLE_CLOUD_LOGGING_PROJECT=\n"
+
+// traceSamplingLines document the trace sampling the driver's settings add.
+const traceSamplingLines = "# APP_TRACE_SAMPLING exports every request's spans (all) or the ones the caller sampled (edge,\n# the default); the spans go to the logging project, so none leaves without one.\n# export APP_TRACE_SAMPLING=edge\n"

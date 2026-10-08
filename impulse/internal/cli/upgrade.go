@@ -27,6 +27,10 @@ const (
 	upgradeCommitTyp = "upgrade"
 )
 
+// subjectLimit is the longest commit subject a step writes, in characters: one that still
+// reads in a one-line log. Past it the pins' versions leave the subject for the body.
+const subjectLimit = 100
+
 // toolPinNote is the body of the commit that moves the impulse tool pin.
 const toolPinNote = "the impulse tool pin moves to the running impulse and the owned files are rendered again from the code"
 
@@ -297,13 +301,31 @@ func (u *upgrader) step(ctx context.Context, f *transitionFlags, repo handoff.Re
 	if moved == "" {
 		moved = fmt.Sprintf("step %d", number)
 	}
-	commit := &commit{label: fmt.Sprintf("step %d (%s)", number, moved), subject: upgradeCommitTyp + ": " + moved, body: s.Note, changes: changes, meanings: meanings}
+	suffix, body := "", s.Note
 	if names := recipeNames(s); names != "" {
-		commit.subject += " (" + names + ")"
-		commit.body += "\n\nRecipes applied by impulse upgrade: " + strings.TrimPrefix(strings.TrimPrefix(names, "recipes "), "recipe ") + "."
+		suffix = " (" + names + ")"
+		body += "\n\nRecipes applied by impulse upgrade: " + strings.TrimPrefix(strings.TrimPrefix(names, "recipes "), "recipe ") + "."
 	}
+	subject := upgradeCommitTyp + ": " + moved + suffix
+	if len(subject) > subjectLimit && len(moves) > 0 {
+		// Pseudo-versions run long: the modules alone name the commit, the versions go
+		// in the body.
+		subject = upgradeCommitTyp + ": " + strings.Join(modulesOf(moves), ", ") + suffix
+		body += "\n\nPins moved: " + moved + "."
+	}
+	commit := &commit{label: fmt.Sprintf("step %d (%s)", number, moved), subject: subject, body: body, changes: changes, meanings: meanings}
 
 	return u.finish(ctx, f, repo, commit)
+}
+
+// modulesOf names the modules of the moves ("ccc/resource v0.12.0" names ccc/resource).
+func modulesOf(moves []string) []string {
+	modules := make([]string, 0, len(moves))
+	for _, move := range moves {
+		modules = append(modules, strings.Fields(move)[0])
+	}
+
+	return modules
 }
 
 // commit is what a step commits and how the step is named when its check fails.
