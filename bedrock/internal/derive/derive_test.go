@@ -86,7 +86,7 @@ func TestDerive(t *testing.T) {
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
 				"APP_STAFF_OIDC_CLIENT_SECRET staff-oidc-client-secret pkg/config/data.go dataConfig.StaffClientSecret",
 			},
-			wantCore: []string{varVersion, varServiceName, varLoggingProject},
+			wantCore: []string{varVersion, varServiceName, varLoggingProject, varTraceSampling},
 			wantData: []string{
 				varDatabaseProject, varDatabaseInstance, varDatabaseName,
 				varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey, "FIRESTORE_EMULATOR_HOST",
@@ -110,6 +110,7 @@ func TestDerive(t *testing.T) {
 			},
 			wantSupplies: map[string]Supply{
 				varVersion:                     SupplyImage,
+				varTraceSampling:               SupplyDerived,
 				varServiceName:                 SupplyDerived,
 				varDatabaseProject:             SupplyDerived,
 				"APP_DEFAULT_SESSION_TIMEOUT":  SupplyDefault,

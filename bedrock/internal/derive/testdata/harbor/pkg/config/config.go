@@ -13,6 +13,7 @@ import (
 	"log"
 
 	"cloud.google.com/go/logging"
+	"github.com/cccteam/ccc/cloud/gcp"
 	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
@@ -31,8 +32,8 @@ func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
 	}
 
 	conf := &coreConfiguration{env: env}
-	if env.LoggingProjectID != "" {
-		client, err := logging.NewClient(ctx, env.LoggingProjectID)
+	if env.LoggingProject != "" {
+		client, err := logging.NewClient(ctx, env.LoggingProject)
 		if err != nil {
 			return nil, errors.Wrap(err, "logging.NewClient()")
 		}
@@ -55,7 +56,7 @@ func (c *coreConfiguration) Close() {
 // configured, the console otherwise.
 func (c *coreConfiguration) LogExporter() logger.Exporter {
 	if c.loggingClient != nil {
-		return logger.NewGoogleCloudExporter(c.loggingClient, c.env.LoggingProjectID)
+		return logger.NewGoogleCloudExporter(c.loggingClient, c.env.LoggingProject)
 	}
 
 	return logger.NewConsoleExporter()
@@ -79,7 +80,6 @@ type coreConfig struct {
 	// ServiceName names the process in logs.
 	ServiceName string `env:"APP_SERVICE_NAME,required"`
 
-	// LoggingProjectID is the Google Cloud project request logs ship to. Empty logs
-	// to the console.
-	LoggingProjectID string `env:"GOOGLE_CLOUD_LOGGING_PROJECT"`
+	// The Google Cloud driver's variables: the logging project and the trace sampling.
+	gcp.Settings
 }

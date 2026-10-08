@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -43,6 +44,9 @@ type config struct {
 	funcs map[string]bool
 	// structs are the package's struct types by name.
 	structs map[string]*structDecl
+	// expansions are the fields the embedded framework settings structs expanded to, in
+	// the reader's order.
+	expansions []expansion
 	// envTemplate maps a variable to the value the development template sets, when the
 	// template sets one.
 	envTemplate map[string]string
@@ -64,6 +68,33 @@ type fieldDecl struct {
 	secret string
 	// tag is the env tag's value, or empty.
 	tag string
+	// framework marks a field an embedded framework settings struct expanded to: the
+	// struct declares it, at the embedding's line, as if the embedding struct did.
+	framework bool
+	// foreign is the import path of an embedded type of another package that is not a
+	// framework settings struct, or empty: the level walk refuses the field.
+	foreign string
+}
+
+// key locates the field for the env tags the reader found: its file and line, and for a
+// field a framework settings struct expanded to, which shares its line with the others
+// the struct declares, its name too.
+func (f *fieldDecl) key(file string) string {
+	k := file + ":" + strconv.Itoa(f.line)
+	if f.framework {
+		k += ":" + f.name
+	}
+
+	return k
+}
+
+// expansion is one field an embedded framework settings struct expanded to, where it was
+// embedded and the variable it declares.
+type expansion struct {
+	file     string
+	line     int
+	key      string
+	variable string
 }
 
 // readConfig parses the package holding the env tags.
@@ -137,6 +168,7 @@ func (c *config) readFile(a *app.App, rel string, authPaths map[string]string) e
 	}
 	c.pkg = f.Name.Name
 
+	imports := importsOf(f)
 	for _, decl := range f.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
@@ -144,21 +176,13 @@ func (c *config) readFile(a *app.App, rel string, authPaths map[string]string) e
 				c.funcs[d.Name.Name] = true
 			}
 		case *ast.GenDecl:
-			c.readStructs(fset, rel, d)
+			c.readStructs(fset, rel, d, imports)
 		}
 	}
 
 	locals := map[string]bool{}
-	for _, imp := range f.Imports {
-		p, err := strconv.Unquote(imp.Path.Value)
-		if err != nil {
-			continue
-		}
+	for local, p := range imports {
 		if _, isAuth := authPaths[p]; isAuth {
-			local := path.Base(p)
-			if imp.Name != nil {
-				local = imp.Name.Name
-			}
 			locals[local] = true
 		}
 	}
@@ -169,8 +193,27 @@ func (c *config) readFile(a *app.App, rel string, authPaths map[string]string) e
 	return nil
 }
 
+// importsOf maps the name a file refers to each import by, its alias or the path's last
+// element, to the import path.
+func importsOf(f *ast.File) map[string]string {
+	imports := map[string]string{}
+	for _, imp := range f.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		local := path.Base(p)
+		if imp.Name != nil {
+			local = imp.Name.Name
+		}
+		imports[local] = p
+	}
+
+	return imports
+}
+
 // readStructs records the struct types a type declaration declares.
-func (c *config) readStructs(fset *token.FileSet, rel string, d *ast.GenDecl) {
+func (c *config) readStructs(fset *token.FileSet, rel string, d *ast.GenDecl, imports map[string]string) {
 	if d.Tok != token.TYPE {
 		return
 	}
@@ -195,8 +238,7 @@ func (c *config) readStructs(fset *token.FileSet, rel string, d *ast.GenDecl) {
 				fd.secret, _ = tags.Lookup(secretTag)
 			}
 			if len(field.Names) == 0 {
-				fd.name = path.Base(fd.typeName)
-				decl.fields = append(decl.fields, fd)
+				decl.fields = append(decl.fields, c.embedded(rel, field.Type, fd, imports)...)
 
 				continue
 			}
@@ -208,6 +250,46 @@ func (c *config) readStructs(fset *token.FileSet, rel string, d *ast.GenDecl) {
 		}
 		c.structs[ts.Name.Name] = decl
 	}
+}
+
+// embedded reads an embedded field. A type of the package keeps its name, and the level
+// walk follows it when it is a struct of the package. A type of another package is a
+// framework settings struct when frameworkSettings lists it under the path the file
+// imports, by its alias or its name: the field expands into the fields the struct
+// declares, each at the embedding's line, as if the embedding struct declared them. One
+// the table does not list is marked foreign, for the level walk to refuse.
+func (c *config) embedded(rel string, expr ast.Expr, fd fieldDecl, imports map[string]string) []fieldDecl {
+	fd.name = path.Base(fd.typeName)
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return []fieldDecl{fd}
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return []fieldDecl{fd}
+	}
+	importPath, imported := imports[pkg.Name]
+	if !imported {
+		importPath = pkg.Name
+	}
+	fields, known := frameworkSettings[frameworkKey{path: importPath, name: sel.Sel.Name}]
+	if !known {
+		fd.foreign = importPath
+
+		return []fieldDecl{fd}
+	}
+	expanded := make([]fieldDecl, 0, len(fields))
+	for _, f := range fields {
+		field := fieldDecl{name: f.name, typeName: f.typeName, line: fd.line, doc: f.doc, tag: f.tag, framework: true}
+		expanded = append(expanded, field)
+		variable, _ := tagOptions(f.tag)
+		c.expansions = append(c.expansions, expansion{file: rel, line: fd.line, key: field.key(rel), variable: variable})
+	}
+
+	return expanded
 }
 
 // typeString writes a field's type the way the source does, for the simple shapes the
@@ -294,13 +376,17 @@ func (c *config) structNamed(name string) (string, *structDecl) {
 	return "", nil
 }
 
-// placeVariables gives every env tag the reader found its level, struct, and field. A
-// level's variables are the tagged fields of its struct and of the structs its untagged
-// fields are typed as.
+// placeVariables gives every env tag the reader found its level, struct, and field, and
+// places the variables the embedded framework settings structs declare among them, each
+// at its embedding's place in the source. A level's variables are the tagged fields of
+// its struct and of the structs its untagged fields are typed as, and the fields the
+// framework settings structs it embeds declare.
 func (c *config) placeVariables(tags []app.EnvTag) error {
 	located := map[string]Variable{}
 	for _, level := range c.levels {
-		c.collect(level.Name, level.Struct, located)
+		if err := c.collect(level.Name, level.Struct, located); err != nil {
+			return err
+		}
 	}
 	for _, t := range tags {
 		v, ok := located[t.File+":"+strconv.Itoa(t.Line)]
@@ -310,29 +396,76 @@ func (c *config) placeVariables(tags []app.EnvTag) error {
 		v.Name, v.Required, v.HasDefault = t.Name, t.Required, t.HasDefault
 		c.variables = append(c.variables, v)
 	}
+	for _, e := range c.expansions {
+		v, ok := located[e.key]
+		if !ok {
+			return errors.Newf("%s:%d: %s is declared outside every configuration level", e.file, e.line, e.variable)
+		}
+		c.place(&v)
+	}
 
 	return nil
 }
 
+// place adds a variable a framework settings struct declares among the variables the
+// reader found, where the embedding stands in the source: before the first variable on a
+// later line of its file, or in a later file.
+func (c *config) place(v *Variable) {
+	at := len(c.variables)
+	for i := range c.variables {
+		w := &c.variables[i]
+		if w.File > v.File || (w.File == v.File && w.Line > v.Line) {
+			at = i
+
+			break
+		}
+	}
+	c.variables = slices.Insert(c.variables, at, *v)
+}
+
 // collect records the tagged fields of the struct and of the structs it nests, keyed by
-// file and line.
-func (c *config) collect(level, structName string, located map[string]Variable) {
+// file and line (fieldDecl.key). An embedded type of another package that is not a
+// framework settings struct is refused: the stack could not say which variables it
+// declares.
+func (c *config) collect(level, structName string, located map[string]Variable) error {
 	decl := c.structs[structName]
 	if decl == nil {
-		return
+		return nil
 	}
-	for _, f := range decl.fields {
+	for i := range decl.fields {
+		f := &decl.fields[i]
+		if f.foreign != "" {
+			return errors.Newf("%s:%d: %s embeds %s (%s), which is not a framework settings struct bedrock expands: declare its variables on the struct, or add it to bedrock's framework settings", decl.file, f.line, structName, f.typeName, f.foreign)
+		}
 		if f.tag != "" {
 			v := Variable{Level: level, Struct: structName, Field: f.name, File: decl.file, Line: f.line, Type: f.typeName, Doc: f.doc, SecretTag: f.secret}
+			v.Name, v.Required = tagOptions(f.tag)
 			v.Default, v.HasDefault = tagDefault(f.tag)
-			located[decl.file+":"+strconv.Itoa(f.line)] = v
+			located[f.key(decl.file)] = v
 
 			continue
 		}
 		if nested := strings.TrimPrefix(f.typeName, "*"); c.structs[nested] != nil {
-			c.collect(level, nested, located)
+			if err := c.collect(level, nested, located); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
+}
+
+// tagOptions reads the variable an env tag names and its required option.
+func tagOptions(tag string) (string, bool) {
+	parts := strings.Split(tag, ",")
+	required := false
+	for _, opt := range parts[1:] {
+		if strings.TrimSpace(opt) == "required" {
+			required = true
+		}
+	}
+
+	return strings.TrimSpace(parts[0]), required
 }
 
 // tagDefault reads the default option of an env tag.

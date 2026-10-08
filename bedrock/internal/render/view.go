@@ -137,6 +137,9 @@ type view struct {
 	ServiceName    *derive.Variable
 	LoggingProject *derive.Variable
 	Version        *derive.Variable
+	// TraceSampling is the variable in the trace-sampling role, nil when the
+	// application declares none (an application from before the skeleton read it).
+	TraceSampling *derive.Variable
 	// MaintenanceVariable is the variable the pipeline sets on a maintenance revision,
 	// declared empty on the service by the stack.
 	MaintenanceVariable string
@@ -733,6 +736,7 @@ func (v *view) roles() error {
 			return errors.Newf("no variable in the %s role: the stack needs one", r.role)
 		}
 	}
+	v.TraceSampling = v.byRole(derive.RoleTraceSampling)
 	for _, s := range v.Secrets {
 		switch s.Variable.Role {
 		case derive.RoleCookieKey:
