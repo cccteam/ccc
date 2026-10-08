@@ -35,8 +35,8 @@ const (
 // for Google Cloud Trace: the spans are exported over OTLP to the Telemetry API with the
 // application's default credentials, into the project given, under the service name. The
 // provider is set as the global tracer provider, and Propagator (W3C Trace Context, with
-// the legacy X-Cloud-Trace-Context header read) as the global propagator. The sampler
-// follows the caller's decision and starts no trace of its own (ParentBased(NeverSample)).
+// the legacy X-Cloud-Trace-Context header read) as the global propagator. Which spans are
+// recorded is the Sampling (WithSampling): the edge's choice without it.
 //
 // The application's identity needs roles/telemetry.tracesWriter on the project, and the
 // project needs the Telemetry API (telemetry.googleapis.com) enabled.
@@ -64,7 +64,7 @@ func NewGoogleCloudTracerProviderWithOptions(projectID, serviceName string, opts
 	options = append(options,
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.NeverSample())),
+		sdktrace.WithSampler(sampler(cfg.sampling)),
 	)
 	options = append(options, cfg.tracerOpts...)
 
@@ -86,9 +86,9 @@ func newExporter(ctx context.Context, cfg *providerConfig) (*otlptrace.Exporter,
 	if cfg.insecure {
 		options = append(options, otlptracegrpc.WithInsecure())
 	} else {
-		creds, err := oauth.NewApplicationDefault(ctx, cloudPlatformScope)
+		creds, err := perRPCCredentials(ctx, cfg)
 		if err != nil {
-			return nil, errors.Wrap(err, "oauth.NewApplicationDefault()")
+			return nil, err
 		}
 		options = append(options,
 			otlptracegrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, "")),
@@ -101,6 +101,30 @@ func newExporter(ctx context.Context, cfg *providerConfig) (*otlptrace.Exporter,
 	}
 
 	return exporter, nil
+}
+
+// perRPCCredentials signs every call to the Telemetry API: with the caller's token source
+// when one was given, else with the application's default credentials.
+func perRPCCredentials(ctx context.Context, cfg *providerConfig) (credentials.PerRPCCredentials, error) {
+	if cfg.tokenSource != nil {
+		return oauth.TokenSource{TokenSource: cfg.tokenSource}, nil
+	}
+	creds, err := oauth.NewApplicationDefault(ctx, cloudPlatformScope)
+	if err != nil {
+		return nil, errors.Wrap(err, "oauth.NewApplicationDefault()")
+	}
+
+	return creds, nil
+}
+
+// sampler is the SDK sampler for a Sampling: every span for SamplingAll; for
+// SamplingEdge the caller's decision, and nothing without a caller.
+func sampler(s Sampling) sdktrace.Sampler {
+	if s == SamplingAll {
+		return sdktrace.AlwaysSample()
+	}
+
+	return sdktrace.ParentBased(sdktrace.NeverSample())
 }
 
 // newResource describes the process: the SDK's defaults, what the Google Cloud detector
