@@ -381,16 +381,25 @@ team, given after the last push, so no author merges a check change alone.
 The team and its members are the organization's own setting; this layer
 reads it.
 
-When `ci_large_runner` names a larger runner (a runner label or a runner group
-of the organization; empty by default), the layer sets it as the
-organization's Actions variable `CI_LARGE_RUNNER`, which every application's
-CI workflow reads for its two test legs and its image build, the jobs that
-take the most machine; the other jobs, and those three while the variable is
-absent, run on GitHub's standard runner. The runner itself is the
-organization's own setting (a larger hosted runner or a runner group); this
-layer names it, through the infrastructure GitHub App's Variables
-organization permission (`0-bootstrap/README.md`), without which the apply
-is refused 403.
+When `ci_large_runner` names a larger runner (empty by default), the layer
+sets it as the organization's Actions variable `CI_LARGE_RUNNER`, which every
+application's CI workflow reads for the jobs its `//impulse:ci` line chooses,
+the two test legs and the image build without a line, the jobs that take the
+most machine; the other jobs, and those while the variable is absent, run on
+GitHub's standard runner. The runner is one of two things. When
+`ci_large_runner_size` is empty, the name is a runner, a runner label or a
+runner group the organization already has, and this layer only names it,
+through the infrastructure GitHub App's Variables organization permission
+(`0-bootstrap/README.md`), without which the apply is refused 403. When
+`ci_large_runner_size` names a machine size (`8-core`, say), this layer
+creates the runner: a GitHub-hosted runner of that name and size on GitHub's
+current Ubuntu, in a runner group `applications` that the application
+repositories alone may use, at most `ci_large_runner_maximum` running at once
+(the spend's ceiling; 0 leaves GitHub's default), through the app's
+Self-hosted runners organization permission. GitHub bills a larger runner per
+minute by its size, never from the plan's included minutes, and offers them on
+the Team and Enterprise plans; the size changes in place, the image is fixed
+at creation.
 
 GitHub features this uses, on a private repository: rulesets with required
 status checks and required reviewers, and deployment branch policies on

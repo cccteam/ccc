@@ -52,9 +52,18 @@
 # applied, or its pull requests block.
 #
 # The organization's one Actions variable, CI_LARGE_RUNNER, names the larger
-# runner every application's CI runs its test legs and image build on (a
-# runner label or a runner group, var.ci_large_runner); while the variable is
+# runner every application's CI runs the jobs its //impulse:ci line chooses
+# on (the two test legs and the image build without a line): a runner's name,
+# a runner label or a runner group, var.ci_large_runner. While the variable is
 # absent those jobs run on GitHub's standard runner, as the other jobs do.
+# When var.ci_large_runner_size names a machine size, this layer creates the
+# runner itself: a GitHub-hosted runner of that name and size on GitHub's
+# current Ubuntu, in a runner group of the application repositories alone,
+# at most var.ci_large_runner_maximum running at once (the spend's ceiling).
+# GitHub bills a larger runner per minute by its size, never from the plan's
+# included minutes, and offers them on the Team and Enterprise plans; the
+# infrastructure GitHub App creates it through its Self-hosted runners
+# organization permission (0-bootstrap/README.md).
 #
 # GitHub features this uses on a private repository: rulesets with required
 # status checks and required reviewers, and deployment branch policies on
@@ -148,6 +157,34 @@ resource "github_actions_organization_variable" "ci_large_runner" {
   variable_name = "CI_LARGE_RUNNER"
   visibility    = "all"
   value         = var.ci_large_runner
+}
+
+# The runner group the created larger runner belongs to: the application
+# repositories alone may use it, so no other repository of the organization
+# bills minutes on it.
+resource "github_actions_runner_group" "applications" {
+  count = var.ci_large_runner_size == "" ? 0 : 1
+
+  name                    = "applications"
+  visibility              = "selected"
+  selected_repository_ids = [for app in var.applications : github_repository.app[app].repo_id]
+}
+
+# The larger runner this layer creates, named as the variable names it: GitHub's
+# current Ubuntu (image 2306, Ubuntu Latest, what ubuntu-latest names on the
+# standard runner) at the placement's size. The size changes in place; the
+# image cannot, and a change to it is a new runner.
+resource "github_actions_hosted_runner" "ci_large" {
+  count = var.ci_large_runner_size == "" ? 0 : 1
+
+  name = var.ci_large_runner
+  image {
+    id     = "2306"
+    source = "github"
+  }
+  size            = var.ci_large_runner_size
+  runner_group_id = github_actions_runner_group.applications[0].id
+  maximum_runners = var.ci_large_runner_maximum == 0 ? null : var.ci_large_runner_maximum
 }
 
 resource "github_repository" "app" {

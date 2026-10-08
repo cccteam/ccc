@@ -1785,10 +1785,15 @@ by its slug) and also records the slug (`githubReleaseAppSlug`, the name in the 
 address, `github.com/apps/<slug>`), which each application's placement names as the
 author of its releases, the default branch (`githubDefaultBranch`), the team
 (`githubInfrastructureTeam`, empty for none) and the larger runner the applications' CI
-runs its test legs and image build on (`ciLargeRunner`, a runner label or a runner group
-set as the organization's Actions variable `CI_LARGE_RUNNER`, which takes the
-infrastructure app's Variables organization permission; empty for the standard
-runner). A repository that existed before the layer
+runs the jobs their `//impulse:ci` lines choose on, the two test legs and the image build
+without a line (`ciLargeRunner`, a runner's name, a runner label or a runner group set as
+the organization's Actions variable `CI_LARGE_RUNNER`, which takes the infrastructure
+app's Variables organization permission; empty for the standard runner). With
+`ciLargeRunnerSize` (`8-core`, say) 1-org creates that runner itself: a GitHub-hosted
+runner of the name and size on GitHub's current Ubuntu, in a runner group of the
+application repositories alone, capped at `ciLargeRunnerMaximum` running at once (0 for
+GitHub's default), through the app's Self-hosted runners organization permission; GitHub
+bills it per minute by its size on the Team and Enterprise plans. A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
 `hotfix` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
