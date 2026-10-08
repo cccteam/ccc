@@ -7,7 +7,7 @@
 steps:
   # The pinned bedrock, built with go install, as the pipeline's first step does it.
   - id: FetchBedrock
-    name: cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16
+    name: cgr.dev/chainguard/go@sha256:75c0c2c118e36951cb63da108fa795f4724bde0c36ae84c9c17a4e08255ad324
     entrypoint: sh
     timeout: 600s
     env:

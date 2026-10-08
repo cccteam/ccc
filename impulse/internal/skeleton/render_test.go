@@ -399,7 +399,7 @@ func TestRenderDevWorkspace(t *testing.T) {
 			if diff := cmp.Diff(wantUses, uses); diff != "" {
 				t.Errorf("go.work use lines mismatch (-want +got):\n%s", diff)
 			}
-			if !strings.Contains(string(work), "go 1.26.6\n") {
+			if !strings.Contains(string(work), "go 1.26.9\n") {
 				t.Errorf("go.work carries no go directive from go.mod:\n%s", work)
 			}
 		})

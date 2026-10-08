@@ -5,4 +5,4 @@
 // no Go code.
 module github.com/cccteam/ccc/resource/lodestar/web
 
-go 1.26.6
+go 1.26.9
