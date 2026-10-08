@@ -2,6 +2,11 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened] # these are the defaults - synchronize means 'commits pushed to PR'
+  push:
+    branches: [master]
+    # The merge result is checked whole, and the caches its jobs save are the ones the next
+    # pull requests restore: a pull request can read entries saved on its own branch and on
+    # its base, nothing else.
 
 concurrency:
   group: ${{ github.ref }}
@@ -9,7 +14,7 @@ concurrency:
 
 jobs:
   golang-ci:
-    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@1fa3463aa74113a1584fda8980a04d26090b71d6 # v8.1.0
+    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@2be5cd2a30ac3b1f61fd93b2bf85ad4323f90103 # feature/ci-caches, cccteam/github-workflows#186 (v8.2.0 once released)
     with:
       build-tags: '["", "dev"]'
       golangci-lint-version: 'v2.12.2'
@@ -37,7 +42,13 @@ jobs:
         id: paths
         env:
           BASE: ${{ github.base_ref }}
+          EVENT: ${{ github.event_name }}
         run: |
+          if [ "$EVENT" = push ]; then
+            # A push to master: there is nothing to diff against, and the run is the merge
+            # result, so both jobs run.
+            printf 'lodestar-web=true\nimpulse=true\n' >> "$GITHUB_OUTPUT"; cat "$GITHUB_OUTPUT"; exit 0
+          fi
           git diff --name-only "origin/$BASE...HEAD" > "$RUNNER_TEMP/changed-files"
           touches() { grep -qE "$1" "$RUNNER_TEMP/changed-files" && echo true || echo false; }
           {
@@ -130,7 +141,24 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ccc/impulse/go.mod
-          cache-dependency-path: ccc/impulse/go.sum
+          cache: false
+      - name: Restore the Go caches
+        # The module cache and the build cache from the nearest saved entry of this leg's
+        # lineage (impulse's go.sum first, then any), as golang-ci's jobs do: a module is
+        # verified against go.sum when read and a build output is addressed by the hash of
+        # its inputs, so an older entry is either what this commit computes or unused. Most
+        # of "Build and vet" is the rendered application's dependencies compiling, which an
+        # entry of the lineage already holds.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: impulse-${{ matrix.candidate }}-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            impulse-${{ matrix.candidate }}-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-
+            impulse-${{ matrix.candidate }}-${{ matrix.framework }}-${{ runner.os }}-
       - name: Build impulse
         working-directory: ccc/impulse
         run: go build -o "$RUNNER_TEMP/impulse" .
@@ -152,4 +180,14 @@ jobs:
         working-directory: app
         run: |
           "$RUNNER_TEMP/impulse" check
+      - name: Save the Go caches
+        # Always on master; on a pull request only when no entry for this go.sum was found.
+        # A failed test still saves what compiled; a cancelled run saves nothing.
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || !startsWith(steps.go-cache.outputs.cache-matched-key, format('impulse-{0}-{1}-{2}-{3}-', matrix.candidate, matrix.framework, runner.os, hashFiles('ccc/impulse/go.sum')))) }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
