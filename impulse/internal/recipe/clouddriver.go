@@ -75,6 +75,10 @@ var appMarker = marker{text: "func (a *App) LoggerMiddleware()", what: "the App 
 // mainMarker is the sign of the old form in a main.
 var mainMarker = marker{text: "tracer.NewGoogleCloudHandler()", what: "main passes the tracing handler through the outermost hook; the generated router installs it"}
 
+// stackObligation is what the configuration change leaves to the agent: impulse does not
+// render the application's stack, and the embedded settings add a variable to it.
+const stackObligation = "infrastructure: the configuration's variables changed (gcp.Settings adds APP_TRACE_SAMPLING), and impulse does not render the stack; run the application's bedrock render and check, and commit the stack it writes"
+
 // The driver's variables in the development environment template: the template that
 // documents the logging project and not the sampling is in the old form.
 const (
@@ -196,6 +200,7 @@ func (CloudDriver) rewriteConfig(a *app.App, ch *transition.Change) error {
 		return err
 	}
 	ch.Did = append(ch.Did, configFile+": the core configuration embeds gcp.Settings and opens the cloud driver, which builds the log exporter and the trace provider and closes them")
+	ch.Skipped = append(ch.Skipped, stackObligation)
 
 	return nil
 }

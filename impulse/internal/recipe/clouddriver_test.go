@@ -164,6 +164,9 @@ func TestCloudDriver(t *testing.T) {
 		wantDetect []string
 		wantDid    []string
 		wantSkip   []string
+		// diverged marks the case whose files are left in the old form, so running the
+		// recipe again is not idle.
+		diverged bool
 		// wantIn and wantOut are texts the rewritten files hold and lack, by file.
 		wantIn  map[string][]string
 		wantOut map[string][]string
@@ -177,7 +180,8 @@ func TestCloudDriver(t *testing.T) {
 				at(appFile, appSource, "func (a *App) LoggerMiddleware()") + buildsLogger,
 				at(envFile, envSource, "GOOGLE_CLOUD_LOGGING_PROJECT") + envTemplateWhat,
 			},
-			wantDid: []string{configDid, appDid, envDid},
+			wantDid:  []string{configDid, appDid, envDid},
+			wantSkip: []string{stackObligation},
 			wantIn: map[string][]string{
 				configFile: {"\t\"github.com/cccteam/ccc/cloud/gcp\"\n", "gcp.Open(ctx, env.Settings, env.ServiceName)", "\tgcp.Settings\n", "return c.cloud.LogExporter"},
 				appFile:    {"func (a *App) LogExporter() logger.Exporter", "\t\"net/http\"\n"},
@@ -198,7 +202,8 @@ func TestCloudDriver(t *testing.T) {
 				at(appFile, appSource, "func (a *App) LoggerMiddleware()") + buildsLogger,
 				at(mainFile, mainSource, "tracer.NewGoogleCloudHandler()") + passesTracing,
 			},
-			wantDid: []string{configDid, appDid, mainDid},
+			wantDid:  []string{configDid, appDid, mainDid},
+			wantSkip: []string{stackObligation},
 			wantIn: map[string][]string{
 				configFile: {"gcp.Open(ctx, env.Settings, env.ServiceName)", "\tgcp.Settings\n"},
 				mainFile:   {"router.New(a, router.Hooks{})"},
@@ -209,8 +214,9 @@ func TestCloudDriver(t *testing.T) {
 			},
 		},
 		{
-			name:  "a configuration and a template the recipe does not know are reported, not touched",
-			files: map[string]string{configFile: unknown, envFile: "export GOOGLE_CLOUD_LOGGING_PROJECT=beacon-dev\n"},
+			name:     "a configuration and a template the recipe does not know are reported, not touched",
+			files:    map[string]string{configFile: unknown, envFile: "export GOOGLE_CLOUD_LOGGING_PROJECT=beacon-dev\n"},
+			diverged: true,
 			wantDetect: []string{
 				at(configFile, unknown, "logging.NewClient(") + opensClient,
 				at(configFile, unknown, "LoggingProjectID string") + declaresProj,
@@ -273,7 +279,7 @@ func TestCloudDriver(t *testing.T) {
 					}
 				}
 			}
-			if len(tt.wantSkip) > 0 {
+			if tt.diverged {
 				return
 			}
 			// Running again finds nothing: the recipe is safe to run twice.
