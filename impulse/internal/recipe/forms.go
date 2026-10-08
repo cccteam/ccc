@@ -1,5 +1,5 @@
 // Code generated from the skeleton's forms by the recipe's author; the forms are the
-// exact texts the skeleton carried, so the recipe rewrites only what it recognises.
+// exact texts the skeleton carried, so the recipe rewrites only what it recognizes.
 
 package recipe
 
