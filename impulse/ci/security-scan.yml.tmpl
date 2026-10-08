@@ -1,0 +1,162 @@
+# The security scan, every day at 14:00 UTC and on demand: govulncheck over the module and
+# Grype over the built image, at the default branch and at the latest release. The pull
+# request checks (ci.yml) run only when a pull request changes, and a vulnerability is
+# published on its own day, so this is what rescans what is deployed and what is next.
+# Rendered by impulse and owned by it as ci.yml is: impulse render rewrites this file from
+# the code, impulse check compares the committed file with what it renders, and the pins
+# move with impulse releases, so dependabot must not run over this file either. The
+# application stands alone: no job calls a reusable workflow of another repository, and the
+# scan posts nowhere but this repository's issues. A failed check or scan opens one issue
+# titled "[[.ScanIssueTitle]]" naming the failed
+# legs and the run, or comments that on the open one; a run that passes every check and
+# scan closes it; a cancelled or skipped leg does neither. Nothing here gates anything.
+# The pins fix the engines, not what they know: govulncheck reads vuln.go.dev and Grype
+# downloads its vulnerability database when the job runs, so a run finds what was
+# published since the last merge.
+name: Security scan
+
+on:
+  schedule:
+    - cron: '[[.ScanSchedule]]'
+  workflow_dispatch:
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  # The refs to scan: the event's ref (on the schedule, the default branch) and the latest release's tag when the repository has a release. gh answers "release not found" for a repository without one; any other failure fails the run.
+  refs:
+    runs-on: [[.StandardRunner]]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      refs: ${{ steps.refs.outputs.refs }}
+    steps:
+      - name: The default branch and the latest release
+        id: refs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if tag="$(gh release view --json tagName --jq .tagName 2> "$RUNNER_TEMP/release.err")"; then
+            refs="$(jq -cn --arg tag "$tag" '["", $tag]')"
+          elif grep -q 'release not found' "$RUNNER_TEMP/release.err"; then
+            refs='[""]'
+          else
+            cat "$RUNNER_TEMP/release.err"
+            exit 1
+          fi
+          echo "refs=$refs" >> "$GITHUB_OUTPUT"
+          echo "scanning $refs (the empty ref is the event's: on the schedule, the default branch)"
+
+  # govulncheck over the module at each ref, without tags and with skipAuth, as the pull request's go-vuln runs it; it restores go-build's Go caches, which hold what its compile shares with the build, and saves nothing.
+  go-vuln:
+    name: go-vuln (${{ matrix.ref || 'the default branch' }})
+    runs-on: [[index .RunsOn "go-vuln"]]
+    timeout-minutes: 15
+    needs: refs
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ${{ fromJSON(needs.refs.outputs.refs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+[[- template "gocache-restore" (index .Cache "go-vuln")]]
+      - name: govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@[[.Govulncheck]] ./...
+          go run golang.org/x/vuln/cmd/govulncheck@[[.Govulncheck]] -tags skipAuth ./...
+
+  # The container image at each ref, once the application has a Dockerfile (bedrock seeds it): the build with the inputs the Dockerfile declares (ci for every build argument without a default, a placeholder for every build secret), and Grype over the built image, failing on a high or critical vulnerability; hadolint runs on the pull request alone. Without a Dockerfile the leg passes with nothing to build.
+  image:
+    name: image (${{ matrix.ref || 'the default branch' }})
+    runs-on: [[index .RunsOn "image"]]
+    timeout-minutes: 20
+    needs: refs
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ${{ fromJSON(needs.refs.outputs.refs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+      - name: Is there a Dockerfile
+        id: dockerfile
+        run: echo "present=${{ hashFiles('Dockerfile') != '' }}" >> "$GITHUB_OUTPUT"
+[[- template "build-inputs"]]
+      - name: docker build
+        if: steps.dockerfile.outputs.present == 'true'
+        env:
+          # The flags the step above derived, split on spaces into the command.
+          BUILD_INPUTS: ${{ steps.build-inputs.outputs.flags }}
+        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$(git rev-parse HEAD)" $BUILD_INPUTS -t application:ci .
+      - name: Grype
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: application:ci
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+  # The report, whatever the legs did: a failed leg opens the issue, or comments on the open one, naming the failed legs and the run; a run with every leg passed closes the open issue; a cancelled or skipped leg does neither. The failed legs are read from the run's jobs (actions: read), the issue is found by its exact title.
+  report:
+    runs-on: [[.StandardRunner]]
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs:
+      - go-vuln
+      - image
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TITLE: '[[.ScanIssueTitle]]'
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      FAILED: ${{ contains(needs.*.result, 'failure') }}
+      PASSED: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}
+    steps:
+      - name: Open, comment on or close the issue
+        run: |
+          set -euo pipefail
+          open="$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title | jq -r --arg title "$TITLE" '[.[] | select(.title == $title)][0].number // empty')"
+          if [ "$FAILED" = "true" ]; then
+            legs="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs" --paginate --jq '.jobs[] | select(.conclusion == "failure") | "- " + .name')"
+            body="$(cat <<EOF
+          A vulnerability check or an image scan failed in the security scan run $RUN_URL:
+
+          $legs
+
+          The log of the run names the finding. Each failed run comments here, and the run that passes every check and scan closes this issue.
+          EOF
+          )"
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "$body"
+              echo "commented on the open issue #$open"
+            else
+              gh issue create --title "$TITLE" --body "$body"
+            fi
+          elif [ "$PASSED" = "true" ] && [ -n "$open" ]; then
+            gh issue close "$open" --comment "The security scan run $RUN_URL passed every vulnerability check and image scan."
+          else
+            echo "nothing to report (failed: $FAILED, passed: $PASSED, open issue: ${open:-none})"
+          fi

@@ -33,12 +33,13 @@ func newRender() *cobra.Command {
 With no arguments, inside an application (a go.mod at the working directory), render writes
 the files impulse owns from the application's code: today the CI workflows,
 .github/workflows/ci.yml, with one browser job per workspace, the //impulse:ci line's
-choices and the action and tool pins this impulse carries, and
-.github/workflows/ci-cache.yml beside it. impulse check compares the committed files with
-the same rendering and fails a hand edit, so this is the command that brings them back into
-agreement after a change to the code, and the second step of moving the impulse pin:
-go get -tool github.com/cccteam/ccc/impulse@<version>, then go tool impulse render, then
-go tool impulse check.
+choices and the action and tool pins this impulse carries, .github/workflows/ci-cache.yml
+beside it, and .github/workflows/security-scan.yml, the daily vulnerability check and image
+scan of the default branch and the latest release. impulse check compares the committed
+files with the same rendering and fails a hand edit, so this is the command that brings
+them back into agreement after a change to the code, and the second step of moving the
+impulse pin: go get -tool github.com/cccteam/ccc/impulse@<version>, then go tool impulse
+render, then go tool impulse check.
 
 With a candidate and a directory, render copies one of the embedded skeleton templates into
 a new or empty directory under the module path --module names, rewriting every import and

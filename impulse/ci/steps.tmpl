@@ -1,4 +1,4 @@
-[[/* The steps both owned workflows carry. Each definition opens with a newline and ends
+[[/* The steps the owned workflows share. Each definition opens with a newline and ends
 without one, so a call on its own line ([[- template "name" .]]) reads as the steps in
 place. */]]
 [[- define "gocache-restore"]]
@@ -44,6 +44,30 @@ place. */]]
             ~/go/pkg/mod
             ~/.cache/go-build
           key: ${{ steps.go-cache.outputs.cache-primary-key }}
+[[- end]]
+[[- define "build-inputs"]]
+      - name: The build inputs the Dockerfile declares
+        # Every ARG line with no default takes the value ci (VERSION and COMMIT aside,
+        # which the build passes itself), and every BuildKit secret a RUN line mounts
+        # (--mount=type=secret,id=NAME) is served from a placeholder file holding ci, so a
+        # Dockerfile that requires a secret builds here without the real value. The image
+        # is built to be scanned, never to be deployed.
+        id: build-inputs
+        if: steps.dockerfile.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          flags=""
+          for name in $(grep -E '^ARG [A-Z_][A-Z0-9_]*$' Dockerfile | awk '{ print $2 }' | sort -u || true); do
+            case "$name" in VERSION|COMMIT) continue ;; esac
+            flags="$flags --build-arg $name=ci"
+          done
+          mkdir -p "$RUNNER_TEMP/secrets"
+          for name in $(grep -oE -- '--mount=type=secret,[^ ]*' Dockerfile | grep -oE '(^|,)id=[A-Za-z0-9_.-]+' | sed 's/.*id=//' | sort -u || true); do
+            printf 'ci' > "$RUNNER_TEMP/secrets/$name"
+            flags="$flags --secret id=$name,src=$RUNNER_TEMP/secrets/$name"
+          done
+          echo "flags=${flags# }" >> "$GITHUB_OUTPUT"
+          echo "build inputs:${flags:- none}"
 [[- end]]
 [[- define "mtimes"]]
       - name: Restore the files' modification times from git
