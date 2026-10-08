@@ -8,7 +8,7 @@
   "securehash": "0.0.15",
   "tracer": "0.2.0",
   "middleware": "0.0.10",
-  "impulse": "0.2.0",
+  "impulse": "0.2.1",
   "bedrock": "0.1.2",
   "cloud": "0.1.0"
 }
