@@ -110,6 +110,7 @@ func TestDerive(t *testing.T) {
 			},
 			wantSupplies: map[string]Supply{
 				varVersion:                     SupplyImage,
+				varTraceSampling:               SupplyDerived,
 				varServiceName:                 SupplyDerived,
 				varDatabaseProject:             SupplyDerived,
 				"APP_DEFAULT_SESSION_TIMEOUT":  SupplyDefault,

@@ -29,6 +29,13 @@ locals {
   # shares {{.Integration}}'s secret containers, identity registration and registry.
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
+{{- if .TraceSampling}}
+
+  # Which spans the processes record: every one in a pull-request stack and in
+  # {{.Integration}}, where every request should be traceable; beyond them the
+  # edge's choice, a request Google's edge sampled and nothing else.
+  trace_sampling = local.is_pr || var.environment == "{{.Integration}}" ? "all" : "edge"
+{{- end}}
 
   # The runtime accounts' IDs: by the convention, or the short name. The
   # migration has none: the pipeline runs the migrate command on the build
@@ -241,6 +248,10 @@ locals {
     {{.ServiceName.Name}} = local.app
     # {{.LoggingProject.Declaration}}: request logs ship to Cloud Logging here.
     {{.LoggingProject.Name}} = local.project_id
+{{- if .TraceSampling}}
+    # {{.TraceSampling.Declaration}}: which spans are recorded (local.trace_sampling).
+    {{.TraceSampling.Name}} = local.trace_sampling
+{{- end}}
     # {{.Version.Declaration}} is not set here: the pipeline bakes {{.Version.Name}}
     # into the image at build (a Dockerfile ENV from the tag), so a deploy
     # never edits the template's variables and this stack stays their owner.

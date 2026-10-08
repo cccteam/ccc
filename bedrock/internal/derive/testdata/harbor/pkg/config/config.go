@@ -82,4 +82,8 @@ type coreConfig struct {
 	// LoggingProjectID is the Google Cloud project request logs ship to. Empty logs
 	// to the console.
 	LoggingProjectID string `env:"GOOGLE_CLOUD_LOGGING_PROJECT"`
+
+	// TraceSampling says which spans are recorded: every one (all), or the ones a
+	// request Google's edge sampled starts (edge).
+	TraceSampling string `env:"APP_TRACE_SAMPLING,default=edge"`
 }

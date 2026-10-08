@@ -303,6 +303,7 @@ above them.
 |---|---|---|---|---|---|
 | `APP_SERVICE_NAME` | core | `harbor` / `harbor-migrate` / `harbor-jobs` | yes | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes | yes |
+| `APP_TRACE_SAMPLING` | core | `all` in a pull-request stack and tst, `edge` beyond | yes | yes | yes |
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
 | `APP_FILE_STORE` | data | the default file store, as a `gs://` URL | yes | | yes |
 | `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |

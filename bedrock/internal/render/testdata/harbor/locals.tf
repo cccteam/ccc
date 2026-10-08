@@ -30,6 +30,11 @@ locals {
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
 
+  # Which spans the processes record: every one in a pull-request stack and in
+  # tst, where every request should be traceable; beyond them the
+  # edge's choice, a request Google's edge sampled and nothing else.
+  trace_sampling = local.is_pr || var.environment == "tst" ? "all" : "edge"
+
   # The runtime accounts' IDs: by the convention, or the short name. The
   # migration has none: the pipeline runs the migrate command on the build
   # worker as the deploy identity from 2-env (local.identities).
@@ -221,6 +226,8 @@ locals {
     APP_SERVICE_NAME = local.app
     # coreConfig.LoggingProjectID: request logs ship to Cloud Logging here.
     GOOGLE_CLOUD_LOGGING_PROJECT = local.project_id
+    # coreConfig.TraceSampling: which spans are recorded (local.trace_sampling).
+    APP_TRACE_SAMPLING = local.trace_sampling
     # coreConfig.AppVersion is not set here: the pipeline bakes APP_VERSION
     # into the image at build (a Dockerfile ENV from the tag), so a deploy
     # never edits the template's variables and this stack stays their owner.
