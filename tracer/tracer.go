@@ -5,9 +5,9 @@
 // 1. A "Start" function that simplifies trace creation by automatically determining
 // the tracer and span names from the calling function's package and name.
 //
-// 2. Functions for setting up tracing with Google Cloud Trace, including
-// an HTTP middleware and a TracerProvider that exports to Google Cloud over OTLP
-// (the Telemetry API) and propagates W3C trace context.
+// 2. Functions for setting up tracing: an HTTP middleware (NewHandler) and a
+// TracerProvider (NewProvider) that exports over OTLP, to Google Cloud Trace or to an
+// endpoint of the caller's own, and propagates W3C trace context.
 package tracer
 
 import (
@@ -28,14 +28,12 @@ type Provider struct {
 	*sdktrace.TracerProvider
 }
 
-// NewGoogleCloudHandler creates a new HTTP middleware for OpenTelemetry tracing,
-// specifically configured for Google Cloud.
-//
-// It reads the request's trace context with Propagator (W3C traceparent, or the legacy
-// X-Cloud-Trace-Context header a caller still sends) and sets the span name to the
-// request URL path. The returned function can be used to wrap an http.Handler to add
-// tracing. Additional otelhttp.Option arguments can be passed to customize the behavior.
-func NewGoogleCloudHandler(opts ...otelhttp.Option) func(http.Handler) http.Handler {
+// NewHandler creates the HTTP middleware for OpenTelemetry tracing: a server span per
+// request, continued from the trace context the request carries (read with Propagator:
+// W3C traceparent, or the legacy X-Cloud-Trace-Context header a caller still sends),
+// named by the request's URL path. The returned function wraps an http.Handler.
+// Additional otelhttp.Option arguments customize the behavior.
+func NewHandler(opts ...otelhttp.Option) func(http.Handler) http.Handler {
 	options := make([]otelhttp.Option, 0, len(opts)+3)
 	options = append(options,
 		otelhttp.WithPropagators(Propagator()),

@@ -86,10 +86,9 @@ func TestExportOverOTLP(t *testing.T) {
 			go func() { _ = srv.Serve(lis) }()
 			t.Cleanup(srv.Stop)
 
-			p, err := NewGoogleCloudTracerProviderWithOptions("proof-project", "harbor",
-				WithEndpoint(lis.Addr().String()), WithInsecure(), WithSampling(tt.sampling))
+			p, err := NewProvider("harbor", WithEndpoint(lis.Addr().String()), WithInsecure(), WithSampling(tt.sampling))
 			if err != nil {
-				t.Fatalf("NewGoogleCloudTracerProviderWithOptions() error = %v", err)
+				t.Fatalf("NewProvider() error = %v", err)
 			}
 			ctx, span := p.Tracer("test").Start(context.Background(), "TestExportOverOTLP()")
 			span.End()
@@ -122,12 +121,42 @@ func TestExportOverOTLP(t *testing.T) {
 			for _, kv := range col.spans[0].GetResource().GetAttributes() {
 				attrs[kv.GetKey()] = kv.GetValue().GetStringValue()
 			}
-			for key, want := range map[string]string{"service.name": "harbor", projectIDAttribute: "proof-project", "telemetry.sdk.language": "go"} {
+			for key, want := range map[string]string{"service.name": "harbor", "telemetry.sdk.language": "go"} {
 				if attrs[key] != want {
 					t.Errorf("resource attribute %s = %q, want %q (attributes: %v)", key, attrs[key], want, attrs)
 				}
 			}
 		})
+	}
+}
+
+// TestNewProviderRefusesNoDestination: a provider needs WithGoogleCloud or WithEndpoint.
+func TestNewProviderRefusesNoDestination(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewProvider("harbor")
+	want := "the provider has no destination: WithGoogleCloud(projectID) or WithEndpoint(hostport) says where the spans go"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("NewProvider() error = %v, want %q", err, want)
+	}
+}
+
+// TestGoogleCloudResource: the Google Cloud destination names the project on the resource.
+func TestGoogleCloudResource(t *testing.T) {
+	t.Parallel()
+
+	res, err := newResource(t.Context(), &providerConfig{projectID: "proof-project"}, "harbor")
+	if err != nil {
+		t.Fatalf("newResource() error = %v", err)
+	}
+	attrs := map[string]string{}
+	for _, kv := range res.Attributes() {
+		attrs[string(kv.Key)] = kv.Value.AsString()
+	}
+	for key, want := range map[string]string{"service.name": "harbor", projectIDAttribute: "proof-project"} {
+		if attrs[key] != want {
+			t.Errorf("resource attribute %s = %q, want %q", key, attrs[key], want)
+		}
 	}
 }
 
