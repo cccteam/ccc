@@ -63,6 +63,11 @@ templates, this README, and the tool's source.
   embedding the one below it: **core** (every process), **data** (every process that opens
   the database), and **site** (one served site: its port and its built bundle). The site
   level is `SiteConfiguration` in both layouts, since a flat application is one site.
+  The core level opens the cloud driver (`cloud/gcp`), which builds where the process's
+  logs and spans go from the settings the level embeds (`gcp.Settings`: the logging
+  project and the trace sampling); the generated router installs tracing and the request
+  logger from the App's `LogExporter`, so nothing in the application names a logging
+  client or a trace provider, and another cloud is another driver import and settings.
 - **Live pages**: list pages and record pages that stay current without polling. A
   request the page asked to be live carries `X-Subscribe`; the server registers the
   subscription before the query runs and publishes each commit's rows into the

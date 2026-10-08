@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/router"
 	"github.com/cccteam/ccc/resource/maintenance"
 	"github.com/cccteam/ccc/resource/server"
-	"github.com/cccteam/ccc/tracer"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -50,10 +48,7 @@ func Main() error {
 	if err := a.Start(ctx); err != nil {
 		return errors.Wrap(err, "app.Start()")
 	}
-	// Tracing runs ahead of the logger on every request, so the request log and the spans
-	// share the trace the caller's headers name.
-	hooks := router.Hooks{Outermost: []func(http.Handler) http.Handler{tracer.NewGoogleCloudHandler()}}
-	if err := server.New(conf.Addr()).Start(ctx, router.New(a, hooks)); err != nil {
+	if err := server.New(conf.Addr()).Start(ctx, router.New(a, router.Hooks{})); err != nil {
 		return errors.Wrap(err, "server exited unexpectedly")
 	}
 
