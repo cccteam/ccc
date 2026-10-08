@@ -506,44 +506,54 @@ development only; never commit it.
 
 ## impulse upgrade
 
-`upgrade` moves an application forward through the impulse releases the ledger records,
-one release at a time, and commits each. An impulse release is a coherent pin set (the
-resource, access, session and accesstypes versions its skeleton's `go.mod` named) together
-with the recipes an application at the release before it needs, or a note that none is
-needed. Where the application stands is read, never recorded: the framework pins in its
-`go.mod` say which release it builds against (the latest release whose pins they reach), and
-every release after that up to the running impulse's is pending.
+`upgrade` moves an application forward to the running impulse and through the steps the
+ledger records after the one its pins stand at, one commit each. A step is a coherent pin
+set (the versions of the cccteam modules the skeleton's `go.mod` requires: resource,
+access, session, accesstypes, tracer, logger, httpio, db-initiator and ccc) together with
+the recipes an application at the step before it needs, or a note that none is needed.
+Where the application stands is read, never recorded: the framework pins in its `go.mod`
+say which step it builds against (the latest step whose pins they reach), and every step
+after that is pending. The impulse tool pin is not a step's: it moves to the running
+impulse first, so an impulse release that changes nothing an application builds against
+has no step, and the walk under it is the tool pin's move alone.
 
 ```sh
 go get -tool github.com/cccteam/ccc/impulse@<version>   # the impulse to upgrade to
-go tool impulse upgrade --dry-run                        # the releases and recipes the walk would apply
-go tool impulse upgrade                                  # walk, one commit per release
-go tool impulse upgrade --to v0.3.0                      # stop at a release short of the running impulse's
+go tool impulse upgrade --dry-run                        # what the walk would do
+go tool impulse upgrade                                  # walk, one commit per step
 ```
 
-Each release is one step. Its recipes run first: a recipe detects the old form in the
-application (the generator program, the annotations, the known seams) and edits only where
-it finds it, so running it twice is safe, and so is running it on an application whose pins
-were bumped by hand ahead of its code. Then the pins move to the release's set and the
-impulse tool pin to the release (`go get`, then `go mod tidy`), the owned files are
-rendered again from the code (what `impulse render` writes), `go generate ./...` runs, and
-`impulse check` runs. A clean check is committed as `upgrade: upgrade to impulse <version>`
-with the release's note and recipes in the body (the `upgrade` type releases a patch, as
-the `title` check's list says, since an upgrade moves the pins and re-renders the owned
-files and must not wait for a later releasing merge). A failing check stops the walk with the
-step's changes staged and the handoff brief written (`impulse handoff`, below): fix the
-obligations or hand them to the agent, commit, and run `upgrade` again; it resumes from
-whatever `go.mod` says, since the pin is the checkpoint and nothing else records progress.
-No release is skipped: a recipe is written against the shape the release before it left
-behind. A release with no recipe is a pin bump and a commit.
+The walk opens by moving the tool pin when it is behind the running impulse (`go get
+-tool`, then `go mod tidy`): the owned files are rendered again from the code (what
+`impulse render` writes), `go generate ./...` runs, `impulse check` runs, and a clean check
+is committed as `upgrade: impulse <version>`. An impulse built from a checkout leaves the
+pin alone; one older than the pin refuses, since the pinned one is the impulse to run.
+Then each pending step is one commit. Its recipes run first: a recipe detects the old form
+in the application (the generator program, the annotations, the known seams) and edits
+only where it finds it, so running it twice is safe, and so is running it on an
+application whose pins were bumped by hand ahead of its code. Then the pins the step moves
+move to its set (`go get`, then `go mod tidy`; a pin already at or beyond the step's
+stays), the owned files are rendered again, `go generate ./...` runs, and `impulse check`
+runs. A clean check is committed as `upgrade: <the pins moved>` (`upgrade: ccc/resource
+v0.12.0 (recipe paging)`) with the step's note and recipes in the body (the `upgrade` type
+releases a patch, as the `title` check's list says, since an upgrade moves the pins and
+re-renders the owned files and must not wait for a later releasing merge). A failing check
+stops the walk with the step's changes staged and the handoff brief written (`impulse
+handoff`, below): fix the obligations or hand them to the agent, commit, and run `upgrade`
+again; it resumes from whatever `go.mod` says, since the pin is the checkpoint and nothing
+else records progress. No step is skipped: a recipe is written against the shape the step
+before it left behind. A step with no recipe is a pin bump and a commit.
 
-The ledger (`internal/ledger`) records releases from the first published impulse beta on;
-until that beta is cut it is empty and `upgrade` has nothing to walk. From then on, a
-breaking change in resource, access, session or accesstypes is not done until the impulse
-release that carries it records its recipe in the ledger, or says that no code change is
-needed; the ledger's test holds every entry to its shape (a version newer than the one
-before it, a pin set of framework modules, a note, no recipe named twice). Applications
-that predate the first beta are adopted once by hand, not upgraded.
+The ledger (`internal/ledger`) opens with the first published impulse release's pin set. A
+step is appended when the skeleton's pins move or a recipe is needed, and never otherwise:
+the ledger's test holds the last step's pins to the candidates' `go.mod` (every module it
+pins at the candidates' version, every cccteam module a candidate requires among them), so
+a pin bump without its step fails the build, and holds every step to its shape (a pin set
+of framework modules none of which moves backward, a note, a pin moved or a recipe named,
+no recipe named twice). A breaking change in resource, access, session or accesstypes is
+not done until the step that carries it records its recipe, or says that no code change is
+needed. Applications that predate the first release are adopted once by hand, not
+upgraded.
 
 ## impulse handoff
 
