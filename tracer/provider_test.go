@@ -13,6 +13,7 @@ import (
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func Test_testPackageMissmatch(t *testing.T) {
@@ -63,7 +64,8 @@ func TestExportOverOTLP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := grpc.NewServer()
+	// A loopback server for the test alone, so its transport is insecure on purpose.
+	srv := grpc.NewServer(grpc.Creds(insecure.NewCredentials()))
 	col := &collector{}
 	coltracepb.RegisterTraceServiceServer(srv, col)
 	go func() { _ = srv.Serve(lis) }()
