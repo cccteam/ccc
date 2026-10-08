@@ -92,6 +92,10 @@ linters:
         - BUG
     misspell:
       locale: US
+      ignore-rules:
+        # GitHub Actions' status function is spelled cancelled(); the rendered workflows'
+        # tests name it.
+        - cancelled
     nestif:
       min-complexity: 10
     tagliatelle:

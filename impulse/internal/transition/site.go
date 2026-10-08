@@ -1249,14 +1249,14 @@ func (s Site) copyWorkspace(a *app.App, from, to string, ch *Change) (project st
 	return project, port
 }
 
-// writeCI rewrites the CI workflow from the code once the browser workspaces changed: the
-// file is impulse's, rendered with one job per workspace (angular-<site> for a site's
-// workspace at apps/<site>/web), so no job is edited into it. The application is read
-// again first, since the workspaces moved or appeared on disk after it was read. A tree the
-// workflow cannot be written in is the agent's, and the ci-workflow check names it. The
-// other transitions (add outlet, remove outlet, add auth, swap auth, add tenancy) change no
-// workspace, so they do not call it; the command flow writes the owned files once more
-// before the check either way.
+// writeCI rewrites the owned workflows from the code once the browser workspaces changed:
+// the files are impulse's, the pull request workflow rendered with one job per workspace
+// (angular-<site> for a site's workspace at apps/<site>/web), so no job is edited into
+// it. The application is read again first, since the workspaces moved or appeared on disk
+// after it was read. A tree the workflows cannot be written in is the agent's, and the
+// ci-workflow check names it. The other transitions (add outlet, remove outlet, add auth,
+// swap auth, add tenancy) change no workspace, so they do not call it; the command flow
+// writes the owned files once more before the check either way.
 func writeCI(a *app.App, ch *Change, note string) {
 	fresh, err := rediscover(a)
 	if err != nil {
@@ -1264,12 +1264,15 @@ func writeCI(a *app.App, ch *Change, note string) {
 
 		return
 	}
-	if _, err := ci.Write(fresh); err != nil {
+	outcome, err := ci.Write(fresh)
+	if err != nil {
 		ch.skipf("%s: not rewritten (%v); run impulse render", ci.File, err)
 
 		return
 	}
-	ch.didf("%s: rewritten from the code (%s)", ci.File, note)
+	for _, file := range outcome.WrittenFiles() {
+		ch.didf("%s: rewritten from the code (%s)", file, note)
+	}
 }
 
 // nameWorkspace gives the promoted site's browser workspace the site's name the way the

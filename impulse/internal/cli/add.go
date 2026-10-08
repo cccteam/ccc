@@ -475,7 +475,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 		return err
 	}
 	if owned.Written {
-		fmt.Fprintf(out, "Rewrote %s from the code.\n\n", ci.File)
+		fmt.Fprintf(out, "Rewrote %s from the code.\n\n", ci.List(owned.WrittenFiles()))
 	}
 	env := &check.Env{App: a, Exec: exec, SkipGenerate: f.skipGenerate, Fix: true, Out: cmd.ErrOrStderr()}
 	results := check.Run(ctx, env, check.All())

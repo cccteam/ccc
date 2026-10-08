@@ -197,18 +197,22 @@ impulse new ./harbor --module example.com/harbor --auth staff --tenancy --outlet
 impulse new ./fleet --module example.com/fleet --auth crew --site console --site portal
 ```
 
-The application ships its CI, and impulse owns it. `.github/workflows/ci.yml` is rendered
-from the code: `impulse new` writes it at creation, `impulse render` (with no arguments,
-inside the application) rewrites it, `impulse add site` and `impulse remove site` rewrite
-it as part of their change since the browser workspaces change, and `impulse check`
-(`ci-workflow`) compares the committed file with the same rendering, so a hand edit fails
-the check. The file is one workflow of plain jobs on every pull request. No job calls a
-reusable workflow of another repository, and each job's id is the check name the pull
-request reports, so a repository rule can require them by name: six are fixed (`title`,
-`go`, `web`, `image`, `secrets`, `migrations`; bedrock reads the list from impulse's `ci`
-package and its organization layer requires them), and the browser jobs between `go` and
-`web` are named per workspace and gated by `web`. The pull request is the one gate for
-every change, whoever opens it, so the gate covers every job:
+The application ships its CI, and impulse owns it. Two workflows are rendered from the
+code: `.github/workflows/ci.yml`, the checks on every pull request, and
+`.github/workflows/ci-cache.yml`, the run after a push to the default branch (`main` or
+`master`, or the one the `//impulse:ci` line declares) or a `hotfix/` branch that fills
+the caches the checks restore. `impulse new`
+writes them at creation, `impulse render` (with no arguments, inside the application)
+rewrites them, `impulse add site` and `impulse remove site` rewrite them as part of their
+change since the browser workspaces change, and `impulse check` (`ci-workflow`) compares
+the committed files with the same rendering, so a hand edit fails the check. The pull
+request workflow is plain jobs. No job calls a reusable workflow of another repository,
+and each job's id is the check name the pull request reports, so a repository rule can
+require them by name: six are fixed (`title`, `go`, `web`, `image`, `secrets`,
+`migrations`; bedrock reads the list from impulse's `ci` package and its organization
+layer requires them), and the browser jobs between `go` and `web` are named per workspace
+and gated by `web`. The pull request is the one gate for every change, whoever opens it,
+so the gate covers every job:
 
 - `title`: the pull request's title is a conventional commit line, the one the squash
   merge carries and release-please reads, and its type decides what the merge does. A
@@ -236,12 +240,13 @@ every change, whoever opens it, so the gate covers every job:
   the actions move with impulse releases.
 - `go`: the gate over the Go legs, one fixed name a repository rule can require. It needs
   every leg, runs whether they passed or not, and fails when any of them did not succeed.
-- The larger runner: the two test legs and `image`, the jobs that take the most machine,
-  run on the runner the GitHub Actions variable `CI_LARGE_RUNNER` names, a runner label or
-  a runner group set on the repository or the organization (an organization sets it once
-  for every application; bedrock's organization placement declares it, `ciLargeRunner`).
-  While the variable is unset they run on GitHub's standard runner, as every other job
-  does.
+- The larger runner: the jobs that take the most machine run on the runner the GitHub
+  Actions variable `CI_LARGE_RUNNER` names, a runner label or a runner group set on the
+  repository or the organization (an organization sets it once for every application;
+  bedrock's organization placement declares it, `ciLargeRunner`). While the variable is
+  unset they run on GitHub's standard runner, as every other job does. Which jobs: the
+  two test legs and `image` unless the application's `//impulse:ci` line says otherwise
+  (below).
 - `angular-<workspace>`, one per browser workspace (`angular-web` for the flat workspace,
   `angular-<site>` for a site's at `apps/<site>/web`): Bun at the version that wrote
   `bun.lock` installs from the lockfile exactly (`bun ci`), then the package scripts build,
@@ -259,6 +264,65 @@ every change, whoever opens it, so the gate covers every job:
   secret confirmed live, or one whose check could not finish, fails.
 - `migrations`: against the base branch, `schema/migrations` gains files only; a committed
   migration is never modified or deleted.
+
+The caches. A pull request's `go-build`, `go-test` and `go-test-skipauth` restore the Go
+module cache and build cache from the nearest entry saved under their own job's key (the
+same `go.sum` first, then any), and `go-vuln` and `go-check` restore `go-build`'s, whose
+compile they share. Neither cache can serve a stale result: a module is verified against
+`go.sum` when read, and a build output is addressed by the hash of its inputs (the
+toolchain, the flags, the sources, the dependencies' outputs), so an entry from an older
+commit is either exactly what this commit computes or unused. The entries come from
+`ci-cache.yml`: after each push to the default branch or a hotfix branch it builds and
+tests what those jobs build and test, at the branch's head (the tests run rather than
+compile, since what a test builds as it runs is in the cache only when it ran), and
+saves under their keys with the commit's, so a pull request's first run starts from the
+branch it targets and compiles what it changed and nothing else. A pull request run
+saves an entry of its own only when it found none for its `go.sum` (a dependency
+change), so the caches grow with merges, not with pushes; GitHub keeps the newest ten
+gigabytes and drops an entry unused for a week. Nothing else is cached: the image build
+compiles fresh by design (its download stages are a minute of the job, and exporting
+them to the Actions cache cost more than it saved), govulncheck, Grype and Semgrep fetch
+their databases and rules when the job runs, the emulator images are pulled, and the lint
+legs keep setup-go's cache and golangci-lint's own.
+
+Go's cached test results are the one reuse whose inputs Go cannot see in full, so the test
+legs run every test (`go test -count=1`) unless the application turns the reuse on. Go
+reuses a passed test's result when the test binary, the files it read and the environment
+variables it read are unchanged (a failure is never cached); it cannot see what a running
+emulator's image holds. An application whose tests' inputs are all in the tree, in the
+environment or pinned by digest turns it on with the `//impulse:ci` line, and then the
+test legs restore every tracked file's modification time from git before the run (the
+checkout gives every file the time of the checkout, which would miss every result that
+read a file) and `ci-cache.yml`'s test runs on the branch save their results, so a pull
+request reuses the results of the packages it did not touch.
+
+The `//impulse:ci` line is a comment line in any non-test Go file of the application, at
+most one in the tree. It is a directive in Go's sense (no space after `//`), so gofmt
+keeps it as written; at the end of a doc comment gofmt wants a blank `//` line before it,
+as it does for `//go:generate`:
+
+```go
+// main serves the application.
+//
+// The CI choices: the test legs and the image build on the larger runner, the test results reused.
+//
+//impulse:ci large-runner=go-test,go-test-skipauth,image test-cache=on
+package main
+```
+
+`large-runner` lists the jobs on the runner `CI_LARGE_RUNNER` names, by job id, any job
+the workflow renders but the gates (`none` puts every job on the standard runner);
+`test-cache` is `on` or `off`; `default-branch` names the repository's default branch
+when it is neither `main` nor `master`, so `ci-cache.yml` runs on it (without the
+setting it runs on both names, of which a repository has one). A setting the line leaves
+out keeps the default (the two test legs and `image` on the larger runner; the test
+results not reused; `main` and `master`), and a line with a setting it does not know, a
+job the workflow does not render, or a second line in the tree fails `impulse check` and
+`impulse render`. The rendered workflows say in their header what the line chose, and
+`impulse check` asks origin for its default branch (`git ls-remote --symref origin
+HEAD`): a default branch `ci-cache.yml` does not fill fails the check with the setting
+to declare, since nothing else would ever say that the caches are never filled; without
+a remote or a network the check says it could not ask.
 
 Every action is pinned by commit with its tag in a comment, and every tool version is a
 constant in impulse, so the pins travel with impulse releases: a bump is an impulse
@@ -313,7 +377,7 @@ impulse check --list
 | `registry-pins` | Every browser app installs its packages from the registry: a committed `file:.yalc/<package>` spec (or a lockfile recording one) is a local yalc attachment that a clean checkout cannot install, so the pipeline's install fails. `ccclib.sh restore` puts the registry pins back. |
 | `test-runner` | Every browser application project runs its component specs on Angular's unit-test builder, the runner `ng new` scaffolds (`@angular/build:unit-test`: Vitest under jsdom in Node, no browser): a `test` target on that builder, the spec tsconfig it reads (named in the target, or `tsconfig.spec.json` in the project root), and a package script running `ng test <project>`, so `bun run test` runs every project's specs once. A project with no `*.spec.ts` under its source root warns: the runner is wired and nothing runs on it yet. |
 | `installable` | Every browser application bound to a session outlet installs as a progressive web app, and the server serves it through the resource package's served browser app. On the browser side: `@angular/service-worker` is a dependency at the workspace's Angular line (the line of `@angular/core`); the project's production configuration names a worker config (`"serviceWorker": "ngsw-config.json"`) that exists, whose `navigationUrls` exclude the outlet's API under the mount (`!/api/**`, relative to the mount, so the login, callback and stored-file navigations reach the server; an API prefix outside the mount is outside the worker's scope and needs none); the app config provides the worker (`provideServiceWorker`) and the library's update provider (`provideAppUpdate`); `index.html` links the web app manifest, which parses with `id` the mount path with a trailing slash and `scope` and `start_url` `./`; and every icon the manifest declares is there with PNG dimensions matching its `sizes`, read from the file's header. The release reaches the browser: the project's build defines `APP_VERSION` (`"define": { "APP_VERSION": "'dev'" }` in its build options) and the workspace's `build` script redefines it from the `VERSION` environment variable (`ng build console --define \"APP_VERSION='${VERSION:-dev}'\"`, which the image's browser stage sets), so a release build stamps its release and any other `dev`; the app config provides it as `API_VERSION` (`{ provide: API_VERSION, useValue: APP_VERSION }`) and registers `apiVersionInterceptor` through `provideHttpClient(withInterceptors([...]))`, so every request carries the release in `X-Api-Version` and the server can refuse a build it no longer answers. On the server side: the application's hand-written handlers build the asset handlers from `resource.NewBrowserApp(dir, "<mount>")`, `github.com/jtwatson/spaassets` is imported nowhere and gone from `go.mod`. A project with none of the browser side warns as not installable; a project with part of it fails, naming the first missing piece by file. |
-| `ci-workflow` | The committed `.github/workflows/ci.yml` equals what impulse renders from the code: one browser job per workspace with the `web` gate over them, and the action and tool pins this impulse carries. A missing file fails: the pull requests run no checks at all. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
+| `ci-workflow` | The committed `.github/workflows/ci.yml` and `.github/workflows/ci-cache.yml` equal what impulse renders from the code: one browser job per workspace with the `web` gate over them, the jobs the `//impulse:ci` line puts on the larger runner and whether the test results are reused, and the action and tool pins this impulse carries. A missing `ci.yml` fails: the pull requests run no checks at all; a missing `ci-cache.yml` fails: the checks start cold on every pull request. Once the files match, the check asks origin for its default branch and fails when `ci-cache.yml` does not fill it (declare it with `default-branch=<name>` on the `//impulse:ci` line); without a remote or a network it says it could not ask. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it; tests and specs are not read, since a spec describes the server's answer (whose page state carries an `offset` field) as often as a request. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
 | `feature-flags` | The `FeatureFlags` and `FeatureFlagChanges` tables the generated feature flag routes and the deploy's `MigrateFeatures` read are created by a migration as the resource module the application pins declares them: the check reads `resource.FeatureFlagsDDL(resource.SpannerDBType)` from that module's source (found through `go list -m`, so the comparison is against the library the application builds with, a replace or a workspace included) and compares each statement with the migration's, whitespace aside; a table that differs is brought to the library's statement by a new migration. Every declared flag (`resource.Feature` constant) gates something (`@feature(<Constant>)` on a resource, a field or a method) or is read somewhere outside tests (`a.FeatureSet().Enabled(resources.<Constant>)` in Go, `Feature.<Constant>` in a browser application), or it is a switch wired to nothing and fails by name and position; a flag declared twice and an annotation naming no declared constant fail too. Skipped when the generator emits no feature flags (no `zz_gen_features.go` in a resources package) and none is declared. |
@@ -409,8 +473,9 @@ input.
 `render` has two forms, and the arguments decide which.
 
 With no arguments, inside an application, `render` writes the files impulse owns from the
-application's code: today the CI workflow, `.github/workflows/ci.yml`, with one browser
-job per workspace and the pins this impulse carries. It says for each file whether it was
+application's code: today the CI workflows, `.github/workflows/ci.yml` with one browser
+job per workspace, the `//impulse:ci` line's choices and the pins this impulse carries,
+and `.github/workflows/ci-cache.yml` beside it. It says for each file whether it was
 written or already read as the code renders. `impulse check` compares the committed file
 with the same rendering, so this is the command that brings the file back into agreement
 after a change to the code, and the second step of moving the impulse pin.

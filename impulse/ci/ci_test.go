@@ -1,7 +1,9 @@
 package ci_test
 
 import (
+	"bytes"
 	"flag"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/ci"
@@ -135,10 +138,10 @@ func TestChecksAreTheRenderedJobs(t *testing.T) {
 	}
 }
 
-// TestRenderEqualsTheCandidates is the golden per candidate: the committed
-// .github/workflows/ci.yml of every embedded skeleton is what Render produces over the
-// rendered tree, byte for byte. A change to the template or the pins is a change to the
-// four files in the same commit (impulse render in a rendered candidate writes them).
+// TestRenderEqualsTheCandidates is the golden per candidate: the committed owned
+// workflows of every embedded skeleton (ci.yml and ci-cache.yml) are what the code renders
+// over the rendered tree, byte for byte. A change to a template or the pins is a change to
+// the eight files in the same commit (impulse render in a rendered candidate writes them).
 func TestRenderEqualsTheCandidates(t *testing.T) {
 	t.Parallel()
 
@@ -150,27 +153,32 @@ func TestRenderEqualsTheCandidates(t *testing.T) {
 			if err != nil {
 				t.Fatalf("skeleton.FS() error = %v", err)
 			}
-			committed, err := fs.ReadFile(sub, ci.File)
-			if err != nil {
-				t.Fatalf("the %s candidate carries no %s: %v", candidate, ci.File, err)
-			}
 			if _, err := fs.Stat(sub, ".github/codeql-config.yml"); err == nil {
 				t.Errorf("the %s candidate still carries .github/codeql-config.yml, which nothing reads", candidate)
 			}
 			a := renderCandidate(t, candidate)
-			rendered, err := ci.Render(a)
-			if err != nil {
-				t.Fatalf("Render() error = %v", err)
+			for _, file := range ci.Files {
+				rendered, err := ci.RenderFile(a, file)
+				if err != nil {
+					t.Fatalf("RenderFile(%s) error = %v", file, err)
+				}
+				if *update {
+					if err := os.WriteFile(filepath.Join(candidatesDir, candidate, filepath.FromSlash(file)), rendered, 0o600); err != nil {
+						t.Fatalf("rewriting the %s candidate's %s: %v", candidate, file, err)
+					}
+
+					continue
+				}
+				committed, err := fs.ReadFile(sub, file)
+				if err != nil {
+					t.Fatalf("the %s candidate carries no %s: %v", candidate, file, err)
+				}
+				if diff := cmp.Diff(string(committed), string(rendered)); diff != "" {
+					t.Errorf("%s: the committed %s differs from the rendering (-committed +rendered); go test ./ci -update rewrites it:\n%s", candidate, file, diff)
+				}
 			}
 			if *update {
-				if err := os.WriteFile(filepath.Join(candidatesDir, candidate, filepath.FromSlash(ci.File)), rendered, 0o600); err != nil {
-					t.Fatalf("rewriting the %s candidate's %s: %v", candidate, ci.File, err)
-				}
-
 				return
-			}
-			if diff := cmp.Diff(string(committed), string(rendered)); diff != "" {
-				t.Errorf("%s: the committed %s differs from the rendering (-committed +rendered); go test ./ci -update rewrites it:\n%s", candidate, ci.File, diff)
 			}
 			d, err := ci.Compare(a)
 			if err != nil {
@@ -305,35 +313,297 @@ func TestGoGate(t *testing.T) {
 	}
 }
 
-// TestLargeRunner: the two test legs and the image build run on the runner the
-// CI_LARGE_RUNNER variable names, GitHub's standard runner while it is unset, and no
-// other job reads the variable.
+// TestLargeRunner: the jobs the //impulse:ci line lists under large-runner (the two test
+// legs and the image build without a line) run on the runner the CI_LARGE_RUNNER variable
+// names and GitHub's standard runner while it is unset, every other job runs on the
+// standard runner, the header names them, and a job the workflow does not render, or a
+// gate, is refused.
 func TestLargeRunner(t *testing.T) {
 	t.Parallel()
 
-	rendered, err := ci.Render(&app.App{WebApps: []app.WebApp{{Dir: "web"}}})
+	tests := []struct {
+		name    string
+		ci      *app.CIDirective
+		want    []string
+		wantErr string
+	}{
+		{name: "no line: the test legs and the image build", want: []string{"go-test", "go-test-skipauth", "image"}},
+		{name: "a line without large-runner keeps the default", ci: &app.CIDirective{TestCache: boolPtr(true)}, want: []string{"go-test", "go-test-skipauth", "image"}},
+		{name: "the line's jobs, any rendered job", ci: &app.CIDirective{LargeRunner: []string{"go-build", "angular-web", "secrets"}}, want: []string{"go-build", "angular-web", "secrets"}},
+		{name: "none", ci: &app.CIDirective{LargeRunner: []string{}}, want: nil},
+		{name: "a job the workflow does not render", ci: &app.CIDirective{File: "main.go", Line: 3, LargeRunner: []string{"go-test", "angular-portal"}}, wantErr: `main.go:3: //impulse:ci large-runner names "angular-portal", which the workflow does not render; the jobs are title, go-build, go-test, go-test-skipauth, go-lint, go-lint-skipauth, go-vuln, go-semgrep, go-check, angular-web, image, secrets, migrations`},
+		{name: "a gate", ci: &app.CIDirective{File: "main.go", Line: 3, LargeRunner: []string{"go"}}, wantErr: "main.go:3: //impulse:ci large-runner names go, a gate, which runs nothing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := &app.App{WebApps: []app.WebApp{{Dir: "web"}}, CI: tt.ci}
+			settings, err := ci.SettingsOf(a)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("SettingsOf() error = %v, want containing %q", err, tt.wantErr)
+				}
+				if _, err := ci.Render(a); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("Render() error = %v, want containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("SettingsOf() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, settings.LargeRunner, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("SettingsOf().LargeRunner mismatch (-want +got):\n%s", diff)
+			}
+			for _, file := range ci.Files {
+				rendered, err := ci.RenderFile(a, file)
+				if err != nil {
+					t.Fatalf("RenderFile(%s) error = %v", file, err)
+				}
+				const large = "    runs-on: ${{ vars." + ci.LargeRunnerVariable + " || '" + ci.StandardRunner + "' }}\n"
+				onLarge := 0
+				for _, id := range jobIDs(t, rendered) {
+					j := job(rendered, id)
+					if j == "" {
+						t.Fatalf("%s: no %s job", file, id)
+					}
+					if got, want := strings.Contains(j, large), slices.Contains(tt.want, id); got != want {
+						t.Errorf("%s: %s runs on the larger runner = %v, want %v:\n%s", file, id, got, want, j)
+					}
+					if !slices.Contains(tt.want, id) && !strings.Contains(j, "    runs-on: "+ci.StandardRunner+"\n") {
+						t.Errorf("%s: %s does not run on the standard runner:\n%s", file, id, j)
+					}
+					if slices.Contains(tt.want, id) {
+						onLarge++
+					}
+				}
+				if strings.Count(string(rendered), large) != onLarge {
+					t.Errorf("%s: the larger runner's runs-on appears %d times, want %d", file, strings.Count(string(rendered), large), onLarge)
+				}
+			}
+			rendered, err := ci.Render(a)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			header := header(t, rendered)
+			switch {
+			case len(tt.want) == 0 && !strings.Contains(header, "Every job runs on GitHub's standard\n# runner (the application's //impulse:ci line says large-runner=none)"):
+				t.Errorf("the header does not say every job is on the standard runner:\n%s", header)
+			case len(tt.want) > 0 && !strings.Contains(header, ci.List(tt.want)+" run"):
+				t.Errorf("the header does not name %s:\n%s", ci.List(tt.want), header)
+			case !strings.Contains(header, "variable "+ci.LargeRunnerVariable) && len(tt.want) > 0:
+				t.Errorf("the header says nothing of the variable %s", ci.LargeRunnerVariable)
+			}
+		})
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// header is the comment block before the workflow's name line.
+func header(t *testing.T, rendered []byte) string {
+	t.Helper()
+
+	before, _, found := bytes.Cut(rendered, []byte("\nname: CI\n"))
+	if !found {
+		t.Fatal("the rendered workflow has no name line")
+	}
+
+	return string(before)
+}
+
+// TestTestCache: the test legs run every test (go test -count=1) unless the line says
+// test-cache=on, and then they restore the files' modification times from git before
+// the run, so Go's cached results can match; the cache-filling workflow's test jobs run
+// the same command, with the modification times restored when the results are reused.
+// The header says which.
+func TestTestCache(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ci   *app.CIDirective
+		on   bool
+	}{
+		{name: "no line: off"},
+		{name: "off", ci: &app.CIDirective{TestCache: boolPtr(false)}},
+		{name: "on", ci: &app.CIDirective{TestCache: boolPtr(true)}, on: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := &app.App{WebApps: []app.WebApp{{Dir: "web"}}, CI: tt.ci}
+			settings, err := ci.SettingsOf(a)
+			if err != nil {
+				t.Fatalf("SettingsOf() error = %v", err)
+			}
+			if settings.TestCache != tt.on {
+				t.Errorf("SettingsOf().TestCache = %v, want %v", settings.TestCache, tt.on)
+			}
+			pr, err := ci.Render(a)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			cache, err := ci.RenderFile(a, ci.CacheFile)
+			if err != nil {
+				t.Fatalf("RenderFile(CacheFile) error = %v", err)
+			}
+			const mtimes = "      - name: Restore the files' modification times from git\n"
+			for leg, want := range map[string]string{"go-test": "        run: go test -race -count=1 -timeout 20m ./...\n", "go-test-skipauth": "        run: go test -race -count=1 -timeout 20m -tags skipAuth ./...\n"} {
+				if tt.on {
+					want = strings.Replace(want, "-count=1 ", "", 1)
+				}
+				j := job(pr, leg)
+				if !strings.Contains(j, want) {
+					t.Errorf("%s lacks %q:\n%s", leg, want, j)
+				}
+				if strings.Contains(j, mtimes) != tt.on {
+					t.Errorf("%s restores the modification times = %v, want %v:\n%s", leg, !tt.on, tt.on, j)
+				}
+				warm := job(cache, leg)
+				if warm == "" {
+					t.Fatalf("the cache-filling workflow has no %s job", leg)
+				}
+				if !strings.Contains(warm, want) || !strings.Contains(warm, "TESTCONTAINERS_RYUK_DISABLED") || !strings.Contains(warm, "fetch-depth: 0") {
+					t.Errorf("the cache-filling %s does not run the tests as the pull request's does (%q):\n%s", leg, want, warm)
+				}
+				if strings.Contains(warm, mtimes) != tt.on {
+					t.Errorf("the cache-filling %s restores the modification times = %v, want %v:\n%s", leg, !tt.on, tt.on, warm)
+				}
+			}
+			header := header(t, pr)
+			if want := "test results are not\n# reused (go test -count=1)"; strings.Contains(header, want) == tt.on {
+				t.Errorf("the header says %q = %v, want %v", want, !tt.on, tt.on)
+			}
+			if want := "(here they are: the line says test-cache=on)"; strings.Contains(header, want) != tt.on {
+				t.Errorf("the header says %q = %v, want %v", want, !tt.on, tt.on)
+			}
+		})
+	}
+}
+
+// TestDefaultBranch: the cache-filling workflow runs on main, master and the hotfix lines
+// unless the //impulse:ci line declares the default branch, and then on that branch and
+// the hotfix lines.
+func TestDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ci   *app.CIDirective
+		want string
+	}{
+		{name: "no line", want: "    branches: [main, master, 'hotfix/**']\n"},
+		{name: "a line without the setting", ci: &app.CIDirective{TestCache: boolPtr(true)}, want: "    branches: [main, master, 'hotfix/**']\n"},
+		{name: "a declared default branch", ci: &app.CIDirective{DefaultBranch: "trunk"}, want: "    branches: [trunk, 'hotfix/**']\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := &app.App{WebApps: []app.WebApp{{Dir: "web"}}, CI: tt.ci}
+			settings, err := ci.SettingsOf(a)
+			if err != nil {
+				t.Fatalf("SettingsOf() error = %v", err)
+			}
+			cache, err := ci.RenderFile(a, ci.CacheFile)
+			if err != nil {
+				t.Fatalf("RenderFile(CacheFile) error = %v", err)
+			}
+			if !strings.Contains(string(cache), "  push:\n"+tt.want) {
+				t.Errorf("the cache-filling workflow's trigger lacks %q:\n%s", tt.want, cache)
+			}
+			if want := "[" + strings.Join(settings.DefaultBranches, ", ") + ", 'hotfix/**']"; !strings.Contains(tt.want, want) {
+				t.Errorf("SettingsOf().DefaultBranches = %v, not what the trigger names", settings.DefaultBranches)
+			}
+			if pr, err := ci.Render(a); err != nil || strings.Contains(string(pr), "branches:") {
+				t.Errorf("the pull request workflow names branches, or did not render: %v", err)
+			}
+		})
+	}
+}
+
+// TestCacheSteps: the Go legs restore the Go caches from the lineage CachedJobs names
+// (their own for go-build and the test legs, go-build's for go-vuln and go-check), the
+// ones that save do so only when their go.sum had no entry, the lint legs and the rest
+// restore nothing, setup-go's own cache is off wherever the caches are restored, and the
+// cache-filling workflow saves under the commit's key in every Go job.
+func TestCacheSteps(t *testing.T) {
+	t.Parallel()
+
+	a := &app.App{WebApps: []app.WebApp{{Dir: "web"}}}
+	pr, err := ci.Render(a)
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	const large = "    runs-on: ${{ vars." + ci.LargeRunnerVariable + " || 'ubuntu-latest' }}\n"
-	onLarge := map[string]bool{"go-test": true, "go-test-skipauth": true, "image": true}
-	for _, id := range jobIDs(t, rendered) {
-		j := job(rendered, id)
-		if j == "" {
-			t.Fatalf("no %s job", id)
+	cache, err := ci.RenderFile(a, ci.CacheFile)
+	if err != nil {
+		t.Fatalf("RenderFile(CacheFile) error = %v", err)
+	}
+	const restore = "      - name: Restore the Go caches\n"
+	const save = "      - name: Save the Go caches\n"
+	plan := map[string]ci.CachedJob{}
+	for _, c := range ci.CachedJobs {
+		plan[c.Job] = c
+	}
+	for _, id := range jobIDs(t, pr) {
+		j := job(pr, id)
+		c, cached := plan[id]
+		if strings.Contains(j, restore) != cached {
+			t.Errorf("%s restores the Go caches = %v, want %v:\n%s", id, !cached, cached, j)
 		}
-		if got, want := strings.Contains(j, large), onLarge[id]; got != want {
-			t.Errorf("%s runs on the larger runner = %v, want %v:\n%s", id, got, want, j)
+		if strings.Contains(j, "          cache: false\n") != cached {
+			t.Errorf("%s turns setup-go's cache off = %v, want %v:\n%s", id, !cached, cached, j)
 		}
-		if !onLarge[id] && !strings.Contains(j, "    runs-on: ubuntu-latest\n") {
-			t.Errorf("%s does not run on the standard runner:\n%s", id, j)
+		if !cached {
+			if strings.Contains(j, save) {
+				t.Errorf("%s saves the Go caches:\n%s", id, j)
+			}
+
+			continue
+		}
+		key := "          key: " + c.From + "-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}\n"
+		keys := "          restore-keys: |\n            " + c.From + "-${{ runner.os }}-${{ hashFiles('go.sum') }}-\n            " + c.From + "-${{ runner.os }}-\n"
+		if !strings.Contains(j, key) || !strings.Contains(j, keys) {
+			t.Errorf("%s restores from a lineage other than %s's:\n%s", id, c.From, j)
+		}
+		if strings.Contains(j, save) != c.Saves {
+			t.Errorf("%s saves the Go caches = %v, want %v:\n%s", id, !c.Saves, c.Saves, j)
+		}
+		if c.Saves {
+			cond := "        if: ${{ !cancelled() && !startsWith(steps.go-cache.outputs.cache-matched-key, format('" + id + "-{0}-{1}-', runner.os, hashFiles('go.sum'))) }}\n"
+			if !strings.Contains(j, cond) {
+				t.Errorf("%s saves without the condition %q:\n%s", id, cond, j)
+			}
+			if !strings.HasSuffix(strings.TrimRight(j, "\n"), "          key: ${{ steps.go-cache.outputs.cache-primary-key }}") {
+				t.Errorf("%s does not end with the save:\n%s", id, j)
+			}
 		}
 	}
-	if strings.Count(string(rendered), large) != len(onLarge) {
-		t.Errorf("the larger runner's runs-on appears %d times, want %d", strings.Count(string(rendered), large), len(onLarge))
+	wantWarm := []string{"go-build", "go-test", "go-test-skipauth"}
+	if diff := cmp.Diff(wantWarm, jobIDs(t, cache)); diff != "" {
+		t.Errorf("the cache-filling workflow's jobs mismatch (-want +got):\n%s", diff)
 	}
-	if !strings.Contains(string(rendered), "variable "+ci.LargeRunnerVariable) {
-		t.Errorf("the header says nothing of the variable %s", ci.LargeRunnerVariable)
+	for _, id := range wantWarm {
+		j := job(cache, id)
+		if !strings.Contains(j, restore) || !strings.Contains(j, save) || !strings.Contains(j, "        if: ${{ !cancelled() }}\n") {
+			t.Errorf("the cache-filling %s does not restore and save unconditionally:\n%s", id, j)
+		}
+		if !strings.Contains(j, "          key: "+id+"-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}\n") {
+			t.Errorf("the cache-filling %s saves under another job's key:\n%s", id, j)
+		}
+	}
+	for _, text := range []string{"    branches: [main, master, 'hotfix/**']\n", "  group: ci-cache-${{ github.ref }}\n", "permissions: {}\n"} {
+		if !strings.Contains(string(cache), text) {
+			t.Errorf("the cache-filling workflow lacks %q", text)
+		}
+	}
+	// The image build is not cached: a plain docker build, no builder of its own.
+	prImage := job(pr, "image")
+	if !strings.Contains(prImage, `        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" -t application:ci .`+"\n") || strings.Contains(prImage, "buildx") || strings.Contains(prImage, "cache") {
+		t.Errorf("the image job is not the plain build:\n%s", prImage)
 	}
 }
 
@@ -429,6 +699,38 @@ func workspaceApp(t *testing.T, dirs []string, written bool) *app.App {
 	return a
 }
 
+// lineOf is the line, counting from 1, where the owned file of an application with the
+// flat workspace first reads as want, so a case names a line by its content.
+func lineOf(t *testing.T, file, want string) int {
+	t.Helper()
+
+	rendered, err := ci.RenderFile(&app.App{WebApps: []app.WebApp{{Dir: "web"}}}, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, line := range strings.Split(string(rendered), "\n") {
+		if line == want {
+			return i + 1
+		}
+	}
+	t.Fatalf("no line %q in %s", want, file)
+
+	return 0
+}
+
+// renderedLine is line n, counting from 1, of the owned file of an application with the
+// flat workspace.
+func renderedLine(t *testing.T, file string, n int) string {
+	t.Helper()
+
+	rendered, err := ci.RenderFile(&app.App{WebApps: []app.WebApp{{Dir: "web"}}}, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return strings.Split(string(rendered), "\n")[n-1]
+}
+
 func TestCompare(t *testing.T) {
 	t.Parallel()
 
@@ -447,7 +749,39 @@ func TestCompare(t *testing.T) {
 		{
 			name: "missing",
 			app:  func(t *testing.T) *app.App { t.Helper(); return workspaceApp(t, []string{"web"}, false) },
-			want: &ci.Difference{Missing: true}, wantText: ".github/workflows/ci.yml is missing",
+			want: &ci.Difference{File: ci.File, Missing: true}, wantText: ".github/workflows/ci.yml is missing",
+		},
+		{
+			name: "the cache-filling workflow missing",
+			app: func(t *testing.T) *app.App {
+				t.Helper()
+				a := workspaceApp(t, []string{"web"}, true)
+				if err := os.Remove(a.Abs(ci.CacheFile)); err != nil {
+					t.Fatal(err)
+				}
+
+				return a
+			},
+			want: &ci.Difference{File: ci.CacheFile, Missing: true}, wantText: ".github/workflows/ci-cache.yml is missing",
+		},
+		{
+			name: "a hand edit in the cache-filling workflow",
+			app: func(t *testing.T) *app.App {
+				t.Helper()
+				a := workspaceApp(t, []string{"web"}, true)
+				data, err := os.ReadFile(a.Abs(ci.CacheFile))
+				if err != nil {
+					t.Fatal(err)
+				}
+				edited := strings.Replace(string(data), "  cancel-in-progress: true", "  cancel-in-progress: false", 1)
+				if err := os.WriteFile(a.Abs(ci.CacheFile), []byte(edited), 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				return a
+			},
+			want:     &ci.Difference{File: ci.CacheFile, Line: lineOf(t, ci.CacheFile, "  cancel-in-progress: true"), Want: "  cancel-in-progress: true", Got: "  cancel-in-progress: false"},
+			wantText: fmt.Sprintf(`.github/workflows/ci-cache.yml:%d: the code renders "  cancel-in-progress: true"; the file has "  cancel-in-progress: false"`, lineOf(t, ci.CacheFile, "  cancel-in-progress: true")),
 		},
 		{
 			name: "a hand edit",
@@ -465,8 +799,8 @@ func TestCompare(t *testing.T) {
 
 				return a
 			},
-			want:     &ci.Difference{Line: 27, Want: "  cancel-in-progress: true", Got: "  cancel-in-progress: false"},
-			wantText: `.github/workflows/ci.yml:27: the code renders "  cancel-in-progress: true"; the file has "  cancel-in-progress: false"`,
+			want:     &ci.Difference{File: ci.File, Line: lineOf(t, ci.File, "  cancel-in-progress: true"), Want: "  cancel-in-progress: true", Got: "  cancel-in-progress: false"},
+			wantText: fmt.Sprintf(`.github/workflows/ci.yml:%d: the code renders "  cancel-in-progress: true"; the file has "  cancel-in-progress: false"`, lineOf(t, ci.File, "  cancel-in-progress: true")),
 		},
 		{
 			name: "a workspace without its job",
@@ -479,11 +813,12 @@ func TestCompare(t *testing.T) {
 				return a
 			},
 			want: &ci.Difference{
-				Line: 277,
+				File: ci.File,
+				Line: lineOf(t, ci.File, "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."),
 				Want: "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test.",
 				Got:  "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace.",
 			},
-			wantText: `.github/workflows/ci.yml:277: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."`,
+			wantText: fmt.Sprintf(`.github/workflows/ci.yml:%d: the code renders "  # The browser workspace at apps/portal/web: bun installs from the lockfile exactly (bun ci), then the package scripts build, lint and test."; the file has "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace."`, lineOf(t, ci.File, "  # The browser gate, one fixed name over the per-workspace jobs so a repository rule can require it: it fails when any of them did not succeed, and passes with nothing to check in an application without a browser workspace.")),
 		},
 		{
 			name: "a file that ends early",
@@ -501,8 +836,8 @@ func TestCompare(t *testing.T) {
 
 				return a
 			},
-			want:     &ci.Difference{Line: 21, Want: "on:", Got: ""},
-			wantText: `.github/workflows/ci.yml:21: the code renders "on:"; the file has ""`,
+			want:     &ci.Difference{File: ci.File, Line: 21, Want: renderedLine(t, ci.File, 21), Got: ""},
+			wantText: fmt.Sprintf(`.github/workflows/ci.yml:21: the code renders %q; the file has ""`, renderedLine(t, ci.File, 21)),
 		},
 	}
 	for _, tt := range tests {
@@ -534,19 +869,40 @@ func TestWrite(t *testing.T) {
 	if !first.Written {
 		t.Error("first Write() reported nothing written")
 	}
-	info, err := os.Stat(a.Abs(ci.File))
-	if err != nil {
-		t.Fatalf("the file was not written: %v", err)
+	if diff := cmp.Diff([]ci.FileOutcome{{File: ci.File, Written: true}, {File: ci.CacheFile, Written: true}}, first.Files); diff != "" {
+		t.Errorf("first Write().Files mismatch (-want +got):\n%s", diff)
 	}
-	if info.Mode().Perm() != 0o644 {
-		t.Errorf("mode = %o, want 644", info.Mode().Perm())
+	if diff := cmp.Diff(ci.Files, first.WrittenFiles()); diff != "" {
+		t.Errorf("first Write().WrittenFiles() mismatch (-want +got):\n%s", diff)
+	}
+	for _, file := range ci.Files {
+		info, err := os.Stat(a.Abs(file))
+		if err != nil {
+			t.Fatalf("%s was not written: %v", file, err)
+		}
+		if info.Mode().Perm() != 0o644 {
+			t.Errorf("%s: mode = %o, want 644", file, info.Mode().Perm())
+		}
 	}
 	again, err := ci.Write(a)
 	if err != nil {
 		t.Fatalf("second Write() error = %v", err)
 	}
-	if again.Written {
+	if again.Written || len(again.WrittenFiles()) != 0 {
 		t.Error("second Write() rewrote an unchanged file")
+	}
+	if diff := cmp.Diff([]ci.FileOutcome{{File: ci.File}, {File: ci.CacheFile}}, again.Files); diff != "" {
+		t.Errorf("second Write().Files mismatch (-want +got):\n%s", diff)
+	}
+	if err := os.Remove(a.Abs(ci.CacheFile)); err != nil {
+		t.Fatal(err)
+	}
+	third, err := ci.Write(a)
+	if err != nil {
+		t.Fatalf("third Write() error = %v", err)
+	}
+	if diff := cmp.Diff([]string{ci.CacheFile}, third.WrittenFiles()); diff != "" {
+		t.Errorf("third Write().WrittenFiles() mismatch (-want +got):\n%s", diff)
 	}
 	if d, err := ci.Compare(a); err != nil || d != nil {
 		t.Errorf("Compare() after Write() = %v, %v; want nil, nil", d, err)

@@ -209,12 +209,12 @@ func TestRenderOwned(t *testing.T) {
 
 				return dir
 			},
-			want: "Rendered the owned files from the code: .github/workflows/ci.yml written.\n",
+			want: "Rendered the owned files from the code: .github/workflows/ci.yml written, .github/workflows/ci-cache.yml unchanged.\n",
 		},
 		{
 			name: "a rendered application whose workflow is current is left unchanged",
 			dir:  renderSolo,
-			want: "Rendered the owned files from the code: .github/workflows/ci.yml unchanged.\n",
+			want: "Rendered the owned files from the code: .github/workflows/ci.yml unchanged, .github/workflows/ci-cache.yml unchanged.\n",
 		},
 		{
 			name:    "a directory without go.mod is no application",

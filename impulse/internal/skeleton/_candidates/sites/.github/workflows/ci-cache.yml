@@ -1,0 +1,170 @@
+# The caches the pull request checks restore, filled after a push to the default branch
+# (main or master, or the one the application's //impulse:ci line declares with
+# default-branch=<name>; impulse check compares that with origin's) or a hotfix branch.
+# Rendered by impulse and owned by it as
+# .github/workflows/ci.yml is: impulse render rewrites both from the code, impulse check
+# compares the committed files with what it renders, and the pins move with impulse
+# releases, so dependabot must not run over this file either. Each job here does what the
+# pull request job of the same id does, at the branch's head (the test legs run the tests,
+# since what a test builds as it runs is in the cache only when it ran), and saves the Go
+# module cache and build cache under that job's key with this commit's; a pull request run
+# restores the newest entry of its lineage, so its first run starts from the branch it
+# targets and compiles what it changed and nothing else. Nothing here gates anything: the
+# branch was checked on its pull request, and a failure here is the squash commit's own.
+name: CI cache
+
+on:
+  push:
+    branches: [main, master, 'hotfix/**']
+
+concurrency:
+  group: ci-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  # The build, without tags and with skipAuth, as go-build builds it.
+  go-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-build-${{ runner.os }}-
+      - name: go build
+        run: |
+          go build ./...
+          go build -tags skipAuth ./...
+      - name: go vet
+        run: |
+          go vet ./...
+          go vet -tags skipAuth ./...
+      - name: Save the Go caches
+        # Under this commit's key, so the next pull request run restores this entry as the
+        # newest of its lineage; a cancelled run saves nothing.
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
+
+  # The tests under the race detector, without tags, as go-test runs them.
+  go-test:
+    runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-
+      - name: go test
+        run: go test -race -count=1 -timeout 20m ./...
+      - name: Save the Go caches
+        # Under this commit's key, so the next pull request run restores this entry as the
+        # newest of its lineage; a cancelled run saves nothing.
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
+
+  # The same with skipAuth, as go-test-skipauth runs them.
+  go-test-skipauth:
+    runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # The test harnesses start the emulators through testcontainers. Its reaper container
+      # (Ryuk) cleans up after a crashed test on a long-lived machine; a runner is discarded
+      # after the job, and the reaper's own start has timed out on GitHub's runners.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generators run bedrock migration renumber, which reads origin's copy of the default branch.
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore the Go caches
+        # The module cache (~/go/pkg/mod) and the build cache (~/.cache/go-build), from the
+        # nearest saved entry of this lineage: the same go.sum first, then any. Neither can
+        # serve a stale result: a module is verified against go.sum when read, and a build
+        # output is addressed by the hash of its inputs, so an older entry is either what
+        # this commit computes or unused.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-skipauth-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-skipauth-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-skipauth-${{ runner.os }}-
+      - name: go test (skipAuth)
+        run: go test -race -count=1 -timeout 20m -tags skipAuth ./...
+      - name: Save the Go caches
+        # Under this commit's key, so the next pull request run restores this entry as the
+        # newest of its lineage; a cancelled run saves nothing.
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}

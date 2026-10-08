@@ -31,11 +31,12 @@ func newRender() *cobra.Command {
 		Long: `render has two forms; the arguments decide which.
 
 With no arguments, inside an application (a go.mod at the working directory), render writes
-the files impulse owns from the application's code: today the CI workflow,
-.github/workflows/ci.yml, with one browser job per workspace and the action and tool pins
-this impulse carries. impulse check compares the committed file with the same rendering and
-fails a hand edit, so this is the command that brings the file back into agreement after a
-change to the code, and the second step of moving the impulse pin:
+the files impulse owns from the application's code: today the CI workflows,
+.github/workflows/ci.yml, with one browser job per workspace, the //impulse:ci line's
+choices and the action and tool pins this impulse carries, and
+.github/workflows/ci-cache.yml beside it. impulse check compares the committed files with
+the same rendering and fails a hand edit, so this is the command that brings them back into
+agreement after a change to the code, and the second step of moving the impulse pin:
 go get -tool github.com/cccteam/ccc/impulse@<version>, then go tool impulse render, then
 go tool impulse check.
 
@@ -111,11 +112,15 @@ func renderOwned(w io.Writer, dir string) error {
 	if err != nil {
 		return err
 	}
-	state := "unchanged"
-	if outcome.Written {
-		state = "written"
+	states := make([]string, 0, len(outcome.Files))
+	for _, f := range outcome.Files {
+		state := "unchanged"
+		if f.Written {
+			state = "written"
+		}
+		states = append(states, f.File+" "+state)
 	}
-	fmt.Fprintf(w, "Rendered the owned files from the code: %s %s.\n", ci.File, state)
+	fmt.Fprintf(w, "Rendered the owned files from the code: %s.\n", strings.Join(states, ", "))
 
 	return nil
 }

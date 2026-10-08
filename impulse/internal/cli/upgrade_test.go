@@ -287,7 +287,7 @@ func TestUpgrade(t *testing.T) {
 			var out, errOut strings.Builder
 			u := &upgrader{
 				exec: exec, releases: tt.releases, running: tt.running, verify: tt.verify,
-				owned: func(*app.App) (bool, error) { return false, nil },
+				owned: func(*app.App) ([]string, error) { return nil, nil },
 				out:   &out, err: &errOut,
 			}
 			err := u.run(t.Context(), &transitionFlags{appDir: root, agentCommand: handoff.DefaultCommand}, tt.dryRun, tt.target)
