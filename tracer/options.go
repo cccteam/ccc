@@ -38,10 +38,13 @@ func ParseSampling(value string) (Sampling, error) {
 
 // providerConfig is what the provider options set.
 type providerConfig struct {
+	// projectID is the Google Cloud project the spans are recorded in; "" when the spans
+	// go to an endpoint of the caller's own.
+	projectID string
 	// endpoint is the OTLP gRPC host:port the spans go to; "" is Google Cloud's Telemetry
 	// API.
 	endpoint string
-	// insecure sends without TLS and without Google credentials: a collector of your own.
+	// insecure sends without TLS and without credentials: a collector of your own.
 	insecure bool
 	// sampling says which spans are recorded; "" is SamplingEdge.
 	sampling Sampling
@@ -54,16 +57,28 @@ type providerConfig struct {
 // ProviderOption configures the Provider.
 type ProviderOption func(*providerConfig)
 
-// WithEndpoint sends the spans to an OTLP gRPC endpoint (host:port) in place of Google
-// Cloud's Telemetry API: a collector of your own.
+// WithGoogleCloud sends the spans to Google Cloud Trace, into the project given: over OTLP
+// to the Telemetry API, signed with the application's default credentials (or
+// WithTokenSource), the resource carrying what the Google Cloud detector finds about where
+// the process runs. The application's identity needs roles/telemetry.tracesWriter on the
+// project, and the project the Telemetry API (telemetry.googleapis.com) enabled.
+func WithGoogleCloud(projectID string) ProviderOption {
+	return func(c *providerConfig) {
+		c.projectID = projectID
+	}
+}
+
+// WithEndpoint sends the spans to an OTLP gRPC endpoint (host:port) of the caller's own:
+// a collector, or another cloud's OTLP intake. Over TLS with the default credentials or
+// WithTokenSource, unless WithInsecure.
 func WithEndpoint(hostport string) ProviderOption {
 	return func(c *providerConfig) {
 		c.endpoint = hostport
 	}
 }
 
-// WithInsecure sends without TLS and without Google credentials, for a collector on a
-// loopback or private address; the Telemetry API refuses it.
+// WithInsecure sends without TLS and without credentials, for a collector on a loopback
+// or private address; the Telemetry API refuses it.
 func WithInsecure() ProviderOption {
 	return func(c *providerConfig) {
 		c.insecure = true

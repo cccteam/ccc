@@ -31,31 +31,26 @@ const (
 	projectIDAttribute = "gcp.project_id"
 )
 
-// NewGoogleCloudTracerProvider creates and configures a new OpenTelemetry TracerProvider
-// for Google Cloud Trace: the spans are exported over OTLP to the Telemetry API with the
-// application's default credentials, into the project given, under the service name. The
-// provider is set as the global tracer provider, and Propagator (W3C Trace Context, with
-// the legacy X-Cloud-Trace-Context header read) as the global propagator. Which spans are
-// recorded is the Sampling (WithSampling): the edge's choice without it.
-//
-// The application's identity needs roles/telemetry.tracesWriter on the project, and the
-// project needs the Telemetry API (telemetry.googleapis.com) enabled.
-func NewGoogleCloudTracerProvider(projectID, serviceName string, opts ...sdktrace.TracerProviderOption) (*Provider, error) {
-	return NewGoogleCloudTracerProviderWithOptions(projectID, serviceName, WithTracerProviderOptions(opts...))
-}
-
-// NewGoogleCloudTracerProviderWithOptions creates and configures a new OpenTelemetry TracerProvider.
-func NewGoogleCloudTracerProviderWithOptions(projectID, serviceName string, opts ...ProviderOption) (*Provider, error) {
+// NewProvider creates the OpenTelemetry TracerProvider for a process and sets it as the
+// global one, with Propagator (W3C Trace Context, the legacy X-Cloud-Trace-Context header
+// read as well) as the global propagator, so every span the process starts (Start) is
+// recorded through it. The spans carry the service name; where they go is the destination
+// option, WithGoogleCloud or WithEndpoint, and which are recorded is WithSampling (the
+// edge's choice without it). A provider with no destination is refused.
+func NewProvider(serviceName string, opts ...ProviderOption) (*Provider, error) {
 	cfg := &providerConfig{}
 	for _, opt := range opts {
 		opt(cfg)
+	}
+	if cfg.projectID == "" && cfg.endpoint == "" {
+		return nil, errors.New("the provider has no destination: WithGoogleCloud(projectID) or WithEndpoint(hostport) says where the spans go")
 	}
 	ctx := context.Background()
 	exporter, err := newExporter(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	res, err := newResource(ctx, projectID, serviceName)
+	res, err := newResource(ctx, cfg, serviceName)
 	if err != nil {
 		return nil, err
 	}
@@ -127,17 +122,21 @@ func sampler(s Sampling) sdktrace.Sampler {
 	return sdktrace.ParentBased(sdktrace.NeverSample())
 }
 
-// newResource describes the process: the SDK's defaults, what the Google Cloud detector
-// finds about where it runs (on Cloud Run, the service, revision and region), the service
-// name, and the project the spans belong to. A detector that could not read everything
-// leaves a partial resource, and attributes whose schema versions differ leave the
-// resource without a schema URL; neither stops the provider, since Cloud Trace reads the
-// attributes and not the schema.
-func newResource(ctx context.Context, projectID, serviceName string) (*resource.Resource, error) {
-	detected, err := resource.New(ctx,
-		resource.WithDetectors(gcp.NewDetector()),
-		resource.WithAttributes(semconv.ServiceName(serviceName), attribute.String(projectIDAttribute, projectID)),
-	)
+// newResource describes the process: the SDK's defaults and the service name, and for
+// Google Cloud what its detector finds about where the process runs (on Cloud Run, the
+// service, revision and region) and the project the spans belong to. A detector that
+// could not read everything leaves a partial resource, and attributes whose schema
+// versions differ leave the resource without a schema URL; neither stops the provider,
+// since the attributes are read and the schema is not.
+func newResource(ctx context.Context, cfg *providerConfig, serviceName string) (*resource.Resource, error) {
+	options := []resource.Option{resource.WithAttributes(semconv.ServiceName(serviceName))}
+	if cfg.projectID != "" {
+		options = append(options,
+			resource.WithDetectors(gcp.NewDetector()),
+			resource.WithAttributes(attribute.String(projectIDAttribute, cfg.projectID)),
+		)
+	}
+	detected, err := resource.New(ctx, options...)
 	if err != nil && !errors.Is(err, resource.ErrPartialResource) && !errors.Is(err, resource.ErrSchemaURLConflict) {
 		return nil, errors.Wrap(err, "resource.New()")
 	}
