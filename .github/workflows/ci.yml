@@ -42,7 +42,7 @@ jobs:
           touches() { grep -qE "$1" "$RUNNER_TEMP/changed-files" && echo true || echo false; }
           {
             echo "lodestar-web=$(touches '^(resource/|\.github/workflows/ci\.yml$)')"
-            echo "impulse=$(touches '^(impulse/|resource/|tracer/|cloud/|accesstypes/|\.github/workflows/ci\.yml$)')"
+            echo "impulse=$(touches '^(impulse/|resource/|tracer/|cloud/|accesstypes/|[^/]+\.go$|go\.(mod|sum)$|\.github/workflows/ci\.yml$)')"
           } >> "$GITHUB_OUTPUT"
           echo "changed files: $(wc -l < "$RUNNER_TEMP/changed-files")"; cat "$GITHUB_OUTPUT"
   lodestar-web:
@@ -56,7 +56,7 @@ jobs:
     # bump in web/package.json.
     name: lodestar web (console + portal)
     needs: changes
-    if: needs.changes.outputs.lodestar-web == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.lodestar-web == 'true') }}
     runs-on: ubuntu-latest
     env:
       # The bun that wrote resource/lodestar/web/bun.lock.
@@ -113,7 +113,7 @@ jobs:
     # a template that lags the generator, fails here and not in a downstream application.
     name: impulse ${{ matrix.candidate }} (${{ matrix.framework }})
     needs: changes
-    if: needs.changes.outputs.impulse == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.impulse == 'true') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
