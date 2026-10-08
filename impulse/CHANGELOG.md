@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/cccteam/ccc/compare/impulse/v0.2.0...impulse/v0.2.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* the skeleton pins tracer v0.2.0, cloud v0.1.0 and resource v0.12.0, the cloud driver's releases (@cccteam/impulse) ([#872](https://github.com/cccteam/ccc/issues/872)) ([047b46c](https://github.com/cccteam/ccc/commit/047b46c7fda1c03bfd255f2ec5f43c01a611d3d2))
+
 ## [0.2.0](https://github.com/cccteam/ccc/compare/impulse/v0.1.1...impulse/v0.2.0) (2026-10-08)
 
 
