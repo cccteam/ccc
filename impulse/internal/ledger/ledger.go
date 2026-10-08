@@ -28,6 +28,7 @@ import (
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
+	"github.com/cccteam/ccc/impulse/internal/recipe"
 	"github.com/cccteam/ccc/impulse/internal/transition"
 )
 
@@ -80,6 +81,22 @@ var Steps = []Step{
 			"github.com/cccteam/session":         "v0.12.0",
 		},
 		Note: "the first impulse release's pins; an application created by it stands here already",
+	},
+	{
+		Pins: map[string]string{
+			"github.com/cccteam/access":          "v0.10.1",
+			"github.com/cccteam/ccc":             "v0.3.3",
+			"github.com/cccteam/ccc/accesstypes": "v0.6.0",
+			"github.com/cccteam/ccc/cloud":       "v0.0.0-20261008034932-6cfd496e34b5",
+			"github.com/cccteam/ccc/resource":    "v0.11.1-0.20261008035330-fb5dde92d6da",
+			"github.com/cccteam/ccc/tracer":      "v0.1.9-0.20261008034601-9d76e3c2d0b8",
+			"github.com/cccteam/db-initiator":    "v0.4.1",
+			"github.com/cccteam/httpio":          "v0.7.19",
+			"github.com/cccteam/logger":          "v0.1.27",
+			"github.com/cccteam/session":         "v0.12.0",
+		},
+		Recipes: []Recipe{recipe.CloudDriver{}},
+		Note:    "the cloud driver builds the logs and traces, and the generated router installs tracing and the request logger",
 	},
 }
 

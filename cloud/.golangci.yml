@@ -59,17 +59,11 @@ linters:
           files:
             - $all
           allow:
+            - cloud.google.com/go/logging
+            - github.com/cccteam/ccc/tracer
+            - github.com/cccteam/logger
             - github.com/go-playground/errors/v5
-            - go.opentelemetry.io/contrib/detectors/gcp
-            - go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-            - go.opentelemetry.io/otel
-            - go.opentelemetry.io/otel/sdk/resource
-            - go.opentelemetry.io/otel/sdk/trace
-            - go.opentelemetry.io/otel/semconv/v1.43.0
-            - go.opentelemetry.io/proto/otlp
-            - google.golang.org/grpc
-            - golang.org/x/oauth2
-            - go.opentelemetry.io/otel/trace
+            - github.com/google/go-cmp/cmp
             - $gostd
     dupl:
       threshold: 100

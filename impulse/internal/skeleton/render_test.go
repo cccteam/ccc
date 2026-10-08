@@ -325,7 +325,7 @@ func TestRenderDevWorkspace(t *testing.T) {
 			wantUses:  []string{".", "DEV/ccc/resource", "DEV/session"},
 			wantUsed:  []string{"github.com/cccteam/ccc/resource", "github.com/cccteam/session"},
 			wantMissing: []string{
-				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/tracer",
+				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/cloud", "github.com/cccteam/ccc/tracer",
 				"github.com/cccteam/db-initiator", "github.com/cccteam/httpio", "github.com/cccteam/logger",
 			},
 		},
@@ -336,7 +336,7 @@ func TestRenderDevWorkspace(t *testing.T) {
 			wantUses:  []string{".", "../ccc/resource", "../session"},
 			wantUsed:  []string{"github.com/cccteam/ccc/resource", "github.com/cccteam/session"},
 			wantMissing: []string{
-				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/tracer",
+				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/cloud", "github.com/cccteam/ccc/tracer",
 				"github.com/cccteam/db-initiator", "github.com/cccteam/httpio", "github.com/cccteam/logger",
 			},
 		},
@@ -344,7 +344,7 @@ func TestRenderDevWorkspace(t *testing.T) {
 			name:     "nothing checked out: the pins stay in force",
 			wantUses: []string{"."},
 			wantMissing: []string{
-				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/resource", "github.com/cccteam/ccc/tracer",
+				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/cloud", "github.com/cccteam/ccc/resource", "github.com/cccteam/ccc/tracer",
 				"github.com/cccteam/db-initiator", "github.com/cccteam/httpio", "github.com/cccteam/logger", "github.com/cccteam/session",
 			},
 		},

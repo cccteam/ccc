@@ -11,24 +11,18 @@ package config
 import (
 	"context"
 	"log"
-	"time"
 
-	"cloud.google.com/go/logging"
-	"github.com/cccteam/ccc/tracer"
+	"github.com/cccteam/ccc/cloud/gcp"
 	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
 
-// traceFlushTimeout bounds the wait for the spans still in hand when the process ends.
-const traceFlushTimeout = 5 * time.Second
-
 // coreConfiguration is the first level: what every process of the application shares.
 type coreConfiguration struct {
-	env           *coreConfig
-	loggingClient *logging.Client
-	// traceProvider exports the process's spans; nil without a logging project.
-	traceProvider *tracer.Provider
+	env *coreConfig
+	// cloud is the cloud driver: where the process's logs and spans go.
+	cloud *gcp.Driver
 }
 
 func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
@@ -37,51 +31,28 @@ func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
 		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
 	}
 
-	conf := &coreConfiguration{env: env}
-	if env.LoggingProjectID != "" {
-		client, err := logging.NewClient(ctx, env.LoggingProjectID)
-		if err != nil {
-			return nil, errors.Wrap(err, "logging.NewClient()")
-		}
-		conf.loggingClient = client
-		// The traces go to the logs' project under the process's service name. The
-		// provider is the global one, so every span the libraries and the generated
-		// code start (tracer.Start) is recorded through it.
-		provider, err := tracer.NewGoogleCloudTracerProvider(env.LoggingProjectID, env.ServiceName)
-		if err != nil {
-			return nil, errors.Wrap(err, "tracer.NewGoogleCloudTracerProvider()")
-		}
-		conf.traceProvider = provider
+	// The cloud driver builds the log exporter and the trace provider from the settings
+	// the configuration embeds; without a logging project the logs go to the console and
+	// no span is exported.
+	cloud, err := gcp.Open(ctx, env.Settings, env.ServiceName)
+	if err != nil {
+		return nil, errors.Wrap(err, "gcp.Open()")
 	}
 
-	return conf, nil
+	return &coreConfiguration{env: env, cloud: cloud}, nil
 }
 
-// Close releases the level's clients: the trace provider first, so the spans its
-// batcher still holds are sent before the logging client goes.
+// Close releases the level's clients: the spans still in hand are sent first.
 func (c *coreConfiguration) Close() {
-	if c.traceProvider != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), traceFlushTimeout)
-		defer cancel()
-		if err := c.traceProvider.Shutdown(ctx); err != nil {
-			log.Print(errors.Wrap(err, "tracer.Provider.Shutdown()"))
-		}
-	}
-	if c.loggingClient != nil {
-		if err := c.loggingClient.Close(); err != nil {
-			log.Print(errors.Wrap(err, "logging.Client.Close()"))
-		}
+	if err := c.cloud.Close(); err != nil {
+		log.Print(err)
 	}
 }
 
 // LogExporter returns where request logs go: Cloud Logging when a logging project is
 // configured, the console otherwise.
 func (c *coreConfiguration) LogExporter() logger.Exporter {
-	if c.loggingClient != nil {
-		return logger.NewGoogleCloudExporter(c.loggingClient, c.env.LoggingProjectID)
-	}
-
-	return logger.NewConsoleExporter()
+	return c.cloud.LogExporter
 }
 
 // AppVersion returns the build-time or runtime application version.
@@ -102,7 +73,6 @@ type coreConfig struct {
 	// ServiceName names the process in logs.
 	ServiceName string `env:"APP_SERVICE_NAME,required"`
 
-	// LoggingProjectID is the Google Cloud project request logs ship to. Empty logs
-	// to the console.
-	LoggingProjectID string `env:"GOOGLE_CLOUD_LOGGING_PROJECT"`
+	// The Google Cloud driver's variables: the logging project and the trace sampling.
+	gcp.Settings
 }

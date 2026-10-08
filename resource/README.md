@@ -455,9 +455,10 @@ the default outlet's session handlers embedded (`session.PasswordAuthHandlers` f
 Lodestar) and each additional session outlet's through a getter named after it
 (`Portal() session.OIDCGoogleHandlers`); `BindAuth(name)` only when more than one session
 auth is declared, so a misspelled or removed auth package is a compile error at
-`BindAuth(crew.Name)`; `<Outlet>Auth(next)` per API-key outlet; `LoggerMiddleware`,
-`SecurityHeaders`, `NoCaching`, and `CompressionMiddleware`; and per `WebApp` a
-`DeepLink` and `Assets` pair, prefixed with the outlet's name for an additional outlet
+`BindAuth(crew.Name)`; `<Outlet>Auth(next)` per API-key outlet; `LogExporter`, where
+the request log goes, from which the router builds the request logger; `SecurityHeaders`,
+`NoCaching`, and `CompressionMiddleware`; and per `WebApp` a `DeepLink` and `Assets`
+pair, prefixed with the outlet's name for an additional outlet
 (`PortalDeepLink`, `PortalAssets`), which the application builds on
 `resource.BrowserApp` (section 17). Route-parameter capture (`httpio.WithParams`) is
 mounted by the router itself. `Hooks` is a struct, never a map, so an outlet added or
@@ -465,7 +466,7 @@ removed surfaces as a compile error at every hook that names it:
 
 ```go
 type Hooks struct {
-	// Outermost runs ahead of the logger on every request: tracing belongs here.
+	// Outermost runs after tracing and ahead of the request logger on every request.
 	Outermost []func(http.Handler) http.Handler
 	// Root registers routes outside every outlet: health checks, webhooks, scheduler
 	// triggers. They sit behind the every-request chain and nothing else.
@@ -485,11 +486,12 @@ handed and chooses where inside its own group the generated routes register; it 
 sees the outer router, so no generated route can be lifted out from behind session
 validation or the XSRF guard. A hook must call `generated` exactly once; the router
 refuses one that does not, at construction. `New(h Handlers, hooks Hooks) *chi.Mux` is
-written linear and inline, the way a hand router reads: `hooks.Outermost`, the logger,
-the security headers, and parameter capture; `hooks.Root`; one group per outlet, top to
-bottom; a not-found handler per outlet prefix, so an unknown API path is 404 and never a
-browser application's entry document; then the web apps, longer mount paths first, so an
-application at `"/"` is the catch-all; and, with several web apps, the root redirect.
+written linear and inline, the way a hand router reads: tracing, `hooks.Outermost`, the
+request logger, the security headers, and parameter capture; `hooks.Root`; one group per
+outlet, top to bottom; a not-found handler per outlet prefix, so an unknown API path is
+404 and never a browser application's entry document; then the web apps, longer mount
+paths first, so an application at `"/"` is the catch-all; and, with several web apps, the
+root redirect.
 
 A session outlet's group is `BindAuth(<pkg>.Name)` (with two session auths), `NoCaching`,
 `CompressionMiddleware`, `StartSession`, `SetXSRFToken`; the flavor's login routes under
