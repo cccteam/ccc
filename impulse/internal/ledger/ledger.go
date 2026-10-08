@@ -66,38 +66,55 @@ type Recipe interface {
 }
 
 // Steps are the recorded steps, oldest first. The first is the first published impulse
-// release's pin set (impulse v0.1.0).
+// release's pin set (impulse v0.1.0). A step's pins are written one module per line, the
+// module named without the framework prefix as Short prints it.
 var Steps = []Step{
 	{
-		Pins: map[string]string{
-			"github.com/cccteam/access":          "v0.10.1",
-			"github.com/cccteam/ccc":             "v0.3.3",
-			"github.com/cccteam/ccc/accesstypes": "v0.6.0",
-			"github.com/cccteam/ccc/resource":    "v0.11.0",
-			"github.com/cccteam/ccc/tracer":      "v0.1.7",
-			"github.com/cccteam/db-initiator":    "v0.4.1",
-			"github.com/cccteam/httpio":          "v0.7.19",
-			"github.com/cccteam/logger":          "v0.1.27",
-			"github.com/cccteam/session":         "v0.12.0",
-		},
+		Pins: pins(`
+			access v0.10.1
+			ccc v0.3.3
+			ccc/accesstypes v0.6.0
+			ccc/resource v0.11.0
+			ccc/tracer v0.1.7
+			db-initiator v0.4.1
+			httpio v0.7.19
+			logger v0.1.27
+			session v0.12.0
+		`),
 		Note: "the first impulse release's pins; an application created by it stands here already",
 	},
 	{
-		Pins: map[string]string{
-			"github.com/cccteam/access":          "v0.10.1",
-			"github.com/cccteam/ccc":             "v0.3.3",
-			"github.com/cccteam/ccc/accesstypes": "v0.6.0",
-			"github.com/cccteam/ccc/cloud":       "v0.0.0-20261008034932-6cfd496e34b5",
-			"github.com/cccteam/ccc/resource":    "v0.11.1-0.20261008035330-fb5dde92d6da",
-			"github.com/cccteam/ccc/tracer":      "v0.1.9-0.20261008034601-9d76e3c2d0b8",
-			"github.com/cccteam/db-initiator":    "v0.4.1",
-			"github.com/cccteam/httpio":          "v0.7.19",
-			"github.com/cccteam/logger":          "v0.1.27",
-			"github.com/cccteam/session":         "v0.12.0",
-		},
+		Pins: pins(`
+			access v0.10.1
+			ccc v0.3.3
+			ccc/accesstypes v0.6.0
+			ccc/cloud v0.1.0
+			ccc/resource v0.12.0
+			ccc/tracer v0.2.0
+			db-initiator v0.4.1
+			httpio v0.7.19
+			logger v0.1.27
+			session v0.12.0
+		`),
 		Recipes: []Recipe{recipe.CloudDriver{}},
 		Note:    "the cloud driver builds the logs and traces, and the generated router installs tracing and the request logger",
 	},
+}
+
+// pins reads a step's pin set, one "ccc/resource v0.12.0" line per module, into the map
+// by module path. The ledger is a table the build checks, so a malformed line stops the
+// program at start rather than reading as a pin set with a module missing.
+func pins(lines string) map[string]string {
+	set := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(lines), "\n") {
+		name, version, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok || !semver.IsValid(version) {
+			panic(fmt.Sprintf("ledger: malformed pin %q", line))
+		}
+		set[FrameworkPrefix+name] = version
+	}
+
+	return set
 }
 
 // Short names a framework module without the prefix (ccc/resource, access).
