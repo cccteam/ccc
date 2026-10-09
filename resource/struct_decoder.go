@@ -17,7 +17,9 @@ func (n nilResource) DefaultConfig() Config {
 	return Config{}
 }
 
-// StructDecoder is a struct that can be used for decoding http requests and validating those requests
+// StructDecoder is a struct that can be used for decoding http requests and validating those requests.
+// A plain request body decodes with httpio's StructDecoder; this one serves the RPC path (RPCDecoder,
+// TargetedRPCDecoder) and the list filter body, reading the generated struct tags.
 type StructDecoder[Request any] struct {
 	validate    ValidatorFunc
 	fieldMapper *RequestFieldMapper
