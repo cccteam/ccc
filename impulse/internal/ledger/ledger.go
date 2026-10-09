@@ -24,6 +24,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/module"
 	"golang.org/x/mod/semver"
 
 	"github.com/cccteam/ccc/impulse/app"
@@ -47,6 +48,13 @@ type Step struct {
 	// Note says in one line what the step changes for an application, for the plan and
 	// the commit; "no code change is needed" when the pins are all that move.
 	Note string
+	// Pending marks a step whose pins name pushed commits (pseudo-versions) because the
+	// wave's releases do not exist yet: the skeleton needed a change of a sibling module
+	// not yet released, so it pins the commit. The release's repin moves the pins to the
+	// tags and clears the mark. impulse does not release with a pending last step: the
+	// release pins check refuses it, and this ledger's validation holds the mark to the
+	// pins both ways.
+	Pending bool
 }
 
 // Recipe is one code change a step needs: a detector that names what in the application
@@ -112,8 +120,29 @@ var Steps = []Step{
 			logger v0.1.27
 			session v0.12.0
 		`),
-		Note: "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
+		Note:    "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
+		Pending: true,
 	},
+}
+
+// validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
+// names a pushed commit, which only a pending step may carry, and a pending step carries
+// at least one, so the repin that moves the pins to the tags also clears the mark.
+func validatePending(s *Step, at string) error {
+	var pushed []string
+	for _, name := range s.PinNames() {
+		if module.IsPseudoVersion(s.Pins[name]) {
+			pushed = append(pushed, name+" at "+s.Pins[name])
+		}
+	}
+	switch {
+	case len(pushed) > 0 && !s.Pending:
+		return errors.Newf("%s pins %s, a pushed commit, and is not marked pending: a step whose pins name commits says so, and the release's repin clears it", at, pushed[0])
+	case len(pushed) == 0 && s.Pending:
+		return errors.Newf("%s is marked pending and pins no pushed commit: the repin that moved it to the tags clears the mark", at)
+	}
+
+	return nil
 }
 
 // pins reads a step's pin set, one "ccc/resource v0.12.0" line per module, into the map
@@ -250,6 +279,9 @@ func Validate(steps []Step) error {
 			case !semver.IsValid(s.Pins[name]):
 				return errors.Newf("%s pins %s at %q, which is not a semantic version", at, name, s.Pins[name])
 			}
+		}
+		if err := validatePending(s, at); err != nil {
+			return err
 		}
 		if i > 0 {
 			prev := &steps[i-1]
