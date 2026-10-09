@@ -73,8 +73,9 @@ func TestStart(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
 				gotPath, gotBody = r.Method+" "+r.URL.Path, strings.TrimSpace(string(body))
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.status)
-				_, _ = io.WriteString(w, tt.answer)
+				_ = json.NewEncoder(w).Encode(json.RawMessage(tt.answer))
 			}))
 			defer srv.Close()
 
