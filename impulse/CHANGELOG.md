@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/impulse/v0.2.1...impulse/v0.3.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* resource's StructDecoder is private; a plain request body decodes with httpio's StructDecoder ([#901](https://github.com/cccteam/ccc/issues/901))
+
+### Features
+
+* impulse owns security-scan.yml, govulncheck and Grype daily over the default branch and the latest release ([#878](https://github.com/cccteam/ccc/issues/878)) ([a9edc10](https://github.com/cccteam/ccc/commit/a9edc1039f697e878a86ed866c3c745032fb8f6c))
+* request body limits in one place: the generated router bounds every route it wraps, RPC methods declare their own ([#900](https://github.com/cccteam/ccc/issues/900)) ([53389b9](https://github.com/cccteam/ccc/commit/53389b9f192c8cd155e471d6e77a6eae62c4587e))
+* the release pins check refuses a release that pins a sibling at a pseudo-version; the ledger marks a pending step ([#902](https://github.com/cccteam/ccc/issues/902)) ([c43278d](https://github.com/cccteam/ccc/commit/c43278d0c7eb4308a76d1c9c6a3c420bba75e25d))
+
+
+### Code Refactoring
+
+* resource's StructDecoder is private; a plain request body decodes with httpio's StructDecoder ([#901](https://github.com/cccteam/ccc/issues/901)) ([166c1f6](https://github.com/cccteam/ccc/commit/166c1f66a0884a4cfba7e1d6302dad69806777a2))
+
+
+### Code Upgrade
+
+* Go 1.26.9 and x/net v0.60.0 in every module; net/http GO-2026-6612, GO-2026-6613 and GO-2026-6617 fixed ([#879](https://github.com/cccteam/ccc/issues/879)) ([4107fbb](https://github.com/cccteam/ccc/commit/4107fbb68a33305d109a6a8fec23e67986acf046))
+
 ## [0.2.1](https://github.com/cccteam/ccc/compare/impulse/v0.2.0...impulse/v0.2.1) (2026-10-08)
 
 
