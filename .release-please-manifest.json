@@ -4,7 +4,7 @@
   "accesstypes": "0.6.0",
   "pkg": "0.1.6",
   "resource": "0.13.0",
-  "cache": "0.2.1",
+  "cache": "0.2.2",
   "securehash": "0.0.15",
   "tracer": "0.2.0",
   "middleware": "0.0.11",
