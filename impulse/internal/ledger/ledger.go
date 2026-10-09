@@ -122,6 +122,22 @@ var Steps = []Step{
 		`),
 		Note: "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
 	},
+	{
+		Pins: pins(`
+			access v0.10.3
+			ccc v0.3.3
+			ccc/accesstypes v0.6.0
+			ccc/cloud v0.1.0
+			ccc/resource v0.13.1-0.20261009220343-4522c9b16707
+			ccc/tracer v0.2.2-0.20261009213417-02582e47c7cc
+			db-initiator v0.4.1
+			httpio v0.7.21
+			logger v0.1.30-0.20261009205604-278cc92c8c62
+			session v0.12.2
+		`),
+		Pending: true,
+		Note:    "request log words and trace settings are declared per surface: WithRequestLog sets the application default, OutletRequestLog and OutletTraces an outlet's, WithMountedRoutes a prefix mounted by hand, and @rpc(log:), @rpc(trace:), @file and @schedule(log:) a route's own; the generated router applies them, the tracer samples by them, and the release file lists the surfaces; an application that declares nothing keeps its behavior, and regeneration carries the generated test",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
