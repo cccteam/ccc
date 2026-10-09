@@ -23,8 +23,11 @@ jobs:
   changes:
     # Which parts of the tree the pull request touches, for the two jobs below: the diff
     # against the merge base with the base branch, as golang-ci's detect-modules does for
-    # the Go modules. A job whose inputs did not change is skipped and reports success to
-    # the required checks, so an unrelated pull request takes no runner for it.
+    # the Go modules. The Lodestar job is skipped whole when its inputs did not change, and
+    # reports success under its name to the required checks. The skeleton legs are a
+    # matrix, and a matrix job skipped whole reports one check under its unexpanded name
+    # and none of the eight names the rule requires, so the legs always start and skip
+    # every step instead; an unrelated pull request pays eight runner starts for them.
     name: changes
     runs-on: ubuntu-latest
     outputs:
@@ -122,9 +125,10 @@ jobs:
     # rendered application's go.work points at this checkout's ccc modules; libraries
     # outside this repository stay pinned). A generator change that breaks a template, or
     # a template that lags the generator, fails here and not in a downstream application.
+    # The legs start on every pull request (see the changes job): on one that touches
+    # nothing of theirs every step is skipped.
     name: impulse ${{ matrix.candidate }} (${{ matrix.framework }})
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.impulse == 'true') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -134,15 +138,22 @@ jobs:
     env:
       # testcontainers' reaper (Ryuk) is not needed on a runner discarded after the job, and its start has timed out here.
       TESTCONTAINERS_RYUK_DISABLED: "true"
+      # The leg does its work when impulse or a module the skeletons build against changed,
+      # or when the changes job could not say; otherwise every step is skipped and the leg
+      # still reports its name.
+      RUN: ${{ needs.changes.result != 'success' || needs.changes.outputs.impulse == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.RUN == 'true' }}
         with:
           path: ccc
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: ${{ env.RUN == 'true' }}
         with:
           go-version-file: ccc/impulse/go.mod
           cache: false
       - name: Restore the Go caches
+        if: ${{ env.RUN == 'true' }}
         # The module cache and the build cache from the nearest saved entry of the framework
         # leg's lineage (impulse's go.sum first, then any), as golang-ci's jobs do: a module
         # is verified against go.sum when read and a build output is addressed by the hash
@@ -161,9 +172,11 @@ jobs:
             impulse-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-
             impulse-${{ matrix.framework }}-${{ runner.os }}-
       - name: Build impulse
+        if: ${{ env.RUN == 'true' }}
         working-directory: ccc/impulse
         run: go build -o "$RUNNER_TEMP/impulse" .
       - name: Render the skeleton
+        if: ${{ env.RUN == 'true' }}
         run: |
           if [ "${{ matrix.framework }}" = head ]; then
             "$RUNNER_TEMP/impulse" render ${{ matrix.candidate }} app --module example.com/ci/${{ matrix.candidate }} --dev-root "$GITHUB_WORKSPACE"
@@ -172,12 +185,15 @@ jobs:
           fi
           cd app && git init -q && git add -A && git -c user.name=ci -c user.email=ci@example.com commit -qm "rendered by impulse"
       - name: Build and vet
+        if: ${{ env.RUN == 'true' }}
         working-directory: app
         run: go build ./... && go vet ./...
       - name: Test (the harnesses start the Spanner emulator in a container; skipAuth simulates the directory an OIDC auth signs in through)
+        if: ${{ env.RUN == 'true' }}
         working-directory: app
         run: go test -tags skipAuth ./... -timeout 20m
       - name: impulse check
+        if: ${{ env.RUN == 'true' }}
         working-directory: app
         run: |
           "$RUNNER_TEMP/impulse" check
@@ -186,7 +202,7 @@ jobs:
         # The four candidates of a framework leg share the key, so the first to finish saves
         # and the others find the entry taken, which the action reports and moves past. A
         # failed test still saves what compiled; a cancelled run saves nothing.
-        if: ${{ !cancelled() && (github.event_name != 'pull_request' || !startsWith(steps.go-cache.outputs.cache-matched-key, format('impulse-{0}-{1}-{2}-', matrix.framework, runner.os, hashFiles('ccc/impulse/go.sum')))) }}
+        if: ${{ env.RUN == 'true' && !cancelled() && (github.event_name != 'pull_request' || !startsWith(steps.go-cache.outputs.cache-matched-key, format('impulse-{0}-{1}-{2}-', matrix.framework, runner.os, hashFiles('ccc/impulse/go.sum')))) }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
