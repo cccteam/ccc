@@ -14,11 +14,11 @@ require (
 	github.com/cccteam/ccc/cache v0.2.0
 	github.com/cccteam/ccc/pkg v0.1.5
 	github.com/cccteam/ccc/securehash v0.0.14
-	github.com/cccteam/ccc/tracer v0.1.9-0.20261008034601-9d76e3c2d0b8
+	github.com/cccteam/ccc/tracer v0.2.0
 	github.com/cccteam/db-initiator v0.4.1
 	github.com/cccteam/httpio v0.7.21
 	github.com/cccteam/logger v0.1.27
-	github.com/cccteam/session v0.12.2-0.20261009033219-23c04fd6a129
+	github.com/cccteam/session v0.12.2
 	github.com/cccteam/spxscan v0.0.16
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0
