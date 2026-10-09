@@ -32,7 +32,7 @@ import (
 // invariant breach: the generated handler has a located row to evaluate it
 // against, so Decode carries the condition forward as an ExecuteGate.
 type TargetedRPCDecoder[Request any] struct {
-	d               *StructDecoder[Request]
+	d               *structDecoder[Request]
 	res             accesstypes.Resource
 	perm            accesstypes.Permission
 	userPermissions func(*http.Request) UserPermissions
@@ -45,9 +45,9 @@ type TargetedRPCDecoder[Request any] struct {
 // they are programming errors (a malformed request struct), surfaced at
 // application startup where generated handlers construct their decoders.
 func MustNewTargetedRPCDecoder[Request any](a DecoderAccessor, collection *GeneratedCollection, methodName accesstypes.Resource, perm accesstypes.Permission) *TargetedRPCDecoder[Request] {
-	decoder, err := NewStructDecoder[Request]()
+	decoder, err := newStructDecoder[Request]()
 	if err != nil {
-		panic(errors.Wrap(err, "NewStructDecoder()"))
+		panic(errors.Wrap(err, "newStructDecoder()"))
 	}
 
 	return &TargetedRPCDecoder[Request]{
@@ -75,7 +75,7 @@ func (s *TargetedRPCDecoder[Request]) WithValidator(v ValidatorFunc) *TargetedRP
 func (s *TargetedRPCDecoder[Request]) Decode(request *http.Request, scope accesstypes.Scope) (*Request, *ExecuteGate, error) {
 	req, err := s.d.Decode(request)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "resource.StructDecoder.Decode()")
+		return nil, nil, errors.Wrap(err, "structDecoder.Decode()")
 	}
 
 	userPermissions := s.userPermissions(request)

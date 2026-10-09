@@ -29,9 +29,9 @@ func BenchmarkStructDecoder_Decode(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			decoder, err := NewStructDecoder[request]()
+			decoder, err := newStructDecoder[request]()
 			if err != nil {
-				b.Fatalf("NewStructDecoder() error = %v", err)
+				b.Fatalf("newStructDecoder() error = %v", err)
 			}
 			ctx := context.Background()
 
@@ -39,7 +39,7 @@ func BenchmarkStructDecoder_Decode(b *testing.B) {
 			for b.Loop() {
 				r := httptest.NewRequestWithContext(ctx, http.MethodPost, "/test", strings.NewReader(bm.body))
 				if _, err := decoder.Decode(r); err != nil {
-					b.Fatalf("StructDecoder.Decode() error = %v", err)
+					b.Fatalf("structDecoder.Decode() error = %v", err)
 				}
 			}
 		})

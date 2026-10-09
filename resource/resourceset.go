@@ -128,7 +128,7 @@ func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permissi
 }
 
 // newUnenforcedSet builds a Set carrying only decoding metadata (resource metadata and
-// immutable tags) with no permission registrations. It backs StructDecoder, which never
+// immutable tags) with no permission registrations. It backs structDecoder, which never
 // enforces field permissions; every enforced path constructs its Set through NewSet.
 func newUnenforcedSet[Resource Resourcer, Request any]() (*Set[Resource], error) {
 	t := reflect.TypeFor[Request]()

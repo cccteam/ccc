@@ -424,7 +424,7 @@ func TestNewSet_valueLimitGuard(t *testing.T) {
 		{
 			name: "the unenforced set guards the same way",
 			construct: func() error {
-				_, err := NewStructDecoder[taggedInteger]()
+				_, err := newStructDecoder[taggedInteger]()
 
 				return err
 			},

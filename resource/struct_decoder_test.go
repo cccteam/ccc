@@ -106,7 +106,7 @@ func TestDecoder_Decode(t *testing.T) {
 				Name string
 			}
 
-			decoder, err := NewStructDecoder[request]()
+			decoder, err := newStructDecoder[request]()
 			if err != nil {
 				t.Fatalf("NewDecoder() error = %v", err)
 			}
@@ -131,7 +131,7 @@ func TestDecoder_Decode(t *testing.T) {
 	}
 }
 
-func TestNewStructDecoder_Error(t *testing.T) {
+func Test_newStructDecoder_Error(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
@@ -159,7 +159,7 @@ func TestNewStructDecoder_Error(t *testing.T) {
 				NAME string
 			}
 
-			_, err := NewStructDecoder[request]()
+			_, err := newStructDecoder[request]()
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("NewDecoder() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -191,9 +191,9 @@ func TestStructDecoder_Decode_bodyLimit(t *testing.T) {
 			type request struct {
 				Name string
 			}
-			decoder, err := NewStructDecoder[request]()
+			decoder, err := newStructDecoder[request]()
 			if err != nil {
-				t.Fatalf("NewStructDecoder() error = %v", err)
+				t.Fatalf("newStructDecoder() error = %v", err)
 			}
 
 			ctx := context.Background()
@@ -203,7 +203,7 @@ func TestStructDecoder_Decode_bodyLimit(t *testing.T) {
 
 			_, err = decoder.Decode(r)
 			if (err != nil) != (tt.wantCode != 0) {
-				t.Fatalf("StructDecoder.Decode() error = %v, wantCode %d", err, tt.wantCode)
+				t.Fatalf("structDecoder.Decode() error = %v, wantCode %d", err, tt.wantCode)
 			}
 			if err == nil {
 				return

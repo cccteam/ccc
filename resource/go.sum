@@ -66,12 +66,12 @@ github.com/cccteam/ccc/tracer v0.1.9-0.20261008034601-9d76e3c2d0b8 h1:sKZ5FBY+5O
 github.com/cccteam/ccc/tracer v0.1.9-0.20261008034601-9d76e3c2d0b8/go.mod h1:eV5MQmuT0RplPH9DtZMXmrKXBhuVA6bFep7HMwN+0kM=
 github.com/cccteam/db-initiator v0.4.1 h1:fQctANANTaqirVpoi95OVtKfcIGZvdn8fW1g6k9OL08=
 github.com/cccteam/db-initiator v0.4.1/go.mod h1:fEy3MCL4O+YE4p3V6p6oN49pJz+vRvoi7LBtwooIZ5Q=
-github.com/cccteam/httpio v0.7.19 h1:Rh9wrZKpcnANTHvKCz+NWMdjGVBcJmihR5D2EJ6p5c8=
-github.com/cccteam/httpio v0.7.19/go.mod h1:DGGooawZ3Swvqqik5ehSlRSK7YaJc/QsNRnydh70T68=
+github.com/cccteam/httpio v0.7.21 h1:3nIVTKhXQA9aDxgr1z3POGTggSkUBKbRYZW0rFcY8HA=
+github.com/cccteam/httpio v0.7.21/go.mod h1:8YRWx9PKjuPo3umkEXH/lPg75WuWye89T+XwDoonOts=
 github.com/cccteam/logger v0.1.27 h1:SNYK8jfMLMFOtZ0aoPNBeHrnwZWZ4zWWhEv3cwgDEsc=
 github.com/cccteam/logger v0.1.27/go.mod h1:vOWu/tvXPBzFjIRZr9H1gXXdTYeU/aX2wAsX68rqSic=
-github.com/cccteam/session v0.12.0 h1:4a4VP4EEixUPzxD8aAgpKDfchO4PpoNV+6NzyWkgdiI=
-github.com/cccteam/session v0.12.0/go.mod h1:78nadVZjVDjW7K6QDOvyKjsv7ccqg568otnawaCC4WA=
+github.com/cccteam/session v0.12.2-0.20261009033219-23c04fd6a129 h1:TDweaHajPFuQKbEEhDIIkAMhGS6ZAi2ghhJ9I3P7gkI=
+github.com/cccteam/session v0.12.2-0.20261009033219-23c04fd6a129/go.mod h1:xL2HNSzntmp0ESkbgdpTakZkGHDu+035RN10cA+mDtI=
 github.com/cccteam/spxscan v0.0.16 h1:uxiygpeXkHa26Tw67GIxsxtsLSdDB5GyIjcp75HzPcg=
 github.com/cccteam/spxscan v0.0.16/go.mod h1:LeR7y3/cHEqM5hlLWgy1k357acegyTRa1/dnfFDcSas=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
