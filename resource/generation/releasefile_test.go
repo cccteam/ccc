@@ -23,9 +23,59 @@ func Test_renderReleaseFile(t *testing.T) {
 		outlets    []routerOutlet
 		scheduled  []*scheduledRoute
 		fileRoutes []resource.FileRoute
+		surfaces   []resource.Surface
 		want       string
 		wantRead   resource.ReleaseFile
 	}{
+		{
+			name:    "the surfaces: the default, an outlet, a hand-mounted prefix and a route",
+			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
+			surfaces: []resource.Surface{
+				{Prefix: "/", Log: resource.RequestLogOnEvent},
+				{Prefix: "/api/widgets/{widgetID}/content", Log: resource.RequestLogNever, Traces: resource.TracesOff},
+				{Prefix: "/beacons/", Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
+				{Prefix: "/droids/", Traces: resource.TracesFollowFrontEnd},
+			},
+			want: `{
+  "outlets": {
+    "default": {
+      "oldestAnswered": ""
+    }
+  },
+  "surfaces": [
+    {
+      "prefix": "/",
+      "log": "onEvent"
+    },
+    {
+      "prefix": "/api/widgets/{widgetID}/content",
+      "log": "never",
+      "traces": "off"
+    },
+    {
+      "prefix": "/beacons/",
+      "log": "sampled",
+      "fraction": 0.01,
+      "traces": "capped",
+      "rate": 0.1
+    },
+    {
+      "prefix": "/droids/",
+      "traces": "followFrontEnd"
+    }
+  ]
+}
+`,
+			wantRead: resource.ReleaseFile{
+				Outlets: map[string]resource.ReleaseOutlet{"default": {}},
+				Surfaces: []resource.Surface{
+					{Prefix: "/", Log: resource.RequestLogOnEvent},
+					{Prefix: "/api/widgets/{widgetID}/content", Log: resource.RequestLogNever, Traces: resource.TracesOff},
+					{Prefix: "/beacons/", Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
+					{Prefix: "/droids/", Traces: resource.TracesFollowFrontEnd},
+				},
+			},
+		},
 		{
 			name: "a release, a machine outlet, no declaration and this release",
 			outlets: []routerOutlet{
@@ -167,7 +217,8 @@ func Test_renderReleaseFile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := renderReleaseFile(releaseFileOf(tt.outlets, tt.scheduled, tt.fileRoutes))
+			file := releaseFileOf(tt.outlets, tt.scheduled, tt.fileRoutes, tt.surfaces)
+			got, err := renderReleaseFile(&file)
 			if err != nil {
 				t.Fatalf("renderReleaseFile() error = %v", err)
 			}
@@ -277,8 +328,29 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 	tests := []struct {
 		name    string
 		outlets []routerOutlet
+		// declare sets what the generator options declare beyond the outlets.
+		declare func(r *resourceGenerator)
 		want    resource.ReleaseFile
 	}{
+		{
+			name: "words at the root, on an outlet and on a hand-mounted prefix",
+			outlets: []routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew, requestLog: LogNever(), traces: TracesOff()},
+				{name: "droids", prefix: "droids", apiKey: true},
+			},
+			declare: func(r *resourceGenerator) {
+				r.requestLog = LogOnEvent()
+				r.mountedRoutes = []mountedRoutes{{prefix: "/beacons/", requestLog: LogSampled(0.5), traces: TracesCapped(0.25)}}
+			},
+			want: resource.ReleaseFile{
+				Outlets: map[string]resource.ReleaseOutlet{"default": {}, "droids": {APIKey: true}},
+				Surfaces: []resource.Surface{
+					{Prefix: "/", Log: resource.RequestLogOnEvent},
+					{Prefix: "/api/", Log: resource.RequestLogNever, Traces: resource.TracesOff},
+					{Prefix: "/beacons/", Log: resource.RequestLogSampled, Fraction: 0.5, Traces: resource.TracesCapped, Rate: 0.25},
+				},
+			},
+		},
 		{
 			name: "a release, a machine outlet, no declaration and this release",
 			outlets: []routerOutlet{
@@ -309,7 +381,10 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 			r := &resourceGenerator{client: &client{}}
 			r.router = packageDir(dir)
 			r.resource = packageDir("pkg/resources")
-			if err := r.runServedRouterGeneration(tt.outlets, nil, nil); err != nil {
+			if tt.declare != nil {
+				tt.declare(r)
+			}
+			if err := r.runServedRouterGeneration(tt.outlets, nil, nil, nil); err != nil {
 				t.Fatalf("runServedRouterGeneration() error = %v", err)
 			}
 

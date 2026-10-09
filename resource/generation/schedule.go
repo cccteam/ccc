@@ -21,8 +21,9 @@ import (
 // browser client calls it. The release file lists every scheduled route with its
 // schedule, which the application's stack reads to create one Cloud Scheduler job each.
 
-// scheduleZoneArgKey is @schedule's one named argument, the time zone the schedule is
-// read in; defaultScheduleZone is the zone a schedule without one is read in.
+// scheduleZoneArgKey is @schedule's zone argument, the time zone the schedule is read
+// in; defaultScheduleZone is the zone a schedule without one is read in. The request log
+// word's arguments (log:, fraction:) are the route annotations' (requestlog.go).
 const (
 	scheduleZoneArgKey  = "zone"
 	defaultScheduleZone = "UTC"
@@ -39,6 +40,9 @@ type rpcSchedule struct {
 	// Zone is the time zone the expression is read in, an IANA zone name as declared,
 	// or UTC when the declaration names none.
 	Zone string
+	// RequestLog is the method's request log word (@schedule(log:)), which its route
+	// registers with; undeclared when the scheduled call takes the application default.
+	RequestLog RequestLog
 }
 
 // scheduledRoute is one scheduled method as the router mounts it and the release file
@@ -48,6 +52,10 @@ type scheduledRoute struct {
 	HandlerFunc string
 	Cron        string
 	Zone        string
+	// RequestLog is the method's request log word, which the registration sets with
+	// logger.WithPolicy ahead of the handler; undeclared for a method that takes the
+	// application default.
+	RequestLog RequestLog
 }
 
 // scheduledPath is the path a scheduled method is mounted at: the scheduled prefix and
@@ -65,6 +73,7 @@ func scheduledRoutesOf(methods []*rpcMethodInfo) []*scheduledRoute {
 			HandlerFunc: method.Name(),
 			Cron:        method.Schedule.Cron,
 			Zone:        method.Schedule.Zone,
+			RequestLog:  method.Schedule.RequestLog,
 		})
 	}
 
@@ -86,17 +95,17 @@ func splitScheduled(methods []*rpcMethodInfo) (served, scheduledMethods []*rpcMe
 	return served, scheduledMethods
 }
 
-// resolveSchedule reads and validates the struct's @schedule: the cron expression and
-// the zone, and that the method takes no input and declares nothing an outlet, a
-// permission or a browser reads. It runs after the method's other declarations are
-// resolved, so it reads them off the method.
+// resolveSchedule reads and validates the struct's @schedule: the cron expression, the
+// zone and the request log word, and that the method takes no input and declares nothing
+// an outlet, a permission or a browser reads. It runs after the method's other
+// declarations are resolved, so it reads them off the method.
 func resolveSchedule(rpcMethod *rpcMethodInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
 	if !annotations.Struct.Has(scheduleKeyword) {
 		return nil
 	}
 	invocations, err := annotations.Struct.Get(scheduleKeyword).ParseInvocations(&genlang.ArgSpec{
 		Positional: 1,
-		Keys:       []string{scheduleZoneArgKey},
+		Keys:       append([]string{scheduleZoneArgKey}, requestLogArgKeys...),
 	})
 	if err != nil {
 		return errors.Wrapf(err, "@%s on %s", scheduleKeyword, pStruct.Name())
@@ -104,6 +113,9 @@ func resolveSchedule(rpcMethod *rpcMethodInfo, pStruct *parser.Struct, annotatio
 	schedule := &rpcSchedule{Cron: invocations[0].Positional[0], Zone: defaultScheduleZone}
 	if zone, ok := invocations[0].Named(scheduleZoneArgKey); ok {
 		schedule.Zone = zone
+	}
+	if schedule.RequestLog, err = parseRequestLogArgs(invocations[0], scheduleKeyword); err != nil {
+		return errors.Wrapf(err, "struct %s", pStruct.Name())
 	}
 
 	var errs []error
@@ -298,6 +310,40 @@ func (r *resourceGenerator) requireRouterForSchedules() error {
 	}
 
 	return errors.Newf("%s declare @%s without GenerateRouter: the generated router mounts a scheduled method behind the scheduler's token check, and its release file is where the stack reads the schedule; declare GenerateRouter", strings.Join(names, ", "), scheduleKeyword)
+}
+
+// requireRouterForTraces refuses a route's trace setting (@rpc(trace:), @file(trace:))
+// where no router is generated: the generated router hands the tracer its surface table,
+// and a hand-written router would not, so the setting would apply to nothing.
+func (r *resourceGenerator) requireRouterForTraces() error {
+	if r.genRouter {
+		return nil
+	}
+	var declared []string
+	for _, method := range r.rpcMethods {
+		if method.Traces.Declared() {
+			declared = append(declared, method.Name())
+		}
+	}
+	for _, res := range r.resources {
+		for _, file := range res.Files {
+			if file.Traces.Declared() {
+				declared = append(declared, res.Name())
+			}
+		}
+	}
+	for _, res := range r.computedResources {
+		for _, file := range res.Files {
+			if file.Traces.Declared() {
+				declared = append(declared, res.Name())
+			}
+		}
+	}
+	if len(declared) == 0 {
+		return nil
+	}
+
+	return errors.Newf("%s declare a trace setting (%s:) without GenerateRouter: the generated router hands the tracer the surfaces, and nothing else would apply the setting; declare GenerateRouter, or drop it", strings.Join(declared, ", "), traceArgKey)
 }
 
 // scheduledRoutes are the scheduled methods' routes as the router mounts them; none when

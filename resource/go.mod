@@ -14,10 +14,10 @@ require (
 	github.com/cccteam/ccc/cache v0.2.0
 	github.com/cccteam/ccc/pkg v0.1.5
 	github.com/cccteam/ccc/securehash v0.0.14
-	github.com/cccteam/ccc/tracer v0.2.0
+	github.com/cccteam/ccc/tracer v0.2.2-0.20261009213417-02582e47c7cc
 	github.com/cccteam/db-initiator v0.4.1
 	github.com/cccteam/httpio v0.7.21
-	github.com/cccteam/logger v0.1.27
+	github.com/cccteam/logger v0.1.30-0.20261009205604-278cc92c8c62
 	github.com/cccteam/session v0.12.2
 	github.com/cccteam/spxscan v0.0.16
 	github.com/cloudspannerecosystem/memefish v0.8.1
@@ -58,7 +58,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.3.0 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/iam v1.14.0 // indirect
-	cloud.google.com/go/logging v1.20.0 // indirect
+	cloud.google.com/go/logging v1.20.0
 	cloud.google.com/go/longrunning v1.3.0 // indirect
 	cloud.google.com/go/monitoring v1.31.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect

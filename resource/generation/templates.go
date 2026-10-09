@@ -2846,12 +2846,18 @@ import (
 	"net/http"
 
 	{{ .LocalPackageImports }}
+{{- if .RouteMinSeverities }}
+	"cloud.google.com/go/logging"
+{{- end }}
 {{- range .AuthImports }}
 	"{{ . }}"
 {{- end }}
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
+{{- if .RouteRequestLogs }}
+	"github.com/cccteam/logger"
+{{- end }}
 	"github.com/go-chi/chi/v5"
 )
 
@@ -2956,6 +2962,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers{{ if .AuthParam }}, auth 
 {{- range $Struct, $Routes := .RoutesMap }}
 	{{- range $route := $Routes }}
 	{{- $reg := "bounded" }}{{ if $route.SelfBounded }}{{ $reg = "r" }}{{ end }}
+	{{- if $route.RequestLog.Declared }}
+	// {{ $route.HandlerFunc }} writes its request log {{ $route.RequestLog }}: the route's own word, set ahead of the handler.
+	{{- $reg = printf "%s.With(logger.WithPolicy(%s))" $reg $route.RequestLog.Expr }}
+	{{- end }}
 	{{- if $route.SharedHandler }}
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
 	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
@@ -2991,7 +3001,12 @@ type GeneratedScheduledHandlers interface {
 func generatedScheduledRoutes(r chi.Router, h GeneratedScheduledHandlers) {
 	r = r.With(live.Refusing(), resource.BodyLimit(BodyLimit))
 	{{- range .ScheduledRoutes }}
+	{{- if .RequestLog.Declared }}
+	// {{ .HandlerFunc }} writes its request log {{ .RequestLog }}: the method's own word (@schedule), set ahead of the handler.
+	r.With(logger.WithPolicy({{ .RequestLog.Expr }})).Post("{{ .Path }}", h.{{ .HandlerFunc }}())
+	{{- else }}
 	r.Post("{{ .Path }}", h.{{ .HandlerFunc }}())
+	{{- end }}
 	{{- end }}
 }
 {{ end }}
@@ -3066,6 +3081,10 @@ func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suf
 {{- range $Struct, $Routes := $outlet.RoutesMap }}
 	{{- range $route := $Routes }}
 	{{- $reg := "bounded" }}{{ if $route.SelfBounded }}{{ $reg = "r" }}{{ end }}
+	{{- if $route.RequestLog.Declared }}
+	// {{ $route.HandlerFunc }} writes its request log {{ $route.RequestLog }}: the route's own word, set ahead of the handler.
+	{{- $reg = printf "%s.With(logger.WithPolicy(%s))" $reg $route.RequestLog.Expr }}
+	{{- end }}
 	{{- if $route.SharedHandler }}
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
 	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)

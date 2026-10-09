@@ -76,6 +76,12 @@ type fileRoute struct {
 	Key     *fileField
 	Name    *fileField
 	Type    *fileField
+	// RequestLog is the route's own request log word (@file(log:)), which its
+	// registration sets ahead of the handler, and Traces its own trace setting
+	// (@file(trace:)), which the served router's surface table carries; either is
+	// undeclared when the route takes its outlet's.
+	RequestLog RequestLog
+	Traces     Traces
 }
 
 // fileField is a column the file route's frame reads for itself: the Go field, its
@@ -156,33 +162,51 @@ func (f *fileRoute) FrameFields() []*fileField {
 	return fields
 }
 
-// fileArgSpec is @file's argument shape: an optional segment, then name: and type:.
+// fileArgSpec is @file's argument shape: an optional segment, then name: and type:, and
+// the route's words, log: with fraction: and trace: with rate: (requestlog.go).
 func fileArgSpec() *genlang.ArgSpec {
-	return &genlang.ArgSpec{Positional: 1, OptionalPositional: true, Keys: []string{fileNameArgKey, fileTypeArgKey}}
+	return &genlang.ArgSpec{Positional: 1, OptionalPositional: true, Keys: append(append([]string{fileNameArgKey, fileTypeArgKey}, requestLogArgKeys...), tracesArgKeys...)}
 }
 
-// parseFile reads one @file's arguments: the segment, defaulted, and the named siblings.
-func parseFile(arg genlang.Arg) (segment, nameField, typeField string, err error) {
+// fileArguments is one @file's arguments as written: the segment, defaulted, the named
+// siblings, and the route's own words.
+type fileArguments struct {
+	segment    string
+	nameField  string
+	typeField  string
+	requestLog RequestLog
+	traces     Traces
+}
+
+// parseFile reads one @file's arguments.
+func parseFile(arg genlang.Arg) (fileArguments, error) {
 	if strings.TrimSpace(string(arg)) == "" {
 		// The bare form: the default segment, the file's name and type from the store.
-		return defaultFileSegment, "", "", nil
+		return fileArguments{segment: defaultFileSegment}, nil
 	}
 	invocations, err := arg.ParseInvocations(fileArgSpec())
 	if err != nil {
-		return "", "", "", errors.Wrap(err, "genlang.Arg.ParseInvocations()")
+		return fileArguments{}, errors.Wrap(err, "genlang.Arg.ParseInvocations()")
 	}
 	invocation := invocations[0]
-	segment = defaultFileSegment
+	args := fileArguments{segment: defaultFileSegment}
 	if len(invocation.Positional) == 1 {
-		segment = strings.TrimSpace(invocation.Positional[0])
+		args.segment = strings.TrimSpace(invocation.Positional[0])
 	}
-	if !fileSegmentPattern.MatchString(segment) {
-		return "", "", "", errors.Newf("segment %q is not a route segment; write it lowercase and kebab-cased, like %s", segment, defaultFileSegment)
+	if !fileSegmentPattern.MatchString(args.segment) {
+		return fileArguments{}, errors.Newf("segment %q is not a route segment; write it lowercase and kebab-cased, like %s", args.segment, defaultFileSegment)
 	}
-	nameField, _ = invocation.Named(fileNameArgKey)
-	typeField, _ = invocation.Named(fileTypeArgKey)
+	nameField, _ := invocation.Named(fileNameArgKey)
+	typeField, _ := invocation.Named(fileTypeArgKey)
+	args.nameField, args.typeField = strings.TrimSpace(nameField), strings.TrimSpace(typeField)
+	if args.requestLog, err = parseRequestLogArgs(invocation, fileKeyword); err != nil {
+		return fileArguments{}, err
+	}
+	if args.traces, err = parseTracesArgs(invocation, fileKeyword); err != nil {
+		return fileArguments{}, err
+	}
 
-	return segment, strings.TrimSpace(nameField), strings.TrimSpace(typeField), nil
+	return args, nil
 }
 
 // fileFieldLookup resolves a sibling field a declaration names to the frame's view of
@@ -273,21 +297,21 @@ func isTypedKey(goType types.Type) bool {
 
 // fileRouteOf builds the stored-file route a field-scope @file declares.
 func fileRouteOf(structName, keyField string, arg genlang.Arg, lookup fileFieldLookup, pkg *types.Package) (*fileRoute, error) {
-	segment, nameField, typeField, err := parseFile(arg)
+	args, err := parseFile(arg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "struct %s field %s: @%s", structName, keyField, fileKeyword)
 	}
-	route := &fileRoute{Segment: segment}
+	route := &fileRoute{Segment: args.segment, RequestLog: args.requestLog, Traces: args.traces}
 	if route.Key, err = fileKeyOf(structName, keyField, lookup, pkg); err != nil {
 		return nil, err
 	}
-	if nameField != "" {
-		if route.Name, err = fileFieldOf(structName, keyField, "name field", nameField, lookup); err != nil {
+	if args.nameField != "" {
+		if route.Name, err = fileFieldOf(structName, keyField, "name field", args.nameField, lookup); err != nil {
 			return nil, err
 		}
 	}
-	if typeField != "" {
-		if route.Type, err = fileFieldOf(structName, keyField, "type field", typeField, lookup); err != nil {
+	if args.typeField != "" {
+		if route.Type, err = fileFieldOf(structName, keyField, "type field", args.typeField, lookup); err != nil {
 			return nil, err
 		}
 	}
@@ -298,7 +322,8 @@ func fileRouteOf(structName, keyField string, arg genlang.Arg, lookup fileFieldL
 // checkFileRoutes enforces what every kind shares: a keyed struct, one declaration per
 // segment, and a read route under a rendered file. A stored file under a suppressed
 // read route is a declaration that serves nothing, and is accepted: the key column
-// still gives the release and the orphaned-file cleanup the keys the table holds.
+// still gives the release and the orphaned-file cleanup the keys the table holds; a word
+// on it is refused, since no route would carry it.
 func checkFileRoutes(structName string, files []*fileRoute, keyed, readDisabled bool) error {
 	if len(files) == 0 {
 		return nil
@@ -314,6 +339,9 @@ func checkFileRoutes(structName string, files []*fileRoute, keyed, readDisabled 
 		}
 		if readDisabled && file.Rendered() {
 			return errors.Newf("struct %s: the struct-scope @%s renders its file under the read route, which %s suppresses; remove @%s(%s), or drop @%s", structName, fileKeyword, structName, suppressKeyword, ReadHandler, fileKeyword)
+		}
+		if readDisabled && (file.RequestLog.Declared() || file.Traces.Declared()) {
+			return errors.Newf("struct %s: @%s on %s declares a word, and the read route it would serve under is suppressed (@%s(%s)), so no route carries it; drop the word", structName, fileKeyword, declaring, suppressKeyword, ReadHandler)
 		}
 		if prior, dup := seen[file.Segment]; dup {
 			return errors.Newf("struct %s: @%s declares segment %q twice, on %s and on %s; give one another segment, @%s(%s)", structName, fileKeyword, file.Segment, prior, declaring, fileKeyword, "thumbnail")
@@ -385,14 +413,14 @@ func resolveResourceFiles(res *resourceInfo, pStruct *parser.Struct, annotations
 // struct-scope rendered file, and the field-scope stored files.
 func resolveComputedFiles(res *computedResource, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
 	if annotations.Struct.Has(fileKeyword) {
-		segment, nameField, typeField, err := parseFile(annotations.Struct.Get(fileKeyword))
+		args, err := parseFile(annotations.Struct.Get(fileKeyword))
 		if err != nil {
 			return errors.Wrapf(err, "struct %s: @%s", pStruct.Name(), fileKeyword)
 		}
-		if nameField != "" || typeField != "" {
+		if args.nameField != "" || args.typeField != "" {
 			return errors.Newf("struct %s: a struct-scope @%s renders its file, whose name and type come from the resource.Content the content function returns; %s: and %s: name columns of a stored file", pStruct.Name(), fileKeyword, fileNameArgKey, fileTypeArgKey)
 		}
-		res.Files = append(res.Files, &fileRoute{Segment: segment})
+		res.Files = append(res.Files, &fileRoute{Segment: args.segment, RequestLog: args.requestLog, Traces: args.traces})
 	}
 
 	byName := make(map[string]*computedField, len(res.Fields))
@@ -744,6 +772,8 @@ func fileRouteFrom(read *generatedRoute, resourceName string, file *fileRoute) *
 		TestParams:   slices.Clone(read.TestParams),
 		Feature:      read.Feature,
 		Source:       source,
+		RequestLog:   file.RequestLog,
+		Traces:       file.Traces,
 	}
 }
 

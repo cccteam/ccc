@@ -17,11 +17,14 @@ type (
 	// resolves through the ship's hangar, so the payload never asserts its own sector. It
 	// has no target, so its Execute grant stays row-free. Frame is the reading's raw
 	// frame, a telemetry.Frame the request carries as the JSON the firmware wrote and
-	// the row stores as it came.
+	// the row stores as it came. A droid calls it once per reading, all day, so the
+	// method writes its request log on event (@rpc(log: onEvent)): a reading that lands
+	// writes no entry, and a reading the method refuses, or a line a handler logs on the
+	// way, is an event and writes the request's entry with every line attached.
 	//
-	// Demonstrates: outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package.
+	// Demonstrates: outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package, @rpc.log.
 	//
-	// @rpc
+	// @rpc(log: onEvent)
 	// @permissionScope(domain)
 	// @outlet(droids)
 	IngestDroidReports struct {

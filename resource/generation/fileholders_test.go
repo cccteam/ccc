@@ -319,7 +319,7 @@ func Test_servedRouter_fileStores(t *testing.T) {
 
 			r := fileHoldersGenerator(t, structs, tt.tables, nil)
 			r.router = packageDir("pkg/router")
-			data := r.servedRouterData(outlets, nil, nil)
+			data := r.servedRouterData(outlets, nil, nil, nil)
 			router := render(t, r, "servedRouterTemplate", servedRouterTemplate, data)
 			routerTest := render(t, r, "servedRouterTestTemplate", servedRouterTestTemplate, data)
 			for _, want := range tt.wantRouter {

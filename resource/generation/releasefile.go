@@ -17,13 +17,18 @@ import (
 // by its oldest answered release as the generator program declared it, so a deploy reads
 // from the checkout whether the release needs a maintenance window; the scheduled
 // routes with their schedules, which the application's stack creates a Cloud Scheduler
-// job for each of; and the file routes, each @upload method's and each stored file's
+// job for each of; the file routes, each @upload method's and each stored file's
 // (fileRoutes, by outlet name), which the stack puts ahead of its web application
-// firewall's rules. It is written only with the router, and the stale sweep removes it
-// when the router goes.
-func (r *resourceGenerator) runReleaseFileGeneration(outlets []routerOutlet, fileRoutes map[string][]*generatedRoute) error {
+// firewall's rules; and the surfaces that declare a request log word or a trace setting
+// (the default, the outlets, the hand-mounted prefixes, and the routes in wordedRoutes,
+// by outlet name), from which the stack renders the cloud's own request-log exclusion.
+// It is written only with the router, and the stale sweep removes it when the router
+// goes.
+func (r *resourceGenerator) runReleaseFileGeneration(outlets []routerOutlet, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
 	begin := time.Now()
-	data, err := renderReleaseFile(releaseFileOf(outlets, scheduledRoutesOf(r.scheduledMethods), r.fileRoutesOf(outlets, fileRoutes)))
+	scheduledRoutes := scheduledRoutesOf(r.scheduledMethods)
+	file := releaseFileOf(outlets, scheduledRoutes, r.fileRoutesOf(outlets, fileRoutes), r.surfacesOf(outlets, wordedRoutes, scheduledRoutes))
+	data, err := renderReleaseFile(&file)
 	if err != nil {
 		return err
 	}
@@ -65,10 +70,46 @@ func (r *resourceGenerator) fileRoutesOf(outlets []routerOutlet, fileRoutes map[
 	return routes
 }
 
+// surfacesOf lists the declared surfaces for the release file, in prefix order: the
+// application default at /, each outlet with a word or a setting at its prefix, each
+// hand-mounted prefix, each worded route at the path it is mounted at, and each
+// scheduled route with a word.
+func (r *resourceGenerator) surfacesOf(outlets []routerOutlet, wordedRoutes map[string][]*generatedRoute, scheduledRoutes []*scheduledRoute) []resource.Surface {
+	var surfaces []surface
+	if r.requestLog.Declared() {
+		surfaces = append(surfaces, surface{Prefix: "/", RequestLog: r.requestLog})
+	}
+	for _, o := range outlets {
+		if o.requestLog.Declared() || o.traces.Declared() {
+			surfaces = append(surfaces, surface{Prefix: "/" + o.prefix + "/", RequestLog: o.requestLog, Traces: o.traces})
+		}
+		for _, route := range wordedRoutes[o.name] {
+			surfaces = append(surfaces, surface{Prefix: route.Path, RequestLog: route.RequestLog, Traces: route.Traces})
+		}
+	}
+	for _, mounted := range r.mountedRoutes {
+		surfaces = append(surfaces, surface{Prefix: mounted.prefix, RequestLog: mounted.requestLog, Traces: mounted.traces})
+	}
+	for _, route := range scheduledRoutes {
+		if route.RequestLog.Declared() {
+			surfaces = append(surfaces, surface{Prefix: route.Path, RequestLog: route.RequestLog})
+		}
+	}
+	slices.SortFunc(surfaces, func(a, b surface) int {
+		return strings.Compare(a.Prefix, b.Prefix)
+	})
+	released := make([]resource.Surface, 0, len(surfaces))
+	for _, s := range surfaces {
+		released = append(released, s.releaseSurface())
+	}
+
+	return released
+}
+
 // releaseFileOf builds the release file from the validated outlet declarations, the
-// scheduled routes and the file routes, the routes in path order.
-func releaseFileOf(outlets []routerOutlet, scheduledRoutes []*scheduledRoute, fileRoutes []resource.FileRoute) resource.ReleaseFile {
-	file := resource.ReleaseFile{Outlets: make(map[string]resource.ReleaseOutlet, len(outlets)), FileRoutes: fileRoutes}
+// scheduled routes, the file routes and the surfaces, the routes in path order.
+func releaseFileOf(outlets []routerOutlet, scheduledRoutes []*scheduledRoute, fileRoutes []resource.FileRoute, surfaces []resource.Surface) resource.ReleaseFile {
+	file := resource.ReleaseFile{Outlets: make(map[string]resource.ReleaseOutlet, len(outlets)), FileRoutes: fileRoutes, Surfaces: surfaces}
 	for _, o := range outlets {
 		if o.apiKey {
 			file.Outlets[o.name] = resource.ReleaseOutlet{APIKey: true}
@@ -90,7 +131,7 @@ func releaseFileOf(outlets []routerOutlet, scheduledRoutes []*scheduledRoute, fi
 // renderReleaseFile renders the release file indented, the outlets in name order, with
 // a trailing newline: the same declarations render the same bytes, so regenerating
 // moves nothing, and a change to one outlet is a one-line diff.
-func renderReleaseFile(file resource.ReleaseFile) ([]byte, error) {
+func renderReleaseFile(file *resource.ReleaseFile) ([]byte, error) {
 	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return nil, errors.Wrap(err, "json.MarshalIndent()")

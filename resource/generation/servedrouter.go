@@ -86,7 +86,10 @@ var authFlavors = map[AuthFlavor]authFlavorSpec{
 
 // Hook fields the generated Hooks struct carries beside the per-outlet fields; an outlet
 // whose Pascal-cased name would take one of them cannot be declared.
-var reservedHookFields = []string{"Outermost", "Root"}
+var reservedHookFields = []string{"Outermost", rootHookField}
+
+// rootHookField is the Hooks field for the routes outside every outlet.
+const rootHookField = "Root"
 
 // validateRouterConfig checks the outlet declarations against GenerateRouter: without
 // the option the router-describing outlet options are refused (they would be silently
@@ -107,11 +110,21 @@ func (r *resourceGenerator) validateRouterConfig() error {
 				declared = "WebApp"
 			case o.declaredOldest:
 				declared = "OldestAnswered"
+			case o.requestLog.Declared():
+				declared = "OutletRequestLog"
+			case o.traces.Declared():
+				declared = "OutletTraces"
 			default:
 				continue
 			}
 
 			return errors.Newf("outlet %q declares %s, which describes the generated router: declare GenerateRouter, or drop it and compose the outlet in a hand-written router (ServesSessions marks a session outlet there)", o.name, declared)
+		}
+		switch {
+		case r.requestLog.Declared():
+			return errors.Newf("WithRequestLog(%s) describes the generated router, which builds the request logger with the application default: declare GenerateRouter, or drop it and pass logger.DefaultPolicy to the request logger in a hand-written router", r.requestLog)
+		case len(r.mountedRoutes) > 0:
+			return errors.Newf("WithMountedRoutes(%q) describes the generated router, which builds the request logger and the tracer with the prefix: declare GenerateRouter, or drop it and pass logger.PolicyByPrefix to the request logger in a hand-written router", r.mountedRoutes[0].prefix)
 		}
 
 		return nil
@@ -134,8 +147,29 @@ func (r *resourceGenerator) validateRouterConfig() error {
 			return err
 		}
 	}
+	if err := validateMountedPrefixes(outlets, r.mountedRoutes); err != nil {
+		return err
+	}
 
 	return validateWebAppMounts(outlets)
+}
+
+// validateMountedPrefixes checks the hand-mounted prefixes against the router's own
+// paths: none sits at or under the scheduled prefix, which the router reserves, and none
+// is an outlet's prefix itself, whose words are the outlet's to declare.
+func validateMountedPrefixes(outlets []routerOutlet, mounted []mountedRoutes) error {
+	for _, m := range mounted {
+		if underScheduledPrefix(strings.TrimSuffix(m.prefix, "/")) {
+			return errors.Newf("WithMountedRoutes(%q) sits under %s, which the generated router reserves for the scheduled routes (@%s); a scheduled method declares its word on @%s", m.prefix, scheduled.Prefix, scheduleKeyword, scheduleKeyword)
+		}
+		for _, o := range outlets {
+			if strings.TrimSuffix(m.prefix, "/") == "/"+o.prefix {
+				return errors.Newf("WithMountedRoutes(%q) is the %s outlet's prefix; declare the outlet's words with OutletRequestLog and OutletTraces", m.prefix, o.name)
+			}
+		}
+	}
+
+	return nil
 }
 
 // validateReservedNames refuses an outlet that would take a name or a path the generated
@@ -254,6 +288,105 @@ type servedRouterData struct {
 	// no scheduled group.
 	ScheduledRoutes []*scheduledRoute
 	ScheduledPrefix string
+	// RequestLog is the application default (WithRequestLog), which the router builds
+	// the request logger with; undeclared leaves the logger's own, every entry written.
+	RequestLog RequestLog
+	// MountedRoutes are the hand-mounted prefixes (WithMountedRoutes) in prefix order,
+	// which the request logger starts a request under with their word and the surface
+	// table carries; RootMountedRoutes are the ones under no outlet's prefix, named
+	// under the every-request line of the chain comment.
+	MountedRoutes     []servedMountedRoutes
+	RootMountedRoutes []servedMountedRoutes
+	// Surfaces is the tracer's surface table: every outlet, hand-mounted prefix and route
+	// with a trace setting, by the path it is mounted at, in path order.
+	Surfaces []servedSurface
+	// WordedNotFound are the outlets with a request log word, whose not-found handler
+	// carries it, so an unknown path under the prefix is logged as the outlet's requests
+	// are; NotFoundPrefixes carries the rest.
+	WordedNotFound []*servedOutlet
+	// DeclaresWords says any surface declares a word or a setting; UsesLogging says a
+	// rendered word carries a floor, so the file imports the logging library; UsesStrings
+	// says an outlet with a word has hand-mounted prefixes beneath it, so the file carries
+	// the helper that keeps their word.
+	DeclaresWords bool
+	UsesLogging   bool
+	UsesStrings   bool
+	// RequestLogCases are the cases of the generated request log test: the application
+	// default, each outlet's word, each route's own, each hand-mounted prefix, and a
+	// handler that sets its own request's word, each on a quiet request and, where a
+	// probe can fail, on a failed one.
+	RequestLogCases []servedRequestLogCase
+}
+
+// servedMountedRoutes is one hand-mounted prefix with its words.
+type servedMountedRoutes struct {
+	Prefix     string
+	RequestLog RequestLog
+	Traces     Traces
+	// Words says what the prefix declares, for the chain comment.
+	Words string
+}
+
+// servedSurface is one entry of the tracer's surface table: the path as mounted and
+// the setting.
+type servedSurface struct {
+	Pattern string
+	Traces  Traces
+}
+
+// servedRouteWords is one route with words of its own, as the chain comment names it.
+type servedRouteWords struct {
+	Method string
+	Path   string
+	Words  string
+}
+
+// servedRequestLogCase is one case of the generated request log test: a probe the test
+// registers through a hook (Hook names Root or the outlet's hook field) or a generated
+// route (Hook empty), the status it answers, the word the probe sets on its own request
+// when it does, and the decision the console exporter is expected to make: written,
+// dropped, or empty when a sampled word leaves a quiet request to the draw.
+type servedRequestLogCase struct {
+	Name        string
+	Hook        string
+	Method      string
+	MethodConst string
+	Path        string
+	Status      int
+	SetWord     string
+	Want        string
+}
+
+// The decisions the generated request log test expects.
+const (
+	decisionWritten = "written"
+	decisionDropped = "dropped"
+)
+
+// requestLogDecision is the decision the console exporter makes for a request under the
+// word that logged no line: written, dropped, or empty when a sampled word draws for a
+// quiet request. An undeclared word is the logger's own, always.
+func requestLogDecision(word RequestLog, failed bool) string {
+	switch word.word {
+	case requestLogOnEvent:
+		if failed {
+			return decisionWritten
+		}
+
+		return decisionDropped
+	case requestLogSampled:
+		if failed {
+			return decisionWritten
+		}
+
+		return ""
+	case requestLogNever:
+		return decisionDropped
+	case requestLogUndeclared, requestLogAlways:
+		return decisionWritten
+	default:
+		return decisionWritten
+	}
 }
 
 // servedFileStore is one file store as the router requires it at start and the router
@@ -314,6 +447,27 @@ type servedOutlet struct {
 	AnswersSentence    string
 	FileRoutes         []servedFileRoute
 	Probes             versionProbes
+	// RequestLog is the outlet's request log word (OutletRequestLog), set on every
+	// request in its group, and Traces its trace setting (OutletTraces), carried by the
+	// surface table; Words says both for the chain comment. MountedBeneath are the
+	// hand-mounted prefixes under the outlet's prefix, which keep their own word under
+	// the outlet's, and RouteWords the outlet's routes with words of their own.
+	RequestLog     RequestLog
+	Traces         Traces
+	Words          string
+	MountedBeneath []servedMountedRoutes
+	RouteWords     []servedRouteWords
+}
+
+// MountedPrefixes lists the prefixes beneath the outlet, for the helper that keeps their
+// word.
+func (o *servedOutlet) MountedPrefixes() []string {
+	prefixes := make([]string, 0, len(o.MountedBeneath))
+	for _, m := range o.MountedBeneath {
+		prefixes = append(prefixes, m.Prefix)
+	}
+
+	return prefixes
 }
 
 // servedFileRoute is one stored-file route of a session outlet: the pattern the check
@@ -435,10 +589,12 @@ type servedFlavor struct {
 // runServedRouterGeneration renders the served router and its test (GenerateRouter)
 // beside the route tables, then the release file naming each outlet's oldest answered
 // release. fileRoutes are each outlet's stored-file routes by outlet name, which the
-// session outlets' version checks exempt.
-func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes map[string][]*generatedRoute) error {
+// session outlets' version checks exempt; wordedRoutes are each outlet's routes with a
+// request log word or a trace setting of their own, which the chain comment names, the
+// surface table carries and the release file lists.
+func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
 	begin := time.Now()
-	data := r.servedRouterData(outlets, negativeTests, fileRoutes)
+	data := r.servedRouterData(outlets, negativeTests, fileRoutes, wordedRoutes)
 
 	destination := filepath.Join(r.router.Dir(), generatedGoFileName(servedRouterOutputName))
 	if err := r.writeFormattedGoFile(destination, "servedRouterTemplate", servedRouterTemplate, data); err != nil {
@@ -453,12 +609,12 @@ func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, ne
 	}
 	log.Printf("Generated router test file in %s: %s\n", time.Since(begin), testDestination)
 
-	return r.runReleaseFileGeneration(outlets, fileRoutes)
+	return r.runReleaseFileGeneration(outlets, fileRoutes, wordedRoutes)
 }
 
-// servedRouterData builds the template payload from the validated outlet declarations
-// and each outlet's stored-file routes by outlet name.
-func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes map[string][]*generatedRoute) *servedRouterData {
+// servedRouterData builds the template payload from the validated outlet declarations,
+// each outlet's stored-file routes and each outlet's worded routes, both by outlet name.
+func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) *servedRouterData {
 	authPaths := make(map[string]struct{})
 	for _, o := range outlets {
 		if o.auth != nil {
@@ -474,6 +630,7 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		NegativeRouterTests: negativeTests,
 		ScheduledRoutes:     r.scheduledRoutes(),
 		ScheduledPrefix:     scheduled.Prefix,
+		RequestLog:          r.requestLog,
 	}
 	data.FileStores, data.StoreImports = r.servedFileStores()
 	if multiAuth {
@@ -501,10 +658,16 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 			so.FileRoutes = servedFileRoutesOf(fileRoutes[o.name])
 			data.SessionOutlets = append(data.SessionOutlets, so)
 		}
+		servedOutletWords(data, so, wordedRoutes[o.name])
 		data.Outlets = append(data.Outlets, so)
-		data.NotFoundPrefixes = append(data.NotFoundPrefixes, so.NotFoundPrefix)
 	}
 	data.ExtraOutlets = data.Outlets[1:]
+	r.servedMountedRoutes(data)
+	slices.SortFunc(data.Surfaces, func(a, b servedSurface) int {
+		return strings.Compare(a.Pattern, b.Pattern)
+	})
+	servedWordFlags(data)
+	data.RequestLogCases = append(requestLogCasesOf(data), routeCasesOf(wordedRoutes, data.Outlets)...)
 	if len(data.ScheduledRoutes) > 0 {
 		// Under the scheduled prefix nothing else answers either: an unknown path is
 		// 404, never a browser application's entry document.
@@ -525,6 +688,49 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 	data.HandlersSummary = handlersSummary(data)
 
 	return data
+}
+
+// servedOutletWords places an outlet's words: each of its routes with words of its own
+// in the chain comment, and in the surface table when the route declares a trace
+// setting; the outlet's not-found handler among the worded ones when the outlet declares
+// a word, else among the plain prefixes; and the outlet's prefix in the surface table
+// when it declares a trace setting.
+func servedOutletWords(data *servedRouterData, so *servedOutlet, wordedRoutes []*generatedRoute) {
+	for _, route := range wordedRoutes {
+		so.RouteWords = append(so.RouteWords, servedRouteWords{Method: route.Method, Path: route.Path, Words: describeWords(route.RequestLog, route.Traces)})
+		if route.Traces.Declared() {
+			data.Surfaces = append(data.Surfaces, servedSurface{Pattern: route.Path, Traces: route.Traces})
+		}
+	}
+	if so.RequestLog.Declared() {
+		data.WordedNotFound = append(data.WordedNotFound, so)
+	} else {
+		data.NotFoundPrefixes = append(data.NotFoundPrefixes, so.NotFoundPrefix)
+	}
+	if so.Traces.Declared() {
+		data.Surfaces = append(data.Surfaces, servedSurface{Pattern: so.NotFoundPrefix, Traces: so.Traces})
+	}
+}
+
+// servedWordFlags sets what the templates read off the words as a whole: whether any
+// surface declares a word or a setting (the chain comment's closing paragraph), whether
+// any word carries a floor (the logging import), and whether any outlet with a word has
+// a prefix mounted by hand beneath it (the strings import, for the helper that excepts
+// the prefix).
+func servedWordFlags(data *servedRouterData) {
+	data.DeclaresWords = data.RequestLog.Declared() || len(data.MountedRoutes) > 0 || len(data.Surfaces) > 0 || len(data.WordedNotFound) > 0
+	data.UsesLogging = data.RequestLog.HasMinSeverity()
+	for _, o := range data.Outlets {
+		data.DeclaresWords = data.DeclaresWords || len(o.RouteWords) > 0
+		data.UsesLogging = data.UsesLogging || o.RequestLog.HasMinSeverity()
+		data.UsesStrings = data.UsesStrings || (o.RequestLog.Declared() && len(o.MountedBeneath) > 0)
+	}
+	for _, route := range data.ScheduledRoutes {
+		data.DeclaresWords = data.DeclaresWords || route.RequestLog.Declared()
+	}
+	for _, m := range data.MountedRoutes {
+		data.UsesLogging = data.UsesLogging || m.RequestLog.HasMinSeverity()
+	}
 }
 
 // rootRedirectOf names where the root redirects and whose application it is: with
@@ -563,6 +769,7 @@ func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 			Assets:   o.suffix() + "Assets",
 		}
 	}
+	so.RequestLog, so.Traces, so.Words = o.requestLog, o.traces, describeWords(o.requestLog, o.traces)
 	switch {
 	case o.apiKey:
 		so.APIKey = true
@@ -621,6 +828,142 @@ func handlersSummary(data *servedRouterData) string {
 	return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
 }
 
+// servedMountedRoutes places the hand-mounted prefixes: every one in the request
+// logger's prefix table and, with a trace setting, the surface table; each under the
+// outlet whose prefix it sits beneath, else under the root.
+func (r *resourceGenerator) servedMountedRoutes(data *servedRouterData) {
+	mounted := slices.Clone(r.mountedRoutes)
+	slices.SortFunc(mounted, func(a, b mountedRoutes) int {
+		return strings.Compare(a.prefix, b.prefix)
+	})
+	for _, m := range mounted {
+		served := servedMountedRoutes{Prefix: m.prefix, RequestLog: m.requestLog, Traces: m.traces, Words: describeWords(m.requestLog, m.traces)}
+		data.MountedRoutes = append(data.MountedRoutes, served)
+		data.Surfaces = append(data.Surfaces, servedSurface{Pattern: m.prefix, Traces: m.traces})
+		if outlet := outletBeneath(data.Outlets, m.prefix); outlet != nil {
+			outlet.MountedBeneath = append(outlet.MountedBeneath, served)
+
+			continue
+		}
+		data.RootMountedRoutes = append(data.RootMountedRoutes, served)
+	}
+}
+
+// outletBeneath returns the outlet whose prefix the hand-mounted prefix sits under, nil
+// when it sits under none.
+func outletBeneath(outlets []*servedOutlet, prefix string) *servedOutlet {
+	for _, o := range outlets {
+		if strings.HasPrefix(prefix, o.NotFoundPrefix) {
+			return o
+		}
+	}
+
+	return nil
+}
+
+// The probes the generated request log test registers through the hooks, under the
+// surface each case names.
+const (
+	requestLogProbePath   = "generated-router-probe"
+	requestLogFailurePath = "generated-router-failure"
+	requestLogOwnWordPath = "generated-router-own-word"
+)
+
+// requestLogCasesOf builds the generated request log test's cases: the application
+// default on a root probe, quiet and failed, and a probe that sets its own request's
+// word; the first outlet without a word, which takes the default; each outlet with a
+// word, quiet and failed; each hand-mounted prefix, quiet and failed, through the root
+// hook or the hook of the outlet it sits beneath; and each generated route with a word
+// of its own, quiet.
+func requestLogCasesOf(data *servedRouterData) []servedRequestLogCase {
+	defaultWord := data.RequestLog
+	defaultName := "the application default, " + defaultWord.String()
+	if !defaultWord.Declared() {
+		defaultName = "the application default, always, since nothing is declared"
+	}
+	cases := []servedRequestLogCase{
+		probeCase(defaultName+", on a quiet request", rootHookField, "/"+requestLogProbePath, http.StatusOK, defaultWord),
+		probeCase(defaultName+", on a failed request", rootHookField, "/"+requestLogFailurePath, http.StatusNotFound, defaultWord),
+	}
+	ownWord := servedRequestLogCase{Name: "a handler that sets its own request's word", Hook: rootHookField, Method: http.MethodGet, MethodConst: httpMethodConstant(http.MethodGet), Path: "/" + requestLogOwnWordPath, Status: http.StatusOK}
+	if requestLogDecision(defaultWord, false) == decisionWritten {
+		ownWord.Name += " to never, under " + defaultName
+		ownWord.SetWord, ownWord.Want = LogNever().Expr(), decisionDropped
+	} else {
+		ownWord.Name += " to always, under " + defaultName
+		ownWord.SetWord, ownWord.Want = LogAlways().Expr(), decisionWritten
+	}
+	cases = append(cases, ownWord)
+	unworded := false
+	for _, o := range data.Outlets {
+		if !o.RequestLog.Declared() {
+			if !unworded {
+				cases = append(cases, probeCase("the "+o.Name+" outlet, which takes "+defaultName, o.HookField, o.NotFoundPrefix+requestLogProbePath, http.StatusOK, defaultWord))
+				unworded = true
+			}
+
+			continue
+		}
+		name := "the " + o.Name + " outlet's word, " + o.RequestLog.String()
+		cases = append(cases,
+			probeCase(name+", on a quiet request", o.HookField, o.NotFoundPrefix+requestLogProbePath, http.StatusOK, o.RequestLog),
+			probeCase(name+", on a failed request", o.HookField, o.NotFoundPrefix+requestLogFailurePath, http.StatusNotFound, o.RequestLog),
+		)
+	}
+	for _, m := range data.MountedRoutes {
+		hook := rootHookField
+		if outlet := outletBeneath(data.Outlets, m.Prefix); outlet != nil {
+			hook = outlet.HookField
+		}
+		base := strings.TrimSuffix(m.Prefix, "/") + "/"
+		name := "the prefix " + m.Prefix + " mounted by hand, " + m.RequestLog.String()
+		cases = append(cases,
+			probeCase(name+", on a quiet request", hook, base+requestLogProbePath, http.StatusOK, m.RequestLog),
+			probeCase(name+", on a failed request", hook, base+requestLogFailurePath, http.StatusNotFound, m.RequestLog),
+		)
+	}
+
+	return cases
+}
+
+// probeCase is one probe the test registers at path through the hook, answering the
+// status, under the word.
+func probeCase(name, hook, path string, status int, word RequestLog) servedRequestLogCase {
+	return servedRequestLogCase{
+		Name:        name,
+		Hook:        hook,
+		Method:      http.MethodGet,
+		MethodConst: httpMethodConstant(http.MethodGet),
+		Path:        path,
+		Status:      status,
+		Want:        requestLogDecision(word, status >= http.StatusBadRequest),
+	}
+}
+
+// routeCasesOf lists the generated routes with a request log word of their own as cases
+// of the generated request log test: each driven at its test URL, quiet, since the
+// routes test's stub answers 200.
+func routeCasesOf(wordedRoutes map[string][]*generatedRoute, outlets []*servedOutlet) []servedRequestLogCase {
+	var cases []servedRequestLogCase
+	for _, o := range outlets {
+		for _, route := range wordedRoutes[o.Name] {
+			if !route.RequestLog.Declared() {
+				continue
+			}
+			cases = append(cases, servedRequestLogCase{
+				Name:        "the route's own word, " + route.RequestLog.String() + ", on " + route.Method + " " + route.Path,
+				Method:      route.Method,
+				MethodConst: httpMethodConstant(route.Method),
+				Path:        route.TestURL,
+				Status:      http.StatusOK,
+				Want:        requestLogDecision(route.RequestLog, false),
+			})
+		}
+	}
+
+	return cases
+}
+
 // The served-router templates. servedRouterTemplate renders zz_gen_router.go: the chain
 // comment as the package documentation, the Handlers interface, the Hooks struct, and
 // New, linear and inline. servedRouterTestTemplate renders zz_gen_router_test.go, which
@@ -632,20 +975,34 @@ var (
 // Package {{ .Package }} serves the application. The middleware in front of every route,
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
-//	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
+//	every request: tracing, hooks.Outermost, request logging{{ if .RequestLog.Declared }} ({{ .RequestLog }}){{ end }}, SecurityHeaders, httpio.WithParams
+{{- range .RootMountedRoutes }}
+//	  by hand under {{ .Prefix }}: {{ .Words }}
+{{- end }}
 {{- range .Outlets }}
 {{- if .APIKey }}
-//	{{ .Name }} (/{{ .Prefix }}), API key:
+//	{{ .Name }} (/{{ .Prefix }}), API key{{ with .Words }}, {{ . }}{{ end }}:
 //	  NoCaching, CompressionMiddleware, {{ .AuthMiddleware }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- else }}
-//	{{ .Name }} (/{{ .Prefix }}), {{ .FlavorLabel }}{{ if .AuthPackage }} of the {{ .AuthPackage }} auth{{ end }}:
+//	{{ .Name }} (/{{ .Prefix }}), {{ .FlavorLabel }}{{ if .AuthPackage }} of the {{ .AuthPackage }} auth{{ end }}{{ with .Words }}, {{ . }}{{ end }}:
 //	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: {{ range $i, $route := .Routes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion{{ .OldestAnsweredNote }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
+{{- end }}
+{{- range .MountedBeneath }}
+//	  by hand under {{ .Prefix }}: {{ .Words }}
+{{- end }}
+{{- range .RouteWords }}
+//	  {{ .Method }} {{ .Path }}: {{ .Words }}
 {{- end }}
 {{- end }}
 {{- if .ScheduledRoutes }}
 //	scheduled ({{ .ScheduledPrefix }}), Cloud Scheduler's token:
 //	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
+{{- range .ScheduledRoutes }}
+{{- if .RequestLog.Declared }}
+//	  POST {{ .Path }}: request log {{ .RequestLog }}
+{{- end }}
+{{- end }}
 {{- end }}
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
@@ -654,12 +1011,26 @@ var (
 {{- if .RootRedirect }}
 // None is mounted at /: the root alone redirects to {{ .RootRedirect }}, the {{ .RootRedirectOutlet }} outlet's application.
 {{- end }}
+{{- if .DeclaresWords }}
+//
+// The request log word and the trace setting named at each place are the nearest
+// declarations, a route's over its outlet's and an outlet's over the application
+// default; a request under none writes its entry always and its spans follow the front
+// end. The root's request logger decides each entry when the request ends, and a handler
+// may change its own request's word through logger.FromReq(r).SetPolicy.
+{{- end }}
 package {{ .Package }}
 
 import (
 	"fmt"
 	"net/http"
+{{- if .UsesStrings }}
+	"strings"
+{{- end }}
 
+{{- if .UsesLogging }}
+	"cloud.google.com/go/logging"
+{{- end }}
 {{- range .AuthImports }}
 	"{{ . }}"
 {{- end }}
@@ -781,9 +1152,50 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 {{- end }}
 
 	// Every request.
+{{- if .Surfaces }}
+	// The surfaces with a trace setting of their own, by the path each is mounted at: the
+	// sampler applies the longest match as the request's span starts, since a span's
+	// sampled flag is fixed then; a request under none follows the front end.
+	r.Use(tracer.NewHandler(tracer.Surfaces(map[string]tracer.Traces{
+{{- range .Surfaces }}
+		"{{ .Pattern }}": {{ .Traces.Expr }},
+{{- end }}
+	})))
+{{- else }}
 	r.Use(tracer.NewHandler())
+{{- end }}
 	r.Use(hooks.Outermost...)
+{{- if or .RequestLog.Declared .MountedRoutes }}
+{{- if and .RequestLog.Declared .MountedRoutes }}
+	// The request logger decides each request's entry when the request ends, under the
+	// word a request starts with, the application default or the word of the longest
+	// prefix declared by hand that the path sits under; an outlet's word, a route's own
+	// and a handler's own request override it on the way down.
+{{- else if .RequestLog.Declared }}
+	// The request logger decides each request's entry when the request ends, under the
+	// word a request starts with, the application default; an outlet's word, a route's
+	// own and a handler's own request override it on the way down.
+{{- else }}
+	// The request logger decides each request's entry when the request ends, under the
+	// word a request starts with, the word of the longest prefix declared by hand that
+	// the path sits under, else always; an outlet's word, a route's own and a handler's
+	// own request override it on the way down.
+{{- end }}
+	r.Use(logger.NewRequestLogger(h.LogExporter(),
+{{- if .RequestLog.Declared }}
+		logger.DefaultPolicy({{ .RequestLog.Expr }}),
+{{- end }}
+{{- if .MountedRoutes }}
+		logger.PolicyByPrefix(map[string]logger.Policy{
+{{- range .MountedRoutes }}
+			"{{ .Prefix }}": {{ .RequestLog.Expr }},
+{{- end }}
+		}),
+{{- end }}
+	))
+{{- else }}
 	r.Use(logger.NewRequestLogger(h.LogExporter()))
+{{- end }}
 	r.Use(h.SecurityHeaders)
 	r.Use(httpio.WithParams)
 
@@ -800,6 +1212,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	// The {{ .Name }} outlet (/{{ .Prefix }}): machine clients behind an API key, so the group carries
 	// no session handling and no XSRF guard.
 	r.Group(func(r chi.Router) {
+{{- template "outletWord" . }}
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
 		r.Use(h.{{ .AuthMiddleware }})
@@ -814,6 +1227,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	{{ .Receiver }} := h.{{ .Getter }}()
 {{- end }}
 	r.Group(func(r chi.Router) {
+{{- template "outletWord" . }}
 {{- if .AuthPackage }}
 		r.Use(h.BindAuth({{ .AuthPackage }}.Name))
 {{- end }}
@@ -876,6 +1290,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 
 	// Under an outlet's prefix nothing else answers: an unknown API path is 404, never a
 	// browser application's entry document.
+{{- if .NotFoundPrefixes }}
 	for _, prefix := range []string{ {{- range $i, $p := .NotFoundPrefixes }}{{ if $i }}, {{ end }}"{{ $p }}"{{ end -}} } {
 		r.Route(prefix, func(r chi.Router) {
 			r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
@@ -883,6 +1298,17 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			})
 		})
 	}
+{{- end }}
+{{- range .WordedNotFound }}
+	// The {{ .Name }} outlet's not-found handler carries the outlet's word, so an unknown path
+	// under its prefix is logged as its requests are.
+	r.Route("{{ .NotFoundPrefix }}", func(r chi.Router) {
+{{- template "outletWord" . }}
+		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "Not Found", http.StatusNotFound)
+		})
+	})
+{{- end }}
 {{- range .WebApps }}
 
 	// The {{ .Outlet }} outlet's browser application at {{ .Mount }}{{ if eq .Mount "/" }}, the catch-all{{ end }}.
@@ -925,6 +1351,43 @@ func registerGenerated(r chi.Router, hook func(chi.Router, func(chi.Router)), na
 		panic(fmt.Sprintf("router.New: hooks.%s must call generated exactly once to register the outlet's generated routes, called it %d times", name, calls))
 	}
 }
+{{- if .UsesStrings }}
+
+// outletRequestLog sets the outlet's request log word on every request in its group except
+// one under a prefix declared by hand beneath the outlet (WithMountedRoutes), which keeps
+// the word the root's request logger started it with: the nearest declaration wins.
+func outletRequestLog(word logger.Policy, mountedPrefixes ...string) func(http.Handler) http.Handler {
+	setWord := logger.WithPolicy(word)
+
+	return func(next http.Handler) http.Handler {
+		worded := setWord(next)
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, prefix := range mountedPrefixes {
+				if strings.HasPrefix(r.URL.Path, prefix) {
+					next.ServeHTTP(w, r)
+
+					return
+				}
+			}
+			worded.ServeHTTP(w, r)
+		})
+	}
+}
+{{- end }}
+{{- /* outletWord sets an outlet's request log word on its group: with hand-mounted prefixes beneath the outlet, through outletRequestLog, which keeps theirs. */ -}}
+{{- define "outletWord" }}
+{{- if .RequestLog.Declared }}
+{{- if .MountedBeneath }}
+		// Every request under the outlet writes its request log {{ .RequestLog }}, except under
+		// the prefixes declared by hand beneath it, which keep their own word.
+		r.Use(outletRequestLog({{ .RequestLog.Expr }}{{ range .MountedPrefixes }}, "{{ . }}"{{ end }}))
+{{- else }}
+		// Every request under the outlet writes its request log {{ .RequestLog }}.
+		r.Use(logger.WithPolicy({{ .RequestLog.Expr }}))
+{{- end }}
+{{- end }}
+{{- end }}
 `
 
 	servedRouterTestTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
@@ -933,12 +1396,16 @@ func registerGenerated(r chi.Router, hook func(chi.Router, func(chi.Router)), na
 package {{ .Package }}
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 {{- range .AuthImports }}
@@ -1412,6 +1879,124 @@ var prefixHookFields = map[string]string{
 	"{{ .NotFoundPrefix }}": "{{ .HookField }}",
 {{- end }}
 }
+
+// requestLogOutput collects what the console exporter writes through the standard
+// logger while the request log test runs.
+type requestLogOutput struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (o *requestLogOutput) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return o.buf.Write(p)
+}
+
+func (o *requestLogOutput) reset() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.buf.Reset()
+}
+
+func (o *requestLogOutput) String() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return o.buf.String()
+}
+
+// requestLogProbe answers the status and logs nothing, so the request's entry is the
+// word's decision alone.
+func requestLogProbe(status int) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+	}
+}
+
+// requestLogOwnWord sets the word on its own request, as a handler that knows its request
+// matters, or does not, may, then answers 200.
+func requestLogOwnWord(word logger.Policy) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger.FromReq(r).SetPolicy(word)
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+// requestLogHooks registers the probes the request log test drives, each under the
+// surface its case names: through hooks.Root outside every outlet, and through each
+// outlet's hook inside its group.
+func requestLogHooks() Hooks {
+	return Hooks{
+		Root: func(r chi.Router) {
+{{- range .RequestLogCases }}
+{{- if eq .Hook "Root" }}
+			r.{{ Pascal .Method }}("{{ .Path }}", {{ if .SetWord }}requestLogOwnWord({{ .SetWord }}){{ else }}requestLogProbe({{ .Status }}){{ end }})
+{{- end }}
+{{- end }}
+		},
+{{- range $outlet := .Outlets }}
+		{{ $outlet.HookField }}: func(r chi.Router, generated func(chi.Router)) {
+{{- range $.RequestLogCases }}
+{{- if eq .Hook $outlet.HookField }}
+			r.{{ Pascal .Method }}("{{ .Path }}", {{ if .SetWord }}requestLogOwnWord({{ .SetWord }}){{ else }}requestLogProbe({{ .Status }}){{ end }})
+{{- end }}
+{{- end }}
+			generated(r)
+		},
+{{- end }}
+	}
+}
+
+// TestGeneratedRouterRequestLog proves the request log words land where the chain comment
+// says, with the console exporter deciding each request's entry: the application default
+// on a root route, quiet and failed; an outlet's word on a route inside its group, quiet
+// and failed, and an outlet without one taking the default; a route's own word on the
+// generated route; a prefix mounted by hand keeping its word; and a handler setting its
+// own request's word. A sampled word leaves a quiet request to the draw, which the test
+// does not assert. The test runs on its own, not in parallel: the console exporter writes
+// through the standard logger, which the test redirects to read the decisions.
+func TestGeneratedRouterRequestLog(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		url    string
+		status int
+		// want is the decision: written, dropped, or empty when the draw decides.
+		want string
+	}{
+{{- range .RequestLogCases }}
+		{name: "{{ .Name }}", method: {{ .MethodConst }}, url: "{{ .Path }}", status: {{ .Status }}, want: "{{ .Want }}"},
+{{- end }}
+	}
+	var output requestLogOutput
+	previous := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previous) })
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output.reset()
+			stub := newRouterHandlersStub(newRouterCallRecorder())
+			stub.exporter = logger.NewConsoleExporter().NoColor(true)
+			router := New(stub, requestLogHooks())
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody))
+
+			if got := rr.Code; got != tt.status {
+				t.Fatalf("response.Code = %v, want %v", got, tt.status)
+			}
+			entry := tt.method + " " + tt.url + " " + strconv.Itoa(tt.status)
+			written := strings.Contains(output.String(), entry)
+			switch {
+			case tt.want == "written" && !written:
+				t.Errorf("the request's entry %q was not written; the console wrote:\n%s", entry, output.String())
+			case tt.want == "dropped" && written:
+				t.Errorf("the request's entry %q was written; the console wrote:\n%s", entry, output.String())
+			}
+		})
+	}
+}
 {{ if .SessionOutlets }}
 // routerVersionProbe is one session outlet's version check as the generator declared
 // it: the prefix its routes sit under, the releases the test sends through it, and the
@@ -1658,6 +2243,9 @@ type routerHandlersStub struct {
 	// serverVersion is the release the stub reports; empty, no release, so a case that
 	// sets none is never refused.
 	serverVersion string
+	// exporter is where the request log goes when a test sets one, the console for the
+	// request log test; nil hands the router the recording stub.
+	exporter logger.Exporter
 }
 
 func (s *routerHandlersStub) ServerVersion() string {
@@ -1731,6 +2319,10 @@ func (s *routerHandlersStub) {{ .HandlerFunc }}() http.HandlerFunc {
 {{ end }}
 {{- end }}
 func (s *routerHandlersStub) LogExporter() logger.Exporter {
+	if s.exporter != nil {
+		return s.exporter
+	}
+
 	return &routerLogExporterStub{rec: s.rec}
 }
 

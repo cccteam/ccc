@@ -19,7 +19,11 @@ const generationImportPath = "github.com/cccteam/ccc/resource/generation"
 // hand-written stand-in for the route tables and two auth packages, and runs the rendered
 // test with go test: the root redirect, every mount, every route and every refusal hold in
 // a compiled router, not only in the template text. A scheduled method rides along, so its
-// route under the scheduled prefix and its chain are proven the same way.
+// route under the scheduled prefix and its chain are proven the same way. The request log
+// words ride along too: the application default, the droids outlet's word with a prefix
+// mounted by hand beneath it, a prefix mounted by hand at the root, the stored-file
+// route's own word and the scheduled method's, so the rendered request log test proves
+// the console exporter's decision at each place against the logger itself.
 //
 // The fixture is a package inside this module's testdata, built against the dependency
 // versions the module's go.mod declares, as an application would build the generated
@@ -64,24 +68,34 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 	}
 
 	// The default outlet answers releases from 1.5.0, the portal only the server's own,
-	// and the default outlet serves one stored file, answered at any release.
+	// and the default outlet serves one stored file, answered at any release and with a
+	// word and a setting of its own. The droids outlet writes its request log on event
+	// with a prefix mounted by hand beneath it that never does; the portal caps its spans.
 	outlets := []routerOutlet{
 		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", flavor: Password}, webApp: "/console", oldestAnswered: "1.5.0", declaredOldest: true},
-		{name: "droids", prefix: "droids", apiKey: true},
-		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", flavor: OIDCGoogle}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true},
+		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogOnEvent(), traces: TracesOff()},
+		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", flavor: OIDCGoogle}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true, traces: TracesCapped(0.1)},
 	}
-	fileRoutes := map[string][]*generatedRoute{
-		"default": {{Path: "/api/widgets/{widgetId}/content", TestURL: "/api/widgets/7/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler}},
-	}
-	// One scheduled method, mounted under the scheduled prefix behind SchedulerAuth.
+	content := &generatedRoute{Method: "GET", Path: "/api/widgets/{widgetId}/content", TestURL: "/api/widgets/7/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler, RequestLog: LogNever(), Traces: TracesOff()}
+	fileRoutes := map[string][]*generatedRoute{"default": {content}}
+	wordedRoutes := map[string][]*generatedRoute{"default": {content}}
+	// One scheduled method, mounted under the scheduled prefix behind SchedulerAuth, with
+	// a word of its own.
 	scheduledStruct := fixtureStructs(loadFixture(t, "schedulefixture"))["PruneLogs"]
-	r := &resourceGenerator{client: &client{
-		genRPCMethods:    true,
-		scheduledMethods: []*rpcMethodInfo{{Struct: scheduledStruct, Schedule: &rpcSchedule{Cron: "30 3 * * *", Zone: "America/Denver"}}},
-	}}
+	r := &resourceGenerator{
+		client: &client{
+			genRPCMethods:    true,
+			scheduledMethods: []*rpcMethodInfo{{Struct: scheduledStruct, Schedule: &rpcSchedule{Cron: "30 3 * * *", Zone: "America/Denver", RequestLog: LogOnEvent()}}},
+		},
+		requestLog: LogAlways(),
+		mountedRoutes: []mountedRoutes{
+			{prefix: "/beacons/", requestLog: LogOnEvent(), traces: TracesOff()},
+			{prefix: "/droids/telemetry/", requestLog: LogNever(), traces: TracesCapped(0.5)},
+		},
+	}
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
-	data := r.servedRouterData(outlets, nil, fileRoutes)
+	data := r.servedRouterData(outlets, nil, fileRoutes, wordedRoutes)
 	if data.RootRedirect != "/console/" || !data.MultiAuth {
 		t.Fatalf("RootRedirect = %q, MultiAuth = %v; want /console/ and two auths", data.RootRedirect, data.MultiAuth)
 	}
@@ -138,6 +152,17 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 		"--- PASS: TestGeneratedRouterScheduled/POST-url-_scheduled-prune-logs",
 		"--- PASS: TestGeneratedRouterScheduled/GET-url-_scheduled-prune-logs",
 		"--- PASS: TestGeneratedRouterNotFound/GET-url-_scheduled-does-not-exist",
+		"--- PASS: TestGeneratedRouterRequestLog/the_application_default,_always,_on_a_quiet_request",
+		"--- PASS: TestGeneratedRouterRequestLog/the_application_default,_always,_on_a_failed_request",
+		"--- PASS: TestGeneratedRouterRequestLog/a_handler_that_sets_its_own_request's_word_to_never,_under_the_application_default,_always",
+		"--- PASS: TestGeneratedRouterRequestLog/the_default_outlet,_which_takes_the_application_default,_always",
+		"--- PASS: TestGeneratedRouterRequestLog/the_droids_outlet's_word,_on_event,_on_a_quiet_request",
+		"--- PASS: TestGeneratedRouterRequestLog/the_droids_outlet's_word,_on_event,_on_a_failed_request",
+		"--- PASS: TestGeneratedRouterRequestLog/the_prefix_/beacons/_mounted_by_hand,_on_event,_on_a_quiet_request",
+		"--- PASS: TestGeneratedRouterRequestLog/the_prefix_/beacons/_mounted_by_hand,_on_event,_on_a_failed_request",
+		"--- PASS: TestGeneratedRouterRequestLog/the_prefix_/droids/telemetry/_mounted_by_hand,_never,_on_a_quiet_request",
+		"--- PASS: TestGeneratedRouterRequestLog/the_prefix_/droids/telemetry/_mounted_by_hand,_never,_on_a_failed_request",
+		"--- PASS: TestGeneratedRouterRequestLog/the_route's_own_word,_never,_on_GET_/api/widgets/{widgetId}/content",
 	} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("go test output missing %q:\n%s", want, out)
@@ -174,6 +199,7 @@ const routerFixtureRoutes = `package router
 import (
 	"net/http"
 
+	"github.com/cccteam/logger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -191,7 +217,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/permission-digest", h.PermissionDigest())
 	r.Get("/api/user-domains", h.UserDomains())
 	r.Get("/api/widgets/{widgetId}", h.Widgets())
-	r.Get("/api/widgets/{widgetId}/content", h.WidgetContent())
+	// WidgetContent writes its request log never: the route's own word, set ahead of the handler.
+	r.With(logger.WithPolicy(logger.Never())).Get("/api/widgets/{widgetId}/content", h.WidgetContent())
 }
 
 type GeneratedDroidsHandlers interface {
@@ -219,7 +246,8 @@ type GeneratedScheduledHandlers interface {
 }
 
 func generatedScheduledRoutes(r chi.Router, h GeneratedScheduledHandlers) {
-	r.Post("/_scheduled/prune-logs", h.PruneLogs())
+	// PruneLogs writes its request log on event: the method's own word (@schedule), set ahead of the handler.
+	r.With(logger.WithPolicy(logger.OnEvent())).Post("/_scheduled/prune-logs", h.PruneLogs())
 }
 `
 

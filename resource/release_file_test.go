@@ -13,10 +13,11 @@ import (
 )
 
 // TestReadReleaseFile pins the reader over the shapes the generator writes (a release,
-// this release, no declaration, a machine outlet, and the scheduled routes), a missing
-// file, and the files it refuses: malformed JSON, no outlets, entries that are neither a
-// machine outlet nor a session outlet naming its oldest answered release, and a
-// scheduled route outside the scheduled prefix or without its schedule or zone.
+// this release, no declaration, a machine outlet, the scheduled routes, the file routes
+// and the surfaces), a missing file, and the files it refuses: malformed JSON, no
+// outlets, entries that are neither a machine outlet nor a session outlet naming its
+// oldest answered release, a scheduled route outside the scheduled prefix or without its
+// schedule or zone, a file route of another shape, and a surface outside the vocabulary.
 func TestReadReleaseFile(t *testing.T) {
 	t.Parallel()
 
@@ -170,6 +171,75 @@ func TestReadReleaseFile(t *testing.T) {
 			name:    "a file route naming no source",
 			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-photo"}]}`,
 			wantErr: "the file route /api/attach-photo names no source",
+		},
+		{
+			name: "surfaces: the default, an outlet, a hand-mounted prefix and a route",
+			content: `{
+  "outlets": {"default": {"oldestAnswered": ""}},
+  "surfaces": [
+    {"prefix": "/", "log": "onEvent"},
+    {"prefix": "/beacons/", "log": "onEvent", "traces": "off"},
+    {"prefix": "/droids/", "log": "sampled", "fraction": 0.01, "traces": "capped", "rate": 0.1},
+    {"prefix": "/api/ships/{shipID}/content", "log": "never"},
+    {"prefix": "/portal/api/", "traces": "followFrontEnd"}
+  ]
+}
+`,
+			want: ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				Surfaces: []Surface{
+					{Prefix: "/", Log: RequestLogOnEvent},
+					{Prefix: "/beacons/", Log: RequestLogOnEvent, Traces: TracesOff},
+					{Prefix: "/droids/", Log: RequestLogSampled, Fraction: 0.01, Traces: TracesCapped, Rate: 0.1},
+					{Prefix: "/api/ships/{shipID}/content", Log: RequestLogNever},
+					{Prefix: "/portal/api/", Traces: TracesFollowFrontEnd},
+				},
+			},
+		},
+		{
+			name:    "a surface not under the root",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "beacons/", "log": "onEvent"}]}`,
+			wantErr: `the surface "beacons/" is not a path under the root`,
+		},
+		{
+			name:    "a surface declaring nothing",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/"}]}`,
+			wantErr: "the surface /beacons/ declares neither a request log word nor a trace setting",
+		},
+		{
+			name:    "a request log word that is not one",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/", "log": "sometimes"}]}`,
+			wantErr: `the surface /beacons/ has the request log word "sometimes"; the words are always, onEvent, sampled and never`,
+		},
+		{
+			name:    "a fraction without the sampled word",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/", "log": "onEvent", "fraction": 0.5}]}`,
+			wantErr: "the surface /beacons/ carries a fraction without the sampled word",
+		},
+		{
+			name:    "a sampled surface with a fraction over one",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/", "log": "sampled", "fraction": 2}]}`,
+			wantErr: "the surface /beacons/ is sampled at 2; the fraction is above 0 and at most 1",
+		},
+		{
+			name:    "a sampled surface without a fraction",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/", "log": "sampled"}]}`,
+			wantErr: "the surface /beacons/ is sampled at 0",
+		},
+		{
+			name:    "a trace setting that is not one",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/", "traces": "sometimes"}]}`,
+			wantErr: `the surface /beacons/ has the trace setting "sometimes"; the settings are followFrontEnd, capped and off`,
+		},
+		{
+			name:    "a rate without the capped setting",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/", "traces": "off", "rate": 0.5}]}`,
+			wantErr: "the surface /beacons/ carries a rate without the capped setting",
+		},
+		{
+			name:    "a capped surface with a rate of zero",
+			content: `{"outlets": {"default": {"oldestAnswered": ""}}, "surfaces": [{"prefix": "/beacons/", "traces": "capped"}]}`,
+			wantErr: "the surface /beacons/ is capped at 0; the rate is above 0 and at most 1",
 		},
 	}
 	for _, tt := range tests {

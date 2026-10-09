@@ -1,9 +1,11 @@
 package generation
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
+	"cloud.google.com/go/logging"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -250,6 +252,56 @@ func Test_validateRouterConfig(t *testing.T) {
 			name:    "an API prefix under a browser application is the ordinary layout",
 			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("portal", "portal/api", members, WebApp("/portal"))},
 		},
+		{
+			name:    "OutletRequestLog without the switch",
+			options: []ResourceOption{GenerateRoutes("pkg/router", "api", OutletRequestLog(LogOnEvent()))},
+			wantErr: `outlet "default" declares OutletRequestLog, which describes the generated router`,
+		},
+		{
+			name:    "OutletTraces without the switch",
+			options: []ResourceOption{GenerateRoutes("pkg/router", "api"), WithRouterOutlet("portal", "portal/api", ServesSessions(), OutletTraces(TracesOff()))},
+			wantErr: `outlet "portal" declares OutletTraces, which describes the generated router`,
+		},
+		{
+			name:    "WithRequestLog without the switch",
+			options: []ResourceOption{GenerateRoutes("pkg/router", "api"), WithRequestLog(LogOnEvent())},
+			wantErr: "WithRequestLog(on event) describes the generated router, which builds the request logger with the application default",
+		},
+		{
+			name:    "WithMountedRoutes without the switch",
+			options: []ResourceOption{GenerateRoutes("pkg/router", "api"), WithMountedRoutes("/beacons/", LogOnEvent(), TracesOff())},
+			wantErr: `WithMountedRoutes("/beacons/") describes the generated router, which builds the request logger and the tracer with the prefix`,
+		},
+		{
+			name: "words at every place",
+			options: []ResourceOption{
+				GenerateRouter(),
+				GenerateRoutes("pkg/router", "api", staff, OutletRequestLog(LogOnEvent()), OutletTraces(TracesCapped(0.5))),
+				WithRouterOutlet("machines", "machines", APIKey(), OutletRequestLog(LogNever())),
+				WithRequestLog(LogAlways().MinSeverity(logging.Warning)),
+				WithMountedRoutes("/beacons/", LogOnEvent(), TracesOff()),
+				WithMountedRoutes("/machines/telemetry/", LogNever(), TracesOff()),
+			},
+		},
+		{
+			name:    "a hand-mounted prefix under the scheduled prefix",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithMountedRoutes("/_scheduled/prune/", LogOnEvent(), TracesOff())},
+			wantErr: `WithMountedRoutes("/_scheduled/prune/") sits under /_scheduled, which the generated router reserves for the scheduled routes (@schedule); a scheduled method declares its word on @schedule`,
+		},
+		{
+			name:    "a hand-mounted prefix at the scheduled prefix",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithMountedRoutes("/_scheduled/", LogOnEvent(), TracesOff())},
+			wantErr: `WithMountedRoutes("/_scheduled/") sits under /_scheduled`,
+		},
+		{
+			name:    "a hand-mounted prefix that is an outlet's",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithMountedRoutes("/api/", LogOnEvent(), TracesOff())},
+			wantErr: `WithMountedRoutes("/api/") is the default outlet's prefix; declare the outlet's words with OutletRequestLog and OutletTraces`,
+		},
+		{
+			name:    "a hand-mounted prefix beneath an outlet's",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithMountedRoutes("/api/stream/", LogOnEvent(), TracesOff())},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -452,7 +504,7 @@ func Test_servedRouterData(t *testing.T) {
 			r := &resourceGenerator{client: &client{}}
 			r.router = packageDir("pkg/router")
 			r.resource = packageDir("pkg/resources")
-			tt.check(t, r.servedRouterData(tt.outlets, nil, tt.fileRoutes))
+			tt.check(t, r.servedRouterData(tt.outlets, nil, tt.fileRoutes, nil))
 		})
 	}
 }
@@ -533,7 +585,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 			wantNoRouterImports: []string{"example.com/acme/beacon/pkg/config"},
 			wantRouterTest: []string{
 				"var routerRootChain = []string{\"LogExporter\", \"SecurityHeaders\"}",
-				"func (s *routerHandlersStub) LogExporter() logger.Exporter {\n\treturn &routerLogExporterStub{rec: s.rec}\n}",
+				"func (s *routerHandlersStub) LogExporter() logger.Exporter {\n\tif s.exporter != nil {\n\t\treturn s.exporter\n\t}\n\n\treturn &routerLogExporterStub{rec: s.rec}\n}",
 				"func (s *routerLogExporterStub) Middleware() func(http.Handler) http.Handler {\n\treturn s.rec.Middleware(\"LogExporter\")\n}",
 				"type routerOIDCAzureStub struct {\n\tsession.OIDCAzureHandlers",
 				"func (s *routerOIDCAzureStub) FrontChannelLogout() http.HandlerFunc {",
@@ -544,7 +596,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\t{url: \"/generated-router-page/deep/link\", handler: \"Assets\", deepLink: \"DeepLink\"},",
 				"func TestGeneratedRouterAPIVersion(t *testing.T) {",
 				"\t\t{\n\t\t\tprefix: \"/api/\", server: \"2.0.0\", inRange: \"0.0.1\", below: \"\", above: \"2.0.1\",\n\t\t},",
-				"\tserverVersion string\n}\n\nfunc (s *routerHandlersStub) ServerVersion() string {\n\treturn s.serverVersion\n}",
+				"\tserverVersion string\n\t// exporter is where the request log goes when a test sets one, the console for the\n\t// request log test; nil hands the router the recording stub.\n\texporter logger.Exporter\n}\n\nfunc (s *routerHandlersStub) ServerVersion() string {\n\treturn s.serverVersion\n}",
 				"\t\t\tDefault: func(r chi.Router, generated func(chi.Router)) {\n\t\t\t\tr.Use(rec.Middleware(\"DefaultHook\"))\n\t\t\t\tgenerated(r)\n\t\t\t},",
 			},
 			wantNotRouterTest: []string{"BindAuth", "routerPasswordStub", "TestGeneratedRouterRoot", "files: []routerFileRoute"},
@@ -684,7 +736,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data := r.servedRouterData(tt.outlets, nil, tt.fileRoutes)
+			data := r.servedRouterData(tt.outlets, nil, tt.fileRoutes, nil)
 
 			router := render(t, r, "servedRouterTemplate", servedRouterTemplate, data)
 			for _, want := range tt.wantRouter {
@@ -791,6 +843,308 @@ func Test_generateRoutesOutletOptions(t *testing.T) {
 				t.Fatalf("error = %v", err)
 			}
 			tt.check(t, r)
+		})
+	}
+}
+
+// wordedRouterShape is the router shape the words tests share: an application default
+// with a floor, a prefix mounted by hand at the root and one beneath the droids outlet,
+// the droids outlet with a word and a setting, the portal outlet with a setting alone,
+// a stored-file route with both and a droids route with a sampled word, and a scheduled
+// method with a word.
+func wordedRouterShape(t *testing.T) (r *resourceGenerator, outlets []routerOutlet, fileRoutes, wordedRoutes map[string][]*generatedRoute) {
+	t.Helper()
+
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
+	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", flavor: OIDCGoogle}
+	scheduledStruct := fixtureStructs(loadFixture(t, "schedulefixture"))["PruneLogs"]
+	r = &resourceGenerator{
+		client: &client{
+			genRPCMethods:    true,
+			scheduledMethods: []*rpcMethodInfo{{Struct: scheduledStruct, Schedule: &rpcSchedule{Cron: "30 3 * * *", Zone: "UTC", RequestLog: LogOnEvent()}}},
+		},
+		requestLog: LogAlways().MinSeverity(logging.Warning),
+		mountedRoutes: []mountedRoutes{
+			{prefix: "/droids/telemetry/", requestLog: LogNever(), traces: TracesCapped(0.5)},
+			{prefix: "/beacons/", requestLog: LogOnEvent(), traces: TracesOff()},
+		},
+	}
+	r.router = packageDir("pkg/router")
+	r.resource = packageDir("pkg/resources")
+	outlets = []routerOutlet{
+		{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
+		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogOnEvent(), traces: TracesOff()},
+		{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal", traces: TracesCapped(0.1)},
+	}
+	content := &generatedRoute{Method: "GET", Path: "/api/widgets/{widgetID}/content", TestURL: "/api/widgets/testWidgetID/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler, RequestLog: LogNever(), Traces: TracesOff()}
+	fileRoutes = map[string][]*generatedRoute{"default": {content}}
+	wordedRoutes = map[string][]*generatedRoute{
+		"default": {content},
+		"droids":  {{Method: "POST", Path: "/droids/ingest", TestURL: "/droids/ingest", HandlerFunc: "Ingest", SelfBounded: true, RequestLog: LogSampled(0.5)}},
+	}
+
+	return r, outlets, fileRoutes, wordedRoutes
+}
+
+// Test_servedRouterData_words pins the words' payload: each outlet's words sentence, a
+// route's words under its outlet, the hand-mounted prefixes in prefix order and each
+// beneath its outlet or at the root, the surface table in pattern order with every
+// trace setting, the worded outlet's not-found handler apart from the rest, the imports
+// the words need, and the request log test's cases in the order the test template
+// renders them.
+func Test_servedRouterData_words(t *testing.T) {
+	t.Parallel()
+
+	r, outlets, fileRoutes, wordedRoutes := wordedRouterShape(t)
+	data := r.servedRouterData(outlets, nil, fileRoutes, wordedRoutes)
+
+	tests := []struct {
+		name  string
+		check func(t *testing.T, data *servedRouterData)
+	}{
+		{
+			name: "each outlet's words and its routes' words",
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				words := make([]string, 0, len(data.Outlets))
+				for _, o := range data.Outlets {
+					words = append(words, o.Name+": "+o.Words)
+					for _, route := range o.RouteWords {
+						words = append(words, "  "+route.Method+" "+route.Path+": "+route.Words)
+					}
+				}
+				want := "default: |  GET /api/widgets/{widgetID}/content: request log never, traces off|droids: request log on event, traces off|  POST /droids/ingest: request log sampled at 0.5|portal: traces capped at 0.1"
+				if got := strings.Join(words, "|"); got != want {
+					t.Errorf("words = %s, want %s", got, want)
+				}
+			},
+		},
+		{
+			name: "the hand-mounted prefixes, beneath their outlets or at the root",
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				want := []servedMountedRoutes{
+					{Prefix: "/beacons/", RequestLog: LogOnEvent(), Traces: TracesOff(), Words: "request log on event, traces off"},
+					{Prefix: "/droids/telemetry/", RequestLog: LogNever(), Traces: TracesCapped(0.5), Words: "request log never, traces capped at 0.5"},
+				}
+				if diff := cmp.Diff(want, data.MountedRoutes); diff != "" {
+					t.Errorf("MountedRoutes mismatch (-want +got):\n%s", diff)
+				}
+				if diff := cmp.Diff(want[:1], data.RootMountedRoutes); diff != "" {
+					t.Errorf("RootMountedRoutes mismatch (-want +got):\n%s", diff)
+				}
+				if diff := cmp.Diff(want[1:], data.Outlets[1].MountedBeneath); diff != "" {
+					t.Errorf("droids MountedBeneath mismatch (-want +got):\n%s", diff)
+				}
+				if got := data.Outlets[1].MountedPrefixes(); len(got) != 1 || got[0] != "/droids/telemetry/" {
+					t.Errorf("droids MountedPrefixes() = %v, want [/droids/telemetry/]", got)
+				}
+				if len(data.Outlets[0].MountedBeneath) != 0 || len(data.Outlets[2].MountedBeneath) != 0 {
+					t.Errorf("default and portal MountedBeneath = %v, %v; want none", data.Outlets[0].MountedBeneath, data.Outlets[2].MountedBeneath)
+				}
+			},
+		},
+		{
+			name: "the surface table in pattern order",
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				want := []servedSurface{
+					{Pattern: "/api/widgets/{widgetID}/content", Traces: TracesOff()},
+					{Pattern: "/beacons/", Traces: TracesOff()},
+					{Pattern: "/droids/", Traces: TracesOff()},
+					{Pattern: "/droids/telemetry/", Traces: TracesCapped(0.5)},
+					{Pattern: "/portal/api/", Traces: TracesCapped(0.1)},
+				}
+				if diff := cmp.Diff(want, data.Surfaces); diff != "" {
+					t.Errorf("Surfaces mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
+			name: "the worded outlet's not-found handler apart from the rest",
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				if diff := cmp.Diff([]string{"/api/", "/portal/api/", "/_scheduled/"}, data.NotFoundPrefixes); diff != "" {
+					t.Errorf("NotFoundPrefixes mismatch (-want +got):\n%s", diff)
+				}
+				if len(data.WordedNotFound) != 1 || data.WordedNotFound[0].Name != "droids" {
+					t.Errorf("WordedNotFound = %v, want the droids outlet", data.WordedNotFound)
+				}
+			},
+		},
+		{
+			name: "the flags the imports and the closing paragraph read",
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				if !data.DeclaresWords || !data.UsesLogging || !data.UsesStrings {
+					t.Errorf("DeclaresWords, UsesLogging, UsesStrings = %v, %v, %v; want all true", data.DeclaresWords, data.UsesLogging, data.UsesStrings)
+				}
+			},
+		},
+		{
+			name: "the request log test's cases",
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				cases := make([]string, 0, len(data.RequestLogCases))
+				for _, c := range data.RequestLogCases {
+					cases = append(cases, c.Hook+" "+c.Method+" "+c.Path+" "+strconv.Itoa(c.Status)+" "+c.SetWord+" "+c.Want+": "+c.Name)
+				}
+				want := []string{
+					"Root GET /generated-router-probe 200  written: the application default, always, Warning and above, on a quiet request",
+					"Root GET /generated-router-failure 404  written: the application default, always, Warning and above, on a failed request",
+					"Root GET /generated-router-own-word 200 logger.Never() dropped: a handler that sets its own request's word to never, under the application default, always, Warning and above",
+					"Default GET /api/generated-router-probe 200  written: the default outlet, which takes the application default, always, Warning and above",
+					"Droids GET /droids/generated-router-probe 200  dropped: the droids outlet's word, on event, on a quiet request",
+					"Droids GET /droids/generated-router-failure 404  written: the droids outlet's word, on event, on a failed request",
+					"Root GET /beacons/generated-router-probe 200  dropped: the prefix /beacons/ mounted by hand, on event, on a quiet request",
+					"Root GET /beacons/generated-router-failure 404  written: the prefix /beacons/ mounted by hand, on event, on a failed request",
+					"Droids GET /droids/telemetry/generated-router-probe 200  dropped: the prefix /droids/telemetry/ mounted by hand, never, on a quiet request",
+					"Droids GET /droids/telemetry/generated-router-failure 404  dropped: the prefix /droids/telemetry/ mounted by hand, never, on a failed request",
+					" GET /api/widgets/testWidgetID/content 200  dropped: the route's own word, never, on GET /api/widgets/{widgetID}/content",
+					" POST /droids/ingest 200  : the route's own word, sampled at 0.5, on POST /droids/ingest",
+				}
+				if diff := cmp.Diff(want, cases); diff != "" {
+					t.Errorf("RequestLogCases mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.check(t, data)
+		})
+	}
+}
+
+// Test_servedRouterData_wordsUndeclared pins the payload with nothing declared: the
+// request log test still proves the logger's own word, always, on the root and on the
+// first outlet, and a handler's own demotion, and the router imports nothing for words.
+func Test_servedRouterData_wordsUndeclared(t *testing.T) {
+	t.Parallel()
+
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
+	r := &resourceGenerator{client: &client{}}
+	r.router = packageDir("pkg/router")
+	r.resource = packageDir("pkg/resources")
+	data := r.servedRouterData([]routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}, {name: "droids", prefix: "droids", apiKey: true}}, nil, nil, nil)
+
+	if data.DeclaresWords || data.UsesLogging || data.UsesStrings || len(data.Surfaces) != 0 || len(data.MountedRoutes) != 0 || len(data.WordedNotFound) != 0 {
+		t.Errorf("payload with nothing declared = %+v", data)
+	}
+	cases := make([]string, 0, len(data.RequestLogCases))
+	for _, c := range data.RequestLogCases {
+		cases = append(cases, c.Hook+" "+c.Path+" "+c.Want+": "+c.Name)
+	}
+	want := []string{
+		"Root /generated-router-probe written: the application default, always, since nothing is declared, on a quiet request",
+		"Root /generated-router-failure written: the application default, always, since nothing is declared, on a failed request",
+		"Root /generated-router-own-word dropped: a handler that sets its own request's word to never, under the application default, always, since nothing is declared",
+		"Default /api/generated-router-probe written: the default outlet, which takes the application default, always, since nothing is declared",
+	}
+	if diff := cmp.Diff(want, cases); diff != "" {
+		t.Errorf("RequestLogCases mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// Test_servedRouterTemplates_words pins what the router and its test render for the
+// words: the chain comment naming the word and the setting at each place and closing
+// with the rule, the tracer handed the surface table, the request logger handed the
+// application default and the prefix table, an outlet's word on its group and on its
+// not-found handler, excepting the prefixes mounted by hand beneath it, the helper that
+// does so, and the request log test's cases and probes.
+func Test_servedRouterTemplates_words(t *testing.T) {
+	t.Parallel()
+
+	r, outlets, fileRoutes, wordedRoutes := wordedRouterShape(t)
+	alone := []routerOutlet{
+		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}, requestLog: LogOnEvent()},
+	}
+	plain := &resourceGenerator{client: &client{}}
+	plain.router = packageDir("pkg/router")
+	plain.resource = packageDir("pkg/resources")
+
+	tests := []struct {
+		name              string
+		r                 *resourceGenerator
+		outlets           []routerOutlet
+		fileRoutes        map[string][]*generatedRoute
+		wordedRoutes      map[string][]*generatedRoute
+		wantRouter        []string
+		wantNotRouter     []string
+		wantRouterTest    []string
+		wantNotRouterTest []string
+		wantRouterImports []string
+		wantNoImports     []string
+	}{
+		{
+			name:         "words at every place",
+			r:            r,
+			outlets:      outlets,
+			fileRoutes:   fileRoutes,
+			wordedRoutes: wordedRoutes,
+			wantRouter: []string{
+				"//\tevery request: tracing, hooks.Outermost, request logging (always, Warning and above), SecurityHeaders, httpio.WithParams\n//\t  by hand under /beacons/: request log on event, traces off\n//\tdefault (/api), password sessions of the crew auth:\n",
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes\n//\t  GET /api/widgets/{widgetID}/content: request log never, traces off\n//\tdroids (/droids), API key, request log on event, traces off:\n//\t  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes\n//\t  by hand under /droids/telemetry/: request log never, traces capped at 0.5\n//\t  POST /droids/ingest: request log sampled at 0.5\n//\tportal (/portal/api), Google directory sessions of the members auth, traces capped at 0.1:\n",
+				"//\tscheduled (/_scheduled), Cloud Scheduler's token:\n//\t  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes\n//\t  POST /_scheduled/prune-logs: request log on event\n//\n",
+				"// None is mounted at /: the root alone redirects to /console/, the default outlet's application.\n//\n// The request log word and the trace setting named at each place are the nearest\n// declarations, a route's over its outlet's and an outlet's over the application\n// default; a request under none writes its entry always and its spans follow the front\n// end. The root's request logger decides each entry when the request ends, and a handler\n// may change its own request's word through logger.FromReq(r).SetPolicy.\npackage router\n",
+				"\tr.Use(tracer.NewHandler(tracer.Surfaces(map[string]tracer.Traces{\n\t\t\"/api/widgets/{widgetID}/content\": tracer.TracesOff(),\n\t\t\"/beacons/\":                       tracer.TracesOff(),\n\t\t\"/droids/\":                        tracer.TracesOff(),\n\t\t\"/droids/telemetry/\":              tracer.TracesCapped(0.5),\n\t\t\"/portal/api/\":                    tracer.TracesCapped(0.1),\n\t})))\n\tr.Use(hooks.Outermost...)\n",
+				"\t// word a request starts with, the application default or the word of the longest\n\t// prefix declared by hand that the path sits under; an outlet's word, a route's own\n\t// and a handler's own request override it on the way down.\n\tr.Use(logger.NewRequestLogger(h.LogExporter(),\n\t\tlogger.DefaultPolicy(logger.Always().MinSeverity(logging.Warning)),\n\t\tlogger.PolicyByPrefix(map[string]logger.Policy{\n\t\t\t\"/beacons/\":          logger.OnEvent(),\n\t\t\t\"/droids/telemetry/\": logger.Never(),\n\t\t}),\n\t))\n\tr.Use(h.SecurityHeaders)\n",
+				"\tr.Group(func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event, except under\n\t\t// the prefixes declared by hand beneath it, which keep their own word.\n\t\tr.Use(outletRequestLog(logger.OnEvent(), \"/droids/telemetry/\"))\n\t\tr.Use(h.NoCaching)\n\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(h.DroidsAuth)\n",
+				"\tfor _, prefix := range []string{\"/api/\", \"/portal/api/\", \"/_scheduled/\"} {",
+				"\t// The droids outlet's not-found handler carries the outlet's word, so an unknown path\n\t// under its prefix is logged as its requests are.\n\tr.Route(\"/droids/\", func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event, except under\n\t\t// the prefixes declared by hand beneath it, which keep their own word.\n\t\tr.Use(outletRequestLog(logger.OnEvent(), \"/droids/telemetry/\"))\n\t\tr.NotFound(func(w http.ResponseWriter, _ *http.Request) {\n",
+				"func outletRequestLog(word logger.Policy, mountedPrefixes ...string) func(http.Handler) http.Handler {\n\tsetWord := logger.WithPolicy(word)\n",
+			},
+			wantNotRouter:     []string{"r.Use(logger.WithPolicy(", "tracer.NewHandler())", "logger.NewRequestLogger(h.LogExporter()))"},
+			wantRouterImports: []string{"\t\"strings\"\n", "\t\"cloud.google.com/go/logging\"\n", "\t\"github.com/cccteam/ccc/tracer\"\n", "\t\"github.com/cccteam/logger\"\n"},
+			wantRouterTest: []string{
+				"\t\tRoot: func(r chi.Router) {\n\t\t\tr.Get(\"/generated-router-probe\", requestLogProbe(200))\n\t\t\tr.Get(\"/generated-router-failure\", requestLogProbe(404))\n\t\t\tr.Get(\"/generated-router-own-word\", requestLogOwnWord(logger.Never()))\n\t\t\tr.Get(\"/beacons/generated-router-probe\", requestLogProbe(200))\n\t\t\tr.Get(\"/beacons/generated-router-failure\", requestLogProbe(404))\n\t\t},\n",
+				"\t\tDefault: func(r chi.Router, generated func(chi.Router)) {\n\t\t\tr.Get(\"/api/generated-router-probe\", requestLogProbe(200))\n\t\t\tgenerated(r)\n\t\t},\n",
+				"\t\tDroids: func(r chi.Router, generated func(chi.Router)) {\n\t\t\tr.Get(\"/droids/generated-router-probe\", requestLogProbe(200))\n\t\t\tr.Get(\"/droids/generated-router-failure\", requestLogProbe(404))\n\t\t\tr.Get(\"/droids/telemetry/generated-router-probe\", requestLogProbe(200))\n\t\t\tr.Get(\"/droids/telemetry/generated-router-failure\", requestLogProbe(404))\n\t\t\tgenerated(r)\n\t\t},\n",
+				"\t\tPortal: func(r chi.Router, generated func(chi.Router)) {\n\t\t\tgenerated(r)\n\t\t},\n",
+				"\t\t{name: \"the application default, always, Warning and above, on a failed request\", method: http.MethodGet, url: \"/generated-router-failure\", status: 404, want: \"written\"},\n",
+				"\t\t{name: \"a handler that sets its own request's word to never, under the application default, always, Warning and above\", method: http.MethodGet, url: \"/generated-router-own-word\", status: 200, want: \"dropped\"},\n",
+				"\t\t{name: \"the droids outlet's word, on event, on a quiet request\", method: http.MethodGet, url: \"/droids/generated-router-probe\", status: 200, want: \"dropped\"},\n",
+				"\t\t{name: \"the prefix /droids/telemetry/ mounted by hand, never, on a failed request\", method: http.MethodGet, url: \"/droids/telemetry/generated-router-failure\", status: 404, want: \"dropped\"},\n",
+				"\t\t{name: \"the route's own word, never, on GET /api/widgets/{widgetID}/content\", method: http.MethodGet, url: \"/api/widgets/testWidgetID/content\", status: 200, want: \"dropped\"},\n",
+				"\t\t{name: \"the route's own word, sampled at 0.5, on POST /droids/ingest\", method: http.MethodPost, url: \"/droids/ingest\", status: 200, want: \"\"},\n",
+				"func TestGeneratedRouterRequestLog(t *testing.T) {\n\ttests := []struct {",
+				"\t\t\tstub.exporter = logger.NewConsoleExporter().NoColor(true)\n\t\t\trouter := New(stub, requestLogHooks())\n",
+			},
+		},
+		{
+			name:    "an outlet's word alone",
+			r:       plain,
+			outlets: alone,
+			wantRouter: []string{
+				"//\tevery request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams\n//\tdefault (/api), password sessions, request log on event:\n",
+				"\tr.Use(tracer.NewHandler())\n",
+				"\tr.Use(logger.NewRequestLogger(h.LogExporter()))\n",
+				"\tr.Group(func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event.\n\t\tr.Use(logger.WithPolicy(logger.OnEvent()))\n\t\tr.Use(h.NoCaching)\n",
+				"\t// The default outlet's not-found handler carries the outlet's word, so an unknown path\n\t// under its prefix is logged as its requests are.\n\tr.Route(\"/api/\", func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event.\n\t\tr.Use(logger.WithPolicy(logger.OnEvent()))\n\t\tr.NotFound(",
+				"// The request log word and the trace setting named at each place are the nearest\n",
+			},
+			wantNotRouter: []string{"outletRequestLog", "for _, prefix := range", "tracer.Surfaces", "DefaultPolicy", "PolicyByPrefix"},
+			wantNoImports: []string{"\t\"strings\"\n", "\t\"cloud.google.com/go/logging\"\n"},
+			wantRouterTest: []string{
+				"\t\t{name: \"the application default, always, since nothing is declared, on a quiet request\", method: http.MethodGet, url: \"/generated-router-probe\", status: 200, want: \"written\"},\n",
+				"\t\t{name: \"the default outlet's word, on event, on a quiet request\", method: http.MethodGet, url: \"/api/generated-router-probe\", status: 200, want: \"dropped\"},\n",
+				"\t\t{name: \"the default outlet's word, on event, on a failed request\", method: http.MethodGet, url: \"/api/generated-router-failure\", status: 404, want: \"written\"},\n",
+			},
+			wantNotRouterTest: []string{"which takes the application default", "mounted by hand, ", "the route's own word, "},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := tt.r.servedRouterData(tt.outlets, nil, tt.fileRoutes, tt.wordedRoutes)
+			router := render(t, tt.r, "servedRouterTemplate", servedRouterTemplate, data)
+			assertContains(t, "router", router, tt.wantRouter, tt.wantNotRouter)
+			assertContains(t, "router imports", router, tt.wantRouterImports, tt.wantNoImports)
+			routerTest := render(t, tt.r, "servedRouterTestTemplate", servedRouterTestTemplate, data)
+			assertContains(t, "router test", routerTest, tt.wantRouterTest, tt.wantNotRouterTest)
 		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cccteam/ccc/resource"
@@ -56,6 +57,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	routerTestRoutes = append(routerTestRoutes, accumulateFeatureRoutes(outlets, outletRoutes)...)
 
 	stubDomainGuard, stubFeatureGuard := false, false
+	routeRequestLogs, routeMinSeverities := false, false
 	for _, outlet := range outletRoutes {
 		for _, routes := range outlet.RoutesMap {
 			for _, route := range routes {
@@ -70,7 +72,18 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				if !route.SelfBounded {
 					outlet.HasBoundedRoutes = true
 				}
+				if route.RequestLog.Declared() {
+					routeRequestLogs = true
+					routeMinSeverities = routeMinSeverities || route.RequestLog.HasMinSeverity()
+				}
 			}
+		}
+	}
+	scheduledRoutes := r.scheduledRoutes()
+	for _, route := range scheduledRoutes {
+		if route.RequestLog.Declared() {
+			routeRequestLogs = true
+			routeMinSeverities = routeMinSeverities || route.RequestLog.HasMinSeverity()
 		}
 	}
 
@@ -105,8 +118,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		ExtraOutlets:           extraOutlets,
 		ExtraStubHandlerFuncs:  extraStubHandlerFuncs(defaultOutlet, extraOutlets),
 		NegativeRouterTests:    negativeTests,
-		ScheduledRoutes:        r.scheduledRoutes(),
+		ScheduledRoutes:        scheduledRoutes,
 		HasGatedRoutes:         defaultOutlet.HasGatedRoutes,
+		RouteRequestLogs:       routeRequestLogs,
+		RouteMinSeverities:     routeMinSeverities,
 		StubFeatureGuard:       stubFeatureGuard,
 		ResourcePackage:        r.resource.Package(),
 		AuthName:               defaultOutlet.AuthName,
@@ -130,7 +145,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 
 	if r.genRouter {
-		if err := r.runServedRouterGeneration(outlets, negativeTests, fileRoutesByOutlet(outletRoutes)); err != nil {
+		if err := r.runServedRouterGeneration(outlets, negativeTests, fileRoutesByOutlet(outletRoutes), wordedRoutesByOutlet(outletRoutes)); err != nil {
 			return err
 		}
 	}
@@ -196,6 +211,32 @@ func fileRoutesByOutlet(outletRoutes []*outletRouteData) map[string][]*generated
 	}
 
 	return files
+}
+
+// wordedRoutesByOutlet collects each outlet's routes that declare a request log word or
+// a trace setting of their own, by outlet name, in path order: what the served router
+// names in its chain comment, hands to the tracer's surface table and writes to the
+// release file.
+func wordedRoutesByOutlet(outletRoutes []*outletRouteData) map[string][]*generatedRoute {
+	worded := make(map[string][]*generatedRoute, len(outletRoutes))
+	for _, outlet := range outletRoutes {
+		for _, routes := range outlet.RoutesMap {
+			for _, route := range routes {
+				if route.DeclaresWords() {
+					worded[outlet.Name] = append(worded[outlet.Name], route)
+				}
+			}
+		}
+		slices.SortFunc(worded[outlet.Name], func(a, b *generatedRoute) int {
+			if c := strings.Compare(a.Path, b.Path); c != 0 {
+				return c
+			}
+
+			return strings.Compare(a.Method, b.Method)
+		})
+	}
+
+	return worded
 }
 
 // accumulateResourceRoutes builds every routed resource's routes into each member
@@ -374,6 +415,8 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix strin
 		TestURL:      testPath,
 		Feature:      rpcStruct.Feature,
 		SelfBounded:  true,
+		RequestLog:   rpcStruct.RequestLog,
+		Traces:       rpcStruct.Traces,
 	}
 	if former := rpcStruct.FormerRouteName(); former != "" {
 		route.FormerPath, route.FormerTestURL = r.rpcPaths(rpcStruct, routePrefix, former)

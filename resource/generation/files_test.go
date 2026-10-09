@@ -37,27 +37,41 @@ func Test_parseFile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		arg         genlang.Arg
-		wantSegment string
-		wantName    string
-		wantType    string
-		wantErr     string
+		name    string
+		arg     genlang.Arg
+		want    fileArguments
+		wantErr string
 	}{
-		{name: "bare declares the default segment", arg: "", wantSegment: "content"},
-		{name: "a segment alone", arg: "thumbnail", wantSegment: "thumbnail"},
-		{name: "the siblings without a segment", arg: "name: FileName, type: ContentType", wantSegment: "content", wantName: "FileName", wantType: "ContentType"},
-		{name: "a segment with the siblings", arg: "sheet, type: MediaType", wantSegment: "sheet", wantType: "MediaType"},
+		{name: "bare declares the default segment", arg: "", want: fileArguments{segment: "content"}},
+		{name: "a segment alone", arg: "thumbnail", want: fileArguments{segment: "thumbnail"}},
+		{name: "the siblings without a segment", arg: "name: FileName, type: ContentType", want: fileArguments{segment: "content", nameField: "FileName", typeField: "ContentType"}},
+		{name: "a segment with the siblings", arg: "sheet, type: MediaType", want: fileArguments{segment: "sheet", typeField: "MediaType"}},
+		{name: "a request log word", arg: "log: onEvent", want: fileArguments{segment: "content", requestLog: LogOnEvent()}},
+		{name: "a sampled word with its fraction", arg: "thumbnail, log: sampled, fraction: 0.01", want: fileArguments{segment: "thumbnail", requestLog: LogSampled(0.01)}},
+		{name: "a trace setting", arg: "trace: off", want: fileArguments{segment: "content", traces: TracesOff()}},
+		{name: "a capped setting with its rate", arg: "trace: capped, rate: 0.1", want: fileArguments{segment: "content", traces: TracesCapped(0.1)}},
+		{name: "both words with the siblings", arg: "name: FileName, log: never, trace: off", want: fileArguments{segment: "content", nameField: "FileName", requestLog: LogNever(), traces: TracesOff()}},
 		{name: "a segment that is not a route segment", arg: "Content", wantErr: `segment "Content" is not a route segment`},
 		{name: "two segments", arg: "content, thumbnail", wantErr: "expected at most 1 positional argument(s), found 2"},
 		{name: "an unknown argument", arg: "size: Size", wantErr: `unknown argument "size"`},
+		{name: "a word that is not one", arg: "log: sometimes", wantErr: `@file(log: sometimes) names no request log word; the words are always, onEvent, sampled and never`},
+		{name: "sampled without a fraction", arg: "log: sampled", wantErr: "@file(log: sampled) names no fraction"},
+		{name: "a fraction without sampled", arg: "log: never, fraction: 0.5", wantErr: "the fraction belongs to the sampled word alone"},
+		{name: "a fraction alone", arg: "fraction: 0.5", wantErr: "@file(fraction: 0.5) without log: sampled"},
+		{name: "a fraction that is not a number", arg: "log: sampled, fraction: half", wantErr: "the fraction is not a number"},
+		{name: "a fraction over one", arg: "log: sampled, fraction: 1.5", wantErr: "the fraction must be above 0 and at most 1"},
+		{name: "a setting that is not one", arg: "trace: sometimes", wantErr: `@file(trace: sometimes) names no trace setting; the settings are followFrontEnd, capped and off`},
+		{name: "capped without a rate", arg: "trace: capped", wantErr: "@file(trace: capped) names no rate"},
+		{name: "a rate without capped", arg: "trace: off, rate: 0.5", wantErr: "the rate belongs to the capped setting alone"},
+		{name: "a rate alone", arg: "rate: 0.5", wantErr: "@file(rate: 0.5) without trace: capped"},
+		{name: "a rate of zero", arg: "trace: capped, rate: 0", wantErr: "the rate must be above 0 and at most 1"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			segment, nameField, typeField, err := parseFile(tt.arg)
+			got, err := parseFile(tt.arg)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("parseFile(%q) error = %v, want containing %q", tt.arg, err, tt.wantErr)
@@ -68,8 +82,8 @@ func Test_parseFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseFile(%q) error = %v", tt.arg, err)
 			}
-			if segment != tt.wantSegment || nameField != tt.wantName || typeField != tt.wantType {
-				t.Errorf("parseFile(%q) = (%q, %q, %q), want (%q, %q, %q)", tt.arg, segment, nameField, typeField, tt.wantSegment, tt.wantName, tt.wantType)
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(fileArguments{}, RequestLog{}, Traces{})); diff != "" {
+				t.Errorf("parseFile(%q) mismatch (-want +got):\n%s", tt.arg, diff)
 			}
 		})
 	}

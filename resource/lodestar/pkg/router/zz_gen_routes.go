@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/logger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -623,7 +624,8 @@ func generatedDroidsRoutes(r chi.Router, h GeneratedDroidsHandlers) {
 
 	bounded.Get("/droids/features", h.Features())
 
-	r.Post("/droids/sectors/{sectorID}/ingest-droid-reports", domainGuard(h.IngestDroidReports()))
+	// IngestDroidReports writes its request log on event: the route's own word, set ahead of the handler.
+	r.With(logger.WithPolicy(logger.OnEvent())).Post("/droids/sectors/{sectorID}/ingest-droid-reports", domainGuard(h.IngestDroidReports()))
 
 	r.Post("/droids/sectors/{sectorID}/release-consignment", domainGuard(h.ReleaseConsignment()))
 
