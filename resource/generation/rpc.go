@@ -53,6 +53,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 		template = rpcUploadHandlerTemplate
 	}
 
+	limitExpr, limitText := r.rpcBodyLimit(rpcMethod)
 	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), template, &rpcHandlerData{
 		Source:              r.rpc.Dir(),
 		LocalPackageImports: r.localPackageImports(),
@@ -61,6 +62,8 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
 		ResourcesPackage:    r.resource.Package(),
+		BodyLimitExpr:       limitExpr,
+		BodyLimitText:       limitText,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

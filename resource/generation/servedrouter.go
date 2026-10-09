@@ -790,6 +790,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	// The application's routes outside every outlet.
 	if hooks.Root != nil {
 		r.Group(func(r chi.Router) {
+			// The application's own routes take the body limit the generated routes take.
+			r.Use(resource.BodyLimit(BodyLimit))
 			hooks.Root(r)
 		})
 	}
@@ -820,8 +822,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use({{ .Receiver }}.StartSession)
 		r.Use({{ .Receiver }}.SetXSRFToken)
 {{ $outlet := . }}
+{{- if .Routes }}
+		// The session routes are bounded at BodyLimit, as the generated routes are.
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+{{- end }}
 {{- range .Routes }}
-		r.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
+		bounded.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
 {{- end }}
 
 		r.Group(func(r chi.Router) {

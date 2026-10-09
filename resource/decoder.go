@@ -200,14 +200,31 @@ const nullLiteral = "null"
 // pipe and no goroutine between them. It also ends a body that is a bare scalar (null,
 // true, a number, a string) at EOF, where a decoder reading a stream waits for a byte
 // that never comes. The buffer grows as bytes arrive; nothing is sized from a header the
-// client wrote.
+// client wrote. A body that runs past the limit the route carries (BodyLimit, or the
+// generated RPC handler's own wrap) answers 413 naming the limit.
 func readBody(req *http.Request) ([]byte, error) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
+		if tooLarge := limitError(err); tooLarge != nil {
+			return nil, tooLarge
+		}
+
 		return nil, httpio.NewBadRequestMessageWithError(err, "failed to read request body")
 	}
 
 	return body, nil
+}
+
+// limitError is the 413 a body read answers when it ran past the route's limit, the
+// http.MaxBytesReader the generated router or an RPC handler installed (BodyLimit),
+// naming the limit; nil for any other error, which the caller answers as it would have.
+func limitError(err error) error {
+	var tooLarge *http.MaxBytesError
+	if !errors.As(err, &tooLarge) {
+		return nil
+	}
+
+	return httpio.NewRequestEntityTooLargeMessagef("the request body exceeds the maximum of %s", FormatByteSize(tooLarge.Limit))
 }
 
 // decodeBody reads the body once and parses it twice: the map pass into the keys the

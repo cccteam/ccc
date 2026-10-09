@@ -23,6 +23,10 @@ func CloneRequest(r *http.Request) (*http.Request, error) {
 	default:
 		p, err := io.ReadAll(r.Body)
 		if err != nil {
+			if tooLarge := limitError(err); tooLarge != nil {
+				return nil, tooLarge
+			}
+
 			return nil, errors.Wrap(err, "failed to read request body")
 		}
 		if err := r.Body.Close(); err != nil {

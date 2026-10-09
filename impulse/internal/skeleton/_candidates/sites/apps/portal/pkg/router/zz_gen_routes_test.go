@@ -4,6 +4,8 @@
 package router
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,6 +60,8 @@ type generatedCallRecorder struct {
 	handlers    map[string]int
 	parameters  map[string]map[string]string
 	middlewares map[string]int
+	// limited counts, per handler, the requests whose body read was refused by a limit.
+	limited map[string]int
 }
 
 func newGeneratedCallRecorder() *generatedCallRecorder {
@@ -65,6 +69,7 @@ func newGeneratedCallRecorder() *generatedCallRecorder {
 		handlers:    make(map[string]int),
 		parameters:  make(map[string]map[string]string),
 		middlewares: make(map[string]int),
+		limited:     make(map[string]int),
 	}
 }
 
@@ -72,6 +77,13 @@ func newGeneratedCallRecorder() *generatedCallRecorder {
 // generated route parameter present on the request.
 func (rec *generatedCallRecorder) RecordHandlerCall(name string) http.HandlerFunc {
 	return func(_ http.ResponseWriter, r *http.Request) {
+		// The body is read whole, so a limit on the route shows as the read's refusal.
+		if _, err := io.ReadAll(r.Body); err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				rec.limited[name]++
+			}
+		}
 		for _, key := range generatedRouteParameters() {
 			if value := chi.URLParam(r, key); value != "" {
 				if _, found := rec.parameters[name]; !found {
@@ -118,6 +130,9 @@ type generatedRouterTest struct {
 	method      string
 	handlerFunc string
 	parameters  map[string]string
+	// selfBounded marks a route whose handler bounds its own body (live, RPC), which
+	// the router leaves off its bounded group.
+	selfBounded bool
 }
 
 func generatedRouteParameters() []string {
@@ -143,14 +158,17 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/api/live/renew", method: http.MethodPost,
 			handlerFunc: "LiveRenew",
+			selfBounded: true,
 		},
 		{
 			url: "/api/live/unsubscribe", method: http.MethodPost,
 			handlerFunc: "LiveUnsubscribe",
+			selfBounded: true,
 		},
 		{
 			url: "/api/live/token", method: http.MethodGet,
 			handlerFunc: "LiveToken",
+			selfBounded: true,
 		},
 		{
 			url: "/api/tenants/testDomain/announcements", method: http.MethodGet,

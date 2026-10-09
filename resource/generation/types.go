@@ -412,6 +412,11 @@ type generatedRoute struct {
 	// Source names the declaration a stored-file route comes from, the resource and its
 	// key column (Photo.Key), for the release file; empty on every other route.
 	Source string
+	// SelfBounded marks a route whose handler bounds its own request body (an RPC
+	// method, at its declared maximum or the router's BodyLimit; an upload at its
+	// declared maximum): the generated route registration leaves it off the bounded
+	// group, since a limit outside the handler's own could only tighten it.
+	SelfBounded bool
 }
 
 // SharedHandler reports whether the route's handler is additionally registered
@@ -493,6 +498,12 @@ type rpcMethodInfo struct {
 	// choosesStatus marks a result type declaring HTTPStatus() int, read off
 	// the Execute signature; @answers must accompany it.
 	choosesStatus bool
+	// MaxBytes is the method's declared request body limit (@rpc(max: 8MB)), which its
+	// generated handler applies before decoding; 0 for a method that takes the
+	// application's limit, the router package's BodyLimit. An upload declares its
+	// maximum on @upload instead. MaxBytesText is the declaration as written.
+	MaxBytes     int64
+	MaxBytesText string
 	// Upload is the method's validated @upload declaration; nil for a JSON
 	// method. Set iff Execute takes resource.Files or resource.FilesIn[S].
 	Upload *rpcUpload
@@ -2022,7 +2033,7 @@ const (
 	resourceKeyword             string = "resource"             // Designates a struct as a resource
 	virtualKeyword              string = "virtual"              // Designates a struct as a virtual resource
 	computedKeyword             string = "computed"             // Designates a struct as a computed resource
-	rpcKeyword                  string = "rpc"                  // Designates a struct as an RPC method
+	rpcKeyword                  string = "rpc"                  // Designates a struct as an RPC method; max: bounds its request body: @rpc(max: 8MB)
 	enumerateKeyword            string = "enumerate"            // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
 	suppressKeyword             string = "suppress"             // Suppresses generation of specified handler types or routes for a resource
 	defaultsCreateTypeKeyword   string = "defaultsCreateType"   // Specifies a type to call "Defaults()" on for setting defaults on resource creation
@@ -2060,7 +2071,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		resourceKeyword:             {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		virtualKeyword:              {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		computedKeyword:             {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		rpcKeyword:                  {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		rpcKeyword:                  {genlang.ScanStruct: genlang.Exclusive},
 		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:             {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsCreateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},

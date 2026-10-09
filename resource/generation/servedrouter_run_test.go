@@ -177,6 +177,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// BodyLimit stands in for the limit the routes file declares.
+const BodyLimit int64 = 4 << 20
+
 type GeneratedHandlers interface {
 	PermissionDigest() http.HandlerFunc
 	UserDomains() http.HandlerFunc

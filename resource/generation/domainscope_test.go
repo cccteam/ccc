@@ -439,7 +439,7 @@ func Test_routesTemplate_domainGuard(t *testing.T) {
 			{Method: "GET", Path: "/api/stations/{stationID}", HandlerFunc: "Station", HandlerType: ReadHandler},
 		},
 		"Reindex": {
-			{Method: "POST", Path: "/api/stations/{stationID}/reindex", HandlerFunc: "Reindex", DomainScoped: true},
+			{Method: "POST", Path: "/api/stations/{stationID}/reindex", HandlerFunc: "Reindex", DomainScoped: true, SelfBounded: true},
 		},
 	}
 
@@ -464,11 +464,12 @@ func Test_routesTemplate_domainGuard(t *testing.T) {
 				"domainGuard := h.DomainGuard()",
 				// Shared handlers (GET+POST) wrap once at the variable.
 				`vaultsHandler := domainGuard(h.Vaults())`,
-				`r.Patch("/api/stations/{stationID}/vaults", domainGuard(h.PatchVaults()))`,
+				`bounded.Patch("/api/stations/{stationID}/vaults", domainGuard(h.PatchVaults()))`,
+				// An RPC route bounds its own body: it registers on r, beside the bounded group.
 				`r.Post("/api/stations/{stationID}/reindex", domainGuard(h.Reindex()))`,
 				// The tenant-record read route is global: bare registration.
 				`stationHandler := h.Station()`,
-				`r.Get("/api/stations/{stationID}", stationHandler)`,
+				`bounded.Get("/api/stations/{stationID}", stationHandler)`,
 			},
 			wantNotContains: []string{"domainGuard(stationHandler)"},
 		},

@@ -476,9 +476,9 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				"func generatedAutomationRoutes(r chi.Router, h GeneratedAutomationHandlers) {",
 				// A session-less outlet refuses a subscribing request at its door.
 				"r = r.With(live.Refusing())",
-				`r.Get("/automation/widgets", widgetsHandler)`,
-				`r.Patch("/automation/stations/{stationID}/gadgets", domainGuard(h.PatchGadgets()))`,
-				`r.Patch("/automation/resources", h.PatchAutomationResources())`,
+				`bounded.Get("/automation/widgets", widgetsHandler)`,
+				`bounded.Patch("/automation/stations/{stationID}/gadgets", domainGuard(h.PatchGadgets()))`,
+				`bounded.Patch("/automation/resources", h.PatchAutomationResources())`,
 				"PatchAutomationResources() http.HandlerFunc",
 				"type AllGeneratedHandlers interface {",
 				"GeneratedAutomationHandlers",
@@ -490,8 +490,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				// A session-less outlet acquires no permission routes and no
 				// PermissionDigest/UserDomains requirement of its own, no live routes
 				// and no subscribe middleware.
-				`r.Get("/automation/permission-digest"`,
-				`r.Get("/automation/user-domains"`,
+				`bounded.Get("/automation/permission-digest"`,
+				`bounded.Get("/automation/user-domains"`,
 				`r.Post("/automation/live/renew"`,
 				`r.Get("/automation/live/token"`,
 				"func generatedAutomationRoutes(r chi.Router, h GeneratedAutomationHandlers) {\n\tr = r.With(live.Subscribing(",
@@ -519,8 +519,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			},
 			wantContains: []string{
 				"type GeneratedPortalHandlers interface {",
-				`r.Get("/portal/permission-digest", h.PermissionDigest())`,
-				`r.Get("/portal/user-domains", h.UserDomains())`,
+				`bounded.Get("/portal/permission-digest", h.PermissionDigest())`,
+				`bounded.Get("/portal/user-domains", h.UserDomains())`,
 				// A session outlet serves the live routes under its prefix, behind the
 				// subscribe middleware bound to its auth, and requires the live surface of
 				// its own.
@@ -645,7 +645,7 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			wantContains: []string{
 				"func generatedRoutes(r chi.Router, h GeneratedHandlers) {\n\t// The outlet serves machine clients behind an API key, so it serves no live pages",
 				"r = r.With(live.Refusing())",
-				`r.Get("/api/widgets", widgetsHandler)`,
+				`bounded.Get("/api/widgets", widgetsHandler)`,
 				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
 			},
 			// A machine outlet's generated routes are the resource routes its key
@@ -653,8 +653,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			// PermissionDigest, UserDomains or live requirement on its handlers.
 			wantNotContains: []string{
 				"live.Subscribing(",
-				`r.Get("/api/permission-digest"`,
-				`r.Get("/api/user-domains"`,
+				`bounded.Get("/api/permission-digest"`,
+				`bounded.Get("/api/user-domains"`,
 				`r.Post("/api/live/renew"`,
 				`r.Post("/api/live/unsubscribe"`,
 				`r.Get("/api/live/token"`,
@@ -677,8 +677,8 @@ func Test_routesTemplate_outlets(t *testing.T) {
 			},
 			wantContains: []string{
 				"r = r.With(live.Subscribing(crew.Name))",
-				`r.Get("/api/permission-digest", h.PermissionDigest())`,
-				`r.Get("/api/user-domains", h.UserDomains())`,
+				`bounded.Get("/api/permission-digest", h.PermissionDigest())`,
+				`bounded.Get("/api/user-domains", h.UserDomains())`,
 				`r.Post("/api/live/renew", h.LiveRenew())`,
 				`r.Post("/api/live/unsubscribe", h.LiveUnsubscribe())`,
 				`r.Get("/api/live/token", h.LiveToken())`,

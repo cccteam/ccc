@@ -7,10 +7,21 @@ import (
 	"net/http"
 
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
 )
+
+// BodyLimit bounds the request body of every route the router wraps: the resource
+// routes, the consolidated patch route, the session routes and the other JSON routes,
+// at 4MB (generation.WithBodyLimit; the framework's default, since the
+// application sets none). An upload, a live route and an RPC method bound their own
+// bodies and register beside the bounded group, since a limit outside them could only
+// tighten theirs: an upload at its declared maximum, a live route at its own, an RPC
+// method at its declared maximum or at this limit, applied by its generated handler. A
+// body over its limit answers 413 naming the limit.
+const BodyLimit int64 = 4194304
 
 type GeneratedHandlers interface {
 	// LiveRenew, LiveUnsubscribe and LiveToken serve the live routes under the
@@ -44,23 +55,26 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	// share one; a request carrying X-Subscribe is noted on its request log line and
 	// refused when its tab id is malformed. The auth's name is staff.Name.
 	r = r.With(live.Subscribing(staff.Name))
-	r.Get("/api/permission-digest", h.PermissionDigest())
-	r.Get("/api/user-domains", h.UserDomains())
+	// The resource routes and the other JSON routes are bounded at BodyLimit; the live
+	// and RPC routes register on r itself and bound their own bodies.
+	bounded := r.With(resource.BodyLimit(BodyLimit))
+	bounded.Get("/api/permission-digest", h.PermissionDigest())
+	bounded.Get("/api/user-domains", h.UserDomains())
 	r.Post("/api/live/renew", h.LiveRenew())
 	r.Post("/api/live/unsubscribe", h.LiveUnsubscribe())
 	r.Get("/api/live/token", h.LiveToken())
 
 	featureFlagsHandler := h.FeatureFlags()
-	r.Get("/api/feature-flags", featureFlagsHandler)
-	r.Post("/api/feature-flags", featureFlagsHandler)
+	bounded.Get("/api/feature-flags", featureFlagsHandler)
+	bounded.Post("/api/feature-flags", featureFlagsHandler)
 
 	featureFlagHandler := h.FeatureFlag()
-	r.Get("/api/feature-flags/{featureFlagName}", featureFlagHandler)
-	r.Post("/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	bounded.Get("/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	bounded.Post("/api/feature-flags/{featureFlagName}", featureFlagHandler)
 
-	r.Get("/api/features", h.Features())
+	bounded.Get("/api/features", h.Features())
 
-	r.Post("/api/set-feature", h.SetFeature())
+	bounded.Post("/api/set-feature", h.SetFeature())
 }
 
 // NewTestRouter serves the generated API routes bare, for test composition only: no

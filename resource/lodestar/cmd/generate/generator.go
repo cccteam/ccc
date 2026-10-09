@@ -60,6 +60,14 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		// the segment and the parameter derived from the @tenant record (Sector, keyed by
 		// ID); a sector the caller holds no grant in answers like one that does not exist.
 		generation.WithConcealedDomains(),
+		// Every request body the generated router serves is bounded at 2 MiB, set
+		// here once (4 MiB when an application sets nothing): the resource, session,
+		// consolidated and plain JSON routes through the router, an RPC method through
+		// its handler unless it declares its own (IssueBulletin's @rpc(max: 64KB)),
+		// while uploads and live routes bound their own bodies beside it.
+		//
+		// Demonstrates: generation.body-limit.
+		generation.WithBodyLimit(2<<20),
 		generation.WithRPC("pkg/rpc"),
 		generation.WithVirtualResources("pkg/virtualresources"),
 		generation.WithComputedResources("pkg/computedresources"),
