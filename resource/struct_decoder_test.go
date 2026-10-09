@@ -55,6 +55,36 @@ func TestDecoder_Decode(t *testing.T) {
 			wantDecodeErr: true,
 		},
 		{
+			name:          "null body",
+			args:          args{body: `null`},
+			wantDecodeErr: true,
+		},
+		{
+			name:          "scalar body",
+			args:          args{body: `true`},
+			wantDecodeErr: true,
+		},
+		{
+			name:          "empty body",
+			args:          args{body: ``},
+			wantDecodeErr: true,
+		},
+		{
+			name:          "array body",
+			args:          args{body: `["Zach"]`},
+			wantDecodeErr: true,
+		},
+		{
+			name:          "trailing data after the object",
+			args:          args{body: `{"Name":"Zach"} {"Name":"Zach"}`},
+			wantDecodeErr: true,
+		},
+		{
+			name:          "null into a value field",
+			args:          args{body: `{"Name":null}`},
+			wantDecodeErr: true,
+		},
+		{
 			name: "fails to validate the request",
 			args: args{
 				body: `{"Name":"Zach"}`,
