@@ -7,7 +7,7 @@ on:
 
 jobs:
   security_scan:
-    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@c8fa7a2b1a895b1e35cfe9868ab047e71f1b5055 # v8.2.2
+    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@ce3b6a61c4b88c82d3c0c1760dc1a3f5a2731021 # v8.2.3
     with:
       # The whole-repository Semgrep scan, reported by issue; the pull request scan is the gate.
       execute-semgrep-scan: true

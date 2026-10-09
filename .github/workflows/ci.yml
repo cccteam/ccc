@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   golang-ci:
-    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@c8fa7a2b1a895b1e35cfe9868ab047e71f1b5055 # v8.2.2
+    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@ce3b6a61c4b88c82d3c0c1760dc1a3f5a2731021 # v8.2.3
     with:
       build-tags: '["", "dev"]'
       golangci-lint-version: 'v2.12.2'
@@ -24,7 +24,7 @@ jobs:
       # the standard runner, which is free for a public repository.
       runs-on-heavy: ${{ vars.CI_LARGE_RUNNER }}
   semantic-titles:
-    uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@c8fa7a2b1a895b1e35cfe9868ab047e71f1b5055 # v8.2.2
+    uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@ce3b6a61c4b88c82d3c0c1760dc1a3f5a2731021 # v8.2.3
   changes:
     # Which parts of the tree the pull request touches, for the two jobs below: the diff
     # against the merge base with the base branch, as golang-ci's detect-modules does for
