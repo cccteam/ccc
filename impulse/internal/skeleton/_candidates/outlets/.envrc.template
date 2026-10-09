@@ -22,8 +22,8 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=outlets
 # APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
 # generates an ephemeral key and sessions end when it restarts.
 # export APP_COOKIE_KEY=
-# The Firestore database the live service runs on, beside the Spanner database (pkg/config,
-# FirestoreSettings): the subscriptions the server registers, the change sets the browser
+# The Firestore database the live service runs on, beside the Spanner database (the live
+# driver's settings, embedded in pkg/config): the subscriptions the server registers, the change sets the browser
 # listens to, and the signals document the application's instances tell each other through.
 # A deployment supplies APP_FIRESTORE_DATABASE (the database id), GOOGLE_CLOUD_FIRESTORE_PROJECT
 # (the project the database is in) and APP_FIREBASE_API_KEY (the web API key the browser

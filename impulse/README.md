@@ -812,10 +812,11 @@ impulse add feature debriefs --site console
 application, the whole of it, so the check is clean when it ends. The data level gains
 `FileStoreSettings` and `LoadFileStoreSettings` in `pkg/config/files.go`, reads
 `APP_FILE_STORE` into its environment struct, opens the store the variable names before
-the configuration is built (`openFileStore`; unset leaves the store closed, so the migrate
-and bootstrap commands run without one), builds the resource client over it
-(`resource.NewSpannerClient(client, fileStoreOptions(files)...)`, which is
-`resource.WithFileStore`) and releases it in `Close`. `.envrc.template` sets
+the database driver opens (`openFileStore`; unset leaves the store closed, so the migrate
+and bootstrap commands run without one), hands the driver the store's options
+(`spanner.Open(ctx, env.Spanner.Settings, fileStoreOptions(files)...)`, which is
+`resource.WithFileStore` on the resource client the driver builds) and releases it in
+`Close`. `.envrc.template` sets
 `APP_FILE_STORE=file://uploads` in the data block and `.gitignore` ignores `uploads/`;
 `cmd/bootstrap` gains `emptyFileStore`, called before the development seed, which empties
 a `file://` store since no row holds a file then. `pkg/jobs` declares the cleanup
@@ -826,11 +827,13 @@ marked `@rpc` and `@schedule("0 9 * * *")` whose `Execute` starts the job proces
 cleanup command through the client's `Jobs()`; an application without an rpc package gains
 `pkg/rpc` with a `Client` carrying the starter, and `WithRPC("pkg/rpc")` in the generator
 program. The site level builds the scheduler guard (`scheduled.FromEnvironment`, from
-`APP_SCHEDULER_INVOKER`) and the job starter (`jobs.FromEnvironment`, from `APP_JOBS_TEMPLATE` and `APP_VERSION`)
-and exposes them as `Scheduler()` and `Jobs()`; the `Configurer` asks for both, the `App`
-carries the guard and the RPC client built over the starter, and `app/scheduled.go`
-declares `SchedulerAuth` (the middleware the generated router mounts the scheduled routes
-behind) and `RPCClient`. Every test configurer (a type in a test file declaring
+`APP_SCHEDULER_INVOKER`) and opens the job driver (`cloudrun.Open`, over the
+`cloudrun.Settings` its environment struct embeds, which declare `APP_JOBS_TEMPLATE`, and
+the version the image bakes in), exposes them as `Scheduler()` and `Jobs()`, and closes
+the driver with the level; `.envrc.template` documents `APP_JOBS_TEMPLATE` in the site
+block, unset. The `Configurer` asks for both, the `App` carries the guard and the RPC
+client built over the starter, and `app/scheduled.go` declares `SchedulerAuth` (the
+middleware the generated router mounts the scheduled routes behind) and `RPCClient`. Every test configurer (a type in a test file declaring
 `LogExporter`) gains a nil guard, `jobs.NewFake()`, and a memory store its resource client
 is built over (`files *filestore.Mem`, passed as `resource.WithFileStore`), so a file route
 the application declares later is served in the suites. What the application wired already

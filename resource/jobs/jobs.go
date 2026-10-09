@@ -1,57 +1,20 @@
-// Package jobs starts the application's job process: an execution of its Cloud Run job,
-// the one deployed with the serving revision. The rule it serves: a Cloud Run job is
-// started by the running service and never by a schedule or a hand; Cloud Scheduler
-// calls a scheduled route on the service (resource/scheduled), and the method behind
-// it starts the job. So a traffic rollback rolls the job back too, since each
-// revision names the job built with it.
+// Package jobs is the seam between the application's scheduled methods and its job
+// process: Starter, which starts one execution of the job with the command's arguments.
+// The Cloud Run driver (resource/jobs/cloudrun) is the starter in production, built
+// from the settings the served site's configuration embeds; None is the starter of an
+// application with no job configured, and Fake records the starts in a test.
 //
-// The stack owns a template job it never runs and sets its resource name on the service
-// as TemplateVariable (APP_JOBS_TEMPLATE); the pipeline copies the template per build
-// into a job named after it with the build's version key, on that build's image, and
-// bakes the version into the image as VersionVariable (APP_VERSION). FromEnvironment
-// reads both when the application starts and names the job of this build from them
-// (JobOf): set, the starter runs that job through the Cloud Run Admin API as the
-// service's own identity, which holds roles/run.jobsExecutorWithOverrides on it (a start
-// passes the command's arguments as container overrides); with no template
-// (development, a pull-request stack that sets none, an application without a job
-// process), every start is refused with a message saying so, which the start logs.
+// The rule the seam serves: a job is started by the running service and never by a
+// schedule or a hand. Cloud Scheduler calls a scheduled route on the service
+// (resource/scheduled), and the method behind it starts the job through the Starter the
+// configuration built, so a traffic rollback rolls the job back too, since each
+// revision names the job built with it.
 package jobs
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"io"
-	"net/http"
-	"os"
-	"strings"
-	"time"
 
-	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
-	"google.golang.org/api/option"
-	htransport "google.golang.org/api/transport/http"
-)
-
-const (
-	// TemplateVariable is the environment variable naming the application's template
-	// job (projects/<p>/locations/<l>/jobs/<j>), the Cloud Run job the stack owns and
-	// never runs: the stack sets it on the service, and the job of a build is named from
-	// it (JobOf).
-	TemplateVariable = "APP_JOBS_TEMPLATE"
-	// VersionVariable is the environment variable carrying the build's version, which
-	// the pipeline bakes into the image.
-	VersionVariable = "APP_VERSION"
-	// cloudRunAPI is where a job is run.
-	cloudRunAPI = "https://run.googleapis.com"
-	// cloudPlatformScope is the OAuth scope the service's token carries for the API.
-	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
-	// callTimeout bounds the start call; the execution itself runs on without the caller.
-	callTimeout = 30 * time.Second
-	// maxAnswer bounds the operation the API answers with.
-	maxAnswer = 1 << 20
-	// jobNamePrefix is how a job's resource name begins.
-	jobNamePrefix = "projects/"
 )
 
 // Starter starts the job process: the Cloud Run job in production, a fake in tests, or
@@ -64,170 +27,11 @@ type Starter interface {
 	Start(ctx context.Context, args ...string) (execution string, err error)
 }
 
-// FromEnvironment reads TemplateVariable and VersionVariable: the Cloud Run starter for
-// the job of this build, JobOf(template, version), or None when the template is empty,
-// which is logged. A template with no version beside it is refused: the pipeline bakes
-// the version into every image it deploys.
-func FromEnvironment(ctx context.Context) (Starter, error) {
-	template := strings.TrimSpace(os.Getenv(TemplateVariable))
-	if template == "" {
-		logger.FromCtx(ctx).Infof("jobs: %s is not set; no job process is configured, so a scheduled method that starts one answers that it cannot", TemplateVariable)
-
-		return None{}, nil
-	}
-	version := strings.TrimSpace(os.Getenv(VersionVariable))
-	if VersionKey(version) == "" {
-		return nil, errors.Newf("%s=%q names the template job, but %s=%q names no version to pick this build's copy by; the pipeline bakes the version into the image", TemplateVariable, template, VersionVariable, version)
-	}
-	starter, err := NewCloudRun(ctx, JobOf(template, version))
-	if err != nil {
-		return nil, err
-	}
-	logger.FromCtx(ctx).Infof("jobs: the job process is %s (the template %s, this build's version %s)", starter.Job(), template, version)
-
-	return starter, nil
-}
-
-// JobOf is the job of one build: the template job's resource name, a hyphen and
-// VersionKey(version) (projects/p/locations/l/jobs/harbor-jobs-v0-1-15). The pipeline
-// makes each build's job under this name, from the template on the build's image.
-func JobOf(template, version string) string {
-	return template + "-" + VersionKey(version)
-}
-
-// VersionKey is a version as a name: lowercase, every run of characters outside a-z and
-// 0-9 one hyphen, none at either end (v0.1.15 is v0-1-15, pr39@abc1234 is pr39-abc1234).
-// The pipeline names a build's job by the same key.
-func VersionKey(version string) string {
-	var b strings.Builder
-	hyphen := false
-	for _, r := range strings.ToLower(version) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-			hyphen = false
-		case !hyphen && b.Len() > 0:
-			b.WriteByte('-')
-			hyphen = true
-		}
-	}
-
-	return strings.TrimSuffix(b.String(), "-")
-}
-
 // None is the starter of an application with no job configured: every start is refused,
 // saying so.
 type None struct{}
 
 // Start refuses: no job process is configured.
 func (None) Start(context.Context, ...string) (string, error) {
-	return "", errors.Newf("no job process is configured (%s is not set), so the job cannot be started", TemplateVariable)
-}
-
-// CloudRun starts executions of one job through the Cloud Run Admin API.
-type CloudRun struct {
-	job  string
-	http *http.Client
-	base string
-}
-
-// NewCloudRun opens the Cloud Run Admin API with the process's default credentials, the
-// service's own identity, for the job named (projects/<p>/locations/<l>/jobs/<j>).
-func NewCloudRun(ctx context.Context, job string) (*CloudRun, error) {
-	if !strings.HasPrefix(job, jobNamePrefix) || strings.Count(job, "/") != 5 || !strings.Contains(job, "/jobs/") {
-		return nil, errors.Newf("%q is not a Cloud Run job's resource name (projects/<project>/locations/<location>/jobs/<job>)", job)
-	}
-	client, _, err := htransport.NewClient(ctx, option.WithScopes(cloudPlatformScope))
-	if err != nil {
-		return nil, errors.Wrap(err, "transport/http.NewClient()")
-	}
-
-	return &CloudRun{job: job, http: client, base: cloudRunAPI}, nil
-}
-
-// Job is the job's resource name.
-func (c *CloudRun) Job() string {
-	return c.job
-}
-
-// runRequest is the body of a run call: the container's arguments for this execution.
-type runRequest struct {
-	Overrides struct {
-		ContainerOverrides []struct {
-			Args []string `json:"args"`
-		} `json:"containerOverrides"`
-	} `json:"overrides"`
-}
-
-// runOperation is the operation the API answers: the execution's name in its metadata.
-type runOperation struct {
-	Name     string `json:"name"`
-	Metadata struct {
-		Name string `json:"name"`
-	} `json:"metadata"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
-
-// Start runs the job once with args as the container's arguments and answers the
-// execution's resource name.
-func (c *CloudRun) Start(ctx context.Context, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, callTimeout)
-	defer cancel()
-
-	var body runRequest
-	if len(args) > 0 {
-		body.Overrides.ContainerOverrides = append(body.Overrides.ContainerOverrides, struct {
-			Args []string `json:"args"`
-		}{Args: args})
-	}
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		return "", errors.Wrap(err, "json.Marshal()")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v2/"+c.job+":run", bytes.NewReader(encoded))
-	if err != nil {
-		return "", errors.Wrap(err, "http.NewRequestWithContext()")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return "", errors.Wrap(err, "http.Client.Do()")
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
-	if err != nil {
-		return "", errors.Wrap(err, "io.ReadAll()")
-	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
-		return "", errors.Newf("Cloud Run answered HTTP %d to the start of %s: %s", resp.StatusCode, c.job, apiMessage(data))
-	}
-	var op runOperation
-	if err := json.Unmarshal(data, &op); err != nil {
-		return "", errors.Wrap(err, "json.Unmarshal(): the run operation")
-	}
-	if op.Error != nil {
-		return "", errors.Newf("Cloud Run refused the start of %s: %s", c.job, op.Error.Message)
-	}
-	if op.Metadata.Name == "" {
-		return "", errors.Newf("Cloud Run answered the start of %s with no execution name (operation %q)", c.job, op.Name)
-	}
-
-	return op.Metadata.Name, nil
-}
-
-// apiMessage is the message of an error the API answers, or the body trimmed.
-func apiMessage(data []byte) string {
-	var refusal struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	_ = json.Unmarshal(data, &refusal)
-	if refusal.Error.Message != "" {
-		return refusal.Error.Message
-	}
-
-	return strings.TrimSpace(string(data))
+	return "", errors.New("no job process is configured, so the job cannot be started")
 }

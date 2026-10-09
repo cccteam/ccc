@@ -328,10 +328,18 @@ func addRosterField(a *app.App, rel string, src []byte, mode os.FileMode, ch *Ch
 }
 
 // clientExpression is the expression, on a DataConfiguration method's receiver c, of the
-// client the roster reads through: a *resource.SpannerClient field as it is, or a
-// *spanner.Client field wrapped as a resource client; empty when the level holds neither.
+// client the roster reads through: the database driver's resource client, a
+// *resource.SpannerClient field as it is, or a *spanner.Client field wrapped as a
+// resource client; empty when the level holds none of them.
 func clientExpression(rel string, src []byte) (string, error) {
-	field, err := app.StructFieldOfType(rel, src, "DataConfiguration", resourceImportPath, "SpannerClient")
+	field, err := app.StructFieldOfType(rel, src, "DataConfiguration", databaseImportPath, "Driver")
+	if err != nil {
+		return "", err
+	}
+	if field != "" {
+		return "c." + field + ".ResourceClient", nil
+	}
+	field, err = app.StructFieldOfType(rel, src, "DataConfiguration", resourceImportPath, "SpannerClient")
 	if err != nil {
 		return "", err
 	}

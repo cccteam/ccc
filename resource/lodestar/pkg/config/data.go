@@ -4,14 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
 	"log"
-	"slices"
 	"time"
 
-	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/database/spanner"
 	"github.com/cccteam/ccc/resource/filestore"
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
@@ -25,13 +23,14 @@ import (
 	"github.com/sethvargo/go-envconfig"
 )
 
-// SpannerSettings identifies the application's database. It is the first half of the
-// data level, loadable on its own so cmd/bootstrap can create the instance and database
-// before any client opens against them.
+// SpannerSettings is the database driver's variables (spanner.Settings: the project, the
+// instance and the database), embedded so the driver declares them and the tools read its
+// declaration. It is the first half of the data level, loadable on its own so cmd/bootstrap
+// can create the instance and database before any client opens against them. A struct of
+// its own, since the live driver's settings sit beside it in the data level and one struct
+// cannot embed two types named Settings.
 type SpannerSettings struct {
-	ProjectID    string `env:"GOOGLE_CLOUD_SPANNER_PROJECT,required"`
-	InstanceID   string `env:"GOOGLE_CLOUD_SPANNER_INSTANCE_ID,required"`
-	DatabaseName string `env:"GOOGLE_CLOUD_SPANNER_DATABASE_NAME,required"`
+	spanner.Settings
 }
 
 // LoadSpannerSettings reads the database identity from the environment without opening
@@ -45,100 +44,40 @@ func LoadSpannerSettings(ctx context.Context) (SpannerSettings, error) {
 	return settings, nil
 }
 
-// DatabasePath returns the fully qualified Spanner database path.
-func (s SpannerSettings) DatabasePath() string {
-	return fmt.Sprintf("projects/%s/instances/%s/databases/%s", s.ProjectID, s.InstanceID, s.DatabaseName)
-}
-
-// FirestoreSettings identifies the Firestore database the live service runs on, beside
-// the Spanner database: the live pages' subscription record and change sets, and the
-// signals document the instances notify each other through. The database id is how
-// bedrock hands the database to an application (APP_FIRESTORE_DATABASE), with its project
+// FirestoreSettings is the live driver's variables (livefirestore.Settings: the project
+// and the database the live service runs on, beside the Spanner database, the web API key
+// the browser initializes the SDK with, and the emulator host), embedded so the driver
+// declares them and the tools read its declaration. The database id is how bedrock hands
+// the database to an application (APP_FIRESTORE_DATABASE), with its project
 // (GOOGLE_CLOUD_FIRESTORE_PROJECT); the emulator host is how the development stack does.
-// One of the two is required: every application wires the live service, and the data
-// level refuses to start without a database for it.
+// One of the two is required: every application wires the live service, and the driver
+// refuses to open without a database for it.
 type FirestoreSettings struct {
-	// ProjectID is the Google Cloud project the database belongs to. A deployment that
-	// names the database names its project too, or the data level refuses to start: the
-	// database is not assumed to be in the Spanner project, which, where environments
-	// share a Spanner instance, is the shared instance's and not the environment's.
-	// Against the emulator it may stay empty, and the Spanner project stands in, since
-	// the emulator takes any project id.
-	ProjectID string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
-	// DatabaseID is the Firestore database, by id.
-	DatabaseID string `env:"APP_FIRESTORE_DATABASE"`
-	// APIKey is the Firebase web API key the browser initializes the SDK with; unused
-	// against the emulator.
-	APIKey string `env:"APP_FIREBASE_API_KEY"`
-	// EmulatorHost is the Firestore emulator's host:port, the development stack's.
-	EmulatorHost string `env:"FIRESTORE_EMULATOR_HOST"`
-}
-
-// Configured reports whether the live service has a database: one is named, or the
-// emulator is.
-func (s FirestoreSettings) Configured() bool {
-	return s.DatabaseID != "" || s.EmulatorHost != ""
-}
-
-// Project is the project the live service opens the database in: ProjectID, or, against
-// the emulator with ProjectID empty, the Spanner project, which the emulator takes as it
-// takes any project id. A database named without its project is refused, naming both
-// variables, as is a configuration naming neither a database nor the emulator, since every
-// application wires the live service.
-func (s FirestoreSettings) Project(spannerProject string) (string, error) {
-	switch {
-	case !s.Configured():
-		return "", errors.New("the live service needs a Firestore database: set APP_FIRESTORE_DATABASE (the database id) or FIRESTORE_EMULATOR_HOST (the emulator)")
-	case s.ProjectID != "":
-		return s.ProjectID, nil
-	case s.EmulatorHost != "":
-		return spannerProject, nil
-	default:
-		return "", errors.New("APP_FIRESTORE_DATABASE names a Firestore database and GOOGLE_CLOUD_FIRESTORE_PROJECT names no project for it: set GOOGLE_CLOUD_FIRESTORE_PROJECT to the project the database is in, which is not assumed to be the Spanner project")
-	}
-}
-
-// firebaseOrigins are the hosts the Firebase JS SDK reaches in production: Firestore's
-// endpoint, which the change feed listens through, and Firebase Auth's two, which the
-// custom token is signed in through and refreshed at.
-var firebaseOrigins = []string{
-	"https://firestore.googleapis.com",
-	"https://identitytoolkit.googleapis.com",
-	"https://securetoken.googleapis.com",
-}
-
-// BrowserOrigins returns the origins the browser connects to for the change feed, which
-// the content security policy's connect-src must name beside the application itself:
-// the emulator over plain HTTP in development (the token route hands the browser the
-// same host), Firebase's hosts in production.
-func (s FirestoreSettings) BrowserOrigins() []string {
-	if s.EmulatorHost != "" {
-		return []string{"http://" + s.EmulatorHost}
-	}
-
-	return slices.Clone(firebaseOrigins)
+	livefirestore.Settings
 }
 
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the file stores, the resource client over them, the live
-// service over the Firestore database, the tenant roster (the Sectors table's keys,
-// loaded here and kept current through the live service's tenants signal), and the two
-// auths (each its permission engine and session manager), whose engines announce and
-// watch policy changes through the live service.
+// owns the database driver (the Spanner client over the database, and the resource
+// client over it with the file stores wired), the file stores, the live service over the
+// Firestore database, the tenant roster (the Sectors table's keys, loaded here and kept
+// current through the live service's tenants signal), and the two auths (each its
+// permission engine and session manager), whose engines announce and watch policy changes
+// through the live service.
 type DataConfiguration struct {
 	*coreConfiguration
-	env           *dataConfig
-	spannerClient *cloudspanner.Client
+	env *dataConfig
+	// database is the database driver: the Spanner client over the database and the
+	// resource client over it, the file stores wired on the client.
+	database *spanner.Driver
 	// files is the default store, the refit photos'; documents the Documents store, the
 	// mission documents'. Either is nil when its variable is unset.
-	files          filestore.Store
-	documents      filestore.Store
-	resourceClient *resource.SpannerClient
-	cursorKey      *resource.CursorKey
-	crew           *crew.Auth
-	tenants        *resource.TenantRoster
-	members        *members.Auth
-	live           *livefirestore.Service
+	files     filestore.Store
+	documents filestore.Store
+	cursorKey *resource.CursorKey
+	crew      *crew.Auth
+	tenants   *resource.TenantRoster
+	members   *members.Auth
+	live      *livefirestore.Service
 }
 
 // NewDataConfiguration loads the core and data levels and opens their clients. Each
@@ -157,9 +96,28 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
 	}
 
-	spannerClient, err := cloudspanner.NewClient(ctx, env.Spanner.DatabasePath())
+	// The file stores belong beside the database: the database driver builds the
+	// resource client over them, the default store under resource.WithFileStore and the
+	// Documents store under resource.WithNamedFileStore, so the generated handlers read
+	// each store off the client and a transaction that deletes a document or a photo, or
+	// points a row at another file, has the old object deleted from its store once the
+	// commit lands. Each store opens from its own URL (APP_FILE_STORE,
+	// APP_FILE_STORE_DOCUMENTS): a directory in development, a bucket on Cloud Run. A
+	// store whose variable is unset is not opened: the migrate and bootstrap commands
+	// build this level without the stores and never touch files, and the server refuses
+	// to start without the stores its routes use (router.New).
+	//
+	// Demonstrates: @file.released, filestore.named.
+	files, documents, err := openFileStores(ctx, env.FileStores)
 	if err != nil {
-		return nil, errors.Wrap(err, "spanner.NewClient()")
+		return nil, err
+	}
+
+	// The database driver: the Spanner client over the database the settings name, and
+	// the resource client over it with the stores wired.
+	database, err := spanner.Open(ctx, env.Spanner.Settings, fileStoreOptions(files, documents)...)
+	if err != nil {
+		return nil, errors.Wrap(err, "spanner.Open()")
 	}
 
 	cookieKey, err := cookieKey(env.CookieKey)
@@ -174,25 +132,17 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "resource.NewCursorKey()")
 	}
 
-	// The live service: the Firestore database the live pages' subscriptions and change
-	// sets live in, beside the Spanner database, and the signals document every instance
-	// holds one listener on. Every application wires one: the generated handlers
-	// subscribe and publish through it, the feature flags follow it, and both permission
-	// engines announce and watch the policy kind through it, so it opens before the
-	// auths, and a configuration naming no database for it, or a database without its
-	// project, does not start.
-	project, err := env.Firestore.Project(env.Spanner.ProjectID)
+	// The live service: the live driver opens the Firestore database the live pages'
+	// subscriptions and change sets live in, beside the Spanner database, and the signals
+	// document every instance holds one listener on; against the emulator with no
+	// project named, the Spanner project stands in, since the emulator takes any project
+	// id. Every application wires one: the generated handlers subscribe and publish
+	// through it, the feature flags follow it, and both permission engines announce and
+	// watch the policy kind through it, so it opens before the auths, and a configuration
+	// naming no database for it, or a database without its project, does not start.
+	liveService, err := livefirestore.Open(ctx, env.Firestore.Settings, env.Spanner.ProjectID)
 	if err != nil {
-		return nil, err
-	}
-	liveService, err := livefirestore.New(ctx, livefirestore.Config{
-		ProjectID:    project,
-		DatabaseID:   env.Firestore.DatabaseID,
-		APIKey:       env.Firestore.APIKey,
-		EmulatorHost: env.Firestore.EmulatorHost,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "firestore.New()")
+		return nil, errors.Wrap(err, "firestore.Open()")
 	}
 
 	// The one change signal both engines take: a policy write on any instance reaches
@@ -201,8 +151,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 	// The crew auth: the console's people, whose default roles ride in the binary and
 	// validate against the generated collection, which the router package generates and
-	// the auth package cannot import.
-	crewAuth, err := crew.New(ctx, spannerClient, crew.Settings{
+	// the auth package cannot import. The auth opens its stores on the driver's Spanner
+	// client.
+	crewAuth, err := crew.New(ctx, database.SpannerClient, crew.Settings{
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
 		Collection:     router.Collection(),
@@ -212,36 +163,18 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "crew.New()")
 	}
 
-	// The file stores belong beside the database: the resource client is constructed
-	// over them, the default store under resource.WithFileStore and the Documents store
-	// under resource.WithNamedFileStore, so the generated handlers read each store off
-	// the client and a transaction that deletes a document or a photo, or points a row
-	// at another file, has the old object deleted from its store once the commit lands.
-	// Each store opens from its own URL (APP_FILE_STORE, APP_FILE_STORE_DOCUMENTS): a
-	// directory in development, a bucket on Cloud Run. A store whose variable is unset
-	// is not opened: the migrate and bootstrap commands build this level without the
-	// stores and never touch files, and the server refuses to start without the stores
-	// its routes use (router.New).
-	//
-	// Demonstrates: @file.released, filestore.named.
-	files, documents, err := openFileStores(ctx, env.FileStores)
-	if err != nil {
-		return nil, err
-	}
-
-	resourceClient := resource.NewSpannerClient(spannerClient, fileStoreOptions(files, documents)...)
-
 	// The tenant roster: every instance's copy of the Sectors table's keys, built by the
-	// generated constructor (Sector is the @tenant record) and started here beside the
-	// engines, so the start fails when the first read does. It subscribes to the tenants
-	// kind on the live service, the one channel the engines and the feature flags ride:
-	// a sector charted on any instance is served by this one at its next request, with
-	// the library's five-minute reread as the backstop; no restart, no migrate job and no
-	// new login is needed, since a role held in every sector reaches the new one with
-	// nothing written. Tenancy is data, not a compiled-in list.
+	// generated constructor (Sector is the @tenant record) over the driver's resource
+	// client and started here beside the engines, so the start fails when the first read
+	// does. It subscribes to the tenants kind on the live service, the one channel the
+	// engines and the feature flags ride: a sector charted on any instance is served by
+	// this one at its next request, with the library's five-minute reread as the
+	// backstop; no restart, no migrate job and no new login is needed, since a role held
+	// in every sector reaches the new one with nothing written. Tenancy is data, not a
+	// compiled-in list.
 	//
 	// Demonstrates: tenancy.run-time-tenant.
-	tenants := app.NewSectorRoster(resourceClient, resource.WithTenantSignals(liveService))
+	tenants := app.NewSectorRoster(database.ResourceClient, resource.WithTenantSignals(liveService))
 	if err := tenants.Start(ctx); err != nil {
 		return nil, errors.Wrap(err, "resource.TenantRoster.Start()")
 	}
@@ -249,10 +182,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	conf := &DataConfiguration{
 		coreConfiguration: core,
 		env:               env,
-		spannerClient:     spannerClient,
+		database:          database,
 		files:             files,
 		documents:         documents,
-		resourceClient:    resourceClient,
 		cursorKey:         cursorKey,
 		crew:              crewAuth,
 		tenants:           tenants,
@@ -264,7 +196,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	// every sector, so a client's membership reaches each sector with one row; the
 	// portal's grants then narrow by company. The portal's login page is where a refused
 	// directory login returns to.
-	membersAuth, err := members.New(ctx, spannerClient, &members.Settings{
+	membersAuth, err := members.New(ctx, database.SpannerClient, &members.Settings{
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/portal/login",
@@ -288,7 +220,8 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 }
 
 // Close releases the level's clients, the engines before the live service they announce
-// and watch through, then the levels below it.
+// and watch through, the file stores before the database driver they are wired on, then
+// the levels below it.
 func (c *DataConfiguration) Close() {
 	if err := c.crew.Close(); err != nil {
 		log.Print(errors.Wrap(err, "crew.Auth.Close()"))
@@ -307,7 +240,7 @@ func (c *DataConfiguration) Close() {
 			log.Print(errors.Wrap(err, "filestore.Store.Close()"))
 		}
 	}
-	c.spannerClient.Close()
+	c.database.Close()
 	c.coreConfiguration.Close()
 }
 
@@ -330,11 +263,11 @@ func (c *DataConfiguration) LiveOrigins() []string {
 	return c.env.Firestore.BrowserOrigins()
 }
 
-// ResourceClient returns the database client the resource layer uses, with the file
-// stores wired on it: the generated handlers read each store off it, and a committed
-// transaction's released objects are deleted from their store.
+// ResourceClient returns the database client the resource layer uses, the driver's, with
+// the file stores wired on it: the generated handlers read each store off it, and a
+// committed transaction's released objects are deleted from their store.
 func (c *DataConfiguration) ResourceClient() resource.Client {
-	return c.resourceClient
+	return c.database.ResourceClient
 }
 
 // CursorKey returns the key that seals list cursors.
@@ -394,7 +327,8 @@ func ephemeralKey() (string, error) {
 	return base64.StdEncoding.EncodeToString(key), nil
 }
 
-// dataConfig holds the environment every database-opening process reads.
+// dataConfig holds the environment every database-opening process reads: the two
+// drivers' settings under their own names, and the level's own variables.
 type dataConfig struct {
 	Spanner   SpannerSettings
 	Firestore FirestoreSettings

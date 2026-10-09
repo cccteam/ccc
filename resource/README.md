@@ -1216,6 +1216,8 @@ location) two stores on one location are refused where the client is built.
 
 **Wiring.** The resource client is the one wiring point: `resource.NewSpannerClient(db,
 resource.WithFileStore(files), resource.WithNamedFileStore[resources.Documents](docs))`,
+which the Spanner database driver's `Open` takes the same options for
+(`spanner.Open(ctx, settings, resource.WithFileStore(files))`, `resource/database/spanner`),
 each store at most once, a second wiring of one store refused with a panic naming it, as
 a duplicate route is. The generated handlers read a store off the client
 (`Client.FileStore(name)`, nil when none is wired; the Postgres client holds none), and
@@ -1322,10 +1324,11 @@ would delete. It never runs in a pull-request stack, and in production a bucket'
 delete is the recovery. Lodestar's `cmd/jobs cleanup-files` runs it over both stores and
 the walkthrough proves it with one orphan and one live file. The cleanup runs from the
 service: a scheduled method (`@schedule`, daily) starts one execution of the job process
-with the cleanup command through `resource/jobs`, whose starter the configuration builds
-from the template job the stack sets on the service (`APP_JOBS_TEMPLATE`) and the version
-the image bakes in (`APP_VERSION`): the job of this build is the template's name with the
-version's key (`…-jobs-v0-1-15`), which the pipeline made on this build's image, so Cloud
+with the cleanup command through the job driver (`resource/jobs/cloudrun`), whose settings
+the site's configuration embeds (`cloudrun.Settings`, the template job the stack sets on
+the service as `APP_JOBS_TEMPLATE`) and whose `Open` takes the version the image bakes in
+(`APP_VERSION`): the job of this build is the template's name with the version's key
+(`…-jobs-v0-1-15`), which the pipeline made on this build's image, so Cloud
 Scheduler calls the service and the service starts the job deployed with it, which a
 traffic rollback rolls back too; where no job is configured (development, a pull-request
 stack) the start is refused and the call says so. Lodestar's `CleanUpFiles` is the method.
@@ -1434,8 +1437,14 @@ batch, unsubscribe a tab or a principal, the subscribers of a row, of a list in 
 of a resource), `ChangePublisher` (`Publish(ctx, domain, touched)`), `Identity` (the
 token payload and the revocation), `Signaler` and `Subscriber` (the signals below),
 bundled as `Service`; `Fanout` is the fan-out every publisher implementation writes, and
-`Fake` an in-memory service for tests. The Firestore implementation is
-`resource/live/firestore`: `subscriptions/{id}`, a flat server-owned collection with a
+`Fake` an in-memory service for tests. The Firestore implementation is the live driver,
+`resource/live/firestore`: the configuration embeds its `Settings` (the project, the
+database, the web API key and the emulator host) and opens it with `Open`, as it opens
+the database driver (`resource/database/spanner`, whose `Settings` are the three Spanner
+variables and whose `Open` builds the resource client) and the job driver
+(`resource/jobs/cloudrun`); each driver publishes the declaration of its settings in the
+package beside it, which impulse's checks and bedrock's stack read. The layout is
+`subscriptions/{id}`, a flat server-owned collection with a
 time-to-live on `expiry` and one composite index per lookup shape, and
 `users/{uid}/changes/{id}` with a time-to-live on `expires`, which a user may read for
 their own uid and nobody writes from a client; `firestore.rules`, `firestore.indexes.json`

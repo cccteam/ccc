@@ -38,6 +38,8 @@ const (
 	fileStoreDevDir     = "uploads/"
 	filestoreImportPath = "github.com/cccteam/ccc/resource/filestore"
 	jobsImportPath      = "github.com/cccteam/ccc/resource/jobs"
+	cloudrunImportPath  = "github.com/cccteam/ccc/resource/jobs/cloudrun"
+	databaseImportPath  = "github.com/cccteam/ccc/resource/database/spanner"
 	scheduledImportPath = "github.com/cccteam/ccc/resource/scheduled"
 	loggerImportPath    = "github.com/cccteam/logger"
 	// cleanupSchedule is when the cleanup runs: 09:00 UTC, outside every environment's
@@ -83,6 +85,7 @@ const (
 	bootstrapRun         = "run"
 	seedCall             = "deploy.SeedDevelopmentData"
 	spannerClientCall    = "resource.NewSpannerClient"
+	databaseOpenCall     = "spanner.Open"
 	rpcClientType        = "Client"
 	rpcClientAccessor    = "RPCClient"
 	resourceClientMethod = "ResourceClient"
@@ -270,13 +273,14 @@ func (Files) declareStore(e *sourceEdit) error {
 	return nil
 }
 
-// openStore opens the store before the construction, builds the resource client over it
-// and sets the field.
+// openStore opens the store before the database driver opens, hands the driver the
+// store's options, so the resource client it builds is built over the store, and sets
+// the field.
 func (f Files) openStore(e *sourceEdit) error {
-	opened, err := app.AddStatementsBeforeConstruction(e.rel, e.src, dataConstructor, dataConfigType, f.openingStatements())
+	opened, err := app.AddStatementsBeforeCall(e.rel, e.src, "", dataConstructor, databaseOpenCall, f.openingStatements())
 	switch {
 	case errors.Is(err, app.ErrNoAnchor):
-		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s builds no &%s{...} literal, so the store is not opened; call openFileStore(ctx, env.FileStores) where the clients are opened, build the resource client over it with fileStoreOptions(files)..., and set the files field", e.rel, dataConstructor, dataConfigType))
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s makes no %s call to open the store before, so the store is not opened; call openFileStore(ctx, env.FileStores) before the database driver opens, pass it fileStoreOptions(files)..., and set the files field", e.rel, dataConstructor, databaseOpenCall))
 
 		return nil
 	case err != nil:
@@ -284,18 +288,22 @@ func (f Files) openStore(e *sourceEdit) error {
 	}
 	e.src = opened
 	e.gained = append(e.gained, "the opening")
-	extended, err := app.ExtendCall(e.rel, e.src, dataConstructor, spannerClientCall, "fileStoreOptions(files)...")
+	if err := e.apply(app.ExtendCall(e.rel, e.src, dataConstructor, databaseOpenCall, "fileStoreOptions(files)...")); err != nil {
+		return err
+	}
+	e.gained = append(e.gained, "the resource client built over the store")
+	with, err := app.AddLiteralElement(e.rel, e.src, dataConstructor, dataConfigType, "files: files")
 	switch {
 	case errors.Is(err, app.ErrNoAnchor):
-		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s makes no %s call to build over the store; pass fileStoreOptions(files)... where the resource client is built", e.rel, dataConstructor, spannerClientCall))
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s builds no &%s{...} literal, so the files field is declared but not set; set it where the level is built", e.rel, dataConstructor, dataConfigType))
+
+		return nil
 	case err != nil:
 		return err
-	default:
-		e.src = extended
-		e.gained = append(e.gained, "the resource client built over the store")
 	}
+	e.src = with
 
-	return e.apply(app.AddLiteralElement(e.rel, e.src, dataConstructor, dataConfigType, "files: files"))
+	return nil
 }
 
 // releaseStore releases the store in Close.
@@ -303,7 +311,7 @@ func (f Files) releaseStore(e *sourceEdit) error {
 	closed, err := f.releaseInClose(e.rel, e.src)
 	switch {
 	case errors.Is(err, app.ErrNoAnchor):
-		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s releases no Spanner client the store's release could go before; close the files field in %s when it is not nil", e.rel, closeMethod, closeMethod))
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s releases no database driver the store's release could go before; close the files field in %s when it is not nil", e.rel, closeMethod, closeMethod))
 	case err != nil:
 		return err
 	default:
@@ -314,12 +322,12 @@ func (f Files) releaseStore(e *sourceEdit) error {
 	return nil
 }
 
-// openingStatements open the store before the data level is built.
+// openingStatements open the store before the database driver opens.
 func (Files) openingStatements() string {
-	return `// The file store belongs beside the database: the resource client is built over it
-// (resource.WithFileStore), so the generated handlers read and write files through the
-// client, and a committed transaction's released objects are deleted from the store. It
-// opens from ` + app.FileStoreVariable + ` (` + filesConfigFile + `): a directory in development, a bucket on
+	return `// The file store belongs beside the database: the database driver builds the resource
+// client over it (resource.WithFileStore), so the generated handlers read and write files
+// through the client, and a committed transaction's released objects are deleted from the
+// store. It opens from ` + app.FileStoreVariable + ` (` + filesConfigFile + `): a directory in development, a bucket on
 // Cloud Run. A process whose variable is unset runs without a store, and the server
 // refuses to start when its routes need one.
 files, err := openFileStore(ctx, env.FileStores)
@@ -331,12 +339,21 @@ if err != nil {
 // releaseInClose releases the store in Close, before the Spanner client it was opened
 // beside.
 func (Files) releaseInClose(rel string, src []byte) ([]byte, error) {
-	field, err := app.StructFieldOfType(rel, src, dataConfigType, spannerImportPath, "Client")
+	// The store's release goes before the database driver's, which closes the resource
+	// client the store is wired on; an application still closing a Spanner client of its
+	// own has the release go before that.
+	field, err := app.StructFieldOfType(rel, src, dataConfigType, databaseImportPath, "Driver")
 	if err != nil {
 		return nil, err
 	}
 	if field == "" {
-		return nil, errors.Wrapf(app.ErrNoAnchor, "%s: %s holds no *spanner.Client", rel, dataConfigType)
+		field, err = app.StructFieldOfType(rel, src, dataConfigType, spannerImportPath, "Client")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if field == "" {
+		return nil, errors.Wrapf(app.ErrNoAnchor, "%s: %s holds no *spanner.Driver and no *spanner.Client", rel, dataConfigType)
 	}
 	receiver, err := receiverName(rel, src, dataConfigType, closeMethod)
 	if err != nil {
@@ -440,12 +457,50 @@ func (Files) writeEnvTemplate(a *app.App, ch *Change) error {
 	} else {
 		out = strings.TrimRight(text, "\n") + "\n\n" + block
 	}
+	out, documented := documentJobsTemplate(out)
 	if err := os.WriteFile(a.Abs(a.EnvTemplate), []byte(out), mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: %s=%s, the development store", a.EnvTemplate, app.FileStoreVariable, fileStoreDevURL)
+	did := fmt.Sprintf("%s: %s=%s, the development store", a.EnvTemplate, app.FileStoreVariable, fileStoreDevURL)
+	if documented {
+		did += ", and " + jobsTemplateVariable + " documented in the site block, unset"
+	}
+	ch.didf("%s", did)
 
 	return nil
+}
+
+// jobsTemplateVariable is the job driver's variable (cloudrun.Settings), which the site
+// level declares by embedding the settings, so the development template documents it.
+const jobsTemplateVariable = "APP_JOBS_TEMPLATE"
+
+// jobsTemplateBlock documents the job driver's variable in the development template,
+// unset: no job is configured in development.
+const jobsTemplateBlock = "# " + jobsTemplateVariable + " is the job process's template job as the Cloud Run API names it, read by\n" +
+	"# the job driver (resource/jobs/cloudrun), whose settings the site level embeds; on Cloud Run\n" +
+	"# the stack sets it, and the site starts the copy of its own build. Unset, as in development,\n" +
+	"# no job is configured, and a scheduled method that starts one says so.\n" +
+	"# export " + jobsTemplateVariable + "=\n"
+
+// documentJobsTemplate adds the job driver's variable to the template's site block,
+// after the block's heading, or at the end when the template has no site block; a
+// template that names the variable already is left as it is. It reports whether the
+// block was added.
+func documentJobsTemplate(text string) (string, bool) {
+	if strings.Contains(text, jobsTemplateVariable) {
+		return text, false
+	}
+	at := strings.Index(text, envTemplateSiteSep)
+	if at < 0 || (at > 0 && text[at-1] != '\n') {
+		return strings.TrimRight(text, "\n") + "\n\n" + jobsTemplateBlock, true
+	}
+	end := strings.Index(text[at:], "\n")
+	if end < 0 {
+		return text + "\n" + jobsTemplateBlock, true
+	}
+	end += at + 1
+
+	return text[:end] + jobsTemplateBlock + text[end:], true
 }
 
 // writeGitignore keeps the development store's directory out of the repository.
@@ -792,7 +847,7 @@ func (f Files) writeMethod(a *app.App, modulePath string, g *app.Generator, ch *
 		ch.didf("%s: the rpc package, its Client carrying the job process's starter (Jobs()), and CleanUpFiles (@rpc, @schedule(%q)), which starts %s %s through it", rpcDir, cleanupSchedule, jobsCmdDir, cleanupCommand)
 	default:
 		ch.didf("%s: CleanUpFiles (@rpc, @schedule(%q)), which starts %s %s through the Client's Jobs()", methodFile, cleanupSchedule, jobsCmdDir, cleanupCommand)
-		ch.skipf("%s: give %s a Jobs() jobs.Starter accessor fed from the configuration's Jobs() (resource/jobs: jobs.FromEnvironment), which CleanUpFiles starts the job through", rpcDir, rpcClientType)
+		ch.skipf("%s: give %s a Jobs() jobs.Starter accessor fed from the configuration's Jobs() (the job driver, resource/jobs/cloudrun), which CleanUpFiles starts the job through", rpcDir, rpcClientType)
 	}
 
 	return rpcDir, fresh, nil
@@ -819,7 +874,8 @@ func NewClient(starter jobs.Starter) *Client {
 	return &Client{jobs: starter}
 }
 
-// Jobs is the job process's starter (resource/jobs).
+// Jobs is the job process's starter (resource/jobs): the job driver the configuration
+// built.
 func (c *Client) Jobs() jobs.Starter {
 	return c.jobs
 }
@@ -844,8 +900,8 @@ type (
 	// CleanUpFiles is the scheduled method that starts the orphaned-file cleanup. Every
 	// day at 09:00 UTC Cloud Scheduler calls it, and it starts one execution of the
 	// application's job process with the cleanup command (%[3]s %[4]s), through the
-	// starter the configuration built from the template job the stack sets
-	// (APP_JOBS_TEMPLATE, resource/jobs) and the version. The service starts its job,
+	// job driver the configuration built from the template job the stack sets
+	// (APP_JOBS_TEMPLATE, resource/jobs/cloudrun) and the version. The service starts its job,
 	// the job deployed with this revision, and the cleanup never runs
 	// inside a request; where no job is configured (development, a pull-request stack)
 	// the start is refused and the call says so.
@@ -877,18 +933,19 @@ func (m *CleanUpFiles) Execute(ctx context.Context, _ resource.ReadWriteTransact
 `, pkg, modulePath+"/"+jobsPkgDir, jobsCmdDir, cleanupCommand, cleanupSchedule)
 }
 
-// editSiteConfig gives the site level the scheduled routes' guard and the job process's
-// starter, read from the environment where the level is built, with their accessors in a
-// new file beside it. What the level holds already is left as it is: an application
-// whose own scheduled method wired the guard gains the starter alone, and an accessor
-// the package declares is not written twice.
+// editSiteConfig gives the site level the scheduled routes' guard and the job driver,
+// the guard read from the environment and the driver opened from the settings the site's
+// environment struct embeds, where the level is built, with their accessors in a new file
+// beside it. What the level holds already is left as it is: an application whose own
+// scheduled method wired the guard gains the driver alone, one that wired a starter of
+// its own keeps it, and an accessor the package declares is not written twice.
 func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 	rel, src, mode, err := findDeclaringFile(a, siteConfigType)
 	if err != nil {
 		return err
 	}
 	if rel == "" {
-		ch.skipf("no file declares a %s struct, so the scheduled routes' guard and the job process's starter are not built; build them where the served site's configuration is (scheduled.FromEnvironment, jobs.FromEnvironment) and expose them as %s() and %s()", siteConfigType, schedulerAccessor, jobsAccessor)
+		ch.skipf("no file declares a %s struct, so the scheduled routes' guard and the job driver are not built; build them where the served site's configuration is (scheduled.FromEnvironment; cloudrun.Settings embedded in the site's environment struct and cloudrun.Open) and expose them as %s() and %s()", siteConfigType, schedulerAccessor, jobsAccessor)
 
 		return nil
 	}
@@ -900,7 +957,7 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 	if err != nil {
 		return err
 	}
-	starterField, err := app.StructFieldOfValueType(rel, src, siteConfigType, jobsImportPath, "Starter")
+	starterField, driver, err := f.starterField(rel, src)
 	if err != nil {
 		return err
 	}
@@ -931,21 +988,22 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 		wired = append(wired, "the guard")
 	}
 	if starterField == "" {
-		starterField = siteStarterField
+		starterField, driver = siteStarterField, true
 		ok, err := f.buildInSite(edit, &siteWiring{
-			importPath: jobsImportPath,
-			field:      "// " + siteStarterField + " is the job process's starter (" + scheduledConfigFile + ").\n" + siteStarterField + " jobs.Starter",
-			statements: "// The job process's starter (" + scheduledConfigFile + "): it names the job of this build from the template\n// job the stack sets in APP_JOBS_TEMPLATE and the version the image bakes in, and without a\n// template refuses every start.\n" +
-				"starter, err := jobs.FromEnvironment(ctx)\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "jobs.FromEnvironment()") + "\n}",
-			callee:  "jobs.FromEnvironment",
+			importPath: cloudrunImportPath,
+			field:      "// " + siteStarterField + " is the job driver: the starter of this build's job, or of none (" + scheduledConfigFile + ").\n" + siteStarterField + " *cloudrun.Driver",
+			statements: "// The job driver (" + scheduledConfigFile + "): it names the job of this build from the template job the\n// stack sets in APP_JOBS_TEMPLATE, the setting the site's environment embeds, and the\n// version the image bakes in, and without a template refuses every start.\n" +
+				"starter, err := cloudrun.Open(ctx, env.Settings, data.AppVersion())\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "cloudrun.Open()") + "\n}",
+			callee:  "cloudrun.Open",
 			element: siteStarterField + ": starter",
-			what:    "the starter",
+			what:    "the driver",
 		})
 		if err != nil {
 			return err
 		}
 		built = built && ok
 		added = append(added, "the "+siteStarterField+" field")
+		f.embedDriverSettings(edit)
 	} else {
 		wired = append(wired, "the starter")
 	}
@@ -954,12 +1012,19 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 			return errors.Wrap(err, "os.WriteFile()")
 		}
 	}
-	accessors, accessorsFile, err := f.writeSiteAccessors(a, rel, pkg, guardField, starterField)
+	accessors, accessorsFile, err := f.writeSiteAccessors(a, rel, pkg, guardField, starterField, driver)
 	if err != nil {
 		return err
 	}
 	line := fmt.Sprintf("%s: %s gained %s", rel, siteConfigType, gainedInSite(added, built, wired))
-	if len(accessors) > 0 {
+	if closed := slices.Index(accessors, closeMethod+"()"); closed >= 0 {
+		accessors = slices.Delete(accessors, closed, closed+1)
+		if len(accessors) > 0 {
+			line += fmt.Sprintf("; %s: %s, which the app's %s asks for, and %s(), which releases the driver with the level", accessorsFile, joinAnd(accessors), configurerType, closeMethod)
+		} else {
+			line += fmt.Sprintf("; %s: %s(), which releases the driver with the level", accessorsFile, closeMethod)
+		}
+	} else if len(accessors) > 0 {
 		line += fmt.Sprintf("; %s: %s, which the app's %s asks for", accessorsFile, joinAnd(accessors), configurerType)
 	}
 	ch.didf("%s", line)
@@ -968,10 +1033,44 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 	return nil
 }
 
+// starterField finds the field the site level holds its job starter in: the job driver
+// (*cloudrun.Driver), reported as such, or a starter of the application's own
+// (jobs.Starter); empty when the level holds neither.
+func (Files) starterField(rel string, src []byte) (field string, driver bool, err error) {
+	field, err = app.StructFieldOfType(rel, src, siteConfigType, cloudrunImportPath, "Driver")
+	if err != nil || field != "" {
+		return field, field != "", err
+	}
+	field, err = app.StructFieldOfValueType(rel, src, siteConfigType, jobsImportPath, "Starter")
+
+	return field, false, err
+}
+
+// embedDriverSettings embeds the job driver's settings in the site's environment struct,
+// so the application declares the template job's variable through the driver's
+// declaration; a site level without an environment struct leaves the embedding to the
+// agent.
+func (Files) embedDriverSettings(e *sourceEdit) {
+	m := envStructRE.FindSubmatch(e.src)
+	if m == nil {
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: no environment struct (env := &T{}) to embed cloudrun.Settings in; embed it in the site's environment struct, which declares APP_JOBS_TEMPLATE, and pass it to cloudrun.Open", e.rel))
+
+		return
+	}
+	if err := e.apply(app.AddStructField(e.rel, e.src, string(m[1]), "\n// The Cloud Run job driver's variables: the template job this build's job is named\n// from.\ncloudrun.Settings")); err != nil {
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: cloudrun.Settings was not embedded in %s (%v); embed it there, since it declares APP_JOBS_TEMPLATE", e.rel, m[1], err))
+
+		return
+	}
+	e.gained = append(e.gained, "cloudrun.Settings on "+string(m[1]))
+}
+
 // writeSiteAccessors writes the site level's scheduled file with the accessors the
-// package lacks, Scheduler() over the guard field and Jobs() over the starter field,
-// and returns the accessors written and the file; none written, no file is.
-func (Files) writeSiteAccessors(a *app.App, rel, pkg, guardField, starterField string) (accessors []string, file string, err error) {
+// package lacks, Scheduler() over the guard field and Jobs() over the starter field, and
+// Close when the starter is the job driver and the type declares no Close, so the driver
+// is released with the level; it returns the methods written and the file; none written,
+// no file is.
+func (Files) writeSiteAccessors(a *app.App, rel, pkg, guardField, starterField string, driver bool) (accessors []string, file string, err error) {
 	methods, err := methodsOfType(a, path.Dir(rel), siteConfigType)
 	if err != nil {
 		return nil, "", err
@@ -985,6 +1084,10 @@ func (Files) writeSiteAccessors(a *app.App, rel, pkg, guardField, starterField s
 	if !slices.Contains(methods, jobsAccessor) {
 		accessors, imports = append(accessors, jobsAccessor+"()"), append(imports, jobsImportPath)
 		fmt.Fprintf(&body, jobsAccessorSource, jobsAccessor, siteConfigType, starterField)
+	}
+	if driver && !slices.Contains(methods, closeMethod) {
+		accessors = append(accessors, closeMethod+"()")
+		fmt.Fprintf(&body, closeSiteSource, closeMethod, siteConfigType, starterField, dataConfigType)
 	}
 	file = path.Join(path.Dir(rel), scheduledConfigFile)
 	if len(accessors) == 0 {
@@ -1082,11 +1185,19 @@ func (c *%[2]s) %[1]s() *scheduled.Guard {
 }
 `
 	jobsAccessorSource = `
-// %[1]s starts the application's job process: the job of this build, named from the
-// template job the stack sets in APP_JOBS_TEMPLATE and the version the image bakes in
-// (resource/jobs), or a starter that refuses where no template is configured.
+// %[1]s starts the application's job process: the job driver (resource/jobs/cloudrun),
+// which names the job of this build from the template job the stack sets in
+// APP_JOBS_TEMPLATE and the version the image bakes in, or refuses every start where no
+// template is configured.
 func (c *%[2]s) %[1]s() jobs.Starter {
 	return c.%[3]s
+}
+`
+	closeSiteSource = `
+// %[1]s releases the job driver, then the levels below.
+func (c *%[2]s) %[1]s() {
+	c.%[3]s.%[1]s()
+	c.%[4]s.%[1]s()
 }
 `
 )
@@ -1583,12 +1694,12 @@ func writeGo(a *app.App, rel, src string) error {
 // Meaning explains the file store in this framework and names what is left to do.
 func (Files) Meaning() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "The framework keeps an application's uploaded files in a file store (`resource/filestore`), opened from one URL: `%s` is a directory in development, `gs://<bucket>` the bucket the stack makes for the application on Cloud Run, and the same code runs against either. The data level builds the resource client over the store (`resource.WithFileStore`), so the generated handlers stream uploads into it (`@upload`), serve a row's file from it (`@file`), and delete an object the moment the transaction that released it commits. Objects are named by UUID and held by rows; an object no row holds is an orphan, and the orphaned-file cleanup (`filestore.Cleanup`, run by `%s %s`) deletes the ones older than two days, refusing to run when no row holds any key. The cleanup runs as the application's job process, started once a day by the scheduled method `CleanUpFiles` (`@schedule(%q)`), which Cloud Scheduler calls under the scheduler's token and which starts the job through `resource/jobs`; the service starts its job, and the cleanup never runs inside a request.\n\n", fileStoreDevURL, jobsCmdDir, cleanupCommand, cleanupSchedule)
+	fmt.Fprintf(&b, "The framework keeps an application's uploaded files in a file store (`resource/filestore`), opened from one URL: `%s` is a directory in development, `gs://<bucket>` the bucket the stack makes for the application on Cloud Run, and the same code runs against either. The data level builds the resource client over the store (`resource.WithFileStore`), so the generated handlers stream uploads into it (`@upload`), serve a row's file from it (`@file`), and delete an object the moment the transaction that released it commits. Objects are named by UUID and held by rows; an object no row holds is an orphan, and the orphaned-file cleanup (`filestore.Cleanup`, run by `%s %s`) deletes the ones older than two days, refusing to run when no row holds any key. The cleanup runs as the application's job process, started once a day by the scheduled method `CleanUpFiles` (`@schedule(%q)`), which Cloud Scheduler calls under the scheduler's token and which starts the job through the job driver (`resource/jobs/cloudrun`, its settings embedded in the site level's environment); the service starts its job, and the cleanup never runs inside a request.\n\n", fileStoreDevURL, jobsCmdDir, cleanupCommand, cleanupSchedule)
 	b.WriteString("Left to wire, in this order:\n\n")
 	items := []string{
 		"Record files. A resource that keeps a file declares a key column (`resource.Key[resource.Store]` for the default store) and `@file` on it, or an `@upload` method whose Execute takes `resource.Files`; the generated holders (`FileHolders()`) then list the resource, and the cleanup reads its keys. Until a resource records a file the store is wired and idle.",
 		fmt.Sprintf("Development. `%s` in `%s` keeps files under `%s`, gitignored; `%s` empties the directory before it seeds, since no row holds a file then.", app.FileStoreVariable, ".envrc.template", fileStoreDevDir, bootstrapDir),
-		"Deployment. The stack reads the variable from the configuration and makes the bucket, sets `APP_FILE_STORE` to it, deploys the job process with the service (`APP_JOBS_TEMPLATE` names the template job to the service, and the site starts the copy of its own build), and schedules the method with Cloud Scheduler under the invoker identity it names in `APP_SCHEDULER_INVOKER`; nothing here is configured by hand.",
+		"Deployment. The stack reads the variable from the configuration and makes the bucket, sets `APP_FILE_STORE` to it, deploys the job process with the service (`APP_JOBS_TEMPLATE`, the job driver's setting, names the template job to the service, and the site starts the copy of its own build), and schedules the method with Cloud Scheduler under the invoker identity it names in `APP_SCHEDULER_INVOKER`; nothing here is configured by hand.",
 		"Tests. The test configurers answer a nil guard and a fake starter (`jobs.NewFake`), so no suite starts the job; a suite that drives the scheduled route builds a guard over `scheduled.NewFake` and reads the starts off the fake.",
 	}
 	for i, item := range items {

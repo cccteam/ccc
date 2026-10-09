@@ -447,3 +447,49 @@ func TestTenancyApply(t *testing.T) {
 		})
 	}
 }
+
+// TestClientExpression names the client the roster reads through, by what the data level
+// holds: the database driver's resource client, a resource client of the level's own, a
+// Spanner client wrapped as one, or nothing.
+func TestClientExpression(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "the database driver",
+			src:  "package config\n\nimport \"github.com/cccteam/ccc/resource/database/spanner\"\n\ntype DataConfiguration struct {\n\tdatabase *spanner.Driver\n}\n",
+			want: "c.database.ResourceClient",
+		},
+		{
+			name: "a resource client of the level's own",
+			src:  "package config\n\nimport \"github.com/cccteam/ccc/resource\"\n\ntype DataConfiguration struct {\n\tresourceClient *resource.SpannerClient\n}\n",
+			want: "c.resourceClient",
+		},
+		{
+			name: "a Spanner client wrapped as a resource client",
+			src:  "package config\n\nimport cloudspanner \"cloud.google.com/go/spanner\"\n\ntype DataConfiguration struct {\n\tspannerClient *cloudspanner.Client\n}\n",
+			want: "resource.NewSpannerClient(c.spannerClient)",
+		},
+		{
+			name: "neither",
+			src:  "package config\n\ntype DataConfiguration struct {\n\tname string\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := clientExpression("pkg/config/data.go", []byte(tt.src))
+			if err != nil {
+				t.Fatalf("clientExpression() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("clientExpression() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

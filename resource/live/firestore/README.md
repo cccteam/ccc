@@ -90,10 +90,20 @@ carries the emulator host; the browser connects with the SDK's
 
 ## Configuration
 
-`Config{ProjectID, DatabaseID, APIKey, EmulatorHost}`: the project and the database
-id (`APP_FIRESTORE_DATABASE` is how bedrock hands the database to an application; empty
-is `(default)`), the optional Firebase web API key (`APP_FIREBASE_API_KEY`) the
-browser initializes the SDK with, and the emulator host (`FIRESTORE_EMULATOR_HOST`).
+The package is the live driver, in the shape the cloud driver set: an application embeds
+`Settings` in its configuration and calls `Open`. `Settings` declares the variables
+(`GOOGLE_CLOUD_FIRESTORE_PROJECT`, `APP_FIRESTORE_DATABASE`, `APP_FIREBASE_API_KEY`,
+`FIRESTORE_EMULATOR_HOST`), and `declaration.Settings()` in the package beside it
+publishes that declaration for impulse's checks and bedrock's stack. `Open(ctx, settings,
+emulatorProject)` refuses a database named without its project, and a configuration
+naming neither a database nor the emulator, since the live service is required; against
+the emulator with no project named, `emulatorProject` (the application's Spanner project
+in the skeleton) stands in, since the emulator takes any project id. `Settings.BrowserOrigins`
+names the origins the content security policy admits for the change feed.
+
+Under `Open` sits `New` with `Config{ProjectID, DatabaseID, APIKey, EmulatorHost}`: the
+project and the database id (empty is `(default)`), the optional Firebase web API key the
+browser initializes the SDK with, and the emulator host.
 
 ## Tests
 

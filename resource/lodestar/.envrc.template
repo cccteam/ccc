@@ -47,10 +47,11 @@ export APP_DROIDS_API_KEY=dev-droids-key
 # development, the scheduled routes are off and refuse every call, and the start says so.
 # export APP_SCHEDULER_INVOKER=
 # APP_JOBS_TEMPLATE is the job process's template job as the Cloud Run API names it, read
-# by the framework (resource/jobs), not pkg/config; on Cloud Run bedrock sets it to the
-# stack's template job, and the site starts the copy of its own build (the template's name
-# with the version's key). Unset, as in development, no job is configured, and a scheduled
-# method that starts one says so.
+# by the Cloud Run job driver (resource/jobs/cloudrun), whose settings the site level embeds
+# (pkg/config/site.go); on Cloud Run bedrock sets it to the stack's template job, and the
+# site starts the copy of its own build (the template's name with the version's key).
+# Unset, as in development, no job is configured, and a scheduled method that starts one
+# says so.
 # export APP_JOBS_TEMPLATE=
 # The file stores, one URL each: the default store (the refit photos') and the Documents
 # store (the mission documents'), directories in development (gitignored); on Cloud Run
