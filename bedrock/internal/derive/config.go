@@ -254,10 +254,11 @@ func (c *config) readStructs(fset *token.FileSet, rel string, d *ast.GenDecl, im
 
 // embedded reads an embedded field. A type of the package keeps its name, and the level
 // walk follows it when it is a struct of the package. A type of another package is a
-// framework settings struct when frameworkSettings lists it under the path the file
-// imports, by its alias or its name: the field expands into the fields the struct
-// declares, each at the embedding's line, as if the embedding struct declared them. One
-// the table does not list is marked foreign, for the level walk to refuse.
+// framework settings struct when the framework declares it (frameworkSettings) under the
+// path the file imports, by its alias or its name: the field expands into the fields the
+// declaration lists, each at the embedding's line, as if the embedding struct declared
+// them. One the framework does not declare is marked foreign, for the level walk to
+// refuse.
 func (c *config) embedded(rel string, expr ast.Expr, fd fieldDecl, imports map[string]string) []fieldDecl {
 	fd.name = path.Base(fd.typeName)
 	if star, ok := expr.(*ast.StarExpr); ok {
@@ -275,17 +276,17 @@ func (c *config) embedded(rel string, expr ast.Expr, fd fieldDecl, imports map[s
 	if !imported {
 		importPath = pkg.Name
 	}
-	fields, known := frameworkSettings[frameworkKey{path: importPath, name: sel.Sel.Name}]
+	decl, known := frameworkSetting(importPath, sel.Sel.Name)
 	if !known {
 		fd.foreign = importPath
 
 		return []fieldDecl{fd}
 	}
-	expanded := make([]fieldDecl, 0, len(fields))
-	for _, f := range fields {
-		field := fieldDecl{name: f.name, typeName: f.typeName, line: fd.line, doc: f.doc, tag: f.tag, framework: true}
+	expanded := make([]fieldDecl, 0, len(decl.Fields))
+	for _, f := range decl.Fields {
+		field := fieldDecl{name: f.Name, typeName: f.Type, line: fd.line, doc: f.Doc, tag: f.Tag, framework: true}
 		expanded = append(expanded, field)
-		variable, _ := tagOptions(f.tag)
+		variable, _ := tagOptions(f.Tag)
 		c.expansions = append(c.expansions, expansion{file: rel, line: fd.line, key: field.key(rel), variable: variable})
 	}
 
@@ -380,7 +381,9 @@ func (c *config) structNamed(name string) (string, *structDecl) {
 // places the variables the embedded framework settings structs declare among them, each
 // at its embedding's place in the source. A level's variables are the tagged fields of
 // its struct and of the structs its untagged fields are typed as, and the fields the
-// framework settings structs it embeds declare.
+// framework settings structs it embeds declare. impulse's scan declares those too, at
+// the embedding, from the same declaration; the reader's own expansion places them, so a
+// scanned tag standing at an embedding the reader expanded is passed over.
 func (c *config) placeVariables(tags []app.EnvTag) error {
 	located := map[string]Variable{}
 	for _, level := range c.levels {
@@ -391,6 +394,10 @@ func (c *config) placeVariables(tags []app.EnvTag) error {
 	for _, t := range tags {
 		v, ok := located[t.File+":"+strconv.Itoa(t.Line)]
 		if !ok {
+			if c.expanded(t) {
+				continue
+			}
+
 			return errors.Newf("%s:%d: %s is declared outside every configuration level", t.File, t.Line, t.Name)
 		}
 		v.Name, v.Required, v.HasDefault = t.Name, t.Required, t.HasDefault
@@ -405,6 +412,18 @@ func (c *config) placeVariables(tags []app.EnvTag) error {
 	}
 
 	return nil
+}
+
+// expanded reports whether a tag is one the reader expanded itself: a variable an
+// embedded framework settings struct declares, at the embedding's line.
+func (c *config) expanded(t app.EnvTag) bool {
+	for _, e := range c.expansions {
+		if e.file == t.File && e.line == t.Line && e.variable == t.Name {
+			return true
+		}
+	}
+
+	return false
 }
 
 // place adds a variable a framework settings struct declares among the variables the
@@ -435,7 +454,7 @@ func (c *config) collect(level, structName string, located map[string]Variable) 
 	for i := range decl.fields {
 		f := &decl.fields[i]
 		if f.foreign != "" {
-			return errors.Newf("%s:%d: %s embeds %s (%s), which is not a framework settings struct bedrock expands: declare its variables on the struct, or add it to bedrock's framework settings", decl.file, f.line, structName, f.typeName, f.foreign)
+			return errors.Newf("%s:%d: %s embeds %s (%s), which is not a settings struct the framework declares: declare its variables on the struct, or export the struct's declaration from the module that owns it", decl.file, f.line, structName, f.typeName, f.foreign)
 		}
 		if f.tag != "" {
 			v := Variable{Level: level, Struct: structName, Field: f.name, File: decl.file, Line: f.line, Type: f.typeName, Doc: f.doc, SecretTag: f.secret}

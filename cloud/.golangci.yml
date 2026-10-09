@@ -60,6 +60,9 @@ linters:
             - $all
           allow:
             - cloud.google.com/go/logging
+            # The module's own root package: the shape of a settings declaration, which
+            # each driver exports its settings struct in.
+            - github.com/cccteam/ccc/cloud
             - github.com/cccteam/ccc/tracer
             - github.com/cccteam/logger
             - github.com/go-playground/errors/v5

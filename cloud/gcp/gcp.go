@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/logging"
+	"github.com/cccteam/ccc/cloud"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
@@ -28,6 +29,34 @@ type Settings struct {
 	// TraceSampling says which spans are recorded: every one (all), or the ones a request
 	// Google's edge sampled starts (edge).
 	TraceSampling string `env:"APP_TRACE_SAMPLING,default=edge"`
+}
+
+// SettingsDeclaration is what Settings declares, for the tools that read an application
+// embedding it without loading its packages: the struct's import path and name, and its
+// env-tagged fields in declaration order, each as written above. TestSettingsDeclaration
+// holds it to the struct, so a field renamed, retagged or re-documented without the
+// declaration following fails here and not in a tool reading it.
+func SettingsDeclaration() cloud.Declaration {
+	return cloud.Declaration{
+		Path: "github.com/cccteam/ccc/cloud/gcp",
+		Name: "Settings",
+		Fields: []cloud.Field{
+			{
+				Name: "LoggingProject",
+				Type: "string",
+				Tag:  "GOOGLE_CLOUD_LOGGING_PROJECT",
+				Doc: "LoggingProject is the Google Cloud project request logs ship to and spans are\n" +
+					"recorded in. Empty logs to the console and exports no span: development.",
+			},
+			{
+				Name: "TraceSampling",
+				Type: "string",
+				Tag:  "APP_TRACE_SAMPLING,default=edge",
+				Doc: "TraceSampling says which spans are recorded: every one (all), or the ones a request\n" +
+					"Google's edge sampled starts (edge).",
+			},
+		},
+	}
 }
 
 // Driver is what Open built: where the process's logs and spans go, closed together.
