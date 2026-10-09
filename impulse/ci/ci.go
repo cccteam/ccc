@@ -1,14 +1,16 @@
 // Package ci renders the application's CI workflows from the code, and owns them:
-// .github/workflows/ci.yml, the checks on every pull request, and
+// .github/workflows/ci.yml, the checks on every pull request;
 // .github/workflows/ci-cache.yml, the run after a push to the default branch or a hotfix
-// branch that fills the caches the checks restore. impulse render writes them (impulse
-// new, add site and remove site write them as part of their change), impulse check
-// compares the committed files with what the code renders and fails a hand edit, and
-// bedrock reads the job ids as the check names its repository rule requires. The
-// workflows are plain jobs with fixed ids; no job calls a reusable workflow of another
-// repository, every action is pinned by commit with its tag in a comment, and every tool
-// version is a constant here, so a change to a check is an impulse release and the pins
-// move with it.
+// branch that fills the caches the checks restore; and
+// .github/workflows/security-scan.yml, the daily run of the vulnerability check and the
+// image scan over the default branch and the latest release, which reports to an issue of
+// the repository. impulse render writes them (impulse new, add site and remove site write
+// them as part of their change), impulse check compares the committed files with what the
+// code renders and fails a hand edit, and bedrock reads the job ids as the check names its
+// repository rule requires. The workflows are plain jobs with fixed ids; no job calls a
+// reusable workflow of another repository, no job posts anywhere outside the repository,
+// every action is pinned by commit with its tag in a comment, and every tool version is a
+// constant here, so a change to a check is an impulse release and the pins move with it.
 //
 // The caches never serve a stale result. The Go module cache holds downloads go.sum names,
 // each verified against it when read, and the Go build cache is addressed by the hash of
@@ -52,8 +54,24 @@ const File = ".github/workflows/ci.yml"
 // tests build code) is in the cache only when it ran.
 const CacheFile = ".github/workflows/ci-cache.yml"
 
+// ScanFile is where the security scan lives: the run every day at ScanSchedule, and on
+// demand, of govulncheck over the module and Grype over the built image at the default
+// branch and at the latest release, since nothing else rescans either between pull
+// requests and a vulnerability is published on its own day. A failed check or scan opens
+// one issue of the repository under ScanIssueTitle (or comments on the open one), and a
+// run that passes closes it; the workflow calls no reusable workflow and posts nowhere
+// else.
+const ScanFile = ".github/workflows/security-scan.yml"
+
 // Files are the workflows impulse owns, in the order Write writes and Compare reads them.
-var Files = []string{File, CacheFile}
+var Files = []string{File, CacheFile, ScanFile}
+
+// ScanSchedule is when the security scan runs, as cron reads it: 14:00 UTC every day.
+const ScanSchedule = "0 14 * * *"
+
+// ScanIssueTitle is the title of the one issue the security scan reports to: the report
+// job finds the open issue by this title exactly, so the title is fixed.
+const ScanIssueTitle = "Security scan: a vulnerability check or an image scan failed"
 
 // The tool versions the workflow pins. Each is written here once and read into the
 // template, so a bump is one edit and an impulse release.
@@ -281,14 +299,15 @@ func Checks(a *app.App) []string {
 	return checks
 }
 
-//go:embed ci.yml.tmpl ci-cache.yml.tmpl steps.tmpl
+//go:embed ci.yml.tmpl ci-cache.yml.tmpl security-scan.yml.tmpl steps.tmpl
 var sources embed.FS
 
 // workflows are the templates, one per owned file, over the application's workspaces,
-// its settings and the tool versions, with steps.tmpl's definitions of the steps both
-// files carry (the restore and the save of the Go caches, the files' modification
-// times). The delimiters are [[ and ]] so GitHub's ${{ }} expressions read as themselves.
-var workflows = template.Must(template.New("workflows").Delims("[[", "]]").Funcs(template.FuncMap{"list": List}).ParseFS(sources, "ci.yml.tmpl", "ci-cache.yml.tmpl", "steps.tmpl"))
+// its settings and the tool versions, with steps.tmpl's definitions of the steps the
+// files share (the restore and the save of the Go caches, the files' modification times,
+// the image build's inputs). The delimiters are [[ and ]] so GitHub's ${{ }} expressions
+// read as themselves.
+var workflows = template.Must(template.New("workflows").Delims("[[", "]]").Funcs(template.FuncMap{"list": List}).ParseFS(sources, "ci.yml.tmpl", "ci-cache.yml.tmpl", "security-scan.yml.tmpl", "steps.tmpl"))
 
 // List writes names as prose: a; a and b; a, b and c.
 func List(names []string) string {
@@ -307,8 +326,10 @@ type data struct {
 	Workspaces []Workspace
 	GoJobs     []string
 	TitleTypes []string
-	// RunsOn is each rendered job's runs-on value, by job id.
-	RunsOn map[string]string
+	// RunsOn is each rendered job's runs-on value, by job id; StandardRunner is the
+	// runs-on of the jobs no line can move (the security scan's refs and report).
+	RunsOn         map[string]string
+	StandardRunner string
 	// LargeJobs are the jobs on the larger runner, for the header's sentence.
 	LargeJobs []string
 	// Branches is the cache-filling workflow's push trigger's branch list, as YAML:
@@ -326,6 +347,10 @@ type data struct {
 	Semgrep       string
 	SemgrepDigest string
 	TruffleHog    string
+	// ScanSchedule and ScanIssueTitle are the security scan's cron line and the title of
+	// the issue it reports to.
+	ScanSchedule   string
+	ScanIssueTitle string
 }
 
 // CachedJob is one Go leg's use of the saved Go caches.
@@ -357,7 +382,7 @@ func Render(a *app.App) ([]byte, error) {
 	return render(a, File)
 }
 
-// RenderFile produces one owned workflow, File or CacheFile.
+// RenderFile produces one owned workflow, File, CacheFile or ScanFile.
 func RenderFile(a *app.App, file string) ([]byte, error) {
 	return render(a, file)
 }
@@ -370,20 +395,23 @@ func render(a *app.App, file string) ([]byte, error) {
 	}
 	rendered := Checks(a)
 	d := data{
-		Workspaces:    Workspaces(a),
-		GoJobs:        GoJobs,
-		TitleTypes:    TitleTypes,
-		RunsOn:        runsOn(rendered, settings),
-		LargeJobs:     settings.LargeRunner,
-		Branches:      branchList(settings.DefaultBranches),
-		TestCache:     settings.TestCache,
-		Cache:         make(map[string]CachedJob, len(CachedJobs)),
-		GolangciLint:  GolangciLint,
-		Bun:           Bun,
-		Govulncheck:   Govulncheck,
-		Semgrep:       Semgrep,
-		SemgrepDigest: SemgrepDigest,
-		TruffleHog:    TruffleHog,
+		Workspaces:     Workspaces(a),
+		GoJobs:         GoJobs,
+		TitleTypes:     TitleTypes,
+		RunsOn:         runsOn(rendered, settings),
+		StandardRunner: StandardRunner,
+		LargeJobs:      settings.LargeRunner,
+		Branches:       branchList(settings.DefaultBranches),
+		TestCache:      settings.TestCache,
+		Cache:          make(map[string]CachedJob, len(CachedJobs)),
+		GolangciLint:   GolangciLint,
+		Bun:            Bun,
+		Govulncheck:    Govulncheck,
+		Semgrep:        Semgrep,
+		SemgrepDigest:  SemgrepDigest,
+		TruffleHog:     TruffleHog,
+		ScanSchedule:   ScanSchedule,
+		ScanIssueTitle: ScanIssueTitle,
 	}
 	for _, c := range CachedJobs {
 		d.Cache[c.Job] = c
