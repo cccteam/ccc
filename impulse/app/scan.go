@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/cloud"
 )
 
 // skippedDirs are never descended into: they hold dependencies or build output, not the
@@ -126,7 +128,7 @@ func (a *App) scanGoFile(abs, rel string) error {
 	}
 
 	generated := strings.HasPrefix(filepath.Base(rel), "zz_gen_")
-	if bytes.Contains(data, []byte(`env:"`)) && !generated {
+	if !generated && declaresEnv(data) {
 		tags, err := parseEnvTags(rel, data)
 		if err != nil {
 			return err
@@ -780,8 +782,25 @@ func localImportName(f *ast.File, importPath string) string {
 	return ""
 }
 
-// parseEnvTags returns every env struct tag in the file. Tags without a name (such as
-// the prefix-only tags on embedded structs) are skipped.
+// declaresEnv reports whether a file may declare environment variables: it writes an env
+// tag, or imports a package declaring a framework settings struct it may embed.
+func declaresEnv(data []byte) bool {
+	if bytes.Contains(data, []byte(`env:"`)) {
+		return true
+	}
+	for _, d := range frameworkSettings {
+		if bytes.Contains(data, []byte(strconv.Quote(d.Path))) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// parseEnvTags returns every env struct tag in the file, in source order, and the
+// variables a framework settings struct the file embeds declares, as if the application
+// declared them at the embedding. Tags without a name (such as the prefix-only tags on
+// embedded structs of the application) are skipped.
 func parseEnvTags(rel string, src []byte) ([]EnvTag, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
@@ -789,44 +808,120 @@ func parseEnvTags(rel string, src []byte) ([]EnvTag, error) {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 
-	var tags []EnvTag
-	// bad is the first malformed secret tag: the field's variable, line and value.
-	var bad *EnvTag
-	var badValue string
+	r := &envTagReader{rel: rel, fset: fset, file: f}
 	ast.Inspect(f, func(n ast.Node) bool {
-		field, ok := n.(*ast.Field)
-		if !ok || field.Tag == nil || bad != nil {
-			return true
+		if st, ok := n.(*ast.StructType); ok && r.bad == nil {
+			r.readStruct(st)
 		}
-		raw := reflect.StructTag(strings.Trim(field.Tag.Value, "`"))
-		value, ok := raw.Lookup("env")
-		if !ok {
-			return true
-		}
-		tag, ok := parseEnvTag(value)
-		if !ok {
-			return true
-		}
-		tag.File = rel
-		tag.Line = fset.Position(field.Pos()).Line
-		if secret, present := raw.Lookup(secretTag); present {
-			switch secret {
-			case secretTrue:
-				tag.Secret = true
-			case secretFalse:
-			default:
-				bad, badValue = &tag, secret
-			}
-		}
-		tags = append(tags, tag)
 
 		return true
 	})
-	if bad != nil {
-		return nil, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes %q or %q", rel, bad.Line, badValue, bad.Name, secretTrue, secretFalse)
+	if r.bad != nil {
+		return nil, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes %q or %q", rel, r.bad.Line, r.badValue, r.bad.Name, secretTrue, secretFalse)
 	}
 
-	return tags, nil
+	return r.tags, nil
+}
+
+// envTagReader collects the env tags of one file's struct types.
+type envTagReader struct {
+	rel  string
+	fset *token.FileSet
+	file *ast.File
+	tags []EnvTag
+	// bad is the first malformed secret tag: the field's variable, line and value.
+	bad      *EnvTag
+	badValue string
+}
+
+// readStruct reads a struct type's fields in order: a field's env tag, or the variables
+// the framework settings struct an embedded field names declares.
+func (r *envTagReader) readStruct(st *ast.StructType) {
+	for _, field := range st.Fields.List {
+		if r.bad != nil {
+			return
+		}
+		line := r.fset.Position(field.Pos()).Line
+		if len(field.Names) == 0 {
+			if d, ok := r.embedded(field.Type); ok {
+				r.tags = append(r.tags, declaredTags(d, r.rel, line)...)
+
+				continue
+			}
+		}
+		r.readField(field, line)
+	}
+}
+
+// readField reads a field's env tag, and the secret tag beside it.
+func (r *envTagReader) readField(field *ast.Field, line int) {
+	if field.Tag == nil {
+		return
+	}
+	raw := reflect.StructTag(strings.Trim(field.Tag.Value, "`"))
+	value, ok := raw.Lookup("env")
+	if !ok {
+		return
+	}
+	tag, ok := parseEnvTag(value)
+	if !ok {
+		return
+	}
+	tag.File = r.rel
+	tag.Line = line
+	if secret, present := raw.Lookup(secretTag); present {
+		switch secret {
+		case secretTrue:
+			tag.Secret = true
+		case secretFalse:
+		default:
+			r.bad, r.badValue = &tag, secret
+		}
+	}
+	r.tags = append(r.tags, tag)
+}
+
+// embedded resolves an embedded field's type to the framework settings struct it names,
+// when it is one: a type of another package, which the file imports under the path the
+// struct's declaration gives, by its alias or its name. Any other embedded type, of the
+// application's own package or of a package the framework does not declare, is not
+// expanded: the scan does not load the application's packages.
+func (r *envTagReader) embedded(expr ast.Expr) (cloud.Declaration, bool) {
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return cloud.Declaration{}, false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return cloud.Declaration{}, false
+	}
+	for _, d := range frameworkSettings {
+		if d.Name == sel.Sel.Name && localImportName(r.file, d.Path) == pkg.Name {
+			return d, true
+		}
+	}
+
+	return cloud.Declaration{}, false
+}
+
+// declaredTags are the env tags a framework settings struct declares, as the application
+// declares them by embedding the struct at the line: each at the embedding, naming the
+// struct it came from.
+func declaredTags(d cloud.Declaration, rel string, line int) []EnvTag {
+	tags := make([]EnvTag, 0, len(d.Fields))
+	for _, f := range d.Fields {
+		tag, ok := parseEnvTag(f.Tag)
+		if !ok {
+			continue
+		}
+		tag.File, tag.Line, tag.Origin = rel, line, d.Path+"."+d.Name
+		tags = append(tags, tag)
+	}
+
+	return tags
 }
 
 // secretTag is the struct tag beside the env tag that declares a secret; secretTrue

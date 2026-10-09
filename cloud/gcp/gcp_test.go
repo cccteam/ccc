@@ -1,12 +1,17 @@
 package gcp
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/cccteam/ccc/cloud"
 	"github.com/cccteam/logger"
 )
 
@@ -40,19 +45,86 @@ func TestOpenRefusesBadSampling(t *testing.T) {
 	}
 }
 
-// TestSettingsVariables holds the declared variables to their names: what the stack and
-// the development environment render for an application that embeds Settings, and what
-// bedrock's derivation lists for the embedded struct.
-func TestSettingsVariables(t *testing.T) {
+// TestSettingsDeclaration holds the exported declaration to the struct: the import path
+// and name, and each field's name, type and env tag, by reflection; each field's doc
+// comment from the source, read the way the tools read a declared field's. A field
+// renamed, retagged or re-documented without the declaration following fails here, in
+// the module declaring it, and not in impulse or bedrock.
+func TestSettingsDeclaration(t *testing.T) {
 	t.Parallel()
 
 	st := reflect.TypeFor[Settings]()
-	tags := make([]string, 0, st.NumField())
+	docs := fieldDocs(t, st.Name())
+	want := cloud.Declaration{Path: st.PkgPath(), Name: st.Name()}
 	for i := range st.NumField() {
-		tags = append(tags, st.Field(i).Tag.Get("env"))
+		f := st.Field(i)
+		tag, ok := f.Tag.Lookup("env")
+		if !ok {
+			t.Fatalf("Settings.%s has no env tag; every field of the settings struct declares a variable", f.Name)
+		}
+		doc, ok := docs[f.Name]
+		if !ok {
+			t.Fatalf("Settings.%s is not in the source read for doc comments", f.Name)
+		}
+		want.Fields = append(want.Fields, cloud.Field{Name: f.Name, Type: f.Type.String(), Tag: tag, Doc: doc})
 	}
-	want := []string{"GOOGLE_CLOUD_LOGGING_PROJECT", "APP_TRACE_SAMPLING,default=edge"}
-	if diff := cmp.Diff(want, tags); diff != "" {
-		t.Errorf("Settings env tags mismatch (-want +got):\n%s", diff)
+	if diff := cmp.Diff(want, SettingsDeclaration()); diff != "" {
+		t.Errorf("SettingsDeclaration() mismatch (-want +got):\n%s", diff)
 	}
+}
+
+// fieldDocs reads the doc comment of every field of the named struct from the package's
+// source files: the comment's text without its markers, one line per source line, as
+// bedrock's reader and impulse's scan read a field the application declares.
+func fieldDocs(t *testing.T, structName string) map[string]string {
+	t.Helper()
+
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("filepath.Glob() error = %v", err)
+	}
+	fset := token.NewFileSet()
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, parser.ParseComments|parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parser.ParseFile(%s) error = %v", name, err)
+		}
+		if st := structNamed(f, structName); st != nil {
+			docs := map[string]string{}
+			for _, field := range st.Fields.List {
+				for _, n := range field.Names {
+					docs[n.Name] = strings.TrimSpace(field.Doc.Text())
+				}
+			}
+
+			return docs
+		}
+	}
+	t.Fatalf("no struct %s in the package's source", structName)
+
+	return nil
+}
+
+// structNamed finds the struct type the file declares under the name, or nil.
+func structNamed(f *ast.File, name string) *ast.StructType {
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok || ts.Name.Name != name {
+				continue
+			}
+			if st, ok := ts.Type.(*ast.StructType); ok {
+				return st
+			}
+		}
+	}
+
+	return nil
 }

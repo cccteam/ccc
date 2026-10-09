@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 const programHead = `package main
@@ -230,6 +232,82 @@ func TestParseEnvTagsSecret(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("parseEnvTags() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// gcpSettingsOrigin is what a tag the cloud driver's settings struct declares names as its
+// origin: the struct's import path and type name.
+const gcpSettingsOrigin = "github.com/cccteam/ccc/cloud/gcp.Settings"
+
+// TestParseEnvTagsEmbedded reads a configuration embedding the cloud driver's settings
+// struct: the struct's variables are declared at the embedding, in its place among the
+// struct's own, naming the struct they came from; an import alias and a pointer embedding
+// resolve the same; an embedded type of another package, or of the application's own,
+// is not expanded.
+func TestParseEnvTagsEmbedded(t *testing.T) {
+	t.Parallel()
+
+	const (
+		gcpImport   = "import \"github.com/cccteam/ccc/cloud/gcp\"\n"
+		serviceName = "\tServiceName string `env:\"APP_SERVICE_NAME,required\"`\n"
+	)
+	serviceNameTag := func(line int) EnvTag {
+		return EnvTag{File: "pkg/config/config.go", Line: line, Name: "APP_SERVICE_NAME", Required: true}
+	}
+	declared := func(line int) []EnvTag {
+		return []EnvTag{
+			{File: "pkg/config/config.go", Line: line, Name: "GOOGLE_CLOUD_LOGGING_PROJECT", Origin: gcpSettingsOrigin},
+			{File: "pkg/config/config.go", Line: line, Name: "APP_TRACE_SAMPLING", HasDefault: true, Origin: gcpSettingsOrigin},
+		}
+	}
+	tests := []struct {
+		name string
+		src  string
+		want []EnvTag
+	}{
+		{
+			name: "the embedded settings declare their variables at the embedding, after the declared field",
+			src:  "package config\n\n" + gcpImport + "\ntype coreConfig struct {\n" + serviceName + "\tgcp.Settings\n}\n",
+			want: append([]EnvTag{serviceNameTag(6)}, declared(7)...),
+		},
+		{
+			name: "an embedding before the declared field places its variables first",
+			src:  "package config\n\n" + gcpImport + "\ntype coreConfig struct {\n\tgcp.Settings\n" + serviceName + "}\n",
+			want: append(declared(6), serviceNameTag(7)),
+		},
+		{
+			name: "an import alias names the struct",
+			src:  "package config\n\nimport cloud \"github.com/cccteam/ccc/cloud/gcp\"\n\ntype coreConfig struct {\n" + serviceName + "\tcloud.Settings\n}\n",
+			want: append([]EnvTag{serviceNameTag(6)}, declared(7)...),
+		},
+		{
+			name: "a pointer embeds the struct too",
+			src:  "package config\n\n" + gcpImport + "\ntype coreConfig struct {\n" + serviceName + "\t*gcp.Settings\n}\n",
+			want: append([]EnvTag{serviceNameTag(6)}, declared(7)...),
+		},
+		{
+			name: "an embedded type of another package is not expanded",
+			src:  "package config\n\nimport \"example.com/other/gcp\"\n\ntype coreConfig struct {\n" + serviceName + "\tgcp.Settings\n}\n",
+			want: []EnvTag{serviceNameTag(6)},
+		},
+		{
+			name: "an embedded struct of the application is not expanded; its own tags are read where it is declared",
+			src:  "package config\n\ntype coreConfig struct {\n\tSettings\n" + serviceName + "}\n\ntype Settings struct {\n\tProject string `env:\"APP_PROJECT\"`\n}\n",
+			want: []EnvTag{serviceNameTag(5), {File: "pkg/config/config.go", Line: 9, Name: "APP_PROJECT"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseEnvTags("pkg/config/config.go", []byte(tt.src))
+			if err != nil {
+				t.Fatalf("parseEnvTags() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("parseEnvTags() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

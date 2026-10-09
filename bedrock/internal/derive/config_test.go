@@ -45,9 +45,10 @@ var (
 // TestEmbeddedFrameworkSettings reads a config package whose core struct embeds the
 // framework's settings struct: the embedding expands into the fields the struct
 // declares, each a field of the embedding struct at the embedding's line, placed among
-// the variables where the embedding stands; an import alias is honored; and an embedded
-// type of another package the framework does not declare is refused, as is a settings
-// struct embedded outside every level.
+// the variables where the embedding stands; the tags impulse's scan declares at the
+// embedding from the same declaration are placed once; an import alias is honored; and
+// an embedded type of another package the framework does not declare is refused, as is
+// a settings struct embedded outside every level.
 func TestEmbeddedFrameworkSettings(t *testing.T) {
 	t.Parallel()
 
@@ -60,6 +61,9 @@ func TestEmbeddedFrameworkSettings(t *testing.T) {
 		name string
 		// edit rewrites the fixture's config file; nil keeps it as committed.
 		edit func(src string) string
+		// scanned adds the tags impulse's scan reads for the embedding: the variables the
+		// struct declares, at the embedding's line, naming the struct.
+		scanned bool
 		// want are the core level's variables in order.
 		want []expectedVariable
 		// wantErr is the refusal, with <line> for the line of wantErrAt.
@@ -69,6 +73,11 @@ func TestEmbeddedFrameworkSettings(t *testing.T) {
 		{
 			name: "the embedded settings expand into fields of the struct, after the declared ones",
 			want: []expectedVariable{appVersionVar, serviceNameVar, loggingVar, samplingVar},
+		},
+		{
+			name:    "the tags impulse's scan declares at the embedding are placed once",
+			scanned: true,
+			want:    []expectedVariable{appVersionVar, serviceNameVar, loggingVar, samplingVar},
 		},
 		{
 			name: "an embedding before the declared fields places its variables first",
@@ -93,7 +102,7 @@ func TestEmbeddedFrameworkSettings(t *testing.T) {
 			edit: func(src string) string {
 				return strings.Replace(src, gcpImport, `"example.com/other/gcp"`, 1)
 			},
-			wantErr:   "pkg/config/config.go:<line>: coreConfig embeds gcp.Settings (example.com/other/gcp), which is not a framework settings struct bedrock expands: declare its variables on the struct, or add it to bedrock's framework settings",
+			wantErr:   "pkg/config/config.go:<line>: coreConfig embeds gcp.Settings (example.com/other/gcp), which is not a settings struct the framework declares: declare its variables on the struct, or export the struct's declaration from the module that owns it",
 			wantErrAt: "gcp.Settings",
 		},
 		{
@@ -129,6 +138,9 @@ func TestEmbeddedFrameworkSettings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("app.Discover() error = %v", err)
 			}
+			if tt.scanned {
+				a.EnvTags = append(a.EnvTags, scannedTags(t, src)...)
+			}
 			cfg, err := readConfig(a)
 			if tt.wantErr != "" {
 				wantErr := atLine(t, src, tt.wantErrAt, tt.wantErr)
@@ -159,9 +171,30 @@ func TestEmbeddedFrameworkSettings(t *testing.T) {
 	}
 }
 
+// scannedTags are the tags impulse's scan reads for the fixture's embedding of the
+// framework's settings struct: each of its variables at the embedding's line, naming the
+// struct as its origin.
+func scannedTags(t *testing.T, src string) []app.EnvTag {
+	t.Helper()
+
+	line := lineOf(t, src, "gcp.Settings")
+
+	return []app.EnvTag{
+		{File: "pkg/config/config.go", Line: line, Name: "GOOGLE_CLOUD_LOGGING_PROJECT"},
+		{File: "pkg/config/config.go", Line: line, Name: "APP_TRACE_SAMPLING", HasDefault: true},
+	}
+}
+
 // atLine fills <line> in text with the line the needle's first occurrence in the source
 // ends on.
 func atLine(t *testing.T, src, needle, text string) string {
+	t.Helper()
+
+	return strings.ReplaceAll(text, "<line>", strconv.Itoa(lineOf(t, src, needle)))
+}
+
+// lineOf is the line the needle's first occurrence in the source ends on.
+func lineOf(t *testing.T, src, needle string) int {
 	t.Helper()
 
 	at := strings.Index(src, needle)
@@ -169,7 +202,7 @@ func atLine(t *testing.T, src, needle, text string) string {
 		t.Fatalf("the config file does not contain %q", needle)
 	}
 
-	return strings.ReplaceAll(text, "<line>", strconv.Itoa(strings.Count(src[:at+len(needle)], "\n")+1))
+	return strings.Count(src[:at+len(needle)], "\n") + 1
 }
 
 // variableLine is what a variable says about itself: its name, level, declaration, type,

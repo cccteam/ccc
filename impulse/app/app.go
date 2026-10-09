@@ -287,6 +287,11 @@ type EnvTag struct {
 	// Secret reports the field's secret tag, secret:"true": the variable holds a
 	// credential that the infrastructure mounts from a secret store.
 	Secret bool
+	// Origin names the framework settings struct that declares the variable when the
+	// application embeds one instead of declaring the field itself, as import path and
+	// type name (github.com/cccteam/ccc/cloud/gcp.Settings); the tag stands at the
+	// embedding's line. Empty for a field the application declares.
+	Origin string
 }
 
 // Discover reads the application rooted at dir. dir must hold a go.mod.
