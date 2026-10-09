@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/cccteam/ccc/compare/cloud/v0.1.0...cloud/v0.2.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* resource's StructDecoder is private; a plain request body decodes with httpio's StructDecoder ([#901](https://github.com/cccteam/ccc/issues/901))
+
+### Code Refactoring
+
+* resource's StructDecoder is private; a plain request body decodes with httpio's StructDecoder ([#901](https://github.com/cccteam/ccc/issues/901)) ([166c1f6](https://github.com/cccteam/ccc/commit/166c1f66a0884a4cfba7e1d6302dad69806777a2))
+
+
+### Code Upgrade
+
+* Go 1.26.9 and x/net v0.60.0 in every module; net/http GO-2026-6612, GO-2026-6613 and GO-2026-6617 fixed ([#879](https://github.com/cccteam/ccc/issues/879)) ([4107fbb](https://github.com/cccteam/ccc/commit/4107fbb68a33305d109a6a8fec23e67986acf046))
+
 ## 0.1.0 (2026-10-08)
 
 
