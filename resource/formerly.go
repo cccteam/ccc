@@ -1,9 +1,7 @@
 package resource
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
@@ -18,20 +16,15 @@ import (
 // never changes; only the wire name moves, so the permission checks run against the
 // field's current name.
 
-// rewriteFormerKeys reads a JSON object body and renames every key that is a field's
-// former wire name to the field's current one, so both decoder reads see the current
-// names. A body naming a field under both names is refused: it would say two things
-// about one column. A body that is not a JSON object is returned as it was, for the
-// decoders to refuse as they do today.
-func rewriteFormerKeys(body io.Reader, former map[string]string) (io.ReadCloser, error) {
-	data, err := io.ReadAll(body)
-	if err != nil {
-		return nil, httpio.NewBadRequestMessageWithError(err, "failed to read request body")
-	}
-
+// rewriteFormerKeys renames every key of a JSON object body that is a field's former
+// wire name to the field's current one, so both decodes see the current names. A body
+// naming a field under both names is refused: it would say two things about one
+// column. A body that is not a JSON object is returned as it was, for the decoders to
+// refuse as they do today.
+func rewriteFormerKeys(data []byte, former map[string]string) ([]byte, error) {
 	object, ok := jsonObject(data)
 	if !ok {
-		return io.NopCloser(bytes.NewReader(data)), nil
+		return data, nil
 	}
 
 	rewritten := false
@@ -48,15 +41,15 @@ func rewriteFormerKeys(body io.Reader, former map[string]string) (io.ReadCloser,
 		rewritten = true
 	}
 	if !rewritten {
-		return io.NopCloser(bytes.NewReader(data)), nil
+		return data, nil
 	}
 
-	data, err = json.Marshal(object)
+	data, err := json.Marshal(object)
 	if err != nil {
 		return nil, errors.Wrap(err, "json.Marshal()")
 	}
 
-	return io.NopCloser(bytes.NewReader(data)), nil
+	return data, nil
 }
 
 // jsonObject reads a body as a JSON object; ok is false for anything else (an array, a

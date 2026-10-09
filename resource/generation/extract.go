@@ -822,6 +822,10 @@ func (c *client) resolveRPCDeclarations(rpcMethod *rpcMethodInfo, s *parser.Stru
 		return err
 	}
 
+	if err := resolveRPCBodyLimit(rpcMethod, s, annotations); err != nil {
+		return err
+	}
+
 	if err := c.resolveRPCFeature(rpcMethod, annotations); err != nil {
 		return err
 	}

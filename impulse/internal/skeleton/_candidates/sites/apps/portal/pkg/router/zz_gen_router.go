@@ -4,7 +4,7 @@
 // Package router serves the application. The middleware in front of every route,
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
-//	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
+//	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/api), password sessions:
 //	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /api/user/login, GET /api/user/session, DELETE /api/user/session
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
@@ -19,7 +19,9 @@ import (
 	"net/http"
 
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
@@ -35,8 +37,8 @@ type Handlers interface {
 	// dev for one, checks nothing.
 	ServerVersion() string
 
-	// Every request.
-	LoggerMiddleware() func(http.Handler) http.Handler
+	// Every request: where the request log goes; the router builds the request logger from it.
+	LogExporter() logger.Exporter
 	SecurityHeaders(next http.Handler) http.Handler
 
 	// Every outlet.
@@ -54,7 +56,7 @@ type Handlers interface {
 // the outer router, so no generated route can be lifted out from behind session
 // validation or the XSRF guard. Every field may be nil.
 type Hooks struct {
-	// Outermost runs ahead of the logger on every request: tracing belongs here.
+	// Outermost runs after tracing and ahead of the request logger on every request.
 	Outermost []func(http.Handler) http.Handler
 	// Root registers routes outside every outlet: health checks, webhooks, scheduler
 	// triggers. They sit behind the every-request chain and nothing else.
@@ -75,14 +77,17 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	serverVersion := h.ServerVersion()
 
 	// Every request.
+	r.Use(tracer.NewHandler())
 	r.Use(hooks.Outermost...)
-	r.Use(h.LoggerMiddleware())
+	r.Use(logger.NewRequestLogger(h.LogExporter()))
 	r.Use(h.SecurityHeaders)
 	r.Use(httpio.WithParams)
 
 	// The application's routes outside every outlet.
 	if hooks.Root != nil {
 		r.Group(func(r chi.Router) {
+			// The application's own routes take the body limit the generated routes take.
+			r.Use(resource.BodyLimit(BodyLimit))
 			hooks.Root(r)
 		})
 	}
@@ -94,9 +99,11 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
-		r.Post("/api/user/login", h.Login())
-		r.Get("/api/user/session", h.Authenticated())
-		r.Delete("/api/user/session", h.Logout())
+		// The session routes are bounded at BodyLimit, as the generated routes are.
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+		bounded.Post("/api/user/login", h.Login())
+		bounded.Get("/api/user/session", h.Authenticated())
+		bounded.Delete("/api/user/session", h.Logout())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)

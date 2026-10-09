@@ -202,9 +202,10 @@ func (a *App) Portal() session.OIDCAzureHandlers {
 	return a.portal
 }
 
-// LoggerMiddleware returns a middleware that logs requests.
-func (a *App) LoggerMiddleware() func(http.Handler) http.Handler {
-	return logger.NewRequestLogger(a.logExporter)
+// LogExporter is where the request log goes; the generated router builds the request
+// logger from it.
+func (a *App) LogExporter() logger.Exporter {
+	return a.logExporter
 }
 
 // ServerVersion is the release this server was built from, the configuration's

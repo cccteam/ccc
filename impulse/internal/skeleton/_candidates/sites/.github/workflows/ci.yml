@@ -28,7 +28,9 @@
 # vuln.go.dev, Grype downloads its vulnerability database and Semgrep fetches its registry
 # rules when the job runs, so this file at an old pin still finds a vulnerability published
 # after it; TruffleHog's detectors, golangci-lint's linters and the actions move with
-# impulse releases.
+# impulse releases. Between pull requests, security-scan.yml (owned the same way) runs
+# govulncheck and Grype over the default branch and the latest release every day and
+# reports to an issue of this repository.
 name: CI
 
 on:
@@ -443,7 +445,7 @@ jobs:
           fi
           echo "every browser workspace job succeeded"
 
-  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build, and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
+  # The container image, once the application has a Dockerfile (bedrock seeds it): hadolint over the Dockerfile, the build with the inputs the Dockerfile declares (ci for every build argument without a default, a placeholder for every build secret), and Grype over the built image, failing on a high or critical vulnerability. Without a Dockerfile the job passes with nothing to build.
   image:
     runs-on: ${{ vars.CI_LARGE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
@@ -460,12 +462,37 @@ jobs:
         with:
           dockerfile: Dockerfile
           failure-threshold: info
+      - name: The build inputs the Dockerfile declares
+        # Every ARG line with no default takes the value ci (VERSION and COMMIT aside,
+        # which the build passes itself), and every BuildKit secret a RUN line mounts
+        # (--mount=type=secret,id=NAME) is served from a placeholder file holding ci, so a
+        # Dockerfile that requires a secret builds here without the real value. The image
+        # is built to be scanned, never to be deployed.
+        id: build-inputs
+        if: steps.dockerfile.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          flags=""
+          for name in $(grep -E '^ARG [A-Z_][A-Z0-9_]*$' Dockerfile | awk '{ print $2 }' | sort -u || true); do
+            case "$name" in VERSION|COMMIT) continue ;; esac
+            flags="$flags --build-arg $name=ci"
+          done
+          mkdir -p "$RUNNER_TEMP/secrets"
+          for name in $(grep -oE -- '--mount=type=secret,[^ ]*' Dockerfile | grep -oE '(^|,)id=[A-Za-z0-9_.-]+' | sed 's/.*id=//' | sort -u || true); do
+            printf 'ci' > "$RUNNER_TEMP/secrets/$name"
+            flags="$flags --secret id=$name,src=$RUNNER_TEMP/secrets/$name"
+          done
+          echo "flags=${flags# }" >> "$GITHUB_OUTPUT"
+          echo "build inputs:${flags:- none}"
       - name: docker build
         if: steps.dockerfile.outputs.present == 'true'
-        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" -t application:ci .
+        env:
+          # The flags the step above derived, split on spaces into the command.
+          BUILD_INPUTS: ${{ steps.build-inputs.outputs.flags }}
+        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" $BUILD_INPUTS -t application:ci .
       - name: Grype
         if: steps.dockerfile.outputs.present == 'true'
-        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           image: application:ci
           fail-build: true

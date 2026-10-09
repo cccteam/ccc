@@ -89,7 +89,7 @@ from `2-env`'s state.
 
 - **Runtime identities**, one per deployed process:
   `imp-<env>-gbl-harbor-app` for the site (`main.go`) with
-  `roles/logging.logWriter`, `roles/cloudtrace.agent`,
+  `roles/logging.logWriter`, `roles/cloudtrace.agent`, `roles/telemetry.tracesWriter`,
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets; `imp-<env>-gbl-harbor-jobs` for the job process
   (`cmd/jobs`) with the site's project roles, `roles/spanner.databaseUser`
@@ -303,6 +303,7 @@ above them.
 |---|---|---|---|---|---|
 | `APP_SERVICE_NAME` | core | `harbor` / `harbor-migrate` / `harbor-jobs` | yes | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes | yes |
+| `APP_TRACE_SAMPLING` | core | `all` in a pull-request stack and tst, `edge` beyond | yes | yes | yes |
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes | yes |
 | `APP_FILE_STORE` | data | the default file store, as a `gs://` URL | yes | | yes |
 | `APP_TASKS_QUEUE` | data | the task queue | yes | | yes |

@@ -632,7 +632,7 @@ var (
 // Package {{ .Package }} serves the application. The middleware in front of every route,
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
-//	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
+//	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 {{- range .Outlets }}
 {{- if .APIKey }}
 //	{{ .Name }} (/{{ .Prefix }}), API key:
@@ -667,7 +667,9 @@ import (
 {{- range .StoreImports }}
 	"{{ . }}"
 {{- end }}
+	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
@@ -719,8 +721,8 @@ type Handlers interface {
 	// dev for one, checks nothing.
 	ServerVersion() string
 
-	// Every request.
-	LoggerMiddleware() func(http.Handler) http.Handler
+	// Every request: where the request log goes; the router builds the request logger from it.
+	LogExporter() logger.Exporter
 	SecurityHeaders(next http.Handler) http.Handler
 
 	// Every outlet.
@@ -740,7 +742,7 @@ type Handlers interface {
 // the outer router, so no generated route can be lifted out from behind session
 // validation or the XSRF guard. Every field may be nil.
 type Hooks struct {
-	// Outermost runs ahead of the logger on every request: tracing belongs here.
+	// Outermost runs after tracing and ahead of the request logger on every request.
 	Outermost []func(http.Handler) http.Handler
 	// Root registers routes outside every outlet: health checks, webhooks, scheduler
 	// triggers. They sit behind the every-request chain and nothing else.
@@ -779,14 +781,17 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 {{- end }}
 
 	// Every request.
+	r.Use(tracer.NewHandler())
 	r.Use(hooks.Outermost...)
-	r.Use(h.LoggerMiddleware())
+	r.Use(logger.NewRequestLogger(h.LogExporter()))
 	r.Use(h.SecurityHeaders)
 	r.Use(httpio.WithParams)
 
 	// The application's routes outside every outlet.
 	if hooks.Root != nil {
 		r.Group(func(r chi.Router) {
+			// The application's own routes take the body limit the generated routes take.
+			r.Use(resource.BodyLimit(BodyLimit))
 			hooks.Root(r)
 		})
 	}
@@ -817,8 +822,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use({{ .Receiver }}.StartSession)
 		r.Use({{ .Receiver }}.SetXSRFToken)
 {{ $outlet := . }}
+{{- if .Routes }}
+		// The session routes are bounded at BodyLimit, as the generated routes are.
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+{{- end }}
 {{- range .Routes }}
-		r.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
+		bounded.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
 {{- end }}
 
 		r.Group(func(r chi.Router) {
@@ -924,9 +933,7 @@ func registerGenerated(r chi.Router, hook func(chi.Router, func(chi.Router)), na
 package {{ .Package }}
 
 import (
-{{- if .FileStores }}
 	"context"
-{{- end }}
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -941,12 +948,13 @@ import (
 {{- range .StoreImports }}
 	"{{ . }}"
 {{- end }}
+	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
 
 // routerRootChain is the middleware every request passes, in order.
-var routerRootChain = []string{"LoggerMiddleware", "SecurityHeaders"}
+var routerRootChain = []string{"LogExporter", "SecurityHeaders"}
 
 // routerOutletChain is one outlet's middleware in order: group runs in front of the
 // outlet's session routes, guards additionally in front of its generated routes.
@@ -1722,8 +1730,29 @@ func (s *routerHandlersStub) {{ .HandlerFunc }}() http.HandlerFunc {
 }
 {{ end }}
 {{- end }}
-func (s *routerHandlersStub) LoggerMiddleware() func(http.Handler) http.Handler {
-	return s.rec.Middleware("LoggerMiddleware")
+func (s *routerHandlersStub) LogExporter() logger.Exporter {
+	return &routerLogExporterStub{rec: s.rec}
+}
+
+// routerLogExporterStub is the exporter the stub hands the router: its middleware
+// records under LogExporter, so the request logger's place in the chain is proven; the
+// runner and daemon context pass straight through.
+type routerLogExporterStub struct {
+	rec *routerCallRecorder
+}
+
+func (s *routerLogExporterStub) Middleware() func(http.Handler) http.Handler {
+	return s.rec.Middleware("LogExporter")
+}
+
+func (s *routerLogExporterStub) CliRunner() func(ctx context.Context, command string, f func(context.Context) error) error {
+	return func(ctx context.Context, _ string, f func(context.Context) error) error {
+		return f(ctx)
+	}
+}
+
+func (s *routerLogExporterStub) DaemonContext(ctx context.Context) context.Context {
+	return ctx
 }
 
 func (s *routerHandlersStub) SecurityHeaders(next http.Handler) http.Handler {

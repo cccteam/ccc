@@ -16,12 +16,13 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
 
 // routerRootChain is the middleware every request passes, in order.
-var routerRootChain = []string{"LoggerMiddleware", "SecurityHeaders"}
+var routerRootChain = []string{"LogExporter", "SecurityHeaders"}
 
 // routerOutletChain is one outlet's middleware in order: group runs in front of the
 // outlet's session routes, guards additionally in front of its generated routes.
@@ -1105,8 +1106,29 @@ func (s *routerHandlersStub) PruneDroidReports() http.HandlerFunc {
 	return s.rec.RecordHandlerCall("PruneDroidReports")
 }
 
-func (s *routerHandlersStub) LoggerMiddleware() func(http.Handler) http.Handler {
-	return s.rec.Middleware("LoggerMiddleware")
+func (s *routerHandlersStub) LogExporter() logger.Exporter {
+	return &routerLogExporterStub{rec: s.rec}
+}
+
+// routerLogExporterStub is the exporter the stub hands the router: its middleware
+// records under LogExporter, so the request logger's place in the chain is proven; the
+// runner and daemon context pass straight through.
+type routerLogExporterStub struct {
+	rec *routerCallRecorder
+}
+
+func (s *routerLogExporterStub) Middleware() func(http.Handler) http.Handler {
+	return s.rec.Middleware("LogExporter")
+}
+
+func (s *routerLogExporterStub) CliRunner() func(ctx context.Context, command string, f func(context.Context) error) error {
+	return func(ctx context.Context, _ string, f func(context.Context) error) error {
+		return f(ctx)
+	}
+}
+
+func (s *routerLogExporterStub) DaemonContext(ctx context.Context) context.Context {
+	return ctx
 }
 
 func (s *routerHandlersStub) SecurityHeaders(next http.Handler) http.Handler {

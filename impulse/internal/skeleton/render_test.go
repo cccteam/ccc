@@ -325,8 +325,8 @@ func TestRenderDevWorkspace(t *testing.T) {
 			wantUses:  []string{".", "DEV/ccc/resource", "DEV/session"},
 			wantUsed:  []string{"github.com/cccteam/ccc/resource", "github.com/cccteam/session"},
 			wantMissing: []string{
-				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/db-initiator",
-				"github.com/cccteam/httpio", "github.com/cccteam/logger",
+				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/cloud", "github.com/cccteam/ccc/tracer",
+				"github.com/cccteam/db-initiator", "github.com/cccteam/httpio", "github.com/cccteam/logger",
 			},
 		},
 		{
@@ -336,15 +336,15 @@ func TestRenderDevWorkspace(t *testing.T) {
 			wantUses:  []string{".", "../ccc/resource", "../session"},
 			wantUsed:  []string{"github.com/cccteam/ccc/resource", "github.com/cccteam/session"},
 			wantMissing: []string{
-				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/db-initiator",
-				"github.com/cccteam/httpio", "github.com/cccteam/logger",
+				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/cloud", "github.com/cccteam/ccc/tracer",
+				"github.com/cccteam/db-initiator", "github.com/cccteam/httpio", "github.com/cccteam/logger",
 			},
 		},
 		{
 			name:     "nothing checked out: the pins stay in force",
 			wantUses: []string{"."},
 			wantMissing: []string{
-				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/resource",
+				"github.com/cccteam/access", "github.com/cccteam/ccc/accesstypes", "github.com/cccteam/ccc/cloud", "github.com/cccteam/ccc/resource", "github.com/cccteam/ccc/tracer",
 				"github.com/cccteam/db-initiator", "github.com/cccteam/httpio", "github.com/cccteam/logger", "github.com/cccteam/session",
 			},
 		},
@@ -399,7 +399,7 @@ func TestRenderDevWorkspace(t *testing.T) {
 			if diff := cmp.Diff(wantUses, uses); diff != "" {
 				t.Errorf("go.work use lines mismatch (-want +got):\n%s", diff)
 			}
-			if !strings.Contains(string(work), "go 1.26.6\n") {
+			if !strings.Contains(string(work), "go 1.26.9\n") {
 				t.Errorf("go.work carries no go directive from go.mod:\n%s", work)
 			}
 		})

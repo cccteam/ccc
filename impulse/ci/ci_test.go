@@ -26,7 +26,7 @@ var candidates = []string{"solo", "tenanted", "outlets", "sites"}
 // update rewrites the candidates' committed workflows from the render instead of
 // comparing: go test ./ci -update. The candidates are embedded, so the rewritten files
 // are read by the next run.
-var update = flag.Bool("update", false, "rewrite the candidates' .github/workflows/ci.yml under internal/skeleton/_candidates from the render")
+var update = flag.Bool("update", false, "rewrite the candidates' owned workflows under internal/skeleton/_candidates/*/.github/workflows from the render")
 
 // candidatesDir is where the embedded candidates live in the source tree, relative to
 // this package, for -update.
@@ -139,9 +139,10 @@ func TestChecksAreTheRenderedJobs(t *testing.T) {
 }
 
 // TestRenderEqualsTheCandidates is the golden per candidate: the committed owned
-// workflows of every embedded skeleton (ci.yml and ci-cache.yml) are what the code renders
-// over the rendered tree, byte for byte. A change to a template or the pins is a change to
-// the eight files in the same commit (impulse render in a rendered candidate writes them).
+// workflows of every embedded skeleton (ci.yml, ci-cache.yml and security-scan.yml) are
+// what the code renders over the rendered tree, byte for byte. A change to a template or
+// the pins is a change to the twelve files in the same commit (go test ./ci -update
+// rewrites them).
 func TestRenderEqualsTheCandidates(t *testing.T) {
 	t.Parallel()
 
@@ -602,8 +603,157 @@ func TestCacheSteps(t *testing.T) {
 	}
 	// The image build is not cached: a plain docker build, no builder of its own.
 	prImage := job(pr, "image")
-	if !strings.Contains(prImage, `        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" -t application:ci .`+"\n") || strings.Contains(prImage, "buildx") || strings.Contains(prImage, "cache") {
+	if !strings.Contains(prImage, `        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" $BUILD_INPUTS -t application:ci .`+"\n") || strings.Contains(prImage, "buildx") || strings.Contains(prImage, "cache") {
 		t.Errorf("the image job is not the plain build:\n%s", prImage)
+	}
+}
+
+// TestSecurityScan: the scan workflow runs on the daily schedule and on demand, carries
+// the four jobs (refs, then go-vuln and image over the refs, then the report over both),
+// restores go-build's caches in go-vuln and saves nothing, runs govulncheck and Grype as
+// the pull request does, names the fixed issue title, and reads the //impulse:ci line's
+// runner choice for the two legs while refs and report stay on the standard runner.
+func TestSecurityScan(t *testing.T) {
+	t.Parallel()
+
+	const large = "    runs-on: ${{ vars." + ci.LargeRunnerVariable + " || '" + ci.StandardRunner + "' }}\n"
+	tests := []struct {
+		name string
+		ci   *app.CIDirective
+		// onLarge are the scan's jobs on the larger runner.
+		onLarge []string
+	}{
+		{name: "no line: image on the larger runner", onLarge: []string{"image"}},
+		{name: "the line moves go-vuln too", ci: &app.CIDirective{LargeRunner: []string{"go-vuln", "image"}}, onLarge: []string{"go-vuln", "image"}},
+		{name: "none: every job on the standard runner", ci: &app.CIDirective{LargeRunner: []string{}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := &app.App{WebApps: []app.WebApp{{Dir: "web"}}, CI: tt.ci}
+			scan, err := ci.RenderFile(a, ci.ScanFile)
+			if err != nil {
+				t.Fatalf("RenderFile(ScanFile) error = %v", err)
+			}
+			if diff := cmp.Diff([]string{"refs", "go-vuln", "image", "report"}, jobIDs(t, scan)); diff != "" {
+				t.Errorf("the scan's jobs mismatch (-want +got):\n%s", diff)
+			}
+			for _, want := range []string{
+				"name: Security scan\n",
+				"on:\n  schedule:\n    - cron: '" + ci.ScanSchedule + "'\n  workflow_dispatch:\n",
+				"concurrency:\n  group: security-scan-${{ github.ref }}\n",
+				"\npermissions: {}\n",
+				"'" + ci.ScanIssueTitle + "'",
+				"gh release view --json tagName --jq .tagName",
+				"gh issue create --title \"$TITLE\"",
+				"gh issue close \"$open\"",
+			} {
+				if !strings.Contains(string(scan), want) {
+					t.Errorf("the scan lacks %q", want)
+				}
+			}
+			if strings.Contains(string(scan), "pull_request") || strings.Contains(string(scan), "uses: ./") || strings.Contains(string(scan), "workflow_call") {
+				t.Error("the scan runs on a pull request or calls another workflow")
+			}
+			for _, leg := range []string{"go-vuln", "image"} {
+				j := job(scan, leg)
+				for _, want := range []string{
+					"    name: " + leg + " (${{ matrix.ref || 'the default branch' }})\n",
+					"    needs: refs\n",
+					"    strategy:\n      fail-fast: false\n      matrix:\n        ref: ${{ fromJSON(needs.refs.outputs.refs) }}\n",
+					"          ref: ${{ matrix.ref }}\n",
+				} {
+					if !strings.Contains(j, want) {
+						t.Errorf("the scan's %s lacks %q:\n%s", leg, want, j)
+					}
+				}
+				if got, want := strings.Contains(j, large), slices.Contains(tt.onLarge, leg); got != want {
+					t.Errorf("the scan's %s runs on the larger runner = %v, want %v:\n%s", leg, got, want, j)
+				}
+			}
+			vuln := job(scan, "go-vuln")
+			if !strings.Contains(vuln, "          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}\n") || strings.Contains(vuln, "Save the Go caches") {
+				t.Errorf("the scan's go-vuln does not restore go-build's caches alone:\n%s", vuln)
+			}
+			if !strings.Contains(vuln, "go run golang.org/x/vuln/cmd/govulncheck@"+ci.Govulncheck+" ./...\n") || !strings.Contains(vuln, "go run golang.org/x/vuln/cmd/govulncheck@"+ci.Govulncheck+" -tags skipAuth ./...\n") {
+				t.Errorf("the scan's go-vuln does not run govulncheck as the pull request does:\n%s", vuln)
+			}
+			image := job(scan, "image")
+			if !strings.Contains(image, "      - name: Grype\n") || !strings.Contains(image, "          fail-build: true\n          severity-cutoff: high\n") || strings.Contains(image, "hadolint") {
+				t.Errorf("the scan's image does not run Grype as the pull request does, or runs hadolint:\n%s", image)
+			}
+			report := job(scan, "report")
+			for _, want := range []string{
+				"    if: ${{ always() }}\n",
+				"    needs:\n      - go-vuln\n      - image\n",
+				"      issues: write\n",
+				"      contents: read\n",
+				"      FAILED: ${{ contains(needs.*.result, 'failure') }}\n",
+				"      PASSED: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}\n",
+				"actions/runs/$GITHUB_RUN_ID/jobs",
+			} {
+				if !strings.Contains(report, want) {
+					t.Errorf("the scan's report lacks %q:\n%s", want, report)
+				}
+			}
+			for _, id := range []string{"refs", "report"} {
+				if !strings.Contains(job(scan, id), "    runs-on: "+ci.StandardRunner+"\n") {
+					t.Errorf("the scan's %s is not on the standard runner:\n%s", id, job(scan, id))
+				}
+			}
+		})
+	}
+}
+
+// TestBuildInputs: the image job of the pull request workflow and of the scan read the
+// build's inputs from the Dockerfile in the same step (every ARG without a default as ci,
+// every mounted build secret from a placeholder) and pass them to docker build.
+func TestBuildInputs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		file string
+		// commit is how the docker build names the commit it builds.
+		commit string
+	}{
+		{name: "the pull request workflow", file: ci.File, commit: `"$GITHUB_SHA"`},
+		{name: "the security scan", file: ci.ScanFile, commit: `"$(git rev-parse HEAD)"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rendered, err := ci.RenderFile(&app.App{WebApps: []app.WebApp{{Dir: "web"}}}, tt.file)
+			if err != nil {
+				t.Fatalf("RenderFile(%s) error = %v", tt.file, err)
+			}
+			image := job(rendered, "image")
+			if image == "" {
+				t.Fatalf("%s has no image job", tt.file)
+			}
+			for _, want := range []string{
+				"      - name: The build inputs the Dockerfile declares\n",
+				"        id: build-inputs\n        if: steps.dockerfile.outputs.present == 'true'\n",
+				`grep -E '^ARG [A-Z_][A-Z0-9_]*$' Dockerfile`,
+				`case "$name" in VERSION|COMMIT) continue ;; esac`,
+				`flags="$flags --build-arg $name=ci"`,
+				`grep -oE -- '--mount=type=secret,[^ ]*' Dockerfile`,
+				`printf 'ci' > "$RUNNER_TEMP/secrets/$name"`,
+				`flags="$flags --secret id=$name,src=$RUNNER_TEMP/secrets/$name"`,
+				`echo "flags=${flags# }" >> "$GITHUB_OUTPUT"`,
+				"          BUILD_INPUTS: ${{ steps.build-inputs.outputs.flags }}\n",
+				"        run: docker build --build-arg VERSION=ci --build-arg COMMIT=" + tt.commit + " $BUILD_INPUTS -t application:ci .\n",
+			} {
+				if !strings.Contains(image, want) {
+					t.Errorf("%s's image job lacks %q:\n%s", tt.file, want, image)
+				}
+			}
+			if strings.Index(image, "id: build-inputs") > strings.Index(image, "      - name: docker build\n") {
+				t.Errorf("%s's image job derives the build inputs after the build:\n%s", tt.file, image)
+			}
+		})
 	}
 }
 
@@ -765,6 +915,38 @@ func TestCompare(t *testing.T) {
 			want: &ci.Difference{File: ci.CacheFile, Missing: true}, wantText: ".github/workflows/ci-cache.yml is missing",
 		},
 		{
+			name: "the security scan missing",
+			app: func(t *testing.T) *app.App {
+				t.Helper()
+				a := workspaceApp(t, []string{"web"}, true)
+				if err := os.Remove(a.Abs(ci.ScanFile)); err != nil {
+					t.Fatal(err)
+				}
+
+				return a
+			},
+			want: &ci.Difference{File: ci.ScanFile, Missing: true}, wantText: ".github/workflows/security-scan.yml is missing",
+		},
+		{
+			name: "a hand edit in the security scan",
+			app: func(t *testing.T) *app.App {
+				t.Helper()
+				a := workspaceApp(t, []string{"web"}, true)
+				data, err := os.ReadFile(a.Abs(ci.ScanFile))
+				if err != nil {
+					t.Fatal(err)
+				}
+				edited := strings.Replace(string(data), "    - cron: '"+ci.ScanSchedule+"'", "    - cron: '0 2 * * *'", 1)
+				if err := os.WriteFile(a.Abs(ci.ScanFile), []byte(edited), 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				return a
+			},
+			want:     &ci.Difference{File: ci.ScanFile, Line: lineOf(t, ci.ScanFile, "    - cron: '"+ci.ScanSchedule+"'"), Want: "    - cron: '" + ci.ScanSchedule + "'", Got: "    - cron: '0 2 * * *'"},
+			wantText: fmt.Sprintf(`.github/workflows/security-scan.yml:%d: the code renders "    - cron: '%s'"; the file has "    - cron: '0 2 * * *'"`, lineOf(t, ci.ScanFile, "    - cron: '"+ci.ScanSchedule+"'"), ci.ScanSchedule),
+		},
+		{
 			name: "a hand edit in the cache-filling workflow",
 			app: func(t *testing.T) *app.App {
 				t.Helper()
@@ -869,7 +1051,7 @@ func TestWrite(t *testing.T) {
 	if !first.Written {
 		t.Error("first Write() reported nothing written")
 	}
-	if diff := cmp.Diff([]ci.FileOutcome{{File: ci.File, Written: true}, {File: ci.CacheFile, Written: true}}, first.Files); diff != "" {
+	if diff := cmp.Diff([]ci.FileOutcome{{File: ci.File, Written: true}, {File: ci.CacheFile, Written: true}, {File: ci.ScanFile, Written: true}}, first.Files); diff != "" {
 		t.Errorf("first Write().Files mismatch (-want +got):\n%s", diff)
 	}
 	if diff := cmp.Diff(ci.Files, first.WrittenFiles()); diff != "" {
@@ -891,7 +1073,7 @@ func TestWrite(t *testing.T) {
 	if again.Written || len(again.WrittenFiles()) != 0 {
 		t.Error("second Write() rewrote an unchanged file")
 	}
-	if diff := cmp.Diff([]ci.FileOutcome{{File: ci.File}, {File: ci.CacheFile}}, again.Files); diff != "" {
+	if diff := cmp.Diff([]ci.FileOutcome{{File: ci.File}, {File: ci.CacheFile}, {File: ci.ScanFile}}, again.Files); diff != "" {
 		t.Errorf("second Write().Files mismatch (-want +got):\n%s", diff)
 	}
 	if err := os.Remove(a.Abs(ci.CacheFile)); err != nil {

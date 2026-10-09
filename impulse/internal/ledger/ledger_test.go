@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"io/fs"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
+	"github.com/cccteam/ccc/impulse/internal/skeleton"
 	"github.com/cccteam/ccc/impulse/internal/transition"
 )
 
@@ -31,18 +33,18 @@ func (noopRecipe) Apply(context.Context, *app.App, check.Execer) (*transition.Ch
 
 func (noopRecipe) Meaning() string { return "" }
 
-// testLedger is three releases: the first pins both modules at 0.1.0, the second moves
+// testLedger is three steps: the first pins both modules at 0.1.0, the second moves
 // resource with a recipe, the third moves both with none.
-func testLedger() []Release {
-	return []Release{
-		{Version: "v0.1.0", Pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, Note: "the first beta"},
-		{Version: "v0.2.0", Pins: map[string]string{resourceModule: "v0.2.0", accessModule: "v0.1.0"}, Recipes: []Recipe{noopRecipe{name: "paging"}}, Note: "pages by cursor"},
-		{Version: "v0.3.0", Pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, Note: "no code change is needed"},
+func testLedger() []Step {
+	return []Step{
+		{Pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, Note: "the first beta"},
+		{Pins: map[string]string{resourceModule: "v0.2.0", accessModule: "v0.1.0"}, Recipes: []Recipe{noopRecipe{name: "paging"}}, Note: "pages by cursor"},
+		{Pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, Note: "no code change is needed"},
 	}
 }
 
-// TestPosition reads where pins stand: before every release, at one, beyond the last, and
-// a pin bumped ahead of the others counting for the releases it reaches alone.
+// TestPosition reads where pins stand: before every step, at one, beyond the last, and a
+// pin bumped ahead of the others counting for the steps it reaches alone.
 func TestPosition(t *testing.T) {
 	t.Parallel()
 
@@ -52,7 +54,7 @@ func TestPosition(t *testing.T) {
 		want int
 	}{
 		{name: "no framework pin", pins: map[string]string{}, want: -1},
-		{name: "before the first release", pins: map[string]string{resourceModule: "v0.0.9", accessModule: "v0.1.0"}, want: -1},
+		{name: "before the first step", pins: map[string]string{resourceModule: "v0.0.9", accessModule: "v0.1.0"}, want: -1},
 		{name: "at the first", pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, want: 0},
 		{name: "resource ahead alone reaches the second", pins: map[string]string{resourceModule: "v0.2.5", accessModule: "v0.1.0"}, want: 1},
 		{name: "a pseudo-version past the third", pins: map[string]string{resourceModule: "v0.3.1-0.20261005064211-ce3bc37a7307", accessModule: "v0.2.0"}, want: 2},
@@ -70,49 +72,86 @@ func TestPosition(t *testing.T) {
 	}
 }
 
-// TestPending lists the releases to walk: every later one, up to a target, none when the
-// application is at the last, and a target outside the ledger or behind the position refused.
+// TestPending lists the steps to walk: every later one, none when the application is at
+// the last.
 func TestPending(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		pins    map[string]string
-		target  string
-		want    []string
-		wantErr string
+		name string
+		pins map[string]string
+		want []string
 	}{
-		{name: "before the first: all three", pins: map[string]string{}, want: []string{"v0.1.0", "v0.2.0", "v0.3.0"}},
-		{name: "at the first: the two after", pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, want: []string{"v0.2.0", "v0.3.0"}},
-		{name: "at the first, up to the second", pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, target: "v0.2.0", want: []string{"v0.2.0"}},
+		{name: "before the first: all three", pins: map[string]string{}, want: []string{"access v0.1.0, ccc/resource v0.1.0", "ccc/resource v0.2.0", "access v0.2.0, ccc/resource v0.3.0"}},
+		{name: "at the first: the two after", pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, want: []string{"ccc/resource v0.2.0", "access v0.2.0, ccc/resource v0.3.0"}},
 		{name: "at the last: none", pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, want: []string{}},
-		{name: "a target the ledger does not record", pins: map[string]string{}, target: "v0.4.0", wantErr: "v0.4.0 is not an impulse release the ledger records (v0.1.0, v0.2.0, v0.3.0)"},
-		{name: "a target at the position: none", pins: map[string]string{resourceModule: "v0.2.0", accessModule: "v0.1.0"}, target: "v0.2.0", want: []string{}},
-		{name: "a target behind the position", pins: map[string]string{resourceModule: "v0.2.0", accessModule: "v0.1.0"}, target: "v0.1.0", wantErr: "the application already stands beyond v0.1.0 (its pins reach v0.2.0); an upgrade walks forward only"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := Pending(testLedger(), tt.pins, tt.target)
-			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("Pending() error = %v, want %q", err, tt.wantErr)
+			var got []string
+			pending := Pending(testLedger(), tt.pins)
+			prev := map[string]string{}
+			if n := len(testLedger()) - len(pending); n > 0 {
+				prev = testLedger()[n-1].Pins
+			}
+			for i := range pending {
+				got = append(got, strings.Join(pending[i].Moves(prev), ", "))
+				prev = pending[i].Pins
+			}
+			if diff := cmp.Diff(tt.want, got, cmp.Transformer("nil", func(s []string) []string {
+				if s == nil {
+					return []string{}
 				}
 
-				return
-			}
-			if err != nil {
-				t.Fatalf("Pending() error = %v", err)
-			}
-			if diff := cmp.Diff(tt.want, Versions(got)); diff != "" {
+				return s
+			})); diff != "" {
 				t.Errorf("Pending() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
 }
 
-// TestAppPins reads the framework requires of a go.mod and nothing else.
+// TestMoves lists what a step moves from given pins: a module missing or behind, never
+// one at or beyond the step's.
+func TestMoves(t *testing.T) {
+	t.Parallel()
+
+	step := testLedger()[2]
+	tests := []struct {
+		name string
+		from map[string]string
+		want []string
+	}{
+		{name: "from nothing: every pin", from: nil, want: []string{"access v0.2.0", "ccc/resource v0.3.0"}},
+		{name: "from the step before: both move", from: testLedger()[1].Pins, want: []string{"access v0.2.0", "ccc/resource v0.3.0"}},
+		{name: "resource bumped by hand ahead: access alone", from: map[string]string{resourceModule: "v0.4.0", accessModule: "v0.1.0"}, want: []string{"access v0.2.0"}},
+		{name: "at the step: nothing", from: step.Pins, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, step.Moves(tt.from)); diff != "" {
+				t.Errorf("Moves() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestNames labels the steps by what each moves from the one before.
+func TestNames(t *testing.T) {
+	t.Parallel()
+
+	want := []string{"access v0.1.0, ccc/resource v0.1.0", "ccc/resource v0.2.0", "access v0.2.0, ccc/resource v0.3.0"}
+	if diff := cmp.Diff(want, Names(testLedger())); diff != "" {
+		t.Errorf("Names() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestAppPins reads the framework requires of a go.mod and nothing else: not impulse's
+// own, whose pin is the tool's.
 func TestAppPins(t *testing.T) {
 	t.Parallel()
 
@@ -120,7 +159,7 @@ func TestAppPins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{resourceModule: "v0.10.7-0.20261005064211-ce3bc37a7307", accessModule: "v0.9.12", "github.com/cccteam/ccc/impulse": "v0.1.0"}
+	want := map[string]string{resourceModule: "v0.10.7-0.20261005064211-ce3bc37a7307", accessModule: "v0.9.12"}
 	if diff := cmp.Diff(want, AppPins(mod)); diff != "" {
 		t.Errorf("AppPins() mismatch (-want +got):\n%s", diff)
 	}
@@ -133,27 +172,33 @@ func TestAppPins(t *testing.T) {
 func TestValidate(t *testing.T) {
 	t.Parallel()
 
+	pins := func(resource string) map[string]string { return map[string]string{resourceModule: resource} }
 	tests := []struct {
-		name     string
-		releases []Release
-		wantErr  string
+		name    string
+		steps   []Step
+		wantErr string
 	}{
-		{name: "the recorded ledger", releases: Releases},
-		{name: "the test ledger", releases: testLedger()},
-		{name: "a version that is not one", releases: []Release{{Version: "0.1", Pins: map[string]string{resourceModule: "v0.1.0"}, Note: "n"}}, wantErr: `release 0: "0.1" is not a semantic version`},
-		{name: "releases out of order", releases: []Release{{Version: "v0.2.0", Pins: map[string]string{resourceModule: "v0.1.0"}, Note: "n"}, {Version: "v0.1.0", Pins: map[string]string{resourceModule: "v0.1.0"}, Note: "n"}}, wantErr: "release v0.1.0 follows v0.2.0; the ledger is oldest first"},
-		{name: "the same version twice", releases: []Release{{Version: "v0.1.0", Pins: map[string]string{resourceModule: "v0.1.0"}, Note: "n"}, {Version: "v0.1.0", Pins: map[string]string{resourceModule: "v0.1.0"}, Note: "n"}}, wantErr: "release v0.1.0 follows v0.1.0"},
-		{name: "no pins", releases: []Release{{Version: "v0.1.0", Note: "n"}}, wantErr: "release v0.1.0 pins no framework module"},
-		{name: "no note", releases: []Release{{Version: "v0.1.0", Pins: map[string]string{resourceModule: "v0.1.0"}}}, wantErr: "release v0.1.0 has no note"},
-		{name: "a pin outside the framework", releases: []Release{{Version: "v0.1.0", Pins: map[string]string{"github.com/go-chi/chi/v5": "v5.3.2"}, Note: "n"}}, wantErr: "release v0.1.0 pins github.com/go-chi/chi/v5, which is not a framework module (github.com/cccteam/...)"},
-		{name: "a pin that is not a version", releases: []Release{{Version: "v0.1.0", Pins: map[string]string{resourceModule: "latest"}, Note: "n"}}, wantErr: `release v0.1.0 pins github.com/cccteam/ccc/resource at "latest", which is not a semantic version`},
-		{name: "a recipe named twice", releases: []Release{{Version: "v0.1.0", Pins: map[string]string{resourceModule: "v0.1.0"}, Note: "n", Recipes: []Recipe{noopRecipe{name: "paging"}, noopRecipe{name: "paging"}}}}, wantErr: "release v0.1.0 names the recipe paging twice"},
+		{name: "the recorded ledger", steps: Steps},
+		{name: "the test ledger", steps: testLedger()},
+		{name: "no step", steps: []Step{}, wantErr: "the ledger records no step; the first is the first impulse release's pins"},
+		{name: "no pins", steps: []Step{{Note: "n"}}, wantErr: "step 1 pins no framework module"},
+		{name: "no note", steps: []Step{{Pins: pins("v0.1.0")}}, wantErr: "step 1 has no note"},
+		{name: "impulse pinned as a step's", steps: []Step{{Pins: map[string]string{check.ImpulseModule: "v0.1.1"}, Note: "n"}}, wantErr: "step 1 pins github.com/cccteam/ccc/impulse, which is the tool pin the walk moves to the running impulse, not a step's"},
+		{name: "a pin outside the framework", steps: []Step{{Pins: map[string]string{"github.com/go-chi/chi/v5": "v5.3.2"}, Note: "n"}}, wantErr: "step 1 pins github.com/go-chi/chi/v5, which is not a framework module (github.com/cccteam/...)"},
+		{name: "a pin that is not a version", steps: []Step{{Pins: pins("latest"), Note: "n"}}, wantErr: `step 1 pins github.com/cccteam/ccc/resource at "latest", which is not a semantic version`},
+		{name: "a pin moving backward", steps: []Step{{Pins: pins("v0.2.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n"}}, wantErr: "step 2 pins github.com/cccteam/ccc/resource at v0.1.0, behind step 1's v0.2.0; the ledger walks forward only"},
+		{name: "a step that moves nothing", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n"}}, wantErr: "step 2 moves no pin and names no recipe: it is not a step"},
+		{name: "a recipe alone is a step", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n", Recipes: []Recipe{noopRecipe{name: "paging"}}}}},
+		{name: "a recipe named twice", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Recipes: []Recipe{noopRecipe{name: "paging"}, noopRecipe{name: "paging"}}}}, wantErr: "step 1 names the recipe paging twice"},
+		{name: "a pin at a pushed commit on a step not marked pending", steps: []Step{{Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n"}}, wantErr: "step 1 pins github.com/cccteam/ccc/resource at v0.1.1-0.20261009052330-7bd8478e0ccf, a pushed commit, and is not marked pending: a step whose pins name commits says so, and the release's repin clears it"},
+		{name: "a pending step whose pins are all released", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Pending: true}}, wantErr: "step 1 is marked pending and pins no pushed commit: the repin that moved it to the tags clears the mark"},
+		{name: "a pending step pins a pushed commit", steps: []Step{{Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n", Pending: true}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := Validate(tt.releases)
+			err := Validate(tt.steps)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
@@ -165,5 +210,47 @@ func TestValidate(t *testing.T) {
 				t.Fatalf("Validate() error = %v", err)
 			}
 		})
+	}
+}
+
+// TestSkeletonPins holds the ledger's last step to the skeleton: every module it pins is
+// pinned at the same version by every candidate's go.mod, and every cccteam module a
+// candidate requires directly is one it pins, so a pin bump or a new module in the
+// skeleton without its step fails here.
+func TestSkeletonPins(t *testing.T) {
+	t.Parallel()
+
+	candidates, err := skeleton.Candidates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := &Steps[len(Steps)-1]
+	for _, c := range candidates {
+		sub, err := skeleton.FS(c.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := fs.ReadFile(sub, skeleton.ModFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mod, err := modfile.Parse(skeleton.ModFile, data, nil)
+		if err != nil {
+			t.Fatalf("candidate %s: %v", c.Name, err)
+		}
+		pins := AppPins(mod)
+		for _, name := range last.PinNames() {
+			if pins[name] != last.Pins[name] {
+				t.Errorf("candidate %s pins %s at %q and the ledger's last step at %s: append a step for the skeleton's pins", c.Name, name, pins[name], last.Pins[name])
+			}
+		}
+		for _, r := range mod.Require {
+			if r.Indirect || !strings.HasPrefix(r.Mod.Path, FrameworkPrefix) || r.Mod.Path == check.ImpulseModule {
+				continue
+			}
+			if _, ok := last.Pins[r.Mod.Path]; !ok {
+				t.Errorf("candidate %s requires %s %s, which the ledger's last step does not pin: append a step for it", c.Name, r.Mod.Path, r.Mod.Version)
+			}
+		}
 	}
 }

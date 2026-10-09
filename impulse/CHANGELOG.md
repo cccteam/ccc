@@ -1,5 +1,75 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/impulse/v0.2.1...impulse/v0.3.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* resource's StructDecoder is private; a plain request body decodes with httpio's StructDecoder ([#901](https://github.com/cccteam/ccc/issues/901))
+
+### Features
+
+* impulse owns security-scan.yml, govulncheck and Grype daily over the default branch and the latest release ([#878](https://github.com/cccteam/ccc/issues/878)) ([a9edc10](https://github.com/cccteam/ccc/commit/a9edc1039f697e878a86ed866c3c745032fb8f6c))
+* request body limits in one place: the generated router bounds every route it wraps, RPC methods declare their own ([#900](https://github.com/cccteam/ccc/issues/900)) ([53389b9](https://github.com/cccteam/ccc/commit/53389b9f192c8cd155e471d6e77a6eae62c4587e))
+* the release pins check refuses a release that pins a sibling at a pseudo-version; the ledger marks a pending step ([#902](https://github.com/cccteam/ccc/issues/902)) ([c43278d](https://github.com/cccteam/ccc/commit/c43278d0c7eb4308a76d1c9c6a3c420bba75e25d))
+
+
+### Code Refactoring
+
+* resource's StructDecoder is private; a plain request body decodes with httpio's StructDecoder ([#901](https://github.com/cccteam/ccc/issues/901)) ([166c1f6](https://github.com/cccteam/ccc/commit/166c1f66a0884a4cfba7e1d6302dad69806777a2))
+
+
+### Code Upgrade
+
+* Go 1.26.9 and x/net v0.60.0 in every module; net/http GO-2026-6612, GO-2026-6613 and GO-2026-6617 fixed ([#879](https://github.com/cccteam/ccc/issues/879)) ([4107fbb](https://github.com/cccteam/ccc/commit/4107fbb68a33305d109a6a8fec23e67986acf046))
+
+## [0.2.1](https://github.com/cccteam/ccc/compare/impulse/v0.2.0...impulse/v0.2.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* the skeleton pins tracer v0.2.0, cloud v0.1.0 and resource v0.12.0, the cloud driver's releases (@cccteam/impulse) ([#872](https://github.com/cccteam/ccc/issues/872)) ([047b46c](https://github.com/cccteam/ccc/commit/047b46c7fda1c03bfd255f2ec5f43c01a611d3d2))
+
+## [0.2.0](https://github.com/cccteam/ccc/compare/impulse/v0.1.1...impulse/v0.2.0) (2026-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* spans are exported over OTLP to Google Cloud's Telemetry API with default credentials (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864))
+* WithClientOptions goes; WithEndpoint and WithInsecure name a collector of your own (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864))
+* the generated router installs tracing and the request logger itself (@cccteam/resource) ([#864](https://github.com/cccteam/ccc/issues/864))
+* LogExporter() replaces LoggerMiddleware() on the generated Handlers interface (@cccteam/resource) ([#864](https://github.com/cccteam/ccc/issues/864))
+* every skeleton opens the cloud driver for its logs and spans (@cccteam/impulse) ([#864](https://github.com/cccteam/ccc/issues/864))
+* LogExporter replaces LoggerMiddleware on the App; the router builds the logger (@cccteam/impulse) ([#864](https://github.com/cccteam/ccc/issues/864))
+* NewProvider and NewHandler replace the Google-named constructors (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864))
+
+### Features
+
+* cloud/gcp: Settings and Open build the log exporter and the trace provider (@cccteam/cloud) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* every skeleton opens the cloud driver for its logs and spans (@cccteam/impulse) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* every skeleton wires the tracer provider and the tracing handler (@cccteam/impulse) ([#861](https://github.com/cccteam/ccc/issues/861)) ([78006f9](https://github.com/cccteam/ccc/commit/78006f9273b15efefff4eec625685ca9c5633239))
+* impulse upgrade moves the tool pin to the running impulse first, then walks the steps (@cccteam/impulse) ([#858](https://github.com/cccteam/ccc/issues/858)) ([78e2a54](https://github.com/cccteam/ccc/commit/78e2a54fd0a6df202ed6d8f97a6a3b9346fd560d))
+* ledger step 2 pins cloud, resource and tracer 0.2, with the cloud-driver recipe (@cccteam/impulse) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* LogExporter replaces LoggerMiddleware on the App; the router builds the logger (@cccteam/impulse) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* LogExporter() replaces LoggerMiddleware() on the generated Handlers interface (@cccteam/resource) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* NewProvider and NewHandler replace the Google-named constructors (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* spans are exported over OTLP to Google Cloud's Telemetry API with default credentials (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* the cloud-driver recipe moves an application's logging and tracing into the driver (@cccteam/impulse) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* the generated router installs tracing and the request logger itself (@cccteam/resource) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* the ledger's test holds its last step to the skeleton's cccteam pins (@cccteam/impulse) ([#858](https://github.com/cccteam/ccc/issues/858)) ([78e2a54](https://github.com/cccteam/ccc/commit/78e2a54fd0a6df202ed6d8f97a6a3b9346fd560d))
+* the provider sets the global propagator, so outgoing requests carry traceparent (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* the upgrade ledger records steps keyed by framework pin sets, not impulse versions (@cccteam/impulse) ([#858](https://github.com/cccteam/ccc/issues/858)) ([78e2a54](https://github.com/cccteam/ccc/commit/78e2a54fd0a6df202ed6d8f97a6a3b9346fd560d))
+* W3C trace context propagation, with the legacy X-Cloud-Trace-Context header still read (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* WithClientOptions goes; WithEndpoint and WithInsecure name a collector of your own (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* WithSampling records every span (all) or the edge's choice (edge, the default) (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* WithTokenSource signs the Telemetry API calls with the caller's own token source (@cccteam/tracer) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+
+
+### Bug Fixes
+
+* a step's commit subject names the modules alone when the pins' versions run long (@cccteam/impulse) ([#864](https://github.com/cccteam/ccc/issues/864)) ([406bf2f](https://github.com/cccteam/ccc/commit/406bf2f27be0738147922e64a8452448343fd138))
+* impulse upgrade leaves a pin already at or beyond a step's where it is (@cccteam/impulse) ([#858](https://github.com/cccteam/ccc/issues/858)) ([78e2a54](https://github.com/cccteam/ccc/commit/78e2a54fd0a6df202ed6d8f97a6a3b9346fd560d))
+
 ## [0.1.1](https://github.com/cccteam/ccc/compare/impulse/v0.1.0...impulse/v0.1.1) (2026-10-08)
 
 

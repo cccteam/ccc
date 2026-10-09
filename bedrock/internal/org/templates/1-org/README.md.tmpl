@@ -479,7 +479,7 @@ kind beside `roles/iam.securityReviewer`:
 
 | Set | APIs |
 |---|---|
-| `app` | apikeys, artifactregistry, cloudbuild, cloudidentity, cloudresourcemanager, cloudscheduler, cloudtasks, cloudtrace, compute, firebaserules, firestore, iam, iamcredentials, identitytoolkit, logging, monitoring, privilegedaccessmanager, run, secretmanager, securetoken, serviceusage, spanner, storage, sts |
+| `app` | apikeys, artifactregistry, cloudbuild, cloudidentity, cloudresourcemanager, cloudscheduler, cloudtasks, cloudtrace, compute, firebaserules, firestore, iam, iamcredentials, identitytoolkit, logging, monitoring, privilegedaccessmanager, run, secretmanager, securetoken, serviceusage, spanner, storage, sts, telemetry |
 | `shr` | artifactregistry, iam, iamcredentials, logging, monitoring, secretmanager, sts |
 | `net` | certificatemanager, compute, dns, iam, logging, monitoring |
 | `spn` | iam, logging, monitoring, privilegedaccessmanager, spanner |

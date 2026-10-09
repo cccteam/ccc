@@ -89,7 +89,7 @@ from `2-env`'s state.
 
 - **Runtime identities**, one per deployed process:
   `{{.Prefix}}-<env>-gbl-{{.App}}-app` for the site (`{{.Site.Main}}`) with
-  `roles/logging.logWriter`, `roles/cloudtrace.agent`,
+  `roles/logging.logWriter`, `roles/cloudtrace.agent`, `roles/telemetry.tracesWriter`,
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets{{if .Jobs}}; `{{.Prefix}}-<env>-gbl-{{.App}}-jobs` for the job process
   (`{{.Jobs.Dir}}`) with the site's project roles{{if .JobsReadsData}}, `roles/spanner.databaseUser`
@@ -321,6 +321,9 @@ above them.
 |---|---|---|---|---|{{if .Jobs}}---|{{end}}
 | `{{.ServiceName.Name}}` | {{.ServiceName.Level}} | `{{.App}}` / `{{.App}}-migrate`{{if .Jobs}} / `{{.App}}-jobs`{{end}} | yes | yes |{{if .Jobs}} yes |{{end}}
 | `{{.LoggingProject.Name}}` | {{.LoggingProject.Level}} | the environment project | yes | yes |{{if .Jobs}} yes |{{end}}
+{{- if .TraceSampling}}
+| `{{.TraceSampling.Name}}` | {{.TraceSampling.Level}} | `all` in a pull-request stack and {{.Integration}}, `edge` beyond | yes | yes |{{if .Jobs}} yes |{{end}}
+{{- end}}
 | {{.DatabaseVariablesCell}} | {{.Database.Project.Level}} | the database | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
 {{- range .FileStores}}
 | `{{.Variable.Name}}` | {{.Variable.Level}} | {{.Label}}, as a `gs://` URL | yes | |{{if $.Jobs}} {{if .JobsReads}}yes{{end}} |{{end}}

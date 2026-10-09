@@ -137,6 +137,9 @@ type view struct {
 	ServiceName    *derive.Variable
 	LoggingProject *derive.Variable
 	Version        *derive.Variable
+	// TraceSampling is the variable in the trace-sampling role, nil when the
+	// application declares none (an application from before the skeleton read it).
+	TraceSampling *derive.Variable
 	// MaintenanceVariable is the variable the pipeline sets on a maintenance revision,
 	// declared empty on the service by the stack.
 	MaintenanceVariable string
@@ -515,8 +518,8 @@ const (
 // GOTOOLCHAIN=local, so a newer go line fails them rather than downloading a toolchain,
 // and the fix is a new digest here (a test holds the two together).
 const (
-	goImage   = "cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16"
-	goImageGo = "1.27.1"
+	goImage   = "cgr.dev/chainguard/go@sha256:75c0c2c118e36951cb63da108fa795f4724bde0c36ae84c9c17a4e08255ad324"
+	goImageGo = "1.27.2"
 )
 
 // goInstallEnv is the environment go install builds a commit pin in, the pipeline's and
@@ -733,6 +736,7 @@ func (v *view) roles() error {
 			return errors.Newf("no variable in the %s role: the stack needs one", r.role)
 		}
 	}
+	v.TraceSampling = v.byRole(derive.RoleTraceSampling)
 	for _, s := range v.Secrets {
 		switch s.Variable.Role {
 		case derive.RoleCookieKey:

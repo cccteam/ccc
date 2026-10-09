@@ -128,7 +128,6 @@ impulse upgrade
   --app string (default .)
   --dry-run bool
   --skip-generate bool
-  --to string
 
 checks:
   generator-program

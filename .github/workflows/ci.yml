@@ -2,6 +2,11 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened] # these are the defaults - synchronize means 'commits pushed to PR'
+  push:
+    branches: [master]
+    # The merge result is checked whole, and the caches its jobs save are the ones the next
+    # pull requests restore: a pull request can read entries saved on its own branch and on
+    # its base, nothing else.
 
 concurrency:
   group: ${{ github.ref }}
@@ -9,12 +14,74 @@ concurrency:
 
 jobs:
   golang-ci:
-    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@1fa3463aa74113a1584fda8980a04d26090b71d6 # v8.1.0
+    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@ce3b6a61c4b88c82d3c0c1760dc1a3f5a2731021 # v8.2.3
     with:
       build-tags: '["", "dev"]'
       golangci-lint-version: 'v2.12.2'
+      # The test and lint jobs, the long ones, run on the larger runner the repository
+      # variable CI_LARGE_RUNNER names (a GitHub-hosted runner's name, billed per minute)
+      # and on the standard runner while the variable is unset; every other job stays on
+      # the standard runner, which is free for a public repository.
+      runs-on-heavy: ${{ vars.CI_LARGE_RUNNER }}
+  release-pins:
+    # A release never ships a sibling pinned at a pseudo-version. On release-please's
+    # branches the component's go.mod is checked, and for impulse the skeleton templates
+    # and the upgrade ledger too, since an application's go.mod is written from them.
+    # Every other pull request passes with no step run, so the job is a required check.
+    # Development inside a wave may pin a pushed commit (a skeleton that needs a change of
+    # a sibling not yet released can only pin the commit); the refusal is at release time,
+    # and the repin that clears it goes leaf first, a draft until the tag exists.
+    name: release pins
+    runs-on: ubuntu-latest
+    env:
+      RUN: ${{ startsWith(github.head_ref, 'release-please--branches--master--components--') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.RUN == 'true' }}
+      - name: The component pins released siblings only
+        if: ${{ env.RUN == 'true' }}
+        run: .github/scripts/release-pins.sh "${GITHUB_HEAD_REF#release-please--branches--master--components--}"
   semantic-titles:
-    uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@ce3b6a61c4b88c82d3c0c1760dc1a3f5a2731021 # v8.2.3
+  changes:
+    # Which parts of the tree the pull request touches, for the two jobs below: the diff
+    # against the merge base with the base branch, as golang-ci's detect-modules does for
+    # the Go modules. The Lodestar job is skipped whole when its inputs did not change, and
+    # reports success under its name to the required checks. The skeleton legs are a
+    # matrix, and a matrix job skipped whole reports one check under its unexpanded name
+    # and none of the eight names the rule requires, so the legs always start and skip
+    # every step instead; an unrelated pull request pays eight runner starts for them.
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      # 'true' when resource (Lodestar and the generator that writes its TypeScript) or
+      # this workflow changed.
+      lodestar-web: ${{ steps.paths.outputs.lodestar-web }}
+      # 'true' when impulse, a module the rendered skeletons build against at this commit
+      # (resource, tracer, cloud, accesstypes), or this workflow changed.
+      impulse: ${{ steps.paths.outputs.impulse }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Diff against the base branch
+        id: paths
+        env:
+          BASE: ${{ github.base_ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            # A push to master: there is nothing to diff against, and the run is the merge
+            # result, so both jobs run.
+            printf 'lodestar-web=true\nimpulse=true\n' >> "$GITHUB_OUTPUT"; cat "$GITHUB_OUTPUT"; exit 0
+          fi
+          git diff --name-only "origin/$BASE...HEAD" > "$RUNNER_TEMP/changed-files"
+          touches() { grep -qE "$1" "$RUNNER_TEMP/changed-files" && echo true || echo false; }
+          {
+            echo "lodestar-web=$(touches '^(resource/|\.github/workflows/ci\.yml$)')"
+            echo "impulse=$(touches '^(impulse/|resource/|tracer/|cloud/|accesstypes/|[^/]+\.go$|go\.(mod|sum)$|\.github/workflows/ci\.yml$)')"
+          } >> "$GITHUB_OUTPUT"
+          echo "changed files: $(wc -l < "$RUNNER_TEMP/changed-files")"; cat "$GITHUB_OUTPUT"
   lodestar-web:
     # Lodestar's console and portal are built, linted, and tested against the published
     # @cccteam/resource and @cccteam/resource-angular (the versions web/package.json pins,
@@ -25,6 +92,8 @@ jobs:
     # the library itself is proven in ccc-lib's own CI and reaches this job by a version
     # bump in web/package.json.
     name: lodestar web (console + portal)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.lodestar-web == 'true') }}
     runs-on: ubuntu-latest
     env:
       # The bun that wrote resource/lodestar/web/bun.lock.
@@ -79,7 +148,10 @@ jobs:
     # rendered application's go.work points at this checkout's ccc modules; libraries
     # outside this repository stay pinned). A generator change that breaks a template, or
     # a template that lags the generator, fails here and not in a downstream application.
+    # The legs start on every pull request (see the changes job): on one that touches
+    # nothing of theirs every step is skipped.
     name: impulse ${{ matrix.candidate }} (${{ matrix.framework }})
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -89,18 +161,45 @@ jobs:
     env:
       # testcontainers' reaper (Ryuk) is not needed on a runner discarded after the job, and its start has timed out here.
       TESTCONTAINERS_RYUK_DISABLED: "true"
+      # The leg does its work when impulse or a module the skeletons build against changed,
+      # or when the changes job could not say; otherwise every step is skipped and the leg
+      # still reports its name.
+      RUN: ${{ needs.changes.result != 'success' || needs.changes.outputs.impulse == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.RUN == 'true' }}
         with:
           path: ccc
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: ${{ env.RUN == 'true' }}
         with:
           go-version-file: ccc/impulse/go.mod
-          cache-dependency-path: ccc/impulse/go.sum
+          cache: false
+      - name: Restore the Go caches
+        if: ${{ env.RUN == 'true' }}
+        # The module cache and the build cache from the nearest saved entry of the framework
+        # leg's lineage (impulse's go.sum first, then any), as golang-ci's jobs do: a module
+        # is verified against go.sum when read and a build output is addressed by the hash
+        # of its inputs, so an older entry is either what this commit computes or unused.
+        # Most of "Build and vet" is the rendered application's dependencies compiling, which
+        # the four candidates share and an entry of the lineage already holds; the pins leg
+        # and the head leg compile different framework modules, so each has its own lineage.
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: impulse-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            impulse-${{ matrix.framework }}-${{ runner.os }}-${{ hashFiles('ccc/impulse/go.sum') }}-
+            impulse-${{ matrix.framework }}-${{ runner.os }}-
       - name: Build impulse
+        if: ${{ env.RUN == 'true' }}
         working-directory: ccc/impulse
         run: go build -o "$RUNNER_TEMP/impulse" .
       - name: Render the skeleton
+        if: ${{ env.RUN == 'true' }}
         run: |
           if [ "${{ matrix.framework }}" = head ]; then
             "$RUNNER_TEMP/impulse" render ${{ matrix.candidate }} app --module example.com/ci/${{ matrix.candidate }} --dev-root "$GITHUB_WORKSPACE"
@@ -109,13 +208,28 @@ jobs:
           fi
           cd app && git init -q && git add -A && git -c user.name=ci -c user.email=ci@example.com commit -qm "rendered by impulse"
       - name: Build and vet
+        if: ${{ env.RUN == 'true' }}
         working-directory: app
         run: go build ./... && go vet ./...
       - name: Test (the harnesses start the Spanner emulator in a container; skipAuth simulates the directory an OIDC auth signs in through)
+        if: ${{ env.RUN == 'true' }}
         working-directory: app
         run: go test -tags skipAuth ./... -timeout 20m
       - name: impulse check
+        if: ${{ env.RUN == 'true' }}
         working-directory: app
         run: |
           "$RUNNER_TEMP/impulse" check
+      - name: Save the Go caches
+        # Always on master; on a pull request only when no entry for this go.sum was found.
+        # The four candidates of a framework leg share the key, so the first to finish saves
+        # and the others find the entry taken, which the action reports and moves past. A
+        # failed test still saves what compiled; a cancelled run saves nothing.
+        if: ${{ env.RUN == 'true' && !cancelled() && (github.event_name != 'pull_request' || !startsWith(steps.go-cache.outputs.cache-matched-key, format('impulse-{0}-{1}-{2}-', matrix.framework, runner.os, hashFiles('ccc/impulse/go.sum')))) }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 

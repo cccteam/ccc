@@ -11,7 +11,7 @@ import (
 // RPCDecoder decodes an HTTP request for an RPC-style endpoint, validates the request body,
 // and enforces permissions for the RPC method.
 type RPCDecoder[Request any] struct {
-	d                  *StructDecoder[Request]
+	d                  *structDecoder[Request]
 	res                accesstypes.Resource
 	requiredPermission accesstypes.Permission
 	userPermissions    func(*http.Request) UserPermissions
@@ -22,9 +22,9 @@ type RPCDecoder[Request any] struct {
 
 // NewRPCDecoder creates a new RPCDecoder for a given request type, method name, and required permission.
 func NewRPCDecoder[Request any](userPermissions func(*http.Request) UserPermissions, methodName accesstypes.Resource, perm accesstypes.Permission) (*RPCDecoder[Request], error) {
-	decoder, err := NewStructDecoder[Request]()
+	decoder, err := newStructDecoder[Request]()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewStructDecoder()")
+		return nil, errors.Wrap(err, "newStructDecoder()")
 	}
 
 	return &RPCDecoder[Request]{
@@ -84,7 +84,7 @@ func (s *RPCDecoder[Request]) Decode(request *http.Request, scope accesstypes.Sc
 func (s *RPCDecoder[Request]) DecodeCaller(request *http.Request, scope accesstypes.Scope) (*Request, *Caller, error) {
 	req, err := s.d.Decode(request)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "resource.StructDecoder.Decode()")
+		return nil, nil, errors.Wrap(err, "structDecoder.Decode()")
 	}
 
 	userPermissions := s.userPermissions(request)

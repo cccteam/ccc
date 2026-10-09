@@ -37,8 +37,8 @@ func lineOf(t *testing.T, want string) string {
 
 // TestCIWorkflow runs the owned-file comparison over an application with one browser
 // workspace: the files as the code renders them (with origin's default branch read, or
-// not), a hand edit, no file at all, and a default branch the cache-filling workflow does
-// not fill.
+// not), a hand edit, each file missing on its own, and a default branch the
+// cache-filling workflow does not fill.
 func TestCIWorkflow(t *testing.T) {
 	t.Parallel()
 
@@ -63,19 +63,19 @@ func TestCIWorkflow(t *testing.T) {
 		{
 			name:    "the files as the code renders them pass; without an Execer origin is not asked",
 			prepare: written,
-			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml and .github/workflows/ci-cache.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on main and master); origin's default branch could not be read"},
+			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml, .github/workflows/ci-cache.yml and .github/workflows/security-scan.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on main and master; .github/workflows/security-scan.yml scans the default branch and the latest release daily); origin's default branch could not be read"},
 		},
 		{
 			name:    "origin's default branch is one the workflow fills",
 			prepare: written,
 			answers: map[string]fakeAnswer{symref: {out: "ref: refs/heads/main\tHEAD\n0123456789abcdef0123456789abcdef01234567\tHEAD\n"}},
-			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml and .github/workflows/ci-cache.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on main and master), and origin's default branch is main"},
+			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml, .github/workflows/ci-cache.yml and .github/workflows/security-scan.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on main and master; .github/workflows/security-scan.yml scans the default branch and the latest release daily), and origin's default branch is main"},
 		},
 		{
 			name:    "no remote, or no network",
 			prepare: written,
 			answers: map[string]fakeAnswer{symref: {out: "fatal: 'origin' does not appear to be a git repository\n", err: errors.New("exit status 128")}},
-			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml and .github/workflows/ci-cache.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on main and master); origin's default branch could not be read"},
+			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml, .github/workflows/ci-cache.yml and .github/workflows/security-scan.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on main and master; .github/workflows/security-scan.yml scans the default branch and the latest release daily); origin's default branch could not be read"},
 		},
 		{
 			name:    "a default branch the workflow does not fill fails",
@@ -90,7 +90,7 @@ func TestCIWorkflow(t *testing.T) {
 			main:    "//impulse:ci default-branch=trunk\n\npackage main\n",
 			prepare: written,
 			answers: map[string]fakeAnswer{symref: {out: "ref: refs/heads/trunk\tHEAD\n"}},
-			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml and .github/workflows/ci-cache.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on trunk), and origin's default branch is trunk"},
+			want:    Result{Name: ciWorkflow{}.Name(), Status: Pass, Summary: ".github/workflows/ci.yml, .github/workflows/ci-cache.yml and .github/workflows/security-scan.yml match what impulse renders from the code (" + jobs + "; .github/workflows/ci-cache.yml fills the caches on trunk; .github/workflows/security-scan.yml scans the default branch and the latest release daily), and origin's default branch is trunk"},
 		},
 		{
 			name:    "the declared default branch is not origin's",
@@ -120,6 +120,21 @@ func TestCIWorkflow(t *testing.T) {
 				}
 			},
 			want: Result{Name: ciWorkflow{}.Name(), Status: Fail, Summary: ".github/workflows/ci-cache.yml is missing: the checks start cold on every pull request", Details: []string{
+				"run impulse render (go tool impulse render) to write it from the code",
+			}},
+		},
+		{
+			name: "a missing security scan fails: nothing rescans between pull requests",
+			prepare: func(t *testing.T, a *app.App) {
+				t.Helper()
+				if _, err := ci.Write(a); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(a.Abs(ci.ScanFile)); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: Result{Name: ciWorkflow{}.Name(), Status: Fail, Summary: ".github/workflows/security-scan.yml is missing: nothing rescans the default branch and the latest release between pull requests", Details: []string{
 				"run impulse render (go tool impulse render) to write it from the code",
 			}},
 		},

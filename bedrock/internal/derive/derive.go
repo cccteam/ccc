@@ -236,6 +236,10 @@ const (
 	// processes that construct its level: the key the browser presents to sign in with
 	// the custom token the site mints.
 	RoleFirebaseAPIKey Role = "firebase-api-key"
+	// RoleTraceSampling tells the processes that construct its level which spans to
+	// record: every one in a pull-request stack and in the integration environment, the
+	// edge's choice beyond them.
+	RoleTraceSampling Role = "trace-sampling"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID     Role = "client-id"
@@ -253,7 +257,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling:
 		return true
 	default:
 		return false
@@ -333,6 +337,12 @@ const (
 	// APIs the browser's sign-in calls and sets the variable to it. The key is a public
 	// value by design (the browser presents it), not a secret.
 	varFirebaseAPIKey = "APP_FIREBASE_API_KEY"
+	// varTraceSampling is the variable an application declares to choose which spans
+	// are recorded (tracer.ParseSampling: all, edge): the stack sets it to all in a
+	// pull-request stack and in the integration environment, where every request should
+	// be traceable, and to edge beyond them, where a request Google's edge sampled is
+	// traced and nothing else.
+	varTraceSampling = "APP_TRACE_SAMPLING"
 )
 
 // MaintenanceVariable is the variable the pipeline sets on a maintenance revision, which
@@ -353,6 +363,7 @@ var wellKnown = map[string]Role{
 	varFirestoreDatabase: RoleFirestoreDatabase,
 	varFirestoreProject:  RoleFirestoreProject,
 	varFirebaseAPIKey:    RoleFirebaseAPIKey,
+	varTraceSampling:     RoleTraceSampling,
 }
 
 // roleOf is the table's lookup for a variable: a well-known variable by its exact name,

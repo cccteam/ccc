@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -61,7 +60,7 @@ func Test_rewriteFormerKeys(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			body, err := rewriteFormerKeys(strings.NewReader(tt.body), former)
+			got, err := rewriteFormerKeys([]byte(tt.body), former)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("rewriteFormerKeys() error = %v, want it to contain %q", err, tt.wantErr)
@@ -71,10 +70,6 @@ func Test_rewriteFormerKeys(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("rewriteFormerKeys() error = %v", err)
-			}
-			got, err := io.ReadAll(body)
-			if err != nil {
-				t.Fatalf("io.ReadAll() error = %v", err)
 			}
 			if string(got) != tt.want {
 				t.Errorf("rewriteFormerKeys() = %s, want %s", got, tt.want)
@@ -102,9 +97,9 @@ func TestStructDecoder_formerNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			decoder, err := NewStructDecoder[formerlyRequest]()
+			decoder, err := newStructDecoder[formerlyRequest]()
 			if err != nil {
-				t.Fatalf("NewStructDecoder() error = %v", err)
+				t.Fatalf("newStructDecoder() error = %v", err)
 			}
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/articles", strings.NewReader(tt.body))
 			got, err := decoder.Decode(req)

@@ -1,0 +1,117 @@
+# The base images of every application bedrock renders are the ones its Dockerfile template
+# (bedrock/internal/render/templates/root/Dockerfile.tmpl) pins by digest on its FROM lines.
+# bedrock writes an application's Dockerfile once and never again, and nothing bumps those
+# digests: they move by hand. This workflow is the reminder. Once a day it reads the unique
+# image references off the template, scans each with Grype, and when one carries a
+# vulnerability of high severity or above it opens one issue on this repository, or adds to
+# the open one, naming the images, the template, and the run. A clean run closes that issue.
+name: Base images
+
+on:
+  schedule:
+    - cron: '0 14 * * *' # Daily at 14:00 UTC, the same hour as the security scan
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  TEMPLATE: bedrock/internal/render/templates/root/Dockerfile.tmpl
+
+jobs:
+  pins:
+    name: Pinned images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.pins.outputs.images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the unique image references off the FROM lines
+        id: pins
+        run: |
+          grep -oE '^FROM [^ ]+' "$TEMPLATE" | awk '{print $2}' | sort -u > "$RUNNER_TEMP/images"
+          if [ ! -s "$RUNNER_TEMP/images" ]; then
+            echo "::error file=$TEMPLATE::no FROM lines found in $TEMPLATE"
+            exit 1
+          fi
+          echo "images=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$RUNNER_TEMP/images")" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/images"
+
+  grype:
+    name: Grype over ${{ matrix.image }}
+    needs: pins
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.pins.outputs.images) }}
+    steps:
+      - name: Scan the image from its registry
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ matrix.image }}
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+  report:
+    name: Report
+    needs: [pins, grype]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TITLE: A base image pinned in bedrock's Dockerfile template has a high vulnerability
+      RESULT: ${{ needs.grype.result }}
+      RUN_ID: ${{ github.run_id }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open, update, or close the issue
+        run: |
+          # The open issue with exactly the fixed title, if there is one. The search narrows
+          # the list; the jq compare is what makes the match exact.
+          number=$(gh issue list --state open --limit 100 --search "in:title \"$TITLE\"" --json number,title \
+            --jq '[.[] | select(.title == env.TITLE) | .number] | first // empty')
+
+          case "$RESULT" in
+            failure)
+              gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+                --jq '.jobs[] | select(.conclusion == "failure") | .name' \
+                | sed -n 's/^Grype over //p' | sort -u > "$RUNNER_TEMP/images"
+              {
+                echo "Grype found a vulnerability of high severity or above in a base image that bedrock's Dockerfile template, \`$TEMPLATE\`, pins by digest. Every application bedrock renders inherits that pin, and the digests move by hand: the fix is a new digest on the template's FROM line."
+                echo
+                echo "Images with a finding:"
+                echo
+                sed 's/^/- `/; s/$/`/' "$RUNNER_TEMP/images"
+                echo
+                echo "Run: $RUN_URL"
+              } > "$RUNNER_TEMP/body.md"
+              if [ -n "$number" ]; then
+                gh issue comment "$number" --body-file "$RUNNER_TEMP/body.md"
+                echo "commented on #$number"
+              else
+                gh issue create --title "$TITLE" --body-file "$RUNNER_TEMP/body.md"
+              fi
+              ;;
+            success)
+              if [ -n "$number" ]; then
+                gh issue close "$number" --comment "Every base image the template pins scanned clean of high vulnerabilities: $RUN_URL"
+                echo "closed #$number"
+              else
+                echo "clean, and no issue to close"
+              fi
+              ;;
+            *)
+              echo "::error::the scan did not finish (result: $RESULT), so nothing is known about the images"
+              exit 1
+              ;;
+          esac

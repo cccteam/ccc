@@ -41,6 +41,10 @@ type resourceGenerator struct {
 	// (HasGrants) and answer a caller without one exactly as an unknown domain is
 	// answered, so a prober cannot confirm a tenant exists from the rejection shape.
 	concealedDomains bool
+	// bodyLimit is the request body limit the generated router applies (WithBodyLimit;
+	// DefaultBodyLimit when the application sets none), rendered as the router package's
+	// BodyLimit and taken by every RPC method that declares no maximum of its own.
+	bodyLimit int64
 	// defaultOutlet is the outlet GenerateRoutes declares, with the outlet options it
 	// carries for the generated router; every resource is on it unless @outlet says
 	// otherwise.
@@ -188,7 +192,7 @@ func (r *resourceGenerator) validateAnnotatedOutlets() error {
 // file, the template and the qualifier; WithImports names a path beyond the derived set
 // until the gap it covers is fixed in the generator.
 func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL []string, options ...ResourceOption) (_ Generator, err error) {
-	r := &resourceGenerator{}
+	r := &resourceGenerator{bodyLimit: DefaultBodyLimit}
 
 	opts := make([]option, 0, len(options))
 	for _, opt := range options {

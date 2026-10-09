@@ -8,10 +8,21 @@ import (
 
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
 )
+
+// BodyLimit bounds the request body of every route the router wraps: the resource
+// routes, the consolidated patch route, the session routes and the other JSON routes,
+// at 4MB (generation.WithBodyLimit; the framework's default, since the
+// application sets none). An upload, a live route and an RPC method bound their own
+// bodies and register beside the bounded group, since a limit outside them could only
+// tighten theirs: an upload at its declared maximum, a live route at its own, an RPC
+// method at its declared maximum or at this limit, applied by its generated handler. A
+// body over its limit answers 413 naming the limit.
+const BodyLimit int64 = 4194304
 
 const (
 	// Domain is the route parameter carrying the permission domain for domain-scoped routes.
@@ -65,43 +76,46 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	// share one; a request carrying X-Subscribe is noted on its request log line and
 	// refused when its tab id is malformed. The auth's name is staff.Name.
 	r = r.With(live.Subscribing(staff.Name))
+	// The resource routes and the other JSON routes are bounded at BodyLimit; the live
+	// and RPC routes register on r itself and bound their own bodies.
+	bounded := r.With(resource.BodyLimit(BodyLimit))
 	domainGuard := h.DomainGuard()
 
-	r.Get("/console/api/permission-digest", h.PermissionDigest())
-	r.Get("/console/api/user-domains", h.UserDomains())
+	bounded.Get("/console/api/permission-digest", h.PermissionDigest())
+	bounded.Get("/console/api/user-domains", h.UserDomains())
 	r.Post("/console/api/live/renew", h.LiveRenew())
 	r.Post("/console/api/live/unsubscribe", h.LiveUnsubscribe())
 	r.Get("/console/api/live/token", h.LiveToken())
 
 	announcementsHandler := domainGuard(h.Announcements())
-	r.Get("/console/api/tenants/{tenantID}/announcements", announcementsHandler)
-	r.Post("/console/api/tenants/{tenantID}/announcements", announcementsHandler)
+	bounded.Get("/console/api/tenants/{tenantID}/announcements", announcementsHandler)
+	bounded.Post("/console/api/tenants/{tenantID}/announcements", announcementsHandler)
 
 	announcementHandler := domainGuard(h.Announcement())
-	r.Get("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
-	r.Post("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+	bounded.Get("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+	bounded.Post("/console/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
 
 	featureFlagsHandler := h.FeatureFlags()
-	r.Get("/console/api/feature-flags", featureFlagsHandler)
-	r.Post("/console/api/feature-flags", featureFlagsHandler)
+	bounded.Get("/console/api/feature-flags", featureFlagsHandler)
+	bounded.Post("/console/api/feature-flags", featureFlagsHandler)
 
 	featureFlagHandler := h.FeatureFlag()
-	r.Get("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
-	r.Post("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	bounded.Get("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	bounded.Post("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
 
-	r.Get("/console/api/features", h.Features())
+	bounded.Get("/console/api/features", h.Features())
 
-	r.Post("/console/api/set-feature", h.SetFeature())
+	bounded.Post("/console/api/set-feature", h.SetFeature())
 
 	tenantsHandler := h.Tenants()
-	r.Get("/console/api/tenants", tenantsHandler)
-	r.Post("/console/api/tenants", tenantsHandler)
+	bounded.Get("/console/api/tenants", tenantsHandler)
+	bounded.Post("/console/api/tenants", tenantsHandler)
 
 	tenantHandler := h.Tenant()
-	r.Get("/console/api/tenants/{tenantID}", tenantHandler)
-	r.Post("/console/api/tenants/{tenantID}", tenantHandler)
+	bounded.Get("/console/api/tenants/{tenantID}", tenantHandler)
+	bounded.Post("/console/api/tenants/{tenantID}", tenantHandler)
 
-	r.Patch("/console/api/resources", h.PatchResources())
+	bounded.Patch("/console/api/resources", h.PatchResources())
 }
 
 // GeneratedPortalHandlers is the portal outlet's generated
@@ -146,35 +160,38 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	// share one; a request carrying X-Subscribe is noted on its request log line and
 	// refused when its tab id is malformed. The auth's name is members.Name.
 	r = r.With(live.Subscribing(members.Name))
+	// The resource routes and the other JSON routes are bounded at BodyLimit; the live
+	// and RPC routes register on r itself and bound their own bodies.
+	bounded := r.With(resource.BodyLimit(BodyLimit))
 	domainGuard := h.DomainGuard()
 
-	r.Get("/portal/api/permission-digest", h.PermissionDigest())
-	r.Get("/portal/api/user-domains", h.UserDomains())
+	bounded.Get("/portal/api/permission-digest", h.PermissionDigest())
+	bounded.Get("/portal/api/user-domains", h.UserDomains())
 	r.Post("/portal/api/live/renew", h.LiveRenew())
 	r.Post("/portal/api/live/unsubscribe", h.LiveUnsubscribe())
 	r.Get("/portal/api/live/token", h.LiveToken())
 
 	announcementsHandler := domainGuard(h.Announcements())
-	r.Get("/portal/api/tenants/{tenantID}/announcements", announcementsHandler)
-	r.Post("/portal/api/tenants/{tenantID}/announcements", announcementsHandler)
+	bounded.Get("/portal/api/tenants/{tenantID}/announcements", announcementsHandler)
+	bounded.Post("/portal/api/tenants/{tenantID}/announcements", announcementsHandler)
 
 	announcementHandler := domainGuard(h.Announcement())
-	r.Get("/portal/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
-	r.Post("/portal/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+	bounded.Get("/portal/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
+	bounded.Post("/portal/api/tenants/{tenantID}/announcements/{announcementID}", announcementHandler)
 
 	featureFlagsHandler := h.FeatureFlags()
-	r.Get("/portal/api/feature-flags", featureFlagsHandler)
-	r.Post("/portal/api/feature-flags", featureFlagsHandler)
+	bounded.Get("/portal/api/feature-flags", featureFlagsHandler)
+	bounded.Post("/portal/api/feature-flags", featureFlagsHandler)
 
 	featureFlagHandler := h.FeatureFlag()
-	r.Get("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
-	r.Post("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	bounded.Get("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
+	bounded.Post("/portal/api/feature-flags/{featureFlagName}", featureFlagHandler)
 
-	r.Get("/portal/api/features", h.Features())
+	bounded.Get("/portal/api/features", h.Features())
 
-	r.Post("/portal/api/set-feature", h.SetFeature())
+	bounded.Post("/portal/api/set-feature", h.SetFeature())
 
-	r.Patch("/portal/api/resources", h.PatchPortalResources())
+	bounded.Patch("/portal/api/resources", h.PatchPortalResources())
 }
 
 // GeneratedMachinesHandlers is the machines outlet's generated
@@ -196,19 +213,22 @@ func generatedMachinesRoutes(r chi.Router, h GeneratedMachinesHandlers) {
 	// The outlet serves no browser sessions, so it serves no live pages: a request
 	// carrying X-Subscribe is refused naming the header.
 	r = r.With(live.Refusing())
+	// The resource routes and the other JSON routes are bounded at BodyLimit; the live
+	// and RPC routes register on r itself and bound their own bodies.
+	bounded := r.With(resource.BodyLimit(BodyLimit))
 	domainGuard := h.DomainGuard()
 
-	r.Get("/machines/features", h.Features())
+	bounded.Get("/machines/features", h.Features())
 
 	readingsHandler := domainGuard(h.Readings())
-	r.Get("/machines/tenants/{tenantID}/readings", readingsHandler)
-	r.Post("/machines/tenants/{tenantID}/readings", readingsHandler)
+	bounded.Get("/machines/tenants/{tenantID}/readings", readingsHandler)
+	bounded.Post("/machines/tenants/{tenantID}/readings", readingsHandler)
 
 	readingHandler := domainGuard(h.Reading())
-	r.Get("/machines/tenants/{tenantID}/readings/{readingID}", readingHandler)
-	r.Post("/machines/tenants/{tenantID}/readings/{readingID}", readingHandler)
+	bounded.Get("/machines/tenants/{tenantID}/readings/{readingID}", readingHandler)
+	bounded.Post("/machines/tenants/{tenantID}/readings/{readingID}", readingHandler)
 
-	r.Patch("/machines/resources", h.PatchMachinesResources())
+	bounded.Patch("/machines/resources", h.PatchMachinesResources())
 }
 
 // AllGeneratedHandlers is every outlet's generated handler surface in one interface:

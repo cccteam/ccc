@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
@@ -66,6 +67,9 @@ func (r *resourceGenerator) runRouteGeneration() error {
 					outlet.HasGatedRoutes = true
 					stubFeatureGuard = true
 				}
+				if !route.SelfBounded {
+					outlet.HasBoundedRoutes = true
+				}
 			}
 		}
 	}
@@ -87,6 +91,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		ConstComputedResources: constComputedResources,
 		RouterTestRoutes:       routerTestRoutes,
 		HasConsolidatedHandler: defaultOutlet.HasConsolidatedHandler,
+		HasBoundedRoutes:       defaultOutlet.HasBoundedRoutes,
+		BodyLimit:              r.bodyLimit,
+		BodyLimitText:          resource.FormatByteSize(r.bodyLimit),
+		BodyLimitDefault:       r.bodyLimit == DefaultBodyLimit,
 		HasDomainScoped:        r.hasDomainScoped(),
 		HasDomainScopedRoutes:  defaultOutlet.HasDomainScopedRoutes,
 		ServesSessions:         defaultOutlet.ServesSessions,
@@ -365,6 +373,7 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix strin
 		DomainScoped: rpcStruct.IsDomainScoped(),
 		TestURL:      testPath,
 		Feature:      rpcStruct.Feature,
+		SelfBounded:  true,
 	}
 	if former := rpcStruct.FormerRouteName(); former != "" {
 		route.FormerPath, route.FormerTestURL = r.rpcPaths(rpcStruct, routePrefix, former)

@@ -1,5 +1,5 @@
 {
-  "last-release-sha": "f5b1a08daba43e3f94f0cc01a1304c4b09054fd1",
+  "last-release-sha": "406bf2f27be0738147922e64a8452448343fd138",
   "release-type": "go",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
@@ -28,7 +28,7 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": [".github", "accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer", "middleware", "impulse", "bedrock"]
+      "exclude-paths": [".github", "accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer", "middleware", "impulse", "bedrock", "cloud"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
@@ -51,6 +51,10 @@
     },
     "tracer": {
       "package-name": "tracer"
+    },
+    "cloud": {
+      "package-name": "cloud",
+      "initial-version": "0.1.0"
     },
     "middleware": {
       "package-name": "middleware"

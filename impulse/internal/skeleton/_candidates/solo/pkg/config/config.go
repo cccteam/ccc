@@ -12,7 +12,7 @@ import (
 	"context"
 	"log"
 
-	"cloud.google.com/go/logging"
+	"github.com/cccteam/ccc/cloud/gcp"
 	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
@@ -20,8 +20,9 @@ import (
 
 // coreConfiguration is the first level: what every process of the application shares.
 type coreConfiguration struct {
-	env           *coreConfig
-	loggingClient *logging.Client
+	env *coreConfig
+	// cloud is the cloud driver: where the process's logs and spans go.
+	cloud *gcp.Driver
 }
 
 func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
@@ -30,35 +31,28 @@ func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
 		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
 	}
 
-	conf := &coreConfiguration{env: env}
-	if env.LoggingProjectID != "" {
-		client, err := logging.NewClient(ctx, env.LoggingProjectID)
-		if err != nil {
-			return nil, errors.Wrap(err, "logging.NewClient()")
-		}
-		conf.loggingClient = client
+	// The cloud driver builds the log exporter and the trace provider from the settings
+	// the configuration embeds; without a logging project the logs go to the console and
+	// no span is exported.
+	cloud, err := gcp.Open(ctx, env.Settings, env.ServiceName)
+	if err != nil {
+		return nil, errors.Wrap(err, "gcp.Open()")
 	}
 
-	return conf, nil
+	return &coreConfiguration{env: env, cloud: cloud}, nil
 }
 
-// Close releases the level's clients.
+// Close releases the level's clients: the spans still in hand are sent first.
 func (c *coreConfiguration) Close() {
-	if c.loggingClient != nil {
-		if err := c.loggingClient.Close(); err != nil {
-			log.Print(errors.Wrap(err, "logging.Client.Close()"))
-		}
+	if err := c.cloud.Close(); err != nil {
+		log.Print(err)
 	}
 }
 
 // LogExporter returns where request logs go: Cloud Logging when a logging project is
 // configured, the console otherwise.
 func (c *coreConfiguration) LogExporter() logger.Exporter {
-	if c.loggingClient != nil {
-		return logger.NewGoogleCloudExporter(c.loggingClient, c.env.LoggingProjectID)
-	}
-
-	return logger.NewConsoleExporter()
+	return c.cloud.LogExporter
 }
 
 // AppVersion returns the build-time or runtime application version.
@@ -79,7 +73,6 @@ type coreConfig struct {
 	// ServiceName names the process in logs.
 	ServiceName string `env:"APP_SERVICE_NAME,required"`
 
-	// LoggingProjectID is the Google Cloud project request logs ship to. Empty logs
-	// to the console.
-	LoggingProjectID string `env:"GOOGLE_CLOUD_LOGGING_PROJECT"`
+	// The Google Cloud driver's variables: the logging project and the trace sampling.
+	gcp.Settings
 }

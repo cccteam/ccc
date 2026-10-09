@@ -504,7 +504,7 @@ func Test_routesTemplate_featureGuard(t *testing.T) {
 				"FeatureGuard() func(resource.Feature) func(http.HandlerFunc) http.HandlerFunc",
 				"featureGuard := h.FeatureGuard()",
 				"debriefsHandler := featureGuard(resources.Debriefs)(h.Debriefs())",
-				`r.Patch("/api/debriefs", featureGuard(resources.Debriefs)(h.PatchDebriefs()))`,
+				`bounded.Patch("/api/debriefs", featureGuard(resources.Debriefs)(h.PatchDebriefs()))`,
 				"vaultsHandler := featureGuard(resources.Debriefs)(domainGuard(h.Vaults()))",
 				"shipsHandler := h.Ships()",
 			},

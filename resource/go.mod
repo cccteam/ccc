@@ -14,11 +14,11 @@ require (
 	github.com/cccteam/ccc/cache v0.2.0
 	github.com/cccteam/ccc/pkg v0.1.5
 	github.com/cccteam/ccc/securehash v0.0.14
-	github.com/cccteam/ccc/tracer v0.1.7
+	github.com/cccteam/ccc/tracer v0.2.0
 	github.com/cccteam/db-initiator v0.4.1
-	github.com/cccteam/httpio v0.7.19
+	github.com/cccteam/httpio v0.7.21
 	github.com/cccteam/logger v0.1.27
-	github.com/cccteam/session v0.12.0
+	github.com/cccteam/session v0.12.2
 	github.com/cccteam/spxscan v0.0.16
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0
@@ -39,9 +39,14 @@ require (
 require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.62.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.11.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	google.golang.org/appengine/v2 v2.0.6 // indirect
 )
@@ -56,13 +61,10 @@ require (
 	cloud.google.com/go/logging v1.20.0 // indirect
 	cloud.google.com/go/longrunning v1.3.0 // indirect
 	cloud.google.com/go/monitoring v1.31.0 // indirect
-	cloud.google.com/go/trace v1.17.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20260917205352-e937bb47801a // indirect
 	github.com/GoogleCloudPlatform/grpc-gcp-go/grpcgcp v1.6.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.38.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.62.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

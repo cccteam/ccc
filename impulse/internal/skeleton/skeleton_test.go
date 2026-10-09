@@ -37,7 +37,7 @@ func TestFS(t *testing.T) {
 
 	// A template is a complete application minus its build products: these files must
 	// be present in every candidate, and nothing from these directories may be embedded.
-	required := []string{ModFile, "go.sum", ".gitignore", ".golangci.yml", ".envrc.template", "Procfile", "README.md", "pkg/auth/staff/roles.json", "pkg/auth/staff/staff.go", ".github/workflows/ci.yml", ".github/workflows/ci-cache.yml", "schema/firestore/firestore.rules", "schema/firestore/firestore.indexes.json"}
+	required := []string{ModFile, "go.sum", ".gitignore", ".golangci.yml", ".envrc.template", "Procfile", "README.md", "pkg/auth/staff/roles.json", "pkg/auth/staff/staff.go", ".github/workflows/ci.yml", ".github/workflows/ci-cache.yml", ".github/workflows/security-scan.yml", "schema/firestore/firestore.rules", "schema/firestore/firestore.indexes.json"}
 	forbiddenDirs := []string{"node_modules", ".angular", "dist", ".ccc-cache", ".yalc", ".git"}
 	// codeql-config.yml left with the CodeQL job: nothing reads it.
 	forbiddenFiles := []string{"go.mod", "go.work", "go.work.sum", ".envrc", ".overmind.sock", "yalc.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "codeql-config.yml"}

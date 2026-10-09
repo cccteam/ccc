@@ -88,7 +88,7 @@ from `2-env`'s state.
 
 - **Runtime identities**, one per deployed process:
   `imp-<env>-gbl-beacon-app` for the site (`main.go`) with
-  `roles/logging.logWriter`, `roles/cloudtrace.agent`,
+  `roles/logging.logWriter`, `roles/cloudtrace.agent`, `roles/telemetry.tracesWriter`,
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets.
   The deploy identity from `2-env` gets `roles/iam.serviceAccountUser` on

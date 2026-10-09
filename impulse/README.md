@@ -63,6 +63,11 @@ templates, this README, and the tool's source.
   embedding the one below it: **core** (every process), **data** (every process that opens
   the database), and **site** (one served site: its port and its built bundle). The site
   level is `SiteConfiguration` in both layouts, since a flat application is one site.
+  The core level opens the cloud driver (`cloud/gcp`), which builds where the process's
+  logs and spans go from the settings the level embeds (`gcp.Settings`: the logging
+  project and the trace sampling); the generated router installs tracing and the request
+  logger from the App's `LogExporter`, so nothing in the application names a logging
+  client or a trace provider, and another cloud is another driver import and settings.
 - **Live pages**: list pages and record pages that stay current without polling. A
   request the page asked to be live carries `X-Subscribe`; the server registers the
   subscription before the query runs and publishes each commit's rows into the
@@ -197,11 +202,13 @@ impulse new ./harbor --module example.com/harbor --auth staff --tenancy --outlet
 impulse new ./fleet --module example.com/fleet --auth crew --site console --site portal
 ```
 
-The application ships its CI, and impulse owns it. Two workflows are rendered from the
-code: `.github/workflows/ci.yml`, the checks on every pull request, and
+The application ships its CI, and impulse owns it. Three workflows are rendered from the
+code: `.github/workflows/ci.yml`, the checks on every pull request;
 `.github/workflows/ci-cache.yml`, the run after a push to the default branch (`main` or
 `master`, or the one the `//impulse:ci` line declares) or a `hotfix/` branch that fills
-the caches the checks restore. `impulse new`
+the caches the checks restore; and `.github/workflows/security-scan.yml`, the daily run
+of the vulnerability check and the image scan over the default branch and the latest
+release, which reports to an issue of the repository (below). `impulse new`
 writes them at creation, `impulse render` (with no arguments, inside the application)
 rewrites them, `impulse add site` and `impulse remove site` rewrite them as part of their
 change since the browser workspaces change, and `impulse check` (`ci-workflow`) compares
@@ -257,13 +264,34 @@ so the gate covers every job:
   failed browser build, lint or test blocks the merge; an application without a browser
   workspace gets a `web` that needs nothing and passes with nothing to check.
 - `image`: once the application has a Dockerfile (bedrock seeds it), hadolint over it, the
-  build, and Grype over the built image, failing on a high or critical vulnerability.
-  Without a Dockerfile the job passes with nothing to build, so the check exists on every
-  pull request.
+  build, and Grype over the built image, failing on a high or critical vulnerability. The
+  build's inputs are read from the Dockerfile when the job runs: every `ARG` without a
+  default (`VERSION` and `COMMIT` aside, which the job passes itself) is passed as `ci`,
+  and every build secret a `RUN` line mounts (`--mount=type=secret,id=NAME`) is served
+  from a placeholder file holding `ci`, so a Dockerfile that requires a secret builds on
+  the pull request without the real value; the image is built to be scanned, never
+  deployed. Without a Dockerfile the job passes with nothing to build, so the check exists
+  on every pull request.
 - `secrets`: TruffleHog over the whole history reachable from the pull request's head; a
   secret confirmed live, or one whose check could not finish, fails.
 - `migrations`: against the base branch, `schema/migrations` gains files only; a committed
   migration is never modified or deleted.
+
+The security scan. The pull request checks run only when a pull request changes, and a
+vulnerability is published on its own day, so `security-scan.yml` runs every day at 14:00
+UTC (and on demand, from the Actions tab) over what is deployed and what is next: `refs`
+lists the refs to scan, the default branch and the latest release's tag when the
+repository has a release (`gh release view`); `go-vuln` runs govulncheck at each ref as the
+pull request's leg does, restoring `go-build`'s caches and saving nothing; `image` builds
+the image at each ref with the inputs the Dockerfile declares, as the pull request's job
+does, and runs Grype over it (hadolint runs on the pull request alone); and `report`,
+which runs whatever the legs did, keeps one issue of the repository under the fixed title
+`Security scan: a vulnerability check or an image scan failed`. A failed leg opens the
+issue naming the failed legs (`go-vuln (the default branch)`, `image (v1.4.0)`) and the
+run, or comments that on the open one; a run with every leg passed closes the open issue
+with a comment naming the clean run; a cancelled or skipped leg does neither. The
+application stands alone: the scan calls no reusable workflow and posts nowhere but the
+repository's own issues, and nothing in it gates anything.
 
 The caches. A pull request's `go-build`, `go-test` and `go-test-skipauth` restore the Go
 module cache and build cache from the nearest entry saved under their own job's key (the
@@ -377,7 +405,7 @@ impulse check --list
 | `registry-pins` | Every browser app installs its packages from the registry: a committed `file:.yalc/<package>` spec (or a lockfile recording one) is a local yalc attachment that a clean checkout cannot install, so the pipeline's install fails. `ccclib.sh restore` puts the registry pins back. |
 | `test-runner` | Every browser application project runs its component specs on Angular's unit-test builder, the runner `ng new` scaffolds (`@angular/build:unit-test`: Vitest under jsdom in Node, no browser): a `test` target on that builder, the spec tsconfig it reads (named in the target, or `tsconfig.spec.json` in the project root), and a package script running `ng test <project>`, so `bun run test` runs every project's specs once. A project with no `*.spec.ts` under its source root warns: the runner is wired and nothing runs on it yet. |
 | `installable` | Every browser application bound to a session outlet installs as a progressive web app, and the server serves it through the resource package's served browser app. On the browser side: `@angular/service-worker` is a dependency at the workspace's Angular line (the line of `@angular/core`); the project's production configuration names a worker config (`"serviceWorker": "ngsw-config.json"`) that exists, whose `navigationUrls` exclude the outlet's API under the mount (`!/api/**`, relative to the mount, so the login, callback and stored-file navigations reach the server; an API prefix outside the mount is outside the worker's scope and needs none); the app config provides the worker (`provideServiceWorker`) and the library's update provider (`provideAppUpdate`); `index.html` links the web app manifest, which parses with `id` the mount path with a trailing slash and `scope` and `start_url` `./`; and every icon the manifest declares is there with PNG dimensions matching its `sizes`, read from the file's header. The release reaches the browser: the project's build defines `APP_VERSION` (`"define": { "APP_VERSION": "'dev'" }` in its build options) and the workspace's `build` script redefines it from the `VERSION` environment variable (`ng build console --define \"APP_VERSION='${VERSION:-dev}'\"`, which the image's browser stage sets), so a release build stamps its release and any other `dev`; the app config provides it as `API_VERSION` (`{ provide: API_VERSION, useValue: APP_VERSION }`) and registers `apiVersionInterceptor` through `provideHttpClient(withInterceptors([...]))`, so every request carries the release in `X-Api-Version` and the server can refuse a build it no longer answers. On the server side: the application's hand-written handlers build the asset handlers from `resource.NewBrowserApp(dir, "<mount>")`, `github.com/jtwatson/spaassets` is imported nowhere and gone from `go.mod`. A project with none of the browser side warns as not installable; a project with part of it fails, naming the first missing piece by file. |
-| `ci-workflow` | The committed `.github/workflows/ci.yml` and `.github/workflows/ci-cache.yml` equal what impulse renders from the code: one browser job per workspace with the `web` gate over them, the jobs the `//impulse:ci` line puts on the larger runner and whether the test results are reused, and the action and tool pins this impulse carries. A missing `ci.yml` fails: the pull requests run no checks at all; a missing `ci-cache.yml` fails: the checks start cold on every pull request. Once the files match, the check asks origin for its default branch and fails when `ci-cache.yml` does not fill it (declare it with `default-branch=<name>` on the `//impulse:ci` line); without a remote or a network it says it could not ask. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
+| `ci-workflow` | The committed `.github/workflows/ci.yml`, `.github/workflows/ci-cache.yml` and `.github/workflows/security-scan.yml` equal what impulse renders from the code: one browser job per workspace with the `web` gate over them, the jobs the `//impulse:ci` line puts on the larger runner and whether the test results are reused, the action and tool pins this impulse carries, and the daily security scan. A missing `ci.yml` fails: the pull requests run no checks at all; a missing `ci-cache.yml` fails: the checks start cold on every pull request; a missing `security-scan.yml` fails: nothing rescans the default branch and the latest release between pull requests. Once the files match, the check asks origin for its default branch and fails when `ci-cache.yml` does not fill it (declare it with `default-branch=<name>` on the `//impulse:ci` line); without a remote or a network it says it could not ask. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it; tests and specs are not read, since a spec describes the server's answer (whose page state carries an `offset` field) as often as a request. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
 | `feature-flags` | The `FeatureFlags` and `FeatureFlagChanges` tables the generated feature flag routes and the deploy's `MigrateFeatures` read are created by a migration as the resource module the application pins declares them: the check reads `resource.FeatureFlagsDDL(resource.SpannerDBType)` from that module's source (found through `go list -m`, so the comparison is against the library the application builds with, a replace or a workspace included) and compares each statement with the migration's, whitespace aside; a table that differs is brought to the library's statement by a new migration. Every declared flag (`resource.Feature` constant) gates something (`@feature(<Constant>)` on a resource, a field or a method) or is read somewhere outside tests (`a.FeatureSet().Enabled(resources.<Constant>)` in Go, `Feature.<Constant>` in a browser application), or it is a switch wired to nothing and fails by name and position; a flag declared twice and an annotation naming no declared constant fail too. Skipped when the generator emits no feature flags (no `zz_gen_features.go` in a resources package) and none is declared. |
@@ -475,8 +503,10 @@ input.
 With no arguments, inside an application, `render` writes the files impulse owns from the
 application's code: today the CI workflows, `.github/workflows/ci.yml` with one browser
 job per workspace, the `//impulse:ci` line's choices and the pins this impulse carries,
-and `.github/workflows/ci-cache.yml` beside it. It says for each file whether it was
-written or already read as the code renders. `impulse check` compares the committed file
+`.github/workflows/ci-cache.yml` beside it, and `.github/workflows/security-scan.yml`,
+the daily vulnerability check and image scan of the default branch and the latest
+release. It says for each file whether it was written or already read as the code
+renders. `impulse check` compares the committed file
 with the same rendering, so this is the command that brings the file back into agreement
 after a change to the code, and the second step of moving the impulse pin.
 
@@ -506,44 +536,54 @@ development only; never commit it.
 
 ## impulse upgrade
 
-`upgrade` moves an application forward through the impulse releases the ledger records,
-one release at a time, and commits each. An impulse release is a coherent pin set (the
-resource, access, session and accesstypes versions its skeleton's `go.mod` named) together
-with the recipes an application at the release before it needs, or a note that none is
-needed. Where the application stands is read, never recorded: the framework pins in its
-`go.mod` say which release it builds against (the latest release whose pins they reach), and
-every release after that up to the running impulse's is pending.
+`upgrade` moves an application forward to the running impulse and through the steps the
+ledger records after the one its pins stand at, one commit each. A step is a coherent pin
+set (the versions of the cccteam modules the skeleton's `go.mod` requires: resource,
+access, session, accesstypes, tracer, logger, httpio, db-initiator and ccc) together with
+the recipes an application at the step before it needs, or a note that none is needed.
+Where the application stands is read, never recorded: the framework pins in its `go.mod`
+say which step it builds against (the latest step whose pins they reach), and every step
+after that is pending. The impulse tool pin is not a step's: it moves to the running
+impulse first, so an impulse release that changes nothing an application builds against
+has no step, and the walk under it is the tool pin's move alone.
 
 ```sh
 go get -tool github.com/cccteam/ccc/impulse@<version>   # the impulse to upgrade to
-go tool impulse upgrade --dry-run                        # the releases and recipes the walk would apply
-go tool impulse upgrade                                  # walk, one commit per release
-go tool impulse upgrade --to v0.3.0                      # stop at a release short of the running impulse's
+go tool impulse upgrade --dry-run                        # what the walk would do
+go tool impulse upgrade                                  # walk, one commit per step
 ```
 
-Each release is one step. Its recipes run first: a recipe detects the old form in the
-application (the generator program, the annotations, the known seams) and edits only where
-it finds it, so running it twice is safe, and so is running it on an application whose pins
-were bumped by hand ahead of its code. Then the pins move to the release's set and the
-impulse tool pin to the release (`go get`, then `go mod tidy`), the owned files are
-rendered again from the code (what `impulse render` writes), `go generate ./...` runs, and
-`impulse check` runs. A clean check is committed as `upgrade: upgrade to impulse <version>`
-with the release's note and recipes in the body (the `upgrade` type releases a patch, as
-the `title` check's list says, since an upgrade moves the pins and re-renders the owned
-files and must not wait for a later releasing merge). A failing check stops the walk with the
-step's changes staged and the handoff brief written (`impulse handoff`, below): fix the
-obligations or hand them to the agent, commit, and run `upgrade` again; it resumes from
-whatever `go.mod` says, since the pin is the checkpoint and nothing else records progress.
-No release is skipped: a recipe is written against the shape the release before it left
-behind. A release with no recipe is a pin bump and a commit.
+The walk opens by moving the tool pin when it is behind the running impulse (`go get
+-tool`, then `go mod tidy`): the owned files are rendered again from the code (what
+`impulse render` writes), `go generate ./...` runs, `impulse check` runs, and a clean check
+is committed as `upgrade: impulse <version>`. An impulse built from a checkout leaves the
+pin alone; one older than the pin refuses, since the pinned one is the impulse to run.
+Then each pending step is one commit. Its recipes run first: a recipe detects the old form
+in the application (the generator program, the annotations, the known seams) and edits
+only where it finds it, so running it twice is safe, and so is running it on an
+application whose pins were bumped by hand ahead of its code. Then the pins the step moves
+move to its set (`go get`, then `go mod tidy`; a pin already at or beyond the step's
+stays), the owned files are rendered again, `go generate ./...` runs, and `impulse check`
+runs. A clean check is committed as `upgrade: <the pins moved>` (`upgrade: ccc/resource
+v0.12.0 (recipe paging)`) with the step's note and recipes in the body (the `upgrade` type
+releases a patch, as the `title` check's list says, since an upgrade moves the pins and
+re-renders the owned files and must not wait for a later releasing merge). A failing check
+stops the walk with the step's changes staged and the handoff brief written (`impulse
+handoff`, below): fix the obligations or hand them to the agent, commit, and run `upgrade`
+again; it resumes from whatever `go.mod` says, since the pin is the checkpoint and nothing
+else records progress. No step is skipped: a recipe is written against the shape the step
+before it left behind. A step with no recipe is a pin bump and a commit.
 
-The ledger (`internal/ledger`) records releases from the first published impulse beta on;
-until that beta is cut it is empty and `upgrade` has nothing to walk. From then on, a
-breaking change in resource, access, session or accesstypes is not done until the impulse
-release that carries it records its recipe in the ledger, or says that no code change is
-needed; the ledger's test holds every entry to its shape (a version newer than the one
-before it, a pin set of framework modules, a note, no recipe named twice). Applications
-that predate the first beta are adopted once by hand, not upgraded.
+The ledger (`internal/ledger`) opens with the first published impulse release's pin set. A
+step is appended when the skeleton's pins move or a recipe is needed, and never otherwise:
+the ledger's test holds the last step's pins to the candidates' `go.mod` (every module it
+pins at the candidates' version, every cccteam module a candidate requires among them), so
+a pin bump without its step fails the build, and holds every step to its shape (a pin set
+of framework modules none of which moves backward, a note, a pin moved or a recipe named,
+no recipe named twice). A breaking change in resource, access, session or accesstypes is
+not done until the step that carries it records its recipe, or says that no code change is
+needed. Applications that predate the first release are adopted once by hand, not
+upgraded. A step whose pins name pushed commits, pseudo-versions of a sibling whose release does not exist yet, is marked `Pending`; the ledger's validation holds the mark to the pins both ways, and impulse does not release with a pending last step (the repository's release pins check refuses it) until the repin moves the pins to the tags and clears the mark.
 
 ## impulse handoff
 

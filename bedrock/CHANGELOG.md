@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.3](https://github.com/cccteam/ccc/compare/bedrock/v0.1.2...bedrock/v0.1.3) (2026-10-09)
+
+
+### Code Upgrade
+
+* Go 1.26.9 and x/net v0.60.0 in every module; net/http GO-2026-6612, GO-2026-6613 and GO-2026-6617 fixed ([#879](https://github.com/cccteam/ccc/issues/879)) ([4107fbb](https://github.com/cccteam/ccc/commit/4107fbb68a33305d109a6a8fec23e67986acf046))
+
+## [0.1.2](https://github.com/cccteam/ccc/compare/bedrock/v0.1.1...bedrock/v0.1.2) (2026-10-08)
+
+
+### Features
+
+* 1-org enables telemetry.googleapis.com in the application projects (@cccteam/bedrock) ([#859](https://github.com/cccteam/ccc/issues/859)) ([c544506](https://github.com/cccteam/ccc/commit/c5445064c47d43a76fd29e711690a107f5c16312))
+* derive expands an embedded framework settings struct into its variables (@cccteam/bedrock) ([#859](https://github.com/cccteam/ccc/issues/859)) ([c544506](https://github.com/cccteam/ccc/commit/c5445064c47d43a76fd29e711690a107f5c16312))
+* the site and jobs identities hold telemetry.tracesWriter beside cloudtrace.agent (@cccteam/bedrock) ([#859](https://github.com/cccteam/ccc/issues/859)) ([c544506](https://github.com/cccteam/ccc/commit/c5445064c47d43a76fd29e711690a107f5c16312))
+* the stack sets APP_TRACE_SAMPLING: all in pull-request stacks and tst, edge beyond (@cccteam/bedrock) ([#859](https://github.com/cccteam/ccc/issues/859)) ([c544506](https://github.com/cccteam/ccc/commit/c5445064c47d43a76fd29e711690a107f5c16312))
+
 ## [0.1.1](https://github.com/cccteam/ccc/compare/bedrock/v0.1.0...bedrock/v0.1.1) (2026-10-08)
 
 

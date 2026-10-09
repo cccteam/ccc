@@ -9,6 +9,9 @@ export APP_SERVICE_NAME=outlets
 export APP_VERSION=dev
 # GOOGLE_CLOUD_LOGGING_PROJECT ships request logs to Cloud Logging; unset logs to the console.
 # export GOOGLE_CLOUD_LOGGING_PROJECT=
+# APP_TRACE_SAMPLING exports every request's spans (all) or the ones the caller sampled (edge,
+# the default); the spans go to the logging project, so none leaves without one.
+# export APP_TRACE_SAMPLING=edge
 
 # --- data: every process that opens the database ---
 export GOOGLE_CLOUD_SPANNER_PROJECT=outlets-dev
