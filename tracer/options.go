@@ -146,10 +146,11 @@ func TracesFollowFrontEnd() Traces {
 }
 
 // TracesCapped returns the setting that records a surface's span when the provider's
-// Sampling would and a draw at the rate falls in, for a chatty surface the front end
-// traces too often. The rate must be above 0 and at most 1; any other value is refused
-// with a panic, because the setting is a declaration and a bad rate is a mistake in the
-// code that declares it.
+// Sampling would and the trace falls under the rate, decided by its trace ID so one trace
+// is kept or dropped the same way wherever it is capped at the rate, for a chatty surface
+// the front end traces too often. The rate must be above 0 and at most 1; any other value
+// is refused with a panic, because the setting is a declaration and a bad rate is a
+// mistake in the code that declares it.
 func TracesCapped(rate float64) Traces {
 	if math.IsNaN(rate) || rate <= 0 || rate > 1 {
 		panic(fmt.Sprintf("tracer.TracesCapped(%v): the rate must be above 0 and at most 1", rate))

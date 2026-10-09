@@ -664,8 +664,9 @@ fraction, between 0 and 1; `generation.LogNever()` writes nothing. Each takes
 trace setting says how the request's spans are sampled, applied by the tracer as the span
 starts, since a span's sampled flag is fixed then: `generation.TracesFollowFrontEnd()` is
 today's behavior, the front end's decision carried in the trace header;
-`generation.TracesCapped(rate)` is that and a draw at the rate; `generation.TracesOff()`
-records nothing. On an annotation the words are `log: always`, `log: onEvent`,
+`generation.TracesCapped(rate)` is that and a cap at the rate, decided by the trace ID so
+one trace is kept or dropped the same way wherever it is capped at the rate;
+`generation.TracesOff()` records nothing. On an annotation the words are `log: always`, `log: onEvent`,
 `log: sampled` with `fraction: 0.01`, `log: never`, and the settings `trace: followFrontEnd`,
 `trace: capped` with `rate: 0.1`, `trace: off`.
 

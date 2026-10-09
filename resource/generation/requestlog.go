@@ -248,10 +248,11 @@ func TracesFollowFrontEnd() Traces {
 	return Traces{setting: tracesFollowFrontEnd}
 }
 
-// TracesCapped records a surface's span when the application-wide sampling would and a
-// draw at the rate falls in, for a chatty surface the front end traces too often. The
-// rate must be above 0 and at most 1; the option the value is passed to refuses any
-// other.
+// TracesCapped records a surface's span when the application-wide sampling would and the
+// trace falls under the rate, decided by its trace ID so one trace is kept or dropped the
+// same way wherever it is capped at the rate, for a chatty surface the front end traces
+// too often. The rate must be above 0 and at most 1; the option the value is passed to
+// refuses any other.
 func TracesCapped(rate float64) Traces {
 	return Traces{setting: tracesCapped, rate: rate}
 }
