@@ -21,9 +21,13 @@ func TestHash_MarshalText(t *testing.T) {
 			name: "Bcrypt",
 			h: &Hash{
 				underlying: &bcryptHash{
+					// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+					// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
+			// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+			// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 			want: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 		},
 		{
@@ -71,9 +75,13 @@ func TestHash_UnmarshalText(t *testing.T) {
 	}{
 		{
 			name: "Bcrypt",
+			// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+			// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 			hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 			want: Hash{
 				underlying: &bcryptHash{
+					// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+					// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -129,9 +137,13 @@ func TestHash_EncodeSpanner(t *testing.T) {
 			name: "Bcrypt",
 			h: &Hash{
 				underlying: &bcryptHash{
+					// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+					// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
+			// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+			// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 			want: "$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q",
 		},
 		{
@@ -179,9 +191,13 @@ func TestHash_DecodeSpanner(t *testing.T) {
 	}{
 		{
 			name: "Bcrypt string",
+			// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+			// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 			hash: "$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q",
 			want: Hash{
 				underlying: &bcryptHash{
+					// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+					// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -237,9 +253,13 @@ func TestHash_Value(t *testing.T) {
 			name: "Bcrypt",
 			h: &Hash{
 				underlying: &bcryptHash{
+					// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+					// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
+			// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+			// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 			want: "$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q",
 		},
 		{
@@ -289,9 +309,13 @@ func TestHash_Scan(t *testing.T) {
 	}{
 		{
 			name: "Bcrypt string",
+			// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+			// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 			hash: "$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q",
 			want: Hash{
 				underlying: &bcryptHash{
+					// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+					// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,

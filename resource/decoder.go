@@ -301,6 +301,10 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 			return nil, nil, httpio.NewBadRequestMessagef("json field name %s collides with another field name of different case", fieldName)
 		}
 
+		// fieldName names a field the request struct declares: the field mapper above
+		// refuses any other JSON name, and a hidden field, before this line, so no name
+		// taken from the request reaches this lookup unchecked.
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		field := vValue.FieldByName(string(fieldName))
 		value := field.Interface()
 		if string(jsonValue) == nullLiteral && !acceptsNull(rSet.nullableFields, fieldName, field) {

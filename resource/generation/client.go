@@ -16,6 +16,10 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	// The generator renders Go and TypeScript source from its templates; html/template's
+	// escaping would corrupt that output, so text/template is the right package here.
+	// nosemgrep: go.lang.security.audit.xss.import-text-template.import-text-template
 	"text/template"
 	"unicode/utf8"
 
