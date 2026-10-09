@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/cccteam/ccc/compare/sns/v0.2.14...sns/v0.2.15) (2026-10-09)
+
+
+### Code Upgrade
+
+* Go 1.26.9 and x/net v0.60.0 in every module; net/http GO-2026-6612, GO-2026-6613 and GO-2026-6617 fixed ([#879](https://github.com/cccteam/ccc/issues/879)) ([4107fbb](https://github.com/cccteam/ccc/commit/4107fbb68a33305d109a6a8fec23e67986acf046))
+
 ## [0.2.14](https://github.com/cccteam/ccc/compare/sns/v0.2.13...sns/v0.2.14) (2026-10-07)
 
 
