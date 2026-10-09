@@ -112,18 +112,6 @@ func perRPCCredentials(ctx context.Context, cfg *providerConfig) (credentials.Pe
 	return creds, nil
 }
 
-// sampler is the SDK sampler for a Sampling: every span for SamplingAll; for
-// SamplingEdge the caller's decision, and nothing without a caller. Either is wrapped
-// with the surface settings the handler declares (Surfaces), which narrow the decision of
-// a request's own span and never widen it.
-func sampler(s Sampling) sdktrace.Sampler {
-	if s == SamplingAll {
-		return newSurfaceSampler(sdktrace.AlwaysSample())
-	}
-
-	return newSurfaceSampler(sdktrace.ParentBased(sdktrace.NeverSample()))
-}
-
 // newResource describes the process: the SDK's defaults and the service name, and for
 // Google Cloud what its detector finds about where the process runs (on Cloud Run, the
 // service, revision and region) and the project the spans belong to. A detector that

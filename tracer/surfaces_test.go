@@ -2,9 +2,11 @@ package tracer
 
 import (
 	"context"
+	"encoding/binary"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -112,8 +114,10 @@ func Test_surfaceSampler_ShouldSample(t *testing.T) {
 		base   sdktrace.Sampler
 		traces *Traces
 		parent trace.SpanContext
-		draw   float64
-		want   sdktrace.SamplingDecision
+		// traceID is the span's trace, which a capped surface decides by; the low one
+		// falls under every rate, the high one past every rate below 1.
+		traceID trace.TraceID
+		want    sdktrace.SamplingDecision
 	}{
 		{name: "no setting keeps the base decision", base: sdktrace.AlwaysSample(), want: sdktrace.RecordAndSample},
 		{name: "a dropped span stays dropped under follow", base: sdktrace.NeverSample(), traces: tracesOf(TracesFollowFrontEnd()), want: sdktrace.Drop},
@@ -121,10 +125,11 @@ func Test_surfaceSampler_ShouldSample(t *testing.T) {
 		{name: "follow leaves a sampled span alone", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesFollowFrontEnd()), want: sdktrace.RecordAndSample},
 		{name: "off drops the request's span", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesOff()), want: sdktrace.Drop},
 		{name: "off drops a span the front end sampled", base: sdktrace.ParentBased(sdktrace.NeverSample()), traces: tracesOf(TracesOff()), parent: remote, want: sdktrace.Drop},
-		{name: "capped keeps the span when the draw falls under the rate", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesCapped(0.25)), draw: 0.2, want: sdktrace.RecordAndSample},
-		{name: "capped drops the span when the draw reaches the rate", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesCapped(0.25)), draw: 0.25, want: sdktrace.Drop},
+		{name: "capped keeps the span when its trace falls under the rate", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesCapped(0.25)), traceID: lowTraceID, want: sdktrace.RecordAndSample},
+		{name: "capped drops the span when its trace falls past the rate", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesCapped(0.25)), traceID: highTraceID, want: sdktrace.Drop},
+		{name: "capped at 1 keeps every trace", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesCapped(1)), traceID: highTraceID, want: sdktrace.RecordAndSample},
 		{name: "a child span follows its sampled local parent under off", base: sdktrace.ParentBased(sdktrace.NeverSample()), traces: tracesOf(TracesOff()), parent: local, want: sdktrace.RecordAndSample},
-		{name: "a child span follows its sampled local parent under capped", base: sdktrace.ParentBased(sdktrace.NeverSample()), traces: tracesOf(TracesCapped(0.01)), parent: local, draw: 0.9, want: sdktrace.RecordAndSample},
+		{name: "a child span follows its sampled local parent under capped", base: sdktrace.ParentBased(sdktrace.NeverSample()), traces: tracesOf(TracesCapped(0.01)), parent: local, traceID: highTraceID, want: sdktrace.RecordAndSample},
 		{name: "a child span follows its dropped local parent even when every span is recorded", base: sdktrace.AlwaysSample(), traces: tracesOf(TracesOff()), parent: dropped, want: sdktrace.Drop},
 	}
 	for _, tt := range tests {
@@ -138,8 +143,12 @@ func Test_surfaceSampler_ShouldSample(t *testing.T) {
 			if tt.parent.IsValid() {
 				ctx = trace.ContextWithSpanContext(ctx, tt.parent)
 			}
-			s := surfaceSampler{base: tt.base, draw: func() float64 { return tt.draw }}
-			got := s.ShouldSample(sdktrace.SamplingParameters{ParentContext: ctx, Name: "probe", Kind: trace.SpanKindServer})
+			traceID := tt.traceID
+			if !traceID.IsValid() {
+				traceID = lowTraceID
+			}
+			s := newSurfaceSampler(tt.base)
+			got := s.ShouldSample(sdktrace.SamplingParameters{ParentContext: ctx, TraceID: traceID, Name: "probe", Kind: trace.SpanKindServer})
 			if got.Decision != tt.want {
 				t.Errorf("ShouldSample() = %v, want %v", got.Decision, tt.want)
 			}
@@ -155,9 +164,35 @@ func tracesOf(t Traces) *Traces {
 	return &t
 }
 
+// The trace IDs a capped surface decides by: the ratio sampler reads the low eight
+// bytes, so a trace with those at zero falls under every rate and one with them at their
+// highest falls past every rate below 1.
+var (
+	lowTraceID  = trace.TraceID{1}
+	highTraceID = trace.TraceID{1, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+)
+
+// fixedIDs is an ID generator for the handler test: every trace gets the one trace ID,
+// so a capped surface's decision is known, and span IDs count up.
+type fixedIDs struct {
+	traceID trace.TraceID
+	spans   atomic.Uint64
+}
+
+func (g *fixedIDs) NewIDs(ctx context.Context) (trace.TraceID, trace.SpanID) {
+	return g.traceID, g.NewSpanID(ctx, g.traceID)
+}
+
+func (g *fixedIDs) NewSpanID(_ context.Context, _ trace.TraceID) trace.SpanID {
+	var id trace.SpanID
+	binary.BigEndian.PutUint64(id[:], g.spans.Add(1))
+
+	return id
+}
+
 // TestNewHandlerSurfaces proves the handler hands the declared surface's setting to the
 // sampler as the span starts: a request under a surface declared off records no span and
-// one under a capped surface records a span only when the draw falls in, while a request
+// one under a capped surface records a span only when its trace falls under the rate, while a request
 // under no declared surface and one under a surface that follows the front end record
 // theirs, and a child span started inside the request rides with the request's span.
 func TestNewHandlerSurfaces(t *testing.T) {
@@ -166,22 +201,25 @@ func TestNewHandlerSurfaces(t *testing.T) {
 	tests := []struct {
 		name      string
 		path      string
-		draw      float64
+		traceID   trace.TraceID
 		wantSpans int
 	}{
 		{name: "no declared surface", path: "/console/api/missions", wantSpans: 2},
 		{name: "a surface that follows the front end", path: "/portal/api/orders", wantSpans: 2},
 		{name: "a surface that is off", path: "/beacons/anvil", wantSpans: 0},
-		{name: "capped, the draw falls in", path: "/droids/beacons", draw: 0.05, wantSpans: 2},
-		{name: "capped, the draw falls out", path: "/droids/beacons", draw: 0.95, wantSpans: 0},
+		{name: "capped, the trace falls under the rate", path: "/droids/beacons", traceID: lowTraceID, wantSpans: 2},
+		{name: "capped, the trace falls past the rate", path: "/droids/beacons", traceID: highTraceID, wantSpans: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			exporter := tracetest.NewInMemoryExporter()
-			sampler := surfaceSampler{base: sdktrace.AlwaysSample(), draw: func() float64 { return tt.draw }}
-			provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sampler))
+			traceID := tt.traceID
+			if !traceID.IsValid() {
+				traceID = lowTraceID
+			}
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sampler(SamplingAll)), sdktrace.WithIDGenerator(&fixedIDs{traceID: traceID}))
 			t.Cleanup(func() {
 				if err := provider.Shutdown(context.Background()); err != nil {
 					t.Errorf("TracerProvider.Shutdown() error = %v", err)

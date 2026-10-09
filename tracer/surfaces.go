@@ -2,7 +2,6 @@ package tracer
 
 import (
 	"context"
-	"math/rand/v2"
 	"slices"
 	"strings"
 
@@ -100,6 +99,16 @@ func tracesFromContext(ctx context.Context) (Traces, bool) {
 	return t, ok
 }
 
+// sampler is the sampler the provider installs: every span, or the front end's decision
+// with nothing started here, each narrowed by the declared surfaces (Surfaces).
+func sampler(s Sampling) sdktrace.Sampler {
+	if s == SamplingAll {
+		return newSurfaceSampler(sdktrace.AlwaysSample())
+	}
+
+	return newSurfaceSampler(sdktrace.ParentBased(sdktrace.NeverSample()))
+}
+
 // surfaceSampler is the sampler the provider builds: the base sampler decides as it does
 // today, parent-based or every span, and the surface's setting then narrows the decision
 // of the request's own span, the one started with no local parent. A span started inside
@@ -107,18 +116,18 @@ func tracesFromContext(ctx context.Context) (Traces, bool) {
 // off or capped out records no child span either, whatever the base sampler would do.
 type surfaceSampler struct {
 	base sdktrace.Sampler
-	// draw supplies the per-request draw of a capped surface, in [0, 1).
-	draw func() float64
 }
 
 // newSurfaceSampler wraps the base sampler with the surface settings.
 func newSurfaceSampler(base sdktrace.Sampler) surfaceSampler {
-	return surfaceSampler{base: base, draw: rand.Float64}
+	return surfaceSampler{base: base}
 }
 
 // ShouldSample applies the base sampler, then the surface's setting to a span with no
-// local parent: off drops it, capped drops it unless the draw falls under the rate, and
-// follow the front end leaves the base decision alone.
+// local parent: off drops it, capped drops it unless the trace falls under the rate, and
+// follow the front end leaves the base decision alone. A capped surface decides by the
+// trace ID, through the SDK's ratio sampler, so one trace is kept or dropped the same
+// way on every surface capped at the rate and in every service it crosses.
 func (s surfaceSampler) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	result := s.base.ShouldSample(p)
 	if result.Decision != sdktrace.RecordAndSample {
@@ -139,7 +148,7 @@ func (s surfaceSampler) ShouldSample(p sdktrace.SamplingParameters) sdktrace.Sam
 	case tracesOff:
 		result.Decision = sdktrace.Drop
 	case tracesCapped:
-		if s.draw() >= t.rate {
+		if sdktrace.TraceIDRatioBased(t.rate).ShouldSample(p).Decision != sdktrace.RecordAndSample {
 			result.Decision = sdktrace.Drop
 		}
 	case tracesFollowFrontEnd:
