@@ -38,8 +38,8 @@ github.com/apparentlymart/go-textseg/v15 v15.0.0 h1:uYvfpb3DyLSCGWnctWKGj857c6ew
 github.com/apparentlymart/go-textseg/v15 v15.0.0/go.mod h1:K8XmNZdhEBkdlyDdvbmmsvpAG721bKi0joRfFdHIWJ4=
 github.com/apparentlymart/go-textseg/v17 v17.0.1 h1:bpMXRgQ5cEoRNuQke1a80/Nl6w3G5eoIbWo9f3gXkAs=
 github.com/apparentlymart/go-textseg/v17 v17.0.1/go.mod h1:fa8X4jgGeevslICIY6LcdjkSecWnXmYd9Lk34z/VxZs=
-github.com/cccteam/ccc/cloud v0.2.1-0.20261009173715-bf6512411e68 h1:Zv/LO+YOfz6zEO5If/KqP4fMfJ8nk97PruN4DhxBtsI=
-github.com/cccteam/ccc/cloud v0.2.1-0.20261009173715-bf6512411e68/go.mod h1:bppXgzSKxWazRtkK1EmSkM9h3Es7wBQCVWYUJoSPsp4=
+github.com/cccteam/ccc/cloud v0.2.1 h1:W1vL3cyGSwGY/HaOJIS9Kn/EU9ai+YvH0W9JraMnoII=
+github.com/cccteam/ccc/cloud v0.2.1/go.mod h1:bppXgzSKxWazRtkK1EmSkM9h3Es7wBQCVWYUJoSPsp4=
 github.com/cccteam/ccc/impulse v0.3.0 h1:Ues0urx4NMSPZf7QEYbCm65p0nW+3oJo6FN6znjMI2M=
 github.com/cccteam/ccc/impulse v0.3.0/go.mod h1:f5BnDbyAChKS+hglxcupJhaWbHfJXJvpHJdOG6q2cbk=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
