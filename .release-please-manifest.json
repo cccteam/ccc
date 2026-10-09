@@ -6,7 +6,7 @@
   "resource": "0.13.0",
   "cache": "0.2.2",
   "securehash": "0.0.16",
-  "tracer": "0.2.0",
+  "tracer": "0.2.1",
   "middleware": "0.0.11",
   "impulse": "0.3.0",
   "bedrock": "0.1.3",
