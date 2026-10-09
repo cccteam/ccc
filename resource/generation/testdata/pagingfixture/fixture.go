@@ -113,7 +113,7 @@ type (
 	// @computed
 	PositionalBoard struct {
 		ID   ccc.UUID // @primarykey
-		Name string `allow_filter:"true" masking:"positional"`
+		Name string   `allow_filter:"true" masking:"positional"`
 	}
 
 	// IndexedBoard names a database index, which a computed resource has none of.

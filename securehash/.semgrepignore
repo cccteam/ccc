@@ -1,0 +1,7 @@
+# This file exists so that the securehash module's pull request scan sees the same files
+# the repository's inventory scan sees. When a directory has no .semgrepignore, Semgrep
+# applies its built-in ignore list, which skips every *_test.go file; the inventory scan
+# runs from the repository root, whose .semgrepignore replaces that list with the
+# repository's own, so it scans the tests. With this file present, Semgrep uses it
+# instead of the built-in list and the module scan is on the same footing. It lists no
+# paths on purpose: the findings in the tests are annotated at the site.
