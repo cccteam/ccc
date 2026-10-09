@@ -161,6 +161,10 @@ func (p *PatchSet[Resource]) ToStruct() *Resource {
 	newRElem := newRVal.Elem()
 
 	for fieldName, value := range all(p.data.data, p.querySet.keys.data) {
+		// fieldName is one of the patch set's own keys: a name the program set, or one the
+		// request decoder matched to a declared field before setting it. No name taken
+		// from a request reaches this lookup unchecked.
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		field := newRElem.FieldByName(string(fieldName))
 		if !field.IsValid() {
 			panic(errors.Newf("field %s from patchset not found in struct %s", fieldName, t.Name()))
@@ -226,11 +230,15 @@ func (p *PatchSet[Resource]) FromStruct(input any, skip ...string) error {
 			continue
 		}
 
+		// fieldName comes from the input struct's own field list above, not from a request.
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		resourceField, found := resourceType.FieldByName(fieldName)
 		if !found {
 			return errors.Newf("FromStruct: field '%s' not found in resource '%s'", fieldName, resourceType.Name())
 		}
 
+		// The same field name, read from the input value.
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		fieldValue := inputValue.FieldByName(fieldName)
 		valToSet := fieldValue.Interface()
 
@@ -787,6 +795,8 @@ func (p *PatchSet[Resource]) deleteChangeSet(old any) (map[accesstypes.Field]Dif
 
 	oldMap := map[accesstypes.Field]DiffElem{}
 	for _, field := range reflect.VisibleFields(oldType) {
+		// field.Name comes from the old struct's own field list, not from a request.
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		oldValue := oldValue.FieldByName(field.Name)
 		if oldValue.IsValid() && !oldValue.IsZero() {
 			oldMap[accesstypes.Field(field.Name)] = DiffElem{
@@ -836,6 +846,8 @@ func (p *PatchSet[Resource]) Diff(old any) (map[accesstypes.Field]DiffElem, erro
 
 	oldMap := map[accesstypes.Field]any{}
 	for _, field := range reflect.VisibleFields(oldType) {
+		// field.Name comes from the old struct's own field list, not from a request.
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		oldMap[accesstypes.Field(field.Name)] = oldValue.FieldByName(field.Name).Interface()
 	}
 

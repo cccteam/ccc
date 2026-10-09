@@ -37,6 +37,8 @@ func TestSecureHasher_Compare(t *testing.T) {
 				bcrypt: Bcrypt(),
 			},
 			args: args{
+				// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+				// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
 				plaintext: "password",
 			},
@@ -49,6 +51,8 @@ func TestSecureHasher_Compare(t *testing.T) {
 				bcrypt: &BcryptOptions{cost: 10},
 			},
 			args: args{
+				// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+				// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
 				plaintext: "password",
 			},
@@ -61,6 +65,8 @@ func TestSecureHasher_Compare(t *testing.T) {
 				bcrypt: Bcrypt(),
 			},
 			args: args{
+				// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+				// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
 				plaintext: "wrongpassword",
 			},
@@ -73,6 +79,8 @@ func TestSecureHasher_Compare(t *testing.T) {
 				argon2: Argon2(),
 			},
 			args: args{
+				// A fixed bcrypt hash of a test password, kept as a test fixture; it guards nothing.
+				// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
 				plaintext: "password",
 			},
