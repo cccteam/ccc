@@ -209,36 +209,16 @@ func wafExpression(s derive.RuleSet, scope string) string {
 	return scope + " && " + expr
 }
 
-// bypassExpression matches the route: its path as a regular expression, under its
-// method where one is given.
+// bypassExpression matches the route: its path as a regular expression
+// (derive.PathRegex, the same the request log's exclusion matches a surface with), under
+// its method where one is given.
 func bypassExpression(method, route string) string {
-	expr := fmt.Sprintf("request.path.matches('^%s$')", pathRegex(route))
+	expr := fmt.Sprintf("request.path.matches('^%s$')", derive.PathRegex(route))
 	if method == "" {
 		return expr
 	}
 
 	return fmt.Sprintf("request.method == '%s' && %s", method, expr)
-}
-
-// pathRegex is the route as the RE2 expression Cloud Armor matches the path against: a
-// parameter in braces matches one segment, a last star the subtree, and a dot matches
-// itself through a class, so the expression carries no backslash to escape in CEL or
-// HCL. A route's other characters (letters, digits, dashes, underscores, tildes,
-// slashes) match themselves.
-func pathRegex(route string) string {
-	segments := strings.Split(route, "/")
-	for i, seg := range segments {
-		switch {
-		case strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}"):
-			segments[i] = "[^/]+"
-		case seg == "*":
-			segments[i] = ".*"
-		default:
-			segments[i] = strings.ReplaceAll(seg, ".", "[.]")
-		}
-	}
-
-	return strings.Join(segments, "/")
 }
 
 // fileRouteReason says why the route carries no input a rule can judge.

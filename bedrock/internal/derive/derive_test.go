@@ -77,6 +77,11 @@ func TestDerive(t *testing.T) {
 		// declares no upload and no stored file; wantOutlets the outlets, name and prefix.
 		wantFileRoutes []string
 		wantOutlets    []string
+		// wantSurfaces are the surfaces (surfaceLine), none for an application that
+		// declares no request log word and no trace setting; wantRequestLog the request
+		// log exclusion's clause, empty when no surface's word excludes an entry.
+		wantSurfaces   []string
+		wantRequestLog string
 	}{
 		{
 			name:    "harbor",
@@ -134,6 +139,8 @@ func TestDerive(t *testing.T) {
 			wantScheduled:  []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
 			wantFileRoutes: []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
 			wantOutlets:    []string{"default /api"},
+			wantSurfaces:   []string{"/_scheduled/send-daily-digest: logged always", "/api/: sampled at 0.1", "/api/manifests/{id}/file: never logged"},
+			wantRequestLog: `((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file"))`,
 		},
 		{
 			name:        "beacon, a password auth: no registration, no callback",
@@ -278,6 +285,20 @@ func TestDerive(t *testing.T) {
 			if !slices.Equal(outlets, tt.wantOutlets) {
 				t.Errorf("Outlets = %v, want %v", outlets, tt.wantOutlets)
 			}
+			var surfaces []string
+			for i := range m.Surfaces {
+				surfaces = append(surfaces, surfaceLine(&m.Surfaces[i]))
+			}
+			if !slices.Equal(surfaces, tt.wantSurfaces) {
+				t.Errorf("Surfaces = %v, want %v", surfaces, tt.wantSurfaces)
+			}
+			var clause string
+			if m.RequestLog != nil {
+				clause = m.RequestLog.Clause
+			}
+			if clause != tt.wantRequestLog {
+				t.Errorf("RequestLog.Clause = %q, want %q", clause, tt.wantRequestLog)
+			}
 			for _, e := range m.Environments {
 				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
 					t.Errorf("Environment %s hostnames = %v, want %s", e.Name, e.Hostnames, want)
@@ -412,6 +433,69 @@ func scheduledLine(r *ScheduledRoute) string {
 // fileRouteLine spells a file route: its method and path, and its declaration.
 func fileRouteLine(r *FileRoute) string {
 	return fmt.Sprintf("%s %s: %s", r.Method, r.Path, r.Declaration())
+}
+
+// surfaceLine spells a surface: its prefix and its request log word in prose.
+func surfaceLine(s *Surface) string {
+	return s.Prefix + ": " + s.Policy()
+}
+
+// TestDeriveRequestLog derives the request log's exclusion from the surfaces of the
+// release file beside the generated router, over a copy of the fixture whose release
+// file each case writes: no file and no surface mean no exclusion, so do surfaces
+// logged always, and a surface whose word excludes an entry brings one with its clause.
+func TestDeriveRequestLog(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// content is the release file's content; empty removes the file.
+		content string
+		// want is the exclusion's clause; empty for no exclusion.
+		want string
+	}{
+		{name: "no release file brings no exclusion"},
+		{name: "a release file without surfaces", content: `{"outlets": {"default": {}}}`},
+		{name: "surfaces logged always", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/", "log": "always"}, {"prefix": "/api/", "log": "always", "traces": "off"}]}`},
+		{
+			name:    "Lodestar's surfaces",
+			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/beacons/", "log": "onEvent", "traces": "off"}, {"prefix": "/droids/sectors/{sectorID}/ingest-droid-reports", "log": "onEvent"}]}`,
+			want:    lodestarClause,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "app")
+			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", "harbor"))); err != nil {
+				t.Fatalf("os.CopyFS() error = %v", err)
+			}
+			file := filepath.Join(dir, "pkg", "router", ReleaseFileName)
+			if tt.content == "" {
+				if err := os.Remove(file); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(file, []byte(tt.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			a, err := app.Discover(dir)
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			m, err := Derive(a, testPlacement(t))
+			if err != nil {
+				t.Fatalf("Derive() error = %v", err)
+			}
+			var got string
+			if m.RequestLog != nil {
+				got = m.RequestLog.Clause
+			}
+			if got != tt.want {
+				t.Errorf("RequestLog.Clause = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 // TestBucketPolicyAddress reads a bucket policy's address from its bucket's, the way the

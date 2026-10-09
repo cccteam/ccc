@@ -24,5 +24,20 @@
       "path": "/api/manifests/{id}/file",
       "source": "Manifest.Key"
     }
+  ],
+  "surfaces": [
+    {
+      "prefix": "/_scheduled/send-daily-digest",
+      "log": "always"
+    },
+    {
+      "prefix": "/api/",
+      "log": "sampled",
+      "fraction": 0.1
+    },
+    {
+      "prefix": "/api/manifests/{id}/file",
+      "log": "never"
+    }
   ]
 }

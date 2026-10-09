@@ -74,6 +74,12 @@ type Model struct {
 	// route. Cloud Armor, where an environment turns it on, matches each ahead of its
 	// rules (cloud-armor.tf). None when the code declares neither.
 	FileRoutes []FileRoute
+	// Surfaces are the surfaces the code declares a request log word or a trace setting
+	// for, read from the same file in prefix order, and RequestLog the request log's
+	// exclusion the stack renders from their words (logging.tf): nil when no surface's
+	// word excludes an entry, and then the stack renders none.
+	Surfaces   []Surface
+	RequestLog *RequestLogExclusion
 	// Outlets are the site's router outlets as the generator program declares them, the
 	// default first: the URL spaces the routes carrying JSON input live under, which
 	// Cloud Armor's rule sets are scoped to.
@@ -695,7 +701,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, err
 	}
 	m.router(a)
-	if err := m.scheduled(a); err != nil {
+	if err := m.releaseFile(a); err != nil {
 		return nil, err
 	}
 	if err := m.armor(); err != nil {

@@ -1,7 +1,9 @@
 // releasefile.go reads the generated release file: the oldest release of the browser
 // application each router outlet still answers, which decides whether a release needs
-// a maintenance window, and the scheduled routes, which the stack gives a Cloud
-// Scheduler job each.
+// a maintenance window, the scheduled routes, which the stack gives a Cloud Scheduler
+// job each, the file routes, which Cloud Armor matches ahead of its rules, and the
+// surfaces with their request log words, which the stack renders the request log's
+// exclusion from (requestlog.go).
 
 package derive
 
@@ -49,7 +51,55 @@ type ReleaseFile struct {
 	// each ahead of Cloud Armor's rules (cloud-armor.tf). None when the code declares
 	// neither.
 	FileRoutes []FileRoute `json:"fileRoutes,omitempty"`
+	// Surfaces are the surfaces the code declares a request log word or a trace setting
+	// for, in prefix order: the application default at /, an outlet at its prefix, a
+	// prefix the application mounts routes under by hand, or a generated route at the
+	// path the router mounts it at. The stack renders the request log's exclusion from
+	// the words (logging.tf). None when the code declares nothing, and then every
+	// request's entry is written.
+	Surfaces []Surface `json:"surfaces,omitempty"`
 }
+
+// Surface is one declared surface of the release file: a path prefix or a route
+// pattern as the router mounts it, with its request log word, its trace setting, or
+// both. The stack reads the word alone: the trace setting is the tracer's.
+type Surface struct {
+	// Prefix is the path as mounted: a prefix such as /beacons/ or /portal/api/, a
+	// route pattern such as /api/widgets/{id}/content, where a segment in braces stands
+	// for any one segment, or / for the application default.
+	Prefix string `json:"prefix"`
+	// Log is the request log word: RequestLogAlways, RequestLogOnEvent,
+	// RequestLogSampled or RequestLogNever; empty when the surface declares its trace
+	// setting alone.
+	Log string `json:"log,omitempty"`
+	// Fraction is the share of the quiet requests a sampled surface writes the entry
+	// for, above 0 and at most 1; set with RequestLogSampled alone.
+	Fraction float64 `json:"fraction,omitempty"`
+	// Traces is the trace setting: TracesFollowFrontEnd, TracesCapped or TracesOff;
+	// empty when the surface declares its request log word alone.
+	Traces string `json:"traces,omitempty"`
+	// Rate is the share of the front end's traces a capped surface keeps, above 0 and
+	// at most 1; set with TracesCapped alone.
+	Rate float64 `json:"rate,omitempty"`
+}
+
+// The request log words, as the release file spells them: the entry is written for
+// every request, when a line attached or the request failed, as on event plus a
+// fraction of the quiet requests, or never.
+const (
+	RequestLogAlways  = "always"
+	RequestLogOnEvent = "onEvent"
+	RequestLogSampled = "sampled"
+	RequestLogNever   = "never"
+)
+
+// The trace settings, as the release file spells them: a surface's spans follow the
+// front end, are capped at a rate, or are off.
+const (
+	TracesFollowFrontEnd = "followFrontEnd"
+	TracesCapped         = "capped"
+	TracesOff            = "off"
+)
 
 // FileRoute is one route of the release file that carries a file rather than JSON: an
 // @upload method's route, whose body is multipart, or a stored file's read route, whose
@@ -189,8 +239,63 @@ func ReadReleaseFile(dir string) (*ReleaseFile, error) {
 	if err := validateFileRoutes(name, f.FileRoutes); err != nil {
 		return nil, err
 	}
+	if err := validateSurfaces(name, f.Surfaces); err != nil {
+		return nil, err
+	}
 
 	return &f, nil
+}
+
+// surfacePrefixRE is the shape of a surface's prefix: the root alone, or segments of
+// letters, digits, dashes, underscores and dots, or a parameter in braces, under the
+// root, with or without a trailing slash. The stack writes each into the exclusion's
+// filter as a regular expression, so nothing else passes.
+var surfacePrefixRE = regexp.MustCompile(`^/$|^(/(\{[A-Za-z0-9_]+\}|[A-Za-z0-9_.-]+))+/?$`)
+
+// validateSurfaces refuses a surface of the file name the generator would not write: a
+// prefix not of the shape a router mounts, a prefix listed twice, neither a word nor a
+// setting, a word or a setting outside the vocabulary, a fraction or a rate outside
+// (0, 1], a fraction without the sampled word, or a rate without the capped setting.
+func validateSurfaces(name string, surfaces []Surface) error {
+	seen := map[string]bool{}
+	for i := range surfaces {
+		s := &surfaces[i]
+		switch {
+		case !surfacePrefixRE.MatchString(s.Prefix):
+			return errors.Newf("%s: the surface %q is not a path a router mounts (/beacons/, /api/photos/{id}/file)", name, s.Prefix)
+		case seen[s.Prefix]:
+			return errors.Newf("%s: the surface %s is listed twice", name, s.Prefix)
+		case s.Log == "" && s.Traces == "":
+			return errors.Newf("%s: the surface %s declares neither a request log word nor a trace setting", name, s.Prefix)
+		}
+		seen[s.Prefix] = true
+		switch s.Log {
+		case "", RequestLogAlways, RequestLogOnEvent, RequestLogNever:
+			if s.Fraction != 0 {
+				return errors.Newf("%s: the surface %s carries a fraction without the %s word", name, s.Prefix, RequestLogSampled)
+			}
+		case RequestLogSampled:
+			if s.Fraction <= 0 || s.Fraction > 1 {
+				return errors.Newf("%s: the surface %s is sampled at %v; the fraction is above 0 and at most 1", name, s.Prefix, s.Fraction)
+			}
+		default:
+			return errors.Newf("%s: the surface %s has the request log word %q; the words are %s, %s, %s and %s", name, s.Prefix, s.Log, RequestLogAlways, RequestLogOnEvent, RequestLogSampled, RequestLogNever)
+		}
+		switch s.Traces {
+		case "", TracesFollowFrontEnd, TracesOff:
+			if s.Rate != 0 {
+				return errors.Newf("%s: the surface %s carries a rate without the %s setting", name, s.Prefix, TracesCapped)
+			}
+		case TracesCapped:
+			if s.Rate <= 0 || s.Rate > 1 {
+				return errors.Newf("%s: the surface %s is capped at %v; the rate is above 0 and at most 1", name, s.Prefix, s.Rate)
+			}
+		default:
+			return errors.Newf("%s: the surface %s has the trace setting %q; the settings are %s, %s and %s", name, s.Prefix, s.Traces, TracesFollowFrontEnd, TracesCapped, TracesOff)
+		}
+	}
+
+	return nil
 }
 
 // fileRoutePathRE is the shape of a file route's path: segments of letters, digits,
@@ -248,11 +353,13 @@ func validateScheduled(name string, routes []ScheduledRoute) error {
 	return nil
 }
 
-// scheduled reads the scheduled routes and the file routes from the release file
-// beside the generated router. An application with no router, or whose router has no
-// release file yet, has none; a release file that does not read is refused, since the
-// stack cannot say which jobs the code declares or which routes carry files.
-func (m *Model) scheduled(a *app.App) error {
+// releaseFile reads the scheduled routes, the file routes and the surfaces from the
+// release file beside the generated router, and derives the request log's exclusion
+// from the surfaces. An application with no router, or whose router has no release file
+// yet, has none of them; a release file that does not read is refused, since the stack
+// cannot say which jobs the code declares, which routes carry files, or which entries
+// the code means to keep.
+func (m *Model) releaseFile(a *app.App) error {
 	if m.RouterDir == "" {
 		return nil
 	}
@@ -265,6 +372,8 @@ func (m *Model) scheduled(a *app.App) error {
 	}
 	m.Scheduled = f.Scheduled
 	m.FileRoutes = f.FileRoutes
+	m.Surfaces = f.Surfaces
+	m.RequestLog = NewRequestLogExclusion(f.Surfaces)
 
 	return nil
 }

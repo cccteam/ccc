@@ -366,7 +366,22 @@ the route admits a token Google signed for the route's URL with that email and a
 every other call 401, so the identity holds no role and Cloud Run's IAM, which the load
 balancer's tag opens, is not what guards the route; a pull-request stack creates neither
 the identity nor the jobs and leaves the variable unset, so its scheduled routes refuse
-every call; a config variable
+every call; the request log words the code declares per surface (`WithRequestLog`,
+`OutletRequestLog`, `WithMountedRoutes`, `log:` on `@rpc`), which the generated router
+lists in its release file as `surfaces`, become the request log's exclusion: the entries
+Cloud Run and the load balancer write for every request the service answers follow the
+same words as the application's own, so a surface logged on event alone costs no entry
+for its quiet requests anywhere. It is one project-level Cloud Logging exclusion per
+environment (`logging.tf`), `<prefix>-<env>-gbl-<app>-log-excl`, never in a pull-request
+stack, whose filter is scoped to the service's own entries (Cloud Run's by the regional
+services' names, the load balancer's by the backend's; never the project's, which holds
+several applications) and then drops, per surface, what the word drops, the surface's
+path matched after any host (`^https://[^/]+<prefix>`, a `{param}` segment matching any
+one): on event the entries of the requests that answered below 400, so every failure is
+kept; sampled the same but the declared fraction of them (`NOT sample(insertId,
+<fraction>)`); never every entry under the prefix. A surface logged always has no
+clause, and an application none of whose surfaces excludes anything gets no exclusion,
+since every entry is written as it is today; a config variable
 `APP_FILE_STORE` (the application's default file store) or `APP_FILE_STORE_<NAME>` (a
 named store, `APP_FILE_STORE_DOCUMENTS`) becomes a Cloud Storage bucket where the
 environment's database is (the region of a regional instance, a dual-region over the two
