@@ -3,10 +3,14 @@ name: Security Scan
 on:
   schedule:
     - cron: '0 14 * * *' # Daily at 8:00 AM CDT
+  workflow_dispatch:
 
 jobs:
   security_scan:
-    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@Found","documentation_url":"https://docs.github.com/rest/git/refs#get-a-reference","status":"404"} # v8.2.2
+    with:
+      # The whole-repository Semgrep scan, reported by issue; the pull request scan is the gate.
+      execute-semgrep-scan: true
     secrets:
       SLACK_BOT_TOKEN: ${{ secrets.CCC_SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
