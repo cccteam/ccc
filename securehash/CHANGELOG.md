@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.17](https://github.com/cccteam/ccc/compare/securehash/v0.0.16...securehash/v0.0.17) (2026-10-09)
+
+
+### Bug Fixes
+
+* resource and securehash mark the Semgrep report's by-design findings at the site with their reasons ([#911](https://github.com/cccteam/ccc/issues/911)) ([7023586](https://github.com/cccteam/ccc/commit/702358613e0beb448a121d447704c77a38dc3d21))
+
 ## [0.0.16](https://github.com/cccteam/ccc/compare/securehash/v0.0.15...securehash/v0.0.16) (2026-10-09)
 
 
