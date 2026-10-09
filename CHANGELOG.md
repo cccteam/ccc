@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.5](https://github.com/cccteam/ccc/compare/v0.3.4...v0.3.5) (2026-10-09)
+
+
+### Features
+
+* the release pins check refuses a release that pins a sibling at a pseudo-version; the ledger marks a pending step ([#902](https://github.com/cccteam/ccc/issues/902)) ([c43278d](https://github.com/cccteam/ccc/commit/c43278d0c7eb4308a76d1c9c6a3c420bba75e25d))
+
+
+### Code Upgrade
+
+* **deps:** Bump go.opentelemetry.io/otel/sdk ([#875](https://github.com/cccteam/ccc/issues/875)) ([d3c18cf](https://github.com/cccteam/ccc/commit/d3c18cfcc0cdf39cfb9b0755476f58592faa1267))
+* Go 1.26.9 and x/net v0.60.0 in every module; net/http GO-2026-6612, GO-2026-6613 and GO-2026-6617 fixed ([#879](https://github.com/cccteam/ccc/issues/879)) ([4107fbb](https://github.com/cccteam/ccc/commit/4107fbb68a33305d109a6a8fec23e67986acf046))
+
 ## [0.3.4](https://github.com/cccteam/ccc/compare/v0.3.3...v0.3.4) (2026-10-07)
 
 
