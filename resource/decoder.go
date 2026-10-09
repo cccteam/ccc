@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
-	"sync"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
@@ -192,38 +191,69 @@ func acceptsNull(nullableFields map[accesstypes.Field]struct{}, fieldName access
 	return nullable
 }
 
+// nullLiteral is the JSON null as the map decode holds it.
+const nullLiteral = "null"
+
+// readBody reads the whole request body. encoding/json holds a complete value in memory
+// before it decodes it, so reading the body once ahead of the two decodes costs no memory
+// a streaming decode would have saved, and the two decodes then share one copy with no
+// pipe and no goroutine between them. It also ends a body that is a bare scalar (null,
+// true, a number, a string) at EOF, where a decoder reading a stream waits for a byte
+// that never comes. The buffer grows as bytes arrive; nothing is sized from a header the
+// client wrote.
+func readBody(req *http.Request) ([]byte, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, httpio.NewBadRequestMessageWithError(err, "failed to read request body")
+	}
+
+	return body, nil
+}
+
+// decodeBody reads the body once and parses it twice: the map pass into the keys the
+// body names, each value held raw, and the typed pass into a new Request.
+func decodeBody[Request any](fieldMapper *RequestFieldMapper, req *http.Request) (keys map[string]json.RawMessage, request *Request, err error) {
+	body, err := readBody(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	// A field's former wire name is rewritten to its current one before either decode
+	// below, so the map decode and the typed decode see one name.
+	if former := fieldMapper.FormerNames(); len(former) > 0 {
+		body, err = rewriteFormerKeys(body, former)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// The map decode sees every key the body names and whether its value is null, and
+	// nothing more: RawMessage keeps it to one scan and a copy of each value, with none
+	// of the values built. The typed decode then fills the struct from the same bytes.
+	keys = make(map[string]json.RawMessage)
+	if err = json.Unmarshal(body, &keys); err != nil {
+		return nil, nil, httpio.NewBadRequestMessageWithError(err, "failed to decode request body")
+	}
+	if keys == nil {
+		// A body of null decodes into a map as nil and into a struct as nothing at all:
+		// it is not an object and says nothing about any field.
+		return nil, nil, httpio.NewBadRequestMessage("failed to decode request body")
+	}
+
+	request = new(Request)
+	if err = json.Unmarshal(body, request); err != nil {
+		return nil, nil, httpio.NewBadRequestMessageWithError(err, "failed to unmarshal request body")
+	}
+
+	return keys, request, nil
+}
+
 // decodeToPatch decodes the body into the request struct and a patch set. hidden names
 // the request fields behind a feature flag that is off: a body naming one is refused
 // as it would be for a field the struct does not declare.
 func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission, hidden map[accesstypes.Field]struct{}) (*PatchSet[Resource], *Request, error) {
-	// A field's former wire name is rewritten to its current one before either read
-	// below, so the typed decode and the map decode see one name.
-	if former := fieldMapper.FormerNames(); len(former) > 0 {
-		body, err := rewriteFormerKeys(req.Body, former)
-		if err != nil {
-			return nil, nil, err
-		}
-		req.Body = body
-	}
-
-	request := new(Request)
-	pr, pw := io.Pipe()
-	tr := io.TeeReader(req.Body, pw)
-
-	var wg sync.WaitGroup
-	var err error
-	wg.Go(func() {
-		err = json.NewDecoder(pr).Decode(request)
-	})
-
-	jsonData := make(map[string]any)
-	if err := json.NewDecoder(tr).Decode(&jsonData); err != nil {
-		return nil, nil, httpio.NewBadRequestMessageWithError(err, "failed to decode request body")
-	}
-
-	wg.Wait()
+	jsonData, request, err := decodeBody[Request](fieldMapper, req)
 	if err != nil {
-		return nil, nil, httpio.NewBadRequestMessageWithError(err, "failed to unmarshal request body")
+		return nil, nil, err
 	}
 
 	vValue := reflect.ValueOf(request)
@@ -256,7 +286,7 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 
 		field := vValue.FieldByName(string(fieldName))
 		value := field.Interface()
-		if jsonValue == nil && !acceptsNull(rSet.nullableFields, fieldName, field) {
+		if string(jsonValue) == nullLiteral && !acceptsNull(rSet.nullableFields, fieldName, field) {
 			return nil, nil, httpio.NewBadRequestMessagef(`%s cannot be null`, jsonField)
 		}
 		changes[fieldName] = value
