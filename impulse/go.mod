@@ -3,7 +3,7 @@ module github.com/cccteam/ccc/impulse
 go 1.26.9
 
 require (
-	github.com/cccteam/ccc/cloud v0.2.1-0.20261009172442-c76e604ecdc0
+	github.com/cccteam/ccc/cloud v0.2.1-0.20261009173715-bf6512411e68
 	github.com/cccteam/ccc/resource v0.13.0
 	github.com/ettle/strcase v0.2.0
 	github.com/go-playground/errors/v5 v5.4.0
