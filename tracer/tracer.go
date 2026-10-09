@@ -28,13 +28,51 @@ type Provider struct {
 	*sdktrace.TracerProvider
 }
 
+// HandlerOption configures NewHandler.
+type HandlerOption func(*handlerConfig)
+
+// handlerConfig is what the handler options set.
+type handlerConfig struct {
+	// otelOptions are the instrumentation's own options, applied after the handler's.
+	otelOptions []otelhttp.Option
+	// surfaces are the declared surfaces, matched by path as each request starts.
+	surfaces surfaceTable
+}
+
+// WithOTelHTTPOptions adds options of the OpenTelemetry HTTP instrumentation (otelhttp)
+// to the handler, after the handler's own: a filter, a span name formatter of the
+// caller's, or the tracer provider to start spans from in a test.
+func WithOTelHTTPOptions(opts ...otelhttp.Option) HandlerOption {
+	return func(c *handlerConfig) {
+		c.otelOptions = append(c.otelOptions, opts...)
+	}
+}
+
+// Surfaces declares how each surface's spans are sampled, keyed by the path the router
+// mounts the surface at: a prefix such as /droids/ or /beacons/, or a route pattern such
+// as /api/widgets/{widgetID}/content, where a segment in braces matches any one segment.
+// As a request starts, the handler finds the longest declared surface the request's path
+// sits under and hands its setting to the sampler the provider built, which applies it
+// as the span starts; a request under no declared surface follows the front end. The
+// generated router passes the table from the declarations in the generator program.
+func Surfaces(table map[string]Traces) HandlerOption {
+	return func(c *handlerConfig) {
+		c.surfaces = append(c.surfaces, newSurfaceTable(table)...)
+	}
+}
+
 // NewHandler creates the HTTP middleware for OpenTelemetry tracing: a server span per
 // request, continued from the trace context the request carries (read with Propagator:
 // W3C traceparent, or the legacy X-Cloud-Trace-Context header a caller still sends),
 // named by the request's URL path. The returned function wraps an http.Handler.
-// Additional otelhttp.Option arguments customize the behavior.
-func NewHandler(opts ...otelhttp.Option) func(http.Handler) http.Handler {
-	options := make([]otelhttp.Option, 0, len(opts)+3)
+// Surfaces sets a per-surface trace setting, and WithOTelHTTPOptions passes options of
+// the instrumentation itself.
+func NewHandler(opts ...HandlerOption) func(http.Handler) http.Handler {
+	cfg := &handlerConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	options := make([]otelhttp.Option, 0, len(cfg.otelOptions)+3)
 	options = append(options,
 		otelhttp.WithPropagators(Propagator()),
 		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
@@ -42,10 +80,21 @@ func NewHandler(opts ...otelhttp.Option) func(http.Handler) http.Handler {
 			return r.URL.Path
 		}),
 	)
-
-	options = append(options, opts...)
+	options = append(options, cfg.otelOptions...)
+	surfaces := newSurfaceTable(nil)
+	surfaces = append(surfaces, cfg.surfaces...)
 
 	return func(next http.Handler) http.Handler {
-		return otelhttp.NewHandler(next, "", options...)
+		traced := otelhttp.NewHandler(next, "", options...)
+		if len(surfaces) == 0 {
+			return traced
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if t, ok := surfaces.match(r.URL.Path); ok {
+				r = r.WithContext(contextWithTraces(r.Context(), t))
+			}
+			traced.ServeHTTP(w, r)
+		})
 	}
 }
