@@ -30,10 +30,10 @@ ARG COMMIT=unknown
 
 # ---- Go: the server and the migrate command ----------------------------------------------
 # The go image is pinned at a digest that carries a toolchain at least as new as go.mod
-# declares (go1.27.1, published 2026-09-02), found the way the header says. GOTOOLCHAIN=local
+# declares (go1.27.2, published 2026-10-08), found the way the header says. GOTOOLCHAIN=local
 # makes a go.mod that outruns the image fail the build instead of downloading a toolchain:
 # the fix is a new digest here, never a download.
-FROM cgr.dev/chainguard/go@sha256:694c79dc301a249df5f2541aff2d82718d4ef3ff36bfa8a9eaee55ecadd40d16 AS build-env
+FROM cgr.dev/chainguard/go@sha256:75c0c2c118e36951cb63da108fa795f4724bde0c36ae84c9c17a4e08255ad324 AS build-env
 
 ENV CGO_ENABLED=0 \
     GOTOOLCHAIN=local

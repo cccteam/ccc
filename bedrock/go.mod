@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/bedrock
 
-go 1.26.6
+go 1.26.9
 
 require (
 	cloud.google.com/go/domains v0.17.0
@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/zclconf/go-cty v1.19.0
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.46.0
 	google.golang.org/api v0.300.0

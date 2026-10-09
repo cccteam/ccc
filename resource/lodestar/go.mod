@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource/lodestar
 
-go 1.26.6
+go 1.26.9
 
 // lodestar is committed in the same repo (and same commits) as the resource module it
 // exercises, so it must build against the local source rather than a published version
@@ -143,7 +143,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
