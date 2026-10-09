@@ -8,7 +8,7 @@ require (
 	cloud.google.com/go/resourcemanager v1.17.0
 	cloud.google.com/go/secretmanager v1.22.0
 	cloud.google.com/go/storage v1.69.0
-	github.com/cccteam/ccc/cloud v0.2.1-0.20261009173715-bf6512411e68
+	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/impulse v0.3.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
