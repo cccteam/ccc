@@ -59,3 +59,16 @@ bedrock/internal/migration/sequence.go
 # impulse/ci renders an application's CI workflow (YAML) from an embedded text template; the
 # XSS audit on text/template is about HTML output and does not apply, as for bedrock's renderers.
 impulse/ci/ci.go
+# The request decoder, the patch set and its diff look a struct field up by name only after
+# the name has come from the resource's own type (reflect.VisibleFields, the patch set's
+# keys) or from the field mapper, which refuses a JSON name the struct does not declare and
+# a hidden field: no caller-chosen name reaches FieldByName, so the reflect-by-name audit
+# does not apply. The generator renders Go and TypeScript source from text/template, which
+# html/template's escaping would corrupt; the text-template audit does not apply.
+resource/decoder.go
+resource/patchset.go
+resource/generation/client.go
+# The securehash tests carry fixed bcrypt hashes of test passwords as fixtures; they guard
+# nothing, so the detected-bcrypt-hash secrets audit does not apply to them.
+securehash/hash_test.go
+securehash/secure_hash_test.go

@@ -15,3 +15,12 @@ maintenance/maintenance.go
 # JSON to the client under test; the direct-write audit (an HTML page writing user data)
 # does not apply.
 jobs/jobs_test.go
+# The request decoder, the patch set and its diff look a struct field up by name only after
+# the name has come from the resource's own type (reflect.VisibleFields, the patch set's
+# keys) or from the field mapper, which refuses a JSON name the struct does not declare and
+# a hidden field: no caller-chosen name reaches FieldByName, so the reflect-by-name audit
+# does not apply. The generator renders Go and TypeScript source from text/template, which
+# html/template's escaping would corrupt; the text-template audit does not apply.
+decoder.go
+patchset.go
+generation/client.go

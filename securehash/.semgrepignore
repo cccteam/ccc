@@ -1,0 +1,7 @@
+# Semgrep path exclusions for the securehash module scan (the repository root's
+# .semgrepignore carries the same entries under their root-relative paths).
+#
+# The tests carry fixed bcrypt hashes of test passwords as fixtures; they guard nothing,
+# so the detected-bcrypt-hash secrets audit does not apply to them.
+hash_test.go
+secure_hash_test.go
