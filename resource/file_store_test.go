@@ -157,7 +157,8 @@ func TestRequireFileStores(t *testing.T) {
 		{name: "a wired named store passes", client: NewMockClient(&bufferingTxn{}, nil, nil, WithNamedFileStore[docStore](&fakeStore{})), names: []StoreName{StoreNameFor[docStore]()}},
 		{name: "the default missing is refused naming the option", client: NewMockClient(&bufferingTxn{}, nil, nil), names: []StoreName{DefaultStore}, wantErr: "no file store is wired for the default store; wire it on the resource client with resource.WithFileStore"},
 		{name: "a named store missing is refused naming the option", client: NewMockClient(&bufferingTxn{}, nil, nil, WithFileStore(&fakeStore{})), names: []StoreName{DefaultStore, StoreNameFor[clientFiles]()}, wantErr: "no file store is wired for store client_files; wire it on the resource client with resource.WithNamedFileStore[ClientFiles]"},
-		{name: "the Postgres client holds none", client: &PostgresClient{}, names: []StoreName{DefaultStore}, wantErr: "no file store is wired for the default store"},
+		{name: "a Postgres client with no store wired holds none", client: NewPostgresClient(nil), names: []StoreName{DefaultStore}, wantErr: "no file store is wired for the default store"},
+		{name: "a Postgres client's wired default passes", client: NewPostgresClient(nil, WithFileStore(&fakeStore{})), names: []StoreName{DefaultStore}},
 		{name: "no client is refused", client: nil, names: []StoreName{DefaultStore}, wantErr: "no resource client"},
 	}
 

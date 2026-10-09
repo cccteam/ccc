@@ -1,11 +1,13 @@
 package resource
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/httpio"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -50,7 +52,7 @@ func TestExecuteGate_checkStatement(t *testing.T) {
 				cond:       mustCondition(tt.source).Expr(),
 			}
 
-			stmt, err := gate.checkStatement(ExecuteTarget{Resource: enforcedResource, Label: "EnforcementResource", PKColumn: "Id"}, "task-1")
+			stmt, err := gate.checkStatement(SpannerDBType, ExecuteTarget{Resource: enforcedResource, Label: "EnforcementResource", PKColumn: "Id"}, "task-1")
 			if err != nil {
 				t.Fatalf("ExecuteGate.checkStatement() error = %v", err)
 			}
@@ -139,7 +141,7 @@ func TestExecuteGate_tenancyStatement(t *testing.T) {
 				collection: tt.collection(t),
 			}
 
-			stmt, err := gate.tenancyStatement(ExecuteTarget{Resource: enforcedResource, Label: "EnforcementResource", PKColumn: "Id"}, "task-1")
+			stmt, err := gate.tenancyStatement(SpannerDBType, ExecuteTarget{Resource: enforcedResource, Label: "EnforcementResource", PKColumn: "Id"}, "task-1")
 			if tt.wantErrPart != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErrPart) {
 					t.Fatalf("ExecuteGate.tenancyStatement() error = %v, want containing %q", err, tt.wantErrPart)
@@ -173,5 +175,84 @@ func TestExecuteGate_Enforce_noCondition(t *testing.T) {
 	gate = &ExecuteGate{method: "NudgeTask"}
 	if err := gate.Enforce(t.Context(), nil, ExecuteTarget{}, "id"); err != nil {
 		t.Errorf("condition-free gate Enforce() error = %v, want nil", err)
+	}
+}
+
+// TestExecuteGate_postgres runs the gate's two check-SELECTs over Postgres: the same
+// statements, rendered quoted and typed for it, answer as the Spanner ones do — a
+// condition that holds admits, one that does not is Forbidden, and a row that is not
+// there, or is another tenant's, is NotFound.
+func TestExecuteGate_postgres(t *testing.T) {
+	t.Parallel()
+
+	db, client := postgresDatabase(t, "pg-execute-gate")
+	ctx := t.Context()
+	for _, row := range [][4]string{
+		{"task-1", "dana", "scheduled", "testDomain"},
+		{"task-2", "lee", "closed", "testDomain"},
+		{"task-3", "dana", "scheduled", "otherDomain"},
+	} {
+		if _, err := db.Exec(ctx, `INSERT INTO "enforcementResources" ("Id", "Owner", "State", "Station") VALUES ($1, $2, $3, $4)`, row[0], row[1], row[2], row[3]); err != nil {
+			t.Fatalf("insert error = %v", err)
+		}
+	}
+
+	target := ExecuteTarget{Resource: enforcedResource, Label: "EnforcementResource", PKColumn: "Id"}
+	gate := &ExecuteGate{
+		method:     "NudgeTask",
+		user:       "dana",
+		scope:      testScope,
+		env:        accesstypes.EnvironmentAt(time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)),
+		collection: executeCollection(t),
+		cond:       mustCondition("owner = subject AND state NOT IN ('closed', 'canceled')").Expr(),
+	}
+
+	stmt, err := gate.checkStatement(PostgresDBType, target, "task-1")
+	if err != nil {
+		t.Fatalf("ExecuteGate.checkStatement() error = %v", err)
+	}
+	wantSQL := `SELECT (("enforcementResources"."Owner" = @subject AND "enforcementResources"."State" NOT IN (@_c1, @_c2))) AS g0 FROM "enforcementResources" WHERE "Id" = @zzTargetKey`
+	if got := normalizeSQL(stmt.SQL); got != wantSQL {
+		t.Errorf("ExecuteGate.checkStatement() SQL =\n%s\nwant\n%s", got, wantSQL)
+	}
+
+	tests := []struct {
+		name  string
+		run   func(ctx context.Context, txn ReadWriteTransaction) error
+		check func(error) bool
+	}{
+		{name: "the owner of a row in an open state is admitted", run: func(ctx context.Context, txn ReadWriteTransaction) error {
+			return gate.Enforce(ctx, txn, target, "task-1")
+		}},
+		{name: "another owner's row is Forbidden", run: func(ctx context.Context, txn ReadWriteTransaction) error {
+			return gate.Enforce(ctx, txn, target, "task-2")
+		}, check: httpio.HasForbidden},
+		{name: "a row that is not there is NotFound", run: func(ctx context.Context, txn ReadWriteTransaction) error {
+			return gate.Enforce(ctx, txn, target, "task-9")
+		}, check: httpio.HasNotFound},
+		{name: "a row of the request's tenant verifies", run: func(ctx context.Context, txn ReadWriteTransaction) error {
+			return gate.VerifyTenancy(ctx, txn, target, "task-1")
+		}},
+		{name: "a row of another tenant is NotFound", run: func(ctx context.Context, txn ReadWriteTransaction) error {
+			return gate.VerifyTenancy(ctx, txn, target, "task-3")
+		}, check: httpio.HasNotFound},
+	}
+	// The cases only read, so they run together.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := client.ExecuteFunc(ctx, tt.run)
+			if tt.check == nil {
+				if err != nil {
+					t.Fatalf("error = %v, want nil", err)
+				}
+
+				return
+			}
+			if !tt.check(err) {
+				t.Errorf("error = %v, want the refusal's status", err)
+			}
+		})
 	}
 }

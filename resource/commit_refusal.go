@@ -6,6 +6,8 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
+	"github.com/go-playground/errors/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 )
 
@@ -190,4 +192,83 @@ func translateCommitError(err error, buffered *bufferedPatches) error {
 	default:
 		return err
 	}
+}
+
+// errPostgresRowNotFound is what a Postgres UPDATE that matched no row answers: Spanner
+// refuses the same update at commit with NotFound, which notFoundError composes.
+var errPostgresRowNotFound = errors.New("the row to update does not exist")
+
+// commitOutcomeUnknownError marks a Postgres commit that failed without the server's
+// answer — a lost connection, a deadline, a cancel after COMMIT was sent — so the rows
+// may have committed. It is the Postgres counterpart of the Spanner client's
+// *spanner.TransactionOutcomeUnknownError (see commitOutcomeUnknown).
+type commitOutcomeUnknownError struct {
+	err error
+}
+
+// Error implements error.
+func (e *commitOutcomeUnknownError) Error() string {
+	return "the commit's outcome is unknown: " + e.err.Error()
+}
+
+// Unwrap returns the failure.
+func (e *commitOutcomeUnknownError) Unwrap() error {
+	return e.err
+}
+
+// PostgreSQL error codes the translation reads (SQLSTATE).
+const (
+	pgForeignKeyViolation      = "23503"
+	pgUniqueViolation          = "23505"
+	pgCheckViolation           = "23514"
+	pgNotNullViolation         = "23502"
+	pgStringDataRightTruncated = "22001"
+	pgNumericValueOutOfRange   = "22003"
+	pgSerializationFailure     = "40001"
+	pgDeadlockDetected         = "40P01"
+)
+
+// translatePostgresError turns the error a refused Postgres write returns into the 4xx
+// the caller can act on, decided on the SQLSTATE alone, with the same sentences the
+// Spanner translation (translateCommitError) composes for the same refusal. Postgres
+// checks a constraint as the statement runs, so the refusal arrives from the write that
+// broke it and not from the commit; the same translation serves both.
+//
+//   - foreign_key_violation, not_null_violation and string_data_right_truncation answer
+//     409, as Spanner's FailedPrecondition does.
+//   - unique_violation answers 409, as AlreadyExists does.
+//   - check_violation and numeric_value_out_of_range answer 400, as OutOfRange does.
+//   - an UPDATE that matched no row answers as NotFound does.
+//
+// The Postgres error stays the cause in the chain, so the server log keeps its full text.
+// Any other error passes through unchanged.
+func translatePostgresError(err error, buffered *bufferedPatches) error {
+	if errors.Is(err, errPostgresRowNotFound) {
+		return buffered.notFoundError(err)
+	}
+
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+
+	switch pgErr.Code {
+	case pgForeignKeyViolation, pgNotNullViolation, pgStringDataRightTruncated:
+		return httpio.NewConflictMessageWithError(err, buffered.referentialMessage())
+	case pgUniqueViolation:
+		return httpio.NewConflictMessageWithError(err, buffered.alreadyExistsMessage())
+	case pgCheckViolation, pgNumericValueOutOfRange:
+		return httpio.NewBadRequestMessageWithError(err, buffered.outOfRangeMessage())
+	default:
+		return err
+	}
+}
+
+// retryablePostgresError reports whether the transaction lost to a concurrent one and
+// may run again: Postgres aborts one side of a serialization conflict or a deadlock and
+// leaves the retry to the client, as Spanner's client does for an aborted transaction.
+func retryablePostgresError(err error) bool {
+	var pgErr *pgconn.PgError
+
+	return errors.As(err, &pgErr) && (pgErr.Code == pgSerializationFailure || pgErr.Code == pgDeadlockDetected)
 }

@@ -159,8 +159,14 @@ func FeatureFlagsDDL(dbType DBType) []string {
 }
 
 // errFeaturesUnsupportedDatabase is the answer on a database the feature flags are not
-// implemented for: the DDL exists for Postgres, the reads and writes do not yet.
-var errFeaturesUnsupportedDatabase = errors.New("resource: feature flags are implemented for Spanner only")
+// implemented for.
+var errFeaturesUnsupportedDatabase = errors.New("resource: feature flags are implemented for Spanner and Postgres only")
+
+// featuresSupported reports whether the feature flags' reads and writes are implemented
+// for the database type.
+func featuresSupported(dbType DBType) bool {
+	return dbType == SpannerDBType || dbType == PostgresDBType
+}
 
 // The FeatureFlags table's columns, as the writes and the row map name them, and the
 // key's wire name.
@@ -178,11 +184,11 @@ const (
 // FeatureFlag is a row of the FeatureFlags table, and the resource the FeatureFlags
 // routes serve.
 type FeatureFlag struct {
-	Name        string    `json:"name"        spanner:"Name"`
-	Description string    `json:"description" spanner:"Description"`
-	Enabled     bool      `json:"enabled"     spanner:"Enabled"`
-	UpdatedAt   time.Time `json:"updatedAt"   spanner:"UpdatedAt"`
-	UpdatedBy   string    `json:"updatedBy"   spanner:"UpdatedBy"`
+	Name        string    `json:"name"        spanner:"Name"        postgres:"Name"`
+	Description string    `json:"description" spanner:"Description" postgres:"Description"`
+	Enabled     bool      `json:"enabled"     spanner:"Enabled"     postgres:"Enabled"`
+	UpdatedAt   time.Time `json:"updatedAt"   spanner:"UpdatedAt"   postgres:"UpdatedAt"`
+	UpdatedBy   string    `json:"updatedBy"   spanner:"UpdatedBy"   postgres:"UpdatedBy"`
 }
 
 // Resource names the table.
@@ -217,16 +223,29 @@ func (p featureFlagPatch) Resource() accesstypes.Resource {
 
 // readFeatureFlags reads every row of the table, by name.
 func readFeatureFlags(ctx context.Context, txn ReadOnlyTransaction, dbType DBType) ([]FeatureFlag, error) {
-	if dbType != SpannerDBType {
+	switch dbType {
+	case SpannerDBType:
+		var rows []FeatureFlag
+		stmt := spanner.Statement{SQL: "SELECT Name, Description, Enabled, UpdatedAt, UpdatedBy FROM FeatureFlags ORDER BY Name"}
+		if err := spxscan.Select(ctx, txn.SpannerReadOnlyTransaction(), &rows, stmt); err != nil {
+			return nil, errors.Wrap(err, "spxscan.Select()")
+		}
+
+		return rows, nil
+	case PostgresDBType:
+		var rows []FeatureFlag
+		stmt := &Statement{SQL: `SELECT "Name", "Description", "Enabled", "UpdatedAt", "UpdatedBy" FROM "FeatureFlags" ORDER BY "Name"`}
+		for row, err := range listPostgresRows[FeatureFlag](ctx, txn.PostgresReadOnlyTransaction(), stmt) {
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, row.Data)
+		}
+
+		return rows, nil
+	default:
 		return nil, errFeaturesUnsupportedDatabase
 	}
-	var rows []FeatureFlag
-	stmt := spanner.Statement{SQL: "SELECT Name, Description, Enabled, UpdatedAt, UpdatedBy FROM FeatureFlags ORDER BY Name"}
-	if err := spxscan.Select(ctx, txn.SpannerReadOnlyTransaction(), &rows, stmt); err != nil {
-		return nil, errors.Wrap(err, "spxscan.Select()")
-	}
-
-	return rows, nil
 }
 
 // MigrateFeatures brings the FeatureFlags table to the declared flags, in one
@@ -238,7 +257,7 @@ func MigrateFeatures(ctx context.Context, db Client, declared []FeatureDeclarati
 	if err := ValidateFeatureDeclarations(declared); err != nil {
 		return err
 	}
-	if db.DBType() != SpannerDBType {
+	if !featuresSupported(db.DBType()) {
 		return errFeaturesUnsupportedDatabase
 	}
 
@@ -297,6 +316,31 @@ func MigrateFeatures(ctx context.Context, db Client, declared []FeatureDeclarati
 	return nil
 }
 
+// featureFlagNames reads the names of the table's rows that hold the flag: one, or none.
+func featureFlagNames(ctx context.Context, txn ReadWriteTransaction, name Feature) ([]string, error) {
+	params := map[string]any{flagNameField: string(name)}
+	if txn.DBType() == PostgresDBType {
+		return selectPostgresStrings(ctx, txn.PostgresReadOnlyTransaction(), &Statement{
+			SQL:    `SELECT "Name" FROM "FeatureFlags" WHERE "Name" = @name`,
+			Params: params,
+		})
+	}
+
+	var held []struct {
+		Name string `spanner:"Name"`
+	}
+	stmt := spanner.Statement{SQL: "SELECT Name FROM FeatureFlags WHERE Name = @name", Params: params}
+	if err := spxscan.Select(ctx, txn.SpannerReadOnlyTransaction(), &held, stmt); err != nil {
+		return nil, errors.Wrap(err, "spxscan.Select()")
+	}
+	names := make([]string, len(held))
+	for i, row := range held {
+		names[i] = row.Name
+	}
+
+	return names, nil
+}
+
 // bufferFeatureFlag buffers one mutation of the FeatureFlags table.
 func bufferFeatureFlag(txn ReadWriteTransaction, patchType PatchType, name Feature, patch map[string]any) error {
 	meta := featureFlagPatch{table: FeatureFlagsResource, patchType: patchType, key: KeySet{}.Add(flagNameColumn, string(name))}
@@ -312,7 +356,7 @@ func bufferFeatureFlag(txn ReadWriteTransaction, patchType PatchType, name Featu
 // name the table does not hold is a not-found error. SetFeatureHandler flips through
 // the same write; a bootstrap or a test flips a flag directly through this.
 func SetFeatureEnabled(ctx context.Context, db Client, name Feature, enabled bool, eventSource string) error {
-	if db.DBType() != SpannerDBType {
+	if !featuresSupported(db.DBType()) {
 		return errFeaturesUnsupportedDatabase
 	}
 	if err := db.ExecuteFunc(ctx, func(ctx context.Context, txn ReadWriteTransaction) error {
@@ -328,21 +372,15 @@ func SetFeatureEnabled(ctx context.Context, db Client, name Feature, enabled boo
 // audit row inserted, both stamped with the commit timestamp. The row is read first,
 // so an unknown name is refused as not found before anything is written.
 func bufferFeatureWrite(ctx context.Context, txn ReadWriteTransaction, name Feature, enabled bool, eventSource string) error {
-	if txn.DBType() != SpannerDBType {
+	if !featuresSupported(txn.DBType()) {
 		return errFeaturesUnsupportedDatabase
 	}
 	if !ValidFeatureName(string(name)) {
 		return httpio.NewNotFoundMessagef("feature flag %q does not exist", name)
 	}
-	var held []struct {
-		Name string `spanner:"Name"`
-	}
-	stmt := spanner.Statement{
-		SQL:    "SELECT Name FROM FeatureFlags WHERE Name = @name",
-		Params: map[string]any{flagNameField: string(name)},
-	}
-	if err := spxscan.Select(ctx, txn.SpannerReadOnlyTransaction(), &held, stmt); err != nil {
-		return errors.Wrap(err, "spxscan.Select()")
+	held, err := featureFlagNames(ctx, txn, name)
+	if err != nil {
+		return err
 	}
 	if len(held) == 0 {
 		return httpio.NewNotFoundMessagef("feature flag %q does not exist", name)
@@ -399,7 +437,7 @@ func WithFeatureBackstop(d time.Duration) FeatureOption {
 
 // LoadFeatures reads the FeatureFlags table into a FeatureSet.
 func LoadFeatures(ctx context.Context, db Client, opts ...FeatureOption) (*FeatureSet, error) {
-	if db.DBType() != SpannerDBType {
+	if !featuresSupported(db.DBType()) {
 		return nil, errFeaturesUnsupportedDatabase
 	}
 	s := &FeatureSet{db: db, backstop: FeatureBackstop, flags: make(map[Feature]FeatureFlag)}

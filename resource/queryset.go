@@ -133,7 +133,7 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	return r.Resource()
 }
 
-func (q *QuerySet[Resource]) query() (withClause, query string, params map[string]any) {
+func (q *QuerySet[Resource]) query(dbType DBType) (withClause, query string, params map[string]any) {
 	var r Resource
 
 	switch t := any(r).(type) {
@@ -143,7 +143,7 @@ func (q *QuerySet[Resource]) query() (withClause, query string, params map[strin
 		withClause, query = extractWithClause(query)
 
 		// newlines before final parenthesis is necessary to combat any trailing comments
-		query = fmt.Sprintf("(%s\n) AS %s", query, r.Resource())
+		query = fmt.Sprintf("(%s\n) AS %s", query, identifierIn(dbType, string(r.Resource())))
 
 		for pramName := range params {
 			if strings.HasPrefix(pramName, "_") {
@@ -153,7 +153,7 @@ func (q *QuerySet[Resource]) query() (withClause, query string, params map[strin
 
 		return withClause, query, params
 	default:
-		return "", string(r.Resource()), nil
+		return "", identifierIn(dbType, string(r.Resource())), nil
 	}
 }
 
@@ -996,7 +996,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 
 	// The registry is statement-scoped: the read-condition fragments and the
 	// tenancy predicate share it, so aliases and placeholders stay unique.
-	registry := newParamRegistry()
+	registry := newParamRegistry(dbType)
 
 	var rendered *renderedReadConditions
 	if plan != nil {
@@ -1036,7 +1036,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, err
 	}
 
-	withClause, query, subqueryParams := q.query()
+	withClause, query, subqueryParams := q.query(dbType)
 	for k := range subqueryParams {
 		if _, ok := where.Params[k]; ok {
 			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
@@ -1072,6 +1072,64 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	stmt.cursorColumns = cursorColumns
 
 	return stmt, nil
+}
+
+// visibilityStmt renders a check-SELECT that locates the row by its primary key alone and
+// selects, as its one column, whether the read conditions and the tenancy admit it. It
+// returns nil when neither restricts the read, so any row under the key is one the caller
+// may read.
+func (q *QuerySet[Resource]) visibilityStmt(dbType DBType) (*Statement, error) {
+	plan, err := q.readConditionPlan()
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.readConditionPlan()")
+	}
+
+	registry := newParamRegistry(dbType)
+	var predicates []string
+	if plan != nil {
+		rendered, err := q.renderReadConditions(dbType, plan, registry)
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.renderReadConditions()")
+		}
+		if rendered.rowPredicate != "" {
+			predicates = append(predicates, rendered.rowPredicate)
+		}
+	}
+	tenancy, err := q.tenancyPredicate(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.tenancyPredicate()")
+	}
+	if tenancy != "" {
+		predicates = append(predicates, tenancy)
+	}
+	if len(predicates) == 0 {
+		return nil, nil
+	}
+
+	where, err := q.where(dbType, nil, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.where()")
+	}
+	if where.SQL == "" {
+		// With no key the statement would find any row in the table.
+		return nil, errors.Newf("%s: locating the row needs its primary key, and none is set", q.Resource())
+	}
+
+	withClause, query, subqueryParams := q.query(dbType)
+	for k, v := range subqueryParams {
+		if _, ok := where.Params[k]; ok {
+			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
+		}
+		where.Params[k] = v
+	}
+	if err := q.mergeRegistryParams(registry, where.Params); err != nil {
+		return nil, err
+	}
+
+	return &Statement{
+		SQL:    fmt.Sprintf("%s SELECT (%s) AS g0 FROM %s %s", withClause, strings.Join(predicates, " AND "), query, where.SQL),
+		Params: where.Params,
+	}, nil
 }
 
 // pageClauses renders the statement's ORDER BY and LIMIT.
@@ -1176,7 +1234,7 @@ func (q *QuerySet[Resource]) countStmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.readConditionPlan()")
 	}
 
-	registry := newParamRegistry()
+	registry := newParamRegistry(dbType)
 
 	var rendered *renderedReadConditions
 	if plan != nil {
@@ -1196,7 +1254,7 @@ func (q *QuerySet[Resource]) countStmt(dbType DBType) (*Statement, error) {
 		return nil, err
 	}
 
-	withClause, query, subqueryParams := q.query()
+	withClause, query, subqueryParams := q.query(dbType)
 	for k := range subqueryParams {
 		if _, ok := where.Params[k]; ok {
 			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)

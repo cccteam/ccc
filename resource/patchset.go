@@ -561,6 +561,12 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn ReadW
 		return err
 	}
 
+	// The upsert may not replace a row the caller cannot read, change-tracked or not.
+	target, err := p.guardUpsertTarget(ctx, txn)
+	if err != nil {
+		return err
+	}
+
 	// A file key the patch sets on an existing row releases the object the row held.
 	if err := p.recordReleasedOnWrite(ctx, txn); err != nil {
 		return err
@@ -571,7 +577,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn ReadW
 	}
 
 	if p.querySet.rMeta.trackChanges {
-		if err := p.bufferInsertOrUpdateWithDataChangeEvent(ctx, txn, event); err != nil {
+		if err := p.bufferInsertOrUpdateWithDataChangeEvent(ctx, txn, event, target); err != nil {
 			return err
 		}
 	}
@@ -634,15 +640,31 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn ReadWriteTransa
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn ReadWriteTransaction, eventSource string) error {
-	changeSet, err := p.updateChangeSet(ctx, txn)
-	if err != nil {
-		if !errors.Is(err, spxapi.ErrNotFound) {
-			return err
-		}
+func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn ReadWriteTransaction, eventSource string, target upsertTarget) error {
+	var (
+		changeSet map[accesstypes.Field]DiffElem
+		err       error
+	)
+	if target == upsertTargetAbsent {
+		// guardUpsertTarget found no row under the key: the write inserts it.
 		changeSet, err = p.insertChangeSet()
 		if err != nil {
 			return err
+		}
+	} else {
+		changeSet, err = p.updateChangeSet(ctx, txn)
+		if err != nil {
+			// The readers answer a missing row as NotFound; spxapi.ErrNotFound is the
+			// scan's own sentinel for it. guardUpsertTarget has refused a row the caller
+			// cannot read, so NotFound here means the table has no row: the write
+			// inserts it.
+			if !httpio.HasNotFound(err) && !errors.Is(err, spxapi.ErrNotFound) {
+				return err
+			}
+			changeSet, err = p.insertChangeSet()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -726,6 +748,46 @@ func (p *PatchSet[Resource]) insertChangeSet() (map[accesstypes.Field]DiffElem, 
 	}
 
 	return changeSet, nil
+}
+
+// upsertTarget is what an upsert learned about the row its key addresses before it wrote.
+type upsertTarget int
+
+const (
+	// upsertTargetUnknown: nothing restricts the caller's read, so no query ran; a row
+	// under the key, if there is one, is one the caller may read.
+	upsertTargetUnknown upsertTarget = iota
+	// upsertTargetAbsent: the table has no row under the key; the upsert inserts.
+	upsertTargetAbsent
+	// upsertTargetVisible: the row is there and the caller may read it.
+	upsertTargetVisible
+)
+
+// guardUpsertTarget refuses an upsert whose key addresses a row the caller cannot read:
+// the upsert would replace it, and a change-tracked one would record it as created. A row
+// the read conditions or the tenancy hide is answered NotFound, as a read of it would be.
+// When nothing restricts the caller's read no query runs.
+func (p *PatchSet[Resource]) guardUpsertTarget(ctx context.Context, txn ReadWriteTransaction) (upsertTarget, error) {
+	stmt, err := p.querySet.visibilityStmt(txn.DBType())
+	if err != nil {
+		return upsertTargetUnknown, err
+	}
+	if stmt == nil {
+		return upsertTargetUnknown, nil
+	}
+
+	visible, found, err := queryCheckRow(ctx, txn, stmt, 1)
+	if err != nil {
+		return upsertTargetUnknown, errors.Wrap(err, "queryCheckRow()")
+	}
+	switch {
+	case !found:
+		return upsertTargetAbsent, nil
+	case !visible[0]:
+		return upsertTargetUnknown, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().RowID())
+	default:
+		return upsertTargetVisible, nil
+	}
 }
 
 func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn ReadWriteTransaction) (map[accesstypes.Field]DiffElem, error) {
@@ -1227,4 +1289,21 @@ func PatchSetDiff(opts ...cmp.Option) func(a, b PatchSetComparer) string {
 
 		return ""
 	}
+}
+
+// dbKeyColumns names the primary key's database columns for dbType, in key order. A
+// buffered patch names its key by Go field; the Postgres runtime writes by column.
+func (p *PatchSet[Resource]) dbKeyColumns(dbType DBType) ([]string, error) {
+	fields := p.querySet.rMeta.dbFieldMap(dbType)
+	parts := p.PrimaryKey().Parts()
+	columns := make([]string, 0, len(parts))
+	for _, part := range parts {
+		f, ok := fields[part.Key]
+		if !ok {
+			return nil, errors.Newf("field %s not found in struct", part.Key)
+		}
+		columns = append(columns, f.ColumnName)
+	}
+
+	return columns, nil
 }

@@ -131,6 +131,17 @@ func (s *sqlGenerator) quoteIdentifier(identifier string) string {
 	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }
 
+// identifierIn renders a table, a column, or the alias a subquery stands under, where a
+// statement names it bare: Spanner resolves a bare name whatever its case, while Postgres
+// folds a bare name to lower case, so the name is quoted to reach what the schema declares.
+func identifierIn(dbType DBType, name string) string {
+	if dbType == PostgresDBType {
+		return newSQLGenerator(PostgreSQL).quoteIdentifier(name)
+	}
+
+	return name
+}
+
 func (s *sqlGenerator) nextPlaceholder() string {
 	s.paramCount++
 
@@ -171,7 +182,7 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		case eqStr:
 			sqlOp = "="
 		case neStr:
-			sqlOp = "<>"
+			sqlOp = sqlNotEqual
 		case gtStr:
 			sqlOp = ">"
 		case ltStr:

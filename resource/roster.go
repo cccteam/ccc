@@ -31,10 +31,6 @@ type TenantSignals interface {
 // at most this far behind.
 const TenantBackstop = 5 * time.Minute
 
-// errTenantRosterUnsupportedDatabase is the answer on a database the roster's read is
-// not implemented for: the statement renders for Postgres, the read does not yet.
-var errTenantRosterUnsupportedDatabase = errors.New("resource: the tenant roster's read is implemented for Spanner only")
-
 // tenantSet is the roster's copy of the tenant keys: the value behind the atomic
 // pointer, replaced whole and never written in place.
 type tenantSet map[accesstypes.Domain]struct{}
@@ -170,22 +166,30 @@ func (r *TenantRoster) read(ctx context.Context) (tenantSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	if dbType != SpannerDBType {
-		return nil, errTenantRosterUnsupportedDatabase
-	}
 
 	txn := r.client.ReadOnlyTransaction()
 	defer txn.Close()
 
-	var rows []struct {
-		Domain string `spanner:"Domain"`
+	// The statement above refused any other database type.
+	var keys []string
+	if dbType == PostgresDBType {
+		if keys, err = selectPostgresStrings(ctx, txn.PostgresReadOnlyTransaction(), &Statement{SQL: sql}); err != nil {
+			return nil, err
+		}
+	} else {
+		var rows []struct {
+			Domain string `spanner:"Domain"`
+		}
+		if err := spxscan.Select(ctx, txn.SpannerReadOnlyTransaction(), &rows, spanner.Statement{SQL: sql}); err != nil {
+			return nil, errors.Wrap(err, "spxscan.Select()")
+		}
+		for _, row := range rows {
+			keys = append(keys, row.Domain)
+		}
 	}
-	if err := spxscan.Select(ctx, txn.SpannerReadOnlyTransaction(), &rows, spanner.Statement{SQL: sql}); err != nil {
-		return nil, errors.Wrap(err, "spxscan.Select()")
-	}
-	set := make(tenantSet, len(rows))
-	for _, row := range rows {
-		set[accesstypes.Domain(row.Domain)] = struct{}{}
+	set := make(tenantSet, len(keys))
+	for _, key := range keys {
+		set[accesstypes.Domain(key)] = struct{}{}
 	}
 
 	return set, nil

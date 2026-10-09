@@ -377,15 +377,15 @@ func (c *client) resolveRemotePath(anchor *resourceField, segments []string, str
 }
 
 // columnForGoField maps a Go field name on a remote struct to its table
-// column and metadata through the struct's spanner tag.
+// column and metadata through the struct's column tag (spanner or postgres).
 func columnForGoField(pStruct *parser.Struct, table *tableMetadata, goField string) (string, columnMeta, *parser.TypeInfo, error) {
 	for _, field := range pStruct.Fields() {
 		if field.Name() != goField {
 			continue
 		}
-		column, ok := field.LookupTag(spannerTagKey)
+		column, ok := columnTag(field)
 		if !ok {
-			return "", columnMeta{}, nil, errors.Newf("field %q on %s has no spanner tag", goField, pStruct.Name())
+			return "", columnMeta{}, nil, errors.Newf("field %q on %s has no spanner or postgres tag", goField, pStruct.Name())
 		}
 		meta, ok := table.Columns[column]
 		if !ok {
@@ -560,9 +560,9 @@ func collectionHops(path []bindingHop) []resource.BindingHop {
 }
 
 // fieldColumn returns the table column a schema-backed field maps to; the
-// spanner tag is validated present when the field is built.
+// column tag is validated present when the field is built.
 func fieldColumn(f *resourceField) string {
-	column, _ := f.LookupTag(spannerTagKey)
+	column, _ := columnTag(f)
 
 	return column
 }

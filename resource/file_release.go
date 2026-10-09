@@ -84,7 +84,7 @@ func (r *releasedKeys) list() []ReleasedKey {
 }
 
 // releaseRecorder is how the patch machinery reaches a transaction's record: the
-// Spanner and Mock wrappers satisfy it; a transaction that does not (Postgres) records
+// Spanner, Postgres and Mock wrappers satisfy it; a transaction that does not records
 // nothing and no key columns are read for it.
 type releaseRecorder interface {
 	recordReleased(store StoreName, keys ...string)

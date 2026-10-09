@@ -347,7 +347,7 @@ func (o *proposedOverlay) param(column string, registry *paramRegistry) (string,
 	if !ok {
 		return "", false
 	}
-	param := strings.TrimPrefix(registry.bind(value), "@")
+	param := registry.bindName(value)
 	o.params[column] = param
 
 	return param, true
@@ -526,7 +526,7 @@ func sqlCompareOp(op condition.CompareOp) (string, error) {
 	case condition.Eq:
 		return "=", nil
 	case condition.NotEq:
-		return "<>", nil
+		return sqlNotEqual, nil
 	case condition.Less:
 		return "<", nil
 	case condition.LessEq:

@@ -175,7 +175,7 @@ func stdlibImports() map[string]string {
 		"fmt":            "fmt",
 		httpQualifier:    "net/http",
 		"iter":           "iter",
-		"json":           "encoding/json",
+		jsonQualifier:    "encoding/json",
 		"maps":           "maps",
 		"reflect":        "reflect",
 		"slices":         "slices",

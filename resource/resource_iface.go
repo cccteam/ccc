@@ -6,6 +6,7 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/spxscan/spxapi"
+	"github.com/jackc/pgx/v5"
 )
 
 // UserPermissions is the permission surface a request's decoders consume: the
@@ -112,7 +113,7 @@ type Client interface {
 	// DefaultStore, WithNamedFileStore for a named store's StoreNameFor), or nil when
 	// none is: the generated upload frames and file routes read their store here, the
 	// one wiring point, and the generated router refuses to start when a store the
-	// package uses is not wired (RequireFileStores). The Postgres client holds none.
+	// package uses is not wired (RequireFileStores).
 	FileStore(name StoreName) FileStore
 	ReadOnlyTransaction() ReadOnlyTransactionCloser
 	ReadOnlyTransaction
@@ -133,7 +134,14 @@ type ReadWriteTransaction interface {
 // ReadOnlyTransaction is an interface that represents a database transaction that can be used for reads only.
 type ReadOnlyTransaction interface {
 	SpannerReadOnlyTransaction() spxapi.Querier
-	PostgresReadOnlyTransaction() any
+	PostgresReadOnlyTransaction() PostgresQuerier
+}
+
+// PostgresQuerier is what the Postgres runtime reads through: the pool, or the
+// transaction of a Postgres client. It is the Postgres counterpart of the Spanner
+// client's spxapi.Querier, and *pgxpool.Pool and pgx.Tx satisfy it.
+type PostgresQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // ReadOnlyTransactionCloser is an interface that represents a database transaction that can be used for reads only

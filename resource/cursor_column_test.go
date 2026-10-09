@@ -119,7 +119,7 @@ func TestQuerySet_stmt_cursorColumns(t *testing.T) {
 			target: "/?sort=fee,note&columns=id",
 			wantSpanner: "SELECT Id, Fee AS zzCursorFee, Note AS zzCursorNote FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY `Fee` ASC, `Note` ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Fee" AS "zzCursorFee", "Note" AS "zzCursorNote" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+			wantPostgres: `SELECT "Id", "Fee" AS "zzCursorFee", "Note" AS "zzCursorNote" FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY "Fee" ASC, "Note" ASC, "Id" ASC LIMIT 51`,
 			wantParams:  map[string]any{"domain": "testDomain"},
 			wantColumns: []wantCursorColumn{{field: "Fee"}, {field: "Note"}},
@@ -132,7 +132,7 @@ func TestQuerySet_stmt_cursorColumns(t *testing.T) {
 				"FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" ` +
-				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+				`FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams:  map[string]any{"subject": "u1", "domain": "testDomain"},
 			wantColumns: []wantCursorColumn{{field: "Fee", nullable: true}},
@@ -142,7 +142,7 @@ func TestQuerySet_stmt_cursorColumns(t *testing.T) {
 			target: "/?sort=name&columns=name",
 			wantSpanner: "SELECT Name, Id AS zzCursorId FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY `Name` ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Name", "Id" AS "zzCursorId" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+			wantPostgres: `SELECT "Name", "Id" AS "zzCursorId" FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY "Name" ASC, "Id" ASC LIMIT 51`,
 			wantParams:  map[string]any{"domain": "testDomain"},
 			wantColumns: []wantCursorColumn{{field: "ID"}},
@@ -152,7 +152,7 @@ func TestQuerySet_stmt_cursorColumns(t *testing.T) {
 			target: "/?sort=fee,fee:desc&columns=id",
 			wantSpanner: "SELECT Id, Fee AS zzCursorFee FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY `Fee` ASC, `Fee` DESC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Fee" AS "zzCursorFee" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+			wantPostgres: `SELECT "Id", "Fee" AS "zzCursorFee" FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY "Fee" ASC, "Fee" DESC, "Id" ASC LIMIT 51`,
 			wantParams:  map[string]any{"domain": "testDomain"},
 			wantColumns: []wantCursorColumn{{field: "Fee"}},
@@ -162,7 +162,7 @@ func TestQuerySet_stmt_cursorColumns(t *testing.T) {
 			target: "/?sort=fee&columns=id,fee",
 			wantSpanner: "SELECT Id, Fee FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY `Fee` ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Fee" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+			wantPostgres: `SELECT "Id", "Fee" FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY "Fee" ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"domain": "testDomain"},
 		},
@@ -176,7 +176,7 @@ func TestQuerySet_stmt_cursorColumns(t *testing.T) {
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" ELSE @_c1 END AS "Fee", ` +
 				`ARRAY_REMOVE(ARRAY[CASE WHEN "projectionResources"."Owner" = @subject THEN NULL ELSE 'fee' END], NULL) AS "zzMaskedFields" ` +
-				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+				`FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(0)},
 		},
@@ -238,7 +238,7 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 				"ORDER BY `Fee` ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" ELSE @_c1 END AS "Fee", "Note", ` +
 				`ARRAY_REMOVE(ARRAY[CASE WHEN "projectionResources"."Owner" = @subject THEN NULL ELSE 'fee' END], NULL) AS "zzMaskedFields", "Fee" AS "zzCursorFee" ` +
-				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+				`FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY "Fee" ASC, "Id" ASC LIMIT 51`,
 			wantParams:  map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(0)},
 			wantColumns: []wantCursorColumn{{field: "Fee"}},
@@ -249,7 +249,7 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id, Name, Fee AS zzCursorFee FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY `Fee` DESC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Name", "Fee" AS "zzCursorFee" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+			wantPostgres: `SELECT "Id", "Name", "Fee" AS "zzCursorFee" FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY "Fee" DESC, "Id" ASC LIMIT 51`,
 			// Nothing lowers: the positional key renders no override, and no CASE
 			// is projected, so the condition's parameter never binds.
@@ -264,7 +264,7 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 			// no ORDER BY and no LIMIT.
 			wantSpanner: "SELECT Id FROM projectionResources " +
 				"WHERE `Fee` > @_p1 AND (`projectionResources`.`Station` = @domain)",
-			wantPostgres: `SELECT "Id" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id" FROM "projectionResources" ` +
 				`WHERE "Fee" > @_p1 AND ("projectionResources"."Station" = @domain)`,
 			wantParams: map[string]any{"domain": "testDomain", "_p1": 5},
 		},
@@ -279,7 +279,7 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 				"ORDER BY `Fee` ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" ELSE @_c1 END AS "Fee", ` +
 				`ARRAY_REMOVE(ARRAY[CASE WHEN "projectionResources"."Owner" = @subject THEN NULL ELSE 'fee' END], NULL) AS "zzMaskedFields", "Fee" AS "zzCursorFee" ` +
-				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) AND ("Fee" > @_c2 OR ("Fee" = @_c2 AND "Id" > @_c3)) ` +
+				`FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) AND ("Fee" > @_c2 OR ("Fee" = @_c2 AND "Id" > @_c3)) ` +
 				`ORDER BY "Fee" ASC, "Id" ASC LIMIT 51`,
 			wantParams:  map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(0), "_c2": int64(7), "_c3": id},
 			wantColumns: []wantCursorColumn{{field: "Fee"}},
@@ -291,9 +291,9 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 			wantSpanner: "SELECT Id, Fee AS zzCursorFee, CASE WHEN (`projectionResources`.`Owner` = @subject OR `projectionResources`.`Priority` = @_c1) THEN `Note` END AS zzCursorNote " +
 				"FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY `Fee` ASC, CASE WHEN (`projectionResources`.`Owner` = @subject OR `projectionResources`.`Priority` = @_c1) THEN `Note` END ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Fee" AS "zzCursorFee", CASE WHEN ("projectionResources"."Owner" = @subject OR "projectionResources"."Priority" = @_c1) THEN "Note" END AS "zzCursorNote" ` +
-				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
-				`ORDER BY "Fee" ASC, CASE WHEN ("projectionResources"."Owner" = @subject OR "projectionResources"."Priority" = @_c1) THEN "Note" END ASC, "Id" ASC LIMIT 51`,
+			wantPostgres: `SELECT "Id", "Fee" AS "zzCursorFee", CASE WHEN ("projectionResources"."Owner" = @subject OR "projectionResources"."Priority" = CAST(@_c1 AS BIGINT)) THEN "Note" END AS "zzCursorNote" ` +
+				`FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) ` +
+				`ORDER BY "Fee" ASC, CASE WHEN ("projectionResources"."Owner" = @subject OR "projectionResources"."Priority" = CAST(@_c1 AS BIGINT)) THEN "Note" END ASC, "Id" ASC LIMIT 51`,
 			wantParams:  map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(3)},
 			wantColumns: []wantCursorColumn{{field: "Fee"}, {field: "Note", nullable: true}},
 		},
@@ -303,7 +303,7 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner, projectedResource + ".name": conditionalOn(projectedResource+".name", owner)},
 			wantSpanner: "SELECT Id, Fee FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) AND (`projectionResources`.`Owner` = @subject) " +
 				"ORDER BY `Fee` ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Fee" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) AND ("projectionResources"."Owner" = @subject) ` +
+			wantPostgres: `SELECT "Id", "Fee" FROM "projectionResources" WHERE ("projectionResources"."Station" = @domain) AND ("projectionResources"."Owner" = @subject) ` +
 				`ORDER BY "Fee" ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},

@@ -34,6 +34,12 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, err)
 		}
 	}
+	if c := sharedPostgres.container; c != nil {
+		if err := c.Terminate(context.Background()); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		c.Close()
+	}
 	os.Exit(code)
 }
 
@@ -54,4 +60,35 @@ func spannerEmulator(t *testing.T) *initiator.SpannerContainer {
 	}
 
 	return sharedEmulator.container
+}
+
+// postgresVersion pins the Postgres image the package's database-backed tests run
+// against.
+const postgresVersion = "17"
+
+// sharedPostgres is the one Postgres container the package's database-backed tests
+// share, started on first demand and terminated when the test binary exits.
+var sharedPostgres struct {
+	once      sync.Once
+	container *initiator.PostgresContainer
+	err       error
+}
+
+// postgresContainer returns the shared container, starting it on first demand. Under
+// -short the calling test skips instead, so the unit run never needs a container
+// runtime.
+func postgresContainer(t *testing.T) *initiator.PostgresContainer {
+	t.Helper()
+
+	if testing.Short() {
+		t.Skip("requires the Postgres container")
+	}
+	sharedPostgres.once.Do(func() {
+		sharedPostgres.container, sharedPostgres.err = initiator.NewPostgresContainer(context.Background(), postgresVersion)
+	})
+	if sharedPostgres.err != nil {
+		t.Fatalf("initiator.NewPostgresContainer() error = %v", sharedPostgres.err)
+	}
+
+	return sharedPostgres.container
 }

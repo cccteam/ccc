@@ -170,7 +170,7 @@ func (r *recordingTxn) DBType() DBType { return SpannerDBType }
 
 func (r *recordingTxn) SpannerReadOnlyTransaction() spxapi.Querier { return nil }
 
-func (r *recordingTxn) PostgresReadOnlyTransaction() any {
+func (r *recordingTxn) PostgresReadOnlyTransaction() PostgresQuerier {
 	panic("recordingTxn.PostgresReadOnlyTransaction() should never be called")
 }
 

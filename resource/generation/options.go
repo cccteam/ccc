@@ -605,6 +605,34 @@ func GenerateEnums() TSOption {
 	})
 }
 
+// WithPostgres selects PostgreSQL as the application's database: the schema migrations
+// run in a postgres container of the given image version (the default is 17 when the
+// version is empty) instead of the Spanner emulator, and the generator reads the
+// schema from PostgreSQL's system catalogs. The source structs name their columns by
+// the postgres tag (the spanner tag is read too, where a struct carries both). A column's
+// PostgreSQL type is read as the Spanner type it corresponds to: varchar(n) as STRING(n),
+// text as STRING(MAX), integers as INT64, numeric as NUMERIC, jsonb as JSON, bytea as
+// BYTES(MAX), and arrays as ARRAY<...>.
+//
+// GenerateHandlerTests is not available with it: the suite it writes runs over the
+// Spanner emulator.
+func WithPostgres(version string) ResourceOption {
+	return Option(func(g any) error {
+		switch t := g.(type) {
+		case *client:
+			if version == "" {
+				version = defaultPostgresVersion
+			}
+			t.postgresVersion = version
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithPostgres(): %T", t))
+		}
+
+		return nil
+	})
+}
+
 // WithSpannerEmulatorVersion sets the version of the Spanner image pulled from gcr.io
 func WithSpannerEmulatorVersion(version string) ResourceOption {
 	return Option(func(g any) error {

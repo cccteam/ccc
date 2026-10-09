@@ -85,6 +85,9 @@ type client struct {
 	genComputedResources   bool
 	genVirtualResources    bool
 	spannerEmulatorVersion string
+	// postgresVersion is the PostgreSQL image the migrations run in; empty selects
+	// Spanner, whose emulator runs them (WithPostgres).
+	postgresVersion string
 	FileWriter
 	// output records the directories the run writes generated files into and the files
 	// it wrote, for the atomic writes and the stale sweep at the end of the run.
@@ -153,12 +156,22 @@ func newClient(ctx context.Context, resourcePackageDir string, migrationSourceUR
 			}
 		}
 
-		if err := c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL); err != nil {
+		if err := c.runDatabase(ctx, migrationSourceURL); err != nil {
 			return nil, err
 		}
 	}
 
 	return c, nil
+}
+
+// runDatabase migrates the schema in the application's database and reads it into the
+// table map and the enumeration values.
+func (c *client) runDatabase(ctx context.Context, migrationSourceURL []string) error {
+	if c.postgresVersion != "" {
+		return c.runPostgres(ctx, c.postgresVersion, migrationSourceURL)
+	}
+
+	return c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL)
 }
 
 func (c *client) Close() error {
