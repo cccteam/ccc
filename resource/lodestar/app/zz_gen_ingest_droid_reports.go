@@ -36,7 +36,10 @@ func (a *App) IngestDroidReports() http.HandlerFunc {
 		defer span.End()
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-
+		// The body is bounded at the application's limit, router.BodyLimit: a body over it answers 413 naming
+		// the limit. The RPC routes register beside the router's bounded group, so this
+		// wrap is the one limit the body meets.
+		r.Body = http.MaxBytesReader(w, r.Body, router.BodyLimit)
 		params, caller, err := decoder.DecodeCaller(r, accesstypes.DomainScope(domain))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)

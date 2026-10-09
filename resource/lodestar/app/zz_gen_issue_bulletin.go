@@ -27,6 +27,10 @@ func (a *App) IssueBulletin() http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
+		// The body is bounded at the method's declared maximum, 64KB: a body over it answers 413 naming
+		// the limit. The RPC routes register beside the router's bounded group, so this
+		// wrap is the one limit the body meets.
+		r.Body = http.MaxBytesReader(w, r.Body, 65536)
 		params, caller, err := decoder.DecodeCaller(r, accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)

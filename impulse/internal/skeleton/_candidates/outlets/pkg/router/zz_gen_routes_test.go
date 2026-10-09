@@ -4,6 +4,8 @@
 package router
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,6 +46,38 @@ func TestGeneratedRoutes(t *testing.T) {
 				if got := rec.Parameter(tt.handlerFunc, key); got != value {
 					t.Fatalf("%s = %s, expected %s", key, got, value)
 				}
+			}
+		})
+	}
+}
+
+// oversizedBody is one byte over BodyLimit, built once for TestGeneratedBodyLimit.
+var oversizedBody = strings.Repeat("x", int(BodyLimit)+1)
+
+// TestGeneratedBodyLimit proves the body limit lands on exactly the routes that take it.
+// A request carrying a body one byte over BodyLimit reaches a bounded route's handler
+// with the read refused, and a self-bounded route's handler (the live and RPC routes,
+// which bound their own bodies) with the body intact, since a limit outside a handler's
+// own could only tighten it. A hook that wrapped the body above the generated routes
+// would fail this test on the next generate.
+func TestGeneratedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range generatedRouterTests() {
+		t.Run(tt.method+"-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newGeneratedCallRecorder()
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, strings.NewReader(oversizedBody))
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if cnt := rec.handlers[tt.handlerFunc]; cnt != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %d", tt.handlerFunc, cnt)
+			}
+			if got, want := rec.limited[tt.handlerFunc] == 1, !tt.selfBounded; got != want {
+				t.Errorf("body limited = %v, want %v", got, want)
 			}
 		})
 	}
@@ -121,6 +155,8 @@ type generatedCallRecorder struct {
 	handlers    map[string]int
 	parameters  map[string]map[string]string
 	middlewares map[string]int
+	// limited counts, per handler, the requests whose body read was refused by a limit.
+	limited map[string]int
 }
 
 func newGeneratedCallRecorder() *generatedCallRecorder {
@@ -128,6 +164,7 @@ func newGeneratedCallRecorder() *generatedCallRecorder {
 		handlers:    make(map[string]int),
 		parameters:  make(map[string]map[string]string),
 		middlewares: make(map[string]int),
+		limited:     make(map[string]int),
 	}
 }
 
@@ -135,6 +172,13 @@ func newGeneratedCallRecorder() *generatedCallRecorder {
 // generated route parameter present on the request.
 func (rec *generatedCallRecorder) RecordHandlerCall(name string) http.HandlerFunc {
 	return func(_ http.ResponseWriter, r *http.Request) {
+		// The body is read whole, so a limit on the route shows as the read's refusal.
+		if _, err := io.ReadAll(r.Body); err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				rec.limited[name]++
+			}
+		}
 		for _, key := range generatedRouteParameters() {
 			if value := chi.URLParam(r, key); value != "" {
 				if _, found := rec.parameters[name]; !found {
@@ -181,6 +225,9 @@ type generatedRouterTest struct {
 	method      string
 	handlerFunc string
 	parameters  map[string]string
+	// selfBounded marks a route whose handler bounds its own body (live, RPC), which
+	// the router leaves off its bounded group.
+	selfBounded bool
 }
 
 func generatedRouteParameters() []string {
@@ -208,14 +255,17 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/console/api/live/renew", method: http.MethodPost,
 			handlerFunc: "LiveRenew",
+			selfBounded: true,
 		},
 		{
 			url: "/console/api/live/unsubscribe", method: http.MethodPost,
 			handlerFunc: "LiveUnsubscribe",
+			selfBounded: true,
 		},
 		{
 			url: "/console/api/live/token", method: http.MethodGet,
 			handlerFunc: "LiveToken",
+			selfBounded: true,
 		},
 		{
 			url: "/console/api/tenants/testDomain/announcements", method: http.MethodGet,
@@ -385,14 +435,17 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/portal/api/live/renew", method: http.MethodPost,
 			handlerFunc: "LiveRenew",
+			selfBounded: true,
 		},
 		{
 			url: "/portal/api/live/unsubscribe", method: http.MethodPost,
 			handlerFunc: "LiveUnsubscribe",
+			selfBounded: true,
 		},
 		{
 			url: "/portal/api/live/token", method: http.MethodGet,
 			handlerFunc: "LiveToken",
+			selfBounded: true,
 		},
 	}
 

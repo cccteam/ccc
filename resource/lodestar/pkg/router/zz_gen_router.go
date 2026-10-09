@@ -136,6 +136,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	// The application's routes outside every outlet.
 	if hooks.Root != nil {
 		r.Group(func(r chi.Router) {
+			// The application's own routes take the body limit the generated routes take.
+			r.Use(resource.BodyLimit(BodyLimit))
 			hooks.Root(r)
 		})
 	}
@@ -148,9 +150,11 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
-		r.Post("/console/api/user/login", h.Login())
-		r.Get("/console/api/user/session", h.Authenticated())
-		r.Delete("/console/api/user/session", h.Logout())
+		// The session routes are bounded at BodyLimit, as the generated routes are.
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+		bounded.Post("/console/api/user/login", h.Login())
+		bounded.Get("/console/api/user/session", h.Authenticated())
+		bounded.Delete("/console/api/user/session", h.Logout())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
@@ -197,10 +201,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(portalSession.StartSession)
 		r.Use(portalSession.SetXSRFToken)
 
-		r.Get("/portal/api/user/login", portalSession.Login())
-		r.Get("/portal/api/user/callback", portalSession.CallbackOIDC())
-		r.Get("/portal/api/user/session", portalSession.Authenticated())
-		r.Delete("/portal/api/user/session", portalSession.Logout())
+		// The session routes are bounded at BodyLimit, as the generated routes are.
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+		bounded.Get("/portal/api/user/login", portalSession.Login())
+		bounded.Get("/portal/api/user/callback", portalSession.CallbackOIDC())
+		bounded.Get("/portal/api/user/session", portalSession.Authenticated())
+		bounded.Delete("/portal/api/user/session", portalSession.Logout())
 
 		r.Group(func(r chi.Router) {
 			r.Use(portalSession.ValidateSession)

@@ -241,6 +241,15 @@ type routerFileData struct {
 	// router-test stub's pass-through when any outlet has a gated route.
 	HasGatedRoutes   bool
 	StubFeatureGuard bool
+	// BodyLimit is the request body limit the routes file declares as the router
+	// package's BodyLimit (WithBodyLimit; DefaultBodyLimit when the application sets
+	// none); BodyLimitText is it in words, and BodyLimitDefault whether it is the
+	// default. HasBoundedRoutes emits the default outlet's bounded group when a route
+	// the router wraps exists beyond the session and consolidated routes.
+	BodyLimit        int64
+	BodyLimitText    string
+	BodyLimitDefault bool
+	HasBoundedRoutes bool
 	// ResourcePackage qualifies the feature constants the gated routes name.
 	ResourcePackage string
 	// AuthName and AuthParam are the default outlet's auth binding (see
@@ -278,6 +287,9 @@ type outletRouteData struct {
 	// the outlet's prefix and adds their handler requirements to the outlet's
 	// interface (see the ServesSessions option).
 	ServesSessions bool
+	// HasBoundedRoutes emits the outlet's bounded group when a route the router wraps
+	// exists beyond the session and consolidated routes.
+	HasBoundedRoutes bool
 	// RoutesMap groups the outlet's routes by source struct name (template map
 	// iteration is name-sorted, keeping output deterministic).
 	RoutesMap             map[string][]*generatedRoute
@@ -523,6 +535,11 @@ type rpcHandlerData struct {
 	// ResourcesPackage names the resources package, whose generated query and
 	// patch builders the declared-transition frame works through.
 	ResourcesPackage string
+	// BodyLimitExpr is the limit the handler wraps the body with: the method's declared
+	// maximum as a literal, or the router package's BodyLimit when the method declares
+	// none (the literal limit when no router is generated). BodyLimitText says which.
+	BodyLimitExpr string
+	BodyLimitText string
 }
 
 func (d *rpcHandlerData) typeImports() []fixerImport {

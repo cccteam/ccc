@@ -459,6 +459,27 @@ func WithConcealedDomains() ResourceOption {
 	})
 }
 
+// DefaultBodyLimit is the request body limit the generated router applies when the
+// application sets none (WithBodyLimit): 4 MiB.
+const DefaultBodyLimit int64 = 4 << 20
+
+// WithBodyLimit sets the request body limit the generated router applies, in bytes. One
+// number bounds every resource route, the consolidated patch route, the session routes
+// and the other generated JSON routes, and every RPC method that declares no maximum of
+// its own (@rpc(max: 8MB)); an upload is bounded by its @upload(max:) and a live route by
+// its own constant, each applied where the body is read. A body over its limit answers
+// 413 naming the limit. DefaultBodyLimit when the option is absent.
+func WithBodyLimit(limit int64) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		if limit <= 0 {
+			return errors.Newf("WithBodyLimit(%d): the limit must be positive", limit)
+		}
+		r.bodyLimit = limit
+
+		return nil
+	})
+}
+
 // GenerateTypescript enables TypeScript generation as part of the resource generator run.
 // The permission data is computed statically from the parsed resources, so the run needs
 // no compiled application router.

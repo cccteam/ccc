@@ -141,7 +141,7 @@ func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Oper
 		for {
 			t, err := dec.Token()
 			if err != nil {
-				yield(nil, err)
+				yield(nil, bodyError(err))
 
 				return
 			}
@@ -159,7 +159,7 @@ func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Oper
 		for dec.More() {
 			var op patchOperation
 			if err := dec.Decode(&op); err != nil {
-				yield(nil, err)
+				yield(nil, bodyError(err))
 
 				return
 			}
@@ -284,4 +284,14 @@ func permissionFromType(typ OperationType) accesstypes.Permission {
 	}
 
 	panic("implementation error")
+}
+
+// bodyError answers a failed read of the operations body: 413 naming the limit when the
+// body ran past the route's (limitError), the error itself otherwise.
+func bodyError(err error) error {
+	if tooLarge := limitError(err); tooLarge != nil {
+		return tooLarge
+	}
+
+	return err
 }

@@ -2855,6 +2855,16 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// BodyLimit bounds the request body of every route the router wraps: the resource
+// routes, the consolidated patch route, the session routes and the other JSON routes,
+// at {{ .BodyLimitText }} (generation.WithBodyLimit{{ if .BodyLimitDefault }}; the framework's default, since the
+// application sets none{{ end }}). An upload, a live route and an RPC method bound their own
+// bodies and register beside the bounded group, since a limit outside them could only
+// tighten theirs: an upload at its declared maximum, a live route at its own, an RPC
+// method at its declared maximum or at this limit, applied by its generated handler. A
+// body over its limit answers 413 naming the limit.
+const BodyLimit int64 = {{ .BodyLimit }}
+
 {{ if or (gt (len .ConstResources) 0) (gt (len .ConstComputedResources) 0) .HasDomainScoped -}}
 const (
 {{- if .HasDomainScoped }}
@@ -2925,6 +2935,11 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers{{ if .AuthParam }}, auth 
 	// request carrying X-Subscribe is refused naming the header.
 	r = r.With(live.Refusing())
 {{- end }}
+{{- if or .ServesSessions .HasConsolidatedHandler .HasBoundedRoutes }}
+	// The resource routes and the other JSON routes are bounded at BodyLimit; the live
+	// and RPC routes register on r itself and bound their own bodies.
+	bounded := r.With(resource.BodyLimit(BodyLimit))
+{{- end }}
 {{- if .HasDomainScopedRoutes }}
 	domainGuard := h.DomainGuard()
 {{ end }}
@@ -2932,30 +2947,31 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers{{ if .AuthParam }}, auth 
 	featureGuard := h.FeatureGuard()
 {{ end }}
 {{- if .ServesSessions }}
-	r.Get("/{{ .RoutePrefix }}/permission-digest", h.PermissionDigest())
-	r.Get("/{{ .RoutePrefix }}/user-domains", h.UserDomains())
+	bounded.Get("/{{ .RoutePrefix }}/permission-digest", h.PermissionDigest())
+	bounded.Get("/{{ .RoutePrefix }}/user-domains", h.UserDomains())
 	r.Post("/{{ .RoutePrefix }}/{{ LiveRenewRoute }}", h.LiveRenew())
 	r.Post("/{{ .RoutePrefix }}/{{ LiveUnsubscribeRoute }}", h.LiveUnsubscribe())
 	r.Get("/{{ .RoutePrefix }}/{{ LiveTokenRoute }}", h.LiveToken())
 {{ end }}
 {{- range $Struct, $Routes := .RoutesMap }}
 	{{- range $route := $Routes }}
+	{{- $reg := "bounded" }}{{ if $route.SelfBounded }}{{ $reg = "r" }}{{ end }}
 	{{- if $route.SharedHandler }}
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
-	r.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else if $route.FormerPath }}
 	// The former route of {{ $route.HandlerFunc }} answers on the same handler.
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
-	r.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
 	{{- end }}
 	{{ end -}}
 {{ end -}}
 {{ if .HasConsolidatedHandler }}
-	r.Patch("/{{ .RoutePrefix }}/{{ .ConsolidatedRoute }}", h.PatchResources())
+	bounded.Patch("/{{ .RoutePrefix }}/{{ .ConsolidatedRoute }}", h.PatchResources())
 {{ end -}}
 }
 {{ if .ScheduledRoutes }}
@@ -2973,7 +2989,7 @@ type GeneratedScheduledHandlers interface {
 // carries no session, so it serves no live pages, and a request carrying X-Subscribe is
 // refused naming the header.
 func generatedScheduledRoutes(r chi.Router, h GeneratedScheduledHandlers) {
-	r = r.With(live.Refusing())
+	r = r.With(live.Refusing(), resource.BodyLimit(BodyLimit))
 	{{- range .ScheduledRoutes }}
 	r.Post("{{ .Path }}", h.{{ .HandlerFunc }}())
 	{{- end }}
@@ -3029,6 +3045,11 @@ func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suf
 	// carrying X-Subscribe is refused naming the header.
 	r = r.With(live.Refusing())
 {{- end }}
+{{- if or $outlet.ServesSessions $outlet.HasConsolidatedHandler $outlet.HasBoundedRoutes }}
+	// The resource routes and the other JSON routes are bounded at BodyLimit; the live
+	// and RPC routes register on r itself and bound their own bodies.
+	bounded := r.With(resource.BodyLimit(BodyLimit))
+{{- end }}
 {{- if $outlet.HasDomainScopedRoutes }}
 	domainGuard := h.DomainGuard()
 {{ end -}}
@@ -3036,30 +3057,31 @@ func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suf
 	featureGuard := h.FeatureGuard()
 {{ end -}}
 {{- if $outlet.ServesSessions }}
-	r.Get("/{{ $outlet.Prefix }}/permission-digest", h.PermissionDigest())
-	r.Get("/{{ $outlet.Prefix }}/user-domains", h.UserDomains())
+	bounded.Get("/{{ $outlet.Prefix }}/permission-digest", h.PermissionDigest())
+	bounded.Get("/{{ $outlet.Prefix }}/user-domains", h.UserDomains())
 	r.Post("/{{ $outlet.Prefix }}/{{ LiveRenewRoute }}", h.LiveRenew())
 	r.Post("/{{ $outlet.Prefix }}/{{ LiveUnsubscribeRoute }}", h.LiveUnsubscribe())
 	r.Get("/{{ $outlet.Prefix }}/{{ LiveTokenRoute }}", h.LiveToken())
 {{ end -}}
 {{- range $Struct, $Routes := $outlet.RoutesMap }}
 	{{- range $route := $Routes }}
+	{{- $reg := "bounded" }}{{ if $route.SelfBounded }}{{ $reg = "r" }}{{ end }}
 	{{- if $route.SharedHandler }}
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
-	r.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.Post("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else if $route.FormerPath }}
 	// The former route of {{ $route.HandlerFunc }} answers on the same handler.
 	{{ Camel $route.HandlerFunc }}Handler := {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
-	r.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ Camel $route.HandlerFunc }}Handler)
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.FormerPath }}", {{ Camel $route.HandlerFunc }}Handler)
 	{{- else }}
-	r.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
+	{{ $reg }}.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ template "routeHandler" (RouteHandler $.ResourcePackage $route) }})
 	{{- end }}
 	{{ end -}}
 {{ end -}}
 {{ if $outlet.HasConsolidatedHandler }}
-	r.Patch("{{ $outlet.ConsolidatedPath }}", h.{{ $outlet.ConsolidatedHandlerFunc }}())
+	bounded.Patch("{{ $outlet.ConsolidatedPath }}", h.{{ $outlet.ConsolidatedHandlerFunc }}())
 {{ end -}}
 }
 {{ end }}
@@ -3139,6 +3161,8 @@ func NewTestRouter(h GeneratedHandlers{{ template "testRouterAuthParams" . }}) *
 package {{ .Package }}
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -3185,6 +3209,38 @@ func TestGeneratedRoutes(t *testing.T) {
 	}
 }
 {{ if .NegativeRouterTests }}
+// oversizedBody is one byte over BodyLimit, built once for TestGeneratedBodyLimit.
+var oversizedBody = strings.Repeat("x", int(BodyLimit)+1)
+
+// TestGeneratedBodyLimit proves the body limit lands on exactly the routes that take it.
+// A request carrying a body one byte over BodyLimit reaches a bounded route's handler
+// with the read refused, and a self-bounded route's handler (the live and RPC routes,
+// which bound their own bodies) with the body intact, since a limit outside a handler's
+// own could only tighten it. A hook that wrapped the body above the generated routes
+// would fail this test on the next generate.
+func TestGeneratedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range generatedRouterTests() {
+		t.Run(tt.method+"-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newGeneratedCallRecorder()
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall){{ range .TestRouterAuthArgs }}, {{ . }}{{ end }})
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, strings.NewReader(oversizedBody))
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if cnt := rec.handlers[tt.handlerFunc]; cnt != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %d", tt.handlerFunc, cnt)
+			}
+			if got, want := rec.limited[tt.handlerFunc] == 1, !tt.selfBounded; got != want {
+				t.Errorf("body limited = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 // TestGeneratedRouteOutletIsolation proves the outlets stay disjoint: a route is
 // registered only under the outlets its resource is attached to, so its path under
 // any other outlet's prefix must fall through to 404 with no handler dispatched.
@@ -3230,6 +3286,8 @@ type generatedCallRecorder struct {
 	handlers    map[string]int
 	parameters  map[string]map[string]string
 	middlewares map[string]int
+	// limited counts, per handler, the requests whose body read was refused by a limit.
+	limited map[string]int
 }
 
 func newGeneratedCallRecorder() *generatedCallRecorder {
@@ -3237,6 +3295,7 @@ func newGeneratedCallRecorder() *generatedCallRecorder {
 		handlers:    make(map[string]int),
 		parameters:  make(map[string]map[string]string),
 		middlewares: make(map[string]int),
+		limited:     make(map[string]int),
 	}
 }
 
@@ -3244,6 +3303,13 @@ func newGeneratedCallRecorder() *generatedCallRecorder {
 // generated route parameter present on the request.
 func (rec *generatedCallRecorder) RecordHandlerCall(name string) http.HandlerFunc {
 	return func(_ http.ResponseWriter, r *http.Request) {
+		// The body is read whole, so a limit on the route shows as the read's refusal.
+		if _, err := io.ReadAll(r.Body); err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				rec.limited[name]++
+			}
+		}
 		for _, key := range generatedRouteParameters() {
 			if value := chi.URLParam(r, key); value != "" {
 				if _, found := rec.parameters[name]; !found {
@@ -3290,6 +3356,9 @@ type generatedRouterTest struct {
 	method string
 	handlerFunc string
 	parameters map[string]string
+	// selfBounded marks a route whose handler bounds its own body (live, RPC), which
+	// the router leaves off its bounded group.
+	selfBounded bool
 }
 
 func generatedRouteParameters() []string {
@@ -3335,28 +3404,31 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/{{ .RoutePrefix }}/{{ LiveRenewRoute }}", method: http.MethodPost,
 			handlerFunc: "LiveRenew",
+			selfBounded: true,
 		},
 		{
 			url: "/{{ .RoutePrefix }}/{{ LiveUnsubscribeRoute }}", method: http.MethodPost,
 			handlerFunc: "LiveUnsubscribe",
+			selfBounded: true,
 		},
 		{
 			url: "/{{ .RoutePrefix }}/{{ LiveTokenRoute }}", method: http.MethodGet,
 			handlerFunc: "LiveToken",
+			selfBounded: true,
 		},
 		{{- end }}
 		{{- range $route := .RouterTestRoutes }}
 		{{- range $method := $route.TestMethods }}
 		{
 			url: "{{ $route.TestURL }}", method: {{ $method }},
-			handlerFunc: "{{ $route.HandlerFunc }}",
+			handlerFunc: "{{ $route.HandlerFunc }}",{{ if $route.SelfBounded }} selfBounded: true,{{ end }}
 			parameters: map[string]string{ {{- range $param := $route.TestParams }}"{{ $param.Key }}": "{{ $param.Value }}", {{ end -}} },
 		},
 		{{- end }}
 		{{- if $route.FormerTestURL }}
 		{
 			url: "{{ $route.FormerTestURL }}", method: {{ index $route.TestMethods 0 }},
-			handlerFunc: "{{ $route.HandlerFunc }}",
+			handlerFunc: "{{ $route.HandlerFunc }}",{{ if $route.SelfBounded }} selfBounded: true,{{ end }}
 			parameters: map[string]string{ {{- range $param := $route.TestParams }}"{{ $param.Key }}": "{{ $param.Value }}", {{ end -}} },
 		},
 		{{- end }}
@@ -3385,14 +3457,17 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/{{ $outlet.Prefix }}/{{ LiveRenewRoute }}", method: http.MethodPost,
 			handlerFunc: "LiveRenew",
+			selfBounded: true,
 		},
 		{
 			url: "/{{ $outlet.Prefix }}/{{ LiveUnsubscribeRoute }}", method: http.MethodPost,
 			handlerFunc: "LiveUnsubscribe",
+			selfBounded: true,
 		},
 		{
 			url: "/{{ $outlet.Prefix }}/{{ LiveTokenRoute }}", method: http.MethodGet,
 			handlerFunc: "LiveToken",
+			selfBounded: true,
 		},
 		{{ end }}{{- end }}
 	}
@@ -3507,6 +3582,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{ if .RPCMethod.IsDomainScoped -}}
 		` + domainParamLine + `
 		{{ end -}}
+		// The body is bounded at {{ .BodyLimitText }}: a body over it answers 413 naming
+		// the limit. The RPC routes register beside the router's bounded group, so this
+		// wrap is the one limit the body meets.
+		r.Body = http.MaxBytesReader(w, r.Body, {{ .BodyLimitExpr }})
 		{{- if .RPCMethod.Target }}
 		params, gate, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
