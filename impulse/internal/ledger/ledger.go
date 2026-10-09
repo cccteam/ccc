@@ -109,16 +109,16 @@ var Steps = []Step{
 	},
 	{
 		Pins: pins(`
-			access v0.10.1
+			access v0.10.3
 			ccc v0.3.3
 			ccc/accesstypes v0.6.0
 			ccc/cloud v0.1.0
 			ccc/resource v0.12.1-0.20261009052330-7bd8478e0ccf
 			ccc/tracer v0.2.0
 			db-initiator v0.4.1
-			httpio v0.7.19
+			httpio v0.7.21
 			logger v0.1.27
-			session v0.12.0
+			session v0.12.2
 		`),
 		Note:    "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
 		Pending: true,

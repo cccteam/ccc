@@ -4,7 +4,7 @@ go 1.26.9
 
 require (
 	cloud.google.com/go/logging v1.20.0
-	github.com/cccteam/ccc/tracer v0.1.9-0.20261008034601-9d76e3c2d0b8
+	github.com/cccteam/ccc/tracer v0.2.0
 	github.com/cccteam/logger v0.1.27
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0

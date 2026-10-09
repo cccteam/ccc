@@ -46,7 +46,7 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	resourceSet        *Set[Resource]
 	filterParserFields map[jsonFieldName]FilterFieldInfo
-	structDecoder      *StructDecoder[filterBody]
+	bodyDecoder        *structDecoder[filterBody]
 
 	// collection resolves condition rendering for the QuerySets this decoder
 	// builds; nil leaves conditions unrenderable (an error if one ever
@@ -145,16 +145,16 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 		return nil, err
 	}
 
-	structDecoder, err := NewStructDecoder[filterBody]()
+	bodyDecoder, err := newStructDecoder[filterBody]()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewStructDecoder[filterBody]()")
+		return nil, errors.Wrap(err, "newStructDecoder[filterBody]()")
 	}
 
 	return &QueryDecoder[Resource, Request]{
 		requestFieldMapper: mapper,
 		resourceSet:        resSet,
 		filterParserFields: filterParserFields,
-		structDecoder:      structDecoder,
+		bodyDecoder:        bodyDecoder,
 		requestType:        reflect.TypeOf(req),
 		keyFields:          primaryKeyFields(reflect.TypeOf(req)),
 	}, nil
@@ -238,7 +238,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	}
 
 	if request.Method == http.MethodPost {
-		body, err := d.structDecoder.Decode(request)
+		body, err := d.bodyDecoder.Decode(request)
 		if err != nil {
 			return nil, err
 		}

@@ -97,9 +97,9 @@ func TestStructDecoder_formerNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			decoder, err := NewStructDecoder[formerlyRequest]()
+			decoder, err := newStructDecoder[formerlyRequest]()
 			if err != nil {
-				t.Fatalf("NewStructDecoder() error = %v", err)
+				t.Fatalf("newStructDecoder() error = %v", err)
 			}
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/articles", strings.NewReader(tt.body))
 			got, err := decoder.Decode(req)

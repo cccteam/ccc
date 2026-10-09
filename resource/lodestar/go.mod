@@ -11,15 +11,15 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/logging v1.20.0
 	cloud.google.com/go/spanner v1.95.1
-	github.com/cccteam/access v0.10.1
+	github.com/cccteam/access v0.10.3
 	github.com/cccteam/ccc v0.3.3
 	github.com/cccteam/ccc/accesstypes v0.6.0
 	github.com/cccteam/ccc/resource v0.10.7-0.20261005064211-ce3bc37a7307
-	github.com/cccteam/ccc/tracer v0.1.9-0.20261008034601-9d76e3c2d0b8
+	github.com/cccteam/ccc/tracer v0.2.0
 	github.com/cccteam/db-initiator v0.4.1
-	github.com/cccteam/httpio v0.7.19
+	github.com/cccteam/httpio v0.7.21
 	github.com/cccteam/logger v0.1.27
-	github.com/cccteam/session v0.12.0
+	github.com/cccteam/session v0.12.2
 	github.com/cccteam/spxscan v0.0.16
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-playground/errors/v5 v5.4.0
