@@ -128,11 +128,11 @@ var Steps = []Step{
 			ccc v0.3.3
 			ccc/accesstypes v0.6.0
 			ccc/cloud v0.1.0
-			ccc/resource v0.13.1-0.20261009221727-eac8458ee35a
+			ccc/resource v0.13.1-0.20261009222719-0b4b3b9b3910
 			ccc/tracer v0.2.2-0.20261009221627-cc079f540595
 			db-initiator v0.4.1
 			httpio v0.7.21
-			logger v0.1.30-0.20261009205604-278cc92c8c62
+			logger v0.1.30
 			session v0.12.2
 		`),
 		Pending: true,
