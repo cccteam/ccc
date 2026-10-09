@@ -14,10 +14,15 @@ concurrency:
 
 jobs:
   golang-ci:
-    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@7cd1ac4a2955aae93b5b6e81cfa2f3339dc0d959 # v8.2.0
+    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@9e5bf053976f0aef9f3c770cd83c6113b2f35da6 # v8.2.1
     with:
       build-tags: '["", "dev"]'
       golangci-lint-version: 'v2.12.2'
+      # The test and lint jobs, the long ones, run on the larger runner the repository
+      # variable CI_LARGE_RUNNER names (a GitHub-hosted runner's name, billed per minute)
+      # and on the standard runner while the variable is unset; every other job stays on
+      # the standard runner, which is free for a public repository.
+      runs-on-heavy: ${{ vars.CI_LARGE_RUNNER }}
   semantic-titles:
     uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
   changes:
