@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/cccteam/ccc/cloud"
+	"github.com/cccteam/ccc/cloud/gcp/declaration"
 	"github.com/cccteam/logger"
 )
 
@@ -45,11 +46,11 @@ func TestOpenRefusesBadSampling(t *testing.T) {
 	}
 }
 
-// TestSettingsDeclaration holds the exported declaration to the struct: the import path
-// and name, and each field's name, type and env tag, by reflection; each field's doc
-// comment from the source, read the way the tools read a declared field's. A field
-// renamed, retagged or re-documented without the declaration following fails here, in
-// the module declaring it, and not in impulse or bedrock.
+// TestSettingsDeclaration holds the declaration the declaration package publishes to the
+// struct: the import path and name, and each field's name, type and env tag, by
+// reflection; each field's doc comment from the source, read the way the tools read a
+// declared field's. A field renamed, retagged or re-documented without the declaration
+// following fails here, in the module declaring it, and not in impulse or bedrock.
 func TestSettingsDeclaration(t *testing.T) {
 	t.Parallel()
 
@@ -68,8 +69,8 @@ func TestSettingsDeclaration(t *testing.T) {
 		}
 		want.Fields = append(want.Fields, cloud.Field{Name: f.Name, Type: f.Type.String(), Tag: tag, Doc: doc})
 	}
-	if diff := cmp.Diff(want, SettingsDeclaration()); diff != "" {
-		t.Errorf("SettingsDeclaration() mismatch (-want +got):\n%s", diff)
+	if diff := cmp.Diff(want, declaration.Settings()); diff != "" {
+		t.Errorf("declaration.Settings() mismatch (-want +got):\n%s", diff)
 	}
 }
 

@@ -7,14 +7,15 @@ package derive
 
 import (
 	"github.com/cccteam/ccc/cloud"
-	"github.com/cccteam/ccc/cloud/gcp"
+	"github.com/cccteam/ccc/cloud/gcp/declaration"
 )
 
 // frameworkSettings are the framework's settings structs, as the modules declaring them
-// export their declarations: the cloud driver's. The declaring module's test holds its
+// publish their declarations: the cloud driver's, from the package beside the driver
+// that holds nothing of it. The declaring module's test holds its
 // declaration to the struct, so a field renamed, retagged or re-documented there fails
 // there, and never only in a derived stack.
-var frameworkSettings = []cloud.Declaration{gcp.SettingsDeclaration()}
+var frameworkSettings = []cloud.Declaration{declaration.Settings()}
 
 // frameworkSetting finds the settings struct an embedded type names, by the import path
 // the file resolves its package to and the type name.
