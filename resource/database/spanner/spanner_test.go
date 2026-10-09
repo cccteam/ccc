@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	cloudspanner "cloud.google.com/go/spanner"
+
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/database/spanner"
 	"github.com/cccteam/ccc/resource/database/spanner/declaration"
@@ -123,6 +125,13 @@ func TestOpen(t *testing.T) {
 			}
 			if got := d.ResourceClient.FileStore(resource.DefaultStore) != nil; got != tt.wantStore {
 				t.Errorf("ResourceClient.FileStore(default) wired = %v, want %v", got, tt.wantStore)
+			}
+			// The Spanner client reaches the database the settings name: one row answers.
+			var one int64
+			if err := d.SpannerClient.Single().Query(t.Context(), cloudspanner.NewStatement("SELECT 1")).Do(func(r *cloudspanner.Row) error {
+				return r.Column(0, &one)
+			}); err != nil || one != 1 {
+				t.Errorf("SELECT 1 through SpannerClient = %d, %v; want 1, nil", one, err)
 			}
 			// The Spanner client answers the database it opened, the emulator's.
 			if got := d.SpannerClient.DatabaseName(); got != settings.DatabasePath() {
