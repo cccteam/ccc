@@ -583,7 +583,7 @@ of framework modules none of which moves backward, a note, a pin moved or a reci
 no recipe named twice). A breaking change in resource, access, session or accesstypes is
 not done until the step that carries it records its recipe, or says that no code change is
 needed. Applications that predate the first release are adopted once by hand, not
-upgraded.
+upgraded. A step whose pins name pushed commits, pseudo-versions of a sibling whose release does not exist yet, is marked `Pending`; the ledger's validation holds the mark to the pins both ways, and impulse does not release with a pending last step (the repository's release pins check refuses it) until the repin moves the pins to the tags and clears the mark.
 
 ## impulse handoff
 

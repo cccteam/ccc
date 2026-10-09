@@ -190,6 +190,9 @@ func TestValidate(t *testing.T) {
 		{name: "a step that moves nothing", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n"}}, wantErr: "step 2 moves no pin and names no recipe: it is not a step"},
 		{name: "a recipe alone is a step", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n", Recipes: []Recipe{noopRecipe{name: "paging"}}}}},
 		{name: "a recipe named twice", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Recipes: []Recipe{noopRecipe{name: "paging"}, noopRecipe{name: "paging"}}}}, wantErr: "step 1 names the recipe paging twice"},
+		{name: "a pin at a pushed commit on a step not marked pending", steps: []Step{{Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n"}}, wantErr: "step 1 pins github.com/cccteam/ccc/resource at v0.1.1-0.20261009052330-7bd8478e0ccf, a pushed commit, and is not marked pending: a step whose pins name commits says so, and the release's repin clears it"},
+		{name: "a pending step whose pins are all released", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Pending: true}}, wantErr: "step 1 is marked pending and pins no pushed commit: the repin that moved it to the tags clears the mark"},
+		{name: "a pending step pins a pushed commit", steps: []Step{{Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n", Pending: true}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

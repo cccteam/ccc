@@ -23,6 +23,24 @@ jobs:
       # and on the standard runner while the variable is unset; every other job stays on
       # the standard runner, which is free for a public repository.
       runs-on-heavy: ${{ vars.CI_LARGE_RUNNER }}
+  release-pins:
+    # A release never ships a sibling pinned at a pseudo-version. On release-please's
+    # branches the component's go.mod is checked, and for impulse the skeleton templates
+    # and the upgrade ledger too, since an application's go.mod is written from them.
+    # Every other pull request passes with no step run, so the job is a required check.
+    # Development inside a wave may pin a pushed commit (a skeleton that needs a change of
+    # a sibling not yet released can only pin the commit); the refusal is at release time,
+    # and the repin that clears it goes leaf first, a draft until the tag exists.
+    name: release pins
+    runs-on: ubuntu-latest
+    env:
+      RUN: ${{ startsWith(github.head_ref, 'release-please--branches--master--components--') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.RUN == 'true' }}
+      - name: The component pins released siblings only
+        if: ${{ env.RUN == 'true' }}
+        run: .github/scripts/release-pins.sh "${GITHUB_HEAD_REF#release-please--branches--master--components--}"
   semantic-titles:
     uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@ce3b6a61c4b88c82d3c0c1760dc1a3f5a2731021 # v8.2.3
   changes:
