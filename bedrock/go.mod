@@ -10,6 +10,7 @@ require (
 	cloud.google.com/go/storage v1.69.0
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/impulse v0.3.0
+	github.com/cccteam/ccc/resource v0.13.1-0.20261009215843-c5640470c62f
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/hcl/v2 v2.25.0
@@ -31,6 +32,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/longrunning v1.3.0 // indirect
 	cloud.google.com/go/monitoring v1.31.0 // indirect
+	cloud.google.com/go/trace v1.17.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.62.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
