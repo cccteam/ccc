@@ -160,7 +160,7 @@ var Steps = []Step{
 			ccc v0.3.3
 			ccc/accesstypes v0.6.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.13.1-0.20261010141715-20530e190bc0
+			ccc/resource v0.14.0
 			ccc/tracer v0.2.0
 			db-initiator v0.4.1
 			httpio v0.7.21
@@ -170,7 +170,6 @@ var Steps = []Step{
 		Recipes: []Recipe{recipe.ProviderDrivers{}},
 		Note:    "the database, the live service and the job starter open through provider drivers (resource/database/spanner, resource/live/firestore, resource/jobs/cloudrun) whose settings the configuration embeds under the variable names already in use, each bound under a neutral import alias (database, liveservice, jobstarter, cloud) so moving to another provider is the import line; the recipe moves pkg/config onto them and renames its wrappers (DatabaseSettings, LiveSettings)",
 		Impulse: release("v0.4.0"),
-		Pending: true,
 	},
 	{
 		Pins: pins(`
@@ -178,15 +177,14 @@ var Steps = []Step{
 			ccc v0.3.3
 			ccc/accesstypes v0.6.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.13.1-0.20261010150715-b61a62d06b0b
-			ccc/tracer v0.2.2-0.20261009221627-cc079f540595
+			ccc/resource v0.14.0
+			ccc/tracer v0.3.0
 			db-initiator v0.4.1
 			httpio v0.7.21
 			logger v0.1.30
 			session v0.12.2
 		`),
 		Impulse: release("v0.4.0"),
-		Pending: true,
 		Note:    "request log words and trace settings are declared per surface: WithRequestLog sets the application default, OutletRequestLog and OutletTraces an outlet's, WithMountedRoutes a prefix mounted by hand, and @rpc(log:), @rpc(trace:), @file and @schedule(log:) a route's own; the generated router applies them, the tracer samples by them, and the release file lists the surfaces; an application that declares nothing keeps its behavior, and regeneration carries the generated test",
 	},
 }
