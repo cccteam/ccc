@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/cccteam/ccc/compare/bedrock/v0.2.1...bedrock/v0.2.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **bedrock:** the OIDC callback is found on the generated router's bounded group as well as on the router itself, so an application at resource v0.13.0 or later renders ([#928](https://github.com/cccteam/ccc/issues/928)) ([4fae365](https://github.com/cccteam/ccc/commit/4fae365ae78eb158e3cb2ffb6fe41116e026f2d4))
+
 ## [0.2.1](https://github.com/cccteam/ccc/compare/bedrock/v0.2.0...bedrock/v0.2.1) (2026-10-10)
 
 
