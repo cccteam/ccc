@@ -13,18 +13,11 @@ import (
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
+	"github.com/cccteam/ccc/impulse/internal/ledger"
 )
 
 func newHandoff() *cobra.Command {
-	var (
-		appDir       string
-		agent        bool
-		agentCommand string
-		agentArgs    []string
-		verify       bool
-		skipGenerate bool
-		reference    string
-	)
+	var f handoffFlags
 
 	cmd := &cobra.Command{
 		Use:   "handoff",
@@ -37,60 +30,137 @@ option set and the lint configuration) against the index, so a weakened check is
 failure and not a pass. Without --agent it prints the command to run the agent by hand,
 and --verify does the same verification afterwards.
 
+With --staged the change under review is what is staged in the index, and the working
+tree may hold it: the brief lists the staged paths under "What changed", with what each
+--change says was changed and what each --meaning says it means, and the check, the
+agent and the verification run as without the flag. A change beside the staged one,
+unstaged or untracked, is refused, so the index holds exactly the change under review
+and the agent's work is exactly its own. This is how impulse upgrade hands a failing step
+to the release that added it: the walk stages the step and runs go tool impulse handoff
+--staged through the pinned impulse, each recipe's change and meaning passed through, so
+the brief, the agent and the verification are that release's.
+
 The brief is written to ` + handoff.File + ` at the application root. It is transient:
 the verification removes it when everything is clean, and it is never committed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			a, err := app.Discover(appDir)
-			if err != nil {
-				return err
-			}
-			repo := handoff.For(a, check.OSExec{})
-			if err := repo.Check(ctx); err != nil {
-				return err
-			}
-			out := cmd.OutOrStdout()
-			env := &check.Env{App: a, Exec: check.OSExec{}, SkipGenerate: skipGenerate, Out: cmd.ErrOrStderr()}
-			if verify {
-				return verifyHandoff(ctx, env, repo, nil, out)
+			h := &handoffer{
+				exec: check.OSExec{},
+				checks: func(ctx context.Context, env *check.Env) []check.Result {
+					return check.Run(ctx, env, check.All())
+				},
+				out: cmd.OutOrStdout(),
+				err: cmd.ErrOrStderr(),
 			}
 
-			dirty, err := repo.Dirty(ctx)
-			if err != nil {
-				return err
-			}
-			if len(dirty) > 0 {
-				return errors.Newf("the working tree is not clean (%s): commit or stash first, so the agent's work is exactly its own", strings.Join(dirty, ", "))
-			}
-
-			results := check.Run(ctx, env, check.All())
-			check.Report(out, results)
-			if !check.Failed(results) {
-				fmt.Fprintf(out, "\nNothing to hand off: the check is clean.\n")
-
-				return removeBrief(a)
-			}
-			guard, err := handoff.Take(a, handoff.FromTree(a))
-			if err != nil {
-				return err
-			}
-			brief := &handoff.Brief{App: a, Results: results, Reference: reference, Guard: guard}
-			ag := &handoff.Agent{Command: agentCommand, ExtraArgs: agentArgs}
-
-			return completeHandoff(ctx, out, appDir, env, repo, brief, ag, agent)
+			return h.run(cmd.Context(), &f)
 		},
 	}
-
-	cmd.Flags().StringVar(&appDir, "app", ".", "application root (the directory holding go.mod)")
-	cmd.Flags().BoolVar(&agent, "agent", false, "launch the agent on the brief and verify when it returns")
-	cmd.Flags().StringVar(&agentCommand, "agent-command", handoff.DefaultCommand, "the agent executable")
-	cmd.Flags().StringArrayVar(&agentArgs, "agent-arg", nil, "an argument appended to the agent's command line (repeatable), such as --model or --max-budget-usd")
-	cmd.Flags().BoolVar(&verify, "verify", false, "verify a handoff done by hand: re-run the check and compare the guardrails against the index")
-	cmd.Flags().BoolVar(&skipGenerate, "skip-generate", false, "skip the regen check (no emulator, no working-tree rewrite)")
-	cmd.Flags().StringVar(&reference, "reference", "", "path of a finished application with the same options wired, for the agent to read")
+	f.bind(cmd)
 
 	return cmd
+}
+
+// handoffFlags are impulse handoff's flags: the transitions' (the application root, the
+// agent, the regen skip) and its own.
+type handoffFlags struct {
+	transitionFlags
+	verify    bool
+	reference string
+	// staged says the change under review is the one staged in the index; changes and
+	// meanings describe it for the brief, as a transition's change and meaning do.
+	staged   bool
+	changes  []string
+	meanings []string
+}
+
+func (f *handoffFlags) bind(cmd *cobra.Command) {
+	f.transitionFlags.bind(cmd)
+	cmd.Flags().BoolVar(&f.verify, "verify", false, "verify a handoff done by hand: re-run the check and compare the guardrails against the index")
+	cmd.Flags().StringVar(&f.reference, "reference", "", "path of a finished application with the same options wired, for the agent to read")
+	cmd.Flags().BoolVar(&f.staged, "staged", false, "the change under review is what is staged in the index: the tree may hold it, and the brief lists its paths")
+	cmd.Flags().StringArrayVar(&f.changes, "change", nil, "with --staged, what was changed, for the brief (repeatable; impulse upgrade passes each recipe's)")
+	cmd.Flags().StringArrayVar(&f.meanings, "meaning", nil, "with --staged, what the change means, for the brief (repeatable)")
+}
+
+// handoffer is impulse handoff with its parts injected, so the command is tested without
+// git or the checks.
+type handoffer struct {
+	exec   check.Execer
+	checks func(ctx context.Context, env *check.Env) []check.Result
+	out    io.Writer
+	err    io.Writer
+}
+
+// run is the command: the tree is held to the handoff's premise, the check runs, and a
+// failing one is handed off.
+func (h *handoffer) run(ctx context.Context, f *handoffFlags) error {
+	if (len(f.changes) > 0 || len(f.meanings) > 0) && !f.staged {
+		return errors.New("--change and --meaning describe the change staged in the index: pass --staged with them")
+	}
+	a, err := app.Discover(f.appDir)
+	if err != nil {
+		return err
+	}
+	repo := handoff.For(a, h.exec)
+	if err := repo.Check(ctx); err != nil {
+		return err
+	}
+	env := &check.Env{App: a, Exec: h.exec, SkipGenerate: f.skipGenerate, Out: h.err, Ledger: ledger.Current{}}
+	if f.verify {
+		return verifyHandoff(ctx, env, repo, nil, h.out)
+	}
+	if err := refuseDirty(ctx, repo, f.staged); err != nil {
+		return err
+	}
+
+	results := h.checks(ctx, env)
+	check.Report(h.out, results)
+	if !check.Failed(results) {
+		fmt.Fprintf(h.out, "\nNothing to hand off: the check is clean.\n")
+
+		return removeBrief(a)
+	}
+	guard, err := handoff.Take(a, handoff.FromTree(a))
+	if err != nil {
+		return err
+	}
+	brief := &handoff.Brief{App: a, Results: results, Reference: f.reference, Guard: guard}
+	if f.staged {
+		brief.Change = strings.Join(f.changes, "\n")
+		brief.Meaning = strings.Join(f.meanings, "\n\n")
+		if brief.Staged, err = repo.Staged(ctx); err != nil {
+			return err
+		}
+	}
+	ag := &handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
+
+	return completeHandoff(ctx, h.out, f.appDir, env, repo, brief, ag, f.agent)
+}
+
+// refuseDirty holds the tree to the handoff's premise, that the index is the tree at the
+// handoff: clean, or with the staged change under review, holding nothing beside it.
+func refuseDirty(ctx context.Context, repo handoff.Repo, staged bool) error {
+	if staged {
+		unstaged, err := repo.Unstaged(ctx)
+		if err != nil {
+			return err
+		}
+		if len(unstaged) > 0 {
+			return errors.Newf("the working tree has changes beside the staged ones (%s): stage or stash them, so the index holds exactly the change under review and the agent's work is exactly its own", strings.Join(unstaged, ", "))
+		}
+
+		return nil
+	}
+	dirty, err := repo.Dirty(ctx)
+	if err != nil {
+		return err
+	}
+	if len(dirty) > 0 {
+		return errors.Newf("the working tree is not clean (%s): commit or stash first, so the agent's work is exactly its own", strings.Join(dirty, ", "))
+	}
+
+	return nil
 }
 
 // completeHandoff writes the brief and either prints the command to run the agent or
@@ -138,7 +208,7 @@ func verifyHandoff(ctx context.Context, env *check.Env, repo handoff.Repo, base 
 	if check.Failed(results) {
 		fmt.Fprintf(out, "\nThe handoff is not clean. %s stays in place; fix the failures or hand off again.\n", handoff.File)
 
-		return exitError{code: 1}
+		return exitError{code: failedExit}
 	}
 	fmt.Fprintf(out, "\nClean. Review the diff and open the pull request.\n")
 

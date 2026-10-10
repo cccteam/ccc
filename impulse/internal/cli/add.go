@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/ccc/impulse/ci"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
+	"github.com/cccteam/ccc/impulse/internal/ledger"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 	transition_ "github.com/cccteam/ccc/impulse/internal/transition"
 )
@@ -477,7 +478,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	if owned.Written {
 		fmt.Fprintf(out, "Rewrote %s from the code.\n\n", ci.List(owned.WrittenFiles()))
 	}
-	env := &check.Env{App: a, Exec: exec, SkipGenerate: f.skipGenerate, Fix: true, Out: cmd.ErrOrStderr()}
+	env := &check.Env{App: a, Exec: exec, SkipGenerate: f.skipGenerate, Fix: true, Out: cmd.ErrOrStderr(), Ledger: ledger.Current{}}
 	results := check.Run(ctx, env, check.All())
 	if err := repo.StageAll(ctx); err != nil {
 		return err
@@ -496,7 +497,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	referenceDir := ""
 	if reference != "" {
 		if referenceDir, err = renderReference(reference); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %v\n", err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %s\n", message(err))
 		}
 	}
 	guard, err := handoff.Take(a, handoff.FromTree(a))

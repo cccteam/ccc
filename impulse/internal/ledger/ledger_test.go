@@ -3,11 +3,14 @@ package ledger
 import (
 	"context"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
@@ -34,12 +37,13 @@ func (noopRecipe) Apply(context.Context, *app.App, check.Execer) (*transition.Ch
 func (noopRecipe) Meaning() string { return "" }
 
 // testLedger is three steps: the first pins both modules at 0.1.0, the second moves
-// resource with a recipe, the third moves both with none.
+// resource with a recipe and was added by impulse v0.2.0, the third moves both with none
+// and was added by v0.3.0.
 func testLedger() []Step {
 	return []Step{
 		{Pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, Note: "the first beta"},
-		{Pins: map[string]string{resourceModule: "v0.2.0", accessModule: "v0.1.0"}, Recipes: []Recipe{noopRecipe{name: "paging"}}, Note: "pages by cursor"},
-		{Pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, Note: "no code change is needed"},
+		{Pins: map[string]string{resourceModule: "v0.2.0", accessModule: "v0.1.0"}, Recipes: []Recipe{noopRecipe{name: "paging"}}, Note: "pages by cursor", Impulse: "v0.2.0"},
+		{Pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, Note: "no code change is needed", Impulse: "v0.3.0"},
 	}
 }
 
@@ -140,6 +144,35 @@ func TestMoves(t *testing.T) {
 	}
 }
 
+// TestMovesTool reads whether a step moves the tool pin from a pin: a step naming the
+// release that added it moves a pin missing or behind it and leaves one at or beyond it;
+// a step naming none moves nothing.
+func TestMovesTool(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		step Step
+		pin  string
+		want bool
+	}{
+		{name: "no pin", step: testLedger()[1], pin: "", want: true},
+		{name: "a pin behind the release", step: testLedger()[1], pin: "v0.1.2-0.20261008040440-dcb9876c02e8", want: true},
+		{name: "a pin at the release", step: testLedger()[1], pin: "v0.2.0", want: false},
+		{name: "a pin beyond the release", step: testLedger()[1], pin: "v0.3.1", want: false},
+		{name: "a step naming no release", step: testLedger()[0], pin: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.step.MovesTool(tt.pin); got != tt.want {
+				t.Errorf("MovesTool(%q) = %v, want %v", tt.pin, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestNames labels the steps by what each moves from the one before.
 func TestNames(t *testing.T) {
 	t.Parallel()
@@ -183,7 +216,7 @@ func TestValidate(t *testing.T) {
 		{name: "no step", steps: []Step{}, wantErr: "the ledger records no step; the first is the first impulse release's pins"},
 		{name: "no pins", steps: []Step{{Note: "n"}}, wantErr: "step 1 pins no framework module"},
 		{name: "no note", steps: []Step{{Pins: pins("v0.1.0")}}, wantErr: "step 1 has no note"},
-		{name: "impulse pinned as a step's", steps: []Step{{Pins: map[string]string{check.ImpulseModule: "v0.1.1"}, Note: "n"}}, wantErr: "step 1 pins github.com/cccteam/ccc/impulse, which is the tool pin the walk moves to the running impulse, not a step's"},
+		{name: "impulse pinned among the framework pins", steps: []Step{{Pins: map[string]string{check.ImpulseModule: "v0.1.1"}, Note: "n"}}, wantErr: "step 1 pins github.com/cccteam/ccc/impulse among the framework pins; the step names the impulse release that added it in Impulse, and the walk moves the tool pin to it"},
 		{name: "a pin outside the framework", steps: []Step{{Pins: map[string]string{"github.com/go-chi/chi/v5": "v5.3.2"}, Note: "n"}}, wantErr: "step 1 pins github.com/go-chi/chi/v5, which is not a framework module (github.com/cccteam/...)"},
 		{name: "a pin that is not a version", steps: []Step{{Pins: pins("latest"), Note: "n"}}, wantErr: `step 1 pins github.com/cccteam/ccc/resource at "latest", which is not a semantic version`},
 		{name: "a pin moving backward", steps: []Step{{Pins: pins("v0.2.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n"}}, wantErr: "step 2 pins github.com/cccteam/ccc/resource at v0.1.0, behind step 1's v0.2.0; the ledger walks forward only"},
@@ -193,6 +226,15 @@ func TestValidate(t *testing.T) {
 		{name: "a pin at a pushed commit on a step not marked pending", steps: []Step{{Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n"}}, wantErr: "step 1 pins github.com/cccteam/ccc/resource at v0.1.1-0.20261009052330-7bd8478e0ccf, a pushed commit, and is not marked pending: a step whose pins name commits says so, and the release's repin clears it"},
 		{name: "a pending step whose pins are all released", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Pending: true}}, wantErr: "step 1 is marked pending and pins no pushed commit: the repin that moved it to the tags clears the mark"},
 		{name: "a pending step pins a pushed commit", steps: []Step{{Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n", Pending: true}}},
+		{name: "a release that is not a version", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "latest"}}, wantErr: `step 1 names impulse "latest", which is not a release: a step names the tagged version of the impulse that added it (v0.2.0), or the version its pull request will take while it is pending`},
+		{name: "a pushed commit named as the release", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.3.1-0.20261009052330-7bd8478e0ccf"}}, wantErr: `step 1 names impulse "v0.3.1-0.20261009052330-7bd8478e0ccf", which is not a release`},
+		{name: "a pre-release named as the release", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.3.0-rc.1"}}, wantErr: `step 1 names impulse "v0.3.0-rc.1", which is not a release`},
+		{name: "a release with build metadata", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.3.0+dirty"}}, wantErr: `step 1 names impulse "v0.3.0+dirty", which is not a release`},
+		{name: "a release moving backward", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.3.0"}, {Pins: pins("v0.2.0"), Note: "n", Impulse: "v0.2.0"}}, wantErr: "step 2 names impulse v0.2.0, behind step 1's v0.3.0; the ledger walks forward only"},
+		{name: "a step after one naming a release names none", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}, {Pins: pins("v0.2.0"), Note: "n"}}, wantErr: "step 2 names no impulse release and step 1 names v0.2.0: once a step names the release that added it, every later step does"},
+		{name: "a step naming a release after one naming none", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.2.0"), Note: "n", Impulse: "v0.2.0"}}},
+		{name: "one release adding two steps", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}, {Pins: pins("v0.2.0"), Note: "n", Impulse: "v0.2.0"}}},
+		{name: "a pending step names the release its pull request takes", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.3.1"}, {Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n", Pending: true, Impulse: "v0.4.0"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -251,6 +293,75 @@ func TestSkeletonPins(t *testing.T) {
 			if _, ok := last.Pins[r.Mod.Path]; !ok {
 				t.Errorf("candidate %s requires %s %s, which the ledger's last step does not pin: append a step for it", c.Name, r.Mod.Path, r.Mod.Version)
 			}
+		}
+	}
+}
+
+// TestCurrentAtLastStep reads the recorded ledger as the checks do: go.mod at the last
+// step's pins reaches it, one at the step before's does not, and one without framework
+// pins does not.
+func TestCurrentAtLastStep(t *testing.T) {
+	t.Parallel()
+
+	goMod := func(pins map[string]string) string {
+		var b strings.Builder
+		b.WriteString("module example.com/acme/beacon\n\ngo 1.26\n\nrequire (\n")
+		for _, name := range (&Step{Pins: pins}).PinNames() {
+			b.WriteString("\t" + name + " " + pins[name] + "\n")
+		}
+		b.WriteString(")\n")
+
+		return b.String()
+	}
+	tests := []struct {
+		name  string
+		gomod string
+		want  bool
+	}{
+		{name: "at the last step", gomod: goMod(Steps[len(Steps)-1].Pins), want: true},
+		{name: "at the step before", gomod: goMod(Steps[len(Steps)-2].Pins), want: false},
+		{name: "no framework pins", gomod: "module example.com/acme/beacon\n\ngo 1.26\n", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mod, err := modfile.Parse("go.mod", []byte(tt.gomod), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := (Current{}).AtLastStep(mod); got != tt.want {
+				t.Errorf("AtLastStep() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestToolDirectiveDrag holds impulse's own go.mod to the ledger's last step: no framework
+// module the step pins is required at a version beyond the pin. The tool directive puts
+// impulse's requirements into an application's build list, so this is what the tool pin's
+// move at the last step, and the tool-only move to a release that added no step, carry an
+// application to; held here, they carry it nowhere the ledger does not record. A release
+// whose requirements move past the last step fails here until its step is appended.
+func TestToolDirectiveDrag(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := modfile.Parse("go.mod", data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := &Steps[len(Steps)-1]
+	for _, r := range mod.Require {
+		pin, ok := last.Pins[r.Mod.Path]
+		if !ok {
+			continue
+		}
+		if semver.Compare(r.Mod.Version, pin) > 0 {
+			t.Errorf("impulse requires %s at %s and the ledger's last step pins it at %s: the tool pin would carry an application past the ledger; append a step for the release that moves it", r.Mod.Path, r.Mod.Version, pin)
 		}
 	}
 }

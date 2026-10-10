@@ -20,14 +20,36 @@ func Main(args []string) int {
 		if ok := asExit(err, &exit); ok {
 			return exit.code
 		}
-		// The cause carries the message written for the user; the chain above it holds
-		// source positions meant for a developer of the tool.
-		fmt.Fprintln(os.Stderr, "impulse:", errors.Cause(err))
+		fmt.Fprintln(os.Stderr, "impulse:", message(err))
 
 		return 2
 	}
 
 	return 0
+}
+
+// message is the line a command's error prints for the user: what the outermost wrap
+// says, which the wrap sites write for the user (the command and the last line of its
+// output, the file and what failed in it), and the cause after it; an error wrapped
+// nowhere prints as it is. The chain between them holds source positions meant for a
+// developer of the tool, and the wraps the cause passed through on its way up (the
+// runner's own naming of the command), neither of which the line carries.
+func message(err error) string {
+	if err == nil {
+		return ""
+	}
+	var chain errors.Chain
+	if !errors.As(err, &chain) {
+		return err.Error()
+	}
+	cause := errors.Cause(err).Error()
+	for i := len(chain) - 1; i >= 0; i-- {
+		if chain[i].Prefix != "" {
+			return chain[i].Prefix + ": " + cause
+		}
+	}
+
+	return cause
 }
 
 func newRoot() *cobra.Command {
@@ -58,6 +80,12 @@ func newRoot() *cobra.Command {
 func version() string {
 	return check.RunningVersion()
 }
+
+// failedExit is the status a command exits with when what it checked failed: impulse
+// check with a failing check, impulse handoff with a handoff not clean. A command that
+// could not run exits with 2, so a caller running the check as a command (the upgrade
+// walk, through go tool impulse) tells a failing check from one that did not run.
+const failedExit = 1
 
 // exitError carries a process exit code out of a command without printing anything.
 type exitError struct {

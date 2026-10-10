@@ -175,3 +175,34 @@ func TestRepoDirty(t *testing.T) {
 		})
 	}
 }
+
+// TestRepoUnstaged reads the paths the index does not hold: changed in the working tree,
+// staged or not, or untracked; a path changed in the index alone is not among them, and
+// neither is the brief.
+func TestRepoUnstaged(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		status string
+		want   []string
+	}{
+		{name: "clean", status: ""},
+		{name: "staged alone", status: "M  go.mod\nA  pkg/b.go\nD  pkg/c.go\nR  pkg/d.go -> pkg/e.go\n?? " + File + "\n"},
+		{name: "changes beside the staged ones", status: "M  go.mod\nMM pkg/b.go\n M pkg/a.go\nAD pkg/c.go\n?? notes.txt\n", want: []string{"pkg/b.go", "pkg/a.go", "pkg/c.go", "notes.txt"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := Repo{Root: "/w/beacon", Exec: fakeGit{t: t, answers: map[string]string{"git status --porcelain --untracked-files=all": tt.status}}}
+			got, err := repo.Unstaged(t.Context())
+			if err != nil {
+				t.Fatalf("Unstaged() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("Unstaged() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
