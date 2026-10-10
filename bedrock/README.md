@@ -377,11 +377,14 @@ stack, whose filter is scoped to the service's own entries (Cloud Run's by the r
 services' names, the load balancer's by the backend's; never the project's, which holds
 several applications) and then drops, per surface, what the word drops, the surface's
 path matched after any host (`^https://[^/]+<prefix>`, a `{param}` segment matching any
-one): on event the entries of the requests that answered below 400, so every failure is
-kept; sampled the same but the declared fraction of them (`NOT sample(insertId,
-<fraction>)`); never every entry under the prefix. A surface's clause excepts the
-surfaces declared beneath it, whatever their words (`AND NOT httpRequest.requestUrl =~
-"^https://[^/]+<prefix>"` per surface beneath, a grandchild's among them), since the
+one), a route matched to the end of its path with a query string allowed
+(`^https://[^/]+<route>([?]|$)`) and a prefix by prefix, as the router matches them, so a
+route never takes the entries of a longer path that merely starts with it: on event the
+entries of the requests that answered below 400, so every failure is kept; sampled the
+same but the declared fraction of them (`NOT sample(insertId, <fraction>)`); never every
+entry under the prefix. A surface's clause excepts the surfaces declared beneath it,
+whatever their words (`AND NOT httpRequest.requestUrl =~ "^https://[^/]+<prefix>"` per
+surface beneath, a grandchild's among them, each matched by its own kind), since the
 application decides a request's entry by its nearest declaration: with `/` sampled at
 0.1 and `/api/` logged always, the root's clause leaves every `/api/` entry alone and the
 child, having no clause, is kept whole, where the plain match would have dropped nine in

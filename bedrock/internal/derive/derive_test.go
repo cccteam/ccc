@@ -139,8 +139,8 @@ func TestDerive(t *testing.T) {
 			wantScheduled:  []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
 			wantFileRoutes: []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
 			wantOutlets:    []string{"default /api"},
-			wantSurfaces:   []string{"/_scheduled/send-daily-digest: logged always", "/api/: sampled at 0.1", "/api/manifests/{id}/file: never logged"},
-			wantRequestLog: `((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND NOT httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file"))`,
+			wantSurfaces:   []string{"/_scheduled/send-daily-digest (route): logged always", "/api/ (prefix): sampled at 0.1", "/api/manifests/{id}/file (route): never logged"},
+			wantRequestLog: harborClause,
 		},
 		{
 			name:        "beacon, a password auth: no registration, no callback",
@@ -437,13 +437,15 @@ func fileRouteLine(r *FileRoute) string {
 
 // surfaceLine spells a surface: its prefix and its request log word in prose.
 func surfaceLine(s *Surface) string {
-	return s.Prefix + ": " + s.Policy()
+	return s.Prefix + " (" + s.Kind + "): " + s.Policy()
 }
 
 // TestDeriveRequestLog derives the request log's exclusion from the surfaces of the
 // release file beside the generated router, over a copy of the fixture whose release
 // file each case writes: no file and no surface mean no exclusion, so do surfaces
-// logged always, and a surface whose word excludes an entry brings one with its clause.
+// logged always, and a surface whose word excludes an entry brings one with its clause,
+// a route anchored at the end of its path; a file written before the surfaces carried
+// their kind reads as prefixes, so its clauses match by prefix as they did.
 func TestDeriveRequestLog(t *testing.T) {
 	t.Parallel()
 
@@ -459,8 +461,13 @@ func TestDeriveRequestLog(t *testing.T) {
 		{name: "surfaces logged always", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/", "log": "always"}, {"prefix": "/api/", "log": "always", "traces": "off"}]}`},
 		{
 			name:    "Lodestar's surfaces",
-			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/beacons/", "log": "onEvent", "traces": "off"}, {"prefix": "/droids/sectors/{sectorID}/ingest-droid-reports", "log": "onEvent"}]}`,
+			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/beacons/", "kind": "prefix", "log": "onEvent", "traces": "off"}, {"prefix": "/droids/sectors/{sectorID}/ingest-droid-reports", "kind": "route", "log": "onEvent"}]}`,
 			want:    lodestarClause,
+		},
+		{
+			name:    "Lodestar's surfaces written before the kind existed, matched by prefix",
+			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/beacons/", "log": "onEvent", "traces": "off"}, {"prefix": "/droids/sectors/{sectorID}/ingest-droid-reports", "log": "onEvent"}]}`,
+			want:    `((httpRequest.requestUrl =~ "^https://[^/]+/beacons/" AND httpRequest.status < 400) OR (httpRequest.requestUrl =~ "^https://[^/]+/droids/sectors/[^/]+/ingest-droid-reports" AND httpRequest.status < 400))`,
 		},
 	}
 	for _, tt := range tests {

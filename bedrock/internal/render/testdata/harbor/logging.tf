@@ -89,11 +89,13 @@ resource "google_project_iam_member" "operations_reads_migrate_logs" {
 # several applications, and another's entries are not this stack's to drop.
 # The path is matched after any host (^https://[^/]+<prefix>), since the
 # environment's hostnames and the next revision's all reach the same
-# service and the word is the path's. The next revision's own backend is
-# left out: its entries are the hook's few calls before traffic moves, each
-# worth seeing. A pull-request stack has none: its service answers through
-# 2-env's wildcard backend, not one of its own, and every one of its few
-# requests is worth seeing.
+# service and the word is the path's; a route is matched to the end of its
+# path, a query string allowed, and a prefix by prefix, as the router
+# matches them. The next revision's own backend is left out: its entries
+# are the hook's few calls before traffic moves, each worth seeing. A
+# pull-request stack has none: its service answers through 2-env's wildcard
+# backend, not one of its own, and every one of its few requests is worth
+# seeing.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -108,7 +110,7 @@ locals {
   # beneath its surface, whatever their words, since the nearest declaration
   # decides a request's entry: an entry under a child is the child's own
   # clause's to drop, and kept whole when the child is logged always.
-  request_log_clause = "((httpRequest.requestUrl =~ \"^https://[^/]+/api/\" AND NOT httpRequest.requestUrl =~ \"^https://[^/]+/api/manifests/[^/]+/file\" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ \"^https://[^/]+/api/manifests/[^/]+/file\"))"
+  request_log_clause = "((httpRequest.requestUrl =~ \"^https://[^/]+/api/\" AND NOT httpRequest.requestUrl =~ \"^https://[^/]+/api/manifests/[^/]+/file([?]|$)\" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ \"^https://[^/]+/api/manifests/[^/]+/file([?]|$)\"))"
 }
 
 resource "google_logging_project_exclusion" "request_log" {

@@ -98,7 +98,7 @@ func (s *Surface) Excepted(surfaces []Surface) []Surface {
 
 // Clause is the surface's clause of the exclusion's filter, by its word, excepting the
 // surfaces given. Every clause matches the request's URL against the surface's prefix
-// as a regular expression anchored after any host (^https://[^/]+<prefix>): the
+// as a regular expression anchored after any host (^https://[^/]+<prefix>, urlMatch): the
 // environment's hostnames and the next revision's all reach the same service, and the
 // word is the path's, not the host's. Each excepted surface's match is then negated
 // (AND NOT httpRequest.requestUrl =~ "^https://[^/]+<its prefix>"), in their order, so
@@ -109,9 +109,9 @@ func (s *Surface) Excepted(surfaces []Surface) []Surface {
 // never drops every entry under the prefix. Always has no clause, so the method is not
 // called for it (Excludes).
 func (s *Surface) Clause(excepted []Surface) string {
-	match := urlMatch(s.Prefix)
+	match := urlMatch(s)
 	for i := range excepted {
-		match += " AND NOT " + urlMatch(excepted[i].Prefix)
+		match += " AND NOT " + urlMatch(&excepted[i])
 	}
 	switch s.Log {
 	case RequestLogOnEvent:
@@ -141,10 +141,25 @@ func (s *Surface) Policy() string {
 	}
 }
 
-// urlMatch is the Logging query's match of the request's URL against the prefix after
-// any host: httpRequest.requestUrl =~ "^https://[^/]+<prefix regex>".
-func urlMatch(prefix string) string {
-	return `httpRequest.requestUrl =~ "^https://[^/]+` + PathRegex(prefix) + `"`
+// urlMatch is the Logging query's match of the request's URL against the surface after
+// any host, as the router matches the request's path against it. A prefix is matched by
+// prefix (httpRequest.requestUrl =~ "^https://[^/]+<prefix regex>"), the way
+// strings.HasPrefix does in logger.PolicyByPrefix and the generated router's
+// outletRequestLog, so everything under /beacons/ is the surface's. A route is matched
+// to the end of the path, the way the router matches a route whole, allowing the query
+// string httpRequest.requestUrl carries after it (httpRequest.requestUrl =~
+// "^https://[^/]+<route regex>([?]|$)"): without the anchor, /api/manifests/{id}/file
+// would also take the entries of /api/manifests/x/file-extra, a longer path that merely
+// starts with it, and the same width would apply wherever the route is subtracted from
+// its parent's clause. The question mark sits in a class, as PathRegex puts a dot, so
+// the expression carries no backslash.
+func urlMatch(s *Surface) string {
+	match := `httpRequest.requestUrl =~ "^https://[^/]+` + PathRegex(s.Prefix)
+	if s.Kind == SurfaceRoute {
+		match += `([?]|$)`
+	}
+
+	return match + `"`
 }
 
 // PathRegex is the route or prefix as the RE2 expression Cloud Armor matches the path

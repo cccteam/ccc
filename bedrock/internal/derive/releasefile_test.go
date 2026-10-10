@@ -73,18 +73,30 @@ func TestReadReleaseFile(t *testing.T) {
 		{name: "a file route naming no source", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-manifest"}]}`, wantErr: "the file route POST /api/attach-manifest names no source"},
 		{
 			name:    "surfaces: the default, an outlet with both, a route, a mounted prefix, and a trace setting alone",
-			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/", "log": "always"}, {"prefix": "/api/", "log": "sampled", "fraction": 0.1, "traces": "capped", "rate": 0.5}, {"prefix": "/api/widgets/{id}/content", "log": "never"}, {"prefix": "/beacons/", "log": "onEvent", "traces": "off"}, {"prefix": "/portal/api/", "traces": "followFrontEnd"}]}`,
+			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/", "kind": "prefix", "log": "always"}, {"prefix": "/api/", "kind": "prefix", "log": "sampled", "fraction": 0.1, "traces": "capped", "rate": 0.5}, {"prefix": "/api/widgets/{id}/content", "kind": "route", "log": "never"}, {"prefix": "/beacons/", "kind": "prefix", "log": "onEvent", "traces": "off"}, {"prefix": "/portal/api/", "kind": "prefix", "traces": "followFrontEnd"}]}`,
 			want: &ReleaseFile{
 				Outlets: map[string]ReleaseOutlet{"default": {}},
 				Surfaces: []Surface{
-					{Prefix: "/", Log: RequestLogAlways},
-					{Prefix: "/api/", Log: RequestLogSampled, Fraction: 0.1, Traces: TracesCapped, Rate: 0.5},
-					{Prefix: "/api/widgets/{id}/content", Log: RequestLogNever},
-					{Prefix: "/beacons/", Log: RequestLogOnEvent, Traces: TracesOff},
-					{Prefix: "/portal/api/", Traces: TracesFollowFrontEnd},
+					{Prefix: "/", Kind: SurfacePrefix, Log: RequestLogAlways},
+					{Prefix: "/api/", Kind: SurfacePrefix, Log: RequestLogSampled, Fraction: 0.1, Traces: TracesCapped, Rate: 0.5},
+					{Prefix: "/api/widgets/{id}/content", Kind: SurfaceRoute, Log: RequestLogNever},
+					{Prefix: "/beacons/", Kind: SurfacePrefix, Log: RequestLogOnEvent, Traces: TracesOff},
+					{Prefix: "/portal/api/", Kind: SurfacePrefix, Traces: TracesFollowFrontEnd},
 				},
 			},
 		},
+		{
+			name:    "surfaces written before the kind existed read as prefixes",
+			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/beacons/", "log": "onEvent"}, {"prefix": "/api/widgets/{id}/content", "kind": "", "log": "never"}]}`,
+			want: &ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				Surfaces: []Surface{
+					{Prefix: "/beacons/", Kind: SurfacePrefix, Log: RequestLogOnEvent},
+					{Prefix: "/api/widgets/{id}/content", Kind: SurfacePrefix, Log: RequestLogNever},
+				},
+			},
+		},
+		{name: "a surface of a third kind", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "kind": "subtree", "log": "never"}]}`, wantErr: `the surface /api/ has the kind "subtree"; a surface is a prefix or a route`},
 		{name: "a surface not under the root", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "api/", "log": "never"}]}`, wantErr: `the surface "api/" is not a path a router mounts (/beacons/, /api/photos/{id}/file)`},
 		{name: "a surface carrying an interpolation", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/${var.x}/", "log": "never"}]}`, wantErr: `the surface "/api/${var.x}/" is not a path a router mounts`},
 		{name: "a surface carrying a quote", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/\"/", "log": "never"}]}`, wantErr: `is not a path a router mounts`},

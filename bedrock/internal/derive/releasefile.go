@@ -54,9 +54,9 @@ type ReleaseFile struct {
 	// Surfaces are the surfaces the code declares a request log word or a trace setting
 	// for, in prefix order: the application default at /, an outlet at its prefix, a
 	// prefix the application mounts routes under by hand, or a generated route at the
-	// path the router mounts it at. The stack renders the request log's exclusion from
-	// the words (logging.tf). None when the code declares nothing, and then every
-	// request's entry is written.
+	// path the router mounts it at, each saying which of the two it is (Kind). The stack
+	// renders the request log's exclusion from the words (logging.tf). None when the
+	// code declares nothing, and then every request's entry is written.
 	Surfaces []Surface `json:"surfaces,omitempty"`
 }
 
@@ -68,6 +68,15 @@ type Surface struct {
 	// route pattern such as /api/widgets/{id}/content, where a segment in braces stands
 	// for any one segment, or / for the application default.
 	Prefix string `json:"prefix"`
+	// Kind says how the router matches the prefix against a request's path, and so how
+	// the exclusion's clause matches the request's URL: SurfacePrefix by prefix, so
+	// everything under /beacons/ is the surface's; SurfaceRoute to the end of the path,
+	// so /api/widgets/{id}/content is the surface's and /api/widgets/{id}/content-extra
+	// is not. The application default, an outlet and a hand-mounted prefix are prefixes;
+	// an annotated method's route is a route. A file written before the surfaces carried
+	// their kind reads as prefixes throughout, which is how every surface was matched
+	// then.
+	Kind string `json:"kind,omitempty"`
 	// Log is the request log word: RequestLogAlways, RequestLogOnEvent,
 	// RequestLogSampled or RequestLogNever; empty when the surface declares its trace
 	// setting alone.
@@ -99,6 +108,13 @@ const (
 	TracesFollowFrontEnd = "followFrontEnd"
 	TracesCapped         = "capped"
 	TracesOff            = "off"
+)
+
+// The surface kinds, as the release file spells them: a prefix is matched against the
+// start of the path, a route to its end.
+const (
+	SurfacePrefix = "prefix"
+	SurfaceRoute  = "route"
 )
 
 // FileRoute is one route of the release file that carries a file rather than JSON: an
@@ -253,18 +269,26 @@ func ReadReleaseFile(dir string) (*ReleaseFile, error) {
 var surfacePrefixRE = regexp.MustCompile(`^/$|^(/(\{[A-Za-z0-9_]+\}|[A-Za-z0-9_.-]+))+/?$`)
 
 // validateSurfaces refuses a surface of the file name the generator would not write: a
-// prefix not of the shape a router mounts, a prefix listed twice, neither a word nor a
-// setting, a word or a setting outside the vocabulary, a fraction or a rate outside
-// (0, 1], a fraction without the sampled word, or a rate without the capped setting.
+// prefix not of the shape a router mounts, a prefix listed twice, a kind that is neither
+// a prefix nor a route, neither a word nor a setting, a word or a setting outside the
+// vocabulary, a fraction or a rate outside (0, 1], a fraction without the sampled word,
+// or a rate without the capped setting. A surface without a kind, from a file written
+// before the surfaces carried one, is a prefix, which is how every surface was matched
+// then.
 func validateSurfaces(name string, surfaces []Surface) error {
 	seen := map[string]bool{}
 	for i := range surfaces {
 		s := &surfaces[i]
+		if s.Kind == "" {
+			s.Kind = SurfacePrefix
+		}
 		switch {
 		case !surfacePrefixRE.MatchString(s.Prefix):
 			return errors.Newf("%s: the surface %q is not a path a router mounts (/beacons/, /api/photos/{id}/file)", name, s.Prefix)
 		case seen[s.Prefix]:
 			return errors.Newf("%s: the surface %s is listed twice", name, s.Prefix)
+		case s.Kind != SurfacePrefix && s.Kind != SurfaceRoute:
+			return errors.Newf("%s: the surface %s has the kind %q; a surface is a %s or a %s", name, s.Prefix, s.Kind, SurfacePrefix, SurfaceRoute)
 		case s.Log == "" && s.Traces == "":
 			return errors.Newf("%s: the surface %s declares neither a request log word nor a trace setting", name, s.Prefix)
 		}

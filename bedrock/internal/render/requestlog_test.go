@@ -19,17 +19,18 @@ import (
 const requestLogScope = `((resource.type="cloud_run_revision" AND (resource.labels.service_name="imp-stg-uc1-harbor-app" OR resource.labels.service_name="imp-stg-ue4-harbor-app")) OR (resource.type="http_load_balancer" AND resource.labels.backend_service_name="imp-stg-gbl-harbor-backend"))`
 
 // lodestarSurfaces are the surfaces Lodestar declares: its beacons logged on event with
-// traces off, and the droids' ingest route logged on event.
+// traces off, a prefix, and the droids' ingest route logged on event, a route.
 var lodestarSurfaces = []derive.Surface{
-	{Prefix: "/beacons/", Log: derive.RequestLogOnEvent, Traces: derive.TracesOff},
-	{Prefix: "/droids/sectors/{sectorID}/ingest-droid-reports", Log: derive.RequestLogOnEvent},
+	{Prefix: "/beacons/", Kind: derive.SurfacePrefix, Log: derive.RequestLogOnEvent, Traces: derive.TracesOff},
+	{Prefix: "/droids/sectors/{sectorID}/ingest-droid-reports", Kind: derive.SurfaceRoute, Log: derive.RequestLogOnEvent},
 }
 
 // TestRequestLogExclusion evaluates the rendered exclusion of logging.tf the way a plan
-// would, with the stack's names in: the complete filter for Lodestar's surfaces, for a
-// sampled surface, for a never surface and for a surface excepting the one declared
-// beneath it, the resource's name, no resource for a pull-request stack (its count is
-// 0) and none rendered at all for an application whose surfaces exclude nothing.
+// would, with the stack's names in: the complete filter for Lodestar's surfaces (a
+// prefix matched by prefix, a route to the end of its path), for a sampled surface, for
+// a never surface and for a surface excepting the one declared beneath it, the
+// resource's name, no resource for a pull-request stack (its count is 0) and none
+// rendered at all for an application whose surfaces exclude nothing.
 func TestRequestLogExclusion(t *testing.T) {
 	t.Parallel()
 
@@ -45,30 +46,30 @@ func TestRequestLogExclusion(t *testing.T) {
 		{
 			name:     "Lodestar: the beacons and the droids' ingest route, on event",
 			surfaces: lodestarSurfaces,
-			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/beacons/" AND httpRequest.status < 400) OR (httpRequest.requestUrl =~ "^https://[^/]+/droids/sectors/[^/]+/ingest-droid-reports" AND httpRequest.status < 400))`,
+			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/beacons/" AND httpRequest.status < 400) OR (httpRequest.requestUrl =~ "^https://[^/]+/droids/sectors/[^/]+/ingest-droid-reports([?]|$)" AND httpRequest.status < 400))`,
 		},
 		{
 			name:     "a sampled surface",
-			surfaces: []derive.Surface{{Prefix: "/api/", Log: derive.RequestLogSampled, Fraction: 0.1}},
+			surfaces: []derive.Surface{{Prefix: "/api/", Kind: derive.SurfacePrefix, Log: derive.RequestLogSampled, Fraction: 0.1}},
 			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)))`,
 		},
 		{
-			name:     "a never surface",
-			surfaces: []derive.Surface{{Prefix: "/healthz", Log: derive.RequestLogNever}},
-			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/healthz"))`,
+			name:     "a never surface, a route",
+			surfaces: []derive.Surface{{Prefix: "/healthz", Kind: derive.SurfaceRoute, Log: derive.RequestLogNever}},
+			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/healthz([?]|$)"))`,
 		},
 		{
 			name:     "a looser child under its parent: the root sampled, the outlet always",
-			surfaces: []derive.Surface{{Prefix: "/", Log: derive.RequestLogSampled, Fraction: 0.1}, {Prefix: "/api/", Log: derive.RequestLogAlways}},
+			surfaces: []derive.Surface{{Prefix: "/", Kind: derive.SurfacePrefix, Log: derive.RequestLogSampled, Fraction: 0.1}, {Prefix: "/api/", Kind: derive.SurfacePrefix, Log: derive.RequestLogAlways}},
 			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/" AND NOT httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)))`,
 		},
 		{
-			name:    "harbor's own: the outlet sampled excepting the stored file beneath it, the stored file never, the scheduled route always",
+			name:    "harbor's own: the outlet sampled excepting the stored file's route beneath it, the route never and anchored at the end of its path, the scheduled route always",
 			fixture: true,
-			want:    requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND NOT httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file"))`,
+			want:    requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND NOT httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file([?]|$)" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file([?]|$)"))`,
 		},
 		{name: "a pull-request stack renders none", surfaces: lodestarSurfaces, pullRequest: true},
-		{name: "surfaces logged always render none", surfaces: []derive.Surface{{Prefix: "/", Log: derive.RequestLogAlways}, {Prefix: "/api/", Log: derive.RequestLogAlways, Traces: derive.TracesOff}}},
+		{name: "surfaces logged always render none", surfaces: []derive.Surface{{Prefix: "/", Kind: derive.SurfacePrefix, Log: derive.RequestLogAlways}, {Prefix: "/api/", Kind: derive.SurfacePrefix, Log: derive.RequestLogAlways, Traces: derive.TracesOff}}},
 		{name: "no surface renders none"},
 	}
 	for _, tt := range tests {

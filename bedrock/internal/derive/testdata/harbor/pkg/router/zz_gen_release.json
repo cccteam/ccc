@@ -28,15 +28,18 @@
   "surfaces": [
     {
       "prefix": "/_scheduled/send-daily-digest",
+      "kind": "route",
       "log": "always"
     },
     {
       "prefix": "/api/",
+      "kind": "prefix",
       "log": "sampled",
       "fraction": 0.1
     },
     {
       "prefix": "/api/manifests/{id}/file",
+      "kind": "route",
       "log": "never"
     }
   ]
