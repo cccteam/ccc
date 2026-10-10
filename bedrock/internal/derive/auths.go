@@ -15,9 +15,15 @@ import (
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// callbackRE matches the generated router's registration of the OIDC callback:
-// r.Get("/api/user/callback", h.CallbackOIDC()).
-var callbackRE = regexp.MustCompile(`r\.(Get|Post)\("([^"]+)",\s*h\.CallbackOIDC\(\)\)`)
+// callbackRE matches the generated router's registration of the OIDC callback: a chi
+// registration, Get or Post, of a quoted path with h.CallbackOIDC() as its handler, on
+// a receiver of any Go identifier. Two shapes exist. The router generated before the
+// body-limit step registers the session routes on the group itself,
+// r.Get("/api/user/callback", h.CallbackOIDC()); since the body-limit step (resource
+// v0.13.0) it registers them on the bounded group, bounded := r.With(resource.BodyLimit(
+// BodyLimit)) and then bounded.Get("/api/user/callback", h.CallbackOIDC()). The
+// submatches are the method and the path.
+var callbackRE = regexp.MustCompile(`[\p{L}_][\p{L}\p{Nd}_]*\.(Get|Post)\("([^"]+)",\s*h\.CallbackOIDC\(\)\)`)
 
 // auths settles the auths and, for the directory-flavored ones, their callbacks.
 func (m *Model) auths(a *app.App, cfg *config) error {
