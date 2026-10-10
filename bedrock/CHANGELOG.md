@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1](https://github.com/cccteam/ccc/compare/bedrock/v0.2.0...bedrock/v0.2.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **bedrock:** a new application's image builds with the Chainguard Go image at go1.27.2 ([#925](https://github.com/cccteam/ccc/issues/925)) ([3c2f4b6](https://github.com/cccteam/ccc/commit/3c2f4b6e9c47f71628e1ef7b4340c7e7cb95c7cf))
+* **bedrock:** the driver-declaration refusals name impulse upgrade as the remedy for an application behind the provider-drivers step, and the hand edit by its alias ([#925](https://github.com/cccteam/ccc/issues/925)) ([3c2f4b6](https://github.com/cccteam/ccc/commit/3c2f4b6e9c47f71628e1ef7b4340c7e7cb95c7cf))
+* **impulse:** impulse upgrade's help and README state the upgrade order: impulse first, then bedrock, both in one change ([#925](https://github.com/cccteam/ccc/issues/925)) ([3c2f4b6](https://github.com/cccteam/ccc/commit/3c2f4b6e9c47f71628e1ef7b4340c7e7cb95c7cf))
+
 ## [0.2.0](https://github.com/cccteam/ccc/compare/bedrock/v0.1.4...bedrock/v0.2.0) (2026-10-10)
 
 
