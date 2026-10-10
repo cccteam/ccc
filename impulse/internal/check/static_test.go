@@ -625,12 +625,24 @@ func TestIgnored(t *testing.T) {
 	}
 }
 
+// atStep answers the pins check's question about the ledger with a fixed reading: true
+// for an application at the last step, false for one behind it.
+type atStep bool
+
+func (l atStep) AtLastStep(*modfile.File) bool { return bool(l) }
+
+// TestPinsFromGoMod reads the tool directive against the running build: held at the pin,
+// a development build noted and not compared, a module build at another version failing
+// with the remedy the ledger decides (move the pin alone at the last step, walk the steps
+// behind it, move the pin when no ledger is asked), the directive missing, and the
+// framework pins' pseudo-versions and replaces.
 func TestPinsFromGoMod(t *testing.T) {
 	t.Parallel()
 
 	const (
 		held        = "module x\n\ngo 1.26.6\n\nrequire (\n\tgithub.com/cccteam/ccc/impulse v0.4.0\n\tgithub.com/cccteam/httpio v0.7.17\n)\n\ntool github.com/cccteam/ccc/impulse\n"
 		moveAdvice  = "go.mod pins impulse at v0.4.0 and the running impulse is v0.5.0: move the pin with go get -tool github.com/cccteam/ccc/impulse@v0.5.0, then go tool impulse render, then go tool impulse check"
+		walkAdvice  = "go.mod pins impulse at v0.4.0 and the running impulse is v0.5.0, and the framework pins stand behind the ledger's last step: walk the steps with impulse upgrade (go run github.com/cccteam/ccc/impulse@v0.5.0 upgrade), which moves the tool pin with each step; go get -tool ahead of the walk would drag the framework pins past the steps"
 		develNote   = "go.mod holds the impulse tool directive, pinned at v0.4.0; the running impulse is a development build ((devel), built from a checkout), so the pin is not compared with it"
 		noDirective = "go.mod has no tool directive for github.com/cccteam/ccc/impulse, so CI's go tool impulse check has nothing to run: run go get -tool github.com/cccteam/ccc/impulse@%s, then go tool impulse render, then go tool impulse check"
 	)
@@ -641,6 +653,7 @@ func TestPinsFromGoMod(t *testing.T) {
 		name        string
 		gomod       string
 		build       Build
+		ledger      Ledger
 		wantStatus  Status
 		wantSummary string
 		wantDetails []string
@@ -660,8 +673,20 @@ func TestPinsFromGoMod(t *testing.T) {
 			wantDetails: []string{"go.mod holds the impulse tool directive, pinned at v0.4.0; the running impulse is a development build (v0.0.0-20261002133432-cef21637387c+dirty, built from a checkout), so the pin is not compared with it"},
 		},
 		{
-			name: "a module build at another version", gomod: held, build: Build{Version: "v0.5.0", FromModule: true},
+			name: "a module build at another version, no ledger asked: move the pin", gomod: held, build: Build{Version: "v0.5.0", FromModule: true},
 			wantStatus: Fail, wantSummary: "1 framework pin problem(s)", wantDetails: []string{moveAdvice},
+		},
+		{
+			name: "a module build at another version, the application at the ledger's last step: move the pin", gomod: held, build: Build{Version: "v0.5.0", FromModule: true}, ledger: atStep(true),
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)", wantDetails: []string{moveAdvice},
+		},
+		{
+			name: "a module build at another version, the application behind the ledger: walk the steps", gomod: held, build: Build{Version: "v0.5.0", FromModule: true}, ledger: atStep(false),
+			wantStatus: Fail, wantSummary: "1 framework pin problem(s)", wantDetails: []string{walkAdvice},
+		},
+		{
+			name: "at the pin, the application behind the ledger: the pin is not the finding", gomod: held, build: atPin, ledger: atStep(false),
+			wantStatus: Pass, wantSummary: "2 framework pin(s) are released versions; go.mod holds the impulse tool directive at the running impulse's version",
 		},
 		{
 			name: "no directive, a module build names its version", gomod: "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n", build: Build{Version: "v0.5.0", FromModule: true},
@@ -708,7 +733,7 @@ func TestPinsFromGoMod(t *testing.T) {
 			if err != nil {
 				t.Fatalf("modfile.Parse() error = %v", err)
 			}
-			got := pins{build: func() Build { return tt.build }}.Run(context.Background(), &Env{App: &app.App{GoMod: mod}})
+			got := pins{build: func() Build { return tt.build }}.Run(context.Background(), &Env{App: &app.App{GoMod: mod}, Ledger: tt.ledger})
 			want := Result{Name: pins{}.Name(), Status: tt.wantStatus, Summary: tt.wantSummary, Details: tt.wantDetails}
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("Run() mismatch (-want +got):\n%s", diff)

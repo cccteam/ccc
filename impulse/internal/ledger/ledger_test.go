@@ -297,6 +297,46 @@ func TestSkeletonPins(t *testing.T) {
 	}
 }
 
+// TestCurrentAtLastStep reads the recorded ledger as the checks do: go.mod at the last
+// step's pins reaches it, one at the step before's does not, and one without framework
+// pins does not.
+func TestCurrentAtLastStep(t *testing.T) {
+	t.Parallel()
+
+	goMod := func(pins map[string]string) string {
+		var b strings.Builder
+		b.WriteString("module example.com/acme/beacon\n\ngo 1.26\n\nrequire (\n")
+		for _, name := range (&Step{Pins: pins}).PinNames() {
+			b.WriteString("\t" + name + " " + pins[name] + "\n")
+		}
+		b.WriteString(")\n")
+
+		return b.String()
+	}
+	tests := []struct {
+		name  string
+		gomod string
+		want  bool
+	}{
+		{name: "at the last step", gomod: goMod(Steps[len(Steps)-1].Pins), want: true},
+		{name: "at the step before", gomod: goMod(Steps[len(Steps)-2].Pins), want: false},
+		{name: "no framework pins", gomod: "module example.com/acme/beacon\n\ngo 1.26\n", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mod, err := modfile.Parse("go.mod", []byte(tt.gomod), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := (Current{}).AtLastStep(mod); got != tt.want {
+				t.Errorf("AtLastStep() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestToolDirectiveDrag holds impulse's own go.mod to the ledger's last step: no framework
 // module the step pins is required at a version beyond the pin. The tool directive puts
 // impulse's requirements into an application's build list, so this is what the tool pin's

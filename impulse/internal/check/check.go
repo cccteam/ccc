@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/impulse/app"
 )
@@ -104,6 +105,19 @@ type Env struct {
 	Fix bool
 	// Out receives progress notes such as "running go generate".
 	Out io.Writer
+	// Ledger answers where the application stands against the upgrade ledger; nil reads
+	// it as at the last step.
+	Ledger Ledger
+}
+
+// Ledger is what the checks ask of the upgrade ledger: whether an application's framework
+// pins reach its last step. The pins check's remedy turns on it, since an application
+// behind the ledger is moved by impulse upgrade, step by step, and never by the tool pin
+// alone, whose move ahead of the walk drags the framework pins past the steps. The ledger
+// package implements it; a check run without one reads the application as at the last
+// step.
+type Ledger interface {
+	AtLastStep(mod *modfile.File) bool
 }
 
 func (e *Env) notef(format string, args ...any) {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
+	"github.com/cccteam/ccc/impulse/internal/ledger"
 )
 
 func newCheck() *cobra.Command {
@@ -53,6 +54,7 @@ files in the working tree; pass --skip-generate to leave it out.`,
 				SkipGenerate: skipGenerate,
 				Fix:          fix,
 				Out:          cmd.ErrOrStderr(),
+				Ledger:       ledger.Current{},
 			}
 			results := check.Run(cmd.Context(), env, checks)
 			check.Report(cmd.OutOrStdout(), results)

@@ -13,6 +13,7 @@ import (
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
+	"github.com/cccteam/ccc/impulse/internal/ledger"
 )
 
 func newHandoff() *cobra.Command {
@@ -51,7 +52,7 @@ the verification removes it when everything is clean, and it is never committed.
 				return err
 			}
 			out := cmd.OutOrStdout()
-			env := &check.Env{App: a, Exec: check.OSExec{}, SkipGenerate: skipGenerate, Out: cmd.ErrOrStderr()}
+			env := &check.Env{App: a, Exec: check.OSExec{}, SkipGenerate: skipGenerate, Out: cmd.ErrOrStderr(), Ledger: ledger.Current{}}
 			if verify {
 				return verifyHandoff(ctx, env, repo, nil, out)
 			}

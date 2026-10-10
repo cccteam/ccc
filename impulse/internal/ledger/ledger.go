@@ -297,6 +297,16 @@ func (s *Step) MovesTool(pin string) bool {
 	return s.Impulse != "" && (pin == "" || semver.Compare(pin, s.Impulse) < 0)
 }
 
+// Current is the recorded ledger as the checks ask it (check.Ledger).
+type Current struct{}
+
+// AtLastStep reports whether the framework pins in go.mod reach the recorded ledger's last
+// step: no step is pending for the application, so moving the tool pin alone is right;
+// behind it, impulse upgrade is what moves the pins.
+func (Current) AtLastStep(mod *modfile.File) bool {
+	return Position(Steps, AppPins(mod)) == len(Steps)-1
+}
+
 // AppPins reads the framework pins from an application's go.mod: every required module
 // under the framework prefix but impulse itself, whose pin is the tool's.
 func AppPins(mod *modfile.File) map[string]string {

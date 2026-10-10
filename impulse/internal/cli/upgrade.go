@@ -483,7 +483,7 @@ func (u *upgrader) checkPinned(ctx context.Context, f *transitionFlags, a *app.A
 
 // env is the check environment of a step: the checks apply their mechanical remedies.
 func (u *upgrader) env(f *transitionFlags, a *app.App) *check.Env {
-	return &check.Env{App: a, Exec: u.exec, SkipGenerate: f.skipGenerate, Fix: true, Out: u.err}
+	return &check.Env{App: a, Exec: u.exec, SkipGenerate: f.skipGenerate, Fix: true, Out: u.err, Ledger: ledger.Current{}}
 }
 
 // handoff writes the brief for the failing check and stops the step with its changes
