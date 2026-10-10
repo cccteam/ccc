@@ -177,7 +177,7 @@ func (m *Model) firestore(a *app.App) error {
 		return nil
 	}
 	if project == nil {
-		return errors.Newf("%s (%s) declares a Firestore database, and the config package declares no variable for its project (%s): the stack sets it to the environment project, where the database is, since the Spanner project is the shared instance's in an environment that shares one", database.Name, database.Declaration(), varFirestoreProject)
+		return errors.Newf("%s (%s) declares a Firestore database, and the config package declares no variable for its project (%s): the stack sets it to the environment project, where the database is, since the Spanner project is the shared instance's in an environment that shares one; %s", database.Name, database.Declaration(), varFirestoreProject, m.driverRemedy(liveDriver, levelConfiguration(database.Level)+", in place of the variables declared by hand"))
 	}
 	if project.Level != database.Level {
 		return errors.Newf("%s (%s) is declared at the %s level and %s (%s) at the %s level; the stack sets both on the processes that construct the database's level, so they belong together", project.Name, project.Declaration(), project.Level, database.Name, database.Declaration(), database.Level)

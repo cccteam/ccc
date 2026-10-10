@@ -356,9 +356,14 @@ each build's job, so the running service, and only it, starts the job of its own
 through the Cloud Run API
 (a schedule calls an endpoint on the service; the pipeline never runs it). The variable's
 name comes from the job driver's declaration (`resource/jobs/cloudrun/declaration`), which
-the served site reads by embedding `cloudrun.Settings` in a configuration level, and
+the served site reads by embedding the job driver's settings (`jobstarter.Settings`, the
+alias the skeleton binds `resource/jobs/cloudrun` under) in a configuration level, and
 `bedrock check` refuses a configuration with one half and not the other: a job process
-with no level declaring the variable, or the variable declared with no job process. It
+with no level declaring the variable, or the variable declared with no job process. For an
+application behind impulse's provider-drivers step (its `go.mod` requires resource before
+v0.14.0, the release with the drivers), the refusal names `impulse upgrade` as the remedy,
+since that step is what embeds the settings; at or after it, the refusal names the hand
+edit by the alias. It
 also refuses the driver's settings embedded at a level another process constructs (the
 migrate command's or the job process's), naming that process: the settings sit at the
 served site's level, the one no other process constructs, since only the service starts
@@ -577,6 +582,12 @@ that bedrock. Commit `placement.json` with the rendered files: from that commit 
 pipeline's first step and the infrastructure check get that bedrock, and every
 `bedrock deploy` step runs it. The pin is the one place a bedrock version appears in an
 application; nothing else names one.
+
+Upgrade impulse first, then bedrock, and land both in one change: bedrock's checks read
+what `impulse upgrade` writes (the drivers' settings the configuration embeds, the release
+file, the processes), and impulse reads nothing bedrock renders. An application behind
+impulse's provider-drivers step is refused, and the refusal names `impulse upgrade` as the
+remedy.
 
 - **A release** (`bedrock upgrade v0.4.0`, or no argument for the latest release; a
   pre-release is moved to by name). It writes the version and the release's linux/amd64

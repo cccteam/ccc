@@ -60,6 +60,11 @@ commit the pipeline's first step and the infrastructure check get the pinned bed
 bedrock deploy step runs it. The pin is the one place a bedrock version appears in the
 application.
 
+Upgrade impulse first, then bedrock, and land both in one change: bedrock's checks read what
+impulse's walk writes (the drivers' settings the configuration embeds, the release file, the
+processes), and the walk reads nothing bedrock renders. An application behind impulse's
+provider-drivers step is refused here, and the refusal names impulse upgrade as the remedy.
+
 render and check refuse a placement pinned to another bedrock than a release or an installed
 commit running them, so the installed bedrock is kept at the pin; upgrade is the command that
 moves it. Run from anywhere inside the repository, it finds the stack and the application as
