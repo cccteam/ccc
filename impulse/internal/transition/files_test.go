@@ -8,8 +8,42 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/cccteam/ccc/cloud"
 	"github.com/cccteam/ccc/impulse/app"
+	cloudrundeclaration "github.com/cccteam/ccc/resource/jobs/cloudrun/declaration"
 )
+
+// TestJobsTemplateVariable holds the variable the development template documents to the
+// job driver's declaration, by its Template field's name and not its position, and to
+// the name the fixtures spell: a field renamed or moved on the driver, or a retag of it,
+// fails here rather than in a template that documents a variable the driver never reads.
+func TestJobsTemplateVariable(t *testing.T) {
+	t.Parallel()
+
+	if want := templateVariableOf(cloudrundeclaration.Settings()); jobsTemplateVariable != want {
+		t.Errorf("jobsTemplateVariable = %q, want the declaration's %q", jobsTemplateVariable, want)
+	}
+	tests := []struct {
+		name string
+		d    cloud.Declaration
+		want string
+	}{
+		{name: "the job driver's declaration", d: cloudrundeclaration.Settings(), want: "APP_JOBS_TEMPLATE"},
+		{name: "a tag with options keeps the variable alone", d: cloud.Declaration{Fields: []cloud.Field{{Name: jobsTemplateField, Tag: "APP_OTHER_TEMPLATE, required"}}}, want: "APP_OTHER_TEMPLATE"},
+		{name: "the field found by name, not by position", d: cloud.Declaration{Fields: []cloud.Field{{Name: "Region", Tag: "APP_REGION"}, {Name: jobsTemplateField, Tag: "APP_JOBS_TEMPLATE"}}}, want: "APP_JOBS_TEMPLATE"},
+		{name: "a declaration without the field", d: cloud.Declaration{Fields: []cloud.Field{{Name: "Region", Tag: "APP_REGION"}}}},
+		{name: "a declaration with no field"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := templateVariableOf(tt.d); got != tt.want {
+				t.Errorf("templateVariableOf() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
 
 // skeletonModule is the module path the base skeleton's files carry; the fixtures
 // rewrite it to beacon's.

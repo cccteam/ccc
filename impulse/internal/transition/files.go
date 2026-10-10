@@ -18,8 +18,10 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/cloud"
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
+	cloudrundeclaration "github.com/cccteam/ccc/resource/jobs/cloudrun/declaration"
 )
 
 // Files wires the framework's file store into an application (resource/filestore): the
@@ -472,11 +474,32 @@ func (Files) writeEnvTemplate(a *app.App, ch *Change) error {
 
 // jobsTemplateVariable is the job driver's variable (cloudrun.Settings), which the site
 // level declares by embedding the settings, so the development template documents it.
-const jobsTemplateVariable = "APP_JOBS_TEMPLATE"
+// The name is read off the driver's declaration, by its template field, so the template
+// documents the variable the driver reads however the driver spells it.
+var jobsTemplateVariable = templateVariableOf(cloudrundeclaration.Settings())
+
+// jobsTemplateField is the field of the job driver's settings struct that carries the
+// template job, by the name the declaration gives it.
+const jobsTemplateField = "Template"
+
+// templateVariableOf reads the template variable off the job driver's declaration: the
+// variable the tag of its template field names, without the tag's options. Empty when
+// the declaration has no field of that name, which the tests hold it against.
+func templateVariableOf(d cloud.Declaration) string {
+	for _, f := range d.Fields {
+		if f.Name == jobsTemplateField {
+			variable, _, _ := strings.Cut(f.Tag, ",")
+
+			return strings.TrimSpace(variable)
+		}
+	}
+
+	return ""
+}
 
 // jobsTemplateBlock documents the job driver's variable in the development template,
 // unset: no job is configured in development.
-const jobsTemplateBlock = "# " + jobsTemplateVariable + " is the job process's template job as the Cloud Run API names it, read by\n" +
+var jobsTemplateBlock = "# " + jobsTemplateVariable + " is the job process's template job as the Cloud Run API names it, read by\n" +
 	"# the job driver (resource/jobs/cloudrun), whose settings the site level embeds; on Cloud Run\n" +
 	"# the stack sets it, and the site starts the copy of its own build. Unset, as in development,\n" +
 	"# no job is configured, and a scheduled method that starts one says so.\n" +
