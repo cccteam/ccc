@@ -497,7 +497,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	referenceDir := ""
 	if reference != "" {
 		if referenceDir, err = renderReference(reference); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %v\n", err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %s\n", message(err))
 		}
 	}
 	guard, err := handoff.Take(a, handoff.FromTree(a))
