@@ -11,7 +11,10 @@ baseline and the product-shaped tour in one.
 
 Round 3 (2026-09-09) is a from-scratch rebuild born from `impulse`: the layout, the
 configuration levels, the two auth packages, the environment template, the bun workspace,
-and the deploy split come from the tool; the plan's domain sits on top. Every struct,
+and the deploy split come from the tool; the plan's domain sits on top. The core level
+opens the cloud driver (`cloud/gcp`) as the skeletons do, so where the process's logs and
+spans go is built from the settings the level embeds and nothing in the application names
+a logging client or a trace provider ([`cloud.driver`](pkg/config/config.go)). Every struct,
 method, test, component, and persona that proves a framework capability says so in a
 `Demonstrates:` paragraph, and [DEMONSTRATIONS.md](DEMONSTRATIONS.md) is the generated
 table of what proves what. Everything here is synthetic. The crew personas' plaintext

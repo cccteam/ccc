@@ -9,11 +9,11 @@ replace github.com/cccteam/ccc/resource => ../
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/logging v1.20.0
 	cloud.google.com/go/spanner v1.95.1
 	github.com/cccteam/access v0.10.3
 	github.com/cccteam/ccc v0.3.3
 	github.com/cccteam/ccc/accesstypes v0.6.0
+	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/resource v0.13.1-0.20261009215843-c5640470c62f
 	github.com/cccteam/ccc/tracer v0.2.2-0.20261009221627-cc079f540595
 	github.com/cccteam/db-initiator v0.4.1
@@ -40,6 +40,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/firestore v1.26.0 // indirect
 	cloud.google.com/go/iam v1.14.0 // indirect
+	cloud.google.com/go/logging v1.20.0 // indirect
 	cloud.google.com/go/longrunning v1.3.0 // indirect
 	cloud.google.com/go/monitoring v1.31.0 // indirect
 	cloud.google.com/go/storage v1.69.0 // indirect
