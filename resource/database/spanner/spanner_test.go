@@ -1,12 +1,14 @@
 package spanner_test
 
 import (
+	"context"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
-
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/database/spanner"
 	"github.com/cccteam/ccc/resource/database/spanner/declaration"
@@ -151,7 +153,56 @@ func settingsOf(t *testing.T, databasePath string) spanner.Settings {
 		t.Fatalf("%q is not a database's resource name", databasePath)
 	}
 
-	return spanner.Settings{ProjectID: parts[1], InstanceID: parts[3], DatabaseName: parts[5]}
+	return spanner.Settings{ProjectID: parts[1], InstanceID: parts[3], DatabaseName: parts[5], EmulatorHost: os.Getenv("SPANNER_EMULATOR_HOST")}
+}
+
+// TestOpenDeclaredEmulatorHost holds the driver to its own EmulatorHost: the harness's
+// host reaches the emulator, and a closed port does not, although the process variable the
+// client library reads still names the emulator, so the setting is what the client follows.
+func TestOpenDeclaredEmulatorHost(t *testing.T) {
+	t.Parallel()
+
+	db, err := spannerEmulator(t).CreateDatabase(t.Context(), "declared")
+	if err != nil {
+		t.Fatalf("CreateDatabase() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("SpannerDB.Close() error = %v", err)
+		}
+	})
+	settings := settingsOf(t, db.DatabaseName())
+	if settings.EmulatorHost == "" {
+		t.Fatal("the harness set no SPANNER_EMULATOR_HOST")
+	}
+	closed := settings
+	closed.EmulatorHost = "127.0.0.1:1"
+
+	tests := []struct {
+		name     string
+		settings spanner.Settings
+		wantErr  bool
+	}{
+		{name: "the declared host reaches the emulator", settings: settings},
+		{name: "a declared closed port is what the client dials", settings: closed, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			d, err := spanner.Open(t.Context(), tt.settings)
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+			defer d.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			_, err = d.SpannerClient.Single().Query(ctx, cloudspanner.NewStatement("SELECT 1")).Next()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("SELECT 1 through %q: error = %v, wantErr %v", tt.settings.EmulatorHost, err, tt.wantErr)
+			}
+		})
+	}
 }
 
 // fmtPanic renders a recovered value for a message.

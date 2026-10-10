@@ -35,6 +35,14 @@ func Settings() cloud.Declaration {
 				Tag:  "GOOGLE_CLOUD_SPANNER_DATABASE_NAME,required",
 				Doc:  "DatabaseName is the database on the instance.",
 			},
+			{
+				Name: "EmulatorHost",
+				Type: "string",
+				Tag:  "SPANNER_EMULATOR_HOST",
+				Doc: "EmulatorHost is the Spanner emulator's host:port, the development stack's. Set,\n" +
+					"the client talks to it in the clear with no credential, the way the client\n" +
+					"library does when it reads the same variable; a deployment leaves it empty.",
+			},
 		},
 	}
 }
