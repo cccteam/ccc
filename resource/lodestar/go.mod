@@ -14,7 +14,7 @@ require (
 	github.com/cccteam/ccc v0.3.3
 	github.com/cccteam/ccc/accesstypes v0.6.0
 	github.com/cccteam/ccc/cloud v0.2.1
-	github.com/cccteam/ccc/resource v0.13.1-0.20261009215843-c5640470c62f
+	github.com/cccteam/ccc/resource v0.14.0
 	github.com/cccteam/ccc/tracer v0.3.0
 	github.com/cccteam/db-initiator v0.4.1
 	github.com/cccteam/httpio v0.7.21
