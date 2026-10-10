@@ -30,11 +30,53 @@ func (r Repo) Check(ctx context.Context) error {
 // Dirty lists the paths git reports as modified, staged, or untracked, the brief itself
 // excepted.
 func (r Repo) Dirty(ctx context.Context) ([]string, error) {
+	entries, err := r.status(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, e := range entries {
+		paths = append(paths, e.path)
+	}
+
+	return paths, nil
+}
+
+// Unstaged lists the paths with changes the index does not hold, modified in the working
+// tree (staged or not) or untracked, the brief itself excepted. A handoff of the staged
+// change refuses them, so the index holds exactly the change under review.
+func (r Repo) Unstaged(ctx context.Context) ([]string, error) {
+	entries, err := r.status(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, e := range entries {
+		if e.tree != ' ' {
+			paths = append(paths, e.path)
+		}
+	}
+
+	return paths, nil
+}
+
+// statusEntry is one line of git status --porcelain: the index column (the path against
+// HEAD in the index), the tree column (the working tree against the index; both '?' for
+// an untracked path), and the path.
+type statusEntry struct {
+	index byte
+	tree  byte
+	path  string
+}
+
+// status reads git status --porcelain with untracked files listed one by one, the brief
+// itself left out.
+func (r Repo) status(ctx context.Context) ([]statusEntry, error) {
 	out, err := r.Exec.Run(ctx, r.Root, nil, "git", "status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return nil, errors.Wrap(err, "git status")
 	}
-	var paths []string
+	var entries []statusEntry
 	for line := range strings.Lines(string(out)) {
 		line = strings.TrimRight(line, "\n")
 		if len(line) < 4 {
@@ -44,10 +86,10 @@ func (r Repo) Dirty(ctx context.Context) ([]string, error) {
 		if p == File {
 			continue
 		}
-		paths = append(paths, p)
+		entries = append(entries, statusEntry{index: line[0], tree: line[1], path: p})
 	}
 
-	return paths, nil
+	return entries, nil
 }
 
 // Head returns the commit HEAD names.

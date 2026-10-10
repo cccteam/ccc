@@ -12,6 +12,7 @@ require (
 	github.com/cccteam/ccc v0.3.3
 	github.com/cccteam/ccc/accesstypes v0.6.0
 	github.com/cccteam/ccc/cache v0.2.0
+	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/pkg v0.1.5
 	github.com/cccteam/ccc/securehash v0.0.14
 	github.com/cccteam/ccc/tracer v0.2.2-0.20261009221627-cc079f540595
@@ -28,6 +29,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/momaek/formattag v0.0.10
+	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.5.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.57.0

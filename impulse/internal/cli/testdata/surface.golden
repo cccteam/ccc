@@ -65,8 +65,11 @@ impulse handoff
   --agent-arg stringArray
   --agent-command string (default claude)
   --app string (default .)
+  --change stringArray
+  --meaning stringArray
   --reference string
   --skip-generate bool
+  --staged bool
   --verify bool
 impulse new <dir>
   --agent bool

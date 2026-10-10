@@ -105,9 +105,9 @@ func run(ctx context.Context, reset bool) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	settings, err := config.LoadSpannerSettings(ctx)
+	settings, err := config.LoadDatabaseSettings(ctx)
 	if err != nil {
-		return errors.Wrap(err, "config.LoadSpannerSettings()")
+		return errors.Wrap(err, "config.LoadDatabaseSettings()")
 	}
 
 	where := targetOf(os.Getenv("SPANNER_EMULATOR_HOST"))
@@ -194,7 +194,7 @@ func targetOf(emulatorHost string) target {
 // ensureInstance creates the emulator's instance when it is missing. A real instance is
 // never created here: db-initiator's instance call carries no configuration or size, and
 // a real one is provisioned by whoever owns the project.
-func ensureInstance(ctx context.Context, settings config.SpannerSettings) error {
+func ensureInstance(ctx context.Context, settings config.DatabaseSettings) error {
 	admin, err := instanceadmin.NewInstanceAdminClient(ctx)
 	if err != nil {
 		return errors.Wrap(err, "instance.NewInstanceAdminClient()")
@@ -222,7 +222,7 @@ func ensureInstance(ctx context.Context, settings config.SpannerSettings) error 
 
 // ensureDatabase creates the database when it is missing and reports whether it already
 // existed.
-func ensureDatabase(ctx context.Context, settings config.SpannerSettings) (bool, error) {
+func ensureDatabase(ctx context.Context, settings config.DatabaseSettings) (bool, error) {
 	admin, err := databaseadmin.NewDatabaseAdminClient(ctx)
 	if err != nil {
 		return false, errors.Wrap(err, "database.NewDatabaseAdminClient()")
@@ -253,7 +253,7 @@ func ensureDatabase(ctx context.Context, settings config.SpannerSettings) (bool,
 
 // resetData empties the existing database's data through the deploy package, over a
 // client of its own: the data level's clients are not open yet.
-func resetData(ctx context.Context, settings config.SpannerSettings) error {
+func resetData(ctx context.Context, settings config.DatabaseSettings) error {
 	client, err := spanner.NewClient(ctx, settings.DatabasePath())
 	if err != nil {
 		return errors.Wrap(err, "spanner.NewClient()")

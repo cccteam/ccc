@@ -194,11 +194,13 @@ told about a change through a change set of its user's own in Firestore, and ask
 the page again itself, by the change's timestamp.
 
 To watch it in the emulator: the Firestore emulator answers Firestore's REST API on
-`FIRESTORE_EMULATOR_HOST`, and `Authorization: Bearer owner` reads everything, so with
-the stack running and `.envrc` loaded
+`FIRESTORE_EMULATOR_HOST`, and `Authorization: Bearer owner` reads everything. The
+database is the one the live driver opens under its own project id, `live-emulator`
+(`firestore.EmulatorProject`, since `GOOGLE_CLOUD_FIRESTORE_PROJECT` is unset), the id the
+token route hands the browser too. So with the stack running and `.envrc` loaded
 
     curl -s -H 'Authorization: Bearer owner' \
-      "http://$FIRESTORE_EMULATOR_HOST/v1/projects/$GOOGLE_CLOUD_SPANNER_PROJECT/databases/(default)/documents/subscriptions"
+      "http://$FIRESTORE_EMULATOR_HOST/v1/projects/live-emulator/databases/(default)/documents/subscriptions"
 
 lists every live subscription (`principal`, `tab`, `resource`, `key` for a row or
 `domain` for a list, `expiry`), and `.../documents/users/crew%7Charbormaster/changes`
@@ -222,7 +224,8 @@ How it is wired:
   empty record. In production `APP_FIRESTORE_DATABASE` names the database,
   `GOOGLE_CLOUD_FIRESTORE_PROJECT` its project (required with the database: the data
   level refuses to start naming both when it is empty, since the database is not assumed
-  to be in the Spanner project; against the emulator it may stay unset) and
+  to be in the Spanner project; against the emulator it may stay unset, and the driver
+  opens the emulator under its own project id, `live-emulator`) and
   `APP_FIREBASE_API_KEY` the browser's key; the composite indexes and the time-to-live
   policies the live package's README lists are the infrastructure's to apply.
 - The server. `pkg/config/data.go` reads the Firestore settings at the data level and

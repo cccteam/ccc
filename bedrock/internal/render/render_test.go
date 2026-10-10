@@ -706,6 +706,81 @@ func TestFileStores(t *testing.T) {
 // bucket's whole permission list, objectUser for the site and, when the job process
 // constructs the store's level, the job, nobody else, set again with a replaced bucket,
 // and no member resource on the bucket beside it.
+// TestViewJobsTemplate finds the job process's template variable for the templates, as
+// the served site declares it by embedding the job driver's settings, under the name
+// derive reads off the driver's declaration; a model with a job process and no variable
+// in the role is refused, since locals.tf would name the template to the service through
+// nothing, and a model without a job process has none to find.
+func TestViewJobsTemplate(t *testing.T) {
+	t.Parallel()
+
+	// withoutRole strips the template variable's role, as a model derive never produces
+	// would carry it.
+	withoutRole := func(m *derive.Model) {
+		for i := range m.Variables {
+			if m.Variables[i].Role == derive.RoleJobsTemplate {
+				m.Variables[i].Role = derive.RoleNone
+			}
+		}
+	}
+	tests := []struct {
+		name string
+		// mutate changes the harbor model before the view is prepared.
+		mutate func(m *derive.Model)
+		// wantDeclaration and wantLevel are the variable the view found; both empty for
+		// none.
+		wantDeclaration string
+		wantLevel       string
+		wantErr         string
+	}{
+		{name: "harbor: the site level embeds the driver's settings", mutate: func(*derive.Model) {}, wantDeclaration: "siteConfig.Template", wantLevel: derive.LevelSite},
+		{
+			name:    "a job process with no variable in the role is refused",
+			mutate:  withoutRole,
+			wantErr: "no variable in the jobs-template role: the stack names the job process's template job to the service through it",
+		},
+		{
+			name: "no job process: nothing to find",
+			mutate: func(m *derive.Model) {
+				withoutRole(m)
+				m.Jobs = nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			tt.mutate(m)
+			v, err := newView(m)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("newView() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("newView() error = %v", err)
+			}
+			if v.JobsTemplateVariable != derive.JobsTemplateVariable {
+				t.Errorf("JobsTemplateVariable = %q, want derive's %q", v.JobsTemplateVariable, derive.JobsTemplateVariable)
+			}
+			if tt.wantDeclaration == "" {
+				if v.JobsTemplate != nil {
+					t.Errorf("JobsTemplate = %+v, want none", v.JobsTemplate)
+				}
+
+				return
+			}
+			if v.JobsTemplate == nil || v.JobsTemplate.Declaration() != tt.wantDeclaration || v.JobsTemplate.Level != tt.wantLevel || v.JobsTemplate.Name != v.JobsTemplateVariable {
+				t.Errorf("JobsTemplate = %+v, want %s at the %s level named %s", v.JobsTemplate, tt.wantDeclaration, tt.wantLevel, v.JobsTemplateVariable)
+			}
+		})
+	}
+}
+
 func TestFileStorePolicy(t *testing.T) {
 	t.Parallel()
 

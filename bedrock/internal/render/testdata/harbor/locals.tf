@@ -257,12 +257,13 @@ locals {
     APP_STAFF_OIDC_GROUP_LOOKUP = var.staff_oidc_group_lookup
   }
 
-  # APP_JOBS_TEMPLATE: the job process's template job (cloud-run.tf), which the
-  # pipeline copies per build into <template>-<version key> on that build's image. No
-  # configuration level declares it: the framework (resource/jobs) reads it, with the
-  # version the image bakes in, and names the job of its own build from the two, so
-  # each revision starts the job of its build, and a traffic rollback to an earlier
-  # revision starts that revision's. A pull-request stack's is its own template.
+  # siteConfig.Template: the job process's template job (cloud-run.tf), which
+  # the pipeline copies per build into <template>-<version key> on that build's
+  # image. The framework's job driver (resource/jobs/cloudrun), whose settings the
+  # site level embeds, reads it with the version the image bakes in and
+  # names the job of its own build from the two, so each revision starts the job of
+  # its build, and a traffic rollback to an earlier revision starts that revision's.
+  # A pull-request stack's is its own template.
   jobs_template_env = {
     APP_JOBS_TEMPLATE = local.jobs_job
   }

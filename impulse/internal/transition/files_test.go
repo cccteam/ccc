@@ -8,8 +8,42 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/cccteam/ccc/cloud"
 	"github.com/cccteam/ccc/impulse/app"
+	cloudrundeclaration "github.com/cccteam/ccc/resource/jobs/cloudrun/declaration"
 )
+
+// TestJobsTemplateVariable holds the variable the development template documents to the
+// job driver's declaration, by its Template field's name and not its position, and to
+// the name the fixtures spell: a field renamed or moved on the driver, or a retag of it,
+// fails here rather than in a template that documents a variable the driver never reads.
+func TestJobsTemplateVariable(t *testing.T) {
+	t.Parallel()
+
+	if want := templateVariableOf(cloudrundeclaration.Settings()); jobsTemplateVariable != want {
+		t.Errorf("jobsTemplateVariable = %q, want the declaration's %q", jobsTemplateVariable, want)
+	}
+	tests := []struct {
+		name string
+		d    cloud.Declaration
+		want string
+	}{
+		{name: "the job driver's declaration", d: cloudrundeclaration.Settings(), want: "APP_JOBS_TEMPLATE"},
+		{name: "a tag with options keeps the variable alone", d: cloud.Declaration{Fields: []cloud.Field{{Name: jobsTemplateField, Tag: "APP_OTHER_TEMPLATE, required"}}}, want: "APP_OTHER_TEMPLATE"},
+		{name: "the field found by name, not by position", d: cloud.Declaration{Fields: []cloud.Field{{Name: "Region", Tag: "APP_REGION"}, {Name: jobsTemplateField, Tag: "APP_JOBS_TEMPLATE"}}}, want: "APP_JOBS_TEMPLATE"},
+		{name: "a declaration without the field", d: cloud.Declaration{Fields: []cloud.Field{{Name: "Region", Tag: "APP_REGION"}}}},
+		{name: "a declaration with no field"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := templateVariableOf(tt.d); got != tt.want {
+				t.Errorf("templateVariableOf() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
 
 // skeletonModule is the module path the base skeleton's files carry; the fixtures
 // rewrite it to beacon's.
@@ -133,12 +167,12 @@ func TestFilesApply(t *testing.T) {
 	}
 	wantDid := []string{
 		"pkg/config/files.go: FileStoreSettings (APP_FILE_STORE), LoadFileStoreSettings for the bootstrap, openFileStore and fileStoreOptions; pkg/config/data.go gained the files field, FileStores on dataConfig, the opening, the resource client built over the store, and the release in Close",
-		".envrc.template: APP_FILE_STORE=file://uploads, the development store",
+		".envrc.template: APP_FILE_STORE=file://uploads, the development store, and APP_JOBS_TEMPLATE documented in the site block, unset",
 		".gitignore: uploads/, the development store's directory",
 		"cmd/bootstrap/files.go: emptyFileStore, which empties a file:// store; cmd/bootstrap/main.go calls it before the development seed",
 		"pkg/jobs/cleanup.go: CleanupCommand (cleanup-files) and CleanupFiles, the orphaned-file cleanup over the store through the generated FileHolders(); cmd/jobs/main.go: the job process running it, with -window and -dry-run",
 		`pkg/rpc: the rpc package, its Client carrying the job process's starter (Jobs()), and CleanUpFiles (@rpc, @schedule("0 9 * * *")), which starts cmd/jobs cleanup-files through it`,
-		"pkg/config/site.go: SiteConfiguration gained the fields, built from the environment; pkg/config/scheduled.go: Scheduler() and Jobs(), which the app's Configurer asks for",
+		"pkg/config/site.go: SiteConfiguration gained the fields, built from the environment; pkg/config/scheduled.go: Scheduler() and Jobs(), which the app's Configurer asks for, and Close(), which releases the driver with the level",
 		"app/app.go: App gained Scheduler() and Jobs() on Configurer, the scheduler field, its construction, and the RPC client built over the starter; app/scheduled.go: SchedulerAuth, the middleware the generated router mounts the scheduled routes behind, and RPCClient(), the dependencies of the RPC methods",
 		"the test configurers gained a nil guard, a fake starter and a memory file store: test/authz/harness_test.go (testConfigurer: Scheduler(), Jobs(), and the files field); test/integration/harness_test.go (servedConfigurer: Scheduler(), Jobs(), and the files field)",
 		`cmd/generate/resourcegenerator/main.go: WithRPC("pkg/rpc"), so the generator reads the rpc package`,
@@ -160,14 +194,14 @@ func TestFilesApply(t *testing.T) {
 			`"github.com/cccteam/ccc/resource/filestore"`,
 			"files filestore.Store",
 			"FileStores FileStoreSettings",
-			"files, err := openFileStore(ctx, env.FileStores)",
-			"resource.NewSpannerClient(spannerClient, fileStoreOptions(files)...)",
+			"files, err := openFileStore(ctx, env.FileStores)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\t// The database driver",
+			"database.Open(ctx, env.Database.Settings, fileStoreOptions(files)...)",
 			"files:             files,",
 			"if c.files != nil {\n\t\tif err := c.files.Close(); err != nil {\n\t\t\tlog.Print(errors.Wrap(err, \"filestore.Store.Close()\"))",
 		},
 		"pkg/config/files.go":     {"package config", "Default string `env:\"APP_FILE_STORE\"`", "func LoadFileStoreSettings(", "func openFileStore(", "func fileStoreOptions("},
-		"pkg/config/site.go":      {"scheduler *scheduled.Guard", "jobs jobs.Starter", "scheduler, err := scheduled.FromEnvironment(ctx)", "starter, err := jobs.FromEnvironment(ctx)", "scheduler:         scheduler,", "jobs:              starter,"},
-		"pkg/config/scheduled.go": {"func (c *SiteConfiguration) Scheduler() *scheduled.Guard", "func (c *SiteConfiguration) Jobs() jobs.Starter"},
+		"pkg/config/site.go":      {"scheduler *scheduled.Guard", "jobs *jobstarter.Driver", "scheduler, err := scheduled.FromEnvironment(ctx)", "starter, err := jobstarter.Open(ctx, env.Settings, data.AppVersion())", "scheduler:         scheduler,", "jobs:              starter,", "\tjobstarter.Settings\n}", `jobstarter "github.com/cccteam/ccc/resource/jobs/cloudrun"`},
+		"pkg/config/scheduled.go": {"func (c *SiteConfiguration) Scheduler() *scheduled.Guard", "func (c *SiteConfiguration) Jobs() jobs.Starter", "func (c *SiteConfiguration) Close() {\n\tc.jobs.Close()\n\tc.DataConfiguration.Close()\n}"},
 		"app/app.go":              {"Scheduler() *scheduled.Guard", "Jobs() jobs.Starter", "scheduler   *scheduled.Guard", "rpcClient   *rpc.Client", "scheduler:      cfg.Scheduler(),", "rpcClient:      rpc.NewClient(cfg.Jobs()),", `"example.com/acme/beacon/pkg/rpc"`},
 		"app/scheduled.go":        {"func (a *App) SchedulerAuth(next http.Handler) http.Handler", "return a.scheduler.Middleware(next)", "func (a *App) RPCClient() *rpc.Client", "(pkg/rpc)"},
 		"cmd/bootstrap/main.go":   {"\t// The file store is emptied before the seed (files.go): no row holds a file yet.\n\tif err := emptyFileStore(ctx); err != nil {\n\t\treturn err\n\t}\n\n\t// The development seed:"},
@@ -184,7 +218,7 @@ func TestFilesApply(t *testing.T) {
 		"test/authz/harness_test.go":             {"func (c *testConfigurer) Scheduler() *scheduled.Guard {\n\treturn nil\n}", "func (c *testConfigurer) Jobs() jobs.Starter {\n\treturn jobs.NewFake()\n}", `"github.com/cccteam/ccc/resource/jobs"`, `"github.com/cccteam/ccc/resource/scheduled"`},
 		"test/integration/harness_test.go":       {"func (c *servedConfigurer) Scheduler() *scheduled.Guard", "func (c *servedConfigurer) Jobs() jobs.Starter", "files *filestore.Mem", "files: filestore.NewMem()", "resource.NewSpannerClient(c.db.Client, resource.WithFileStore(c.files))", `"github.com/cccteam/ccc/resource/filestore"`},
 		"cmd/generate/resourcegenerator/main.go": {"\t\tgeneration.GenerateHandlers(\"app\"),\n\t\tgeneration.WithRPC(\"pkg/rpc\"),\n"},
-		".envrc.template":                        {"# cmd/jobs cleanup-files removes what no row holds.\nexport APP_FILE_STORE=file://uploads\n\n# --- site: the served site ---"},
+		".envrc.template":                        {"# cmd/jobs cleanup-files removes what no row holds.\nexport APP_FILE_STORE=file://uploads\n\n# --- site: the served site ---\n# APP_JOBS_TEMPLATE is the job process's template job", "# export APP_JOBS_TEMPLATE=\nexport PORT="},
 		".gitignore":                             {"go.work.sum\nuploads/\n"},
 	}
 	for rel, wants := range wantContains {
@@ -248,7 +282,7 @@ func TestFilesApplyExistingRPC(t *testing.T) {
 	}
 	wantSkipped := []string{
 		"cmd/jobs exists, so the cleanup-files command was not written; add it there: the data level, then filestore.Cleanup over resource.DefaultStore with the generated FileHolders(), -window and -dry-run",
-		"pkg/rpc: give Client a Jobs() jobs.Starter accessor fed from the configuration's Jobs() (resource/jobs: jobs.FromEnvironment), which CleanUpFiles starts the job through",
+		"pkg/rpc: give Client a Jobs() jobs.Starter accessor fed from the configuration's Jobs() (the job driver, resource/jobs/cloudrun), which CleanUpFiles starts the job through",
 		"app/app.go: the app's RPCClient() keeps the client it builds; hand it the configuration's Jobs() so CleanUpFiles can start the job",
 	}
 	if diff := cmp.Diff(wantSkipped, change.Skipped); diff != "" {
@@ -335,7 +369,7 @@ func TestFilesApplyScheduled(t *testing.T) {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	wantDid := []string{
-		"pkg/config/site.go: SiteConfiguration gained the jobs field, built from the environment (the guard was wired already); pkg/config/scheduled.go: Jobs(), which the app's Configurer asks for",
+		"pkg/config/site.go: SiteConfiguration gained the jobs field, built from the environment (the guard was wired already); pkg/config/scheduled.go: Jobs(), which the app's Configurer asks for, and Close(), which releases the driver with the level",
 		"app/app.go: App gained Jobs() on Configurer and the RPC client built over the starter; app/scheduled.go: RPCClient(), the dependencies of the RPC methods",
 		"the test configurers gained a nil guard, a fake starter and a memory file store: test/authz/harness_test.go (testConfigurer: Jobs() and the files field); test/integration/harness_test.go (servedConfigurer: Jobs() and the files field)",
 	}
@@ -351,19 +385,22 @@ func TestFilesApplyScheduled(t *testing.T) {
 	// Nothing the application wired is declared twice, and what it lacked is there once.
 	wantCounts := map[string]map[string]int{
 		"pkg/config/site.go": {
-			"scheduler *scheduled.Guard":                  1,
-			"scheduled.FromEnvironment(ctx)":              1,
-			"scheduler:         scheduler,":               1,
-			"jobs.FromEnvironment(ctx)":                   1,
-			"jobs:              starter,":                 1,
-			"func (c *SiteConfiguration) Scheduler()":     1,
-			`"github.com/cccteam/ccc/resource/scheduled"`: 1,
-			`"github.com/cccteam/ccc/resource/jobs"`:      1,
+			"scheduler *scheduled.Guard":                                 1,
+			"scheduled.FromEnvironment(ctx)":                             1,
+			"scheduler:         scheduler,":                              1,
+			"jobstarter.Open(ctx, env.Settings, data.AppVersion())":      1,
+			"jobs:              starter,":                                1,
+			"func (c *SiteConfiguration) Scheduler()":                    1,
+			"\tjobstarter.Settings\n":                                    1,
+			`"github.com/cccteam/ccc/resource/scheduled"`:                1,
+			`jobstarter "github.com/cccteam/ccc/resource/jobs/cloudrun"`: 1,
+			`"github.com/cccteam/ccc/resource/jobs"`:                     0,
 		},
 		"pkg/config/scheduled.go": {
 			"func (c *SiteConfiguration) Jobs() jobs.Starter": 1,
-			"Scheduler()": 0,
-			"scheduled":   0,
+			"func (c *SiteConfiguration) Close() {":           1,
+			"Scheduler()":                                     0,
+			"scheduled":                                       0,
 		},
 		"app/app.go": {
 			"Scheduler() *scheduled.Guard":              1,
@@ -421,7 +458,7 @@ func TestFilesApplyBare(t *testing.T) {
 		"no environment template (.envrc.template, .env.template, .env.example) to add APP_FILE_STORE=file://uploads to; the env-template check names the variable",
 		"no main package at cmd/bootstrap, so nothing empties the development store before a seed; where the development database is seeded, empty a file:// store first (filestore.Open, Objects, Delete), since no row holds a file then",
 		"the data level is not constructible (no DataConfiguration), so cmd/jobs was not written; write the job process over the configuration the site opens",
-		"no file declares a SiteConfiguration struct, so the scheduled routes' guard and the job process's starter are not built; build them where the served site's configuration is (scheduled.FromEnvironment, jobs.FromEnvironment) and expose them as Scheduler() and Jobs()",
+		"no file declares a SiteConfiguration struct, so the scheduled routes' guard and the job driver are not built; build them where the served site's configuration is (scheduled.FromEnvironment; the job driver's Settings embedded in the site's environment struct and its Open, the driver bound under the alias jobstarter) and expose them as Scheduler() and Jobs()",
 		"no file declares a Configurer interface, so the guard and the RPC client are not exposed on the app; the generated router needs SchedulerAuth(next http.Handler) http.Handler (scheduled.Guard's Middleware) and the generated handlers RPCClient() returning the rpc package's *Client, built over the configuration's Jobs()",
 	}
 	if diff := cmp.Diff(wantSkipped, change.Skipped); diff != "" {
@@ -504,7 +541,7 @@ func TestFilesEnvTemplateAppended(t *testing.T) {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	text := read(t, a, ".envrc.template")
-	if !strings.HasPrefix(text, "export APP_SERVICE_NAME=beacon\n\n# APP_FILE_STORE is the file store") || !envTemplateRE.MatchString(text) || !strings.HasSuffix(text, "export APP_FILE_STORE=file://uploads\n") {
+	if !strings.HasPrefix(text, "export APP_SERVICE_NAME=beacon\n\n# APP_FILE_STORE is the file store") || !envTemplateRE.MatchString(text) || !strings.Contains(text, "export APP_FILE_STORE=file://uploads\n\n# APP_JOBS_TEMPLATE is the job process's template job") || !strings.HasSuffix(text, "# export APP_JOBS_TEMPLATE=\n") {
 		t.Errorf(".envrc.template = %q", text)
 	}
 }

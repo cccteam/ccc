@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/impulse/app"
+	spannerdeclaration "github.com/cccteam/ccc/resource/database/spanner/declaration"
 )
 
 // The framework settings struct the harbor fixture embeds, as the fixture writes it, and
@@ -209,4 +210,92 @@ func lineOf(t *testing.T, src, needle string) int {
 // place, tag options and doc.
 func variableLine(v *Variable) string {
 	return fmt.Sprintf("%s %s %s %s %s:%d required=%v default=%q set=%v doc=%q", v.Name, v.Level, v.Declaration(), v.Type, v.File, v.Line, v.Required, v.Default, v.HasDefault, v.Doc)
+}
+
+// The database driver's settings struct and the alias the skeleton binds the driver
+// under, which the harbor fixture's data level is edited to embed in place of the
+// variables it declares itself.
+const (
+	spannerImport = "github.com/cccteam/ccc/resource/database/spanner"
+	databaseAlias = "database"
+)
+
+// spannerFields are the harbor fixture's SpannerSettings fields, the ones the embedding
+// replaces.
+const spannerFields = "\tProjectID    string `env:\"GOOGLE_CLOUD_SPANNER_PROJECT,required\"`\n" +
+	"\tInstanceID   string `env:\"GOOGLE_CLOUD_SPANNER_INSTANCE_ID,required\"`\n" +
+	"\tDatabaseName string `env:\"GOOGLE_CLOUD_SPANNER_DATABASE_NAME,required\"`\n"
+
+// TestEmbeddedDriverSettingsAlias reads a config package whose data level embeds the
+// database driver's settings in its wrapper, under the driver's package name and under
+// the neutral alias the skeleton binds the driver by (database
+// "github.com/cccteam/ccc/resource/database/spanner"): the embedding resolves to the
+// Spanner declaration through the file's imports, by whichever name the file refers to
+// the package, and expands into the declaration's variables, each a field of the wrapper
+// at the embedding's line.
+func TestEmbeddedDriverSettingsAlias(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// local is the name the file imports the driver under: its package name, or the
+		// alias.
+		local string
+		// aliased says the import line carries the name.
+		aliased bool
+	}{
+		{name: "the driver's package name", local: "spanner"},
+		{name: "the neutral alias the skeleton binds the driver under", local: databaseAlias, aliased: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "app")
+			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", "harbor"))); err != nil {
+				t.Fatalf("os.CopyFS() error = %v", err)
+			}
+			file := filepath.Join(dir, "pkg", "config", "data.go")
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			importLine := "\t\"" + spannerImport + "\"\n"
+			if tt.aliased {
+				importLine = "\t" + tt.local + " \"" + spannerImport + "\"\n"
+			}
+			embedding := "\t" + tt.local + ".Settings\n"
+			src := strings.Replace(string(data), spannerFields, embedding, 1)
+			src = strings.Replace(src, "\t\"github.com/cccteam/ccc/resource\"\n", "\t\"github.com/cccteam/ccc/resource\"\n"+importLine, 1)
+			if !strings.Contains(src, embedding) || !strings.Contains(src, importLine) {
+				t.Fatal("the fixture's data level was not edited to embed the driver's settings")
+			}
+			if err := os.WriteFile(file, []byte(src), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			a, err := app.Discover(dir)
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			cfg, err := readConfig(a)
+			if err != nil {
+				t.Fatalf("readConfig() error = %v", err)
+			}
+			var got []string
+			for i := range cfg.variables {
+				v := &cfg.variables[i]
+				if v.Struct == "SpannerSettings" {
+					got = append(got, variableLine(v))
+				}
+			}
+			var want []string
+			for _, f := range spannerdeclaration.Settings().Fields {
+				name, required := tagOptions(f.Tag)
+				want = append(want, atLine(t, src, strings.TrimSuffix(embedding, "\n"), fmt.Sprintf("%s data SpannerSettings.%s %s pkg/config/data.go:<line> required=%v default=%q set=false doc=%q", name, f.Name, f.Type, required, "", f.Doc)))
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("the wrapper's variables =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+			}
+		})
+	}
 }

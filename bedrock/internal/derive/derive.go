@@ -246,6 +246,11 @@ const (
 	// record: every one in a pull-request stack and in the integration environment, the
 	// edge's choice beyond them.
 	RoleTraceSampling Role = "trace-sampling"
+	// RoleJobsTemplate names the job process's template job to the served site, which
+	// reads it through the job driver's settings (JobsTemplateVariable): the stack sets
+	// it on the service alone, and jobsTemplate holds it to the job process and its
+	// level to the served site.
+	RoleJobsTemplate Role = "jobs-template"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID     Role = "client-id"
@@ -263,7 +268,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling, RoleJobsTemplate:
 		return true
 	default:
 		return false
@@ -355,8 +360,10 @@ const (
 // the stack declares empty on the service (see varMaintenance).
 const MaintenanceVariable = varMaintenance
 
-// wellKnown are the well-known variables by their exact name. The file-store variables
-// are matched by prefix instead (fileStoreName); roleOf consults both.
+// wellKnown are the well-known variables by their exact name, the job driver's template
+// variable among them under the name its declaration gives (JobsTemplateVariable). The
+// file-store variables are matched by prefix instead (fileStoreName); roleOf consults
+// both.
 var wellKnown = map[string]Role{
 	varServiceName:       RoleServiceName,
 	varLoggingProject:    RoleLoggingProject,
@@ -370,6 +377,7 @@ var wellKnown = map[string]Role{
 	varFirestoreProject:  RoleFirestoreProject,
 	varFirebaseAPIKey:    RoleFirebaseAPIKey,
 	varTraceSampling:     RoleTraceSampling,
+	JobsTemplateVariable: RoleJobsTemplate,
 }
 
 // roleOf is the table's lookup for a variable: a well-known variable by its exact name,
@@ -529,7 +537,7 @@ type Database struct {
 	Name     *Variable
 }
 
-// Process is one deployed process: the served site or the migration.
+// Process is one deployed process: the served site, the migration or the job process.
 type Process struct {
 	// Name is the process's short name: app for the site, migrate for the migration.
 	Name string

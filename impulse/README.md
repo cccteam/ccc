@@ -64,10 +64,16 @@ templates, this README, and the tool's source.
   the database), and **site** (one served site: its port and its built bundle). The site
   level is `SiteConfiguration` in both layouts, since a flat application is one site.
   The core level opens the cloud driver (`cloud/gcp`), which builds where the process's
-  logs and spans go from the settings the level embeds (`gcp.Settings`: the logging
+  logs and spans go from the settings the level embeds (`cloud.Settings`: the logging
   project and the trace sampling); the generated router installs tracing and the request
   logger from the App's `LogExporter`, so nothing in the application names a logging
-  client or a trace provider, and another cloud is another driver import and settings.
+  client or a trace provider. The data level opens the database driver
+  (`resource/database/spanner`) and the live driver (`resource/live/firestore`), and
+  the site level the job driver (`resource/jobs/cloudrun`), each driver's `Settings`
+  embedded in a wrapper named for the kind (`DatabaseSettings`, `LiveSettings`) and
+  opened with its `Open`. Every driver is bound under one neutral import alias
+  (`cloud`, `database`, `liveservice`, `jobstarter`), so the application names the
+  vendor on the import line alone, and another provider is another import line.
 - **Live pages**: list pages and record pages that stay current without polling. A
   request the page asked to be live carries `X-Subscribe`; the server registers the
   subscription before the query runs and publishes each commit's rows into the
@@ -412,7 +418,7 @@ impulse check --list
 | `sites-generators` | In the sites layout, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
 | `env-template` | Every `env` struct tag without a default appears in the development environment template (`.envrc.template`, `.env.template`, or `.env.example`), the variables a framework settings struct the configuration embeds declares (`gcp.Settings`) among them; a missing one of those names the struct. `--fix` adds the missing lines. |
 | `file-store` | Every file store variable the code declares (`APP_FILE_STORE`, `APP_FILE_STORE_<NAME>`) names, in the development environment template, a store the framework opens (`file://<dir>`, `gs://<bucket>` or `mem://`); a directory store's directory is in `.gitignore` (`--fix` adds it); and a resource or method recording files (`@file`, `@upload`) has a store wired, the failure naming `impulse add files`. |
-| `pins` | Framework pins in `go.mod` are released versions; pseudo-versions and local replaces warn but do not fail. `go.mod` carries the `tool github.com/cccteam/ccc/impulse` directive and a require of impulse, or the check fails with the commands that add it (`go get -tool github.com/cccteam/ccc/impulse@<version>`, `go tool impulse render`, `go tool impulse check`). When the running impulse was built from a module version (`go tool impulse`, `go install github.com/cccteam/ccc/impulse@<version>`) and that version is not the pin, the check fails with the same three commands to move the pin; an impulse built from a checkout is a development build, noted and not compared. |
+| `pins` | Framework pins in `go.mod` are released versions; pseudo-versions and local replaces warn but do not fail. `go.mod` carries the `tool github.com/cccteam/ccc/impulse` directive and a require of impulse, or the check fails with the commands that add it (`go get -tool github.com/cccteam/ccc/impulse@<version>`, `go tool impulse render`, `go tool impulse check`). When the running impulse was built from a module version (`go tool impulse`, `go install github.com/cccteam/ccc/impulse@<version>`) and that version is not the pin, the check fails: with the same three commands to move the pin when the framework pins stand at the ledger's last step, and with `impulse upgrade` (`go run github.com/cccteam/ccc/impulse@<version> upgrade`) when they stand behind it, since `go get -tool` ahead of the walk drags the framework pins past the steps; an impulse built from a checkout is a development build, noted and not compared. |
 | `gowork-off` | `GOWORK=off go build ./...` and `go vet ./...` succeed, so the pins in `go.mod` resolve without the workspace. |
 | `regen` | `go generate ./...` reproduces the generated files on disk (content compared before and after, so it holds in untracked trees too). The `Warning:` lines the generate programs printed are listed under the result and counted in its summary; they never fail the check, since the program's warnings test is what gates the accepted set. Needs the Spanner emulator and rewrites the working tree; `--skip-generate` leaves it out. |
 
@@ -536,54 +542,78 @@ development only; never commit it.
 
 ## impulse upgrade
 
-`upgrade` moves an application forward to the running impulse and through the steps the
-ledger records after the one its pins stand at, one commit each. A step is a coherent pin
-set (the versions of the cccteam modules the skeleton's `go.mod` requires: resource,
-access, session, accesstypes, tracer, logger, httpio, db-initiator and ccc) together with
-the recipes an application at the step before it needs, or a note that none is needed.
-Where the application stands is read, never recorded: the framework pins in its `go.mod`
-say which step it builds against (the latest step whose pins they reach), and every step
-after that is pending. The impulse tool pin is not a step's: it moves to the running
-impulse first, so an impulse release that changes nothing an application builds against
-has no step, and the walk under it is the tool pin's move alone.
+`upgrade` moves an application through the steps the ledger records after the one its
+pins stand at, then to the running impulse, one commit each. A step is a coherent pin set
+(the versions of the cccteam modules the skeleton's `go.mod` requires: resource, access,
+session, accesstypes, tracer, cloud, logger, httpio, db-initiator and ccc) together with
+the recipes an application at the step before it needs, or a note that none is needed, and
+the impulse release that added the step. Where the application stands is read, never
+recorded: the framework pins in its `go.mod` say which step it builds against (the latest
+step whose pins they reach), and every step after that is pending. The impulse tool pin
+moves with its step: the tool directive puts impulse's own requirements into the
+application's build list, so a pin moved ahead of the steps would drag some framework pins
+past them (resource and cloud to the running release's requirements while access stayed
+behind) and the walk would read a position the application never walked, skipping a
+recipe. An impulse release that changes nothing an application builds against adds no
+step, and the walk moves the pin to it last, by itself.
 
 ```sh
-go get -tool github.com/cccteam/ccc/impulse@<version>   # the impulse to upgrade to
-go tool impulse upgrade --dry-run                        # what the walk would do
-go tool impulse upgrade                                  # walk, one commit per step
+go run github.com/cccteam/ccc/impulse@<version> upgrade --dry-run   # what the walk would do
+go run github.com/cccteam/ccc/impulse@<version> upgrade             # walk, one commit per step
 ```
 
-The walk opens by moving the tool pin when it is behind the running impulse (`go get
--tool`, then `go mod tidy`): the owned files are rendered again from the code (what
-`impulse render` writes), `go generate ./...` runs, `impulse check` runs, and a clean check
-is committed as `upgrade: impulse <version>`. An impulse built from a checkout leaves the
-pin alone; one older than the pin refuses, since the pinned one is the impulse to run.
-Then each pending step is one commit. Its recipes run first: a recipe detects the old form
-in the application (the generator program, the annotations, the known seams) and edits
-only where it finds it, so running it twice is safe, and so is running it on an
-application whose pins were bumped by hand ahead of its code. Then the pins the step moves
-move to its set (`go get`, then `go mod tidy`; a pin already at or beyond the step's
-stays), the owned files are rendered again, `go generate ./...` runs, and `impulse check`
-runs. A clean check is committed as `upgrade: <the pins moved>` (`upgrade: ccc/resource
-v0.12.0 (recipe paging)`) with the step's note and recipes in the body (the `upgrade` type
-releases a patch, as the `title` check's list says, since an upgrade moves the pins and
-re-renders the owned files and must not wait for a later releasing merge). A failing check
-stops the walk with the step's changes staged and the handoff brief written (`impulse
-handoff`, below): fix the obligations or hand them to the agent, commit, and run `upgrade`
-again; it resumes from whatever `go.mod` says, since the pin is the checkpoint and nothing
-else records progress. No step is skipped: a recipe is written against the shape the step
-before it left behind. A step with no recipe is a pin bump and a commit.
+The impulse to upgrade to is run, not pinned first: a `go get -tool` ahead of the walk is
+the drag the walk avoids. Each pending step is one commit. Its recipes run first: a recipe
+detects the old form in the application (the generator program, the annotations, the known
+seams) and edits only where it finds it, so running it twice is safe, and so is running it
+on an application whose pins were bumped by hand ahead of its code. Then the pins the step
+moves move to its set (`go get`; a pin already at or beyond the step's stays), the impulse
+tool pin moves to the release that added the step (`go get -tool`; a pin at or beyond it
+stays), and `go mod tidy` runs. Then the step is rendered and checked by that release: the
+owned files are rendered again (`go tool impulse render`), `go generate ./...` runs (the
+application's own generator program, built against its pins), and `go tool impulse check`
+runs, so every commit the walk makes builds against the pins it names and is checked by the
+impulse that knew them; a step the running impulse added itself is rendered and checked in
+process. A clean check is committed as `upgrade: <the pins moved>` (`upgrade: ccc/cloud,
+ccc/resource, ccc/tracer, ccc/impulse (recipe cloud-driver)`, the versions in the body when
+the subject would run long) with the step's note and recipes in the body (the `upgrade`
+type releases a patch, as the `title` check's list says, since an upgrade moves the pins
+and re-renders the owned files and must not wait for a later releasing merge). Last, when
+the running impulse is a release the pin is still behind, one that added no step, the pin
+moves to it (`go get -tool`, then `go mod tidy`), the owned files are rendered again,
+`go generate ./...` and `impulse check` run, and a clean check is committed as `upgrade:
+impulse <version>`; an impulse built from a checkout makes no such move, and one older than
+the pin refuses, since the pinned one is the impulse to run. A failing check stops the walk
+with the step's changes staged and the handoff brief written (`impulse handoff`, below). At
+a step checked by the pinned impulse, that impulse writes the brief from the staged tree
+and, with `--agent`, runs the agent and verifies its work, through `go tool impulse handoff
+--staged` with each recipe's change and meaning passed through, so the brief, the agent and
+the verification are the release that added the step's; a pinned release before v0.4.0,
+whose `handoff` has no `--staged`, leaves the walk to write the brief from that release's
+report, and the agent to the user. Fix the obligations or hand them to the agent, commit,
+and run `upgrade` again; it resumes from whatever `go.mod` says, since the pin is the
+checkpoint and nothing else records progress. No step is skipped: a recipe is written
+against the shape the step before it left behind. A step with no recipe is a pin bump and a
+commit.
 
 The ledger (`internal/ledger`) opens with the first published impulse release's pin set. A
-step is appended when the skeleton's pins move or a recipe is needed, and never otherwise:
-the ledger's test holds the last step's pins to the candidates' `go.mod` (every module it
-pins at the candidates' version, every cccteam module a candidate requires among them), so
-a pin bump without its step fails the build, and holds every step to its shape (a pin set
-of framework modules none of which moves backward, a note, a pin moved or a recipe named,
-no recipe named twice). A breaking change in resource, access, session or accesstypes is
-not done until the step that carries it records its recipe, or says that no code change is
-needed. Applications that predate the first release are adopted once by hand, not
-upgraded. A step whose pins name pushed commits, pseudo-versions of a sibling whose release does not exist yet, is marked `Pending`; the ledger's validation holds the mark to the pins both ways, and impulse does not release with a pending last step (the repository's release pins check refuses it) until the repin moves the pins to the tags and clears the mark.
+step is appended when the skeleton's pins move or a recipe is needed, and never otherwise,
+by the pull request of the impulse release that carries it, which the step names
+(`Impulse`). The ledger's test holds the last step's pins to the candidates' `go.mod` (every
+module it pins at the candidates' version, every cccteam module a candidate requires among
+them), so a pin bump without its step fails the build; holds impulse's own `go.mod` to the
+last step (no framework module the step pins is required beyond its pin), so a release
+whose tool directive would carry an application past the ledger fails the build until its
+step is recorded; and holds every step to its shape (a pin set of framework modules none of
+which moves backward, a note, a pin moved or a recipe named, no recipe named twice, and the
+release named once the step before names one, never behind it). A breaking change in
+resource, access, session or accesstypes is not done until the step that carries it records
+its recipe, or says that no code change is needed. Applications that predate the first
+release are adopted once by hand, not upgraded. A step whose pins name pushed commits,
+pseudo-versions of a sibling whose release does not exist yet, is marked `Pending` and names
+the release its pull request will take; the ledger's validation holds the mark to the pins
+both ways, and impulse does not release with a pending last step (the repository's release
+pins check refuses it) until the repin moves the pins to the tags and clears the mark.
 
 ## impulse handoff
 
@@ -601,6 +631,7 @@ impulse handoff                      # write the brief and print the command to 
 impulse handoff --agent              # launch Claude Code on the brief, then verify
 impulse handoff --verify             # after an agent run by hand: check + guardrails
 impulse handoff --reference ../tenanted --skip-generate
+impulse handoff --staged             # the change staged in the index is the one under review
 ```
 
 With `--agent` the tool launches Claude Code non-interactively (`claude -p`) with the
@@ -617,6 +648,16 @@ review, and there is no gate before it.
 The brief's rules are the ones the verification enforces: run the check until it is
 clean, do not edit generated files, the generator programs, or the lint configuration,
 do not stage or commit, keep the tests table-driven, stop when the check is clean.
+
+With `--staged` the change under review is what is staged in the index, and the working
+tree may hold it: the brief lists the staged paths under "What changed", with what each
+`--change` says was changed and what each `--meaning` says it means (both repeatable), and
+the check, the agent and the verification run as without the flag. A change beside the
+staged one, unstaged or untracked, is refused, so the index holds exactly the change under
+review and the agent's work is exactly its own. This is how `impulse upgrade` hands a
+failing step to the release that added it: the walk stages the step and runs `go tool
+impulse handoff --staged` through the pinned impulse, each recipe's change and meaning
+passed through, so the brief, the agent and the verification after it are that release's.
 
 ## impulse add
 
@@ -812,10 +853,11 @@ impulse add feature debriefs --site console
 application, the whole of it, so the check is clean when it ends. The data level gains
 `FileStoreSettings` and `LoadFileStoreSettings` in `pkg/config/files.go`, reads
 `APP_FILE_STORE` into its environment struct, opens the store the variable names before
-the configuration is built (`openFileStore`; unset leaves the store closed, so the migrate
-and bootstrap commands run without one), builds the resource client over it
-(`resource.NewSpannerClient(client, fileStoreOptions(files)...)`, which is
-`resource.WithFileStore`) and releases it in `Close`. `.envrc.template` sets
+the database driver opens (`openFileStore`; unset leaves the store closed, so the migrate
+and bootstrap commands run without one), hands the driver the store's options
+(`database.Open(ctx, env.Database.Settings, fileStoreOptions(files)...)`, which is
+`resource.WithFileStore` on the resource client the driver builds) and releases it in
+`Close`. `.envrc.template` sets
 `APP_FILE_STORE=file://uploads` in the data block and `.gitignore` ignores `uploads/`;
 `cmd/bootstrap` gains `emptyFileStore`, called before the development seed, which empties
 a `file://` store since no row holds a file then. `pkg/jobs` declares the cleanup
@@ -826,11 +868,13 @@ marked `@rpc` and `@schedule("0 9 * * *")` whose `Execute` starts the job proces
 cleanup command through the client's `Jobs()`; an application without an rpc package gains
 `pkg/rpc` with a `Client` carrying the starter, and `WithRPC("pkg/rpc")` in the generator
 program. The site level builds the scheduler guard (`scheduled.FromEnvironment`, from
-`APP_SCHEDULER_INVOKER`) and the job starter (`jobs.FromEnvironment`, from `APP_JOBS_TEMPLATE` and `APP_VERSION`)
-and exposes them as `Scheduler()` and `Jobs()`; the `Configurer` asks for both, the `App`
-carries the guard and the RPC client built over the starter, and `app/scheduled.go`
-declares `SchedulerAuth` (the middleware the generated router mounts the scheduled routes
-behind) and `RPCClient`. Every test configurer (a type in a test file declaring
+`APP_SCHEDULER_INVOKER`) and opens the job driver (`cloudrun.Open`, over the
+`cloudrun.Settings` its environment struct embeds, which declare `APP_JOBS_TEMPLATE`, and
+the version the image bakes in), exposes them as `Scheduler()` and `Jobs()`, and closes
+the driver with the level; `.envrc.template` documents `APP_JOBS_TEMPLATE` in the site
+block, unset. The `Configurer` asks for both, the `App` carries the guard and the RPC
+client built over the starter, and `app/scheduled.go` declares `SchedulerAuth` (the
+middleware the generated router mounts the scheduled routes behind) and `RPCClient`. Every test configurer (a type in a test file declaring
 `LogExporter`) gains a nil guard, `jobs.NewFake()`, and a memory store its resource client
 is built over (`files *filestore.Mem`, passed as `resource.WithFileStore`), so a file route
 the application declares later is served in the suites. What the application wired already

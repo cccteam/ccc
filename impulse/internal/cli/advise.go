@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/advise"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
+	"github.com/cccteam/ccc/impulse/internal/ledger"
 )
 
 func newAdvise() *cobra.Command {
@@ -40,7 +41,7 @@ is by request: no other command does this.`,
 				return err
 			}
 			out := cmd.OutOrStdout()
-			env := &check.Env{App: a, Exec: check.OSExec{}, SkipGenerate: f.skipGenerate, Out: cmd.ErrOrStderr()}
+			env := &check.Env{App: a, Exec: check.OSExec{}, SkipGenerate: f.skipGenerate, Out: cmd.ErrOrStderr(), Ledger: ledger.Current{}}
 			brief, err := advise.Collect(ctx, env, f.skipGenerate)
 			if err != nil {
 				return err

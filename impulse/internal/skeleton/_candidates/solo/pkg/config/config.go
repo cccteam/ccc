@@ -12,7 +12,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/cccteam/ccc/cloud/gcp"
+	cloud "github.com/cccteam/ccc/cloud/gcp"
 	"github.com/cccteam/logger"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
@@ -22,7 +22,7 @@ import (
 type coreConfiguration struct {
 	env *coreConfig
 	// cloud is the cloud driver: where the process's logs and spans go.
-	cloud *gcp.Driver
+	cloud *cloud.Driver
 }
 
 func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
@@ -34,12 +34,12 @@ func newCoreConfiguration(ctx context.Context) (*coreConfiguration, error) {
 	// The cloud driver builds the log exporter and the trace provider from the settings
 	// the configuration embeds; without a logging project the logs go to the console and
 	// no span is exported.
-	cloud, err := gcp.Open(ctx, env.Settings, env.ServiceName)
+	driver, err := cloud.Open(ctx, env.Settings, env.ServiceName)
 	if err != nil {
-		return nil, errors.Wrap(err, "gcp.Open()")
+		return nil, errors.Wrap(err, "cloud.Open()")
 	}
 
-	return &coreConfiguration{env: env, cloud: cloud}, nil
+	return &coreConfiguration{env: env, cloud: driver}, nil
 }
 
 // Close releases the level's clients: the spans still in hand are sent first.
@@ -73,6 +73,7 @@ type coreConfig struct {
 	// ServiceName names the process in logs.
 	ServiceName string `env:"APP_SERVICE_NAME,required"`
 
-	// The Google Cloud driver's variables: the logging project and the trace sampling.
-	gcp.Settings
+	// The cloud driver's variables (cloud.Settings, whichever driver the import names: the
+	// Google Cloud driver's logging project and trace sampling).
+	cloud.Settings
 }

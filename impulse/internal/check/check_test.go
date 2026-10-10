@@ -183,3 +183,46 @@ func TestOutputLines(t *testing.T) {
 		})
 	}
 }
+
+// TestParseReport reads a report back as Report wrote it: each result line with its
+// details, the notes a command writes beside the report passed over, a detail before any
+// result passed over, text that is no report reading as nothing, and a report Report wrote
+// reading back as the results it was written from.
+func TestParseReport(t *testing.T) {
+	t.Parallel()
+
+	roundTrip := []Result{
+		{Name: pins{}.Name(), Status: Pass, Summary: "3 framework pin(s) are released versions"},
+		{Name: conditionsProven{}.Name(), Status: Fail, Summary: "2 unproven", Details: []string{"pkg/auth/staff: Mission.Read over tenant", "pkg/auth/staff: Sortie.Write over tenant"}},
+	}
+	var written bytes.Buffer
+	Report(&written, roundTrip)
+	tests := []struct {
+		name string
+		out  string
+		want []Result
+	}{
+		{
+			name: "a run's report with details and a note between",
+			out:  "running GOWORK=off go build ./...\nPASS  pins         3 framework pin(s) are released versions\nFAIL  paging       1 offset\n      pkg/x.go:3: Offset\n      pkg/y.go:9: SetOffset\nrunning go generate ./...\nWARN  ci-workflow  differs\nSKIP  regen        --skip-generate\n",
+			want: []Result{
+				{Name: pins{}.Name(), Status: Pass, Summary: "3 framework pin(s) are released versions"},
+				{Name: paging{}.Name(), Status: Fail, Summary: "1 offset", Details: []string{"pkg/x.go:3: Offset", "pkg/y.go:9: SetOffset"}},
+				{Name: ciWorkflow{}.Name(), Status: Warn, Summary: "differs"},
+				{Name: regen{}.Name(), Status: Skip, Summary: "--skip-generate"},
+			},
+		},
+		{name: "a detail before any result is passed over", out: "      stray\nPASS  pins  ok\n", want: []Result{{Name: pins{}.Name(), Status: Pass, Summary: "ok"}}},
+		{name: "no report", out: "impulse: no go.mod at /x\n"},
+		{name: "what Report wrote", out: written.String(), want: roundTrip},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, ParseReport([]byte(tt.out))); diff != "" {
+				t.Errorf("ParseReport() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

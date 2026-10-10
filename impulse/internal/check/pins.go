@@ -28,7 +28,11 @@ const develVersion = "(devel)"
 // it is missing, since CI's go tool impulse check has nothing to run, and when the running
 // impulse was built from a module version (go tool, go install module@version) other than
 // the pin, since the two would render the owned files differently; a build from a checkout
-// is a development build, noted and not compared.
+// is a development build, noted and not compared. The remedy for a pin behind the running
+// impulse depends on where the application stands against the upgrade ledger (Env.Ledger):
+// at its last step, moving the pin alone is right; behind it, impulse upgrade moves the
+// pin with each step, since go get -tool ahead of the walk drags the framework pins past
+// the steps.
 type pins struct {
 	// build answers the running impulse's build; nil reads the build information
 	// (RunningBuild). Tests inject one.
@@ -110,6 +114,7 @@ func (c pins) Run(_ context.Context, env *Env) Result {
 // and a require of it, and the pin is the running impulse's version when that impulse was
 // built from a module version. It returns the failures and the notes.
 func (c pins) directive(env *Env) (failures, notes []string) {
+	behind := env.Ledger != nil && !env.Ledger.AtLastStep(env.App.GoMod)
 	mod := env.App.GoMod
 	held := false
 	for _, t := range mod.Tool {
@@ -135,6 +140,8 @@ func (c pins) directive(env *Env) (failures, notes []string) {
 		return []string{fmt.Sprintf("go.mod has no tool directive for %s, so CI's go tool impulse check has nothing to run: run go get -tool %s@%s, then go tool impulse render, then go tool impulse check", ImpulseModule, ImpulseModule, at)}, nil
 	case !released:
 		return nil, []string{fmt.Sprintf("go.mod holds the impulse tool directive, pinned at %s; the running impulse is a development build (%s, built from a checkout), so the pin is not compared with it", pinned, running.Version)}
+	case running.Version != pinned && behind:
+		return []string{fmt.Sprintf("go.mod pins impulse at %s and the running impulse is %s, and the framework pins stand behind the ledger's last step: walk the steps with impulse upgrade (go run %s@%s upgrade), which moves the tool pin with each step; go get -tool ahead of the walk would drag the framework pins past the steps", pinned, running.Version, ImpulseModule, running.Version)}, nil
 	case running.Version != pinned:
 		return []string{fmt.Sprintf("go.mod pins impulse at %s and the running impulse is %s: move the pin with go get -tool %s@%s, then go tool impulse render, then go tool impulse check", pinned, running.Version, ImpulseModule, running.Version)}, nil
 	default:

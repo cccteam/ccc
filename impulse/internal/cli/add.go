@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/ccc/impulse/ci"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
+	"github.com/cccteam/ccc/impulse/internal/ledger"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 	transition_ "github.com/cccteam/ccc/impulse/internal/transition"
 )
@@ -54,10 +55,10 @@ objects are deleted from it; .envrc.template sets file://uploads and .gitignore 
 the directory; the bootstrap empties a directory store before it seeds; cmd/jobs gains
 the orphaned-file cleanup command (pkg/jobs, filestore.Cleanup over the generated
 FileHolders()); and the rpc package gains CleanUpFiles, a method marked @schedule that
-starts the job process's cleanup each day at 09:00 UTC through the starter the site
-configuration builds from the template job the stack sets in APP_JOBS_TEMPLATE and the
-version (resource/jobs), behind the scheduler guard it
-builds from APP_SCHEDULER_INVOKER (resource/scheduled). An application without an rpc
+starts the job process's cleanup each day at 09:00 UTC through the job driver the site
+configuration opens from the template job the stack sets in APP_JOBS_TEMPLATE, the
+setting its environment embeds, and the version (resource/jobs/cloudrun), behind the
+scheduler guard it builds from APP_SCHEDULER_INVOKER (resource/scheduled). An application without an rpc
 package gains one, with WithRPC in the generator program and the Client the generated
 handlers ask the App for; the test configurers gain a nil guard and a fake starter.
 
@@ -477,7 +478,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	if owned.Written {
 		fmt.Fprintf(out, "Rewrote %s from the code.\n\n", ci.List(owned.WrittenFiles()))
 	}
-	env := &check.Env{App: a, Exec: exec, SkipGenerate: f.skipGenerate, Fix: true, Out: cmd.ErrOrStderr()}
+	env := &check.Env{App: a, Exec: exec, SkipGenerate: f.skipGenerate, Fix: true, Out: cmd.ErrOrStderr(), Ledger: ledger.Current{}}
 	results := check.Run(ctx, env, check.All())
 	if err := repo.StageAll(ctx); err != nil {
 		return err
@@ -496,7 +497,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	referenceDir := ""
 	if reference != "" {
 		if referenceDir, err = renderReference(reference); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %v\n", err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "impulse: no reference application: %s\n", message(err))
 		}
 	}
 	guard, err := handoff.Take(a, handoff.FromTree(a))

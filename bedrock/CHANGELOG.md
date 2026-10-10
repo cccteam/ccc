@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.4](https://github.com/cccteam/ccc/compare/bedrock/v0.1.3...bedrock/v0.1.4) (2026-10-09)
+
+
+### Features
+
+* cloud/gcp exports its settings declaration; impulse's env-template check and bedrock's derivation read it ([#906](https://github.com/cccteam/ccc/issues/906)) ([d0b9f3e](https://github.com/cccteam/ccc/commit/d0b9f3ee63f58520481877765d664f4fe3bd9602))
+
+
+### Bug Fixes
+
+* the settings declaration moves to cloud/gcp/declaration, apart from the driver, so impulse links no cloud client ([#910](https://github.com/cccteam/ccc/issues/910)) ([8b3748a](https://github.com/cccteam/ccc/commit/8b3748a1b889a1650bc13dc43f90af2e62880761))
+
 ## [0.1.3](https://github.com/cccteam/ccc/compare/bedrock/v0.1.2...bedrock/v0.1.3) (2026-10-09)
 
 

@@ -88,6 +88,49 @@ func TestBriefWrite(t *testing.T) {
 				"5. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
 				"\n## Done when\n\n`impulse check` reports no FAIL.\n",
 		},
+		{
+			name: "the staged change under review, with a recipe's change and meaning",
+			brief: Brief{
+				Change:  "`impulse upgrade (recipe marker, step 2)` made these changes and staged them:\n\n- moved the marker to its new form\n",
+				Meaning: "The marker names the form the step expects.",
+				Results: []check.Result{tenancy},
+				Staged:  []string{"go.mod", "go.sum", "pkg/marker.txt"},
+			},
+			want: preamble +
+				"## What changed\n\n`impulse upgrade (recipe marker, step 2)` made these changes and staged them:\n\n- moved the marker to its new form\n\n" +
+				"The change under review is staged in the index, 3 path(s):\n\n- go.mod\n- go.sum\n- pkg/marker.txt\n\n" +
+				"## What it means\n\nThe marker names the form the step expects.\n\n" +
+				"## The failing checks\n\nThis is the output of `impulse check`, failing checks only. Each line under a check is one obligation.\n\n```\n" +
+				"FAIL  tenancy-wired  2 tenancy wiring problem(s)\n" +
+				"      pkg/resources/tenants.go:8: no file outside tests calls NewTenantRoster, the generated constructor of the tenant roster over Tenant\n" +
+				"      cmd/generate/main.go: no struct in pkg/resources is annotated @permissionScope(domain): every resource is global, and the tenant segment serves nothing\n" +
+				"```\n\n" +
+				"## Rules\n\n" +
+				"1. Run `impulse check` from the application root until it reports no FAIL. The regen check runs go generate, which needs the Spanner emulator through podman or docker; if neither is available, run `impulse check --skip-generate` and say so in your final message.\n" +
+				"2. Do not edit generated files (`zz_gen_*`). Change the source they are generated from and run `go generate ./...`.\n" +
+				"3. Do not stage or commit. Leave your work in the working tree; the pull request is the review.\n" +
+				"4. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
+				"5. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
+				"\n## Done when\n\n`impulse check` reports no FAIL.\n",
+		},
+		{
+			name:  "the staged change under review, a pin bump alone",
+			brief: Brief{Results: []check.Result{tenancy}, Staged: []string{"go.mod", "go.sum"}},
+			want: preamble +
+				"## What changed\n\nThe change under review is staged in the index, 2 path(s):\n\n- go.mod\n- go.sum\n\n" +
+				"## The failing checks\n\nThis is the output of `impulse check`, failing checks only. Each line under a check is one obligation.\n\n```\n" +
+				"FAIL  tenancy-wired  2 tenancy wiring problem(s)\n" +
+				"      pkg/resources/tenants.go:8: no file outside tests calls NewTenantRoster, the generated constructor of the tenant roster over Tenant\n" +
+				"      cmd/generate/main.go: no struct in pkg/resources is annotated @permissionScope(domain): every resource is global, and the tenant segment serves nothing\n" +
+				"```\n\n" +
+				"## Rules\n\n" +
+				"1. Run `impulse check` from the application root until it reports no FAIL. The regen check runs go generate, which needs the Spanner emulator through podman or docker; if neither is available, run `impulse check --skip-generate` and say so in your final message.\n" +
+				"2. Do not edit generated files (`zz_gen_*`). Change the source they are generated from and run `go generate ./...`.\n" +
+				"3. Do not stage or commit. Leave your work in the working tree; the pull request is the review.\n" +
+				"4. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
+				"5. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
+				"\n## Done when\n\n`impulse check` reports no FAIL.\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

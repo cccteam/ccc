@@ -4,14 +4,17 @@
 package check
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/impulse/app"
 )
@@ -103,6 +106,19 @@ type Env struct {
 	Fix bool
 	// Out receives progress notes such as "running go generate".
 	Out io.Writer
+	// Ledger answers where the application stands against the upgrade ledger; nil reads
+	// it as at the last step.
+	Ledger Ledger
+}
+
+// Ledger is what the checks ask of the upgrade ledger: whether an application's framework
+// pins reach its last step. The pins check's remedy turns on it, since an application
+// behind the ledger is moved by impulse upgrade, step by step, and never by the tool pin
+// alone, whose move ahead of the walk drags the framework pins past the steps. The ledger
+// package implements it; a check run without one reads the application as at the last
+// step.
+type Ledger interface {
+	AtLastStep(mod *modfile.File) bool
 }
 
 func (e *Env) notef(format string, args ...any) {
@@ -132,6 +148,27 @@ func (OSExec) Run(ctx context.Context, dir string, extraEnv []string, name strin
 	}
 
 	return out, nil
+}
+
+// Streamer runs an external command with its combined output written to a writer as it
+// comes, for a command that runs long and talks while it runs (an agent): what Run would
+// hold until the command ends reaches the user as it is written, and is returned as well.
+type Streamer interface {
+	Stream(ctx context.Context, dir string, out io.Writer, name string, args ...string) ([]byte, error)
+}
+
+// Stream implements Streamer.
+func (OSExec) Stream(ctx context.Context, dir string, out io.Writer, name string, args ...string) ([]byte, error) {
+	var held bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	cmd.Stdout = io.MultiWriter(out, &held)
+	cmd.Stderr = cmd.Stdout
+	if err := cmd.Run(); err != nil {
+		return held.Bytes(), errors.Wrapf(err, "%s %s", name, strings.Join(args, " "))
+	}
+
+	return held.Bytes(), nil
 }
 
 // All returns every check in run order: the cheap static reads first, the compiler next,
@@ -234,6 +271,34 @@ func Report(w io.Writer, results []Result) {
 			fmt.Fprintf(w, "      %s\n", d)
 		}
 	}
+}
+
+// reportLine matches a line Report writes for a result: the status, two spaces, the name,
+// its padding, and the summary.
+var reportLine = regexp.MustCompile(`^(PASS|FAIL|WARN|SKIP) {2}(\S+) *(.*)$`)
+
+// reportStatuses are the statuses by the word Report writes for them.
+var reportStatuses = map[string]Status{Pass.String(): Pass, Fail.String(): Fail, Warn.String(): Warn, Skip.String(): Skip}
+
+// ParseReport reads results back from what Report wrote, for a check run as a command (go
+// tool impulse check, by the impulse an application pins) whose report is all the caller
+// has: a result line opens a result, the indented lines under it are its details, and any
+// other line (a progress note the command wrote beside the report) is passed over.
+func ParseReport(out []byte) []Result {
+	var results []Result
+	for line := range strings.Lines(string(out)) {
+		line = strings.TrimRight(line, "\r\n")
+		if m := reportLine.FindStringSubmatch(line); m != nil {
+			results = append(results, Result{Name: m[2], Status: reportStatuses[m[1]], Summary: strings.TrimSpace(m[3])})
+
+			continue
+		}
+		if detail, ok := strings.CutPrefix(line, "      "); ok && len(results) > 0 {
+			results[len(results)-1].Details = append(results[len(results)-1].Details, detail)
+		}
+	}
+
+	return results
 }
 
 // outputLines trims command output into detail lines, keeping the tail when it is long.
