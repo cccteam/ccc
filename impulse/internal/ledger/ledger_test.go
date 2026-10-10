@@ -3,11 +3,14 @@ package ledger
 import (
 	"context"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
@@ -294,3 +297,31 @@ func TestSkeletonPins(t *testing.T) {
 	}
 }
 
+// TestToolDirectiveDrag holds impulse's own go.mod to the ledger's last step: no framework
+// module the step pins is required at a version beyond the pin. The tool directive puts
+// impulse's requirements into an application's build list, so this is what the tool pin's
+// move at the last step, and the tool-only move to a release that added no step, carry an
+// application to; held here, they carry it nowhere the ledger does not record. A release
+// whose requirements move past the last step fails here until its step is appended.
+func TestToolDirectiveDrag(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := modfile.Parse("go.mod", data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := &Steps[len(Steps)-1]
+	for _, r := range mod.Require {
+		pin, ok := last.Pins[r.Mod.Path]
+		if !ok {
+			continue
+		}
+		if semver.Compare(r.Mod.Version, pin) > 0 {
+			t.Errorf("impulse requires %s at %s and the ledger's last step pins it at %s: the tool pin would carry an application past the ledger; append a step for the release that moves it", r.Mod.Path, r.Mod.Version, pin)
+		}
+	}
+}

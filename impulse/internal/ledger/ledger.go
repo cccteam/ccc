@@ -15,9 +15,11 @@
 //
 // A step is appended when the skeleton's pins move or a recipe is needed, and never
 // otherwise; the ledger's test holds the last step's pins to the skeleton's, so a pin bump
-// without its step fails the build. A breaking change in resource, access, session or
-// accesstypes is not done until the step that carries it records a recipe for it here, or
-// says none is needed.
+// without its step fails the build, and holds impulse's own requirements to the last
+// step's pins, so a release whose tool directive would carry an application past the
+// ledger fails the build until its step is recorded. A breaking change in resource, access,
+// session or accesstypes is not done until the step that carries it records a recipe for
+// it here, or says none is needed.
 package ledger
 
 import (
@@ -135,6 +137,22 @@ var Steps = []Step{
 		`),
 		Note:    "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
 		Impulse: release("v0.3.0"),
+	},
+	{
+		Pins: pins(`
+			access v0.10.3
+			ccc v0.3.3
+			ccc/accesstypes v0.6.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.13.0
+			ccc/tracer v0.2.0
+			db-initiator v0.4.1
+			httpio v0.7.21
+			logger v0.1.27
+			session v0.12.2
+		`),
+		Note:    "cloud v0.2.1 adds the settings declaration of cloud/gcp, which impulse's env-template check reads; impulse v0.3.1 requires it, so its tool pin carries it, and no code change is needed",
+		Impulse: release("v0.3.1"),
 	},
 }
 
