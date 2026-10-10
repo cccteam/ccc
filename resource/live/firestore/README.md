@@ -95,11 +95,19 @@ The package is the live driver, in the shape the cloud driver set: an applicatio
 (`GOOGLE_CLOUD_FIRESTORE_PROJECT`, `APP_FIRESTORE_DATABASE`, `APP_FIREBASE_API_KEY`,
 `FIRESTORE_EMULATOR_HOST`), and `declaration.Settings()` in the package beside it
 publishes that declaration for impulse's checks and bedrock's stack. `Open(ctx, settings,
-emulatorProject)` refuses a database named without its project, and a configuration
-naming neither a database nor the emulator, since the live service is required; against
-the emulator with no project named, `emulatorProject` (the application's Spanner project
-in the skeleton) stands in, since the emulator takes any project id. `Settings.BrowserOrigins`
-names the origins the content security policy admits for the change feed.
+opts...)` refuses a database named without its project, and a configuration naming
+neither a database nor the emulator, since the live service is required; against the
+emulator with no project named, the database opens under `EmulatorProject`
+(`live-emulator`), a fixed id of the driver's own, so every process of the application
+and the browser, which the token route hands the id to, open one database, since the
+emulator takes any project id. `Settings.BrowserOrigins` names the origins the content
+security policy admits for the change feed.
+
+The application binds the driver under the neutral alias `liveservice` (`liveservice
+"github.com/cccteam/ccc/resource/live/firestore"`; `live` is the seam package,
+`resource/live`, which the same file imports), embeds `liveservice.Settings` and calls
+`liveservice.Open`, so moving the live service to another provider's driver is the import
+line alone.
 
 Under `Open` sits `New` with `Config{ProjectID, DatabaseID, APIKey, EmulatorHost}`: the
 project and the database id (empty is `(default)`), the optional Firebase web API key the

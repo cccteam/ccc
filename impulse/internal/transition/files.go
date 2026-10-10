@@ -87,7 +87,7 @@ const (
 	bootstrapRun         = "run"
 	seedCall             = "deploy.SeedDevelopmentData"
 	spannerClientCall    = "resource.NewSpannerClient"
-	databaseOpenCall     = "spanner.Open"
+	jobDriverAlias       = "jobstarter"
 	rpcClientType        = "Client"
 	rpcClientAccessor    = "RPCClient"
 	resourceClientMethod = "ResourceClient"
@@ -279,6 +279,18 @@ func (Files) declareStore(e *sourceEdit) error {
 // store's options, so the resource client it builds is built over the store, and sets
 // the field.
 func (f Files) openStore(e *sourceEdit) error {
+	// The driver's Open is named by the alias the file binds the driver under (database
+	// in the skeleton), or by its package name in an application that aliases nothing.
+	driver, err := app.ImportName(e.rel, e.src, databaseImportPath)
+	if err != nil {
+		return err
+	}
+	if driver == "" {
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: the file imports no database driver (%s) whose Open the store would be opened before, so the store is not opened; call openFileStore(ctx, env.FileStores) before the database driver opens, pass it fileStoreOptions(files)..., and set the files field", e.rel, databaseImportPath))
+
+		return nil
+	}
+	databaseOpenCall := driver + ".Open"
 	opened, err := app.AddStatementsBeforeCall(e.rel, e.src, "", dataConstructor, databaseOpenCall, f.openingStatements())
 	switch {
 	case errors.Is(err, app.ErrNoAnchor):
@@ -355,7 +367,7 @@ func (Files) releaseInClose(rel string, src []byte) ([]byte, error) {
 		}
 	}
 	if field == "" {
-		return nil, errors.Wrapf(app.ErrNoAnchor, "%s: %s holds no *spanner.Driver and no *spanner.Client", rel, dataConfigType)
+		return nil, errors.Wrapf(app.ErrNoAnchor, "%s: %s holds no database driver (*Driver of %s) and no *spanner.Client", rel, dataConfigType, databaseImportPath)
 	}
 	receiver, err := receiverName(rel, src, dataConfigType, closeMethod)
 	if err != nil {
@@ -968,7 +980,7 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 		return err
 	}
 	if rel == "" {
-		ch.skipf("no file declares a %s struct, so the scheduled routes' guard and the job driver are not built; build them where the served site's configuration is (scheduled.FromEnvironment; cloudrun.Settings embedded in the site's environment struct and cloudrun.Open) and expose them as %s() and %s()", siteConfigType, schedulerAccessor, jobsAccessor)
+		ch.skipf("no file declares a %s struct, so the scheduled routes' guard and the job driver are not built; build them where the served site's configuration is (scheduled.FromEnvironment; the job driver's Settings embedded in the site's environment struct and its Open, the driver bound under the alias %s) and expose them as %s() and %s()", siteConfigType, jobDriverAlias, schedulerAccessor, jobsAccessor)
 
 		return nil
 	}
@@ -1014,10 +1026,11 @@ func (f Files) editSiteConfig(a *app.App, ch *Change) error {
 		starterField, driver = siteStarterField, true
 		ok, err := f.buildInSite(edit, &siteWiring{
 			importPath: cloudrunImportPath,
-			field:      "// " + siteStarterField + " is the job driver: the starter of this build's job, or of none (" + scheduledConfigFile + ").\n" + siteStarterField + " *cloudrun.Driver",
+			importName: jobDriverAlias,
+			field:      "// " + siteStarterField + " is the job driver: the starter of this build's job, or of none (" + scheduledConfigFile + ").\n" + siteStarterField + " *" + jobDriverAlias + ".Driver",
 			statements: "// The job driver (" + scheduledConfigFile + "): it names the job of this build from the template job the\n// stack sets in APP_JOBS_TEMPLATE, the setting the site's environment embeds, and the\n// version the image bakes in, and without a template refuses every start.\n" +
-				"starter, err := cloudrun.Open(ctx, env.Settings, data.AppVersion())\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, "cloudrun.Open()") + "\n}",
-			callee:  "cloudrun.Open",
+				"starter, err := " + jobDriverAlias + ".Open(ctx, env.Settings, data.AppVersion())\nif err != nil {\n\treturn nil, " + wrapFor(wrapErr, jobDriverAlias+".Open()") + "\n}",
+			callee:  jobDriverAlias + ".Open",
 			element: siteStarterField + ": starter",
 			what:    "the driver",
 		})
@@ -1076,16 +1089,16 @@ func (Files) starterField(rel string, src []byte) (field string, driver bool, er
 func (Files) embedDriverSettings(e *sourceEdit) {
 	m := envStructRE.FindSubmatch(e.src)
 	if m == nil {
-		e.skipped = append(e.skipped, fmt.Sprintf("%s: no environment struct (env := &T{}) to embed cloudrun.Settings in; embed it in the site's environment struct, which declares APP_JOBS_TEMPLATE, and pass it to cloudrun.Open", e.rel))
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: no environment struct (env := &T{}) to embed %s.Settings in; embed it in the site's environment struct, which declares APP_JOBS_TEMPLATE, and pass it to %s.Open", e.rel, jobDriverAlias, jobDriverAlias))
 
 		return
 	}
-	if err := e.apply(app.AddStructField(e.rel, e.src, string(m[1]), "\n// The Cloud Run job driver's variables: the template job this build's job is named\n// from.\ncloudrun.Settings")); err != nil {
-		e.skipped = append(e.skipped, fmt.Sprintf("%s: cloudrun.Settings was not embedded in %s (%v); embed it there, since it declares APP_JOBS_TEMPLATE", e.rel, m[1], err))
+	if err := e.apply(app.AddStructField(e.rel, e.src, string(m[1]), "\n// The job driver's variables ("+jobDriverAlias+".Settings, whichever driver the import names:\n// the Cloud Run driver's template job this build's job is named from).\n"+jobDriverAlias+".Settings")); err != nil {
+		e.skipped = append(e.skipped, fmt.Sprintf("%s: %s.Settings was not embedded in %s (%v); embed it there, since it declares APP_JOBS_TEMPLATE", e.rel, jobDriverAlias, m[1], err))
 
 		return
 	}
-	e.gained = append(e.gained, "cloudrun.Settings on "+string(m[1]))
+	e.gained = append(e.gained, jobDriverAlias+".Settings on "+string(m[1]))
 }
 
 // writeSiteAccessors writes the site level's scheduled file with the accessors the
@@ -1141,11 +1154,11 @@ func gainedInSite(added []string, built bool, wired []string) string {
 }
 
 // siteWiring is one of the two values the site level gains: its field with the import
-// the type needs, the statements that build it before the construction, the call those
-// statements make (present already, they are not added), and the literal element that
-// sets the field.
+// the type needs, with the name the file binds it under (empty for the package's own),
+// the statements that build it before the construction, the call those statements make
+// (present already, they are not added), and the literal element that sets the field.
 type siteWiring struct {
-	importPath, field, statements, callee, element, what string
+	importPath, importName, field, statements, callee, element, what string
 }
 
 // buildInSite adds one wiring to the site level: the field and its import, the
@@ -1156,7 +1169,7 @@ func (Files) buildInSite(e *sourceEdit, w *siteWiring) (bool, error) {
 	if err := e.apply(app.AddStructField(e.rel, e.src, siteConfigType, w.field)); err != nil {
 		return false, err
 	}
-	if err := e.apply(app.AddImport(e.rel, e.src, w.importPath)); err != nil {
+	if err := e.apply(app.AddNamedImport(e.rel, e.src, w.importName, w.importPath)); err != nil {
 		return false, err
 	}
 	calls, err := app.HasCall(e.rel, e.src, "", siteConstructor, w.callee)

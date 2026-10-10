@@ -25,9 +25,19 @@ const (
 	scheduledFile = "pkg/config/scheduled.go"
 )
 
+// The aliases the application binds the drivers under, one per kind of driver, so the
+// vendor is named on the import line alone and moving to another provider is that line.
+const (
+	databaseAlias = "database"
+	liveAlias     = "liveservice"
+	jobsAlias     = "jobstarter"
+	cloudAlias    = "cloud"
+)
+
 // The imports the rewrite adds and drops.
 const (
 	databaseDriverImport = "github.com/cccteam/ccc/resource/database/spanner"
+	liveDriverImport     = "github.com/cccteam/ccc/resource/live/firestore"
 	jobDriverImport      = "github.com/cccteam/ccc/resource/jobs/cloudrun"
 	jobsImport           = "github.com/cccteam/ccc/resource/jobs"
 	scheduledImport      = "github.com/cccteam/ccc/resource/scheduled"
@@ -39,9 +49,12 @@ const (
 // ProviderDrivers moves an application's database, live service and job starter from its
 // config package into the drivers (resource/database/spanner, resource/live/firestore,
 // resource/jobs/cloudrun): the data level embeds the database and live drivers' settings
-// in its SpannerSettings and FirestoreSettings and opens the drivers, the site level
-// embeds the job driver's settings and opens it, and the level's own resolution of the
-// live service's project, with its test, is the live driver's.
+// in DatabaseSettings and LiveSettings (SpannerSettings and FirestoreSettings renamed for
+// the kinds, with the rest of the application following) and opens the drivers, the site
+// level embeds the job driver's settings and opens it, and the level's own resolution of
+// the live service's project, with its test, is the live driver's. Every driver, the
+// cloud driver included, is bound under a neutral import alias (database, liveservice,
+// jobstarter, cloud), so the vendor is named on the import line alone.
 type ProviderDrivers struct{}
 
 // Name is the recipe's short name.
@@ -49,7 +62,7 @@ func (ProviderDrivers) Name() string { return "provider-drivers" }
 
 // Meaning says what the change means in this framework.
 func (ProviderDrivers) Meaning() string {
-	return "The database, the live service and the job starter are opened by drivers in the shape the cloud driver set (resource/database/spanner, resource/live/firestore, resource/jobs/cloudrun): each declares the variables it reads on a Settings struct the configuration embeds, and the configuration opens it with Open and closes it with Close. Nothing in the application names a Spanner client, resolves the live service's project or reads the job template's variable any more; moving to another provider swaps the driver import and the embedded settings."
+	return "The database, the live service and the job starter are opened by drivers in the shape the cloud driver set (resource/database/spanner, resource/live/firestore, resource/jobs/cloudrun): each declares the variables it reads on a Settings struct the configuration embeds, and the configuration opens it with Open and closes it with Close. Nothing in the application names a Spanner client, resolves the live service's project or reads the job template's variable any more. Every driver is bound under one neutral import alias (database, liveservice, jobstarter, cloud) and the configuration's wrappers are named for the kind (DatabaseSettings, LiveSettings), so the vendor is named on the import line alone and moving to another provider is that line."
 }
 
 // dataMarkers are the signs of the old form in the data level.
@@ -97,10 +110,16 @@ func (r ProviderDrivers) Apply(_ context.Context, a *app.App, _ check.Execer) (*
 	if err := r.rewriteData(a, ch); err != nil {
 		return nil, err
 	}
+	if err := r.renameWrappers(a, ch); err != nil {
+		return nil, err
+	}
 	if err := r.removeDataTest(a, ch); err != nil {
 		return nil, err
 	}
 	if err := r.rewriteSite(a, ch); err != nil {
+		return nil, err
+	}
+	if err := r.rewriteCore(a, ch); err != nil {
 		return nil, err
 	}
 
@@ -115,16 +134,16 @@ func (ProviderDrivers) rewriteData(a *app.App, ch *transition.Change) error {
 	}
 	edited, reason := moveDataLevel(src)
 	if reason != "" {
-		ch.Skipped = append(ch.Skipped, fmt.Sprintf("%s: %s, so the data level was not rewritten; embed spanner.Settings in SpannerSettings and livefirestore.Settings in FirestoreSettings, open the drivers with spanner.Open (the Spanner client and the resource client are its) and livefirestore.Open (which resolves the live service's project), close the database driver in Close, and drop the Spanner client, the resource client and openLive", dataFile, reason))
+		ch.Skipped = append(ch.Skipped, fmt.Sprintf("%s: %s, so the data level was not rewritten; bind the drivers under the aliases database and liveservice, embed database.Settings in DatabaseSettings (SpannerSettings renamed) and liveservice.Settings in LiveSettings (FirestoreSettings renamed), open them with database.Open (the Spanner client and the resource client are its) and liveservice.Open (which resolves the live service's project), close the database driver in Close, drop the Spanner client, the resource client and openLive, and rename LoadSpannerSettings and the Spanner accessor LoadDatabaseSettings and Database, the rest of the application following", dataFile, reason))
 
 		return nil
 	}
 	if err := write(a, dataFile, edited, mode); err != nil {
 		return err
 	}
-	ch.Did = append(ch.Did, dataFile+": the data level embeds the database and live drivers' settings and opens the drivers, which hold the Spanner client, the resource client and the live service")
+	ch.Did = append(ch.Did, dataFile+": the data level embeds the database and live drivers' settings (DatabaseSettings, LiveSettings) and opens the drivers under the aliases database and liveservice, which hold the Spanner client, the resource client and the live service")
 	if i := strings.Index(edited, "spannerClient"); i >= 0 {
-		ch.Skipped = append(ch.Skipped, fmt.Sprintf("%s:%d: the data level still names spannerClient, which the driver holds now; read it as database.SpannerClient", dataFile, 1+strings.Count(edited[:i], "\n")))
+		ch.Skipped = append(ch.Skipped, fmt.Sprintf("%s:%d: the data level still names spannerClient, which the driver holds now; read it as c.database.SpannerClient", dataFile, 1+strings.Count(edited[:i], "\n")))
 	}
 
 	return nil
@@ -205,7 +224,7 @@ func (r *rewrite) cutFunc(head, what string) {
 // part of the form it did not recognize.
 func moveDataLevel(src string) (edited, reason string) {
 	r := &rewrite{src: src}
-	r.replace(spannerStructOld, spannerStructNew, "the SpannerSettings struct")
+	r.replace(spannerStructOld, databaseStructNew, "the SpannerSettings struct")
 	r.replace(databasePathFunc, "", "the DatabasePath method")
 	r.replaceFirestoreSettings()
 	r.replace(dataFieldsOld, dataFieldsNew, "the Spanner and resource client fields of DataConfiguration")
@@ -215,15 +234,120 @@ func moveDataLevel(src string) (edited, reason string) {
 	r.cutFunc(openLiveFunc, "the openLive function")
 	r.replace(closeOld, closeNew, "the Spanner client's close")
 	r.replace(resourceClientDocOld, resourceClientDocNew, "the ResourceClient comment")
+	r.replace(spannerAccessorOld, databaseAccessorNew, "the Spanner accessor")
+	r.replace(dataConfigFieldsOld, dataConfigFieldsNew, "the drivers' settings on dataConfig")
 	r.replace(cloudSpannerImportLine, "", "the Spanner client's import, aliased cloudspanner")
-	r.replace("\t\""+resourceImport+"\"\n", "\t\""+resourceImport+"\"\n\t\""+databaseDriverImport+"\"\n", "the resource import")
+	r.replace("\t\""+resourceImport+"\"\n", "\t\""+resourceImport+"\"\n\t"+databaseAlias+" \""+databaseDriverImport+"\"\n", "the resource import")
+	r.replace("\tlivefirestore \""+liveDriverImport+"\"\n", "\t"+liveAlias+" \""+liveDriverImport+"\"\n", "the live driver's import, aliased livefirestore")
 	if r.reason != "" {
 		return "", r.reason
 	}
-	r.src = strings.ReplaceAll(r.src, "(ctx, spannerClient, ", "(ctx, database.SpannerClient, ")
+	r.src = strings.ReplaceAll(r.src, "livefirestore.", liveAlias+".")
+	r.src = strings.ReplaceAll(r.src, `"firestore.Service.Close()"`, `"`+liveAlias+`.Service.Close()"`)
+	r.src = strings.ReplaceAll(r.src, "(ctx, spannerClient, ", "(ctx, db.SpannerClient, ")
 	r.src = strings.ReplaceAll(r.src, "c.resourceClient", "c.database.ResourceClient")
+	r.src = renameWrapperIdentifiers(nameSeam(r.src))
 
 	return dropUnusedImports(r.src, fmtImport, slicesImport), ""
+}
+
+// nameSeam writes the comment naming the Spanner client the auths open on as the one
+// vendor-specific seam left in the level, above the first auth built over the driver's
+// client; a level building no auth over it takes none.
+func nameSeam(src string) string {
+	loc := seamRE.FindStringIndex(src)
+	if loc == nil {
+		return src
+	}
+
+	return src[:loc[0]] + seamComment + src[loc[0]:]
+}
+
+// wrapperRenames are the configuration's names that followed the vendor and follow the
+// kind now: the wrappers, the loader, the accessor and the environment struct's fields,
+// as the rest of the application refers to them.
+var wrapperRenames = []struct {
+	old  *regexp.Regexp
+	with string
+}{
+	{regexp.MustCompile(`\bLoadSpannerSettings\b`), "LoadDatabaseSettings"},
+	{regexp.MustCompile(`\bSpannerSettings\b`), "DatabaseSettings"},
+	{regexp.MustCompile(`\bFirestoreSettings\b`), "LiveSettings"},
+	{regexp.MustCompile(`\benv\.Spanner\b`), "env.Database"},
+	{regexp.MustCompile(`\benv\.Firestore\b`), "env.Live"},
+	{regexp.MustCompile(`\.Spanner\(\)`), ".Database()"},
+}
+
+// renameWrapperIdentifiers renames the wrappers and what refers to them in one source.
+func renameWrapperIdentifiers(src string) string {
+	for _, r := range wrapperRenames {
+		src = r.old.ReplaceAllString(src, r.with)
+	}
+
+	return src
+}
+
+// renameWrappers brings the rest of the application to the renamed wrappers once the
+// data level carries them: every other Go file naming SpannerSettings,
+// LoadSpannerSettings, FirestoreSettings or the Spanner accessor takes the kind's name,
+// so the commands and the deploy package compile against the level. A data level not on
+// the new names, because the rewrite did not recognize it, leaves the rest as it is.
+func (ProviderDrivers) renameWrappers(a *app.App, ch *transition.Change) error {
+	data, _, ok, err := read(a, dataFile)
+	if err != nil || !ok || !strings.Contains(data, "type DatabaseSettings struct") {
+		return err
+	}
+	var renamed []string
+	for _, rel := range a.GoFiles() {
+		if rel == dataFile {
+			continue
+		}
+		src, mode, ok, err := read(a, rel)
+		if err != nil {
+			return err
+		}
+		edited := renameWrapperIdentifiers(src)
+		if !ok || edited == src {
+			continue
+		}
+		if err := write(a, rel, edited, mode); err != nil {
+			return err
+		}
+		renamed = append(renamed, rel)
+	}
+	if len(renamed) > 0 {
+		ch.Did = append(ch.Did, strings.Join(renamed, ", ")+": SpannerSettings, LoadSpannerSettings, Spanner() and FirestoreSettings are DatabaseSettings, LoadDatabaseSettings, Database() and LiveSettings, named for the drivers' kinds")
+	}
+
+	return nil
+}
+
+// rewriteCore binds the cloud driver under its alias in the core level, which the
+// cloud-driver recipe left under the package name: the import, the embedded settings, the
+// driver's field and its opening, with the variable the driver is opened into renamed so
+// it does not shadow the alias. A core level not on the cloud driver, or on it under the
+// alias already, is left alone; one on it in another form is reported.
+func (ProviderDrivers) rewriteCore(a *app.App, ch *transition.Change) error {
+	src, mode, ok, err := read(a, configFile)
+	if err != nil || !ok || !strings.Contains(src, cloudImportOld) {
+		return err
+	}
+	r := &rewrite{src: src}
+	r.replace(cloudImportOld, cloudImportNew, "the cloud driver's import")
+	r.replace(cloudSettingsField, cloudSettingsNew, "the embedded gcp.Settings")
+	r.replace(cloudFieldOld, cloudFieldNew, "the cloud field of coreConfiguration")
+	r.replace(cloudOpenOld, cloudOpenNew, "the cloud driver's opening")
+	if r.reason != "" {
+		ch.Skipped = append(ch.Skipped, fmt.Sprintf("%s: %s, so the cloud driver is not bound under the alias %s; alias the import %s and read gcp.Settings, gcp.Open and *gcp.Driver as %s's, with the variable the driver is opened into renamed so it does not shadow the alias", configFile, r.reason, cloudAlias, cloudAlias, cloudAlias))
+
+		return nil
+	}
+	if err := write(a, configFile, r.src, mode); err != nil {
+		return err
+	}
+	ch.Did = append(ch.Did, configFile+": the cloud driver is bound under the alias "+cloudAlias)
+
+	return nil
 }
 
 // replaceFirestoreSettings replaces the FirestoreSettings struct and the methods the
@@ -258,7 +382,7 @@ func (r *rewrite) replaceFirestoreSettings() {
 
 		return
 	}
-	r.src = r.src[:start] + firestoreStructNew + r.src[end:]
+	r.src = r.src[:start] + liveStructNew + r.src[end:]
 }
 
 // replaceDatabaseOpen replaces the Spanner client's opening with the database driver's,
@@ -272,7 +396,7 @@ func (r *rewrite) replaceDatabaseOpen() {
 	open, oldLiteral := databaseOpenNew, dataLiteralOld
 	if strings.Contains(r.src, filesBlockOld) {
 		r.src = strings.Replace(r.src, filesBlockOld, "", 1)
-		open = filesBlockNew + strings.Replace(databaseOpenNew, "env.Spanner.Settings)", "env.Spanner.Settings, fileStoreOptions(files)...)", 1)
+		open = filesBlockNew + strings.Replace(databaseOpenNew, "env.Database.Settings)", "env.Database.Settings, fileStoreOptions(files)...)", 1)
 		oldLiteral = dataLiteralFilesOld
 	}
 	r.replace(databaseOpenOld, open, "the Spanner client's opening")
@@ -287,7 +411,7 @@ func (ProviderDrivers) removeDataTest(a *app.App, ch *transition.Change) error {
 		return err
 	}
 	if strings.Count(src, "\nfunc Test") != 1 {
-		ch.Skipped = append(ch.Skipped, dataTestFile+": the file tests more than the live service's project resolution, so it was not deleted; delete TestFirestoreProject, which the live driver's tests cover (livefirestore.Open)")
+		ch.Skipped = append(ch.Skipped, dataTestFile+": the file tests more than the live service's project resolution, so it was not deleted; delete TestFirestoreProject, which the live driver's tests cover (liveservice.Open)")
 
 		return nil
 	}
@@ -309,7 +433,7 @@ func (r ProviderDrivers) rewriteSite(a *app.App, ch *transition.Change) error {
 	}
 	edited, reason := moveSiteLevel(src)
 	if reason != "" {
-		ch.Skipped = append(ch.Skipped, fmt.Sprintf("%s: %s, so the site level was not rewritten; embed cloudrun.Settings in the site's environment struct, open the driver with cloudrun.Open(ctx, env.Settings, data.AppVersion()) where jobs.FromEnvironment was called, hold it in the jobs field, and close it in Close", siteFile, reason))
+		ch.Skipped = append(ch.Skipped, fmt.Sprintf("%s: %s, so the site level was not rewritten; bind the driver under the alias %s, embed %s.Settings in the site's environment struct, open the driver with %s.Open(ctx, env.Settings, data.AppVersion()) where jobs.FromEnvironment was called, hold it in the jobs field, and close it in Close", siteFile, reason, jobsAlias, jobsAlias, jobsAlias))
 
 		return nil
 	}
@@ -333,7 +457,7 @@ func moveSiteLevel(src string) (edited, reason string) {
 		r.replace(siteFieldCommentedOld, siteFieldNew, "the jobs field")
 	} else {
 		var replaced bool
-		r.src, replaced = replaceRegexp(r.src, siteFieldRE, "${1}jobs *cloudrun.Driver")
+		r.src, replaced = replaceRegexp(r.src, siteFieldRE, "${1}jobs *"+jobsAlias+".Driver")
 		if !replaced {
 			return "", "the jobs field is not a jobs.Starter of SiteConfiguration"
 		}
@@ -344,14 +468,14 @@ func moveSiteLevel(src string) (edited, reason string) {
 	}
 	m := siteEnvStructRE.FindStringSubmatch(r.src)
 	if m == nil {
-		return "", "no environment struct (env := &T{}) is read to embed cloudrun.Settings in"
+		return "", "no environment struct (env := &T{}) is read to embed " + jobsAlias + ".Settings in"
 	}
 	embedded, err := app.AddStructField(siteFile, []byte(r.src), m[1], jobDriverSettingsField)
 	if err != nil {
 		return "", "the environment struct " + m[1] + " took no field (" + err.Error() + ")"
 	}
 	r.src = string(embedded)
-	r.replace("\t\""+scheduledImport+"\"\n", "\t\""+jobDriverImport+"\"\n\t\""+scheduledImport+"\"\n", "the scheduled import")
+	r.replace("\t\""+scheduledImport+"\"\n", "\t"+jobsAlias+" \""+jobDriverImport+"\"\n\t\""+scheduledImport+"\"\n", "the scheduled import")
 	if r.reason != "" {
 		return "", r.reason
 	}

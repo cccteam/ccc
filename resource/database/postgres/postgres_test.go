@@ -13,6 +13,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/database/postgres"
 	"github.com/cccteam/ccc/resource/database/postgres/declaration"
+	"github.com/cccteam/ccc/resource/filestore"
 	"github.com/cccteam/ccc/resource/internal/declarationtest"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/google/go-cmp/cmp"
@@ -121,8 +122,9 @@ func TestSettings(t *testing.T) {
 }
 
 // TestOpen opens the driver against a container: the pool answers and the resource
-// client is the PostgreSQL client; a wrong password, a wrong database and a wrong port
-// are refused at Open, naming the check; and Close closes the pool.
+// client is the PostgreSQL client, holding the file store the options wire on it; a wrong
+// password, a wrong database and a wrong port are refused at Open, naming the check; and
+// Close closes the pool.
 func TestOpen(t *testing.T) {
 	t.Parallel()
 
@@ -142,11 +144,14 @@ func TestOpen(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		edit    func(s *postgres.Settings)
+		name string
+		edit func(s *postgres.Settings)
+		// store wires a memory store on the client, which FileStore must answer.
+		store   bool
 		wantErr string
 	}{
 		{name: "the container's database opens"},
+		{name: "the file store the options wire is the client's", store: true},
 		{name: "a wrong password is refused", edit: func(s *postgres.Settings) { s.Password = "wrong" }, wantErr: "pgxpool.Pool.Ping()"},
 		{name: "a database that does not exist is refused", edit: func(s *postgres.Settings) { s.Database = "absent" }, wantErr: "pgxpool.Pool.Ping()"},
 		{name: "a port nothing listens on is refused", edit: func(s *postgres.Settings) { s.Port = "1" }, wantErr: "pgxpool.Pool.Ping()"},
@@ -160,7 +165,13 @@ func TestOpen(t *testing.T) {
 			if tt.edit != nil {
 				tt.edit(&s)
 			}
-			d, err := postgres.Open(t.Context(), s)
+			var opts []resource.ClientOption
+			var store *filestore.Mem
+			if tt.store {
+				store = filestore.NewMem()
+				opts = append(opts, resource.WithFileStore(store))
+			}
+			d, err := postgres.Open(t.Context(), s, opts...)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Open() error = %v, want one from %s", err, tt.wantErr)
@@ -173,6 +184,9 @@ func TestOpen(t *testing.T) {
 			}
 			if d.ResourceClient.DBType() != resource.PostgresDBType {
 				t.Errorf("ResourceClient.DBType() = %v, want PostgreSQL", d.ResourceClient.DBType())
+			}
+			if got := d.ResourceClient.FileStore(resource.DefaultStore); (store == nil && got != nil) || (store != nil && got != resource.FileStore(store)) {
+				t.Errorf("ResourceClient.FileStore(DefaultStore) = %v, want the store the options wired (%v)", got, store)
 			}
 			var one int
 			if err := d.Pool.QueryRow(t.Context(), "SELECT 1").Scan(&one); err != nil || one != 1 {

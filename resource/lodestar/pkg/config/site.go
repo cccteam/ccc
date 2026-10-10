@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/cccteam/ccc/resource/jobs"
-	"github.com/cccteam/ccc/resource/jobs/cloudrun"
+	jobstarter "github.com/cccteam/ccc/resource/jobs/cloudrun"
 	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -20,7 +20,7 @@ type SiteConfiguration struct {
 	droidsAPIKey string
 	scheduler    *scheduled.Guard
 	// jobs is the job driver: the starter of this build's job, or of none.
-	jobs *cloudrun.Driver
+	jobs *jobstarter.Driver
 }
 
 // NewSiteConfiguration loads every level and constructs the served site's
@@ -53,12 +53,12 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 		return nil, errors.Wrap(err, "scheduled.FromEnvironment()")
 	}
 	// The job driver names the job of this build from the template job the stack sets
-	// (cloudrun.Settings, embedded in the site's environment) and the version the image
+	// (jobstarter.Settings, embedded in the site's environment) and the version the image
 	// bakes in, and starts it through the Cloud Run Admin API; without a template, as in
 	// development, every start is refused saying so, and the start logs it.
-	starter, err := cloudrun.Open(ctx, env.Settings, data.AppVersion())
+	starter, err := jobstarter.Open(ctx, env.Settings, data.AppVersion())
 	if err != nil {
-		return nil, errors.Wrap(err, "cloudrun.Open()")
+		return nil, errors.Wrap(err, "jobstarter.Open()")
 	}
 
 	return &SiteConfiguration{
@@ -133,7 +133,7 @@ type siteConfig struct {
 	// fail-closed but unreachable until a key is configured.
 	DroidsAPIKey string `env:"APP_DROIDS_API_KEY"`
 
-	// The Cloud Run job driver's variables: the template job this build's job is named
-	// from.
-	cloudrun.Settings
+	// The job driver's variables (jobstarter.Settings, whichever driver the import names:
+	// the Cloud Run driver's template job this build's job is named from).
+	jobstarter.Settings
 }

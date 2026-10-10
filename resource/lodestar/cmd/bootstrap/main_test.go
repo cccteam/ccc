@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cccteam/ccc/resource/database/spanner"
+	database "github.com/cccteam/ccc/resource/database/spanner"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/config"
 	initiator "github.com/cccteam/db-initiator"
 )
@@ -92,7 +92,7 @@ func TestEnsureInstance(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			settings := config.SpannerSettings{Settings: spanner.Settings{ProjectID: containerProjectID, InstanceID: tt.instanceID, DatabaseName: "unused"}}
+			settings := config.DatabaseSettings{Settings: database.Settings{ProjectID: containerProjectID, InstanceID: tt.instanceID, DatabaseName: "unused"}}
 			if err := ensureInstance(t.Context(), settings); err != nil {
 				t.Fatalf("ensureInstance() error = %v", err)
 			}
@@ -112,7 +112,7 @@ func TestEnsureDatabase(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	settings := config.SpannerSettings{Settings: spanner.Settings{ProjectID: containerProjectID, InstanceID: containerInstanceID, DatabaseName: "bootstrap-target"}}
+	settings := config.DatabaseSettings{Settings: database.Settings{ProjectID: containerProjectID, InstanceID: containerInstanceID, DatabaseName: "bootstrap-target"}}
 
 	existed, err := ensureDatabase(ctx, settings)
 	if err != nil {

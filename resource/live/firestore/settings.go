@@ -20,8 +20,8 @@ type Settings struct {
 	// names the database names its project too, or Open refuses: the database is not
 	// assumed to be in the application's Spanner project, which, where environments
 	// share a Spanner instance, is the shared instance's and not the environment's.
-	// Against the emulator it may stay empty, and the project Open is handed stands in,
-	// since the emulator takes any project id.
+	// Against the emulator it may stay empty, and EmulatorProject stands in, since the
+	// emulator takes any project id.
 	ProjectID string `env:"GOOGLE_CLOUD_FIRESTORE_PROJECT"`
 	// DatabaseID is the Firestore database, by id: how a deployment hands the database
 	// to the application.
@@ -34,6 +34,12 @@ type Settings struct {
 	// route with the host and no token, and revokes nothing.
 	EmulatorHost string `env:"FIRESTORE_EMULATOR_HOST"`
 }
+
+// EmulatorProject is the project id the driver opens the emulator's database under when
+// the settings name none: a fixed id of the driver's own, so every process of the
+// application and the browser, which the token route hands the id to, open one database.
+// The emulator takes any project id; a deployment names its project.
+const EmulatorProject = "live-emulator"
 
 // firebaseOrigins are the hosts the Firebase JS SDK reaches in production: Firestore's
 // endpoint, which the change feed listens through, and Firebase Auth's two, which the
@@ -60,32 +66,31 @@ func (s Settings) BrowserOrigins() []string {
 }
 
 // project is the project the service opens the database in: ProjectID, or, against the
-// emulator with ProjectID empty, emulatorProject, which the emulator takes as it takes
+// emulator with ProjectID empty, EmulatorProject, which the emulator takes as it takes
 // any project id. A database named without its project is refused, naming both
 // variables, as is a configuration naming neither a database nor the emulator, since
 // the live service is required.
-func (s Settings) project(emulatorProject string) (string, error) {
+func (s Settings) project() (string, error) {
 	switch {
 	case s.DatabaseID == "" && s.EmulatorHost == "":
 		return "", errors.New("the live service needs a Firestore database: set APP_FIRESTORE_DATABASE (the database id, a deployment) or FIRESTORE_EMULATOR_HOST (the emulator, development)")
 	case s.ProjectID != "":
 		return s.ProjectID, nil
 	case s.EmulatorHost != "":
-		return emulatorProject, nil
+		return EmulatorProject, nil
 	default:
 		return "", errors.New("APP_FIRESTORE_DATABASE names a Firestore database and GOOGLE_CLOUD_FIRESTORE_PROJECT names no project for it: set GOOGLE_CLOUD_FIRESTORE_PROJECT to the project the database is in, which is not assumed to be the Spanner project")
 	}
 }
 
 // Open opens the live service on the database the settings name, or on the emulator:
-// the driver's entry, over New. emulatorProject is the project the emulator's database
-// is opened under when the settings name none, the application's Spanner project in the
-// skeleton, since the emulator takes any project id and the browser connects under the
-// one the token route names. A database named without its project is refused, naming
-// both variables, as is a configuration naming neither a database nor the emulator,
-// since the live service is required.
-func Open(ctx context.Context, s Settings, emulatorProject string, opts ...Option) (*Service, error) {
-	project, err := s.project(emulatorProject)
+// the driver's entry, over New. Against the emulator with no project named, the database
+// opens under EmulatorProject, since the emulator takes any project id and the browser
+// connects under the one the token route names. A database named without its project is
+// refused, naming both variables, as is a configuration naming neither a database nor
+// the emulator, since the live service is required.
+func Open(ctx context.Context, s Settings, opts ...Option) (*Service, error) {
+	project, err := s.project()
 	if err != nil {
 		return nil, err
 	}

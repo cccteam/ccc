@@ -3,7 +3,7 @@ package config
 import (
 	"context"
 
-	"github.com/cccteam/ccc/resource/jobs/cloudrun"
+	jobstarter "github.com/cccteam/ccc/resource/jobs/cloudrun"
 	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -19,7 +19,7 @@ type SiteConfiguration struct {
 	// scheduler is the guard the scheduled routes sit behind (scheduled.go).
 	scheduler *scheduled.Guard
 	// jobs is the job driver: the starter of this build's job, or of none (scheduled.go).
-	jobs *cloudrun.Driver
+	jobs *jobstarter.Driver
 }
 
 // NewSiteConfiguration loads every level and constructs the served site's
@@ -45,9 +45,9 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 	// The job driver (scheduled.go): it names the job of this build from the template job the
 	// stack sets in APP_JOBS_TEMPLATE, the setting the site's environment embeds, and the
 	// version the image bakes in, and without a template refuses every start.
-	starter, err := cloudrun.Open(ctx, env.Settings, data.AppVersion())
+	starter, err := jobstarter.Open(ctx, env.Settings, data.AppVersion())
 	if err != nil {
-		return nil, errors.Wrap(err, "cloudrun.Open()")
+		return nil, errors.Wrap(err, "jobstarter.Open()")
 	}
 
 	return &SiteConfiguration{
@@ -82,7 +82,7 @@ type siteConfig struct {
 	// ConsoleDist is the directory holding the console's built Angular bundle.
 	ConsoleDist string `env:"APP_CONSOLE_DIST,default=web/dist/console"`
 
-	// The Cloud Run job driver's variables: the template job this build's job is named
-	// from.
-	cloudrun.Settings
+	// The job driver's variables (jobstarter.Settings, whichever driver the import names:
+	// the Cloud Run driver's template job this build's job is named from).
+	jobstarter.Settings
 }

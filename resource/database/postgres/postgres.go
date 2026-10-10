@@ -1,8 +1,11 @@
 // Package postgres is the PostgreSQL database driver: from the variables it declares, it
 // opens a connection pool on the application's database and the resource client over it.
 // An application embeds Settings in its configuration and calls Open, and names no
-// database vendor in its own code; moving to another database swaps this import and the
-// embedded settings for that database's driver (resource/database/spanner).
+// database vendor in its own code; moving to another database swaps this import for that
+// database's driver (resource/database/spanner). Bound under the neutral alias database
+// (database "github.com/cccteam/ccc/resource/database/postgres"), with the settings
+// embedded as database.Settings and the driver opened by database.Open, the swap is the
+// import line alone.
 //
 // The driver opens the pool and wraps resource.NewPostgresClient; what the resource
 // client itself can do on PostgreSQL is the resource package's to complete.
@@ -85,8 +88,10 @@ type Driver struct {
 
 // Open opens a connection pool on the database the settings name and checks it answers,
 // so a wrong host, role or password fails the start and not the first request, then
-// builds the resource client over the pool.
-func Open(ctx context.Context, s Settings) (*Driver, error) {
+// builds the resource client over the pool, with the file stores the options wire on it
+// (resource.WithFileStore, resource.WithNamedFileStore), the options the Spanner driver's
+// Open takes.
+func Open(ctx context.Context, s Settings, opts ...resource.ClientOption) (*Driver, error) {
 	config, err := pgxpool.ParseConfig(s.connectionString())
 	if err != nil {
 		return nil, errors.Wrap(err, "pgxpool.ParseConfig()")
@@ -101,7 +106,7 @@ func Open(ctx context.Context, s Settings) (*Driver, error) {
 		return nil, errors.Wrap(err, "pgxpool.Pool.Ping()")
 	}
 
-	return &Driver{ResourceClient: resource.NewPostgresClient(pool), Pool: pool}, nil
+	return &Driver{ResourceClient: resource.NewPostgresClient(pool, opts...), Pool: pool}, nil
 }
 
 // Close closes the pool, and with it every connection the resource client held.

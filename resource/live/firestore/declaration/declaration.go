@@ -25,8 +25,8 @@ func Settings() cloud.Declaration {
 					"names the database names its project too, or Open refuses: the database is not\n" +
 					"assumed to be in the application's Spanner project, which, where environments\n" +
 					"share a Spanner instance, is the shared instance's and not the environment's.\n" +
-					"Against the emulator it may stay empty, and the project Open is handed stands in,\n" +
-					"since the emulator takes any project id.",
+					"Against the emulator it may stay empty, and EmulatorProject stands in, since the\n" +
+					"emulator takes any project id.",
 			},
 			{
 				Name: "DatabaseID",

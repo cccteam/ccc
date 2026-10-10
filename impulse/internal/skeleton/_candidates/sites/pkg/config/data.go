@@ -11,44 +11,45 @@ import (
 	consoleapp "github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/console/app"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
-	"github.com/cccteam/ccc/resource/database/spanner"
+	database "github.com/cccteam/ccc/resource/database/spanner"
 	"github.com/cccteam/ccc/resource/live"
-	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
+	liveservice "github.com/cccteam/ccc/resource/live/firestore"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
 
-// SpannerSettings is the database driver's variables (spanner.Settings: the project, the
-// instance and the database), embedded so the driver declares them and the tools read its
-// declaration. It is the first half of the data level, loadable on its own so
-// cmd/bootstrap can create the instance and database before any client opens against
-// them. A struct of its own, since the live driver's settings sit beside it in the data
-// level and one struct cannot embed two types named Settings.
-type SpannerSettings struct {
-	spanner.Settings
+// DatabaseSettings is the database driver's variables (database.Settings, whichever
+// driver the import names: the Spanner driver's project, instance, database and emulator
+// host), embedded so the driver declares them and the tools read its declaration. It is
+// the first half of the data level, loadable on its own so cmd/bootstrap can create the
+// instance and database before any client opens against them. A struct of its own, since
+// the live driver's settings sit beside it in the data level and one struct cannot embed
+// two types named Settings.
+type DatabaseSettings struct {
+	database.Settings
 }
 
-// LoadSpannerSettings reads the database identity from the environment without opening
+// LoadDatabaseSettings reads the database identity from the environment without opening
 // anything.
-func LoadSpannerSettings(ctx context.Context) (SpannerSettings, error) {
-	var settings SpannerSettings
+func LoadDatabaseSettings(ctx context.Context) (DatabaseSettings, error) {
+	var settings DatabaseSettings
 	if err := envconfig.ProcessWith(ctx, &envconfig.Config{Target: &settings, Lookuper: envconfig.OsLookuper()}); err != nil {
-		return SpannerSettings{}, errors.Wrap(err, "envconfig.ProcessWith()")
+		return DatabaseSettings{}, errors.Wrap(err, "envconfig.ProcessWith()")
 	}
 
 	return settings, nil
 }
 
-// FirestoreSettings is the live driver's variables (livefirestore.Settings: the project
-// and the database the live service runs on, beside the Spanner database, the web API key
-// the browser initializes the SDK with, and the emulator host), embedded so the driver
-// declares them and the tools read its declaration. The database id is how a deployment
-// hands the database to the application (APP_FIRESTORE_DATABASE), with its project
-// (GOOGLE_CLOUD_FIRESTORE_PROJECT); the emulator host is how the development stack does.
-// The live service is required: the driver refuses to open with neither the database nor
-// the emulator set.
-type FirestoreSettings struct {
-	livefirestore.Settings
+// LiveSettings is the live driver's variables (liveservice.Settings, whichever driver the
+// import names: the Firestore driver's project and database the live service runs on,
+// beside the application's database, the web API key the browser initializes the SDK
+// with, and the emulator host), embedded so the driver declares them and the tools read
+// its declaration. The database id is how a deployment hands the database to the
+// application (APP_FIRESTORE_DATABASE), with its project (GOOGLE_CLOUD_FIRESTORE_PROJECT);
+// the emulator host is how the development stack does. The live service is required: the
+// driver refuses to open with neither the database nor the emulator set.
+type LiveSettings struct {
+	liveservice.Settings
 }
 
 // DataConfiguration is the second level: every process that opens the database. It
@@ -61,11 +62,11 @@ type DataConfiguration struct {
 	env *dataConfig
 	// database is the database driver: the Spanner client over the database and the
 	// resource client over it.
-	database  *spanner.Driver
+	database  *database.Driver
 	cursorKey *resource.CursorKey
 	staff     *staff.Auth
 	tenants   *resource.TenantRoster
-	live      *livefirestore.Service
+	live      *liveservice.Service
 }
 
 // NewDataConfiguration loads the core and data levels and opens their clients. The
@@ -83,9 +84,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 	// The database driver: the Spanner client over the database the settings name, and
 	// the resource client over it.
-	database, err := spanner.Open(ctx, env.Spanner.Settings)
+	db, err := database.Open(ctx, env.Database.Settings)
 	if err != nil {
-		return nil, errors.Wrap(err, "spanner.Open()")
+		return nil, errors.Wrap(err, "database.Open()")
 	}
 
 	cookieKey, err := cookieKey(env.CookieKey)
@@ -109,16 +110,18 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	}
 	// The live service first: the auth's permission engine signals policy changes
 	// through it. The live driver opens the Firestore database the settings name, or the
-	// emulator, under the Spanner project where the settings name none, since the emulator
-	// takes any project id. The live service is required: the generated handlers serve the
-	// live pages through it, and the application's instances signal each other through its
-	// signals document (a feature flag flip, a policy write), so a configuration naming
-	// neither, or naming the database without its project, fails the start here.
-	liveService, err := livefirestore.Open(ctx, env.Firestore.Settings, env.Spanner.ProjectID)
+	// emulator, under the driver's own project id where the settings name none, since the
+	// emulator takes any project id. The live service is required: the generated handlers
+	// serve the live pages through it, and the application's instances signal each other
+	// through its signals document (a feature flag flip, a policy write), so a configuration
+	// naming neither, or naming the database without its project, fails the start here.
+	liveService, err := liveservice.Open(ctx, env.Live.Settings)
 	if err != nil {
-		return nil, errors.Wrap(err, "firestore.Open()")
+		return nil, errors.Wrap(err, "liveservice.Open()")
 	}
-	staffAuth, err := staff.New(ctx, database.SpannerClient, staff.Settings{Collection: collection, Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	// The auth opens its stores on the driver's Spanner client: the one vendor-specific
+	// seam left in the level, pending the PostgreSQL client (cccteam/ccc#852).
+	staffAuth, err := staff.New(ctx, db.SpannerClient, staff.Settings{Collection: collection, Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
@@ -126,7 +129,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	conf := &DataConfiguration{
 		coreConfiguration: core,
 		env:               env,
-		database:          database,
+		database:          db,
 		cursorKey:         cursorKey,
 		staff:             staffAuth,
 		live:              liveService,
@@ -145,15 +148,15 @@ func (c *DataConfiguration) Close() {
 		log.Print(errors.Wrap(err, "staff.Auth.Close()"))
 	}
 	if err := c.live.Close(); err != nil {
-		log.Print(errors.Wrap(err, "firestore.Service.Close()"))
+		log.Print(errors.Wrap(err, "liveservice.Service.Close()"))
 	}
 	c.database.Close()
 	c.coreConfiguration.Close()
 }
 
-// Spanner returns the database identity.
-func (c *DataConfiguration) Spanner() SpannerSettings {
-	return c.env.Spanner
+// Database returns the database identity.
+func (c *DataConfiguration) Database() DatabaseSettings {
+	return c.env.Database
 }
 
 // ResourceClient returns the database client the resource layer uses: the driver's.
@@ -194,7 +197,7 @@ func (c *DataConfiguration) Live() live.Service {
 // content security policy: the Firestore emulator in development, Firebase's hosts in
 // production.
 func (c *DataConfiguration) LiveOrigins() []string {
-	return c.env.Firestore.BrowserOrigins()
+	return c.env.Live.BrowserOrigins()
 }
 
 // startTenants builds the tenant roster over the Tenant record with the console site's
@@ -239,8 +242,8 @@ func cookieKey(configured string) (string, error) {
 
 // dataConfig holds the environment every database-opening process reads.
 type dataConfig struct {
-	Spanner   SpannerSettings
-	Firestore FirestoreSettings
+	Database DatabaseSettings
+	Live     LiveSettings
 
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration `env:"APP_DEFAULT_SESSION_TIMEOUT,default=10m"`

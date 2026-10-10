@@ -465,6 +465,11 @@ func TestClientExpression(t *testing.T) {
 			want: "c.database.ResourceClient",
 		},
 		{
+			name: "the database driver under the alias the skeleton binds it by",
+			src:  "package config\n\nimport database \"github.com/cccteam/ccc/resource/database/spanner\"\n\ntype DataConfiguration struct {\n\tdatabase *database.Driver\n}\n",
+			want: "c.database.ResourceClient",
+		},
+		{
 			name: "a resource client of the level's own",
 			src:  "package config\n\nimport \"github.com/cccteam/ccc/resource\"\n\ntype DataConfiguration struct {\n\tresourceClient *resource.SpannerClient\n}\n",
 			want: "c.resourceClient",

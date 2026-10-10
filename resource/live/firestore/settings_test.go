@@ -14,18 +14,15 @@ import (
 
 // TestOpenProject holds the project Open opens the database in to the configurations a
 // process can start with: a deployment names the database and its project; a database
-// named without its project is refused, naming both variables, rather than opened in the
-// project Open is handed; the emulator takes the project Open is handed when the settings
-// name none; and with neither a database nor the emulator the live service has nothing
-// to open. Against the emulator the token route answers the project the service opened
-// under, which is how the browser connects under the same one.
+// named without its project is refused, naming both variables, rather than opened under
+// the driver's emulator project; the emulator opens under the driver's own project id
+// when the settings name none; and with neither a database nor the emulator the live
+// service has nothing to open. Against the emulator the token route answers the project
+// the service opened under, which is how the browser connects under the same one.
 func TestOpenProject(t *testing.T) {
 	t.Parallel()
 
-	const (
-		spannerProject = "spanner-project"
-		envProject     = "environment-project"
-	)
+	const envProject = "environment-project"
 	tests := []struct {
 		name     string
 		settings livefirestore.Settings
@@ -34,9 +31,9 @@ func TestOpenProject(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:     "the emulator takes the project handed in when no project is named",
+			name:     "the emulator opens under the driver's own project when none is named",
 			settings: livefirestore.Settings{DatabaseID: "live"},
-			want:     spannerProject,
+			want:     livefirestore.EmulatorProject,
 		},
 		{
 			name:     "the emulator takes the project named",
@@ -62,7 +59,7 @@ func TestOpenProject(t *testing.T) {
 			if tt.want != "" {
 				settings.EmulatorHost = firestoreEmulator(t)
 			}
-			svc, err := livefirestore.Open(t.Context(), settings, spannerProject)
+			svc, err := livefirestore.Open(t.Context(), settings)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Open() error = %v, want containing %q", err, tt.wantErr)

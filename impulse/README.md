@@ -64,10 +64,16 @@ templates, this README, and the tool's source.
   the database), and **site** (one served site: its port and its built bundle). The site
   level is `SiteConfiguration` in both layouts, since a flat application is one site.
   The core level opens the cloud driver (`cloud/gcp`), which builds where the process's
-  logs and spans go from the settings the level embeds (`gcp.Settings`: the logging
+  logs and spans go from the settings the level embeds (`cloud.Settings`: the logging
   project and the trace sampling); the generated router installs tracing and the request
   logger from the App's `LogExporter`, so nothing in the application names a logging
-  client or a trace provider, and another cloud is another driver import and settings.
+  client or a trace provider. The data level opens the database driver
+  (`resource/database/spanner`) and the live driver (`resource/live/firestore`), and
+  the site level the job driver (`resource/jobs/cloudrun`), each driver's `Settings`
+  embedded in a wrapper named for the kind (`DatabaseSettings`, `LiveSettings`) and
+  opened with its `Open`. Every driver is bound under one neutral import alias
+  (`cloud`, `database`, `liveservice`, `jobstarter`), so the application names the
+  vendor on the import line alone, and another provider is another import line.
 - **Live pages**: list pages and record pages that stay current without polling. A
   request the page asked to be live carries `X-Subscribe`; the server registers the
   subscription before the query runs and publishes each commit's rows into the
@@ -814,7 +820,7 @@ application, the whole of it, so the check is clean when it ends. The data level
 `APP_FILE_STORE` into its environment struct, opens the store the variable names before
 the database driver opens (`openFileStore`; unset leaves the store closed, so the migrate
 and bootstrap commands run without one), hands the driver the store's options
-(`spanner.Open(ctx, env.Spanner.Settings, fileStoreOptions(files)...)`, which is
+(`database.Open(ctx, env.Database.Settings, fileStoreOptions(files)...)`, which is
 `resource.WithFileStore` on the resource client the driver builds) and releases it in
 `Close`. `.envrc.template` sets
 `APP_FILE_STORE=file://uploads` in the data block and `.gitignore` ignores `uploads/`;

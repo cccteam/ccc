@@ -2,8 +2,11 @@
 // opens the application's database, the Spanner client over it and the resource client
 // the generated handlers read and write through. An application embeds Settings in its
 // configuration and calls Open, and names no database vendor in its own code; moving to
-// another database swaps this import and the embedded settings for that database's
-// driver (resource/database/postgres).
+// another database swaps this import for that database's driver
+// (resource/database/postgres). Bound under the neutral alias database (database
+// "github.com/cccteam/ccc/resource/database/spanner"), with the settings embedded as
+// database.Settings and the driver opened by database.Open, the swap is the import line
+// alone.
 package spanner
 
 import (

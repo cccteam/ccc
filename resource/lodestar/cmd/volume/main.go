@@ -98,9 +98,9 @@ func run(ctx context.Context, s scale, parallel int) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	settings, err := config.LoadSpannerSettings(ctx)
+	settings, err := config.LoadDatabaseSettings(ctx)
 	if err != nil {
-		return errors.Wrap(err, "config.LoadSpannerSettings()")
+		return errors.Wrap(err, "config.LoadDatabaseSettings()")
 	}
 	client, err := spanner.NewClient(ctx, settings.DatabasePath())
 	if err != nil {

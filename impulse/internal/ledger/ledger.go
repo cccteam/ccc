@@ -136,7 +136,7 @@ var Steps = []Step{
 			session v0.12.2
 		`),
 		Recipes: []Recipe{recipe.ProviderDrivers{}},
-		Note:    "the database, the live service and the job starter open through provider drivers (resource/database/spanner, resource/live/firestore, resource/jobs/cloudrun) whose settings the configuration embeds under the variable names already in use; the recipe moves pkg/config onto them",
+		Note:    "the database, the live service and the job starter open through provider drivers (resource/database/spanner, resource/live/firestore, resource/jobs/cloudrun) whose settings the configuration embeds under the variable names already in use, each bound under a neutral import alias (database, liveservice, jobstarter, cloud) so moving to another provider is the import line; the recipe moves pkg/config onto them and renames its wrappers (DatabaseSettings, LiveSettings)",
 		Pending: true,
 	},
 }
