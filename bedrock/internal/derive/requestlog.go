@@ -28,14 +28,17 @@ type RequestLogExclusion struct {
 	// trace setting alone, has no clause and is not among them.
 	Surfaces []Surface
 	// Clause is the surfaces' clause of the filter, as the Logging query language reads
-	// it: each surface's Clause, the several joined with OR inside one pair of
-	// parentheses.
+	// it: each surface's Clause, excepting the surfaces declared beneath it, the
+	// several joined with OR inside one pair of parentheses.
 	Clause string
 }
 
 // NewRequestLogExclusion derives the exclusion from the surfaces, in their order: nil
 // when no surface's word excludes an entry, and then the stack renders none, since
-// every entry is written as it is today.
+// every entry is written as it is today. Each surface's clause excepts the surfaces
+// declared beneath it (Excepted), so an entry under a child is the child's own clause's
+// to drop, and kept whole when the child has none, the way the application decides a
+// request's own entry by its nearest declaration.
 func NewRequestLogExclusion(surfaces []Surface) *RequestLogExclusion {
 	var excluding []Surface
 	var clauses []string
@@ -45,7 +48,7 @@ func NewRequestLogExclusion(surfaces []Surface) *RequestLogExclusion {
 			continue
 		}
 		excluding = append(excluding, *s)
-		clauses = append(clauses, s.Clause())
+		clauses = append(clauses, s.Clause(s.Excepted(surfaces)))
 	}
 	if len(excluding) == 0 {
 		return nil
@@ -65,24 +68,58 @@ func (s *Surface) Excludes() bool {
 	}
 }
 
-// Clause is the surface's clause of the exclusion's filter, by its word. Every clause
-// matches the request's URL against the surface's prefix as a regular expression
-// anchored after any host (^https://[^/]+<prefix>): the environment's hostnames and the
-// next revision's all reach the same service, and the word is the path's, not the
-// host's. On event drops the entry of a request that answered below 400, since the
+// Beneath reports whether the surface sits beneath the other: its prefix starts with
+// the other's and is longer, so every request the other's clause matches by its path,
+// this one's matches too. The rule is the router's for a prefix, a plain prefix of the
+// request's path (strings.HasPrefix, in logger.PolicyByPrefix for a hand-mounted prefix
+// and in the generated router's outletRequestLog for one beneath an outlet), held on
+// the prefixes as the release file spells them: an outlet's and a hand-mounted prefix
+// end in a slash, so /api/ is beneath / and /apix/ is not beneath /api/, and a route is
+// beneath the prefix it is mounted under. A surface is not beneath itself.
+func (s *Surface) Beneath(other *Surface) bool {
+	return len(s.Prefix) > len(other.Prefix) && strings.HasPrefix(s.Prefix, other.Prefix)
+}
+
+// Excepted lists the surfaces the surface's clause excepts, in the surfaces' order:
+// every surface beneath it that declares a word, whatever the word, since the nearest
+// declaration decides a request's entry and a grandchild's is nearer still. A surface
+// declaring its trace setting alone keeps the word declared above it, so it stays
+// under the clause.
+func (s *Surface) Excepted(surfaces []Surface) []Surface {
+	var excepted []Surface
+	for i := range surfaces {
+		if o := &surfaces[i]; o.Log != "" && o.Beneath(s) {
+			excepted = append(excepted, *o)
+		}
+	}
+
+	return excepted
+}
+
+// Clause is the surface's clause of the exclusion's filter, by its word, excepting the
+// surfaces given. Every clause matches the request's URL against the surface's prefix
+// as a regular expression anchored after any host (^https://[^/]+<prefix>): the
+// environment's hostnames and the next revision's all reach the same service, and the
+// word is the path's, not the host's. Each excepted surface's match is then negated
+// (AND NOT httpRequest.requestUrl =~ "^https://[^/]+<its prefix>"), in their order, so
+// an entry under it is the excepted surface's own clause's to drop, or kept whole when
+// it has none. On event drops the entry of a request that answered below 400, since the
 // infrastructure cannot know whether a line attached and keeps every failure; sampled
 // drops the same but the declared fraction of them, decided by the entry's insertId;
 // never drops every entry under the prefix. Always has no clause, so the method is not
 // called for it (Excludes).
-func (s *Surface) Clause() string {
-	url := `httpRequest.requestUrl =~ "^https://[^/]+` + PathRegex(s.Prefix) + `"`
+func (s *Surface) Clause(excepted []Surface) string {
+	match := urlMatch(s.Prefix)
+	for i := range excepted {
+		match += " AND NOT " + urlMatch(excepted[i].Prefix)
+	}
 	switch s.Log {
 	case RequestLogOnEvent:
-		return "(" + url + " AND httpRequest.status < 400)"
+		return "(" + match + " AND httpRequest.status < 400)"
 	case RequestLogSampled:
-		return "(" + url + " AND httpRequest.status < 400 AND NOT sample(insertId, " + strconv.FormatFloat(s.Fraction, 'f', -1, 64) + "))"
+		return "(" + match + " AND httpRequest.status < 400 AND NOT sample(insertId, " + strconv.FormatFloat(s.Fraction, 'f', -1, 64) + "))"
 	default:
-		return "(" + url + ")"
+		return "(" + match + ")"
 	}
 }
 
@@ -102,6 +139,12 @@ func (s *Surface) Policy() string {
 	default:
 		return "no request log word, its trace setting alone"
 	}
+}
+
+// urlMatch is the Logging query's match of the request's URL against the prefix after
+// any host: httpRequest.requestUrl =~ "^https://[^/]+<prefix regex>".
+func urlMatch(prefix string) string {
+	return `httpRequest.requestUrl =~ "^https://[^/]+` + PathRegex(prefix) + `"`
 }
 
 // PathRegex is the route or prefix as the RE2 expression Cloud Armor matches the path

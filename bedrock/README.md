@@ -379,7 +379,14 @@ several applications) and then drops, per surface, what the word drops, the surf
 path matched after any host (`^https://[^/]+<prefix>`, a `{param}` segment matching any
 one): on event the entries of the requests that answered below 400, so every failure is
 kept; sampled the same but the declared fraction of them (`NOT sample(insertId,
-<fraction>)`); never every entry under the prefix. A surface logged always has no
+<fraction>)`); never every entry under the prefix. A surface's clause excepts the
+surfaces declared beneath it, whatever their words (`AND NOT httpRequest.requestUrl =~
+"^https://[^/]+<prefix>"` per surface beneath, a grandchild's among them), since the
+application decides a request's entry by its nearest declaration: with `/` sampled at
+0.1 and `/api/` logged always, the root's clause leaves every `/api/` entry alone and the
+child, having no clause, is kept whole, where the plain match would have dropped nine in
+ten quiet `/api/` entries the application wrote; a surface declaring its trace setting
+alone keeps the word above it and is not excepted. A surface logged always has no
 clause, and an application none of whose surfaces excludes anything gets no exclusion,
 since every entry is written as it is today; a config variable
 `APP_FILE_STORE` (the application's default file store) or `APP_FILE_STORE_<NAME>` (a

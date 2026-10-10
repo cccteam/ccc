@@ -27,9 +27,9 @@ var lodestarSurfaces = []derive.Surface{
 
 // TestRequestLogExclusion evaluates the rendered exclusion of logging.tf the way a plan
 // would, with the stack's names in: the complete filter for Lodestar's surfaces, for a
-// sampled surface and for a never surface, the resource's name, no resource for a
-// pull-request stack (its count is 0) and none rendered at all for an application whose
-// surfaces exclude nothing.
+// sampled surface, for a never surface and for a surface excepting the one declared
+// beneath it, the resource's name, no resource for a pull-request stack (its count is
+// 0) and none rendered at all for an application whose surfaces exclude nothing.
 func TestRequestLogExclusion(t *testing.T) {
 	t.Parallel()
 
@@ -58,9 +58,14 @@ func TestRequestLogExclusion(t *testing.T) {
 			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/healthz"))`,
 		},
 		{
-			name:    "harbor's own: the outlet sampled, a stored file never, the scheduled route always",
+			name:     "a looser child under its parent: the root sampled, the outlet always",
+			surfaces: []derive.Surface{{Prefix: "/", Log: derive.RequestLogSampled, Fraction: 0.1}, {Prefix: "/api/", Log: derive.RequestLogAlways}},
+			want:     requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/" AND NOT httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)))`,
+		},
+		{
+			name:    "harbor's own: the outlet sampled excepting the stored file beneath it, the stored file never, the scheduled route always",
 			fixture: true,
-			want:    requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file"))`,
+			want:    requestLogScope + ` AND ((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND NOT httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file"))`,
 		},
 		{name: "a pull-request stack renders none", surfaces: lodestarSurfaces, pullRequest: true},
 		{name: "surfaces logged always render none", surfaces: []derive.Surface{{Prefix: "/", Log: derive.RequestLogAlways}, {Prefix: "/api/", Log: derive.RequestLogAlways, Traces: derive.TracesOff}}},

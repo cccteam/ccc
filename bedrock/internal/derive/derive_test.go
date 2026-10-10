@@ -140,7 +140,7 @@ func TestDerive(t *testing.T) {
 			wantFileRoutes: []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
 			wantOutlets:    []string{"default /api"},
 			wantSurfaces:   []string{"/_scheduled/send-daily-digest: logged always", "/api/: sampled at 0.1", "/api/manifests/{id}/file: never logged"},
-			wantRequestLog: `((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file"))`,
+			wantRequestLog: `((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND NOT httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ "^https://[^/]+/api/manifests/[^/]+/file"))`,
 		},
 		{
 			name:        "beacon, a password auth: no registration, no callback",

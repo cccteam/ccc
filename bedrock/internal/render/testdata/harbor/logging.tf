@@ -104,8 +104,11 @@ locals {
   # request that answered below 400 and keeps every failure, since the edge
   # cannot know whether a line attached; sampled drops the same but the
   # declared fraction of them, decided by the entry's insertId; never drops
-  # every entry under the prefix.
-  request_log_clause = "((httpRequest.requestUrl =~ \"^https://[^/]+/api/\" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ \"^https://[^/]+/api/manifests/[^/]+/file\"))"
+  # every entry under the prefix. Each clause excepts the surfaces declared
+  # beneath its surface, whatever their words, since the nearest declaration
+  # decides a request's entry: an entry under a child is the child's own
+  # clause's to drop, and kept whole when the child is logged always.
+  request_log_clause = "((httpRequest.requestUrl =~ \"^https://[^/]+/api/\" AND NOT httpRequest.requestUrl =~ \"^https://[^/]+/api/manifests/[^/]+/file\" AND httpRequest.status < 400 AND NOT sample(insertId, 0.1)) OR (httpRequest.requestUrl =~ \"^https://[^/]+/api/manifests/[^/]+/file\"))"
 }
 
 resource "google_logging_project_exclusion" "request_log" {

@@ -106,7 +106,10 @@ locals {
   # request that answered below 400 and keeps every failure, since the edge
   # cannot know whether a line attached; sampled drops the same but the
   # declared fraction of them, decided by the entry's insertId; never drops
-  # every entry under the prefix.
+  # every entry under the prefix. Each clause excepts the surfaces declared
+  # beneath its surface, whatever their words, since the nearest declaration
+  # decides a request's entry: an entry under a child is the child's own
+  # clause's to drop, and kept whole when the child is logged always.
   request_log_clause = {{.RequestLogClause}}
 }
 

@@ -282,7 +282,10 @@ from `2-env`'s state.
   A surface logged always is kept whole. On event drops the entries of the
   requests that answered below 400 and keeps every failure; sampled drops the
   same but the declared fraction of them; never drops every entry under the
-  prefix.
+  prefix. A surface's clause excepts the surfaces declared beneath it,
+  whatever their words, since the application decides a request's entry by
+  its nearest declaration: an entry under a child is the child's own clause's
+  to drop, and kept whole when the child is logged always.
 - **Load balancer backend**: a serverless NEG per region and one global
   backend service `imp-<env>-gbl-harbor-backend` over both, external managed,
   outlier detection on (5 consecutive errors in a 1-second interval eject a
